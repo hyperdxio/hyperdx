@@ -361,6 +361,75 @@ describe('Metadata', () => {
     });
   });
 
+  describe('getMetricScrapeIntervalEstimate', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation(
+        (key: string, queryFn: () => unknown) => queryFn(),
+      );
+    });
+
+    const args = {
+      databaseName: 'default',
+      tableName: 'otel_metrics_points',
+      metricNameCondition: "MetricName = 'test.requests'",
+      connectionId: 'conn-1',
+    };
+    const mockRow = (row: Record<string, unknown> | undefined) =>
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ data: row ? [row] : [] }),
+      });
+
+    it('returns median/max spacing with uncertainty when spacings disagree >25%', async () => {
+      mockRow({ interval_s: '60', max_interval_s: '60' });
+      expect(await metadata.getMetricScrapeIntervalEstimate(args)).toEqual({
+        intervalSeconds: 60,
+        maxIntervalSeconds: 60,
+        uncertain: false,
+      });
+
+      mockRow({ interval_s: 10, max_interval_s: 60 });
+      expect(await metadata.getMetricScrapeIntervalEstimate(args)).toEqual({
+        intervalSeconds: 10,
+        maxIntervalSeconds: 60,
+        uncertain: true,
+      });
+
+      // within the 25% jitter band → certain
+      mockRow({ interval_s: 60, max_interval_s: 70 });
+      expect(await metadata.getMetricScrapeIntervalEstimate(args)).toEqual({
+        intervalSeconds: 60,
+        maxIntervalSeconds: 70,
+        uncertain: false,
+      });
+    });
+
+    it('caches a 0-sentinel for tier-only metrics and falls back to the median when max is missing', async () => {
+      // no recent raw points: quantile() over an empty set is NaN/null
+      mockRow({ interval_s: null, max_interval_s: null });
+      expect(await metadata.getMetricScrapeIntervalEstimate(args)).toEqual({
+        intervalSeconds: 0,
+        maxIntervalSeconds: 0,
+        uncertain: true,
+      });
+
+      mockRow({ interval_s: 30, max_interval_s: null });
+      expect(await metadata.getMetricScrapeIntervalEstimate(args)).toEqual({
+        intervalSeconds: 30,
+        maxIntervalSeconds: 30,
+        uncertain: false,
+      });
+    });
+
+    it('returns undefined on query failure so callers fail open', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockRejectedValue(
+        new Error('boom'),
+      );
+      expect(
+        await metadata.getMetricScrapeIntervalEstimate(args),
+      ).toBeUndefined();
+    });
+  });
+
   describe('isClickHouseCloud', () => {
     beforeEach(() => {
       mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());

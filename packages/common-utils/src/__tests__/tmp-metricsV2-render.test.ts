@@ -2,6 +2,11 @@ import { parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import { renderChartConfig } from '@/core/renderChartConfig';
 import {
+  granularitySecondsToSQLInterval,
+  metricMinDisplayBucketSeconds,
+  snapDisplayGranularity,
+} from '@/core/utils';
+import {
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
@@ -619,7 +624,11 @@ describe('tmp metrics v2 render', () => {
     // unknown temporality + known 60s interval → 120s lookback
     (
       mockMetadata.getMetricScrapeIntervalEstimate as jest.Mock
-    ).mockResolvedValue(60);
+    ).mockResolvedValue({
+      intervalSeconds: 60,
+      maxIntervalSeconds: 60,
+      uncertain: false,
+    });
     let rendered = parameterizedQueryToSql(
       await renderChartConfig(sumCfg(), mockMetadata, undefined),
     );
@@ -673,6 +682,187 @@ describe('tmp metrics v2 render', () => {
     expect(rendered).toContain('- INTERVAL 3600 second');
     // upper bound keeps the +1-display-bucket ceiling (feeds the final bucket)
     expect(rendered).toContain('+ INTERVAL 1 day');
+  });
+
+  describe('display-granularity snapping', () => {
+    // 15m window → 60-bucket auto ladder picks 30 second
+    const fifteenMin: { dateRange: [Date, Date] } = {
+      dateRange: [
+        new Date('2025-02-12T00:00:00Z'),
+        new Date('2025-02-12T00:15:00Z'),
+      ],
+    };
+    const setEstimate = (e: unknown) =>
+      (
+        mockMetadata.getMetricScrapeIntervalEstimate as jest.Mock
+      ).mockResolvedValue(e);
+
+    it('auto granularity snaps up to the scrape interval (buckets, divisor, lookback all follow)', async () => {
+      setEstimate({
+        intervalSeconds: 60,
+        maxIntervalSeconds: 60,
+        uncertain: false,
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({ ...fifteenMin, granularity: undefined }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('INTERVAL 1 minute');
+      expect(rendered).not.toContain('INTERVAL 30 second');
+      // per-second rate divisor tracks the SNAPPED display bucket
+      expect(rendered).toContain('Increase / 60 AS Rate');
+    });
+
+    it('fast metrics are not over-widened; explicit granularity is never rewritten', async () => {
+      // 10s-interval metric: the 30s ladder choice already clears the
+      // interval — unchanged
+      setEstimate({
+        intervalSeconds: 10,
+        maxIntervalSeconds: 10,
+        uncertain: false,
+      });
+      let rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({ ...fifteenMin, granularity: undefined }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('INTERVAL 30 second');
+
+      // forced 30s on a 60s metric renders as asked (the UI warns instead)
+      setEstimate({
+        intervalSeconds: 60,
+        maxIntervalSeconds: 60,
+        uncertain: false,
+      });
+      rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({ ...fifteenMin, granularity: '30 second' }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('INTERVAL 30 second');
+      expect(rendered).not.toContain('INTERVAL 1 minute');
+    });
+
+    it('snapping can promote the scan onto a rollup tier', async () => {
+      // 1h window → ladder picks 1 minute; a 5m-scraped metric snaps to
+      // 5 minute buckets, which newly qualify for the 5m tier
+      setEstimate({
+        intervalSeconds: 300,
+        maxIntervalSeconds: 300,
+        uncertain: false,
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({
+            metricTables: { ...base.metricTables, points5m: 'points_5m' },
+            granularity: undefined,
+            dateRange: [
+              new Date('2025-02-12T00:00:00Z'),
+              new Date('2025-02-12T01:00:00Z'),
+            ],
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('points_5m');
+      expect(rendered).toContain('INTERVAL 5 minute');
+      expect(rendered).toContain('Increase / 300 AS Rate');
+    });
+
+    it('metricMinDisplayBucketSeconds: clean-multiple round-up, 2× when uncertain, max spacing wins, 10m clamp', () => {
+      const est = (
+        intervalSeconds: number,
+        maxIntervalSeconds = intervalSeconds,
+        uncertain = false,
+      ) => ({ intervalSeconds, maxIntervalSeconds, uncertain });
+      expect(metricMinDisplayBucketSeconds(undefined)).toBeUndefined();
+      expect(metricMinDisplayBucketSeconds(est(0))).toBeUndefined(); // tier-only sentinel
+      expect(metricMinDisplayBucketSeconds(est(10))).toBe(10);
+      expect(metricMinDisplayBucketSeconds(est(60))).toBe(60);
+      // jitter tolerance: 59.4s ≈ 60s is a clean multiple of 1 minute
+      expect(metricMinDisplayBucketSeconds(est(59.4))).toBe(60);
+      // measured live: a clean 60s scrape reports max spacing 60.012s —
+      // the epsilon must not skip the 60s step (snapped to 2m pre-fix)
+      expect(metricMinDisplayBucketSeconds(est(59.9996, 60.0124))).toBe(60);
+      // uncertain → 2× rule
+      expect(metricMinDisplayBucketSeconds(est(60, 70, true))).toBe(120);
+      // mixed-interval series: max observed spacing wins over 2×median
+      expect(metricMinDisplayBucketSeconds(est(10, 300, true))).toBe(300);
+      // no clean multiple exists (45s): smallest step ≥ target still clears
+      // the bucket<interval hazard
+      expect(metricMinDisplayBucketSeconds(est(45))).toBe(60);
+      // outlier spacing clamps at 10 minutes — snapping chases scrape rates,
+      // not gaps
+      expect(metricMinDisplayBucketSeconds(est(30, 7200, true))).toBe(600);
+    });
+
+    it('unsupported aggregates throw typed errors (the editor gates these lists — a stale selection must never reach the translator)', async () => {
+      const cfgFor = (
+        metricType: MetricsDataType,
+        aggFn: string,
+        tables: Record<string, string>,
+      ) =>
+        ({
+          ...base,
+          metricTables: { ...base.metricTables, ...tables },
+          select: [
+            {
+              aggFn,
+              aggCondition: '',
+              valueExpression: 'Value',
+              metricName: 'test.metric',
+              metricType,
+            },
+          ],
+        }) as ChartConfigWithOptDateRange;
+      await expect(
+        renderChartConfig(
+          cfgFor(MetricsDataType.ExponentialHistogram, 'avg', {
+            expHistogramPoints: 'otel_metrics_exp_histogram_points',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      ).rejects.toThrow('avg is not supported for exponential histograms');
+      await expect(
+        renderChartConfig(
+          cfgFor(MetricsDataType.Summary, 'avg', {
+            summaryPoints: 'otel_metrics_summary_points',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      ).rejects.toThrow('avg is not supported for summaries');
+      await expect(
+        renderChartConfig(
+          cfgFor(MetricsDataType.Histogram, 'max', {}),
+          mockMetadata,
+          undefined,
+        ),
+      ).rejects.toThrow('max is not supported for histograms');
+    });
+
+    it('snapDisplayGranularity + granularitySecondsToSQLInterval', () => {
+      const e60 = {
+        intervalSeconds: 60,
+        maxIntervalSeconds: 60,
+        uncertain: false,
+      };
+      expect(snapDisplayGranularity('30 second', e60)).toBe('1 minute');
+      expect(snapDisplayGranularity('5 minute', e60)).toBe('5 minute');
+      expect(snapDisplayGranularity('30 second', undefined)).toBe('30 second');
+      expect(granularitySecondsToSQLInterval(30)).toBe('30 second');
+      expect(granularitySecondsToSQLInterval(120)).toBe('2 minute');
+      expect(granularitySecondsToSQLInterval(600)).toBe('10 minute');
+    });
   });
 
   it('dead temporality branch dropped when the profile resolves (join kept)', async () => {

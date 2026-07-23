@@ -30,6 +30,12 @@ jest.mock('@/hooks/useFetchMetricMetadata', () => ({
     data: undefined,
     isLoading: false,
   }),
+  // Scrape-interval estimate for granularity snapping / the forced-fine
+  // granularity warning.
+  useMetricScrapeIntervalSnap: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+  }),
 }));
 
 jest.mock('@/hooks/useMetadata', () => ({

@@ -428,6 +428,107 @@ export function convertDateRangeToGranularityString(
   return Granularity.ThirtyDay;
 }
 
+/**
+ * Scrape-interval profile for a v2 metric, sampled from recent raw points
+ * (see Metadata.getMetricScrapeIntervalEstimate). `intervalSeconds` is the
+ * median of per-series mean spacings (0 = unknown: tier-only metric or no
+ * recent points); `maxIntervalSeconds` the largest per-series spacing in the
+ * sample; `uncertain` when the spacings disagree by more than ~25%.
+ */
+export interface MetricScrapeIntervalEstimate {
+  intervalSeconds: number;
+  maxIntervalSeconds: number;
+  uncertain: boolean;
+}
+
+// Clean display-bucket steps a snapped granularity may land on. Snapping
+// stops at 10 minutes: real scrape intervals top out around 5m, so a larger
+// sampled spacing is a gap/outlier artifact, not a scrape rate — widening
+// buckets past this would destroy resolution to chase noise.
+const GRANULARITY_SNAP_STEPS_SECONDS = [10, 15, 30, 60, 120, 300, 600];
+const MAX_GRANULARITY_SNAP_SECONDS = 600;
+
+/**
+ * Minimum honest display-bucket width for a metric: buckets narrower than
+ * the scrape interval sample a ROTATING SUBSET of the series population per
+ * bucket (a 60s-interval counter at 30s buckets alternates half-populations
+ * — square-wave charts; an exp-histogram alternates between two
+ * different-but-each-correct p99s). The mechanism is population sampling,
+ * not rate math, so it applies to every metric type and path.
+ *
+ * Rule: the estimate rounded UP to a clean step that is an integer multiple
+ * of it (±10% for timestamp jitter); 2× the estimate when the sampled
+ * spacings disagree (>~25%); the max observed per-series spacing wins over
+ * the median (mixed-interval series — over-widening is safe, under-widening
+ * aliases). Returns undefined when there is no usable estimate.
+ */
+export function metricMinDisplayBucketSeconds(
+  estimate: MetricScrapeIntervalEstimate | undefined,
+): number | undefined {
+  if (estimate == null || !(estimate.intervalSeconds > 0)) {
+    return undefined;
+  }
+  const base = estimate.uncertain
+    ? 2 * estimate.intervalSeconds
+    : estimate.intervalSeconds;
+  const target = Math.min(
+    Math.max(base, estimate.maxIntervalSeconds || 0),
+    MAX_GRANULARITY_SNAP_SECONDS,
+  );
+  const isNearMultiple = (step: number) => {
+    const k = Math.round(step / estimate.intervalSeconds);
+    return (
+      k >= 1 &&
+      Math.abs(step - k * estimate.intervalSeconds) <=
+        0.1 * estimate.intervalSeconds
+    );
+  };
+  // The ≥ comparison carries the same 10% jitter margin as the multiple
+  // check: a live 60s scrape measures as e.g. max 60.012s, and without the
+  // margin that epsilon skips the 60s step entirely (measured: snapped a
+  // clean 60s counter to 2-minute buckets).
+  const jitterMargin = 0.1 * estimate.intervalSeconds;
+  return (
+    GRANULARITY_SNAP_STEPS_SECONDS.find(
+      step => step >= target - jitterMargin && isNearMultiple(step),
+    ) ??
+    // No clean multiple exists (unusual interval, e.g. 45s): the smallest
+    // step at or above the target still clears the bucket-narrower-than-
+    // interval hazard, which is the one that aliases.
+    GRANULARITY_SNAP_STEPS_SECONDS.find(
+      step => step >= target - jitterMargin,
+    ) ??
+    MAX_GRANULARITY_SNAP_SECONDS
+  );
+}
+
+/** Seconds → SQLInterval string for the snap steps ('30 second', '2 minute'). */
+export function granularitySecondsToSQLInterval(seconds: number): SQLInterval {
+  return seconds % 60 === 0
+    ? (`${seconds / 60} minute` as SQLInterval)
+    : (`${seconds} second` as SQLInterval);
+}
+
+/**
+ * Snap an auto-chosen display granularity UP to the metric's minimum honest
+ * bucket width (see metricMinDisplayBucketSeconds). Coarser choices pass
+ * through untouched — snapping must never over-widen fast metrics. Only for
+ * AUTO granularity: a user-forced sub-interval bucket warns in the UI
+ * instead (never silently rewritten).
+ */
+export function snapDisplayGranularity(
+  granularity: SQLInterval,
+  estimate: MetricScrapeIntervalEstimate | undefined,
+): SQLInterval {
+  const minSeconds = metricMinDisplayBucketSeconds(estimate);
+  if (minSeconds == null) {
+    return granularity;
+  }
+  return convertGranularityToSeconds(granularity) >= minSeconds
+    ? granularity
+    : granularitySecondsToSQLInterval(minSeconds);
+}
+
 export function convertGranularityToSeconds(granularity: SQLInterval): number {
   const [num, unit] = granularity.split(' ');
   const numInt = Number.parseInt(num);

@@ -18,6 +18,7 @@ import {
   convertToTableChartConfig,
   getAlignedDateRange,
   Granularity,
+  granularitySecondsToSQLInterval,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -103,6 +104,38 @@ function getTimeChartDateRange(
   return alignDateRangeToGranularity === false
     ? dateRange
     : getAlignedDateRange(dateRange, granularity);
+}
+
+/**
+ * Snap a metric chart's AUTO granularity up to the metric's minimum honest
+ * display bucket (buckets narrower than the scrape interval alternate
+ * between series sub-populations — square-wave charts). Applied to the
+ * config BEFORE both useTimeChartSettings and convertToTimeChartConfig so
+ * the display grid and the queried bucket stay in agreement; the query
+ * translator applies the same rule for paths that bypass this (tiles,
+ * alerts, API). Explicit user granularities pass through untouched — the
+ * editor warns instead of silently rewriting.
+ */
+export function applyMetricGranularitySnap<
+  T extends Pick<ChartConfigWithDateRange, 'granularity' | 'dateRange'>,
+>(config: T, minBucketSeconds: number | null | undefined): T {
+  if (minBucketSeconds == null) {
+    return config;
+  }
+  if (config.granularity != null && config.granularity !== 'auto') {
+    return config;
+  }
+  const autoGranularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+  );
+  if (convertGranularityToSeconds(autoGranularity) >= minBucketSeconds) {
+    return config;
+  }
+  return {
+    ...config,
+    granularity: granularitySecondsToSQLInterval(minBucketSeconds),
+  };
 }
 
 export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
@@ -672,6 +705,7 @@ export function formatResponseForTimeChart({
   dateRange,
   granularity,
   generateEmptyBuckets = true,
+  emptyBucketValue = 0,
   source,
   hiddenSeries = [],
   previousPeriodOffsetSeconds = 0,
@@ -681,6 +715,13 @@ export function formatResponseForTimeChart({
   currentPeriodResponse: ResponseJSON<Record<string, any>>;
   previousPeriodResponse?: ResponseJSON<Record<string, any>>;
   generateEmptyBuckets?: boolean;
+  /**
+   * What a generated empty (group, bucket) renders as. Zero for event
+   * counts (no rows = zero events); null for metrics, where a missing
+   * bucket means NO MEASUREMENT and must draw as a gap — a real 0.0 row
+   * (e.g. an all-zero-observations quantile) still renders as a point.
+   */
+  emptyBucketValue?: number | null;
   source?: TSource;
   hiddenSeries?: string[];
   previousPeriodOffsetSeconds?: number;
@@ -761,14 +802,14 @@ export function formatResponseForTimeChart({
         };
 
         for (const line of sortedLineData) {
-          tsBucket[line.dataKey] = 0;
+          tsBucket[line.dataKey] = emptyBucketValue;
         }
 
         tsBucketMap.set(ts, tsBucket);
       } else {
         for (const line of sortedLineData) {
           if (tsBucket[line.dataKey] == null) {
-            tsBucket[line.dataKey] = 0;
+            tsBucket[line.dataKey] = emptyBucketValue;
           }
         }
         tsBucketMap.set(ts, tsBucket);

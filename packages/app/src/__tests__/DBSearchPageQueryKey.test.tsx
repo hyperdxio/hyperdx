@@ -27,6 +27,16 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
   }),
 }));
 
+jest.mock('@/hooks/useFetchMetricMetadata', () => ({
+  // Scrape-interval estimate for metrics granularity snapping — plain
+  // useQuery inside, so it needs a mock wherever DBTimeChart renders
+  // without a QueryClientProvider.
+  useMetricScrapeIntervalSnap: jest.fn(() => ({
+    data: undefined,
+    isLoading: false,
+  })),
+}));
+
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(() => ({
     data: { data: [], isComplete: true },

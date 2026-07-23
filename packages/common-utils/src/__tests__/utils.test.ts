@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 import {
+  _useTry,
   aliasMapToWithClauses,
+  convertDateRangeToGranularityString,
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
@@ -17,6 +19,7 @@ import {
   isTimestampExpressionInFirstOrderBy,
   joinQuerySettings,
   optimizeTimestampValueExpression,
+  parseJSON,
   parseTokenizerFromTextIndex,
   parseToNumber,
   parseToStartOfFunction,
@@ -3000,6 +3003,47 @@ describe('utils', () => {
           ...opts,
         }),
       ).toBe('EventTime');
+    });
+  });
+
+  describe('convertDateRangeToGranularityString (auto ladder)', () => {
+    const range = (hours: number): [Date, Date] => [
+      new Date('2025-02-01T00:00:00Z'),
+      new Date(Date.parse('2025-02-01T00:00:00Z') + hours * 3600_000),
+    ];
+    it('floors at 30s, skips 10m/30m, and walks the coarse rungs', () => {
+      expect(convertDateRangeToGranularityString(range(0.05))).toBe(
+        '30 second',
+      );
+      expect(convertDateRangeToGranularityString(range(1))).toBe('1 minute');
+      expect(convertDateRangeToGranularityString(range(5))).toBe('5 minute');
+      expect(convertDateRangeToGranularityString(range(15))).toBe('15 minute');
+      // 60-bucket default: window ≤ 60×rung lands on the rung
+      expect(convertDateRangeToGranularityString(range(24))).toBe('1 hour');
+      expect(convertDateRangeToGranularityString(range(100))).toBe('2 hour');
+      expect(convertDateRangeToGranularityString(range(300))).toBe('6 hour');
+      expect(convertDateRangeToGranularityString(range(700))).toBe('12 hour');
+      expect(convertDateRangeToGranularityString(range(1400))).toBe('1 day');
+      expect(convertDateRangeToGranularityString(range(2800))).toBe('2 day');
+      expect(convertDateRangeToGranularityString(range(10000))).toBe('7 day');
+      expect(convertDateRangeToGranularityString(range(40000))).toBe('30 day');
+      expect(convertDateRangeToGranularityString(range(50000))).toBe('30 day');
+    });
+  });
+
+  describe('_useTry / parseJSON', () => {
+    it('_useTry returns [null, value] on success and [error, null] on throw', () => {
+      expect(_useTry(() => 42)).toEqual([null, 42]);
+      const [error, value] = _useTry(() => {
+        throw new Error('nope');
+      });
+      expect(error).toBeInstanceOf(Error);
+      expect(value).toBeNull();
+    });
+
+    it('parseJSON returns the parsed value or null for invalid JSON', () => {
+      expect(parseJSON('{"a":1}')).toEqual({ a: 1 });
+      expect(parseJSON('not json')).toBeNull();
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { createMetricNameFilter } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { metricMinDisplayBucketSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isMetricsV2Tables,
   METRICS_V2_METRIC_TYPE,
@@ -169,6 +170,104 @@ export const useMetricSeriesProfile = ({
         connectionId: tableSource!.connection,
       }),
     enabled,
+    staleTime: 1000 * 60 * 5,
+  });
+};
+
+/** v2 points table holding a metric type's raw samples (same mapping the
+ * query translator uses to pick its scan table). */
+const V2_POINTS_TABLE_KEY: Record<
+  MetricsDataType,
+  'points' | 'histogramPoints' | 'expHistogramPoints' | 'summaryPoints'
+> = {
+  [MetricsDataType.Gauge]: 'points',
+  [MetricsDataType.Sum]: 'points',
+  [MetricsDataType.Histogram]: 'histogramPoints',
+  [MetricsDataType.ExponentialHistogram]: 'expHistogramPoints',
+  [MetricsDataType.Summary]: 'summaryPoints',
+};
+
+interface MetricScrapeIntervalSnapProps {
+  databaseName?: string;
+  connection?: string;
+  metricTables?: Parameters<typeof isMetricsV2Tables>[0];
+  /** Every metric plotted on the panel — the snap takes the MAX honest
+   * bucket across them (over-widening is safe; under-widening aliases). */
+  metrics: { metricType?: MetricsDataType; metricName?: string }[];
+  enabled?: boolean;
+}
+
+/**
+ * Minimum honest display-bucket width for a panel's metrics, from the SAME
+ * day-cached Metadata.getMetricScrapeIntervalEstimate lookup the query
+ * translator uses for lookback padding and its own auto-granularity snap —
+ * whichever side asks first warms the shared MetadataCache for the other.
+ * Returns null fields when no estimate is available (fail open: no snap,
+ * no warning).
+ */
+export const useMetricScrapeIntervalSnap = ({
+  databaseName,
+  connection,
+  metricTables,
+  metrics,
+  enabled = true,
+}: MetricScrapeIntervalSnapProps) => {
+  const metadata = getMetadata();
+  const isV2 = isMetricsV2Tables(metricTables);
+  const tables: Partial<Record<string, string>> | undefined = isV2
+    ? metricTables
+    : undefined;
+  // Dedupe (metric, points table) pairs — several series often plot the
+  // same metric.
+  const targets = [
+    ...new Map(
+      metrics.flatMap(m => {
+        const table = m.metricType
+          ? tables?.[V2_POINTS_TABLE_KEY[m.metricType]]
+          : undefined;
+        return m.metricName && table
+          ? [
+              [
+                `${table}:${m.metricName}`,
+                { metricName: m.metricName, table },
+              ] as const,
+            ]
+          : [];
+      }),
+    ).values(),
+  ];
+  return useQuery({
+    queryKey: [
+      'metric-scrape-interval-snap',
+      connection,
+      databaseName,
+      targets.map(t => `${t.table}:${t.metricName}`),
+    ],
+    queryFn: async () => {
+      const estimates = await Promise.all(
+        targets.map(t =>
+          metadata.getMetricScrapeIntervalEstimate({
+            databaseName: databaseName!,
+            tableName: t.table,
+            metricNameCondition: createMetricNameFilter(t.metricName),
+            connectionId: connection!,
+          }),
+        ),
+      );
+      const minBuckets = estimates
+        .map(metricMinDisplayBucketSeconds)
+        .filter((s): s is number => s != null);
+      const intervals = estimates
+        .map(e => e?.intervalSeconds ?? 0)
+        .filter(s => s > 0);
+      return {
+        minBucketSeconds: minBuckets.length ? Math.max(...minBuckets) : null,
+        intervalSeconds: intervals.length ? Math.max(...intervals) : null,
+      };
+    },
+    enabled: Boolean(
+      enabled && isV2 && databaseName && connection && targets.length > 0,
+    ),
     staleTime: 1000 * 60 * 5,
   });
 };

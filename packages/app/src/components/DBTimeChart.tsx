@@ -21,6 +21,8 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  isMetricsV2Tables,
+  MetricsDataType,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 import { IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -28,6 +30,7 @@ import { IconChartBar, IconChartLine } from '@tabler/icons-react';
 import api from '@/api';
 import {
   AGG_FNS,
+  applyMetricGranularitySnap,
   buildEventsSearchUrl,
   ChartKeyJoiner,
   convertToTimeChartConfig,
@@ -41,6 +44,7 @@ import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMetricScrapeIntervalSnap } from '@/hooks/useFetchMetricMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
@@ -344,18 +348,56 @@ function DBTimeChartComponent({
   );
 
   const originalDateRange = config.dateRange;
+
+  // Metrics v2: display buckets narrower than the scrape interval sample a
+  // rotating subset of the series population per bucket (square-wave
+  // charts, alternating quantiles), so AUTO granularity snaps up to the
+  // panel's max estimated scrape interval. Applied to the config before
+  // BOTH the display settings and the queried config so the empty-bucket
+  // grid, partial-bucket shade, and the query's buckets stay in agreement.
+  const configMetricTables =
+    'metricTables' in config ? config.metricTables : undefined;
+  const isV2MetricConfig = isMetricsV2Tables(configMetricTables);
+  const wantsGranularitySnap =
+    isV2MetricConfig &&
+    (config.granularity == null || config.granularity === 'auto');
+  const metricSelectEntries = useMemo(() => {
+    const select = isBuilderChartConfig(config) ? config.select : undefined;
+    return isV2MetricConfig && Array.isArray(select)
+      ? (select as {
+          metricType?: MetricsDataType;
+          metricName?: string;
+        }[])
+      : [];
+  }, [isV2MetricConfig, config]);
+  const { data: scrapeSnap, isLoading: isSnapLoading } =
+    useMetricScrapeIntervalSnap({
+      databaseName: config.from?.databaseName,
+      connection: config.connection,
+      metricTables: configMetricTables,
+      metrics: metricSelectEntries,
+      enabled: wantsGranularitySnap,
+    });
+  const effectiveConfig = useMemo(
+    () =>
+      wantsGranularitySnap
+        ? applyMetricGranularitySnap(config, scrapeSnap?.minBucketSeconds)
+        : config,
+    [wantsGranularitySnap, config, scrapeSnap?.minBucketSeconds],
+  );
+
   const {
     displayType: displayTypeProp,
     dateRange,
     granularity,
     fillNulls,
-  } = useTimeChartSettings(config);
+  } = useTimeChartSettings(effectiveConfig);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config),
-    [config],
+    () => convertToTimeChartConfig(effectiveConfig),
+    [effectiveConfig],
   );
 
   // Determine whether the config can be optimized with an MV, to determine whether
@@ -378,7 +420,11 @@ function DBTimeChartComponent({
           parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
         },
       ],
-      enabled: enabled && !isLoadingMe,
+      // Wait for the (day-cached) scrape-interval estimate so the first
+      // query already carries the snapped granularity — otherwise the
+      // unsnapped result flashes before the corrected one replaces it.
+      enabled:
+        enabled && !isLoadingMe && !(wantsGranularitySnap && isSnapLoading),
       enableQueryChunking: !disableQueryChunking,
       enableParallelQueries:
         enableParallelQueries && me?.team?.parallelizeWhenPossible,
@@ -466,6 +512,10 @@ function DBTimeChartComponent({
         dateRange,
         granularity,
         generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
+        // Metrics: a missing bucket means NO MEASUREMENT and renders as a
+        // gap; zero-filling draws a plausible-looking value that was never
+        // observed. Event charts keep zero (no rows = zero events).
+        emptyBucketValue: isV2MetricConfig ? null : 0,
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
@@ -487,6 +537,7 @@ function DBTimeChartComponent({
     granularity,
     isSuccess,
     fillNulls,
+    isV2MetricConfig,
     source,
     config.compareToPreviousPeriod,
     previousPeriodData,
@@ -829,6 +880,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            connectNulls={!isV2MetricConfig}
           />
         </>
       )}

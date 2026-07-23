@@ -1,8 +1,9 @@
 import { Control, UseFormHandleSubmit } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Button, Flex, Menu } from '@mantine/core';
+import { ActionIcon, Button, Flex, Menu, Tooltip } from '@mantine/core';
 import {
+  IconAlertTriangle,
   IconDotsVertical,
   IconLayoutGrid,
   IconPlayerPlay,
@@ -32,6 +33,9 @@ type ChartActionBarProps = {
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
   setSaveToDashboardModalOpen: (open: boolean) => void;
+  /** Set when the forced granularity is below the metric's sample rate —
+   * rendered as a warning next to the picker (§3: never silently render). */
+  granularityWarning?: string;
 };
 
 export function ChartActionBar({
@@ -52,6 +56,7 @@ export function ChartActionBar({
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
   setSaveToDashboardModalOpen,
+  granularityWarning,
 }: ChartActionBarProps) {
   return (
     <Flex justify="space-between" mt="sm">
@@ -112,7 +117,19 @@ export function ChartActionBar({
             />
           )}
         {activeTab === 'time' && (
-          <GranularityPickerControlled control={control} name="granularity" />
+          <>
+            {granularityWarning != null && (
+              <Tooltip label={granularityWarning} multiline maw={340}>
+                <IconAlertTriangle
+                  size={18}
+                  color="var(--mantine-color-yellow-5)"
+                  style={{ flexShrink: 0 }}
+                  data-testid="granularity-warning"
+                />
+              </Tooltip>
+            )}
+            <GranularityPickerControlled control={control} name="granularity" />
+          </>
         )}
         {activeTab !== 'markdown' && (
           <Button

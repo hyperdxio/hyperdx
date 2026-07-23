@@ -27,6 +27,7 @@ import {
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
   pickBucketTimestampColumn,
+  snapDisplayGranularity,
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import {
@@ -2585,91 +2586,6 @@ async function translateMetricChartConfigV2(
   // per-HOUR increases labeled per-second, and never routed to a tier).
   const effectiveGranularity = chartConfig.granularity || 'auto';
 
-  // Sum/histogram-family types widen the scan by ±1 bucket so rates can be
-  // computed at the range edges (v1 parity). Gauges scan the range as-is.
-  const includedDataInterval =
-    metricType === MetricsDataType.Gauge
-      ? undefined
-      : effectiveGranularity === 'auto' && Array.isArray(chartConfig.dateRange)
-        ? convertDateRangeToGranularityString(chartConfig.dateRange)
-        : chartConfig.granularity;
-
-  // Rollup tier routing: raw points for sub-5m buckets, the 5m tier for
-  // 5m..1h buckets, the 1h tier beyond — the cookbook's "route by range×step"
-  // (grain <= step always holds; HyperDX windows are ~60 buckets so the
-  // >=3-rollup-buckets rule holds too). Gauge/sum use the float tiers;
-  // explicit histograms use the histogram tiers; exponential histograms use
-  // their own tiers (Scale in the aggregation key, Map-keyed buckets).
-  // Summaries have NO rollup tiers (pre-computed quantiles are not
-  // time-mergeable). Gauge isDelta stays on raw (needs per-point
-  // timestamps). Exp avg is not supported on either tier, so it never
-  // routes.
-  const resolvedInterval =
-    effectiveGranularity === 'auto' && Array.isArray(chartConfig.dateRange)
-      ? convertDateRangeToGranularityString(chartConfig.dateRange)
-      : chartConfig.granularity;
-  const intervalSeconds = resolvedInterval
-    ? convertGranularityToSeconds(resolvedInterval)
-    : 0;
-  const tier5m =
-    metricType === MetricsDataType.Histogram
-      ? metricTables.histogramPoints5m
-      : metricType === MetricsDataType.ExponentialHistogram
-        ? metricTables.expHistogramPoints5m
-        : metricTables.points5m;
-  const tier1h =
-    metricType === MetricsDataType.Histogram
-      ? metricTables.histogramPoints1h
-      : metricType === MetricsDataType.ExponentialHistogram
-        ? metricTables.expHistogramPoints1h
-        : metricTables.points1h;
-  const canUseRollup =
-    (metricType === MetricsDataType.Gauge && !_select.isDelta) ||
-    metricType === MetricsDataType.Sum ||
-    metricType === MetricsDataType.Histogram ||
-    metricType === MetricsDataType.ExponentialHistogram;
-  const rollupTable = !canUseRollup
-    ? undefined
-    : intervalSeconds >= 3600 && tier1h
-      ? tier1h
-      : intervalSeconds >= 300 && tier5m
-        ? tier5m
-        : undefined;
-  const tierSeconds =
-    rollupTable == null ? undefined : rollupTable === tier1h ? 3600 : 300;
-  const scanTable = rollupTable ?? pointsTable;
-
-  // Routing guard — checked before any metadata/render queries so an
-  // over-cap request issues ZERO ClickHouse queries. Raw-tier quantile
-  // scans are per-point work that grows linearly with the window (a 24h
-  // exp-hist quantile is structurally unable to finish inside the execution
-  // timeout — measured retry storms burning ~533 CPU-s per attempt).
-  // Applies to histogram-family quantiles that resolved to a raw scan
-  // (rollup tables not configured, or a forced-fine granularity pins them
-  // to raw). Summary quantiles — which can never route to a tier — use the
-  // cost-based gate further down instead: their per-point work is a plain
-  // array pick, so a flat window cap wrongly blocks small metrics at 6h+.
-  // Count/avg panels on these types are scalar math and stay uncapped.
-  if (
-    _select.aggFn === 'quantile' &&
-    !rollupTable &&
-    (metricType === MetricsDataType.Histogram ||
-      metricType === MetricsDataType.ExponentialHistogram) &&
-    Array.isArray(chartConfig.dateRange)
-  ) {
-    const windowMs =
-      chartConfig.dateRange[1].getTime() - chartConfig.dateRange[0].getTime();
-    if (windowMs > RAW_QUANTILE_MAX_WINDOW_MS) {
-      throw new Error(
-        `window too large for this metric type — reduce the window (${
-          !tier5m && !tier1h
-            ? 'no rollup tables are configured for this metric type, so the query reads raw points; configure the 5m/1h rollup tables on the source or reduce the window'
-            : 'this granularity is too fine to use the 5m/1h rollup tiers, so the query reads raw points; use a coarser granularity or a smaller window'
-        })`,
-      );
-    }
-  }
-
   // Whole-metric fast path: the panel aggregates the ENTIRE metric — no
   // label filters, no group-by — so `MetricName = '...'` alone is a PK scan
   // and series resolution adds nothing (the joinless shapes are emitted by
@@ -2745,14 +2661,123 @@ async function translateMetricChartConfigV2(
     seriesProfile?.temporality !== 'delta' &&
     !(metricType === MetricsDataType.Summary && _select.aggFn === 'quantile') &&
     Array.isArray(chartConfig.dateRange);
-  const scrapeIntervalEstimate = needsLookback
-    ? await metadata.getMetricScrapeIntervalEstimate({
-        databaseName: from.databaseName,
-        tableName: pointsTable,
-        metricNameCondition: createMetricNameFilter(metricName, metricNameSql),
-        connectionId: chartConfig.connection,
-      })
-    : undefined;
+  // Auto-granularity snapping consumes the same day-cached estimate the
+  // lookback padding does (one fetch, shared cache key). Template mode
+  // never snaps: the bucket late-binds to $__timeInterval.
+  const wantsAutoSnap =
+    effectiveGranularity === 'auto' &&
+    Array.isArray(chartConfig.dateRange) &&
+    !chartConfig.isRenderingRawSqlTemplate;
+  const scrapeIntervalEstimate =
+    needsLookback || wantsAutoSnap
+      ? await metadata.getMetricScrapeIntervalEstimate({
+          databaseName: from.databaseName,
+          tableName: pointsTable,
+          metricNameCondition: createMetricNameFilter(
+            metricName,
+            metricNameSql,
+          ),
+          connectionId: chartConfig.connection,
+        })
+      : undefined;
+
+  // Display buckets NARROWER than the scrape interval sample a rotating
+  // subset of the series population per bucket (square-wave charts,
+  // alternating quantiles) — so auto granularity snaps UP to the metric's
+  // estimated interval (2× when uncertain). Applies to every metric type
+  // and path; the snapped value drives bucketing, tier routing, the rate
+  // divisor, and scan widening below. Explicit granularities are never
+  // rewritten (the UI warns instead).
+  const resolvedInterval =
+    effectiveGranularity === 'auto' && Array.isArray(chartConfig.dateRange)
+      ? wantsAutoSnap
+        ? snapDisplayGranularity(
+            convertDateRangeToGranularityString(chartConfig.dateRange),
+            scrapeIntervalEstimate,
+          )
+        : convertDateRangeToGranularityString(chartConfig.dateRange)
+      : chartConfig.granularity;
+  const intervalSeconds = resolvedInterval
+    ? convertGranularityToSeconds(resolvedInterval)
+    : 0;
+
+  // Sum/histogram-family types widen the scan by ±1 bucket so rates can be
+  // computed at the range edges (v1 parity). Gauges scan the range as-is.
+  const includedDataInterval =
+    metricType === MetricsDataType.Gauge ? undefined : resolvedInterval;
+
+  // Rollup tier routing: raw points for sub-5m buckets, the 5m tier for
+  // 5m..1h buckets, the 1h tier beyond — the cookbook's "route by range×step"
+  // (grain <= step always holds; HyperDX windows are ~60 buckets so the
+  // >=3-rollup-buckets rule holds too). Gauge/sum use the float tiers;
+  // explicit histograms use the histogram tiers; exponential histograms use
+  // their own tiers (Scale in the aggregation key, Map-keyed buckets).
+  // Summaries have NO rollup tiers (pre-computed quantiles are not
+  // time-mergeable). Gauge isDelta stays on raw (needs per-point
+  // timestamps). Exp avg is not supported on either tier, so it never
+  // routes.
+  const tier5m =
+    metricType === MetricsDataType.Histogram
+      ? metricTables.histogramPoints5m
+      : metricType === MetricsDataType.ExponentialHistogram
+        ? metricTables.expHistogramPoints5m
+        : metricTables.points5m;
+  const tier1h =
+    metricType === MetricsDataType.Histogram
+      ? metricTables.histogramPoints1h
+      : metricType === MetricsDataType.ExponentialHistogram
+        ? metricTables.expHistogramPoints1h
+        : metricTables.points1h;
+  const canUseRollup =
+    (metricType === MetricsDataType.Gauge && !_select.isDelta) ||
+    metricType === MetricsDataType.Sum ||
+    metricType === MetricsDataType.Histogram ||
+    metricType === MetricsDataType.ExponentialHistogram;
+  const rollupTable = !canUseRollup
+    ? undefined
+    : intervalSeconds >= 3600 && tier1h
+      ? tier1h
+      : intervalSeconds >= 300 && tier5m
+        ? tier5m
+        : undefined;
+  const tierSeconds =
+    rollupTable == null ? undefined : rollupTable === tier1h ? 3600 : 300;
+  const scanTable = rollupTable ?? pointsTable;
+
+  // Routing guard — checked before rendering or estimating anything, so an
+  // over-cap request issues at most the two cheap day-cached metadata
+  // lookups above (profile + scrape interval), never a scan. It must run
+  // AFTER snapping: a snapped-up bucket can newly qualify for a rollup
+  // tier. Raw-tier quantile scans are per-point work that grows linearly
+  // with the window (a 24h exp-hist quantile is structurally unable to
+  // finish inside the execution timeout — measured retry storms burning
+  // ~533 CPU-s per attempt). Applies to histogram-family quantiles that
+  // resolved to a raw scan (rollup tables not configured, or a forced-fine
+  // granularity pins them to raw). Summary quantiles — which can never
+  // route to a tier — use the cost-based gate further down instead: their
+  // per-point work is a plain array pick, so a flat window cap wrongly
+  // blocks small metrics at 6h+. Count/avg panels on these types are scalar
+  // math and stay uncapped.
+  if (
+    _select.aggFn === 'quantile' &&
+    !rollupTable &&
+    (metricType === MetricsDataType.Histogram ||
+      metricType === MetricsDataType.ExponentialHistogram) &&
+    Array.isArray(chartConfig.dateRange)
+  ) {
+    const windowMs =
+      chartConfig.dateRange[1].getTime() - chartConfig.dateRange[0].getTime();
+    if (windowMs > RAW_QUANTILE_MAX_WINDOW_MS) {
+      throw new Error(
+        `window too large for this metric type — reduce the window (${
+          !tier5m && !tier1h
+            ? 'no rollup tables are configured for this metric type, so the query reads raw points; configure the 5m/1h rollup tables on the source or reduce the window'
+            : 'this granularity is too fine to use the 5m/1h rollup tiers, so the query reads raw points; use a coarser granularity or a smaller window'
+        })`,
+      );
+    }
+  }
+
   const MAX_SCAN_LOOKBACK_SECONDS = 6 * 60 * 60;
   const scanLookbackSeconds = !needsLookback
     ? undefined
@@ -2761,10 +2786,14 @@ async function translateMetricChartConfigV2(
         rollupTable
           ? Math.max(
               tierSeconds ?? 300,
-              scrapeIntervalEstimate ? 2 * scrapeIntervalEstimate : 0,
+              scrapeIntervalEstimate?.intervalSeconds
+                ? 2 * scrapeIntervalEstimate.intervalSeconds
+                : 0,
             )
           : Math.max(
-              scrapeIntervalEstimate ? 2 * scrapeIntervalEstimate : 300,
+              scrapeIntervalEstimate?.intervalSeconds
+                ? 2 * scrapeIntervalEstimate.intervalSeconds
+                : 300,
               intervalSeconds || 0,
             ),
       );
@@ -2919,7 +2948,7 @@ async function translateMetricChartConfigV2(
           ),
           connectionId: chartConfig.connection,
         }));
-      const intervalS = summaryScrapeInterval || 30;
+      const intervalS = summaryScrapeInterval?.intervalSeconds || 30;
       const estRows = (seriesCount * (windowMs / 1000)) / intervalS;
       if (estRows > SUMMARY_RAW_SCAN_MAX_ROWS) {
         throw new Error(
@@ -3025,7 +3054,7 @@ async function translateMetricChartConfigV2(
       1000;
     const rowsPerSeries = rollupTable
       ? windowSec / (tierSeconds ?? 300)
-      : windowSec / (scrapeIntervalEstimate || 30);
+      : windowSec / (scrapeIntervalEstimate?.intervalSeconds || 30);
     const seriesCountForCost = await getSeriesCountForCost();
     if (
       seriesCountForCost != null &&
@@ -3051,7 +3080,8 @@ async function translateMetricChartConfigV2(
   if (metricType === MetricsDataType.Gauge) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
-      interval: chartConfig.granularity || 'auto',
+      // resolvedInterval carries the scrape-interval snap for 'auto'
+      interval: resolvedInterval ?? 'auto',
       timestampValueExpression: pointsTimestampExpr,
       bucketTimestampValueExpression:
         chartConfig.bucketTimestampValueExpression,
@@ -3127,7 +3157,8 @@ async function translateMetricChartConfigV2(
   } else if (metricType === MetricsDataType.Sum) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
-      interval: chartConfig.granularity || 'auto',
+      // resolvedInterval carries the scrape-interval snap for 'auto'
+      interval: resolvedInterval ?? 'auto',
       timestampValueExpression: pointsTimestampExpr,
       bucketTimestampValueExpression:
         chartConfig.bucketTimestampValueExpression,
@@ -3344,7 +3375,8 @@ async function translateMetricChartConfigV2(
 
     const timeBucketSelect = isUsingGranularity(histCteConfig)
       ? timeBucketExpr({
-          interval: histCteConfig.granularity,
+          // resolvedInterval carries the scrape-interval snap for 'auto'
+          interval: resolvedInterval ?? histCteConfig.granularity,
           timestampValueExpression: histCteConfig.timestampValueExpression,
           dateRange: histCteConfig.dateRange,
           // template mode must late-bind the bucket to $__timeInterval (see

@@ -9,6 +9,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  convertGranularityToSeconds,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -16,6 +17,7 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  isMetricsV2Tables,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -72,6 +74,7 @@ import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import { IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
+import { useMetricScrapeIntervalSnap } from '@/hooks/useFetchMetricMetadata';
 import {
   getDurationMsExpression,
   getFirstSeriesNumberFormat,
@@ -233,6 +236,51 @@ export default function EditTimeChartForm({
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
+
+  // §3 (granularity snapping): a user-forced bucket below the metric's
+  // scrape interval samples a rotating subset of the series population per
+  // bucket — the chart alternates between series subsets and looks
+  // plausible-but-wrong. Auto granularity snaps up transparently
+  // (DBTimeChart); a forced choice is respected but must WARN, never
+  // silently render.
+  const isV2MetricSource =
+    tableSource?.kind === SourceKind.Metric &&
+    isMetricsV2Tables(tableSource.metricTables);
+  const isForcedGranularity =
+    displayTypeToActiveTab(displayType) === 'time' &&
+    granularity != null &&
+    granularity !== 'auto';
+  const { data: scrapeSnap } = useMetricScrapeIntervalSnap({
+    databaseName,
+    connection: tableSource?.connection,
+    metricTables:
+      tableSource?.kind === SourceKind.Metric
+        ? tableSource.metricTables
+        : undefined,
+    metrics: Array.isArray(series) ? series : [],
+    enabled: isV2MetricSource && isForcedGranularity,
+  });
+  const granularityWarning = useMemo(() => {
+    if (
+      !isV2MetricSource ||
+      !isForcedGranularity ||
+      scrapeSnap?.intervalSeconds == null
+    ) {
+      return undefined;
+    }
+    const chosenSeconds = convertGranularityToSeconds(granularity!);
+    // 5% jitter tolerance: a 60s bucket on a 60.4s-sampled metric is fine.
+    if (chosenSeconds >= scrapeSnap.intervalSeconds * 0.95) {
+      return undefined;
+    }
+    const sampleSeconds = Math.round(scrapeSnap.intervalSeconds);
+    return `${granularity} buckets are below this metric's ~${sampleSeconds}s sample rate — the chart may alternate between series subsets. Pick ${sampleSeconds >= 60 ? `${Math.ceil(sampleSeconds / 60)} minute` : `${sampleSeconds} second`} or coarser, or Auto.`;
+  }, [
+    isV2MetricSource,
+    isForcedGranularity,
+    granularity,
+    scrapeSnap?.intervalSeconds,
+  ]);
 
   // Carry the builder config over as a SQL template when switching to SQL mode
   useBuilderToSqlConversion({
@@ -894,6 +942,7 @@ export default function EditTimeChartForm({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
           setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
+          granularityWarning={granularityWarning}
         />
       </ErrorBoundary>
       <ChartPreviewPanel

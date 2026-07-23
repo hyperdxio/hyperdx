@@ -29,6 +29,7 @@ import {
 import {
   getAlignedDateRange,
   getDistributedTableArgs,
+  MetricScrapeIntervalEstimate,
   objectHash,
 } from './utils';
 
@@ -1237,11 +1238,12 @@ export class Metadata {
    * LIMIT lands on contiguous runs of a few series (parallel reads scatter
    * the sample into 1-2 points per series, which the count() >= 3 filter
    * would then discard wholesale). Cached per day — intervals are stable.
-   * Returns 0 (cached — getOrFetch treats null/undefined as a miss and
-   * would re-scan every render) when the metric has no recent raw points
-   * (some whales are tier-only), undefined on query failure (retried);
-   * callers treat both as unknown and fall back to the 5-minute Prometheus
-   * default.
+   * Returns intervalSeconds=0 (cached — getOrFetch treats null/undefined as
+   * a miss and would re-scan every render) when the metric has no recent
+   * raw points (some whales are tier-only), undefined on query failure
+   * (retried); callers treat both as unknown and fall back to the 5-minute
+   * Prometheus default. `maxIntervalSeconds`/`uncertain` feed granularity
+   * snapping (mixed-interval series and jitter widen the honest bucket).
    */
   async getMetricScrapeIntervalEstimate({
     databaseName,
@@ -1250,12 +1252,12 @@ export class Metadata {
     connectionId,
   }: {
     metricNameCondition: string;
-  } & TableConnection): Promise<number | undefined> {
+  } & TableConnection): Promise<MetricScrapeIntervalEstimate | undefined> {
     const day = new Date().toISOString().slice(0, 10);
     const cacheKey = `${connectionId}.${databaseName}.${tableName}.${metricNameCondition}.${day}.scrapeInterval`;
     return this.cache.getOrFetch(cacheKey, async () => {
       const sql = chSql`
-        SELECT quantile(0.5)(iv) AS interval_s
+        SELECT quantile(0.5)(iv) AS interval_s, max(iv) AS max_interval_s
         FROM (
           SELECT
             SeriesHash,
@@ -1282,9 +1284,26 @@ export class Metadata {
               max_threads: 1,
             },
           })
-          .then(res => res.json<{ interval_s: string | number | null }>());
+          .then(res =>
+            res.json<{
+              interval_s: string | number | null;
+              max_interval_s: string | number | null;
+            }>(),
+          );
         const interval = Number(json.data[0]?.interval_s);
-        return Number.isFinite(interval) && interval > 0 ? interval : 0;
+        const maxInterval = Number(json.data[0]?.max_interval_s);
+        if (!Number.isFinite(interval) || interval <= 0) {
+          return { intervalSeconds: 0, maxIntervalSeconds: 0, uncertain: true };
+        }
+        const maxIntervalSeconds =
+          Number.isFinite(maxInterval) && maxInterval > 0
+            ? maxInterval
+            : interval;
+        return {
+          intervalSeconds: interval,
+          maxIntervalSeconds,
+          uncertain: maxIntervalSeconds > interval * 1.25,
+        };
       } catch (e) {
         console.warn('Failed to estimate metric scrape interval', e);
         return undefined;

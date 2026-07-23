@@ -137,6 +137,34 @@ export function ChartSeriesEditor({
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
+  // Reset a stale selection to the type's primary aggregate (pXX presets
+  // decompose into quantile + level). Shared by the guard effect and the
+  // eager reset on metric switch so every reset path lands on a LEGAL
+  // value — a hardcoded 'sum' fallback used to reach the translator on
+  // exp-histograms ("sum is not supported for exponential histograms").
+  const applyDefaultAggFn = useCallback(
+    (type: MetricsDataType, regime: SumMonotonicity) => {
+      const fallback = getMetricV2DefaultAggFn(type, regime);
+      if (/^p\d+$/.test(fallback)) {
+        setValue(
+          `${namePrefix}level`,
+          Number.parseFloat(fallback.replace('p', '0.')),
+        );
+        setValue(`${namePrefix}aggFn`, 'quantile');
+      } else {
+        setValue(`${namePrefix}aggFn`, fallback);
+      }
+    },
+    [namePrefix, setValue],
+  );
+
+  // Token-lookup filters need the v2 series table's *AttributeItems ALIAS
+  // columns — detect their presence so older databases keep the plain map
+  // equality clause.
+  const isV2Source =
+    tableSource?.kind === SourceKind.Metric &&
+    isMetricsV2Tables(tableSource.metricTables);
+
   // 'increase' aggFn is only valid on Sum metrics. Reset it if the user
   // switches to a different metric type or source kind so the backend does
   // not error on a stale 'increase' selection.
@@ -145,9 +173,21 @@ export function ChartSeriesEditor({
       tableSource?.kind === SourceKind.Metric &&
       metricType === MetricsDataType.Sum;
     if (!isSumMetric && aggFn === 'increase') {
-      setValue(`${namePrefix}aggFn`, 'sum');
+      if (isV2Source && metricType) {
+        applyDefaultAggFn(metricType, 'unknown');
+      } else {
+        setValue(`${namePrefix}aggFn`, 'sum');
+      }
     }
-  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
+  }, [
+    tableSource?.kind,
+    metricType,
+    aggFn,
+    namePrefix,
+    setValue,
+    isV2Source,
+    applyDefaultAggFn,
+  ]);
 
   const tableName =
     tableSource?.kind === SourceKind.Metric
@@ -186,11 +226,6 @@ export function ChartSeriesEditor({
     tableSource: metricTableSource,
   });
 
-  // Token-lookup filters need the v2 series table's *AttributeItems ALIAS
-  // columns — detect their presence so older databases keep the plain map
-  // equality clause.
-  const isV2Source = isMetricsV2Tables(metricTableSource?.metricTables);
-
   // Temporality/monotonicity profile — the same cached lookup the query
   // translator uses, so this adds no per-query latency. Sum-typed metrics
   // branch the aggregate list on IsMonotonic (counter vs UpDownCounter).
@@ -222,27 +257,30 @@ export function ChartSeriesEditor({
 
   // §4: v2 metric types gate the aggregate list (see AggFnSelect) — reset a
   // stale selection that is illegal for the (new) metric type/regime to the
-  // type's primary aggregate so the translator never sees it. Waits for the
-  // profile so a still-loading regime can't transiently reset a legitimate
-  // selection.
+  // type's primary aggregate so the translator never sees it.
   const quantileLevel = useWatch({ control, name: `${namePrefix}level` });
   useEffect(() => {
-    if (!isV2Source || !metricType || aggFn == null || isProfileLoading) {
+    if (!isV2Source || !metricType) {
+      return;
+    }
+    // A missing aggFn is illegal in every regime — fix it without waiting
+    // (the translator renders it as literally "undefined is not supported").
+    if (aggFn == null) {
+      applyDefaultAggFn(metricType, sumMonotonicity);
+      return;
+    }
+    // Only the Sum list branches on monotonicity, so only Sum waits for the
+    // profile (a still-loading regime could transiently reset a legitimate
+    // selection). Gating every type on the profile left a window where a
+    // stale aggFn reached the translator ("avg is not supported for
+    // exponential histograms").
+    if (metricType === MetricsDataType.Sum && isProfileLoading) {
       return;
     }
     if (
       !isMetricV2AggFnAllowed(metricType, aggFn, quantileLevel, sumMonotonicity)
     ) {
-      const fallback = getMetricV2DefaultAggFn(metricType, sumMonotonicity);
-      if (/^p\d+$/.test(fallback)) {
-        setValue(
-          `${namePrefix}level`,
-          Number.parseFloat(fallback.replace('p', '0.')),
-        );
-        setValue(`${namePrefix}aggFn`, 'quantile');
-      } else {
-        setValue(`${namePrefix}aggFn`, fallback);
-      }
+      applyDefaultAggFn(metricType, sumMonotonicity);
     }
   }, [
     isV2Source,
@@ -251,8 +289,7 @@ export function ChartSeriesEditor({
     quantileLevel,
     sumMonotonicity,
     isProfileLoading,
-    namePrefix,
-    setValue,
+    applyDefaultAggFn,
   ]);
 
   // Type badge: which aggregation regime the user is in, visible before
@@ -443,9 +480,27 @@ export function ChartSeriesEditor({
                 setValue(`${namePrefix}metricName`, value);
                 setValue(`${namePrefix}valueExpression`, 'Value');
               }}
-              setMetricType={value =>
-                setValue(`${namePrefix}metricType`, value)
-              }
+              setMetricType={value => {
+                setValue(`${namePrefix}metricType`, value);
+                // Eager reset in the SAME event as the type change: the
+                // guard effect runs a render later, and the form can submit
+                // the stale (type, aggFn) pair in between — the transient
+                // "<aggFn> is not supported for ..." chart error. The
+                // 'unknown' regime is the pre-profile superset for Sum.
+                if (
+                  isV2Source &&
+                  value &&
+                  (aggFn == null ||
+                    !isMetricV2AggFnAllowed(
+                      value,
+                      aggFn,
+                      quantileLevel,
+                      'unknown',
+                    ))
+                ) {
+                  applyDefaultAggFn(value, 'unknown');
+                }
+              }}
               metricSource={tableSource}
               data-testid="metric-name-selector"
               error={errors?.metricName?.message}

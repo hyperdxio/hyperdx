@@ -642,6 +642,7 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
+  connectNulls = true,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -675,6 +676,13 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
+  /**
+   * Draw the line across null values. Off for metric charts, where a null
+   * bucket means no measurement and must render as a GAP (interpolating
+   * fabricates data); on for event charts, whose nulls are only ever
+   * fillNulls=false sparsity.
+   */
+  connectNulls?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -765,7 +773,7 @@ export const MemoChart = memo(function MemoChart({
               })}
           name={seriesName}
           isAnimationActive={false}
-          connectNulls
+          connectNulls={connectNulls}
         />
       );
     });
@@ -776,6 +784,7 @@ export const MemoChart = memo(function MemoChart({
     isHovered,
     nearestSeriesKey,
     captureActivePointY,
+    connectNulls,
   ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
