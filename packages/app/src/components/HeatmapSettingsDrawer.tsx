@@ -17,6 +17,8 @@ import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
+import SettingsSidePanel from './SettingsSidePanel';
+
 const HeatmapSettingsSchema = z.object({
   value: z.string().trim().min(1),
   count: z.string().trim().optional(),
@@ -32,6 +34,7 @@ export default function HeatmapSettingsDrawer({
   parentRef,
   defaultValues,
   onSubmit,
+  asPanel = false,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -39,6 +42,12 @@ export default function HeatmapSettingsDrawer({
   parentRef?: HTMLElement | null;
   defaultValues: HeatmapSettingsValues;
   onSubmit: (v: HeatmapSettingsValues) => void;
+  /**
+   * Render as an in-place full-height side panel (used inside the tile editor
+   * drawer) instead of a nested Drawer overlay. Defaults to the Drawer so other
+   * callers (e.g. the Search page heatmap) are unaffected.
+   */
+  asPanel?: boolean;
 }) {
   const form = useForm({
     resolver: zodResolver(HeatmapSettingsSchema),
@@ -57,6 +66,91 @@ export default function HeatmapSettingsDrawer({
 
   const scaleType = useWatch({ control: form.control, name: 'scaleType' });
 
+  const content = (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <Stack gap="md">
+        <Box>
+          <Text size="sm" fw={500} mb={4}>
+            Scale
+          </Text>
+          <SegmentedControl
+            size="xs"
+            value={scaleType}
+            onChange={v => {
+              if (v === 'log' || v === 'linear') {
+                form.setValue('scaleType', v);
+              }
+            }}
+            data={[
+              { label: 'Log', value: 'log' },
+              { label: 'Linear', value: 'linear' },
+            ]}
+          />
+        </Box>
+
+        <Divider />
+
+        <SQLInlineEditorControlled
+          parentRef={parentRef}
+          tableConnection={connection}
+          control={form.control}
+          name="value"
+          size="xs"
+          tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
+          placeholder="SQL expression"
+          language="sql"
+          onSubmit={form.handleSubmit(onSubmit)}
+          label="Value"
+          error={form.formState.errors.value?.message}
+          rules={{ required: true }}
+        />
+
+        <SQLInlineEditorControlled
+          parentRef={parentRef}
+          tableConnection={connection}
+          control={form.control}
+          name="count"
+          placeholder="SQL expression"
+          language="sql"
+          size="xs"
+          tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
+          onSubmit={form.handleSubmit(onSubmit)}
+          label="Count"
+          error={form.formState.errors.count?.message}
+        />
+
+        <Divider />
+        <Group gap="xs" justify="flex-end">
+          <Button variant="secondary" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="submit"
+            leftSection={<IconPlayerPlay size={16} />}
+          >
+            Apply
+          </Button>
+        </Group>
+      </Stack>
+    </form>
+  );
+
+  // Panel mode: dock as a full-height side panel beside the editor (used inside
+  // the tile editor drawer) instead of stacking a second drawer.
+  if (asPanel) {
+    if (!opened) return null;
+    return (
+      <SettingsSidePanel
+        title="Display Settings"
+        onClose={handleClose}
+        data-testid="heatmap-settings-panel"
+      >
+        {content}
+      </SettingsSidePanel>
+    );
+  }
+
   return (
     <Drawer
       title="Display Settings"
@@ -66,73 +160,7 @@ export default function HeatmapSettingsDrawer({
       size="sm"
       lockScroll={false}
     >
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <Stack gap="md">
-          <Box>
-            <Text size="sm" fw={500} mb={4}>
-              Scale
-            </Text>
-            <SegmentedControl
-              size="xs"
-              value={scaleType}
-              onChange={v => {
-                if (v === 'log' || v === 'linear') {
-                  form.setValue('scaleType', v);
-                }
-              }}
-              data={[
-                { label: 'Log', value: 'log' },
-                { label: 'Linear', value: 'linear' },
-              ]}
-            />
-          </Box>
-
-          <Divider />
-
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="value"
-            size="xs"
-            tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
-            placeholder="SQL expression"
-            language="sql"
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Value"
-            error={form.formState.errors.value?.message}
-            rules={{ required: true }}
-          />
-
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="count"
-            placeholder="SQL expression"
-            language="sql"
-            size="xs"
-            tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Count"
-            error={form.formState.errors.count?.message}
-          />
-
-          <Divider />
-          <Group gap="xs" justify="flex-end">
-            <Button variant="secondary" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              leftSection={<IconPlayerPlay size={16} />}
-            >
-              Apply
-            </Button>
-          </Group>
-        </Stack>
-      </form>
+      {content}
     </Drawer>
   );
 }

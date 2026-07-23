@@ -346,6 +346,54 @@ export default function EditTimeChartForm({
     { open: openHeatmapSettings, close: closeHeatmapSettings },
   ] = useDisclosure(false);
 
+  // On a dashboard the editor lives inside a Drawer, so opening a settings
+  // view (regular Display Settings or the heatmap variant) docks a side panel
+  // next to the editor/preview instead of stacking a second drawer. On the
+  // Chart Explorer page the editor is not in a drawer, so they keep their own
+  // overlay drawer.
+  const showSettingsPanel =
+    isDashboardForm && (displaySettingsOpened || heatmapSettingsOpened);
+
+  // While a settings side panel is open, Esc should just close the panel rather
+  // than closing the whole tile drawer. Intercept on the capture phase and stop
+  // propagation so the drawer's own (bubble-phase) Esc handler never fires —
+  // this is what fixes a single Esc press closing both.
+  useEffect(() => {
+    if (!showSettingsPanel) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeDisplaySettings();
+        closeHeatmapSettings();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [showSettingsPanel, closeDisplaySettings, closeHeatmapSettings]);
+
+  // Whether the current tab has a regular Display Settings view. Search,
+  // Patterns and Markdown have none; Heatmap uses its own variant instead.
+  const displayTypeSupportsDisplaySettings =
+    displayType !== DisplayType.Search &&
+    displayType !== DisplayType.EventPatterns &&
+    displayType !== DisplayType.Markdown &&
+    displayType !== DisplayType.Heatmap;
+
+  // On tab change, close any settings panel that doesn't belong to the new tab
+  // so a stale panel (e.g. Number's Display Settings) is never shown on a tab
+  // without one, or the wrong variant (heatmap vs. regular) lingers.
+  useEffect(() => {
+    if (displayType === previousDisplayType) return;
+    if (!displayTypeSupportsDisplaySettings) closeDisplaySettings();
+    if (displayType !== DisplayType.Heatmap) closeHeatmapSettings();
+  }, [
+    displayType,
+    previousDisplayType,
+    displayTypeSupportsDisplaySettings,
+    closeDisplaySettings,
+    closeHeatmapSettings,
+  ]);
+
   // Only update this on submit, otherwise we'll have issues
   // with using the source value from the last submit
   // (ex. ignoring local custom source updates)
@@ -709,8 +757,22 @@ export default function EditTimeChartForm({
   );
 
   return (
-    <div ref={setParentRef} data-testid={dataTestId}>
-      <ErrorBoundary>
+    <div
+      ref={setParentRef}
+      data-testid={dataTestId}
+      style={
+        isDashboardForm
+          ? { display: 'flex', flexDirection: 'column', height: '100%' }
+          : undefined
+      }
+    >
+      {/* Full-width display-type tab bar. Kept above the editor + Display
+          Settings row so the tabs never wrap when the panel is open. */}
+      <Box
+        px={isDashboardForm ? 'md' : undefined}
+        pt={isDashboardForm ? 'md' : undefined}
+        style={isDashboardForm ? { flexShrink: 0 } : undefined}
+      >
         <Controller
           control={control}
           name="displayType"
@@ -719,7 +781,6 @@ export default function EditTimeChartForm({
               value={value}
               onChange={onChange}
               radius={'xs'}
-              mb="md"
               data-testid="chart-type-input"
             >
               <Tabs.List>
@@ -781,165 +842,194 @@ export default function EditTimeChartForm({
             </Tabs>
           )}
         />
-        <Flex align="center" gap="sm" mb="sm">
-          <Text size="sm" className="text-nowrap">
-            Chart Name
-          </Text>
-          <InputControlled
-            name="name"
-            control={control}
-            flex={1}
-            type="text"
-            placeholder="My Chart Name"
-            data-testid="chart-name-input"
-          />
-          {isRawSqlDisplayType(displayType) && (
-            <Controller
-              control={control}
-              name="configType"
-              render={({ field: { onChange, value } }) => (
-                <SegmentedControl
-                  value={value ?? 'builder'}
-                  onChange={onChange}
-                  data={[
-                    { label: 'Builder', value: 'builder' },
-                    { label: 'SQL', value: 'sql' },
-                    ...(IS_PROMQL_ENABLED
-                      ? [{ label: 'PromQL', value: 'promql' }]
-                      : []),
-                  ]}
+      </Box>
+      {/* Editor + Display Settings side by side, below the tab bar, so the
+            tile/preview stays visible while its display options are changed.
+            In the dashboard drawer the row fills the remaining height: the
+            editor column scrolls on its own and the settings dock full-height
+            beside it. On Chart Explorer the settings return null and fall back
+            to the overlay Drawer. */}
+      <Flex
+        align="stretch"
+        gap={0}
+        style={isDashboardForm ? { flex: 1, minHeight: 0 } : undefined}
+      >
+        <Box
+          pt="md"
+          px={isDashboardForm ? 'md' : undefined}
+          pb={isDashboardForm ? 'md' : undefined}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            ...(isDashboardForm
+              ? { height: '100%', overflowY: 'auto' as const }
+              : {}),
+          }}
+        >
+          <ErrorBoundary>
+            <Flex align="center" gap="sm" mb="sm">
+              <Text size="sm" className="text-nowrap">
+                Chart Name
+              </Text>
+              <InputControlled
+                name="name"
+                control={control}
+                flex={1}
+                type="text"
+                placeholder="My Chart Name"
+                data-testid="chart-name-input"
+              />
+              {isRawSqlDisplayType(displayType) && (
+                <Controller
+                  control={control}
+                  name="configType"
+                  render={({ field: { onChange, value } }) => (
+                    <SegmentedControl
+                      value={value ?? 'builder'}
+                      onChange={onChange}
+                      data={[
+                        { label: 'Builder', value: 'builder' },
+                        { label: 'SQL', value: 'sql' },
+                        ...(IS_PROMQL_ENABLED
+                          ? [{ label: 'PromQL', value: 'promql' }]
+                          : []),
+                      ]}
+                    />
+                  )}
                 />
               )}
-            />
-          )}
-        </Flex>
-        <Divider my="md" />
-        {activeTab === 'markdown' ? (
-          <div>
-            <Textarea
-              {...register('markdown')}
-              label="Markdown content"
-              placeholder="Markdown"
-              mb="md"
-              styles={{
-                input: {
-                  minHeight: 200,
-                },
-              }}
-            />
-            <Box p="md" mb="md">
-              <HDXMarkdownChart
-                config={{
-                  markdown: markdown || 'Preview',
-                }}
+            </Flex>
+            <Divider my="md" />
+            {activeTab === 'markdown' ? (
+              <div>
+                <Textarea
+                  {...register('markdown')}
+                  label="Markdown content"
+                  placeholder="Markdown"
+                  mb="md"
+                  styles={{
+                    input: {
+                      minHeight: 200,
+                    },
+                  }}
+                />
+                <Box p="md" mb="md">
+                  <HDXMarkdownChart
+                    config={{
+                      markdown: markdown || 'Preview',
+                    }}
+                  />
+                </Box>
+              </div>
+            ) : isPromqlInput ? (
+              <PromqlChartEditor
+                control={control}
+                onSubmit={onSubmit}
+                onOpenDisplaySettings={openDisplaySettings}
               />
-            </Box>
-          </div>
-        ) : isPromqlInput ? (
-          <PromqlChartEditor
-            control={control}
-            onSubmit={onSubmit}
-            onOpenDisplaySettings={openDisplaySettings}
-          />
-        ) : isRawSqlInput ? (
-          <RawSqlChartEditor
-            control={control}
-            setValue={setValue}
-            onOpenDisplaySettings={openDisplaySettings}
-            onSubmit={onSubmit}
-            isDashboardForm={isDashboardForm}
-            alert={alert}
-            dashboardId={dashboardId}
-          />
-        ) : (
-          <ChartEditorControls
-            control={control}
-            setValue={setValue}
-            clearErrors={clearErrors}
-            errors={errors}
-            fields={fields}
-            append={append}
-            removeSeries={removeSeries}
-            swapSeries={swapSeries}
-            duplicateSeries={duplicateSeries}
+            ) : isRawSqlInput ? (
+              <RawSqlChartEditor
+                control={control}
+                setValue={setValue}
+                onOpenDisplaySettings={openDisplaySettings}
+                onSubmit={onSubmit}
+                isDashboardForm={isDashboardForm}
+                alert={alert}
+                dashboardId={dashboardId}
+              />
+            ) : (
+              <ChartEditorControls
+                control={control}
+                setValue={setValue}
+                clearErrors={clearErrors}
+                errors={errors}
+                fields={fields}
+                append={append}
+                removeSeries={removeSeries}
+                swapSeries={swapSeries}
+                duplicateSeries={duplicateSeries}
+                tableSource={tableSource}
+                tableConnection={tableConnection}
+                databaseName={databaseName}
+                tableName={tableName}
+                dateRange={dateRange}
+                select={select}
+                displayType={displayType}
+                activeTab={activeTab}
+                seriesReturnType={seriesReturnType}
+                ratioMode={ratioMode}
+                alert={alert}
+                isRawSqlInput={isRawSqlInput}
+                dashboardId={dashboardId}
+                parentRef={parentRef}
+                chartConfigForExplanations={chartConfigForExplanations}
+                onSubmit={onSubmit}
+                openDisplaySettings={openDisplaySettings}
+                openHeatmapSettings={openHeatmapSettings}
+              />
+            )}
+            <ChartActionBar
+              control={control}
+              handleSubmit={handleSubmit}
+              tableConnection={tableConnection}
+              activeTab={activeTab}
+              isRawSqlInput={isRawSqlInput}
+              dashboardId={dashboardId}
+              parentRef={parentRef}
+              groupBy={groupBy}
+              onSubmit={onSubmit}
+              handleSave={handleSave}
+              onSave={onSave}
+              onClose={onClose}
+              isSaving={isSaving}
+              displayedTimeInputValue={displayedTimeInputValue}
+              setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+              onTimeRangeSearch={onTimeRangeSearch}
+              setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
+            />
+          </ErrorBoundary>
+          <ChartPreviewPanel
+            queriedConfig={queriedConfig}
             tableSource={tableSource}
-            tableConnection={tableConnection}
-            databaseName={databaseName}
-            tableName={tableName}
             dateRange={dateRange}
-            select={select}
-            displayType={displayType}
             activeTab={activeTab}
-            seriesReturnType={seriesReturnType}
-            ratioMode={ratioMode}
             alert={alert}
-            isRawSqlInput={isRawSqlInput}
-            dashboardId={dashboardId}
-            parentRef={parentRef}
+            sourceId={sourceId}
+            onTimeRangeSelect={onTimeRangeSelect}
             chartConfigForExplanations={chartConfigForExplanations}
+            showGeneratedSql={showGeneratedSql}
+            showSampleEvents={showSampleEvents}
+            dbTimeChartConfig={dbTimeChartConfig}
+            setValue={(name, value) => setValue(name, value)}
             onSubmit={onSubmit}
-            openDisplaySettings={openDisplaySettings}
-            openHeatmapSettings={openHeatmapSettings}
           />
-        )}
-        <ChartActionBar
-          control={control}
-          handleSubmit={handleSubmit}
-          tableConnection={tableConnection}
-          activeTab={activeTab}
-          isRawSqlInput={isRawSqlInput}
-          dashboardId={dashboardId}
-          parentRef={parentRef}
-          groupBy={groupBy}
-          onSubmit={onSubmit}
-          handleSave={handleSave}
-          onSave={onSave}
-          onClose={onClose}
-          isSaving={isSaving}
-          displayedTimeInputValue={displayedTimeInputValue}
-          setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-          onTimeRangeSearch={onTimeRangeSearch}
-          setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
+        </Box>
+        <ChartDisplaySettingsDrawer
+          asPanel={isDashboardForm}
+          opened={displaySettingsOpened}
+          settings={displaySettings}
+          defaultNumberFormat={autoDetectedNumberFormat}
+          previousDateRange={!dashboardId ? previousDateRange : undefined}
+          displayType={displayType}
+          configType={configType}
+          onChange={handleUpdateDisplaySettings}
+          onClose={closeDisplaySettings}
+          isPerSeriesNumberFormatAllowed={configType !== 'sql'}
         />
-      </ErrorBoundary>
-      <ChartPreviewPanel
-        queriedConfig={queriedConfig}
-        tableSource={tableSource}
-        dateRange={dateRange}
-        activeTab={activeTab}
-        alert={alert}
-        sourceId={sourceId}
-        onTimeRangeSelect={onTimeRangeSelect}
-        chartConfigForExplanations={chartConfigForExplanations}
-        showGeneratedSql={showGeneratedSql}
-        showSampleEvents={showSampleEvents}
-        dbTimeChartConfig={dbTimeChartConfig}
-        setValue={(name, value) => setValue(name, value)}
-        onSubmit={onSubmit}
-      />
+        <HeatmapSettingsDrawer
+          asPanel={isDashboardForm}
+          opened={heatmapSettingsOpened}
+          onClose={closeHeatmapSettings}
+          connection={tableConnection}
+          parentRef={parentRef}
+          defaultValues={heatmapSettingsDefaults}
+          onSubmit={handleUpdateHeatmapSettings}
+        />
+      </Flex>
       <SaveToDashboardModal
         chartConfig={chartConfig}
         opened={saveToDashboardModalOpen}
         onClose={() => setSaveToDashboardModalOpen(false)}
-      />
-      <ChartDisplaySettingsDrawer
-        opened={displaySettingsOpened}
-        settings={displaySettings}
-        defaultNumberFormat={autoDetectedNumberFormat}
-        previousDateRange={!dashboardId ? previousDateRange : undefined}
-        displayType={displayType}
-        configType={configType}
-        onChange={handleUpdateDisplaySettings}
-        onClose={closeDisplaySettings}
-        isPerSeriesNumberFormatAllowed={configType !== 'sql'}
-      />
-      <HeatmapSettingsDrawer
-        opened={heatmapSettingsOpened}
-        onClose={closeHeatmapSettings}
-        connection={tableConnection}
-        parentRef={parentRef}
-        defaultValues={heatmapSettingsDefaults}
-        onSubmit={handleUpdateHeatmapSettings}
       />
     </div>
   );

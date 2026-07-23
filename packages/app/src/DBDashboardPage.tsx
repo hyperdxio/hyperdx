@@ -63,11 +63,11 @@ import {
   Box,
   Breadcrumbs,
   Button,
+  Drawer,
   Flex,
   Group,
   Indicator,
   Menu,
-  Modal,
   Paper,
   Popover,
   Portal,
@@ -1391,7 +1391,7 @@ const Tile = forwardRef(
   },
 );
 
-const EditTileModal = ({
+const EditTileDrawer = ({
   dashboardId,
   chart,
   onClose,
@@ -1407,7 +1407,7 @@ const EditTileModal = ({
   onSave: (chart: Tile) => void;
 }) => {
   const contextZIndex = useZIndex();
-  const modalZIndex = contextZIndex + 10;
+  const drawerZIndex = contextZIndex + 10;
   const confirm = useConfirm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -1442,18 +1442,22 @@ const EditTileModal = ({
   }, [confirm, isSaving, hasUnsavedChanges, onClose]);
 
   return (
-    <Modal
+    <Drawer
       opened={chart != null}
       onClose={handleClose}
       withCloseButton={false}
-      centered
+      position="right"
       size="90%"
-      padding="xs"
-      zIndex={modalZIndex}
+      padding={0}
+      zIndex={drawerZIndex}
+      // Full-height flex body: the editor column scrolls on its own and the
+      // Display Settings panel docks full-height beside it, so neither the body
+      // nor the panel shows a stray horizontal scrollbar.
+      styles={{ body: { height: '100%', padding: 0, overflow: 'hidden' } }}
     >
       {chart != null && (
-        <ZIndexContext.Provider value={modalZIndex + 10}>
-          {/* Isolate chart cross-syncing to this edit modal: the preview chart
+        <ZIndexContext.Provider value={drawerZIndex + 10}>
+          {/* Isolate chart cross-syncing to this edit drawer: the preview chart
               must not drive shadow tooltips on the dashboard tiles behind it. */}
           <IsolatedChartSyncProvider>
             <EditTimeChartForm
@@ -1475,7 +1479,7 @@ const EditTileModal = ({
           </IsolatedChartSyncProvider>
         </ZIndexContext.Provider>
       )}
-    </Modal>
+    </Drawer>
   );
 };
 
@@ -2860,7 +2864,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </title>
       </Head>
       <OnboardingModal />
-      <EditTileModal
+      <EditTileDrawer
         dashboardId={dashboardId}
         chart={editedTile}
         onClose={() => {
