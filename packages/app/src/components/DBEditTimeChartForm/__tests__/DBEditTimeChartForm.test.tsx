@@ -69,6 +69,7 @@ jest.mock('@/source', () => ({
   }),
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
   getFirstSeriesNumberFormat: jest.fn().mockReturnValue(undefined),
+  useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
 
 jest.mock('../../MetricNameSelect', () => ({
@@ -555,5 +556,67 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const saved = onSave.mock.calls[0][0];
     expect(saved.select[0]).toMatchObject({ alias: 'avg latency' });
     expect(saved.select[1]).toMatchObject({ alias: 'p95 latency' });
+  });
+});
+
+describe('DBEditTimeChartForm - Column color', () => {
+  // Per-column color targets builder table tiles on log / trace / event
+  // sources; point useSource at a non-metric source for these.
+  const logSource = {
+    id: 'log-source',
+    kind: SourceKind.Log,
+    name: 'Logs',
+    from: { databaseName: 'default', tableName: 'otel_logs' },
+    connection: 'default',
+    timestampValueExpression: 'Timestamp',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    jest.mocked(useSource).mockReturnValue({
+      data: logSource,
+    } as ReturnType<typeof useSource>);
+  });
+
+  const colorSeries = {
+    aggFn: 'count' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'lucene' as const,
+    valueExpression: '',
+    alias: 'event count',
+  };
+
+  const tableConfig = {
+    ...defaultChartConfig,
+    source: 'log-source',
+    displayType: DisplayType.Table,
+    select: [colorSeries],
+  };
+
+  it('shows the per-column color control on table tiles', () => {
+    renderComponent({ chartConfig: tableConfig });
+
+    expect(screen.getByTestId('series-color-button')).toBeInTheDocument();
+  });
+
+  it('hides the per-column color control on non-table tiles', () => {
+    renderComponent({
+      chartConfig: { ...tableConfig, displayType: DisplayType.Line },
+    });
+
+    expect(screen.queryByTestId('series-color-button')).not.toBeInTheDocument();
+  });
+
+  it('opens the column color drawer when the control is clicked', async () => {
+    renderComponent({ chartConfig: tableConfig });
+
+    await userEvent.click(screen.getByTestId('series-color-button'));
+
+    // The drawer renders the reused color swatch + rules editor.
+    expect(
+      await screen.findByTestId('color-swatch-input-trigger'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('series-color-apply')).toBeInTheDocument();
   });
 });

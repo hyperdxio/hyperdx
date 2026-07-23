@@ -235,6 +235,158 @@ export const RootValueExpressionSchema = z
       isDelta: z.boolean().optional(),
     }),
   );
+/**
+ * The set of palette tokens a user can pick for chart series colors,
+ * number-tile colors, reference lines, and threshold rules.
+ *
+ * Tokens map to CSS variables in
+ * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
+ *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
+ *
+ * `chart-info` is a render-time CSS variable (defined in the shared
+ * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
+ * picker enum; it's consumed only by code paths that always want
+ * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
+ *
+ * Storing tokens (not hex) lets user choices reflow correctly across
+ * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ *
+ * Lives in common-utils because the schema is shared between the app
+ * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)
+ * stays in `packages/app/src/utils.ts` because it depends on
+ * `getComputedStyle(document.documentElement)`.
+ */
+/** Categorical tokens (10 hues). Tuple literal so the element type
+ * stays narrow (`'chart-blue' | 'chart-orange' | ...`) rather than
+ * widening to `ChartPaletteToken`; downstream consumers like
+ * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` rely on
+ * the narrow element type to enforce 1:1 coverage at compile time. */
+export const CATEGORICAL_PALETTE_TOKENS = [
+  'chart-blue',
+  'chart-orange',
+  'chart-red',
+  'chart-cyan',
+  'chart-green',
+  'chart-pink',
+  'chart-purple',
+  'chart-light-blue',
+  'chart-brown',
+  'chart-gray',
+] as const;
+
+/** Semantic tokens (success / warning / error). Tuple literal for the
+ * same narrow-element-type reason as the categorical list above. */
+export const SEMANTIC_PALETTE_TOKENS = [
+  'chart-success',
+  'chart-warning',
+  'chart-error',
+] as const;
+
+export const CHART_PALETTE_TOKENS = [
+  ...CATEGORICAL_PALETTE_TOKENS,
+  ...SEMANTIC_PALETTE_TOKENS,
+] as const;
+
+export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
+
+/**
+ * Strict Zod schema for the curated palette tokens. Intentionally
+ * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
+ * from #2265. Wrapping the enum in `z.preprocess` would force the
+ * schema's input type to `unknown`, which breaks downstream `z.infer`
+ * consumers (e.g. `validateRequest` in the API handlers infers
+ * `req.body` as `unknown` for any field reached through this schema).
+ *
+ * Legacy data is healed at load time instead: see
+ * `normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`,
+ * which walks `tiles[i].config.color` and replaces any legacy token
+ * with its hue-named equivalent via `resolveChartPaletteToken`.
+ * Render-time consumers also call `resolveChartPaletteToken` as
+ * belt-and-suspenders against any data path that bypasses the
+ * fetch-time normalizer.
+ */
+export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
+
+/**
+ * A single conditional color rule. Rules are evaluated in order against
+ * the tile's displayed value; the LAST matching rule's color wins
+ * (last-match-wins: higher-priority rules go last). If no rule matches,
+ * the tile's static `color` applies; if that is unset, the default text
+ * color applies.
+ *
+ * String operators (`contains`, `startsWith`, `endsWith`, `regex`) are
+ * included at the schema level so a future table-tile slice can reuse
+ * the same type without a schema change. The number-tile UI only exposes
+ * numeric / equality operators.
+ *
+ * Lives in common-utils so both the app and a future external-API parity
+ * PR can import it.
+ */
+// Numeric ordered operators (gt | gte | lt | lte).
+const numericOrderedColorCondition = z.object({
+  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
+  value: z.number().finite(),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+const betweenColorCondition = z.object({
+  operator: z.literal('between'),
+  value: z.tuple([z.number().finite(), z.number().finite()]),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+// Equality against a number or a string value.
+const equalityColorCondition = z.object({
+  operator: z.enum(['eq', 'neq']),
+  value: z.union([z.number().finite(), z.string().max(200)]),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+// String-match operators, kept at the schema level only for a future
+// table-tile slice (see the doc comment above). The number-tile editor
+// never emits these.
+const stringMatchColorCondition = z.object({
+  operator: z.enum(['contains', 'startsWith', 'endsWith']),
+  value: z.string().min(1).max(200),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+const regexColorCondition = z.object({
+  operator: z.literal('regex'),
+  value: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine(
+      v => {
+        try {
+          new RegExp(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Invalid regex pattern' },
+    ),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+export const ColorConditionSchema = z.discriminatedUnion('operator', [
+  numericOrderedColorCondition,
+  betweenColorCondition,
+  equalityColorCondition,
+  stringMatchColorCondition,
+  regexColorCondition,
+]);
+
+export type ColorCondition = z.infer<typeof ColorConditionSchema>;
+
 export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -246,6 +398,20 @@ export const DerivedColumnSchema = z.intersection(
     countExpression: z.string().optional(),
     heatmapScaleType: z.enum(['log', 'linear']).optional(),
     numberFormat: NumberFormatSchema.optional(),
+    // Per-column palette-token color, applied by the renderer to this
+    // column's cells on table tiles only (gated in the series editor by
+    // display type); other display types ignore the field. Mirrors the
+    // per-column `numberFormat` above. The select item is the per-column
+    // config home for builder table tiles, so the table-cell counterpart
+    // of the number tile's static color lives here.
+    color: ChartPaletteTokenSchema.optional(),
+    // Ordered conditional color rules for this column's cells on table
+    // tiles. Last matching rule wins (higher-priority rules go last); when
+    // no rule matches the column's static `color` applies. The table-cell
+    // counterpart of the number tile's `colorRules`, reusing the same
+    // `ColorConditionSchema` so no schema change was needed (the union's
+    // string-match operators were always intended for this slice).
+    colorRules: z.array(ColorConditionSchema).max(10).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -836,61 +1002,6 @@ export function isOnClickDashboardById(
   );
 }
 
-/**
- * The set of palette tokens a user can pick for chart series colors,
- * number-tile colors, reference lines, and threshold rules.
- *
- * Tokens map to CSS variables in
- * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
- *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
- *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
- *
- * `chart-info` is a render-time CSS variable (defined in the shared
- * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
- * picker enum; it's consumed only by code paths that always want
- * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
- *
- * Storing tokens (not hex) lets user choices reflow correctly across
- * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
- *
- * Lives in common-utils because the schema is shared between the app
- * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)
- * stays in `packages/app/src/utils.ts` because it depends on
- * `getComputedStyle(document.documentElement)`.
- */
-/** Categorical tokens (10 hues). Tuple literal so the element type
- * stays narrow (`'chart-blue' | 'chart-orange' | ...`) rather than
- * widening to `ChartPaletteToken`; downstream consumers like
- * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` rely on
- * the narrow element type to enforce 1:1 coverage at compile time. */
-export const CATEGORICAL_PALETTE_TOKENS = [
-  'chart-blue',
-  'chart-orange',
-  'chart-red',
-  'chart-cyan',
-  'chart-green',
-  'chart-pink',
-  'chart-purple',
-  'chart-light-blue',
-  'chart-brown',
-  'chart-gray',
-] as const;
-
-/** Semantic tokens (success / warning / error). Tuple literal for the
- * same narrow-element-type reason as the categorical list above. */
-export const SEMANTIC_PALETTE_TOKENS = [
-  'chart-success',
-  'chart-warning',
-  'chart-error',
-] as const;
-
-export const CHART_PALETTE_TOKENS = [
-  ...CATEGORICAL_PALETTE_TOKENS,
-  ...SEMANTIC_PALETTE_TOKENS,
-] as const;
-
-export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
-
 /** Numeric tokens (`chart-1` .. `chart-10`) shipped in #2265. */
 type LegacyChartPaletteTokenKey =
   | 'chart-1'
@@ -1041,103 +1152,6 @@ export function walkRawDashboardTileColors(
   });
   return changed ? { ...root, tiles: nextTiles } : input;
 }
-
-/**
- * Strict Zod schema for the curated palette tokens. Intentionally
- * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
- * from #2265. Wrapping the enum in `z.preprocess` would force the
- * schema's input type to `unknown`, which breaks downstream `z.infer`
- * consumers (e.g. `validateRequest` in the API handlers infers
- * `req.body` as `unknown` for any field reached through this schema).
- *
- * Legacy data is healed at load time instead: see
- * `normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`,
- * which walks `tiles[i].config.color` and replaces any legacy token
- * with its hue-named equivalent via `resolveChartPaletteToken`.
- * Render-time consumers also call `resolveChartPaletteToken` as
- * belt-and-suspenders against any data path that bypasses the
- * fetch-time normalizer.
- */
-export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
-
-/**
- * A single conditional color rule. Rules are evaluated in order against
- * the tile's displayed value; the LAST matching rule's color wins
- * (last-match-wins: higher-priority rules go last). If no rule matches,
- * the tile's static `color` applies; if that is unset, the default text
- * color applies.
- *
- * String operators (`contains`, `startsWith`, `endsWith`, `regex`) are
- * included at the schema level so a future table-tile slice can reuse
- * the same type without a schema change. The number-tile UI only exposes
- * numeric / equality operators.
- *
- * Lives in common-utils so both the app and a future external-API parity
- * PR can import it.
- */
-// Numeric ordered operators (gt | gte | lt | lte).
-const numericOrderedColorCondition = z.object({
-  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
-  value: z.number().finite(),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-const betweenColorCondition = z.object({
-  operator: z.literal('between'),
-  value: z.tuple([z.number().finite(), z.number().finite()]),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-// Equality against a number or a string value.
-const equalityColorCondition = z.object({
-  operator: z.enum(['eq', 'neq']),
-  value: z.union([z.number().finite(), z.string().max(200)]),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-// String-match operators, kept at the schema level only for a future
-// table-tile slice (see the doc comment above). The number-tile editor
-// never emits these.
-const stringMatchColorCondition = z.object({
-  operator: z.enum(['contains', 'startsWith', 'endsWith']),
-  value: z.string().min(1).max(200),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-const regexColorCondition = z.object({
-  operator: z.literal('regex'),
-  value: z
-    .string()
-    .min(1)
-    .max(500)
-    .refine(
-      v => {
-        try {
-          new RegExp(v);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: 'Invalid regex pattern' },
-    ),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-export const ColorConditionSchema = z.discriminatedUnion('operator', [
-  numericOrderedColorCondition,
-  betweenColorCondition,
-  equalityColorCondition,
-  stringMatchColorCondition,
-  regexColorCondition,
-]);
-
-export type ColorCondition = z.infer<typeof ColorConditionSchema>;
 
 /**
  * The subset of color-rule operators the number-tile editor actually
