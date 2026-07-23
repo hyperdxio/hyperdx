@@ -246,8 +246,11 @@ test.describe('Saved Search Functionality', () => {
         );
 
         const savedSearchParams = new URL(page.url()).searchParams;
-        expect(savedSearchParams.has('from')).toBe(true);
-        expect(savedSearchParams.has('to')).toBe(true);
+        // This scenario starts at /search with the app's default relative
+        // range, not explicit URL bounds. Saving must not manufacture fixed
+        // bounds while stripping saved-search configuration from the URL.
+        expect(savedSearchParams.has('from')).toBe(false);
+        expect(savedSearchParams.has('to')).toBe(false);
         expect(savedSearchParams.has('where')).toBe(false);
         expect(savedSearchParams.has('orderBy')).toBe(false);
 
