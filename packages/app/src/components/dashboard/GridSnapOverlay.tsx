@@ -9,8 +9,6 @@ import {
 
 import styles from '@styles/GridSnapOverlay.module.scss';
 
-export type { FocusRect };
-
 type GridSnapOverlayProps = {
   /** Number of columns the grid snaps to (react-grid-layout `cols`). */
   cols: number;
