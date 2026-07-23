@@ -33,6 +33,14 @@ describe('listMetrics cursor', () => {
       expect(decodeCursor(encodeCursor(payload))).toEqual(payload);
     });
 
+    it('round-trips an exponential histogram cursor', () => {
+      const payload = {
+        kind: 'exponential histogram' as const,
+        lastName: 'http.server.request.duration',
+      };
+      expect(decodeCursor(encodeCursor(payload))).toEqual(payload);
+    });
+
     it('round-trips metric names with dots, dashes, and unicode', () => {
       const payload = {
         kind: 'gauge' as const,
@@ -71,11 +79,6 @@ describe('listMetrics cursor', () => {
         JSON.stringify({ kind: 'summary', lastName: 'x' }),
       ).toString('base64');
       expect(decodeCursor(summaryCursor)).toBeNull();
-
-      const expHistCursor = Buffer.from(
-        JSON.stringify({ kind: 'exponential histogram', lastName: 'x' }),
-      ).toString('base64');
-      expect(decodeCursor(expHistCursor)).toBeNull();
 
       const bogusCursor = Buffer.from(
         JSON.stringify({ kind: 'bogus', lastName: 'x' }),

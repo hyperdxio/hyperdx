@@ -7,7 +7,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
-import { IS_EXPONENTIAL_HISTOGRAMS_ENABLED } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
@@ -118,7 +117,6 @@ function useMetricNames(
     },
     {
       enabled:
-        IS_EXPONENTIAL_HISTOGRAMS_ENABLED &&
         !!metricSource.metricTables?.[MetricsDataType.ExponentialHistogram],
     },
   );
@@ -127,9 +125,7 @@ function useMetricNames(
     gaugeMetrics: gaugeMetrics?.[0].value,
     histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
-    exponentialHistogramMetrics: IS_EXPONENTIAL_HISTOGRAMS_ENABLED
-      ? exponentialHistogramMetrics?.[0].value
-      : undefined,
+    exponentialHistogramMetrics: exponentialHistogramMetrics?.[0].value,
   };
 }
 

@@ -99,6 +99,38 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 
 This pattern cannot be enforced by ESLint and requires manual code review.
 
+### Semantic component variants (Alert / Text / danger controls)
+
+We ship **themed semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven and consistent across the HyperDX and ClickStack brands (and light/dark). **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
+
+The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design Tokens/Semantic Variants` for the full visual matrix.
+
+**`Alert`** — `info` | `success` | `warning` | `danger`. Renders a tinted `-subtle` background with the title, icon, **and body text** in the semantic color token:
+
+```tsx
+// ✅ token-driven, works in both brands + light/dark, meets WCAG AA
+<Alert variant="warning" title="Heads up">This may take a while.</Alert>
+<Alert variant="danger" title="Failed">Could not save the alert.</Alert>
+
+// ❌ hardcoded Mantine palette — not theme-aware, inconsistent contrast
+<Alert color="yellow" title="Heads up">...</Alert>
+<Alert color="red" title="Failed">...</Alert>
+```
+
+**`Text`** — `danger` | `warning` | `success` for inline status/validation text:
+
+```tsx
+<Text variant="danger">Required field</Text>
+<Text variant="success">Connection verified</Text>
+
+// ❌ don't reach for raw palette colors for semantic status text
+<Text c="red.5">Required field</Text>
+```
+
+**`Button` / `ActionIcon` `variant="danger"`** is a **soft** control: a tinted `--color-bg-danger-subtle` background (with hover) and semantic foreground, not a solid red fill. `warning`/`success` are intentionally **not** exposed as control variants — use them on `Text` and `Alert` only.
+
+**Note**: Existing `<Alert color="...">` call sites are untouched; the semantic variants are opt-in. Prefer the variant for any **new** callout, and migrate nearby `color="..."` alerts when you touch them.
+
 ### EmptyState Component (REQUIRED)
 
 **Use `EmptyState` (`@/components/EmptyState`) for all empty/no-data states.** Do not create ad-hoc inline empty states.

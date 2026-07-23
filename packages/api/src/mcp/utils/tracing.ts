@@ -27,7 +27,7 @@ const toolErrorCounter = getCounter('hyperdx.mcp.tool.errors', {
  *
  * The returned function signature is a strict subset of the SDK's
  * `ToolCallback`: it accepts `(args, _extra?)` and returns
- * `Promise<CallToolResult>`.  The extra parameter is accepted but unused.
+ * `Promise<CallToolResult>`. The extra parameter is accepted but unused.
  */
 export function withToolTracing<TArgs>(
   toolName: string,
@@ -35,10 +35,14 @@ export function withToolTracing<TArgs>(
   handler: (args: TArgs) => Promise<ToolResult>,
 ): (args: TArgs, _extra?: unknown) => Promise<CallToolResult> {
   return async (args: TArgs) => {
+    const { name: clientName, version: clientVersion } =
+      context.mcpClient ?? {};
     const logContext = {
       tool: toolName,
       teamId: context.teamId,
       userId: context.userId,
+      mcpClientName: clientName,
+      mcpClientVersion: clientVersion,
     };
 
     return withSpan(
@@ -48,6 +52,12 @@ export function withToolTracing<TArgs>(
         span.setAttribute('mcp.tool.name', toolName);
         span.setAttribute('mcp.team.id', context.teamId);
         span.setAttribute('mcp.user.id', context.userId);
+        if (clientName) {
+          span.setAttribute('mcp.client.name', clientName);
+        }
+        if (clientVersion) {
+          span.setAttribute('mcp.client.version', clientVersion);
+        }
 
         logger.info(logContext, `MCP tool invoked: ${toolName}`);
 
