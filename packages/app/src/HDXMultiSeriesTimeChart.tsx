@@ -66,6 +66,11 @@ const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 
 type TooltipMode = 'single' | 'all' | 'hidden';
 
+// Above this many visible series the hover tooltip collapses to just the series
+// under the cursor: a list of dozens of rows is unreadable and never the one
+// being pointed at. At or below it, the full sorted list stays useful.
+const SINGLE_SERIES_TOOLTIP_THRESHOLD = 10;
+
 // Shared "series the user is hovering" across synced charts. recharts' syncId
 // only shares the active time bucket, not a series, so a follower chart has no
 // way to know which series to surface, and picking by its own (irrelevant)
@@ -149,6 +154,28 @@ export const TooltipItem = memo(
     );
   },
 );
+
+/**
+ * Whether the hover tooltip collapses to a single series, given the chart type
+ * and how many series are actually drawn.
+ *
+ * Only line/area charts get the single-series tooltip: their per-point active
+ * dots capture the Y positions used to pick the series nearest the cursor.
+ * Stacked bars capture no such positions, and collapsing to one row would hide
+ * the rest of the stack, so they always show the full tooltip.
+ *
+ * `visibleSeriesCount` is the count after legend selection (and the draw cap),
+ * so filtering a dense chart down to a few series restores the full comparison.
+ */
+export function resolveTooltipMode(
+  displayType: DisplayType | undefined,
+  visibleSeriesCount: number,
+): TooltipMode {
+  if (displayType === DisplayType.StackedBar) return 'all';
+  return visibleSeriesCount > SINGLE_SERIES_TOOLTIP_THRESHOLD
+    ? 'single'
+    : 'all';
+}
 
 /**
  * Which rows the hover tooltip renders, given its mode and hover state. Returns
@@ -776,7 +803,6 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
-  tooltipMode = 'all',
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -810,13 +836,6 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
-  /**
-   * Hover tooltip behavior: `single` shows only the series nearest the cursor
-   * (dense charts), `all` lists every series at the hovered time, `hidden`
-   * suppresses the hover tooltip. The nearest line is still emphasized either
-   * way.
-   */
-  tooltipMode?: TooltipMode;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -877,6 +896,11 @@ export const MemoChart = memo(function MemoChart({
     [lineData, selectedSeriesNames],
   );
 
+  // Dense line/area charts collapse the hover tooltip to the series under the
+  // cursor; small charts and stacked bars keep the full list. Derived from the
+  // drawn series so legend filtering restores the full tooltip.
+  const tooltipMode = resolveTooltipMode(displayType, visibleLineData.length);
+
   // The series to emphasize: the line nearest the cursor. Cheap to recompute;
   // drives the overlay + the dim-others CSS class only, never the base lines.
   const emphasizedKey = useMemo(() => {
@@ -889,7 +913,8 @@ export const MemoChart = memo(function MemoChart({
     }
     return undefined;
   }, [visibleLineData, nearestSeriesKey]);
-  const dimOthers = emphasizedKey != null && displayType !== 'stacked_bar';
+  const dimOthers =
+    emphasizedKey != null && displayType !== DisplayType.StackedBar;
 
   // Base lines are deliberately independent of the hovered/emphasized series.
   // Rebuilding ~150 Area elements on every cursor move (as the nearest series
@@ -944,7 +969,8 @@ export const MemoChart = memo(function MemoChart({
   // from the dim-others CSS; it carries no fill/dot and is deduped out of the
   // tooltip. Skipped for stacked bars (they occlude by design).
   const emphasisOverlay = useMemo(() => {
-    if (emphasizedKey == null || displayType === 'stacked_bar') return null;
+    if (emphasizedKey == null || displayType === DisplayType.StackedBar)
+      return null;
     const ld = visibleLineData.find(l => l.dataKey === emphasizedKey);
     if (!ld) return null;
     return (

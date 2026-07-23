@@ -6,12 +6,15 @@
 // #2362 where a semantic-hex `lineData[].color` (e.g. the output of
 // `getChartColorInfo()` on HyperDX) would not have a matching gradient
 // def after the `COLORS` palette was unified to Observable 10.
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import type { LineData } from '@/ChartUtils';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
   getVisibleLineData,
   HARD_LINES_LIMIT,
+  resolveTooltipMode,
   selectTooltipRows,
 } from '@/HDXMultiSeriesTimeChart';
 import { COLORS } from '@/utils';
@@ -307,5 +310,34 @@ describe('selectTooltipRows', () => {
       });
       expect(rows).toBeNull();
     });
+  });
+});
+
+// Whether a chart uses the single-series tooltip is decided from the chart type
+// and the count of series actually drawn (after legend selection), not the raw
+// series count. Pins the two easy-to-regress cases: stacked bars and filtered
+// dense charts.
+describe('resolveTooltipMode', () => {
+  it('collapses a dense line/area chart to a single-series tooltip', () => {
+    expect(resolveTooltipMode(DisplayType.Line, 11)).toBe('single');
+    expect(resolveTooltipMode(undefined, 42)).toBe('single');
+  });
+
+  it('keeps the full tooltip at or below the density threshold', () => {
+    expect(resolveTooltipMode(DisplayType.Line, 10)).toBe('all');
+    expect(resolveTooltipMode(DisplayType.Line, 1)).toBe('all');
+  });
+
+  it('never collapses a stacked-bar chart, however many series it has', () => {
+    // Stacked bars capture no per-point Y for the nearest-series pick, and a
+    // single row would hide the rest of the stack.
+    expect(resolveTooltipMode(DisplayType.StackedBar, 50)).toBe('all');
+    expect(resolveTooltipMode(DisplayType.StackedBar, 11)).toBe('all');
+  });
+
+  it('switches on the visible count so legend filtering restores the full tooltip', () => {
+    // The caller passes the drawn count, so a dense chart narrowed by the
+    // legend to a handful of series shows the full comparison again.
+    expect(resolveTooltipMode(DisplayType.Line, 3)).toBe('all');
   });
 });
