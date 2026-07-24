@@ -71,7 +71,7 @@ export class ChartEditorComponent {
     // Dismiss the autocomplete dropdown so it doesn't linger and overlay the
     // next input (e.g. the ORDER BY editor), which otherwise fails the click's
     // actionability check and times out. Uses blur (not Escape) so it can't
-    // close a surrounding modal (the dashboard tile editor). See the helper.
+    // close a surrounding drawer (the dashboard tile editor). See the helper.
     await dismissSqlAutocomplete(this.page);
   }
 
@@ -529,35 +529,50 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Click Apply in the open Display Settings drawer and wait for it to close.
+   * The Display Settings container. In the dashboard tile editor this is a
+   * docked side panel (a Box with `data-testid="display-settings-panel"`); on
+   * Chart Explorer it's an overlay Drawer (`role="dialog"`). Match either so the
+   * shared helpers work in both contexts.
    */
-  async applyDisplaySettings() {
-    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
-    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
-    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
+  get displaySettingsContainer(): Locator {
+    return this.page
+      .getByTestId('display-settings-panel')
+      .or(this.page.getByRole('dialog', { name: 'Display Settings' }));
   }
 
   /**
-   * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
-   * builder charts this caps the number of slices/bars displayed. Opens the
-   * drawer, fills the input, then applies and closes.
+   * Click Apply in the open Display Settings panel/drawer and wait for it to close.
+   */
+  async applyDisplaySettings() {
+    const container = this.displaySettingsContainer;
+    await container.getByRole('button', { name: 'Apply', exact: true }).click();
+    await container.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  /**
+   * Set the "Series Limit" value in the Display Settings panel/drawer. On
+   * pie/bar builder charts this caps the number of slices/bars displayed. Opens
+   * the settings, fills the input, then applies and closes.
    */
   async setSeriesLimit(limit: number) {
     await this.openDisplaySettings();
-    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
-    await drawer.getByLabel('Series Limit').fill(String(limit));
+    await this.displaySettingsContainer
+      .getByLabel('Series Limit')
+      .fill(String(limit));
     await this.applyDisplaySettings();
   }
 
   /**
-   * Open the Display Settings drawer and wait for it to become visible.
+   * Open the Display Settings panel/drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
     await this.page
       .getByRole('button', { name: 'Display Settings', exact: true })
       .click();
-    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
-    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+    await this.displaySettingsContainer.waitFor({
+      state: 'visible',
+      timeout: 5000,
+    });
   }
 
   /**
@@ -611,8 +626,8 @@ export class ChartEditorComponent {
    * preview panel. Waits for the table to be visible before reading.
    */
   async getPreviewTableHeaders(): Promise<string[]> {
-    const modalBody = this.page.locator('.mantine-Modal-body');
-    const table = modalBody.locator('table').first();
+    const drawerBody = this.page.locator('.mantine-Drawer-body');
+    const table = drawerBody.locator('table').first();
     await table.waitFor({ state: 'visible', timeout: 15000 });
     const headers = await table.locator('thead tr th').allTextContents();
     return headers.map(h => h.trim());
@@ -626,8 +641,8 @@ export class ChartEditorComponent {
    * reading.
    */
   async getPreviewTableCellTexts(columnIndex: number): Promise<string[]> {
-    const modalBody = this.page.locator('.mantine-Modal-body');
-    const table = modalBody.locator('table').first();
+    const drawerBody = this.page.locator('.mantine-Drawer-body');
+    const table = drawerBody.locator('table').first();
     await table.waitFor({ state: 'visible', timeout: 15000 });
     await table
       .locator('tbody tr[data-index]')
