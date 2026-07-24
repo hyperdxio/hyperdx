@@ -96,6 +96,7 @@ import {
   IconPencil,
   IconPlayerPlay,
   IconPlus,
+  IconPresentation,
   IconRefresh,
   IconSearch,
   IconSquaresDiagonal,
@@ -2673,7 +2674,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         <Menu.Dropdown>
           <Menu.Label>View</Menu.Label>
           <Menu.Item
-            leftSection={<IconArrowsMaximize size={16} />}
+            leftSection={<IconPresentation size={16} />}
             onClick={enterKioskMode}
             data-testid="enter-kiosk-mode-menu-item"
           >

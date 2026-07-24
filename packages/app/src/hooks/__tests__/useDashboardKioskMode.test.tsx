@@ -46,24 +46,24 @@ describe('useDashboardKioskMode', () => {
     });
   });
 
-  it('exits kiosk mode when its native fullscreen session ends', () => {
+  it('changes kiosk URL state without controlling browser fullscreen', () => {
     const { result } = renderHook(() => useDashboardKioskMode());
 
     act(() => result.current.enterKioskMode());
     expect(mockSetKioskMode).toHaveBeenCalledWith(true);
-    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen).not.toHaveBeenCalled();
 
     fullscreenElement = document.documentElement;
-    act(() => document.dispatchEvent(new Event('fullscreenchange')));
-    fullscreenElement = null;
-    act(() => document.dispatchEvent(new Event('fullscreenchange')));
-
+    act(() => result.current.exitKioskMode());
     expect(mockSetKioskMode).toHaveBeenLastCalledWith(null);
+    expect(exitFullscreen).not.toHaveBeenCalled();
   });
 
-  it('keeps URL-only kiosk mode active across unrelated fullscreen changes', () => {
-    renderHook(() => useDashboardKioskMode());
+  it('keeps kiosk mode active when the user changes fullscreen state', () => {
+    const { result } = renderHook(() => useDashboardKioskMode());
 
+    act(() => result.current.enterKioskMode());
+    mockSetKioskMode.mockClear();
     fullscreenElement = document.body;
     act(() => document.dispatchEvent(new Event('fullscreenchange')));
     fullscreenElement = null;
