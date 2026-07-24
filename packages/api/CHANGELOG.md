@@ -1,5 +1,40 @@
 # @hyperdx/api
 
+## 2.32.0
+
+### Patch Changes
+
+- 01508d1d: fix: Improve and standardize webhook URL validation
+
+  ### `WEBHOOK_HOSTNAME_ALLOWLIST`
+
+  Use this optional setting to permit webhook delivery to a hostname or private/reserved IP address that the SSRF validator would otherwise block. Values are comma-separated. A hostname entry also permits its subdomains, while an IPv4 or IPv6 entry matches only that exact address. The allowlist does not bypass protocol validation, Slack hostname validation, or the exact host-and-port block for configured ClickHouse and MongoDB services.
+
+  For example, this permits `localhost`, any `*.hooks.localhost` hostname, the exact IPv4 address `10.0.0.1`, and the exact IPv6 address `fd00::1`:
+
+  ```env
+  WEBHOOK_HOSTNAME_ALLOWLIST=localhost,hooks.localhost,10.0.0.1,fd00::1
+  ```
+
+- 641175d8: Add MCP client name and version attributes to tool-invocation spans.
+- 00eef721: feat: Implement quantile for exponential histogram metrics
+- eadea332: feat: surface OpenTelemetry span links in the trace view. Trace sources gain an
+  optional `spanLinksValueExpression` field (auto-detected from the OTel `Links`
+  column), and the span detail panel shows a new "Span Links" section. Each link
+  has an "Open trace" action that opens the linked trace in place in the same
+  panel, with a breadcrumb trail you can step back through, and shows the link's
+  trace state and attributes as chips.
+- 5dd6facb: feat: Add exponential histogram metrics support to MCP
+- Updated dependencies [ad27a513]
+- Updated dependencies [00eef721]
+- Updated dependencies [00eef721]
+- Updated dependencies [7a4ad986]
+- Updated dependencies [eadea332]
+- Updated dependencies [9cb69915]
+- Updated dependencies [7d806fb8]
+- Updated dependencies [f5f9cd19]
+  - @hyperdx/common-utils@0.24.0
+
 ## 2.31.0
 
 ### Patch Changes
