@@ -34,7 +34,14 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import {
+  IconCheck,
+  IconCopy,
+  IconKeyboard,
+  IconShare,
+  IconX,
+} from '@tabler/icons-react';
 
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
@@ -50,7 +57,12 @@ import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import { buildShareUrl } from '@/utils/shareLink';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -121,6 +133,19 @@ function SidePanelHeaderActions({
   onToggleFullWidth?: () => void;
 }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleShareCopy = useCallback(async () => {
+    const ok = await copyTextToClipboard(
+      await buildShareUrl(window.location.search),
+    );
+    if (!ok) {
+      notifications.show({ color: 'red', message: CLIPBOARD_ERROR_MESSAGE });
+      return;
+    }
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  }, []);
 
   return (
     <>
@@ -142,26 +167,21 @@ function SidePanelHeaderActions({
             <IconKeyboard size={16} />
           </ActionIcon>
         </Tooltip>
-        <CopyButton
-          value={typeof window !== 'undefined' ? window.location.href : ''}
+        <Tooltip
+          label={shareCopied ? 'Copied!' : 'Share link'}
+          position="bottom"
         >
-          {({ copied, copy }) => (
-            <Tooltip
-              label={copied ? 'Copied!' : 'Share link'}
-              position="bottom"
-            >
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="sm"
-                onClick={copy}
-                aria-label="Share"
-              >
-                <IconShare size={16} />
-              </ActionIcon>
-            </Tooltip>
-          )}
-        </CopyButton>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={handleShareCopy}
+            aria-label="Share"
+            data-testid="side-panel-share-button"
+          >
+            {shareCopied ? <IconCheck size={16} /> : <IconShare size={16} />}
+          </ActionIcon>
+        </Tooltip>
         <Tooltip label="Close" position="bottom">
           <ActionIcon
             variant="subtle"

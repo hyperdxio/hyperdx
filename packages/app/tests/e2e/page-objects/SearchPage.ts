@@ -8,6 +8,7 @@ import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
 import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModalComponent';
+import { ShareButtonComponent } from '../components/ShareButtonComponent';
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
@@ -23,6 +24,7 @@ export class SearchPage {
   readonly sidePanel: SidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly share: ShareButtonComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
@@ -52,6 +54,7 @@ export class SearchPage {
     this.sidePanel = new SidePanelComponent(page, 'row-side-panel');
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.share = new ShareButtonComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');

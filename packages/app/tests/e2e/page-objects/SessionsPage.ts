@@ -4,6 +4,7 @@
  */
 import { Locator, Page } from '@playwright/test';
 
+import { readCopiedLink } from '../utils/clipboard';
 import { DEFAULT_SESSIONS_SOURCE_NAME } from '../utils/constants';
 
 export class SessionsPage {
@@ -73,6 +74,20 @@ export class SessionsPage {
    */
   get sessionSidePanel() {
     return this.page.getByTestId('session-side-panel');
+  }
+
+  /**
+   * The "Share Session" button in the session replay drawer header.
+   */
+  get shareSessionButton() {
+    return this.page.getByTestId('session-share-button');
+  }
+
+  /**
+   * Click "Share Session" and return the URL copied to the clipboard.
+   */
+  async shareAndReadLink(): Promise<string> {
+    return readCopiedLink(this.page, () => this.shareSessionButton.click());
   }
 
   /**

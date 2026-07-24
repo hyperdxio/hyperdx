@@ -135,6 +135,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import ShareLinkButton from './components/ShareLinkButton';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -158,6 +159,7 @@ import {
   parseAsSortingStateString,
   parseAsStringEncoded,
 } from './utils/queryParsers';
+import { freezeTimeRange } from './utils/shareLink';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { EditablePageName } from './EditablePageName';
@@ -1115,6 +1117,13 @@ export function DBSearchPage() {
       setDisplayedTimeInputValue,
       updateInput: !isLive,
     });
+
+  // Build the query string for the Share button, freezing the time range to an
+  // absolute window so recipients see the same data.
+  const getShareSearch = useCallback(
+    () => freezeTimeRange(window.location.search, searchedTimeRange),
+    [searchedTimeRange],
+  );
 
   // Sync url state back with form state
   // (ex. for history navigation)
@@ -2195,6 +2204,7 @@ export function DBSearchPage() {
                 Update
               </Button>
             )}
+            <ShareLinkButton getShareSearch={getShareSearch} />
             {!IS_LOCAL_MODE && (
               <Button
                 data-testid="alerts-button"

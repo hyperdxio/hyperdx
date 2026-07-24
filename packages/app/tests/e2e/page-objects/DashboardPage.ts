@@ -6,6 +6,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
+import { ShareButtonComponent } from '../components/ShareButtonComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { getSqlEditor } from '../utils/locators';
 
@@ -67,6 +68,7 @@ export class DashboardPage {
   readonly page: Page;
   readonly timePicker: TimePickerComponent;
   readonly chartEditor: ChartEditorComponent;
+  readonly share: ShareButtonComponent;
   readonly granularityPicker: Locator;
   readonly searchInput: Locator;
 
@@ -102,6 +104,7 @@ export class DashboardPage {
     this.page = page;
     this.timePicker = new TimePickerComponent(page);
     this.chartEditor = new ChartEditorComponent(page);
+    this.share = new ShareButtonComponent(page);
 
     this.createDashboardButton = page.locator(
       '[data-testid="create-dashboard-button"]',
