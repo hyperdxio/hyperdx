@@ -1,5 +1,34 @@
 # @hyperdx/common-utils
 
+## 0.24.0
+
+### Minor Changes
+
+- 7a4ad986: feat: upgrade filters and autocomplete to intelligently route queries through the best rollup
+- 7d806fb8: Add per-column color to dashboard table tiles. On builder table tiles you can
+  now set a static color on a column and layer ordered conditional rules (for
+  example `> 500` turns the cell red), the table-cell counterpart of the
+  number-tile color. Rules are authored from the column editor and applied per
+  cell at render, reusing the existing palette tokens so colors reflow across
+  light and dark themes.
+
+### Patch Changes
+
+- ad27a513: fix: Support grouping histogram quantile aggregations over non-Attribute columns
+- 00eef721: feat: Support count aggregations over exponential histogram metrics
+- 00eef721: feat: Implement quantile for exponential histogram metrics
+- eadea332: feat: surface OpenTelemetry span links in the trace view. Trace sources gain an
+  optional `spanLinksValueExpression` field (auto-detected from the OTel `Links`
+  column), and the span detail panel shows a new "Span Links" section. Each link
+  has an "Open trace" action that opens the linked trace in place in the same
+  panel, with a breadcrumb trail you can step back through, and shows the link's
+  trace state and attributes as chips.
+- 9cb69915: feat(dashboard): table tile header separator and optional alternate row background
+
+  Add an always-on separator between a table tile's sticky header and its rows so the boundary stays clear as rows scroll underneath. Add a new **Alternate Row Background** display setting (off by default) that zebra-stripes table tiles for easier scanning on wide tables. Both work in light and dark color modes.
+
+- f5f9cd19: fix: Aggregate histogram metrics across selected range for non-timeseries charts
+
 ## 0.23.0
 
 ### Minor Changes
