@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+  HDX-4754 / HDX-4756 — CI-only ClickHouse user override for the evals stack.
+
+  The all-in-one HyperDX image ships a users.d/default-user.xml that restricts
+  the `default` user to localhost (::1 / 127.0.0.1) so the bundled API — which
+  runs in the SAME container — is the only client. In the eval stack the runner
+  is a SEPARATE container that seeds ClickHouse directly over the shared Docker
+  network, so it must be able to authenticate as `default` from a non-local IP.
+
+  This file is mounted into /etc/clickhouse-server/users.d/ AFTER the image's
+  own default-user.xml (files load in alphabetical order; `z-` sorts last) so
+  it wins, re-opening `default` to the internal network with no password.
+
+  This is safe ONLY because the evals stack is a throwaway, network-isolated CI
+  instance with synthetic data. Do NOT reuse this for any real deployment.
+-->
+<clickhouse>
+  <users>
+    <default>
+      <password></password>
+      <networks replace="replace">
+        <ip>::/0</ip>
+      </networks>
+    </default>
+  </users>
+</clickhouse>

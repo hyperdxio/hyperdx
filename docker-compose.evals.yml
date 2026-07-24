@@ -1,0 +1,120 @@
+# HDX-4754 / HDX-4756 — Eval pipeline stack for CI (and local reproduction).
+#
+# Two DISTINCT images on one shared Docker network:
+#   - `hyperdx`      : the all-in-one HyperDX image (ClickHouse + Mongo + OTel +
+#                      API + App in one container) — the isolated feature-branch
+#                      instance under test. Built from docker/hyperdx/Dockerfile,
+#                      target all-in-one-auth (auth is required so the eval
+#                      account/accessKey bootstrap works for the MCP).
+#   - `eval-runner`  : the pre-baked runner (docker/hdx-eval-runner/Dockerfile)
+#                      that drives Setup → Seed → Run → Grade → Report.
+#
+# Networking reconciliation (the subtle bit):
+#   - The runner reaches ClickHouse + API over the shared network via the
+#     `hyperdx` service DNS name: http://hyperdx:8123 and http://hyperdx:8000.
+#   - The HyperDX API queries its OWN bundled ClickHouse at http://localhost:8123
+#     (same container). So the Connection stored during setup uses that self-view
+#     — passed through HDX_EVAL_CONNECTION_CH_URL.
+#
+# Usage (CI drives this via .github/workflows/evals.yml):
+#   docker compose -f docker-compose.evals.yml build
+#   docker compose -f docker-compose.evals.yml up -d hyperdx
+#   # wait for hyperdx healthcheck ...
+#   docker compose -f docker-compose.evals.yml run --rm eval-runner
+
+name: hdx-evals
+
+services:
+  hyperdx:
+    build:
+      context: .
+      dockerfile: docker/hyperdx/Dockerfile
+      target: all-in-one-auth
+      additional_contexts:
+        clickhouse: ./docker/clickhouse
+        otel-collector: ./docker/otel-collector
+        hyperdx: ./docker/hyperdx
+        api: ./packages/api
+        app: ./packages/app
+      args:
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.155.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.61.0}
+        CODE_VERSION: ${CODE_VERSION:-evals-ci}
+    image: hdx-evals-hyperdx:latest
+    environment:
+      HYPERDX_API_PORT: '8000'
+      HYPERDX_APP_PORT: '8080'
+      # Fresh, isolated instance each run — no external state.
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-error}
+      # Let the MCP HTTP endpoint accept the `hyperdx` service DNS name in the
+      # Host header — the eval-runner container reaches it at http://hyperdx:8000
+      # over the shared network, and the MCP SDK's default DNS-rebinding
+      # protection would otherwise reject any non-localhost Host.
+      HYPERDX_MCP_ALLOWED_HOSTS: hyperdx
+    volumes:
+      # Re-open the ClickHouse `default` user to the internal Docker network so
+      # the separate eval-runner container can seed CH directly. The image's own
+      # users.d/default-user.xml clamps `default` to localhost; this override
+      # sorts after it (z-) and wins. CI-only; see the file header.
+      - ./docker/hdx-eval-runner/clickhouse-evals-user.xml:/etc/clickhouse-server/users.d/z-evals-user.xml:ro
+    # Expose to the host too, so the pipeline can also run with the runner as
+    # the GitHub job itself if ever desired. Not required for the compose-run
+    # path (service DNS is used there).
+    ports:
+      - '${HDX_EVALS_API_PORT:-18000}:8000'
+      - '${HDX_EVALS_APP_PORT:-18080}:8080'
+      - '${HDX_EVALS_CH_PORT:-18123}:8123'
+    healthcheck:
+      # The all-in-one auth image serves the app health endpoint on 8080 and the
+      # API on 8000. Gate on the API since that is what the eval harness talks to.
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://localhost:8000/health >/dev/null && curl -fsS
+          http://localhost:8123/ping >/dev/null || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 90s
+    networks:
+      - evals
+
+  eval-runner:
+    build:
+      context: .
+      dockerfile: docker/hdx-eval-runner/Dockerfile
+      args:
+        NODE_VERSION: ${NODE_VERSION:-22.23.1}
+    image: hdx-evals-runner:latest
+    depends_on:
+      hyperdx:
+        condition: service_healthy
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      # Runner's view of the HyperDX instance over the shared network.
+      HDX_EVAL_API_URL: http://hyperdx:8000
+      HDX_EVAL_CH_URL: http://hyperdx:8123
+      # The API's self-view of its bundled ClickHouse (all-in-one container).
+      HDX_EVAL_CONNECTION_CH_URL: http://localhost:8123
+      # M1 knobs — low volume so the skeleton finishes in minutes.
+      HDX_EVAL_SCENARIO: ${HDX_EVAL_SCENARIO:-latency-spike}
+      HDX_EVAL_VOLUME_FACTOR: ${HDX_EVAL_VOLUME_FACTOR:-0.01}
+      HDX_EVAL_RUNS: ${HDX_EVAL_RUNS:-1}
+      HDX_EVAL_MAX_TURNS: ${HDX_EVAL_MAX_TURNS:-15}
+      HDX_EVAL_TIMEOUT_MS: ${HDX_EVAL_TIMEOUT_MS:-600000}
+      HDX_EVAL_MCP: ${HDX_EVAL_MCP:-hyperdx}
+      HDX_EVAL_OUT_COMMENT: /work/eval-output/verdict.md
+      HDX_EVAL_RUN_URL: ${HDX_EVAL_RUN_URL:-}
+      HDX_EVAL_COMMIT_SHA: ${HDX_EVAL_COMMIT_SHA:-}
+    volumes:
+      # Persist runs + rendered verdict to the host so CI can upload artifacts
+      # and post the PR comment.
+      - ${HDX_EVALS_OUTPUT_DIR:-./eval-output}:/work/eval-output
+      - ${HDX_EVALS_RUNS_DIR:-./eval-output/runs}:/work/packages/hdx-eval/runs
+    networks:
+      - evals
+
+networks:
+  evals:
+    driver: bridge

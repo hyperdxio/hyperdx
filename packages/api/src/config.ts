@@ -28,6 +28,17 @@ export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
 export const IS_INLINE_API = env.HDX_PREVIEW_INLINE_API === 'true';
 export const FRONTEND_REDIRECT_BASE = IS_INLINE_API ? '' : FRONTEND_URL;
 export const INGESTION_API_KEY = env.INGESTION_API_KEY ?? '';
+// Extra Host header values the MCP HTTP endpoint should accept, in addition to
+// the SDK's localhost defaults (127.0.0.1 / localhost / ::1). Needed when the
+// MCP is reached over a non-localhost hostname — e.g. in CI the eval runner
+// container talks to the all-in-one HyperDX container via the Docker service
+// DNS name `hyperdx`, so the Host header is `hyperdx` and the SDK's default DNS
+// rebinding protection would otherwise reject it with "Invalid Host". Comma or
+// space separated. Empty by default (unchanged behavior).
+export const MCP_ALLOWED_HOSTS = (env.HYPERDX_MCP_ALLOWED_HOSTS ?? '')
+  .split(/[,\s]+/)
+  .map(s => s.trim())
+  .filter(Boolean);
 // Opt-in: emit the contrib `datadogreceiver` on the collector so a
 // Datadog Agent can ship APM traces (DD trace API -> OTLP -> ClickHouse).
 // Off by default because the receiver has no per-team bearer-token auth like

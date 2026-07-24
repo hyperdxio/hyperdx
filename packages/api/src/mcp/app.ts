@@ -2,6 +2,7 @@ import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
+import { MCP_ALLOWED_HOSTS } from '@/config';
 import { validateUserAccessKey } from '@/middleware/auth';
 import logger from '@/utils/logger';
 import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
@@ -10,7 +11,17 @@ import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
 import { userAgentClientInfo } from './utils/mcpClient';
 
-const app = createMcpExpressApp();
+// When MCP_ALLOWED_HOSTS is set, pass an explicit allowlist so the SDK accepts
+// those Host header values (plus the localhost defaults it always allows).
+// Without it, createMcpExpressApp() defaults to host '127.0.0.1' and rejects
+// any non-localhost Host with "Invalid Host" — which breaks reaching the MCP
+// over a service DNS name (e.g. the CI eval runner hitting `hyperdx:8000`).
+const app =
+  MCP_ALLOWED_HOSTS.length > 0
+    ? createMcpExpressApp({
+        allowedHosts: [...MCP_ALLOWED_HOSTS, '127.0.0.1', 'localhost', '::1'],
+      })
+    : createMcpExpressApp();
 
 const mcpRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute

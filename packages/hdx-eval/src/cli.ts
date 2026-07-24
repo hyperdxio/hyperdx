@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import fs from 'fs';
-import { resolve } from 'path';
+import { join, resolve } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import {
@@ -34,6 +34,7 @@ import {
 import { runCheck, runSetup } from './hyperdx/setup';
 import { columnKeyFor } from './reports/aggregate';
 import { writeBatchSummary } from './reports/store';
+import { computeVerdict, renderVerdictComment } from './reports/verdict';
 import { instrumentBatch, summarizeTimingRecord } from './runs/instrument';
 import { batchDirName } from './runs/path';
 import { writeRun } from './runs/store';
@@ -298,6 +299,14 @@ program
     '--reset-sources',
     'Delete and recreate all eval-* Sources (e.g. to apply new querySettings)',
   )
+  .option(
+    '--connection-ch-url <url>',
+    'ClickHouse HTTP URL as the HyperDX API sees it, when it differs from ' +
+      "the eval runner's --ch-url (e.g. in CI the runner uses http://hyperdx:8123 " +
+      'over the Docker network while the all-in-one API uses http://localhost:8123). ' +
+      'The Connection stored in the API uses this value; the persisted clickhouse ' +
+      'config keeps --ch-url for seeding. Defaults to --ch-url.',
+  )
   .action(
     async (cmdOpts: {
       apiUrl: string;
@@ -306,6 +315,7 @@ program
       credsFile?: string;
       check?: boolean;
       resetSources?: boolean;
+      connectionChUrl?: string;
     }) => {
       const opts = program.opts<GlobalOpts>();
       let email = cmdOpts.email;
@@ -352,6 +362,14 @@ program
 
       const chUrl = opts.chUrl ?? defaultClickHouseUrl();
       const url = new URL(chUrl);
+      let connectionClickhouse: { host: string; port: string } | undefined;
+      if (cmdOpts.connectionChUrl) {
+        const connUrl = new URL(cmdOpts.connectionChUrl);
+        connectionClickhouse = {
+          host: connUrl.hostname,
+          port: connUrl.port || '8123',
+        };
+      }
       console.log(`Setting up HyperDX eval account at ${cmdOpts.apiUrl}`);
       const result = await runSetup({
         apiUrl: cmdOpts.apiUrl,
@@ -363,6 +381,7 @@ program
           user: opts.chUser ?? 'default',
           password: opts.chPassword ?? '',
         },
+        connectionClickhouse,
         resetSources: cmdOpts.resetSources ?? false,
       });
       console.log(`Wrote ${result.configPath}`);
@@ -1053,6 +1072,49 @@ program
     }
     console.log(`\nWrote ${records.length} *.timing.json sidecars.`);
   });
+
+program
+  .command('report-pr <batch>')
+  .description(
+    'Render the M1 completion-only pass/fail verdict + summary as a PR comment ' +
+      "(reads the batch's _summary.json). Always exits 0 — the check is advisory.",
+  )
+  .option(
+    '--out <path>',
+    'Write the rendered Markdown comment to this file (also printed to stdout)',
+  )
+  .option('--run-url <url>', 'Workflow run URL to link in the comment')
+  .option('--commit <sha>', 'Commit SHA the evals ran against')
+  .action(
+    (
+      batch: string,
+      cmdOpts: { out?: string; runUrl?: string; commit?: string },
+    ) => {
+      const dir = resolveBatchDir(batch);
+      const summaryPath = join(dir, '_summary.json');
+      if (!fs.existsSync(summaryPath)) {
+        throw new Error(
+          `No _summary.json in ${dir}. Run \`hdx-eval report ${batch}\` first.`,
+        );
+      }
+      const summary = JSON.parse(
+        fs.readFileSync(summaryPath, 'utf8'),
+      ) as import('./reports/aggregate').BatchSummary;
+      const verdict = computeVerdict(summary);
+      const comment = renderVerdictComment(verdict, {
+        batchLabel: summary.batchDir.split(/[\\/]/).pop(),
+        runUrl: cmdOpts.runUrl,
+        commitSha: cmdOpts.commit,
+      });
+      if (cmdOpts.out) {
+        fs.writeFileSync(cmdOpts.out, comment + '\n', 'utf8');
+        console.error(`Wrote verdict comment to ${cmdOpts.out}`);
+      }
+      // Print the comment to stdout so CI can capture it directly.
+      console.log(comment);
+      // Advisory-only: never fail the build on the verdict itself.
+    },
+  );
 
 program
   .command('report <batch>')
