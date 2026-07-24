@@ -913,8 +913,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await expect(dashboardPage.addButton).toBeHidden();
         await expect(dashboardPage.menuButton).toBeHidden();
         await expect(dashboardPage.firstTileActionsButton).toBeHidden();
-        // Resize handles absent means the grid is locked (no drag/resize in kiosk mode)
-        await expect(dashboardPage.tileResizeHandles).toHaveCount(0);
+        // Resize handles hidden/absent means the grid is locked (no drag/resize in
+        // kiosk mode). react-grid-layout may retain a handle element in the DOM
+        // when isResizable={false} but makes it invisible, so assert hidden rather
+        // than absent (toBeHidden() passes for both CSS-hidden and missing elements).
+        await expect(dashboardPage.tileResizeHandles).toBeHidden();
       });
 
       await test.step('Assert kiosk header with dashboard name and Live status are visible', async () => {
