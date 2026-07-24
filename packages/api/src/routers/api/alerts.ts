@@ -12,6 +12,8 @@ import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import {
   getAlertTransitionsInRange,
+  getRecentAlertGroupSummaries,
+  getRecentAlertGroupSummariesBatch,
   getRecentAlertHistories,
   getRecentAlertHistoriesBatch,
 } from '@/controllers/alertHistory';
@@ -31,13 +33,108 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
 const router = express.Router();
 
 type EnhancedAlert = NonNullable<Awaited<ReturnType<typeof getAlertEnhanced>>>;
+type AlertGroupSummary = Awaited<
+  ReturnType<typeof getRecentAlertGroupSummaries>
+>[number];
+type AlertResponseGroupBy = string | string[];
+
+const futureMutedUntilSchema = z
+  .string()
+  .datetime()
+  .refine(val => new Date(val) > new Date(), {
+    message: 'mutedUntil must be in the future',
+  });
+
+const groupSchema = z.string().refine(value => value.trim().length > 0, {
+  message: 'group must not be empty',
+});
+
+const getGroupByValueExpression = (
+  groupBy: unknown,
+): AlertResponseGroupBy | undefined => {
+  if (typeof groupBy === 'string') {
+    const trimmedGroupBy = groupBy.trim();
+    return trimmedGroupBy.length > 0 ? trimmedGroupBy : undefined;
+  }
+
+  if (Array.isArray(groupBy)) {
+    const groupByValues = groupBy
+      .map(value => {
+        if (typeof value === 'string') {
+          return value;
+        }
+        if (
+          value != null &&
+          typeof value === 'object' &&
+          'valueExpression' in value &&
+          typeof value.valueExpression === 'string'
+        ) {
+          return value.valueExpression;
+        }
+        return undefined;
+      })
+      .filter((value): value is string => value != null && value.length > 0);
+
+    return groupByValues.length > 0 ? groupByValues : undefined;
+  }
+
+  return undefined;
+};
+
+const getConfiguredAlertGroupBy = (
+  alert: EnhancedAlert,
+): AlertResponseGroupBy | undefined => {
+  const alertGroupBy = getGroupByValueExpression(alert.groupBy);
+  if (alertGroupBy != null) {
+    return alertGroupBy;
+  }
+
+  const tile = alert.dashboard?.tiles.find(tile => tile.id === alert.tileId);
+  if (tile?.config != null && 'groupBy' in tile.config) {
+    return getGroupByValueExpression(tile.config.groupBy);
+  }
+
+  return undefined;
+};
 
 const formatAlertResponse = (
   alert: EnhancedAlert,
   history: Omit<IAlertHistory, 'alert'>[],
+  groups?: AlertGroupSummary[],
 ): PreSerialized<AlertsPageItem> => {
+  const formattedGroups = groups?.map(groupSummary => {
+    const groupSilence = alert.silencedGroups?.find(
+      silencedGroup => silencedGroup.group === groupSummary.group,
+    );
+    const groupUnsilence = alert.unsilencedGroups?.find(
+      unsilencedGroup => unsilencedGroup.group === groupSummary.group,
+    );
+
+    return {
+      group: groupSummary.group,
+      state: groupSummary.state,
+      history: groupSummary.history,
+      silenced: groupSilence
+        ? {
+            by: groupSilence.by?.email,
+            at: groupSilence.at,
+            until: groupSilence.until,
+          }
+        : undefined,
+      unsilenced: groupUnsilence
+        ? {
+            by: groupUnsilence.by?.email,
+            at: groupUnsilence.at,
+            parentSilencedAt: groupUnsilence.parentSilencedAt,
+          }
+        : undefined,
+    };
+  });
+
   return {
     history,
+    groupBy: getConfiguredAlertGroupBy(alert),
+    groups: formattedGroups,
     silenced: alert.silenced
       ? {
           by: alert.silenced.by?.email,
@@ -45,6 +142,12 @@ const formatAlertResponse = (
           until: alert.silenced.until,
         }
       : undefined,
+    silencedGroups: alert.silencedGroups?.map(groupSilence => ({
+      group: groupSilence.group,
+      by: groupSilence.by?.email,
+      at: groupSilence.at,
+      until: groupSilence.until,
+    })),
     createdBy: alert.createdBy
       ? pick(alert.createdBy, ['email', 'name'])
       : undefined,
@@ -108,10 +211,18 @@ router.get('/', async (req, res: AlertsExpRes, next) => {
       })),
       20,
     );
+    const groupSummaryMap = await getRecentAlertGroupSummariesBatch(
+      alerts.map(alert => ({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+      })),
+      20,
+    );
 
     const data = alerts.map(alert => {
       const history = historyMap.get(alert._id.toString()) ?? [];
-      return formatAlertResponse(alert, history);
+      const groups = groupSummaryMap.get(alert._id.toString());
+      return formatAlertResponse(alert, history, groups);
     });
 
     sendJson(res, { data });
@@ -145,8 +256,13 @@ router.get(
         interval: alert.interval,
         limit: 20,
       });
+      const groups = await getRecentAlertGroupSummaries({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+        limit: 20,
+      });
 
-      const data = formatAlertResponse(alert, history);
+      const data = formatAlertResponse(alert, history, groups);
 
       sendJson(res, { data });
     } catch (e) {
@@ -257,15 +373,193 @@ router.put(
 );
 
 router.post(
+  '/:id/group-silenced',
+  validateRequest({
+    body: z.object({
+      group: groupSchema,
+      mutedUntil: futureMutedUntilSchema,
+    }),
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null || req.user == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        return res.status(404).json({ error: 'Alert not found' });
+      }
+
+      const silencedGroup = {
+        group: req.body.group,
+        by: req.user._id,
+        at: new Date(),
+        until: new Date(req.body.mutedUntil),
+      };
+
+      alert.silencedGroups = [
+        ...(alert.silencedGroups?.filter(
+          groupSilence => groupSilence.group !== req.body.group,
+        ) ?? []),
+        silencedGroup,
+      ];
+      alert.unsilencedGroups = alert.unsilencedGroups?.filter(
+        groupUnsilence => groupUnsilence.group !== req.body.group,
+      );
+      if (alert.unsilencedGroups?.length === 0) {
+        alert.unsilencedGroups = undefined;
+      }
+      await alert.save();
+
+      res.sendStatus(200);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  '/:id/group-unsilenced',
+  validateRequest({
+    body: z.object({
+      group: groupSchema,
+    }),
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null || req.user == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        return res.status(404).json({ error: 'Alert not found' });
+      }
+      if (
+        alert.silenced == null ||
+        alert.silenced.until.getTime() <= Date.now()
+      ) {
+        return res.status(400).json({
+          error: 'Alert must have an active acknowledgment',
+        });
+      }
+
+      const unsilencedGroup = {
+        group: req.body.group,
+        by: req.user._id,
+        at: new Date(),
+        parentSilencedAt: alert.silenced.at,
+      };
+
+      alert.silencedGroups = alert.silencedGroups?.filter(
+        groupSilence => groupSilence.group !== req.body.group,
+      );
+      if (alert.silencedGroups?.length === 0) {
+        alert.silencedGroups = undefined;
+      }
+      alert.unsilencedGroups = [
+        ...(alert.unsilencedGroups?.filter(
+          groupUnsilence => groupUnsilence.group !== req.body.group,
+        ) ?? []),
+        unsilencedGroup,
+      ];
+      await alert.save();
+
+      res.sendStatus(200);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.delete(
+  '/:id/group-unsilenced',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+    query: z.object({
+      group: groupSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        return res.status(404).json({ error: 'Alert not found' });
+      }
+
+      alert.unsilencedGroups = alert.unsilencedGroups?.filter(
+        groupUnsilence => groupUnsilence.group !== req.query.group,
+      );
+      if (alert.unsilencedGroups?.length === 0) {
+        alert.unsilencedGroups = undefined;
+      }
+      await alert.save();
+
+      res.sendStatus(200);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.delete(
+  '/:id/group-silenced',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+    query: z.object({
+      group: groupSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        return res.status(404).json({ error: 'Alert not found' });
+      }
+
+      alert.silencedGroups = alert.silencedGroups?.filter(
+        groupSilence => groupSilence.group !== req.query.group,
+      );
+      if (alert.silencedGroups?.length === 0) {
+        alert.silencedGroups = undefined;
+      }
+      await alert.save();
+
+      res.sendStatus(200);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
   '/:id/silenced',
   validateRequest({
     body: z.object({
-      mutedUntil: z
-        .string()
-        .datetime()
-        .refine(val => new Date(val) > new Date(), {
-          message: 'mutedUntil must be in the future',
-        }),
+      mutedUntil: futureMutedUntilSchema,
     }),
     params: z.object({
       id: objectIdSchema,
@@ -287,6 +581,7 @@ router.post(
         at: new Date(),
         until: new Date(req.body.mutedUntil),
       };
+      alert.unsilencedGroups = undefined;
       await alert.save();
 
       res.sendStatus(200);
@@ -315,6 +610,7 @@ router.delete(
         return res.status(404).json({ error: 'Alert not found' });
       }
       alert.silenced = undefined;
+      alert.unsilencedGroups = undefined;
       await alert.save();
 
       res.sendStatus(200);

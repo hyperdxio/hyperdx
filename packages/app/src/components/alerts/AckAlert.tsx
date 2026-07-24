@@ -1,16 +1,90 @@
 import * as React from 'react';
 import type { Duration } from 'date-fns';
 import { add } from 'date-fns';
-import { Button, Menu } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconBell } from '@tabler/icons-react';
+import type { QueryClient } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import type { AlertsPageItem } from '@/types';
-import { FormatTime } from '@/useFormatTime';
 import { isAlertSilenceExpired } from '@/utils/alerts';
+
+import { AlertAckMenu } from './AlertAckMenu';
+
+type AlertSilence = AlertsPageItem['silenced'];
+type AlertGroup = NonNullable<AlertsPageItem['groups']>[number];
+
+function isActiveSilence(silence?: AlertSilence) {
+  return silence?.at ? !isAlertSilenceExpired(silence) : false;
+}
+
+export function isGroupMutedByParentAck({
+  group,
+  parentSilenced,
+}: {
+  group: AlertGroup;
+  parentSilenced?: AlertSilence;
+}) {
+  const isParentAckActive = isActiveSilence(parentSilenced);
+  const isGroupAckActive = isActiveSilence(group.silenced);
+  const hasGroupResumeOverride =
+    isParentAckActive &&
+    group.unsilenced?.parentSilencedAt === parentSilenced?.at;
+
+  return (
+    group.state === 'ALERT' &&
+    isParentAckActive &&
+    !isGroupAckActive &&
+    !hasGroupResumeOverride
+  );
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (!(error instanceof Error) || !('response' in error)) return undefined;
+
+  const { response } = error;
+  if (!response || typeof response !== 'object' || !('status' in response)) {
+    return undefined;
+  }
+
+  const { status } = response;
+  return typeof status === 'number' ? status : undefined;
+}
+
+function getAckMutationOptions({
+  alertId,
+  queryClient,
+}: {
+  alertId: string;
+  queryClient: QueryClient;
+}) {
+  return {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: api.getAlertsQueryKey() });
+      queryClient.invalidateQueries({
+        queryKey: api.getAlertQueryKey(alertId),
+      });
+    },
+    onError: (error: unknown) => {
+      const status = getErrorStatus(error);
+      let message =
+        'Failed to update alert acknowledgment, please try again later.';
+
+      if (status === 404) {
+        message = 'Alert not found.';
+      } else if (status === 400) {
+        message = 'Invalid acknowledgment request. Refresh and try again.';
+      }
+
+      notifications.show({
+        color: 'red',
+        message,
+      });
+    },
+  };
+}
 
 export function AckAlert({ alert }: { alert: AlertsPageItem }) {
   const queryClient = useQueryClient();
@@ -18,40 +92,13 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
   const unsilenceAlert = api.useUnsilenceAlert();
 
   const mutateOptions = React.useMemo(
-    () => ({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: api.getAlertsQueryKey() });
-        queryClient.invalidateQueries({
-          queryKey: api.getAlertQueryKey(alert._id),
-        });
-      },
-      onError: (error: any) => {
-        const status = error?.response?.status;
-        let message = 'Failed to silence alert, please try again later.';
-
-        if (status === 404) {
-          message = 'Alert not found.';
-        } else if (status === 400) {
-          message =
-            'Invalid request. Please ensure the silence duration is valid.';
-        }
-
-        notifications.show({
-          color: 'red',
-          message,
-        });
-      },
-    }),
+    () => getAckMutationOptions({ alertId: alert._id, queryClient }),
     [queryClient, alert._id],
   );
 
   const handleUnsilenceAlert = React.useCallback(() => {
     unsilenceAlert.mutate(alert._id || '', mutateOptions);
   }, [alert._id, mutateOptions, unsilenceAlert]);
-
-  const isNoLongerMuted = React.useMemo(() => {
-    return isAlertSilenceExpired(alert.silenced);
-  }, [alert.silenced]);
 
   const handleSilenceAlert = React.useCallback(
     (duration: Duration) => {
@@ -68,123 +115,152 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
     [alert._id, mutateOptions, silenceAlert],
   );
 
-  if (alert.silenced?.at) {
-    return (
-      <ErrorBoundary message="Failed to load alert acknowledgment menu">
-        <Menu>
-          <Menu.Target>
-            <Button
-              size="compact-sm"
-              variant="primary"
-              color={
-                isNoLongerMuted
-                  ? 'var(--color-bg-warning)'
-                  : 'var(--color-bg-success)'
-              }
-              leftSection={<IconBell size={16} />}
-            >
-              Ack&apos;d
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Label py={6}>
-              Acknowledged{' '}
-              {alert.silenced?.by ? (
-                <>
-                  by <strong>{alert.silenced?.by}</strong>
-                </>
-              ) : null}{' '}
-              on <br />
-              <FormatTime value={alert.silenced?.at} />
-              .<br />
-            </Menu.Label>
+  return (
+    <ErrorBoundary message="Failed to load alert acknowledgment menu">
+      <AlertAckMenu
+        isPending={silenceAlert.isPending || unsilenceAlert.isPending}
+        onSilence={handleSilenceAlert}
+        onUnsilence={handleUnsilenceAlert}
+        silenced={alert.silenced}
+        state={alert.state}
+      />
+    </ErrorBoundary>
+  );
+}
 
-            <Menu.Label py={6}>
-              {isNoLongerMuted ? (
-                'Alert resumed.'
-              ) : (
-                <>
-                  Resumes <FormatTime value={alert.silenced.until} />.
-                </>
-              )}
-            </Menu.Label>
-            <Menu.Item
-              lh="1"
-              py={8}
-              color="orange"
-              onClick={handleUnsilenceAlert}
-              disabled={unsilenceAlert.isPending}
-            >
-              {isNoLongerMuted ? 'Unacknowledge' : 'Resume alert'}
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </ErrorBoundary>
+export function AckAlertGroup({
+  alertId,
+  group,
+  parentSilenced,
+}: {
+  alertId: string;
+  group: AlertGroup;
+  parentSilenced?: AlertSilence;
+}) {
+  const queryClient = useQueryClient();
+  const silenceAlertGroup = api.useSilenceAlertGroup();
+  const unsilenceAlertGroup = api.useUnsilenceAlertGroup();
+  const resumeAlertGroup = api.useResumeAlertGroup();
+  const clearAlertGroupResume = api.useClearAlertGroupResume();
+
+  const mutateOptions = React.useMemo(
+    () => getAckMutationOptions({ alertId, queryClient }),
+    [queryClient, alertId],
+  );
+
+  const isParentAckActive = React.useMemo(
+    () => isActiveSilence(parentSilenced),
+    [parentSilenced],
+  );
+
+  const isGroupAckActive = isActiveSilence(group.silenced);
+
+  const hasGroupResumeOverride =
+    isParentAckActive &&
+    group.unsilenced?.parentSilencedAt === parentSilenced?.at;
+
+  const isMutedByParentAck = isGroupMutedByParentAck({
+    group,
+    parentSilenced,
+  });
+  const effectiveSilenced = isGroupAckActive
+    ? group.silenced
+    : isMutedByParentAck
+      ? parentSilenced
+      : group.silenced;
+
+  const secondarySilenced =
+    group.state === 'ALERT' &&
+    isGroupAckActive &&
+    isParentAckActive &&
+    !hasGroupResumeOverride
+      ? parentSilenced
+      : undefined;
+
+  const handleUnsilenceAlertGroup = React.useCallback(() => {
+    unsilenceAlertGroup.mutate(
+      {
+        alertId,
+        group: group.group,
+      },
+      mutateOptions,
     );
-  }
+  }, [alertId, group.group, mutateOptions, unsilenceAlertGroup]);
 
-  if (alert.state === 'ALERT') {
-    return (
-      <ErrorBoundary message="Failed to load alert acknowledgment menu">
-        <Menu disabled={silenceAlert.isPending}>
-          <Menu.Target>
-            <Button size="compact-sm" variant="secondary">
-              Ack
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Label lh="1" py={6}>
-              Acknowledge and silence for
-            </Menu.Label>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  minutes: 30,
-                })
-              }
-            >
-              30 minutes
-            </Menu.Item>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  hours: 1,
-                })
-              }
-            >
-              1 hour
-            </Menu.Item>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  hours: 6,
-                })
-              }
-            >
-              6 hours
-            </Menu.Item>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  hours: 24,
-                })
-              }
-            >
-              24 hours
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </ErrorBoundary>
+  const handleResumeAlertGroup = React.useCallback(() => {
+    resumeAlertGroup.mutate(
+      {
+        alertId,
+        group: group.group,
+      },
+      mutateOptions,
     );
-  }
+  }, [alertId, group.group, mutateOptions, resumeAlertGroup]);
 
-  return null;
+  const handleClearAlertGroupResume = React.useCallback(() => {
+    clearAlertGroupResume.mutate(
+      {
+        alertId,
+        group: group.group,
+      },
+      mutateOptions,
+    );
+  }, [alertId, clearAlertGroupResume, group.group, mutateOptions]);
+
+  const handleSilenceAlertGroup = React.useCallback(
+    (duration: Duration) => {
+      // eslint-disable-next-line no-restricted-syntax
+      const mutedUntil = add(new Date(), duration);
+      silenceAlertGroup.mutate(
+        {
+          alertId,
+          group: group.group,
+          mutedUntil: mutedUntil.toISOString(),
+        },
+        mutateOptions,
+      );
+    },
+    [alertId, group.group, mutateOptions, silenceAlertGroup],
+  );
+
+  return (
+    <ErrorBoundary message="Failed to load alert group acknowledgment menu">
+      <AlertAckMenu
+        acknowledgedButtonIcon={<IconBell size={16} />}
+        acknowledgedButtonLabel={isMutedByParentAck ? 'Muted' : "Ack'd"}
+        acknowledgedButtonVariant={isMutedByParentAck ? 'subtle' : 'primary'}
+        canUnsilence={isMutedByParentAck || group.silenced != null}
+        description={isMutedByParentAck ? 'Muted by parent ack.' : undefined}
+        isPending={
+          silenceAlertGroup.isPending ||
+          unsilenceAlertGroup.isPending ||
+          resumeAlertGroup.isPending ||
+          clearAlertGroupResume.isPending
+        }
+        onSilence={handleSilenceAlertGroup}
+        onResetToInherited={
+          hasGroupResumeOverride
+            ? handleClearAlertGroupResume
+            : isGroupAckActive && isParentAckActive
+              ? handleUnsilenceAlertGroup
+              : undefined
+        }
+        onUnsilence={
+          isParentAckActive ? handleResumeAlertGroup : handleUnsilenceAlertGroup
+        }
+        secondarySilenced={secondarySilenced}
+        secondarySilencedLabel="Parent alert acknowledgment also exists"
+        silenced={effectiveSilenced}
+        silencedLabel={
+          isMutedByParentAck ? 'Parent ack' : 'This group is acknowledged'
+        }
+        silenceOptionsLabel={
+          effectiveSilenced?.at ? 'Acknowledge this group for' : undefined
+        }
+        state={group.state}
+        unacknowledgedButtonIcon={<IconBell size={16} />}
+        unsilenceLabel={isParentAckActive ? 'Resume group' : undefined}
+      />
+    </ErrorBoundary>
+  );
 }

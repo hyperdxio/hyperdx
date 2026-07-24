@@ -123,6 +123,50 @@ const api = {
       },
     });
   },
+  useSilenceAlertGroup() {
+    return useMutation<
+      void,
+      Error,
+      { alertId: string; group: string; mutedUntil: string }
+    >({
+      mutationFn: async ({ alertId, group, mutedUntil }) => {
+        await server(`alerts/${alertId}/group-silenced`, {
+          method: 'POST',
+          json: { group, mutedUntil },
+        });
+      },
+    });
+  },
+  useUnsilenceAlertGroup() {
+    return useMutation<void, Error, { alertId: string; group: string }>({
+      mutationFn: async ({ alertId, group }) => {
+        await server(`alerts/${alertId}/group-silenced`, {
+          method: 'DELETE',
+          searchParams: { group },
+        });
+      },
+    });
+  },
+  useResumeAlertGroup() {
+    return useMutation<void, Error, { alertId: string; group: string }>({
+      mutationFn: async ({ alertId, group }) => {
+        await server(`alerts/${alertId}/group-unsilenced`, {
+          method: 'POST',
+          json: { group },
+        });
+      },
+    });
+  },
+  useClearAlertGroupResume() {
+    return useMutation<void, Error, { alertId: string; group: string }>({
+      mutationFn: async ({ alertId, group }) => {
+        await server(`alerts/${alertId}/group-unsilenced`, {
+          method: 'DELETE',
+          searchParams: { group },
+        });
+      },
+    });
+  },
   usePresetDashboardFilters(
     presetDashboard: PresetDashboard,
     sourceId: string,

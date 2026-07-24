@@ -252,6 +252,12 @@ export type ExternalAlert = {
     at: string;
     until: string;
   };
+  silencedGroups?: {
+    group: string;
+    by?: string;
+    at: string;
+    until: string;
+  }[];
   executionErrors?: {
     timestamp: string;
     type: AlertErrorType;
@@ -305,6 +311,17 @@ function transformSilencedToExternalSilenced(
     : undefined;
 }
 
+function transformSilencedGroupsToExternalSilencedGroups(
+  silencedGroups: AlertDocumentObject['silencedGroups'],
+): ExternalAlert['silencedGroups'] {
+  return silencedGroups?.map(group => ({
+    group: group.group,
+    by: group.by?.toString(),
+    at: group.at.toISOString(),
+    until: group.until.toISOString(),
+  }));
+}
+
 function transformErrorsToExternalErrors(
   errors: AlertDocumentObject['executionErrors'],
 ): ExternalAlert['executionErrors'] {
@@ -350,6 +367,9 @@ export function translateAlertDocumentToExternalAlert(
     savedSearchId: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy,
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
+    silencedGroups: transformSilencedGroupsToExternalSilencedGroups(
+      alertObj.silencedGroups,
+    ),
     executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
     createdAt: hasCreatedAt(alertObj)
       ? alertObj.createdAt.toISOString()

@@ -23,6 +23,79 @@ jest.mock('@/tasks/checkAlerts/providers', () => {
   };
 });
 
+describe('getAlertNotificationSuppression', () => {
+  const now = new Date('2026-07-20T12:00:00.000Z');
+  const parentSilencedAt = new Date('2026-07-20T11:00:00.000Z');
+  const parentSilenced = {
+    at: parentSilencedAt,
+    until: new Date('2026-07-20T13:00:00.000Z'),
+  };
+
+  it('suppresses a group using the active alert acknowledgment by default', () => {
+    expect(
+      checkAlerts.getAlertNotificationSuppression(
+        { silenced: parentSilenced },
+        'service:app',
+        now.getTime(),
+      ),
+    ).toEqual({ type: 'alert', silenced: parentSilenced });
+  });
+
+  it('allows a group resumed against the current alert acknowledgment', () => {
+    expect(
+      checkAlerts.getAlertNotificationSuppression(
+        {
+          silenced: parentSilenced,
+          unsilencedGroups: [
+            {
+              group: 'service:app',
+              at: new Date('2026-07-20T11:30:00.000Z'),
+              parentSilencedAt,
+            },
+          ],
+        },
+        'service:app',
+        now.getTime(),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('ignores a group resume from an older alert acknowledgment', () => {
+    expect(
+      checkAlerts.getAlertNotificationSuppression(
+        {
+          silenced: parentSilenced,
+          unsilencedGroups: [
+            {
+              group: 'service:app',
+              at: new Date('2026-07-20T11:30:00.000Z'),
+              parentSilencedAt: new Date('2026-07-19T11:00:00.000Z'),
+            },
+          ],
+        },
+        'service:app',
+        now.getTime(),
+      ),
+    ).toEqual({ type: 'alert', silenced: parentSilenced });
+  });
+
+  it('still suppresses a group using an active group acknowledgment', () => {
+    const groupSilenced = {
+      group: 'service:app',
+      at: new Date('2026-07-20T11:30:00.000Z'),
+      until: new Date('2026-07-20T12:30:00.000Z'),
+    };
+
+    expect(
+      checkAlerts.getAlertNotificationSuppression(
+        { silencedGroups: [groupSilenced] },
+        'service:app',
+        now.getTime(),
+      ),
+    ).toEqual({ type: 'group', silenced: groupSilenced });
+  });
+});
+
 describe('CheckAlertTask', () => {
   describe('execute', () => {
     let mockAlertProvider: jest.Mocked<AlertProvider>;

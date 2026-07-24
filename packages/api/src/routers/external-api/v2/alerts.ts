@@ -98,6 +98,17 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           description: Silence end timestamp.
  *           format: date-time
  *           example: "2026-03-20T08:00:00.000Z"
+ *     AlertSilencedGroup:
+ *       allOf:
+ *         - $ref: '#/components/schemas/AlertSilenced'
+ *         - type: object
+ *           required:
+ *             - group
+ *           properties:
+ *             group:
+ *               type: string
+ *               description: Exact group key being silenced.
+ *               example: "service:api"
  *     AlertChannelWebhook:
  *       type: object
  *       required:
@@ -220,6 +231,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *               $ref: '#/components/schemas/AlertSilenced'
  *               description: Silencing metadata.
  *               nullable: true
+ *             silencedGroups:
+ *               type: array
+ *               nullable: true
+ *               description: Stored per-group silences, if any.
+ *               items:
+ *                 $ref: '#/components/schemas/AlertSilencedGroup'
  *             executionErrors:
  *               type: array
  *               nullable: true
