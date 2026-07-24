@@ -11,14 +11,27 @@
       "dependsOn": ["^build"]
     },
     "ci:build": {
-      "dependsOn": ["^ci:build"]
+      "dependsOn": ["^ci:build"],
+      "inputs": ["production", "^production"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "ci:lint": {
+      "dependsOn": ["^ci:build"],
+      "inputs": ["default", "^production"]
     }
   },
   "tasksRunnerOptions": {
     "default": {
       "runner": "nx/tasks-runners/default",
       "options": {
-        "cacheableOperations": ["build", "dev:build", "lint", "test"]
+        "cacheableOperations": [
+          "build",
+          "dev:build",
+          "lint",
+          "test",
+          "ci:build",
+          "ci:lint"
+        ]
       }
     }
   },
@@ -31,6 +44,10 @@
       "!{projectRoot}/jest.config.[jt]s",
       "!{projectRoot}/eslint.config.mjs"
     ],
-    "sharedGlobals": []
+    "sharedGlobals": [
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/.prettierrc",
+      "{workspaceRoot}/.prettierignore"
+    ]
   }
 }
