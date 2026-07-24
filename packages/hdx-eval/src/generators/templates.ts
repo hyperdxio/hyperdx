@@ -964,7 +964,8 @@ export function serviceOpsDebugLog(args: {
     | 'inventory-service'
     | 'pricing-service'
     | 'shipping-service'
-    | 'recommendation-service';
+    | 'recommendation-service'
+    | 'search-service';
 }): { body: string; attrs: Record<string, string>; level: string } {
   const { rng, nowMs, serviceName } = args;
   let msg: string;
@@ -1007,6 +1008,18 @@ export function serviceOpsDebugLog(args: {
         'shipping.weight_g': rng.intRange(50, 18000),
         'shipping.rate_cents': rng.intRange(299, 4999),
         'shipping.eta_days': rng.intRange(1, 9),
+      };
+      break;
+    }
+    case 'search-service': {
+      eventName = 'search.query';
+      msg = 'search.query';
+      extra = {
+        'search.index': rng.pick(['products_v9', 'products_v9_alias']),
+        'search.query_hash': rng.hex(8),
+        'search.hits': rng.intRange(0, 4000),
+        'search.shards': rng.intRange(3, 12),
+        'search.took_ms': rng.intRange(2, 140),
       };
       break;
     }

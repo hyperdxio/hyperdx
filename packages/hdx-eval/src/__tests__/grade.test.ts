@@ -270,14 +270,24 @@ describe('gradeBatch transcript-aware adoption checks', () => {
             isError: false,
             input: { name: 'process.runtime.jvm.gc.pause' },
           },
+          {
+            name: 'mcp__hyperdx__clickstack_timeseries',
+            isError: false,
+            input: {
+              metricType: 'gauge',
+              metric: 'process.runtime.jvm.memory.used',
+              groupBy: ['k8s.pod.name', 'jvm.memory.pool.name'],
+            },
+          },
         ],
         finalAnswer: 'JVM heap leak on recommendation-service.',
       }),
     );
     const result = await gradeBatch(batchDir, { skipJudge: true });
     const grade: GradeRecord = result.graded[0];
-    // All three transcript checks hit (used a metric tool, described the JVM
-    // memory metric, described the GC-pause metric).
+    // All four transcript checks hit (used a metric tool, described the JVM
+    // memory metric, described the GC-pause metric, grouped memory by
+    // pod/pool).
     expect(grade.adoption).toBeDefined();
     expect(grade.adoption!.score).toBeCloseTo(1, 5);
     expect(grade.adoption!.hits.every(h => h.satisfied)).toBe(true);
