@@ -25,6 +25,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       password: this.password,
       request_timeout: this.requestTimeout,
       application: this.application,
+      use_multipart_params_auto: true,
     });
   }
 

@@ -3,13 +3,20 @@ import type { RunRecord } from '@/harness/types';
 import { buildAggregate, type GradedRunPair } from '@/reports/aggregate';
 import { renderMarkdownReport } from '@/reports/markdown';
 
-function pair(scenario: string, mcp: string, i: number): GradedRunPair {
+function pair(
+  scenario: string,
+  mcp: string,
+  i: number,
+  plugin = 'none',
+  adoption?: { score: number; hits: Array<{ id: string; satisfied: boolean }> },
+): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
-    runId: `${scenario}-${mcp}-${i}`,
+    runId: `${scenario}-${mcp}-${plugin}-${i}`,
     scenario,
     mcp,
     model: 'claude-sonnet-4-6',
+    plugin,
     runIndex: i,
     seed: 42,
     startedAt: '2026-05-09T07:50:00.000Z',
@@ -52,6 +59,17 @@ function pair(scenario: string, mcp: string, i: number): GradedRunPair {
     gradedAt: '',
     judgeModel: 'claude-opus-4-7',
   };
+  if (adoption) {
+    grade.adoption = {
+      score: adoption.score,
+      hits: adoption.hits.map(h => ({
+        id: h.id,
+        weight: 1,
+        matched: h.satisfied,
+        satisfied: h.satisfied,
+      })),
+    };
+  }
   return { run, grade };
 }
 
@@ -105,6 +123,11 @@ describe('renderMarkdownReport', () => {
     expect(md).toContain('names_root');
   });
 
+  it('omits the adoption row and breakdown when no cell has adoption', () => {
+    expect(md).not.toContain('Adoption (tool use)');
+    expect(md).not.toContain('Adoption per-check');
+  });
+
   it('uses the batch basename in the title', () => {
     expect(md.split('\n')[0]).toContain('2026-05-09T07-50-58-566Z');
   });
@@ -112,5 +135,79 @@ describe('renderMarkdownReport', () => {
   it('shows MCPs and baseline in the header', () => {
     expect(md).toContain('MCPs: clickhouse, hyperdx');
     expect(md).toContain('Baseline: clickhouse');
+  });
+});
+
+describe('renderMarkdownReport with adoption data', () => {
+  const adopt = (score: number, used: boolean, named: boolean) => ({
+    score,
+    hits: [
+      { id: 'used_metric_tool', satisfied: used },
+      { id: 'named_jvm_memory', satisfied: named },
+    ],
+  });
+  const summary = buildAggregate({
+    batchDir: '/tmp/2026-05-09T07-50-58-566Z',
+    pairs: [
+      pair(
+        'metric-saturation',
+        'clickhouse',
+        0,
+        'none',
+        adopt(0, false, false),
+      ),
+      pair('metric-saturation', 'hyperdx', 0, 'none', adopt(1, true, true)),
+    ],
+  });
+  const md = renderMarkdownReport(summary);
+
+  it('adds an "Adoption (tool use)" row to the scenario metrics table', () => {
+    expect(md).toContain('Adoption (tool use)');
+  });
+
+  it('emits an adoption per-check breakdown with the check ids and a delta', () => {
+    expect(md).toContain('Adoption per-check (usage rate)');
+    expect(md).toContain('used_metric_tool');
+    expect(md).toContain('named_jvm_memory');
+    // hyperdx (challenger) adoption 1.0 vs clickhouse (baseline) 0.0 → +100%.
+    expect(md).toContain('+100%');
+  });
+});
+
+describe('renderMarkdownReport with plugin arms', () => {
+  const summary = buildAggregate({
+    batchDir: '/tmp/2026-05-09T07-50-58-566Z',
+    pairs: [
+      pair('error-root-cause', 'hyperdx', 0),
+      pair('error-root-cause', 'hyperdx', 0, 'myplugin'),
+    ],
+  });
+  const md = renderMarkdownReport(summary);
+
+  it('uses plugin column keys and the mcp/plugin format hint in the header', () => {
+    expect(md).toContain(
+      'Columns: hyperdx/myplugin, hyperdx/none  _(mcp/plugin)_',
+    );
+    expect(md).toContain('Baseline: hyperdx/myplugin');
+  });
+
+  it('renders a delta column for the challenger plugin arm', () => {
+    expect(md).toContain('Δ (hyperdx/none)');
+  });
+});
+
+describe('renderMarkdownReport with model and plugin arms', () => {
+  const modelPair = pair('error-root-cause', 'hyperdx', 0);
+  modelPair.run.model = 'claude-haiku-4-5';
+  const summary = buildAggregate({
+    batchDir: '/tmp/2026-05-09T07-50-58-566Z',
+    pairs: [modelPair, pair('error-root-cause', 'hyperdx', 0, 'myplugin')],
+  });
+  const md = renderMarkdownReport(summary);
+
+  it('uses the mcp/model+plugin format hint when both vary', () => {
+    expect(md).toContain('_(mcp/model+plugin)_');
+    expect(md).toContain('hyperdx/claude-haiku-4-5+none');
+    expect(md).toContain('hyperdx/claude-sonnet-4-6+myplugin');
   });
 });

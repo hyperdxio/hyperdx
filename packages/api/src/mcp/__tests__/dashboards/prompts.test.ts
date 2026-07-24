@@ -72,6 +72,9 @@ describe('MCP Dashboard Prompts', () => {
       expect(metricsBody).toMatch(/gauge\s+Use aggFn:"last_value"/);
       expect(metricsBody).toMatch(/sum\s+Use aggFn:"increase"/);
       expect(metricsBody).toMatch(/histogram\s+Use aggFn:"quantile"/);
+      expect(metricsBody).toMatch(
+        /exponential histogram\s+Use aggFn:"quantile"/,
+      );
       // The 20-group cap on increase + groupBy is documented.
       expect(metricsBody).toMatch(/top 20 groups/);
       // The four-tool discovery chain is documented in order.
@@ -324,13 +327,13 @@ describe('MCP Dashboard Prompts', () => {
       const checklistIdx = prompt.indexOf('== DESIGN CHECKLIST ==');
       const adaptIdx = prompt.indexOf('== ADAPT, DO NOT COPY ==');
       const checklistBody = prompt.slice(checklistIdx, adaptIdx);
-      // Thirteen rules: the original ten plus GROUP BY HAS NO ALIAS HOOK
-      // (rule 3), VALIDATE EVERY TILE AFTER SAVE (rule 12), and NO
-      // TITLE-RECAP MARKDOWN TILE (rule 13). Each came out of a live
-      // verification pass after watching Claude reliably ignore the soft
-      // "should" formulations or hit a schema gap the earlier checklist
-      // did not call out.
-      for (let i = 1; i <= 13; i++) {
+      // Fourteen rules: the original ten plus GROUP BY HAS NO ALIAS HOOK
+      // (rule 3), VALIDATE EVERY TILE AFTER SAVE (rule 12), NO
+      // TITLE-RECAP MARKDOWN TILE (rule 13), and SIZE TILES TO FIT THEIR
+      // CONTENT (rule 14). Each came out of a live verification pass after
+      // watching Claude reliably ignore the soft "should" formulations or
+      // hit a schema gap the earlier checklist did not call out.
+      for (let i = 1; i <= 14; i++) {
         expect(checklistBody).toMatch(new RegExp(`^${i}\\. `, 'm'));
       }
       expect(prompt).toContain('ADAPT, DO NOT COPY');
@@ -373,6 +376,15 @@ describe('MCP Dashboard Prompts', () => {
       expect(checklistBody).toMatch(/id: "kpis"/);
       expect(checklistBody).toMatch(/id: "trends"/);
       expect(checklistBody).toMatch(/id: "errors"/);
+      // Rule 14 teaches per-displayType tile sizing. Claude reliably left
+      // every tile at the 12x4 default, clipping tables and search lists
+      // and leaving number tiles oversized; the rule has to name concrete
+      // per-type w/h ranges so the model picks deliberate sizes.
+      expect(checklistBody).toMatch(/SIZE TILES TO FIT THEIR CONTENT/);
+      expect(checklistBody).toMatch(/number tiles stay small \(w 6-8, h 3-4\)/);
+      expect(checklistBody).toMatch(
+        /tables and search lists want the full row/,
+      );
     });
 
     it('walks the workflow through six steps including read-existing and group-into-containers', () => {

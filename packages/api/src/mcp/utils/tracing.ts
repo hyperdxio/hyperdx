@@ -1,6 +1,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { McpContext, ToolResult } from '@/mcp/tools/types';
+import type { McpErrorCategory, McpErrorResult } from '@/mcp/utils/errors';
+import { getErrorCategory } from '@/mcp/utils/errors';
 import {
   getCounter,
   getHistogram,
@@ -25,7 +27,7 @@ const toolErrorCounter = getCounter('hyperdx.mcp.tool.errors', {
  *
  * The returned function signature is a strict subset of the SDK's
  * `ToolCallback`: it accepts `(args, _extra?)` and returns
- * `Promise<CallToolResult>`.  The extra parameter is accepted but unused.
+ * `Promise<CallToolResult>`. The extra parameter is accepted but unused.
  */
 export function withToolTracing<TArgs>(
   toolName: string,
@@ -33,10 +35,14 @@ export function withToolTracing<TArgs>(
   handler: (args: TArgs) => Promise<ToolResult>,
 ): (args: TArgs, _extra?: unknown) => Promise<CallToolResult> {
   return async (args: TArgs) => {
+    const { name: clientName, version: clientVersion } =
+      context.mcpClient ?? {};
     const logContext = {
       tool: toolName,
       teamId: context.teamId,
       userId: context.userId,
+      mcpClientName: clientName,
+      mcpClientVersion: clientVersion,
     };
 
     return withSpan(
@@ -46,6 +52,12 @@ export function withToolTracing<TArgs>(
         span.setAttribute('mcp.tool.name', toolName);
         span.setAttribute('mcp.team.id', context.teamId);
         span.setAttribute('mcp.user.id', context.userId);
+        if (clientName) {
+          span.setAttribute('mcp.client.name', clientName);
+        }
+        if (clientVersion) {
+          span.setAttribute('mcp.client.version', clientVersion);
+        }
 
         logger.info(logContext, `MCP tool invoked: ${toolName}`);
 
@@ -54,11 +66,20 @@ export function withToolTracing<TArgs>(
           const durationMs = Date.now() - startTime;
 
           if (result.isError) {
+            // Default to 'server' when category is not set — safe default
+            // that surfaces un-classified errors in alerts.
+            const errorCategory: McpErrorCategory =
+              getErrorCategory(result as McpErrorResult) ?? 'server';
+
             span.setStatus({ code: SpanStatusCode.ERROR });
             span.setAttribute('mcp.tool.error', true);
-            toolErrorCounter.add(1, { tool: toolName });
+            span.setAttribute('mcp.tool.error_category', errorCategory);
+            toolErrorCounter.add(1, {
+              tool: toolName,
+              error_category: errorCategory,
+            });
             logger.warn(
-              { ...logContext, durationMs },
+              { ...logContext, durationMs, errorCategory },
               `MCP tool error: ${toolName}`,
             );
           } else {
@@ -75,8 +96,12 @@ export function withToolTracing<TArgs>(
         } catch (err) {
           const durationMs = Date.now() - startTime;
           span.setAttribute('mcp.tool.duration_ms', durationMs);
+          span.setAttribute('mcp.tool.error_category', 'server');
           toolDurationHistogram.record(durationMs, { tool: toolName });
-          toolErrorCounter.add(1, { tool: toolName });
+          toolErrorCounter.add(1, {
+            tool: toolName,
+            error_category: 'server',
+          });
 
           logger.error(
             { ...logContext, durationMs, error: err },

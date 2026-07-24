@@ -1,11 +1,17 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
-import type { McpDefinition, McpKind } from '@/harness/types';
+import {
+  type McpDefinition,
+  type McpKind,
+  PLUGIN_NONE,
+  type PluginDefinition,
+} from '@/harness/types';
 
 type ScenarioSourceIds = {
   tracesSourceId: string;
   logsSourceId: string;
+  metricsSourceId?: string;
 };
 
 /**
@@ -21,6 +27,8 @@ type HyperdxApiConfig = {
 export type EvalConfig = {
   /** Registry of MCP definitions keyed by a free-form name. */
   mcps: Record<McpKind, McpDefinition>;
+  /** Registry of Claude Code plugin definitions keyed by a free-form name. */
+  plugins?: Record<string, PluginDefinition>;
   /** Per-scenario HyperDX Source IDs (only needed when an MCP points at
    *  HyperDX and the Sources must exist). */
   scenarios?: Record<string, ScenarioSourceIds>;
@@ -41,6 +49,16 @@ export type EvalConfig = {
    * pass `--live` to ignore the saved value and use wall-clock time.
    */
   anchorTime?: string;
+  /** Grading (LLM-as-judge) defaults for this repo. */
+  grading?: {
+    /**
+     * Default judge model spec in `provider:model` form (e.g. `openai:gpt-4o`
+     * or `anthropic:claude-opus-4-7`). A bare model name defaults to the
+     * anthropic provider. The `--judge-model` CLI flag overrides this; this in
+     * turn overrides the framework's built-in default.
+     */
+    judgeModel?: string;
+  };
 };
 
 const CONFIG_FILENAME = 'eval.config.json';
@@ -96,6 +114,32 @@ export function getMcpDefinition(
     throw new Error(
       `MCP "${name}" not found in config. Available: ${available}`,
     );
+  }
+  return def;
+}
+
+/** Return all plugin names defined in the config. */
+export function configPluginNames(config: EvalConfig): string[] {
+  return Object.keys(config.plugins ?? {});
+}
+
+/** Get a single plugin definition by name, or throw. Validates that exactly
+ *  one of `url`/`dir` is set. */
+export function getPluginDefinition(
+  config: EvalConfig,
+  name: string,
+): PluginDefinition {
+  const def = config.plugins?.[name];
+  if (!def) {
+    const available = configPluginNames(config).join(', ') || '(none defined)';
+    throw new Error(
+      `Plugin "${name}" not found in config. Available: ${available}`,
+    );
+  }
+  const hasUrl = typeof def.url === 'string' && def.url.length > 0;
+  const hasDir = typeof def.dir === 'string' && def.dir.length > 0;
+  if (hasUrl === hasDir) {
+    throw new Error(`Plugin "${name}" must set exactly one of 'url' or 'dir'.`);
   }
   return def;
 }
@@ -177,6 +221,55 @@ function validateConfig(raw: unknown, path: string): EvalConfig {
     if (typeof d.label !== 'string' || !d.label) {
       throw new Error(
         `Eval config 'mcps.${name}.label' must be a non-empty string`,
+      );
+    }
+  }
+
+  // Validate the optional `plugins` section.
+  const plugins = obj.plugins as Record<string, unknown> | undefined;
+  if (plugins !== undefined) {
+    if (typeof plugins !== 'object' || plugins === null) {
+      throw new Error(`Eval config at ${path} 'plugins' must be an object`);
+    }
+    for (const [name, def] of Object.entries(plugins)) {
+      if (name === PLUGIN_NONE) {
+        throw new Error(
+          `Eval config 'plugins' must not use the reserved name ` +
+            `"${PLUGIN_NONE}" — it always means the no-plugin baseline, so ` +
+            `a plugin with that name could never be selected`,
+        );
+      }
+      if (!def || typeof def !== 'object') {
+        throw new Error(`Eval config 'plugins.${name}' must be an object`);
+      }
+      const d = def as Record<string, unknown>;
+      if (typeof d.label !== 'string' || !d.label) {
+        throw new Error(
+          `Eval config 'plugins.${name}.label' must be a non-empty string`,
+        );
+      }
+      const hasUrl = typeof d.url === 'string' && d.url.length > 0;
+      const hasDir = typeof d.dir === 'string' && d.dir.length > 0;
+      if (hasUrl === hasDir) {
+        throw new Error(
+          `Eval config 'plugins.${name}' must set exactly one of 'url' or 'dir'`,
+        );
+      }
+    }
+  }
+
+  // Validate the optional `grading` section.
+  const grading = obj.grading as Record<string, unknown> | undefined;
+  if (grading !== undefined) {
+    if (typeof grading !== 'object' || grading === null) {
+      throw new Error(`Eval config at ${path} 'grading' must be an object`);
+    }
+    if (
+      grading.judgeModel !== undefined &&
+      (typeof grading.judgeModel !== 'string' || !grading.judgeModel)
+    ) {
+      throw new Error(
+        `Eval config 'grading.judgeModel' must be a non-empty string`,
       );
     }
   }

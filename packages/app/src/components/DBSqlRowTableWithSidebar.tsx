@@ -17,14 +17,12 @@ import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ChartErrorStateVariant } from './charts/ChartErrorState';
-import { useNestedPanelState } from './ContextSidePanel';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBRowSidePanel, {
   RowSidePanelContext,
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
-import { BreadcrumbEntry } from './DBRowSidePanelHeader';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
@@ -41,8 +39,6 @@ interface Props {
   queryKeyPrefix?: string;
   denoiseResults?: boolean;
   collapseAllRows?: boolean;
-  isNestedPanel?: boolean;
-  breadcrumbPath?: BreadcrumbEntry[];
   onSortingChange?: (v: SortingState | null) => void;
   initialSortBy?: SortingState;
   variant?: DBRowTableVariant;
@@ -50,7 +46,15 @@ interface Props {
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
+  // it. Enabled by default; pass `false` to opt out.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 }
+
+// Clicking the results table (selecting/switching rows, scrolling) keeps the
+// row side panel open by default; callers can widen this via `keepOpenSelector`.
+const DEFAULT_KEEP_OPEN_SELECTOR = '[data-testid="search-results-table"]';
 
 export default function DBSqlRowTableWithSideBar({
   sourceId,
@@ -63,8 +67,6 @@ export default function DBSqlRowTableWithSideBar({
   collapseAllRows,
   isLive,
   enabled,
-  isNestedPanel,
-  breadcrumbPath,
   onSidebarOpen,
   onSortingChange,
   initialSortBy,
@@ -73,12 +75,13 @@ export default function DBSqlRowTableWithSideBar({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  closeOnClickOutside = true,
+  keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [rowSource, setRowSource] = useQueryState('rowSource');
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
-  const { setContextRowId, setContextRowSource } = useNestedPanelState();
 
   const onOpenSidebar = useCallback(
     (rowWhere: RowWhereResult) => {
@@ -93,19 +96,7 @@ export default function DBSqlRowTableWithSideBar({
   const onCloseSidebar = useCallback(() => {
     setRowId(null);
     setRowSource(null);
-    // When closing the main drawer, clear the nested panel state
-    // this ensures that re-opening the main drawer will not open the nested panel
-    if (!isNestedPanel) {
-      setContextRowId(null);
-      setContextRowSource(null);
-    }
-  }, [
-    setRowId,
-    setRowSource,
-    isNestedPanel,
-    setContextRowId,
-    setContextRowSource,
-  ]);
+  }, [setRowId, setRowSource]);
   const renderRowDetails = useCallback(
     (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
       if (!sourceData) {
@@ -129,9 +120,9 @@ export default function DBSqlRowTableWithSideBar({
           source={sourceData}
           rowId={rowId ?? undefined}
           aliasWith={aliasWith}
-          isNestedPanel={isNestedPanel}
-          breadcrumbPath={breadcrumbPath}
           onClose={onCloseSidebar}
+          closeOnClickOutside={closeOnClickOutside}
+          keepOpenSelector={keepOpenSelector}
         />
       )}
       <DBSqlRowTable

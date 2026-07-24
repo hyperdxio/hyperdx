@@ -13,7 +13,9 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -49,6 +51,8 @@ const KIND_USAGE: Record<QueryableMetricKind, string> = {
   sum: 'Sum (counter): use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum"/"avg" on the computed rate. increase+groupBy is capped at the top 20 groups.',
   histogram:
     'Histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
+  'exponential histogram':
+    'Exponential histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
 };
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -69,7 +73,7 @@ const describeMetricSchema = z.object({
   kind: z
     .enum(QUERYABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram". Required. ' +
+      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram". Required. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -482,34 +486,19 @@ async function describeMetricImpl(
 ) {
   const source = await getSource(teamId, input.sourceId);
   if (!source) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+    );
   }
   if (source.kind !== SourceKind.Metric) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
+    );
   }
 
   const timeRange = parseTimeRange(input.startTime, input.endTime);
   if ('error' in timeRange) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: timeRange.error }],
-    };
+    return mcpUserError(timeRange.error);
   }
   const { startDate, endDate } = timeRange;
 
@@ -519,15 +508,7 @@ async function describeMetricImpl(
     true,
   );
   if (!connection) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source "${input.sourceId}".`,
-        },
-      ],
-    };
+    return mcpUserError(`Connection not found for source "${input.sourceId}".`);
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -544,15 +525,9 @@ async function describeMetricImpl(
   const kind = input.kind;
   const tableName = source.metricTables[kind];
   if (!tableName) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
+    );
   }
 
   // Defensive column-presence check before referencing MetricUnit /
@@ -569,15 +544,10 @@ async function describeMetricImpl(
       { kind, error: e instanceof Error ? e.message : String(e) },
       'describeMetric: getColumns failed',
     );
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Failed to load columns for "${tableName}". The metric table may be missing or unreachable.`,
-        },
-      ],
-    };
+    return clickHouseErrorResult(e, {
+      prefix: `Failed to load columns for "${tableName}"`,
+      suffix: 'The metric table may be missing or unreachable.',
+    });
   }
   const columnNames = new Set(columns.map(c => c.name));
   const hasUnit = columnNames.has('MetricUnit');
@@ -674,7 +644,7 @@ async function describeMetricImpl(
   const queryExample = `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
     kind === 'sum'
       ? '"increase"'
-      : kind === 'histogram'
+      : kind === 'histogram' || kind === 'exponential histogram'
         ? '"quantile", level: 0.95'
         : '"avg"'
   }, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
@@ -737,7 +707,7 @@ export function registerDescribeMetric({
         'sample) to get attribute keys, sampled values, unit, and description for a ' +
         'specific (metricName, kind) pair. Attribute keys vary per metric — not per source — ' +
         "so always call this before clickstack_timeseries / clickstack_table for any metric you've never queried.\n\n" +
-        'REQUIRES `kind` — pass the gauge/sum/histogram value emitted alongside the metric name by ' +
+        'REQUIRES `kind` — pass the gauge/sum/histogram/exponential histogram value emitted alongside the metric name by ' +
         'clickstack_list_metrics or clickstack_describe_source. A metric name can legitimately ' +
         'live in more than one kind (e.g. "container.cpu.usage" appears in both gauge and sum); ' +
         'call this tool once per kind you care about.\n\n' +
@@ -776,19 +746,12 @@ export function registerDescribeMetric({
             { teamId, sourceId: input.sourceId, metricName: input.metricName },
             'clickstack_describe_metric timed out',
           );
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  'Discovery timed out. The metric table may be under load or the ' +
-                  'attribute set may be very high-cardinality. Try narrowing ' +
-                  'startTime/endTime or setting sampleValues:false to skip the ' +
-                  'value-sampling stage.',
-              },
-            ],
-          };
+          return mcpServerError(
+            'Discovery timed out. The metric table may be under load or the ' +
+              'attribute set may be very high-cardinality. Try narrowing ' +
+              'startTime/endTime or setting sampleValues:false to skip the ' +
+              'value-sampling stage.',
+          );
         }
         throw e;
       } finally {

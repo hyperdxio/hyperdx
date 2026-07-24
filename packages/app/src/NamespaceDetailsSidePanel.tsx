@@ -13,6 +13,7 @@ import {
   Text,
 } from '@mantine/core';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -181,8 +182,6 @@ function NamespaceLogs({
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <DBSqlRowTableWithSideBar
           sourceId={logSource.id}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Namespace Details' }]}
           config={{
             ...logSource,
             where: _where,
@@ -339,101 +338,106 @@ export default function NamespaceDetailsSidePanel({
       }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
-          <DrawerHeader
-            header={`Details for ${namespaceName}`}
-            onClose={handleClose}
-          />
-          <DrawerBody>
-            <Grid>
-              <NamespaceDetails
-                name={namespaceName}
-                dateRange={dateRange}
-                metricSource={metricSource}
-              />
-              <Grid.Col span={6}>
-                <Card p="md" data-testid="namespace-details-cpu-usage-chart">
-                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <DBTimeChart
-                      title="CPU Usage by Pod"
-                      config={convertV1ChartConfigToV2(
-                        {
-                          dateRange,
-                          granularity:
-                            convertDateRangeToGranularityString(dateRange),
-                          seriesReturnType: 'column',
-                          series: [
-                            {
-                              type: 'time',
-                              groupBy: ['k8s.pod.name'],
-                              where: metricsWhere,
-                              table: 'metrics',
-                              aggFn: 'avg',
-                              field: 'k8s.pod.cpu.utilization - Gauge',
-                              numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                            },
-                          ],
-                        },
-                        {
-                          metric: metricSource,
-                        },
-                      )}
+        <IsolatedChartSyncProvider>
+          <div className={styles.panel}>
+            <DrawerHeader
+              header={`Details for ${namespaceName}`}
+              onClose={handleClose}
+            />
+            <DrawerBody>
+              <Grid>
+                <NamespaceDetails
+                  name={namespaceName}
+                  dateRange={dateRange}
+                  metricSource={metricSource}
+                />
+                <Grid.Col span={6}>
+                  <Card p="md" data-testid="namespace-details-cpu-usage-chart">
+                    <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                      <DBTimeChart
+                        title="CPU Usage by Pod"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.pod.name'],
+                                where: metricsWhere,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.pod.cpu.utilization - Gauge',
+                                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            metric: metricSource,
+                          },
+                        )}
+                      />
+                    </Card.Section>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Card
+                    p="md"
+                    data-testid="namespace-details-memory-usage-chart"
+                  >
+                    <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                      <DBTimeChart
+                        title="Memory Usage by Pod"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.pod.name'],
+                                where: metricsWhere,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.pod.memory.usage - Gauge',
+                                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            metric: metricSource,
+                          },
+                        )}
+                      />
+                    </Card.Section>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  {metricSource && (
+                    <InfraPodsStatusTable
+                      dateRange={dateRange}
+                      metricSource={metricSource}
+                      where={metricsWhere}
                     />
-                  </Card.Section>
-                </Card>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <Card p="md" data-testid="namespace-details-memory-usage-chart">
-                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <DBTimeChart
-                      title="Memory Usage by Pod"
-                      config={convertV1ChartConfigToV2(
-                        {
-                          dateRange,
-                          granularity:
-                            convertDateRangeToGranularityString(dateRange),
-                          seriesReturnType: 'column',
-                          series: [
-                            {
-                              type: 'time',
-                              groupBy: ['k8s.pod.name'],
-                              where: metricsWhere,
-                              table: 'metrics',
-                              aggFn: 'avg',
-                              field: 'k8s.pod.memory.usage - Gauge',
-                              numberFormat: K8S_MEM_NUMBER_FORMAT,
-                            },
-                          ],
-                        },
-                        {
-                          metric: metricSource,
-                        },
-                      )}
+                  )}
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  {logSource && (
+                    <NamespaceLogs
+                      where={logsWhere}
+                      dateRange={dateRange}
+                      logSource={logSource}
                     />
-                  </Card.Section>
-                </Card>
-              </Grid.Col>
-              <Grid.Col span={12}>
-                {metricSource && (
-                  <InfraPodsStatusTable
-                    dateRange={dateRange}
-                    metricSource={metricSource}
-                    where={metricsWhere}
-                  />
-                )}
-              </Grid.Col>
-              <Grid.Col span={12}>
-                {logSource && (
-                  <NamespaceLogs
-                    where={logsWhere}
-                    dateRange={dateRange}
-                    logSource={logSource}
-                  />
-                )}
-              </Grid.Col>
-            </Grid>
-          </DrawerBody>
-        </div>
+                  )}
+                </Grid.Col>
+              </Grid>
+            </DrawerBody>
+          </div>
+        </IsolatedChartSyncProvider>
       </ZIndexContext.Provider>
     </Drawer>
   );

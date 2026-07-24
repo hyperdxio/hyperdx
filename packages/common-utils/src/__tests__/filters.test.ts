@@ -1,5 +1,7 @@
 import {
   filtersToQuery,
+  isRenderablePinnedFilter,
+  parseQuery,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
   validateSavedQuery,
@@ -604,6 +606,113 @@ describe('filters', () => {
           where: 'Bad:((("',
         },
       ]);
+    });
+  });
+
+  describe('parseQuery BETWEEN bounds', () => {
+    it('parses a numeric BETWEEN into a range', () => {
+      expect(
+        parseQuery([
+          { type: 'sql', condition: 'Duration BETWEEN 100 AND 5000' },
+        ]).filters,
+      ).toEqual({
+        Duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 100, max: 5000 },
+        },
+      });
+    });
+
+    it('drops a BETWEEN with quoted / non-numeric bounds instead of emitting NaN', () => {
+      expect(
+        parseQuery([
+          {
+            type: 'sql',
+            condition: "ts BETWEEN '2024-01-01' AND '2024-02-01'",
+          },
+        ]).filters,
+      ).toEqual({});
+    });
+
+    it('drops a compound BETWEEN whose trailing clause the regex would swallow', () => {
+      // The greedy regex would capture `2 AND other IN ('x')` as the upper
+      // bound; `Number` rejects it as non-numeric so nothing is emitted.
+      expect(
+        parseQuery([
+          {
+            type: 'sql',
+            condition: "col BETWEEN 1 AND 2 AND other IN ('x')",
+          },
+        ]).filters,
+      ).toEqual({});
+    });
+  });
+
+  describe('isRenderablePinnedFilter', () => {
+    const sql = (condition: string): Filter => ({ type: 'sql', condition });
+
+    it.each([
+      ["ServiceName IN ('checkout', 'payments')", 'IN'],
+      ["SeverityText NOT IN ('debug', 'trace')", 'NOT IN'],
+      ['Duration BETWEEN 100 AND 5000', 'BETWEEN (numeric)'],
+      ["LogAttributes['x'] IN ('y')", 'map-access column'],
+      ["Body IN ('a AND b')", 'value containing AND'],
+    ])('accepts a single renderable predicate: %s (%s)', condition => {
+      expect(isRenderablePinnedFilter(sql(condition))).toBe(true);
+    });
+
+    it.each([
+      ["ServiceName = 'checkout'", 'plain equality (never renders)'],
+      [
+        "ServiceName IN ('x') AND foo = 1",
+        'IN + dropped conjunct (divergence)',
+      ],
+      ["A IN ('x') AND B IN ('y')", 'compound over two columns'],
+      ["ts BETWEEN '2024-01-01' AND '2024-02-01'", 'non-numeric BETWEEN'],
+      ["col BETWEEN 1 AND 2 AND other IN ('x')", 'BETWEEN swallowing a clause'],
+      [
+        'ServiceName NOT BETWEEN 1 AND 2',
+        'NOT folded into the key (renders inverted)',
+      ],
+      ["NOT (ServiceName IN ('x'))", 'leading NOT folded into the key'],
+      ['', 'empty condition'],
+    ])('rejects %s (%s)', condition => {
+      expect(isRenderablePinnedFilter(sql(condition))).toBe(false);
+    });
+
+    it('rejects non-sql filter shapes (lucene, sql_ast)', () => {
+      expect(
+        isRenderablePinnedFilter({ type: 'lucene', condition: 'app:*' }),
+      ).toBe(false);
+      expect(
+        isRenderablePinnedFilter({
+          type: 'sql_ast',
+          operator: '=',
+          left: 'ServiceName',
+          right: "'x'",
+        }),
+      ).toBe(false);
+    });
+
+    it('accepts exactly what filtersToQuery emits (round-trip)', () => {
+      // Every clause filtersToQuery produces must be individually renderable,
+      // guaranteeing the API accepts anything the UI itself would persist.
+      const emitted = filtersToQuery({
+        ServiceName: {
+          included: new Set(['checkout']),
+          excluded: new Set(['debug']),
+        },
+        Duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 1, max: 2 },
+        },
+      });
+      expect(emitted.length).toBeGreaterThan(0);
+      for (const f of emitted) {
+        expect(isRenderablePinnedFilter(f)).toBe(true);
+      }
     });
   });
 });

@@ -7,6 +7,7 @@ import { IconConnection } from '@tabler/icons-react';
 import DBTracePanel from '@/components/DBTracePanel';
 import EmptyState from '@/components/EmptyState';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import { useSource } from '@/source';
 
 interface DirectTraceSidePanelProps {
@@ -17,6 +18,8 @@ interface DirectTraceSidePanelProps {
   focusDate: Date;
   onClose: () => void;
   onSourceChange: (sourceId: string | null) => void;
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 }
 
 export default function DirectTraceSidePanel({
@@ -27,7 +30,15 @@ export default function DirectTraceSidePanel({
   focusDate,
   onClose,
   onSourceChange,
+  closeOnClickOutside = true,
+  keepOpenSelector,
 }: DirectTraceSidePanelProps) {
+  useCloseOnClickOutside({
+    enabled: closeOnClickOutside && opened,
+    keepOpenSelector,
+    onClose,
+  });
+
   const { control, setValue } = useForm<{ source: string | null }>({
     defaultValues: {
       source: traceSourceId ?? null,
@@ -94,6 +105,9 @@ export default function DirectTraceSidePanel({
       onClose={onClose}
       position="right"
       size="75vw"
+      lockScroll={false}
+      withOverlay={false}
+      trapFocus={false}
       title={
         <Group gap="xs">
           <IconConnection size={16} />

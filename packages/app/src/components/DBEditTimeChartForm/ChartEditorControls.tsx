@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
@@ -34,12 +34,14 @@ import SourceSchemaPreview, {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
+import { getEventBody, isSingleExpression } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
+import { buildGroupByConnectionProps } from './utils';
 
 // The builder editor runs ClickHouse metadata/autocomplete against the source's
 // connection, so PromQL sources (Prometheus connections, no ClickHouse tables)
@@ -70,6 +72,7 @@ type ChartEditorControlsProps = {
   displayType: DisplayType;
   activeTab: string;
   seriesReturnType: ChartEditorFormState['seriesReturnType'];
+  ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
   isRawSqlInput: boolean;
   dashboardId?: string;
@@ -99,6 +102,7 @@ export function ChartEditorControls({
   displayType,
   activeTab,
   seriesReturnType,
+  ratioMode,
   alert,
   isRawSqlInput,
   dashboardId,
@@ -110,12 +114,15 @@ export function ChartEditorControls({
 }: ChartEditorControlsProps) {
   const canAddSeries =
     displayType !== DisplayType.Pie &&
+    displayType !== DisplayType.Bar &&
     displayType !== DisplayType.Heatmap &&
     // Number tiles support up to two series (numerator + denominator for
     // ratio mode); Line/Table types remain unbounded.
     !(displayType === DisplayType.Number && fields.length >= 2);
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
+
+  const series = useWatch({ control, name: 'series' });
 
   // Exemplars overlay (trace links) is available on metric sources for the
   // time-series display types. Toggling persists `enableExemplars` on the chart
@@ -124,7 +131,6 @@ export function ChartEditorControls({
   // Exemplars mark a single series' raw measurement (e.g. latency), so they're
   // only meaningful on a single, non-ratio series — not on ratio/multi-series.
   const enableExemplars = useWatch({ control, name: 'enableExemplars' });
-  const series = useWatch({ control, name: 'series' });
   const canShowExemplars =
     (displayType === DisplayType.Line ||
       displayType === DisplayType.StackedBar) &&
@@ -135,6 +141,19 @@ export function ChartEditorControls({
     // y-axis unit on a histogram metric.
     Array.isArray(series) &&
     series[0]?.metricType === MetricsDataType.Histogram;
+
+  // The chart-level Group By must be valid against every series query. For
+  // metric sources (which fan out to per-type tables) this means offering the
+  // intersection of each series' fields; see buildGroupByConnectionProps.
+  const groupByConnectionProps = useMemo(
+    () => buildGroupByConnectionProps({ tableSource, series, tableConnection }),
+    [tableSource, series, tableConnection],
+  );
+
+  // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
+  // is only meaningful when a Group By is set, so gate it on a non-empty value.
+  const groupBy = useWatch({ control, name: 'groupBy' });
+  const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
 
   return (
     <>
@@ -167,6 +186,7 @@ export function ChartEditorControls({
           {tableSource &&
             activeTab !== 'search' &&
             activeTab !== 'heatmap' &&
+            activeTab !== 'event_patterns' &&
             chartConfigForExplanations &&
             isBuilderChartConfig(chartConfigForExplanations) && (
               <MVOptimizationIndicator
@@ -184,6 +204,40 @@ export function ChartEditorControls({
           onSubmit={onSubmit}
           onOpenDisplaySettings={openHeatmapSettings}
         />
+      ) : displayType === DisplayType.EventPatterns ? (
+        <Flex gap="xs" direction="column">
+          <SQLInlineEditorControlled
+            tableConnection={tableConnection}
+            control={control}
+            name="select"
+            placeholder={
+              tableSource
+                ? `Default (${getEventBody(tableSource) ?? 'Body'}) — column name or expression`
+                : 'Default — column name or expression'
+            }
+            onSubmit={onSubmit}
+            label="Pattern Expression"
+          />
+          {typeof select === 'string' &&
+            select.length > 0 &&
+            !isSingleExpression(select) && (
+              <Text size="xs" c="red">
+                Pattern expression must be a single column or expression —
+                multi-column lists are not supported. The source default will be
+                used instead.
+              </Text>
+            )}
+          <SearchWhereInput
+            tableConnection={tableConnection}
+            control={control}
+            name="where"
+            onSubmit={onSubmit}
+            onLanguageChange={(lang: 'sql' | 'lucene') =>
+              setValue('whereLanguage', lang)
+            }
+            showLabel={false}
+          />
+        </Flex>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>
           {fields.map((field, index) => (
@@ -209,6 +263,7 @@ export function ChartEditorControls({
                 fields.length === 1 && displayType === DisplayType.Table
               }
               showDuplicate={canAddSeries}
+              showColor={displayType === DisplayType.Table}
               tableName={tableName ?? ''}
               tableSource={tableSource}
               errors={
@@ -242,7 +297,7 @@ export function ChartEditorControls({
                 </div>
                 <div>
                   <SQLInlineEditorControlled
-                    tableConnection={tableConnection}
+                    {...groupByConnectionProps}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -343,6 +398,35 @@ export function ChartEditorControls({
                   />
                 </Group>
               )}
+              {/* Grouped ratios divide per-group by default; this opts into
+                  share-of-total (each group's contribution to the blended
+                  rate). Only metric sources fan out to per-series queries
+                  merged client-side (see mergeResultSets/ratioMode) — other
+                  sources compute the ratio within-group in the DB, where
+                  ratioMode has no effect — so restrict to metric sources. No
+                  effect on ungrouped ratios either, so also gate on a Group
+                  By. */}
+              {fields.length === 2 &&
+                seriesReturnType === 'ratio' &&
+                tableSource?.kind === SourceKind.Metric &&
+                hasGroupBy && (
+                  <Switch
+                    label="Share of total"
+                    size="sm"
+                    color="gray"
+                    variant="subtle"
+                    onClick={() => {
+                      setValue(
+                        'ratioMode',
+                        ratioMode === 'share_of_total'
+                          ? 'per_group'
+                          : 'share_of_total',
+                      );
+                      onSubmit();
+                    }}
+                    checked={ratioMode === 'share_of_total'}
+                  />
+                )}
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
@@ -372,6 +456,7 @@ export function ChartEditorControls({
                 onClick={openDisplaySettings}
                 size="compact-sm"
                 variant="secondary"
+                data-testid="display-settings-button"
               >
                 Display Settings
               </Button>

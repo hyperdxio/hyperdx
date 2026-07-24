@@ -4,6 +4,31 @@ import type { Scenario } from '@/scenarios/types';
 import type { PromptVariant } from './types';
 
 /**
+ * Caveat injected alongside the FIXED CURRENT TIME anchor.
+ *
+ * `clickstack_describe_source` samples its `lowCardinalityValues`,
+ * `mapAttributeValues`, and `mapAttributeKeys` over a fixed wall-clock
+ * window (last 24h of REAL time), independent of the anchor above. In evals
+ * the seeded data is anchored to a fixed timestamp that can be older than
+ * that window, so those sampled fields may come back empty or partial —
+ * which is misleading, not just missing (an empty sample looks like "the
+ * value doesn't exist"). Tell the agent not to trust them and to discover
+ * real values via an anchored query instead. The `columns` schema from
+ * describe_source is unaffected (no time filter) and remains reliable.
+ */
+export const SAMPLING_CAVEAT_BLOCK = `
+DATA DISCOVERY CAVEAT: clickstack_describe_source's sampled value fields
+(lowCardinalityValues, mapAttributeValues, mapAttributeKeys) are sampled
+over the last 24h of WALL-CLOCK time, NOT the FIXED CURRENT TIME above, so
+they may be EMPTY or incomplete for this data. Do NOT treat an empty or
+missing sample as proof that a value/service/attribute does not exist.
+The columns/schema from describe_source ARE reliable. To discover the
+actual values, services, and attribute keys present, run an anchored
+clickstack_table (e.g. group by ServiceName) or clickstack_search over the
+FIXED CURRENT TIME window rather than relying on describe_source samples.
+`;
+
+/**
  * Build the system prompt for a scenario run.
  *
  * If the scenario provides a `buildSystemPrompt` hook, it is called instead
@@ -36,13 +61,22 @@ export function buildSystemPrompt(
   );
 }
 
-function buildInvestigationSystemPrompt(
+export function buildInvestigationSystemPrompt(
   scenarioName: string,
   anchorTimeIso?: string,
   variant: PromptVariant = 'baseline',
   maxTurns?: number,
+  opts?: {
+    /**
+     * Extra note injected into the data-source list. Scenarios that
+     * seed additional signals (e.g. metrics) use this to tell the agent
+     * those sources exist.
+     */
+    signalsNote?: string;
+  },
 ): string {
   const { traces, logs } = scenarioTables(scenarioName);
+  const signalsNote = opts?.signalsNote ?? '';
   const sharedSchema = '';
   //   `These follow the standard OpenTelemetry ClickHouse schema:
   // - traces have Timestamp DateTime64(9), TraceId, SpanId, ParentSpanId,
@@ -60,7 +94,8 @@ function buildInvestigationSystemPrompt(
     ? `\nFIXED CURRENT TIME: ${anchorTimeIso}
 All "now", "recently", "in the last N minutes/hours" references in the user's
 prompt are anchored to this timestamp. When you query, use absolute ISO
-timestamps relative to this anchor — do NOT use today's wall-clock date.\n`
+timestamps relative to this anchor — do NOT use today's wall-clock date.
+${SAMPLING_CAVEAT_BLOCK}`
     : '';
 
   // Hypothesis-variant playbook — encourages hypothesis enumeration and
@@ -115,6 +150,7 @@ observability data. The OpenTelemetry data lives in ClickHouse:
 
 - Traces: default.${traces}
 - Logs:   default.${logs}
+${signalsNote}
 ${anchorBlock}
 ${sharedSchema}
 

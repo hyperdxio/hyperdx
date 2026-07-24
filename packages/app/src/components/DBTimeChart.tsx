@@ -2,12 +2,12 @@ import React, {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import Link from 'next/link';
 import Router from 'next/router';
 import { add, differenceInSeconds } from 'date-fns';
 import {
@@ -27,16 +27,14 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
-  Divider,
   Group,
   Paper,
   Popover,
   Portal,
   Stack,
   Text,
-  Tooltip,
 } from '@mantine/core';
-import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
+import { IconChartBar, IconChartLine } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -46,12 +44,14 @@ import {
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
-  PreviousPeriodSuffix,
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
+import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
+import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import { DEFAULT_MAX_EXEMPLARS } from '@/defaults';
-import { MemoChart } from '@/HDXMultiSeriesTimeChart';
+import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import {
   ExemplarTraceMeta,
@@ -60,6 +60,7 @@ import {
 } from '@/hooks/useExemplars';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
+import type { NumberFormat } from '@/types';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -69,14 +70,8 @@ import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
-type ActiveClickPayload = {
-  x: number;
-  y: number;
-  activeLabel: string;
-  xPerc: number;
-  yPerc: number;
-  activePayload?: { value?: number; dataKey?: string; name?: string }[];
-};
+/** A single group column / value pair decoded from a chart series key. */
+export type SeriesGroupFilter = { column: string; value: string };
 
 // Floating card shown when hovering an exemplar marker: trace metadata (from the
 // configured exemplar trace source) plus a button to open the trace directly.
@@ -191,78 +186,166 @@ function ExemplarHoverCard({
   );
 }
 
-function ActiveTimeTooltip({
-  activeClickPayload,
+// Only one pinned tooltip at a time across all charts. Module-level (not
+// context) because charts can be scattered with no common provider, and their
+// onClick stopPropagation hides cross-chart clicks from Mantine's click-outside.
+const pinnedTooltipRegistry = new Map<string, () => void>();
+
+function broadcastTooltipPinned(activeId: string) {
+  pinnedTooltipRegistry.forEach((dismiss, id) => {
+    if (id !== activeId) {
+      dismiss();
+    }
+  });
+}
+
+// Registers this chart's dismiss handler and returns a callback to close every
+// other chart's pinned tooltip (call it when pinning this one).
+function useCrossChartPinDismiss(onDismiss: () => void): () => void {
+  const id = useId();
+  // Keep the latest onDismiss without re-subscribing each render.
+  const onDismissRef = useRef(onDismiss);
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
+  useEffect(() => {
+    pinnedTooltipRegistry.set(id, () => onDismissRef.current());
+    return () => {
+      pinnedTooltipRegistry.delete(id);
+    };
+  }, [id]);
+
+  return useCallback(() => broadcastTooltipPinned(id), [id]);
+}
+
+// Decode a Recharts series key (e.g. "count · error · api") into the
+// underlying group-column filters. This is the same decode `buildSearchUrl`
+// uses to build a drill-down URL, extracted so the focus callback can hand the
+// caller structured filters (rather than a display string) to apply to a
+// sibling results list.
+export function decodeSeriesGroupFilters({
+  seriesKey,
+  groupColumns,
+  isSingleValueColumn,
+}: {
+  seriesKey: string | undefined;
+  groupColumns: string[];
+  isSingleValueColumn: boolean | undefined;
+}): SeriesGroupFilter[] {
+  const seriesKeys = seriesKey?.split(ChartKeyJoiner);
+  const groupFilters: SeriesGroupFilter[] = [];
+
+  if (seriesKeys?.length && groupColumns?.length) {
+    // When the series has multiple value columns, the key is prefixed with the
+    // value column name (e.g. "count · error"), so the group values start at
+    // index 1. (The "no group columns" case the original inline code also
+    // guarded is impossible here — this block only runs when groupColumns is
+    // non-empty.)
+    const startsWithValueColumn = !(isSingleValueColumn ?? true);
+    const groupValues = startsWithValueColumn
+      ? seriesKeys.slice(1)
+      : seriesKeys;
+
+    groupValues.forEach((value, index) => {
+      if (groupColumns[index] != null) {
+        groupFilters.push({ column: groupColumns[index], value });
+      }
+    });
+  }
+
+  return groupFilters;
+}
+
+// The interactive PINNED tooltip, rendered over the chart in a body-portaled
+// Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
+// in MemoChart instead; this is only for the click-locked state.
+function ChartTooltipOverlay({
+  payload,
   buildSearchUrl,
   onDismiss,
+  onFocusSeries,
+  fallbackNumberFormat,
+  numberFormatByKey,
+  previousPeriodOffsetSeconds,
 }: {
-  activeClickPayload: ActiveClickPayload | undefined;
+  payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
+  /** Focus a series by its raw series key (dataKey) and display name. */
+  onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
+  fallbackNumberFormat?: NumberFormat;
+  /** Per-value-column formats, keyed by result column name. */
+  numberFormatByKey: Map<string, NumberFormat>;
+  previousPeriodOffsetSeconds?: number;
 }) {
   const isOpen =
-    activeClickPayload != null &&
-    activeClickPayload.activePayload != null &&
-    activeClickPayload.activePayload.length > 0;
+    payload != null &&
+    payload.activePayload != null &&
+    payload.activePayload.length > 0;
+
+  const popoverZIndex = useChartTooltipZIndex();
+
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // The pinned tooltip anchors at `position: fixed` viewport coords captured
+  // once at click time. When a surrounding scroll container scrolls, the chart
+  // moves but the fixed tooltip stays glued to the viewport, detaching from its
+  // data point (Mantine's closeOnClickOutside/closeOnEscape don't fire on
+  // scroll). Dismiss on scroll instead so it never floats away — but ignore
+  // scrolls originating inside the tooltip's own scrollable series list, or a
+  // long tooltip couldn't be scrolled without instantly closing.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (target != null && dropdownRef.current?.contains(target)) {
+        return;
+      }
+      onDismiss();
+    };
+    window.addEventListener('scroll', handleScroll, {
+      capture: true,
+      passive: true,
+    });
+    return () => {
+      window.removeEventListener('scroll', handleScroll, { capture: true });
+    };
+  }, [isOpen, onDismiss]);
 
   if (!isOpen) {
     return null;
   }
 
-  const validPayloads = activeClickPayload
-    .activePayload!.filter(
-      p =>
-        p.value != null &&
-        // Exclude previous period series
-        // TODO: it would be cool to support this in the future
-        !p.dataKey?.endsWith(PreviousPeriodSuffix),
-    )
-    .sort((a, b) => b.value! - a.value!); // Sort by value descending (highest first)
-
   return (
-    <>
-      {/* Backdrop to capture clicks and prevent propagation to chart */}
-      <Portal>
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 199, // Just below Mantine Popover default (200)
-          }}
-          onClick={e => {
-            e.stopPropagation();
-            e.preventDefault();
-            onDismiss();
-          }}
-          onMouseDown={e => {
-            e.stopPropagation();
-          }}
-        />
-      </Portal>
-
+    // Portal to body so the `position: fixed` anchor resolves against the
+    // viewport: dashboard tiles use CSS transforms, and a transformed ancestor
+    // would otherwise make `fixed` resolve against it and throw the tooltip off.
+    <Portal>
       <Popover
-        opened={isOpen}
+        opened
         onChange={opened => {
           if (!opened) {
             onDismiss();
           }
         }}
-        position="bottom-start"
-        offset={4}
-        withinPortal
+        closeOnClickOutside
         closeOnEscape
-        withArrow
-        shadow="md"
+        trapFocus={false}
+        withinPortal
+        position="bottom"
+        offset={12}
+        middlewares={{ flip: true, shift: true }}
+        returnFocus={false}
+        zIndex={popoverZIndex}
       >
         <Popover.Target>
+          {/* 1x1 anchor at the clicked data point. */}
           <div
             style={{
-              position: 'absolute',
-              left: activeClickPayload.x ?? 0,
-              top: activeClickPayload.y ?? 0,
+              position: 'fixed',
+              left: payload.viewportX ?? 0,
+              top: payload.viewportY ?? 0,
               width: 1,
               height: 1,
               pointerEvents: 'none',
@@ -270,62 +353,29 @@ function ActiveTimeTooltip({
           />
         </Popover.Target>
         <Popover.Dropdown
-          p="xs"
-          maw={300}
-          onClick={e => e.stopPropagation()}
-          onMouseDown={e => e.stopPropagation()}
+          ref={dropdownRef}
+          p={0}
+          style={{
+            // Width comes from the shared .chartTooltip class; fit-content stops
+            // Mantine's default dropdown width from overriding it.
+            width: 'fit-content',
+            border: 'none',
+            background: 'transparent',
+          }}
         >
-          <Stack gap="xs" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-            <Link
-              data-testid="chart-view-events-link"
-              href={buildSearchUrl() ?? '/search'}
-              onClick={onDismiss}
-            >
-              <Group gap="xs">
-                <IconSearch size={16} />
-                View All Events
-              </Group>
-            </Link>
-            {validPayloads.length > 1 && (
-              <>
-                <Divider />
-                <Text c="gray.5" size="xs">
-                  Filter by group:
-                </Text>
-                {validPayloads.map((payload, idx) => {
-                  const seriesUrl = buildSearchUrl(
-                    payload.dataKey,
-                    payload.value,
-                  );
-                  return (
-                    <Tooltip
-                      key={idx}
-                      label={payload.name}
-                      withArrow
-                      color="gray"
-                      position="right"
-                    >
-                      <Link
-                        data-testid={`chart-view-events-link-${payload.dataKey}`}
-                        href={seriesUrl ?? '/search'}
-                        onClick={onDismiss}
-                      >
-                        <Group gap="xs">
-                          <IconSearch size={12} />
-                          <Text size="xs" truncate flex="1">
-                            {payload.name}
-                          </Text>
-                        </Group>
-                      </Link>
-                    </Tooltip>
-                  );
-                })}
-              </>
-            )}
-          </Stack>
+          <ChartSeriesTooltip
+            activeLabel={payload.activeLabel}
+            activePayload={payload.activePayload!}
+            fallbackNumberFormat={fallbackNumberFormat}
+            numberFormatByKey={numberFormatByKey}
+            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+            buildSearchUrl={buildSearchUrl}
+            onDismiss={onDismiss}
+            onFocusSeries={onFocusSeries}
+          />
         </Popover.Dropdown>
       </Popover>
-    </>
+    </Portal>
   );
 }
 
@@ -340,6 +390,8 @@ type DBTimeChartComponentProps = {
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
   referenceLines?: React.ReactNode;
+  /** Event markers (e.g. alert firing/recovery) drawn as dashed lines with labels. */
+  annotations?: ChartAnnotation[];
   setDisplayType?: (type: DisplayType) => void;
   showDisplaySwitcher?: boolean;
   showLegend?: boolean;
@@ -352,6 +404,15 @@ type DBTimeChartComponentProps = {
   showMVOptimizationIndicator?: boolean;
   showDateRangeIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
+  /**
+   * Called when the user clicks "Focus" on a series in the drill-down menu,
+   * with the group-column filters decoded from that series. When provided, the
+   * consumer owns focus behavior — e.g. the search page applies these as search
+   * filters so both the chart AND the sibling results list narrow to the series.
+   * When omitted, Focus falls back to a chart-only visual isolation (legend
+   * behavior), which is all a standalone chart can do.
+   */
+  onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
 };
 
 function DBTimeChartComponent({
@@ -364,6 +425,7 @@ function DBTimeChartComponent({
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
+  annotations,
   setDisplayType,
   showDisplaySwitcher = true,
   showLegend = true,
@@ -375,6 +437,7 @@ function DBTimeChartComponent({
   showMVOptimizationIndicator = true,
   showDateRangeIndicator = true,
   errorVariant,
+  onFocusSeries,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -656,15 +719,24 @@ function DBTimeChartComponent({
     ActiveClickPayload | undefined
   >(undefined);
 
-  // Wrap the setter to only allow setting if source is available
-  const setActiveClickPayloadIfSourceAvailable = useCallback(
+  const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
+  const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
+
+  // Pin the tooltip on click. Not gated on `source`: source-less charts still
+  // show values/percent-change, and the drill-down actions hide themselves when
+  // there's no source. `disableDrillDown` stays an explicit opt-out.
+  const setPinnedPayload = useCallback(
     (payload: ActiveClickPayload | undefined) => {
-      if (source == null || disableDrillDown) {
-        return; // Don't set if no source
+      if (disableDrillDown) {
+        return;
+      }
+      // Pinning here closes any other chart's pinned tooltip.
+      if (payload != null) {
+        notifyTooltipPinned();
       }
       setActiveClickPayload(payload);
     },
-    [source, disableDrillDown],
+    [disableDrillDown, notifyTooltipPinned],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -687,28 +759,11 @@ function DBTimeChartComponent({
 
       // Parse the series key to extract group values
       const seriesKeys = seriesKey?.split(ChartKeyJoiner);
-      const groupFilters: Array<{ column: string; value: any }> = [];
-
-      if (seriesKeys?.length && groupColumns?.length) {
-        // Determine if the first part is a value column name
-        const startsWithValueColumn =
-          !(isSingleValueColumn ?? true) ||
-          ((groupColumns?.length ?? 0) === 0 &&
-            (valueColumns?.length ?? 0) > 0);
-        const groupValues = startsWithValueColumn
-          ? seriesKeys.slice(1)
-          : seriesKeys;
-
-        // Build group filters
-        groupValues.forEach((value, index) => {
-          if (groupColumns[index] != null) {
-            groupFilters.push({
-              column: groupColumns[index],
-              value,
-            });
-          }
-        });
-      }
+      const groupFilters = decodeSeriesGroupFilters({
+        seriesKey,
+        groupColumns,
+        isSingleValueColumn,
+      });
 
       // Build value range filter for Y-axis if provided
       let valueRangeFilter:
@@ -798,6 +853,29 @@ function DBTimeChartComponent({
       valueColumns,
       isSingleValueColumn,
     ],
+  );
+
+  // Focus a series from the drill-down menu. When the consumer supplied an
+  // onFocusSeries handler, decode the series into its group-column filters and
+  // hand them up so the consumer can narrow both the chart and any sibling
+  // results list. Otherwise fall back to chart-only visual isolation, which is
+  // the best a standalone chart (e.g. a dashboard tile) can do.
+  const handleFocusSeries = useCallback(
+    ({ dataKey, name }: { dataKey?: string; name: string }) => {
+      if (onFocusSeries) {
+        const groupFilters = decodeSeriesGroupFilters({
+          seriesKey: dataKey,
+          groupColumns,
+          isSingleValueColumn,
+        });
+        if (groupFilters.length > 0) {
+          onFocusSeries(groupFilters);
+          return;
+        }
+      }
+      handleToggleSeries(name);
+    },
+    [onFocusSeries, groupColumns, isSingleValueColumn, handleToggleSeries],
   );
 
   const toolbarItemsMemo = useMemo(() => {
@@ -909,10 +987,17 @@ function DBTimeChartComponent({
         </div>
       ) : (
         <>
-          <ActiveTimeTooltip
-            activeClickPayload={activeClickPayload}
+          {/* Pinned (click-locked) tooltip; hover is handled in MemoChart. */}
+          <ChartTooltipOverlay
+            payload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
-            onDismiss={() => setActiveClickPayload(undefined)}
+            // Stable reference so the overlay's scroll-dismissal effect doesn't
+            // re-register its window listener on every re-render.
+            onDismiss={dismissPinned}
+            onFocusSeries={handleFocusSeries}
+            fallbackNumberFormat={queriedConfig.numberFormat}
+            numberFormatByKey={formatByColumn}
+            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
           />
           <ExemplarHoverCard
             hovered={hoveredExemplar}
@@ -934,12 +1019,13 @@ function DBTimeChartComponent({
             lineData={lineData}
             isLoading={isLoadingOrPlaceholder}
             logReferenceTimestamp={logReferenceTimestamp}
-            fallbackNumberFormat={queriedConfig.numberFormat}
             axisNumberFormat={axisNumberFormat}
+            fallbackNumberFormat={queriedConfig.numberFormat}
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
-            setIsClickActive={setActiveClickPayloadIfSourceAvailable}
+            annotations={annotations}
+            setIsClickActive={setPinnedPayload}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}

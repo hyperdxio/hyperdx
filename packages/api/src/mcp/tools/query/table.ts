@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 import {
   annotateIncreaseTopNHint,
@@ -38,12 +39,13 @@ const tableSchema = z.object({
         'Example: [{ aggFn: "count" }, { aggFn: "avg", valueExpression: "Duration" }]',
     ),
   shape: z
-    .enum(['table', 'number', 'pie'])
+    .enum(['table', 'number', 'pie', 'bar'])
     .optional()
     .default('table')
     .describe(
-      'Output shape: "table" (grouped rows, default), "number" (single scalar), or "pie" (pie chart). ' +
-        'If "number" or "pie" is set with select.length > 1, it is auto-upgraded to "table". ' +
+      'Output shape: "table" (grouped rows, default), "number" (single scalar), ' +
+        '"pie" (pie chart), or "bar" (categorical bar chart). ' +
+        'If "number", "pie", or "bar" is set with select.length > 1, it is auto-upgraded to "table". ' +
         'groupBy is ignored when shape is "number".',
     ),
   where: whereSchema.describe(
@@ -203,7 +205,7 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
     {
       title: 'Aggregation Table',
       description:
-        'Compute aggregated metrics as a table, single number, or pie chart. ' +
+        'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
@@ -214,28 +216,25 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         "Map attributes use bracket syntax: SpanAttributes['http.method']. " +
         'Map attributes work in groupBy and valueExpression, including ' +
         "toFloat64OrZero(SpanAttributes['key']).\n\n" +
-        'Shape auto-upgrade: if shape is "number" or "pie" but select has >1 item, ' +
+        'Shape auto-upgrade: if shape is "number", "pie", or "bar" but select has >1 item, ' +
         'it is transparently upgraded to "table".\n\n' +
         '── METRIC SOURCES ──\n' +
         'When sourceId is a metric source, each select item MUST set ' +
-        'metricType ("gauge"|"sum"|"histogram") and metricName (the OTel metric name). ' +
+        'metricType ("gauge"|"sum"|"histogram"|"exponential histogram") and metricName (the OTel metric name). ' +
         'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
         'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
         'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
         'returns attribute keys + sampled values for a single metric.\n' +
         'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
         '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
-        'histogram uses aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
-        'summary and exponential histogram kinds are not supported by the query renderer yet.',
+        'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
+        'summary metrics are not supported by the query renderer.',
       inputSchema: tableSchema,
     },
     async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
@@ -258,17 +257,19 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
       const select = applyMetricSelectDefaults(rawSelect);
 
       // Auto-upgrade shape when select has multiple items but shape is
-      // single-value (number/pie). This is the #1 Zod error class from agents.
-      let displayType: 'table' | 'number' | 'pie' = input.shape;
+      // single-value (number/pie/bar). This is the #1 Zod error class from agents.
+      let displayType: 'table' | 'number' | 'pie' | 'bar' = input.shape;
       if (
-        (displayType === 'number' || displayType === 'pie') &&
+        (displayType === 'number' ||
+          displayType === 'pie' ||
+          displayType === 'bar') &&
         select.length > 1
       ) {
         displayType = 'table';
       }
 
       // Inject top-level where into each select item so it becomes part
-      // of the aggCondition for every metric. Table/line/number/pie display
+      // of the aggCondition for every metric. Table/line/number/pie/bar display
       // types don't have a chart-level where — filtering is per-select-item.
       const { items: selectItems, warnings: mergeWarnings } =
         mergeWhereIntoSelectItems(select, input.where, input.whereLanguage);

@@ -264,6 +264,221 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('categorical series limit setting (pie/bar)', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it.each([DisplayType.Pie, DisplayType.Bar])(
+      'shows the Series Limit input for builder %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...builderProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.getByRole('textbox', { name: /series limit/i }),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it('does not show the Series Limit input for raw SQL pie charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Pie}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('textbox', { name: /series limit/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with the entered seriesLimit when applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Bar}
+          onChange={onChange}
+        />,
+      );
+
+      await user.type(
+        screen.getByRole('textbox', { name: /series limit/i }),
+        '10',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 10 });
+    });
+
+    // Emits null (not undefined) for the same URL round-tripping reason as
+    // the time-chart series limit above.
+    it('clears seriesLimit to null (disabled) when emptied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Pie}
+          settings={{ seriesLimit: 10 } as ChartConfigDisplaySettings}
+          onChange={onChange}
+        />,
+      );
+
+      await user.clear(screen.getByRole('textbox', { name: /series limit/i }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
+    });
+  });
+
+  describe('alternate row background setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the toggle for builder table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the toggle for raw SQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the toggle for line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /alternate row background/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show the toggle for number tiles', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Number}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /alternate row background/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with alternateRowBackground = true when enabled and applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        alternateRowBackground: true,
+      });
+    });
+
+    it('calls onChange with alternateRowBackground = true for raw SQL table charts', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        alternateRowBackground: true,
+      });
+    });
+  });
+
+  describe('display group by columns on left setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the toggle for builder table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the toggle for raw SQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      // Group By ordering needs the builder select structure, so it stays
+      // builder-only even though Alternate Row Background is shown for SQL.
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as

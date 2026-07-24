@@ -2,6 +2,7 @@ import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/re
 import { z } from 'zod';
 
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 import {
   annotateIncreaseTopNHint,
@@ -87,26 +88,23 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
         "Map attributes use bracket syntax: SpanAttributes['http.method'].\n\n" +
         '── METRIC SOURCES ──\n' +
         'When sourceId is a metric source, each select item MUST set ' +
-        'metricType ("gauge"|"sum"|"histogram") and metricName (the OTel metric name). ' +
+        'metricType ("gauge"|"sum"|"histogram"|"exponential histogram") and metricName (the OTel metric name). ' +
         'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
         'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
         'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
         'returns attribute keys + sampled values for a single metric.\n' +
         'Per kind: gauge uses last_value/avg/min/max (or aggFn:any + isDelta:true for Prometheus-style delta); ' +
         'sum uses aggFn:"increase" for the counter increase, or sum/avg on the computed rate; ' +
-        'histogram uses aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
+        'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
         'TOP-N CAP: aggFn:"increase" + groupBy is capped at 20 groups by the renderer ' +
         '(top by max bucket sum). Narrow with where/groupBy to see other groups.\n' +
-        'summary and exponential histogram kinds are not supported by the query renderer yet.',
+        'summary metrics are not supported by the query renderer.',
       inputSchema: timeseriesSchema,
     },
     async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 

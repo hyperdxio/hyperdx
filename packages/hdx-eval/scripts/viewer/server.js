@@ -83,6 +83,9 @@ function collectRuns(cellDir) {
       idx: i,
       combinedScore: grade?.combinedScore ?? null,
       programmaticScore: grade?.programmatic?.score ?? null,
+      // Transcript-aware tool-adoption score (null when the scenario rubric
+      // has no `transcript` block, so the grade has no `adoption`).
+      adoptionScore: grade?.adoption?.score ?? null,
       judgeScore: grade?.judge?.weightedScore ?? null,
       termination: traj?.termination ?? null,
       durationMs: traj?.durationMs ?? null,
@@ -117,12 +120,38 @@ function listCells(batch) {
         if (runs.length > 0) out.push({ scenario, mcp, model: null, runs });
       }
 
-      // New layout: <scenario>/<mcp>/<model>/<index>.json
+      // Layouts:
+      // - <scenario>/<mcp>/<model>/<plugin>/<index>.json (current; the
+      //   no-plugin arm lives under <model>/none/)
+      // - <scenario>/<mcp>/<model>/<index>.json (legacy, pre-plugin-level)
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const modelDir = path.join(mcpDir, entry.name);
+        // Legacy no-plugin arm: runs directly in the model dir.
         const runs = collectRuns(modelDir);
         if (runs.length > 0) out.push({ scenario, mcp, model: entry.name, runs });
+        // Plugin arms (incl. `none`): one level deeper. The cell's `model`
+        // carries the `<model>/<plugin>` relative path so the run-detail
+        // route resolves it.
+        let modelEntries = [];
+        try {
+          modelEntries = fs.readdirSync(modelDir, { withFileTypes: true });
+        } catch {
+          modelEntries = [];
+        }
+        for (const pe of modelEntries) {
+          if (!pe.isDirectory()) continue;
+          const pluginRuns = collectRuns(path.join(modelDir, pe.name));
+          if (pluginRuns.length > 0) {
+            out.push({
+              scenario,
+              mcp,
+              model: `${entry.name}/${pe.name}`,
+              plugin: pe.name,
+              runs: pluginRuns,
+            });
+          }
+        }
       }
     }
   }
@@ -154,9 +183,10 @@ const ROUTES = [
       sendJson(res, 200, { batch, summary, cells });
     },
   ],
-  // New layout: /runs/:scenario/:mcp/:model/:idx
+  // New layout: /runs/:scenario/:mcp/:model/:idx — `model` may be a nested
+  // `<model>/<plugin>` path for plugin arms, so it captures across slashes.
   [
-    /^\/api\/batches\/([^/]+)\/runs\/([^/]+)\/([^/]+)\/([^/]+)\/(\d+)$/,
+    /^\/api\/batches\/([^/]+)\/runs\/([^/]+)\/([^/]+)\/(.+)\/(\d+)$/,
     (m, _q, res) => {
       const [, batch, scenario, mcp, model, idx] = m.map((x, i) =>
         i === 0 ? x : decodeURIComponent(x),

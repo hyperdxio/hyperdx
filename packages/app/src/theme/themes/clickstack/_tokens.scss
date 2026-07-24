@@ -8,7 +8,7 @@
  * `chart-tokens` is split out so the chart palette is defined once,
  * not duplicated across the dark/light blocks. Both scheme selectors
  * @include it so specificity stays identical to declaring the vars
- * inline — Sass inlines the body of the mixin at each call site, so
+ * inline; Sass inlines the body of the mixin at each call site, so
  * the resulting CSS is byte-identical to the previous hand-duplicated
  * shape. Categorical and semantic chart tokens come from the shared
  * `chart-categorical-tokens` partial (two mixins: hues, then semantics).
@@ -110,13 +110,28 @@
   --color-bg-surface: var(--click-global-color-background-default);
   --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--click-global-color-background-muted);
+
+  /* "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+     the area behind `--color-bg-body` cards (e.g. dashboard tiles) so the cards
+     visually pop. It is intentionally darker/greyer than the body itself. */
+  --color-bg-sunken: color-mix(
+    in srgb,
+    var(--click-global-color-background-default),
+    #000 20%
+  );
   --color-bg-highlighted: rgb(80 80 80 / 70%);
+  --color-bg-table-stripe: rgb(255 255 255 / 4%);
   --color-bg-sidenav: var(--click-global-color-background-default);
   --color-bg-sidenav-link-active: var(--palette-neutral-712);
   --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-7);
   --color-bg-header: var(--click-global-color-background-default);
   --color-bg-hover: var(--palette-neutral-725);
   --color-bg-active: var(--palette-neutral-800);
+
+  /* Highlight background for an interactive row inside a floating surface
+     (Select/Combobox options, Menu items, popover/dropdown lists) when it is
+     hovered or is the currently-selected entry. */
+  --color-bg-option-active: var(--palette-neutral-712);
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: var(--palette-neutral-650);
   --color-bg-field-addon: var(--palette-neutral-712);
@@ -126,6 +141,19 @@
   --color-bg-warning: #f59e0b;
   --color-bg-brand: var(--click-global-color-accent-default);
   --color-bg-brand-hover: var(--click-global-color-accent-hover);
+
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Deep dark tints inlined as hex — the numbered scale's
+     darkest shades (`-9`) are mid-tone for green/yellow and can't meet AA with
+     colored text; these deeper values give ~7-11:1. Hover is one step lighter. */
+  --color-bg-danger-subtle: #3d0d0d;
+  --color-bg-danger-subtle-hover: #651515;
+  --color-bg-warning-subtle: #4a2400;
+  --color-bg-warning-subtle-hover: #7a3d00;
+  --color-bg-success-subtle: #0d2913;
+  --color-bg-success-subtle-hover: #16451f;
+  --color-bg-info-subtle: #071e34;
+  --color-bg-info-subtle-hover: #0c3256;
 
   /* Primary Button */
   --color-primary-button-bg: var(--palette-brand-300);
@@ -147,9 +175,14 @@
   --color-text-muted-hover: var(--click-global-color-title-muted);
   --color-text-brand: var(--click-global-color-accent-default);
   --color-text-brand-hover: var(--click-global-color-text-link-hover);
-  --color-text-success: #22c55e;
-  --color-text-success-hover: #4ade80;
+  --color-text-success: var(--mantine-color-green-2);
+  --color-text-success-hover: var(--mantine-color-green-1);
   --color-text-danger: var(--click-global-color-text-danger);
+
+  /* Orange-based warning: ClickStack remaps `yellow` to the brand gold, so we
+     use Mantine's `orange` (unremapped) for a true orange warning. */
+  --color-text-warning: var(--mantine-color-orange-2);
+  --color-text-info: var(--mantine-color-blue-2);
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-text-default);
 
@@ -302,7 +335,17 @@
   --color-bg-surface: var(--click-global-color-background-default);
   --color-bg-inverted: var(--mantine-color-dark-3);
   --color-bg-muted: var(--click-global-color-background-muted);
+
+  /* "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+     the area behind `--color-bg-body` cards (e.g. dashboard tiles) so the cards
+     visually pop. It is intentionally slightly darker than the body itself. */
+  --color-bg-sunken: color-mix(
+    in srgb,
+    var(--click-global-color-background-muted) 55%,
+    #fff
+  );
   --color-bg-highlighted: rgb(241 243 245 / 80%);
+  --color-bg-table-stripe: rgb(0 0 0 / 3%);
   --color-bg-sidenav: var(--click-global-color-background-default);
   --color-bg-sidenav-link-active: var(--click-global-color-stroke-default);
   --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-3);
@@ -310,6 +353,11 @@
   --color-bg-modal: var(--click-global-color-background-default);
   --color-bg-hover: #e9ecef;
   --color-bg-active: #dee2e6;
+
+  /* Highlight background for an interactive row inside a floating surface
+     (Select/Combobox options, Menu items, popover/dropdown lists) when it is
+     hovered or is the currently-selected entry. */
+  --color-bg-option-active: var(--click-global-color-background-muted);
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: var(--click-global-color-background-default);
   --color-bg-field-addon: var(--click-global-color-background-default);
@@ -317,6 +365,19 @@
   --color-bg-success: #16a34a;
   --color-bg-danger: #dc2626;
   --color-bg-warning: #d97706;
+
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Light mode uses Mantine's `-0` (bg) / `-1` (hover)
+     shades. Note: `warning` uses Mantine `orange` because ClickStack remaps
+     `yellow` to the brand gold. */
+  --color-bg-danger-subtle: var(--mantine-color-red-0);
+  --color-bg-danger-subtle-hover: var(--mantine-color-red-1);
+  --color-bg-warning-subtle: var(--mantine-color-orange-0);
+  --color-bg-warning-subtle-hover: var(--mantine-color-orange-1);
+  --color-bg-success-subtle: var(--mantine-color-green-0);
+  --color-bg-success-subtle-hover: var(--mantine-color-green-1);
+  --color-bg-info-subtle: var(--mantine-color-blue-0);
+  --color-bg-info-subtle-hover: var(--mantine-color-blue-1);
   --color-bg-brand: var(--click-global-color-accent-default);
   --color-bg-brand-hover: var(--click-global-color-accent-hover);
 
@@ -340,9 +401,26 @@
   --color-text-muted-hover: var(--click-global-color-title-default);
   --color-text-brand: var(--click-global-color-accent-default);
   --color-text-brand-hover: var(--click-global-color-text-link-hover);
-  --color-text-success: #16a34a;
+
+  /* Darkened past green-9 so semantic success text meets WCAG AA (4.5:1) on the
+     light `-subtle` tint; plain green-9 is only ~4:1 (mid-tone). */
+  --color-text-success: color-mix(
+    in srgb,
+    var(--mantine-color-green-9),
+    #000 15%
+  );
   --color-text-success-hover: #15803d;
   --color-text-danger: var(--click-global-color-text-danger);
+
+  /* Orange-based warning (ClickStack remaps `yellow` to the brand gold), using
+     Mantine `orange-9` darkened via color-mix to meet WCAG AA (~5.2:1) on the
+     light `-subtle` tint; plain orange-9 is only ~4:1. */
+  --color-text-warning: color-mix(
+    in srgb,
+    var(--mantine-color-orange-9),
+    #000 15%
+  );
+  --color-text-info: var(--mantine-color-blue-9);
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-accent-default);
 

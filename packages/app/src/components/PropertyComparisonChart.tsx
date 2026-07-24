@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
-import type { TooltipProps } from 'recharts';
+import type { TooltipContentProps as RechartsTooltipContentProps } from 'recharts';
 import {
   Bar,
   BarChart,
@@ -43,14 +43,29 @@ export const CHART_GAP = 16; // px; used in grid gap and layout math
 // Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
 export const PAGINATION_HEIGHT = 48;
 
-type TooltipPayloadItem = {
-  dataKey: string;
-  name: string;
-  value: number;
-  payload?: Record<string, unknown>;
-};
+/**
+ * Resolve which value a bar click selects. Returns `null` (deselect) for a
+ * missing label, the aggregated "Other" bucket, or a click on the currently
+ * selected bar (toggle off); otherwise the clicked label. Exported for testing.
+ */
+export function resolveComparisonClick(
+  activeLabel: string | number | null | undefined,
+  rows: ReadonlyArray<{ name: string; isOther?: boolean }>,
+  currentValue: string | null,
+): string | null {
+  if (activeLabel == null) return null;
+  const clickedRow = rows.find(row => row.name === activeLabel);
+  if (clickedRow == null || clickedRow.isOther) return null;
+  const newValue = String(activeLabel);
+  return newValue === currentValue ? null : newValue;
+}
 
-type TooltipContentProps = TooltipProps<number, string> & {
+// The content props (payload, coordinate, active, ...) are supplied by the
+// chart's Tooltip at render time, so they're optional here — the element is
+// written in JSX with only the `title` prop.
+type TooltipContentProps = Partial<
+  RechartsTooltipContentProps<number, string>
+> & {
   title?: string;
 };
 
@@ -70,11 +85,11 @@ const HDXBarChartTooltip = withErrorBoundary(
             <Text size="xs" mb="xs">
               {String(label).length === 0 ? <i>Empty String</i> : String(label)}
             </Text>
-            {(payload as TooltipPayloadItem[])
-              .sort((a, b) => b.value - a.value)
+            {[...payload]
+              .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))
               .map(p => (
-                <div key={p.dataKey}>
-                  {p.name}: {p.value.toFixed(2)}%
+                <div key={String(p.dataKey)}>
+                  {p.name}: {Number(p.value ?? 0).toFixed(2)}%
                 </div>
               ))}
           </div>
@@ -145,23 +160,16 @@ export function PropertyComparisonChart({
   const [clickedValue, setClickedValue] = useState<string | null>(null);
   const clipboard = useClipboard({ timeout: 2000 });
 
-  const handleChartClick = (data: any) => {
-    if (!data?.activePayload?.length) {
-      setClickedValue(null);
-      return;
+  const handleChartClick = (data: { activeLabel?: string | number }) => {
+    const next = resolveComparisonClick(
+      data?.activeLabel,
+      chartData,
+      clickedValue,
+    );
+    if (next != null) {
+      clipboard.reset();
     }
-    if (data.activePayload[0]?.payload?.isOther) {
-      setClickedValue(null);
-      return;
-    }
-    const newValue = String(data.activeLabel ?? '');
-    // Toggle off if clicking the same bar
-    if (newValue === clickedValue) {
-      setClickedValue(null);
-      return;
-    }
-    clipboard.reset();
-    setClickedValue(newValue);
+    setClickedValue(next);
   };
 
   return (

@@ -472,6 +472,32 @@ describe('renderChartConfig', () => {
     expect(actual).not.toContain('TopGroups');
   });
 
+  it('renders bound values (not template macros) when generateSqlTemplate is unset', async () => {
+    // Regression guard for the generateSqlTemplate flag threaded through
+    // timeFilterExpr / timeBucketExpr / renderFrom / renderWhere: real query
+    // paths never set it, so the output must keep bound params and literals.
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+    const sql = parameterizedQueryToSql(
+      await renderChartConfig(config, mockMetadata, querySettings),
+    );
+    expect(sql).not.toContain('$__');
+    expect(sql).toContain('fromUnixTimestamp64Milli(');
+    expect(sql).toContain('INTERVAL 5 minute');
+    // parameterizedQueryToSql inlines Identifier params without backticks
+    expect(sql).toContain('FROM default.logs');
+  });
+
   describe('seriesLimit (group-by series cap)', () => {
     const baseLogsConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Line,
@@ -744,9 +770,9 @@ describe('renderChartConfig', () => {
 
   describe('histogram metric queries', () => {
     describe('quantile', () => {
-      it('should generate a query without grouping or time bucketing', async () => {
+      it('should generate a whole-range query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -781,6 +807,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -854,7 +888,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'TimeUnix',
           dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
           granularity: '2 minute',
-          groupBy: `ResourceAttributes['host']`,
+          groupBy: 'ServiceName',
           limit: { limit: 10 },
         };
 
@@ -869,9 +903,9 @@ describe('renderChartConfig', () => {
     });
 
     describe('count', () => {
-      it('should generate a count query without grouping or time bucketing', async () => {
+      it('should generate a whole-range count query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -905,6 +939,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -1347,7 +1389,7 @@ describe('renderChartConfig', () => {
       );
     });
 
-    it('rewrites `Map[key] IN (many)` to hasAny(... array(...))', async () => {
+    it('rewrites `Map[key] IN (many)` to hasAny(... array(...)) on ClickHouse >= 26.5', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1359,6 +1401,25 @@ describe('renderChartConfig', () => {
       expect(sql).toContain(
         "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
       );
+    });
+
+    it('rewrites `Map[key] IN (many)` to a chain of has() ORs on older ClickHouse (< 26.5)', async () => {
+      stubKvItemsMetadata();
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 4, 3, 37]);
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] IN ('a', 'b', 'c')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'b'))");
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'c'))");
+      expect(sql).not.toContain('hasAny(');
+      expect(sql).not.toContain('array(concat(');
     });
 
     it('leaves the condition unchanged when no KV items column exists', async () => {
@@ -1386,7 +1447,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = 'v'");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
     });
 
     it('does not rewrite when value is empty (Map[k]= preserves missing-key semantics)', async () => {
@@ -1399,7 +1460,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = ''");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
     });
 
     it('rewrites only the matching Map subscript in a compound AND condition', async () => {
@@ -2096,6 +2157,17 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         dateRangeEndInclusive: false,
         expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description:
+          'wraps includedDataInterval-expanded bound in toStartOf when PK has toStartOfHour(col) — prevents dropping rows whose hour is before the raw expanded start',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 04:00:00Z'),
+          new Date('2025-02-12 04:20:00Z'),
+        ],
+        includedDataInterval: '5 minute',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute)AND(toStartOfHour(timestamp) >= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute) AND toStartOfHour(timestamp) <= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute))`,
       },
     ];
 

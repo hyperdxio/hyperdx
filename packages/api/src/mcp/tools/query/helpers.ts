@@ -1,6 +1,8 @@
+import { ClickHouseError } from '@clickhouse/client-common';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -22,6 +24,8 @@ import ms from 'ms';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import type { McpErrorResult } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
   convertToInternalTileConfig,
   isConfigTile,
@@ -29,6 +33,8 @@ import {
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+import { runEventPatterns } from './runEventPatterns';
 
 // ─── Source body expression helpers ──────────────────────────────────────────
 
@@ -331,7 +337,7 @@ type SelectItemForKindCheck = { metricType?: unknown };
 export function assertSourceKindMatchesSelect(
   source: { kind: string },
   select: unknown,
-): { isError: true; content: [{ type: 'text'; text: string }] } | null {
+): McpErrorResult | null {
   // Raw-string select (rare on the builder path) — the renderer handles
   // it; no metric annotations to inspect.
   if (typeof select === 'string') return null;
@@ -348,35 +354,21 @@ export function assertSourceKindMatchesSelect(
   const isMetricSource = source.kind === SourceKind.Metric;
 
   if (isMetricSource && metricItemCount === 0) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            'Source kind is "metric", but no select item specifies metricType + metricName. ' +
-            'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
-            'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
-            'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
-        },
-      ],
-    };
+    return mcpUserError(
+      'Source kind is "metric", but no select item specifies metricType + metricName. ' +
+        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") ' +
+        'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
+        'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
+    );
   }
 
   if (!isMetricSource && metricItemCount > 0) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            `Source kind is "${source.kind}", not metric — but ${metricItemCount} select item(s) ` +
-            'set metricType. metricType + metricName only work on metric sources. ' +
-            'Drop the metric fields to query this source, or call clickstack_list_sources to find a ' +
-            'source whose kind is "metric".',
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source kind is "${source.kind}", not metric — but ${metricItemCount} select item(s) ` +
+        'set metricType. metricType + metricName only work on metric sources. ' +
+        'Drop the metric fields to query this source, or call clickstack_list_sources to find a ' +
+        'source whose kind is "metric".',
+    );
   }
 
   return null;
@@ -392,12 +384,7 @@ export async function runConfigTile(
   options?: { maxResults?: number; granularity?: string },
 ) {
   if (!isConfigTile(tile)) {
-    return {
-      isError: true as const,
-      content: [
-        { type: 'text' as const, text: 'Invalid tile: config field missing' },
-      ],
-    };
+    return mcpUserError('Invalid tile: config field missing');
   }
 
   const internalTile = convertToInternalTileConfig(tile);
@@ -420,17 +407,31 @@ export async function runConfigTile(
       };
     }
 
+    // Event-patterns tiles need the Drain pattern-mining pipeline, not the
+    // generic chart-config SQL renderer. Delegate to the same function the
+    // standalone clickstack_event_patterns tool uses.
+    if (builderConfig.displayType === DisplayType.EventPatterns) {
+      const selectStr =
+        typeof builderConfig.select === 'string' ? builderConfig.select : '';
+      return runEventPatterns(
+        teamId,
+        builderConfig.source,
+        startDate,
+        endDate,
+        {
+          where: builderConfig.where ?? '',
+          whereLanguage:
+            (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
+          bodyExpression: selectStr || undefined,
+        },
+      );
+    }
+
     const source = await getSource(teamId, builderConfig.source);
     if (!source) {
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
-          },
-        ],
-      };
+      return mcpUserError(
+        `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
+      );
     }
 
     // Reject metric-style select against a non-metric source (and vice
@@ -447,15 +448,9 @@ export async function runConfigTile(
       true,
     );
     if (!connection) {
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Connection not found for source: ${builderConfig.source}`,
-          },
-        ],
-      };
+      return mcpUserError(
+        `Connection not found for source: ${builderConfig.source}`,
+      );
     }
 
     const clickhouseClient = new ClickhouseClient({
@@ -551,10 +546,18 @@ export async function runConfigTile(
       dateRange: [startDate, endDate] as [Date, Date],
     } satisfies ChartConfigWithDateRange;
 
+    // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
+    const isCategorical =
+      builderConfig.displayType === DisplayType.Pie ||
+      builderConfig.displayType === DisplayType.Bar;
+    const renderConfig = isCategorical
+      ? convertToCategoricalChartConfig(chartConfig)
+      : chartConfig;
+
     const metadata = getMetadata(clickhouseClient);
     try {
       const result = await clickhouseClient.queryChartConfig({
-        config: chartConfig,
+        config: renderConfig,
         metadata,
         querySettings: source.querySettings,
         opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
@@ -597,15 +600,9 @@ export async function runConfigTile(
     true,
   );
   if (!connection) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found: ${savedConfig.connection}. Call clickstack_list_sources to discover available connection IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Connection not found: ${savedConfig.connection}. Call clickstack_list_sources to discover available connection IDs.`,
+    );
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -638,22 +635,177 @@ export async function runConfigTile(
 // ─── Error hints ─────────────────────────────────────────────────────────────
 
 /**
+ * ClickHouse server-side error types that indicate an infrastructure problem
+ * rather than a user query issue. These appear in `ClickHouseError.type` when
+ * the ClickHouse server itself reports a connection/network failure (e.g. to
+ * a replica or Zookeeper).
+ */
+const SERVER_CH_ERROR_TYPES = new Set([
+  'NETWORK_ERROR',
+  'SOCKET_TIMEOUT',
+  'POCO_EXCEPTION',
+  'ALL_CONNECTION_TRIES_FAILED',
+]);
+
+/**
+ * Node.js system error codes that indicate a TCP-level connection failure.
+ * These appear on plain `Error` objects thrown by the ClickHouse HTTP client
+ * when the server is unreachable — the client never gets an HTTP response,
+ * so no `ClickHouseError` is constructed.
+ */
+const SERVER_NODE_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+/**
+ * Check whether an error is a ClickHouseError, using both `instanceof`
+ * and a constructor-name fallback. The fallback handles the case where
+ * multiple copies of `@clickhouse/client-common` are installed (e.g.
+ * the root workspace uses one version while `common-utils` bundles
+ * another). In that scenario, `instanceof` fails because the class
+ * identities are different even though the shapes are identical.
+ */
+function isClickHouseError(
+  err: unknown,
+): err is ClickHouseError & { type: string } {
+  if (err instanceof ClickHouseError) return true;
+  if (
+    err instanceof Error &&
+    err.constructor?.name === 'ClickHouseError' &&
+    'type' in err &&
+    typeof (err as Record<string, unknown>).type === 'string'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Extract the ClickHouse error `type` from an error, walking `.cause` to
+ * find the original `ClickHouseError` from `@clickhouse/client-common`.
+ *
+ * Uses `instanceof` with a constructor-name fallback to handle duplicate
+ * package installations across the monorepo (see `isClickHouseError`).
+ *
+ * @internal Exported for testing only.
+ */
+export function getClickHouseErrorType(e: unknown): string | undefined {
+  if (!(e instanceof Error)) return undefined;
+  // ClickHouseQueryError wraps the original ClickHouseError as .cause
+  if (isClickHouseError(e.cause)) {
+    return e.cause.type;
+  }
+  // Direct ClickHouseError (has .type on itself)
+  if (isClickHouseError(e)) {
+    return e.type;
+  }
+  return undefined;
+}
+
+/**
+ * Check whether an error represents a system-level infrastructure failure
+ * rather than a user query issue. Covers both ClickHouse server-side error
+ * types (e.g. NETWORK_ERROR) and Node.js TCP-level errors (e.g. ECONNREFUSED)
+ * which the client throws as plain `Error` objects.
+ *
+ * @internal Exported for testing only.
+ */
+export function isServerError(e: unknown): boolean {
+  // Walk the full cause chain checking for both ClickHouse server-side
+  // error types and Node.js TCP-level errors at every depth. This
+  // ensures a ClickHouseError with NETWORK_ERROR nested at arbitrary
+  // depth is caught, not just at depth 0-1.
+  let current: unknown = e;
+  const seen = new Set<unknown>(); // guard against circular .cause
+  while (current instanceof Error) {
+    if (seen.has(current)) break;
+    seen.add(current);
+
+    // ClickHouse server-side error type at this level
+    if (isClickHouseError(current)) {
+      if (SERVER_CH_ERROR_TYPES.has(current.type)) return true;
+    }
+    // Also check .cause for a direct ClickHouseError (the common
+    // ClickHouseQueryError -> ClickHouseError pattern)
+    if (isClickHouseError(current.cause)) {
+      if (SERVER_CH_ERROR_TYPES.has(current.cause.type)) return true;
+    }
+
+    // Node.js TCP/socket-level error
+    if (hasNodeErrorCode(current, SERVER_NODE_ERROR_CODES)) return true;
+    // AggregateError.errors may hold the real TCP error
+    if (
+      current instanceof AggregateError &&
+      current.errors.some(inner =>
+        hasNodeErrorCode(inner, SERVER_NODE_ERROR_CODES),
+      )
+    ) {
+      return true;
+    }
+    current = current.cause;
+  }
+
+  return false;
+}
+
+/** Type-safe check for a Node.js system error code on an unknown value. */
+function hasNodeErrorCode(val: unknown, codes: ReadonlySet<string>): boolean {
+  if (!(val instanceof Error)) return false;
+  const code =
+    'code' in val && typeof val.code === 'string' ? val.code : undefined;
+  return code != null && codes.has(code);
+}
+
+/**
  * Decorate raw ClickHouse error messages with actionable guidance before
  * they reach the agent. Some ClickHouse errors are unhelpful in isolation —
  * e.g. "Cannot convert string '...Z' to type DateTime64(9)" leaves the agent
  * guessing about the right format. Catch common patterns and append a hint.
+ *
+ * ClickHouse query errors are classified as user errors by default since the
+ * user/agent wrote the query that failed. Only infrastructure-level errors
+ * (network, socket, connection failures) are classified as server errors.
+ *
+ * @param e        The caught error.
+ * @param context  Optional message context. `prefix` is prepended (e.g.
+ *                 "Failed to sample rows") and `suffix` is appended (e.g.
+ *                 guidance about valid input). The categorization is derived
+ *                 from the underlying ClickHouse error type regardless of the
+ *                 surrounding context.
  */
-export function clickHouseErrorResult(e: unknown): {
-  isError: true;
-  content: [{ type: 'text'; text: string }];
-} {
-  const raw = e instanceof Error ? e.message : String(e);
+export function clickHouseErrorResult(
+  e: unknown,
+  context?: string | { prefix?: string; suffix?: string },
+): McpErrorResult {
+  const { prefix, suffix } =
+    typeof context === 'string'
+      ? { prefix: context, suffix: undefined }
+      : (context ?? {});
+
+  // Prefer .message, but fall back to .cause.message when the wrapper
+  // (e.g. ClickHouseQueryError from common-utils) has an empty message
+  // and the real error details are in the cause chain.
+  const raw =
+    e instanceof Error
+      ? e.message ||
+        (e.cause instanceof Error ? e.cause.message : '') ||
+        String(e)
+      : String(e);
   const hint = errorHint(raw);
-  const text = hint ? `${raw}\n\nHINT: ${hint}` : raw;
-  return {
-    isError: true as const,
-    content: [{ type: 'text' as const, text }],
-  };
+  const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
+  const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
+
+  // Default to a user error — the user wrote the query that failed.
+  // Only promote to a server error for known infrastructure error types
+  // (ClickHouse server-side errors or TCP-level connection failures).
+  return isServerError(e) ? mcpServerError(text) : mcpUserError(text);
 }
 
 /** @internal Exported for testing only. */

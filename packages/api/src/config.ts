@@ -28,6 +28,11 @@ export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
 export const IS_INLINE_API = env.HDX_PREVIEW_INLINE_API === 'true';
 export const FRONTEND_REDIRECT_BASE = IS_INLINE_API ? '' : FRONTEND_URL;
 export const INGESTION_API_KEY = env.INGESTION_API_KEY ?? '';
+// Opt-in: emit the contrib `datadogreceiver` on the collector so a
+// Datadog Agent can ship APM traces (DD trace API -> OTLP -> ClickHouse).
+// Off by default because the receiver has no per-team bearer-token auth like
+// `otlp/hyperdx`, so enabling it opens an unauthenticated ingest port (:8126).
+export const ENABLE_DATADOG_RECEIVER = env.ENABLE_DATADOG_RECEIVER === 'true';
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
 export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
 export const IS_CI = NODE_ENV === 'test';
@@ -38,6 +43,7 @@ export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
 export const OPAMP_PORT = Number.parseInt(env.OPAMP_PORT as string);
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
+export const WEBHOOK_HOSTNAME_ALLOWLIST = env.WEBHOOK_HOSTNAME_ALLOWLIST ?? '';
 export const RUN_SCHEDULED_TASKS_EXTERNALLY =
   env.RUN_SCHEDULED_TASKS_EXTERNALLY === 'true';
 

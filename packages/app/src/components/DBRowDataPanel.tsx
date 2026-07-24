@@ -11,7 +11,11 @@ import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
-import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+import {
+  getDisplayedTimestampValueExpression,
+  getDurationMsExpression,
+  getEventBody,
+} from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
@@ -28,6 +32,9 @@ export enum ROW_DATA_ALIASES {
   EVENT_ATTRIBUTES = '__hdx_event_attributes',
   EVENTS_EXCEPTION_ATTRIBUTES = '__hdx_events_exception_attributes',
   SPAN_EVENTS = '__hdx_span_events',
+  DURATION_MS = '__hdx_duration_ms',
+  SPAN_KIND = '__hdx_span_kind',
+  SPAN_LINKS = '__hdx_span_links',
 }
 
 export function useRowData({
@@ -154,6 +161,30 @@ export function useRowData({
               },
             ]
           : []),
+        ...(source.kind === SourceKind.Trace && source.durationExpression
+          ? [
+              {
+                valueExpression: getDurationMsExpression(source),
+                alias: ROW_DATA_ALIASES.DURATION_MS,
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace && source.spanKindExpression
+          ? [
+              {
+                valueExpression: source.spanKindExpression,
+                alias: ROW_DATA_ALIASES.SPAN_KIND,
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace && source.spanLinksValueExpression
+          ? [
+              {
+                valueExpression: source.spanLinksValueExpression,
+                alias: ROW_DATA_ALIASES.SPAN_LINKS,
+              },
+            ]
+          : []),
         ...selectHighlightedRowAttributes,
       ],
       where: rowId ?? '0=1',
@@ -257,11 +288,15 @@ export function RowDataPanel({
   source,
   rowId,
   aliasWith,
+  flush = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  // When true, drop the horizontal margin so content aligns flush with
+  // surrounding chrome (e.g. the tab bar in the trace span detail panel).
+  flush?: boolean;
   'data-testid'?: string;
 }) {
   const { data } = useRowData({ source, rowId, aliasWith });
@@ -279,7 +314,7 @@ export function RowDataPanel({
 
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
-      <Box mx="md" my="sm">
+      <Box mx={flush ? 0 : 'md'} my="sm">
         <DBRowJsonViewer
           data={firstRow}
           jsonColumns={jsonColumns}

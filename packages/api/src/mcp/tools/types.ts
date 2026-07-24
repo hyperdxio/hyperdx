@@ -2,9 +2,15 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { AnyZodObject } from 'zod';
 
+import type { McpClientInfo } from '@/mcp/utils/mcpClient';
+
 export type McpContext = {
   teamId: string;
   userId: string;
+  /**
+   * Identity of the calling MCP client application, parsed from User-Agent.
+   */
+  mcpClient?: McpClientInfo;
 };
 
 /**

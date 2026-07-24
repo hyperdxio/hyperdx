@@ -1,0 +1,38 @@
+.root {
+  container-type: inline-size;
+}
+
+/* Normal toolbar: visible by default, hidden when narrow */
+.toolbarNormal {
+  display: flex;
+}
+
+/* Collapsed toolbar: hidden by default, shown when narrow */
+.toolbarCollapsed {
+  display: none;
+}
+
+/* Hide the inline section (row + divider) when the row has no visible
+   child elements — e.g. Number/Table tiles where all prefix items are
+   null and no chart-specific indicators apply. */
+.inlineSection:not(:has(.inlineRow > *)) {
+  display: none;
+}
+
+/* Inline row inside the collapsed dropdown: indicators stay compact,
+   the last child (typically the DisplaySwitcher toggle group) stretches
+   to fill remaining width with icons spread evenly. */
+.inlineRow > :last-child {
+  flex: 1;
+  justify-content: space-evenly;
+}
+
+@container (max-width: 200px) {
+  .toolbarNormal {
+    display: none;
+  }
+
+  .toolbarCollapsed {
+    display: flex;
+  }
+}

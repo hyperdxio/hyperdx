@@ -10,7 +10,7 @@
  * `chart-tokens` is split out so the chart palette is defined once,
  * not duplicated across the dark/light blocks. Both dark and light
  * @include it so specificity stays identical to declaring the vars
- * inline — Sass inlines the body of the mixin at each call site, so
+ * inline; Sass inlines the body of the mixin at each call site, so
  * the resulting CSS is byte-identical to the previous hand-duplicated
  * shape. Categorical and semantic chart tokens come from the shared
  * `chart-categorical-tokens` partial (two mixins: hues, then semantics).
@@ -29,13 +29,24 @@
   --color-bg-surface: var(--mantine-color-dark-5);
   --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--mantine-color-dark-7);
+
+  /* "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+     the area behind `--color-bg-body` cards (e.g. dashboard tiles) so the cards
+     visually pop. It is intentionally darker/greyer than the body itself. */
+  --color-bg-sunken: color-mix(in srgb, var(--mantine-color-dark-9), #000 50%);
   --color-bg-highlighted: rgb(55 58 64 / 70%);
+  --color-bg-table-stripe: rgb(255 255 255 / 4%);
   --color-bg-sidenav: var(--mantine-color-dark-9);
   --color-bg-sidenav-link-active: var(--mantine-color-dark-7);
   --color-bg-sidenav-link-active-hover: var(--mantine-color-dark-6);
   --color-bg-header: var(--mantine-color-dark-9);
   --color-bg-hover: var(--mantine-color-dark-6);
   --color-bg-active: var(--mantine-color-dark-5);
+
+  /* Highlight background for an interactive row inside a floating surface
+     (Select/Combobox options, Menu items, popover/dropdown lists) when it is
+     hovered or is the currently-selected entry. */
+  --color-bg-option-active: var(--mantine-color-dark-5);
   --color-bg-field: var(--mantine-color-dark-7);
   --color-bg-field-highlighted: var(--mantine-color-dark-6);
   --color-bg-field-addon: var(--mantine-color-dark-6);
@@ -45,6 +56,19 @@
   --color-bg-success: var(--mantine-color-green-5);
   --color-bg-danger: var(--mantine-color-red-4);
   --color-bg-warning: var(--mantine-color-orange-5);
+
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Deep dark tints inlined as hex — the numbered scale's
+     darkest shades (`-9`) are mid-tone for green/yellow and can't meet AA with
+     colored text; these deeper values give ~9-11:1. Hover is one step lighter. */
+  --color-bg-danger-subtle: #3d0d0d;
+  --color-bg-danger-subtle-hover: #651515;
+  --color-bg-warning-subtle: #3c3310;
+  --color-bg-warning-subtle-hover: #352d0e;
+  --color-bg-success-subtle: #0d2913;
+  --color-bg-success-subtle-hover: #16451f;
+  --color-bg-info-subtle: #071e34;
+  --color-bg-info-subtle-hover: #0c3256;
 
   /* Primary Button - uses brand green colors */
   --color-primary-button-bg: var(--mantine-color-green-light);
@@ -69,6 +93,8 @@
   --color-text-success: var(--mantine-color-green-4);
   --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-3);
+  --color-text-warning: var(--mantine-color-yellow-3);
+  --color-text-info: var(--mantine-color-blue-3);
   --color-text-sidenav-link: var(--mantine-color-dark-0);
   --color-text-sidenav-link-active: var(--color-text-primary);
 
@@ -131,7 +157,13 @@
   --color-bg-surface: var(--mantine-color-white);
   --color-bg-inverted: var(--mantine-color-dark-3);
   --color-bg-muted: #f6f6fa;
+
+  /* "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+     the area behind `--color-bg-body` cards (e.g. dashboard tiles) so the cards
+     visually pop. It is intentionally slightly darker than the body itself. */
+  --color-bg-sunken: #fafafc;
   --color-bg-highlighted: rgb(230 232 237 / 70%);
+  --color-bg-table-stripe: rgb(0 0 0 / 3%);
   --color-bg-sidenav: var(--mantine-color-white);
   --color-bg-sidenav-link-active: #ebebef;
   --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-2);
@@ -139,6 +171,11 @@
   --color-bg-modal: var(--mantine-color-white);
   --color-bg-hover: var(--mantine-color-gray-1);
   --color-bg-active: var(--mantine-color-gray-4);
+
+  /* Highlight background for an interactive row inside a floating surface
+     (Select/Combobox options, Menu items, popover/dropdown lists) when it is
+     hovered or is the currently-selected entry. */
+  --color-bg-option-active: var(--color-bg-sidenav-link-active);
   --color-bg-field: #f9f9fc;
   --color-bg-field-highlighted: var(--mantine-color-white);
   --color-bg-field-addon: var(--mantine-color-white);
@@ -147,7 +184,19 @@
   --color-bg-brand-hover: var(--mantine-color-green-9);
   --color-bg-success: var(--mantine-color-green-8);
   --color-bg-danger: var(--mantine-color-red-8);
-  --color-bg-warning: var(--mantine-color-orange-8);
+  --color-bg-warning: var(--mantine-color-yellow-8);
+
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Light mode uses Mantine's `-0` (bg) / `-1` (hover)
+     shades. */
+  --color-bg-danger-subtle: var(--mantine-color-red-0);
+  --color-bg-danger-subtle-hover: var(--mantine-color-red-1);
+  --color-bg-warning-subtle: var(--mantine-color-yellow-0);
+  --color-bg-warning-subtle-hover: var(--mantine-color-yellow-1);
+  --color-bg-success-subtle: var(--mantine-color-green-0);
+  --color-bg-success-subtle-hover: var(--mantine-color-green-1);
+  --color-bg-info-subtle: var(--mantine-color-blue-0);
+  --color-bg-info-subtle-hover: var(--mantine-color-blue-1);
 
   /* Primary Button - uses brand green colors */
   --color-primary-button-bg: var(--mantine-color-green-light);
@@ -169,9 +218,23 @@
   --color-text-muted-hover: var(--mantine-color-dark-9);
   --color-text-brand: var(--mantine-color-green-8);
   --color-text-brand-hover: var(--mantine-color-green-9);
-  --color-text-success: var(--mantine-color-green-8);
+
+  /* danger/success/warning are darkened past their base shade so semantic text
+     meets WCAG AA (4.5:1) on the light `-subtle` tints: red-9, green-9 -15%,
+     yellow-9 -30% (green-9/yellow-9 alone are mid-tone and fall short). */
+  --color-text-success: color-mix(
+    in srgb,
+    var(--mantine-color-green-9),
+    #000 15%
+  );
   --color-text-success-hover: var(--mantine-color-green-9);
-  --color-text-danger: var(--mantine-color-red-8);
+  --color-text-danger: var(--mantine-color-red-9);
+  --color-text-warning: color-mix(
+    in srgb,
+    var(--mantine-color-yellow-9),
+    #000 30%
+  );
+  --color-text-info: var(--mantine-color-blue-9);
   --color-text-sidenav-link: var(--mantine-color-dark-6);
   --color-text-sidenav-link-active: var(--mantine-color-green-9);
 

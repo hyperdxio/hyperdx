@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 
 import {
@@ -77,7 +78,7 @@ const listMetricsSchema = z.object({
     .optional()
     .describe(
       'Optional metric kind filter. Omit to scan every populated kind on the source ' +
-        '(gauge → sum → histogram). Set to narrow results to one kind.',
+        '(gauge, sum, histogram, exponential histogram). Set to narrow results to one kind.',
     ),
   namePattern: z
     .string()
@@ -256,7 +257,7 @@ export function registerListMetrics({
         'DISCOVERY: Use this after clickstack_describe_source when you need more metric ' +
         'names than the per-kind sample shows, or when you want to narrow by ' +
         'kind / name pattern / time window. ' +
-        'Returns paginated metric names per kind (gauge/sum/histogram) ' +
+        'Returns paginated metric names per kind (gauge/sum/histogram/exponential histogram) ' +
         'with optional unit and description (when the OTel-default columns are present). ' +
         'Pass the returned `nextCursor` back unchanged to fetch the next page.\n\n' +
         'Workflow: clickstack_list_sources → clickstack_describe_source → ' +
@@ -291,17 +292,10 @@ export function registerListMetrics({
             { teamId, sourceId: input.sourceId },
             'clickstack_list_metrics timed out',
           );
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  'clickstack_list_metrics timed out. Try narrowing the time window ' +
-                  '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
-              },
-            ],
-          };
+          return mcpServerError(
+            'clickstack_list_metrics timed out. Try narrowing the time window ' +
+              '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
+          );
         }
         throw e;
       } finally {
@@ -318,34 +312,19 @@ async function listMetricsImpl(
 ) {
   const source = await getSource(teamId, input.sourceId);
   if (!source) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+    );
   }
   if (source.kind !== SourceKind.Metric) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_list_metrics only works on metric sources — call clickstack_list_sources to find one whose kind is "metric".`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_list_metrics only works on metric sources — call clickstack_list_sources to find one whose kind is "metric".`,
+    );
   }
 
   const timeRange = parseTimeRange(input.startTime, input.endTime);
   if ('error' in timeRange) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: timeRange.error }],
-    };
+    return mcpUserError(timeRange.error);
   }
   const { startDate, endDate } = timeRange;
 
@@ -353,15 +332,9 @@ async function listMetricsImpl(
   // truncated or tampered cursor does not surface internals.
   const cursor = input.cursor ? decodeCursor(input.cursor) : null;
   if (input.cursor && !cursor) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: 'Invalid cursor. Omit cursor to start over, or pass the exact `nextCursor` value returned by a previous call.',
-        },
-      ],
-    };
+    return mcpUserError(
+      'Invalid cursor. Omit cursor to start over, or pass the exact `nextCursor` value returned by a previous call.',
+    );
   }
 
   // Resolve which kinds to scan, in order. When a cursor is set,
@@ -374,15 +347,9 @@ async function listMetricsImpl(
   if (startKindIdx < 0) {
     // Cursor points at a kind that's not in scope for this call —
     // safer to error than silently skip.
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Cursor references kind "${cursor!.kind}" but that kind is not in scope for this call. Drop the kind filter or pass a matching cursor.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Cursor references kind "${cursor!.kind}" but that kind is not in scope for this call. Drop the kind filter or pass a matching cursor.`,
+    );
   }
 
   const connection = await getConnectionById(
@@ -391,15 +358,7 @@ async function listMetricsImpl(
     true,
   );
   if (!connection) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source "${input.sourceId}".`,
-        },
-      ],
-    };
+    return mcpUserError(`Connection not found for source "${input.sourceId}".`);
   }
 
   const clickhouseClient = new ClickhouseClient({

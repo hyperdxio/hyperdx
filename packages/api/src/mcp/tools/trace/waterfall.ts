@@ -10,8 +10,12 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { parseTimeRange } from '@/mcp/tools/query/helpers';
+import {
+  clickHouseErrorResult,
+  parseTimeRange,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -210,35 +214,20 @@ export function registerTraceWaterfall({
       const input = traceSchema.parse(rawInput);
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true as const,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
       const source = await getSource(teamId.toString(), input.sourceId);
       if (!source) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
+        );
       }
       if (source.kind !== SourceKind.Trace) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
+        );
       }
 
       const connection = await getConnectionById(
@@ -247,15 +236,9 @@ export function registerTraceWaterfall({
         true,
       );
       if (!connection) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Connection not found for source: ${input.sourceId}`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Connection not found for source: ${input.sourceId}`,
+        );
       }
 
       const clickhouseClient = new ClickhouseClient({
@@ -341,15 +324,7 @@ export function registerTraceWaterfall({
             querySettings: source.querySettings,
           })) as { data?: Array<Record<string, unknown>> };
         } catch (e) {
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Failed to pick a trace: ${e instanceof Error ? e.message : String(e)}`,
-              },
-            ],
-          };
+          return clickHouseErrorResult(e, 'Failed to pick a trace');
         }
 
         const firstRow = pickResult.data?.[0];
@@ -380,15 +355,9 @@ export function registerTraceWaterfall({
           ([k]) => k !== 'span_count' && k !== '__hdx_time_bucket',
         );
         if (!candidate || candidate[1] == null) {
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Picker returned a row but no TraceId column was found. Row keys: ${Object.keys(firstRow).join(', ')}`,
-              },
-            ],
-          };
+          return mcpUserError(
+            `Picker returned a row but no TraceId column was found. Row keys: ${Object.keys(firstRow).join(', ')}`,
+          );
         }
         pickedTraceId = String(candidate[1]);
       }
@@ -438,15 +407,10 @@ export function registerTraceWaterfall({
         rows =
           (await (result as { json: () => Promise<SpanRow[]> }).json()) ?? [];
       } catch (e) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Failed to fetch trace ${pickedTraceId}: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-        };
+        return clickHouseErrorResult(
+          e,
+          `Failed to fetch trace ${pickedTraceId}`,
+        );
       }
 
       const truncated = rows.length > input.maxSpans;

@@ -221,16 +221,37 @@
 
   // ----- rendering: sidebar nav -----
 
+  /** Base model name of a cell (plugin-arm cells store `model/plugin` in `model`). */
+  function cellModel(c) {
+    if (!c.model) return null;
+    return c.plugin ? c.model.split('/')[0] : c.model;
+  }
+
   /** True when the current batch has more than one distinct model across cells. */
   function isMultiModel() {
     const models = new Set();
-    for (const c of state.cells) if (c.model) models.add(c.model);
+    for (const c of state.cells) {
+      const m = cellModel(c);
+      if (m) models.add(m);
+    }
     return models.size > 1;
   }
 
-  /** Heading for a cell: matches the columnKeyFor logic in aggregate.ts. */
+  /** True when the current batch has more than one distinct plugin arm. */
+  function isMultiPlugin() {
+    const plugins = new Set();
+    for (const c of state.cells) plugins.add(c.plugin || 'none');
+    return plugins.size > 1;
+  }
+
+  /** Heading for a cell: matches the columnKeyFor logic in aggregate.ts —
+   *  the MCP name, plus `/` and the varying dimensions joined with `+`. */
   function cellHeading(c) {
-    return c.model && isMultiModel() ? `${c.mcp}/${c.model}` : c.mcp;
+    const varying = [];
+    const model = cellModel(c);
+    if (model && isMultiModel()) varying.push(model);
+    if (isMultiPlugin()) varying.push(c.plugin || 'none');
+    return varying.length > 0 ? `${c.mcp}/${varying.join('+')}` : c.mcp;
   }
 
   function renderNav() {
@@ -272,6 +293,17 @@
             r.toolErrors > 0
               ? el('span', { class: 'tag error' }, `${r.toolErrors}!`)
               : null;
+          const adoptBadge =
+            r.adoptionScore != null
+              ? el(
+                  'span',
+                  {
+                    class: 'tag adopt',
+                    title: 'metric-tool adoption (not part of combined score)',
+                  },
+                  `adopt ${pct(r.adoptionScore)}`,
+                )
+              : null;
           const termBadge =
             r.termination && r.termination !== 'final_answer'
               ? el('span', { class: 'tag' }, r.termination)
@@ -289,7 +321,7 @@
               ' ',
               el('span', { class: 'muted small' }, `${r.toolCalls ?? '?'} calls`),
             ),
-            el('span', {}, termBadge, ' ', errBadge, ' ', chip),
+            el('span', {}, termBadge, ' ', adoptBadge, ' ', errBadge, ' ', chip),
           );
           mNode.appendChild(node);
         }
@@ -329,6 +361,11 @@
         'combined',
         grade?.combinedScore != null ? grade.combinedScore.toFixed(3) : '—',
       ],
+      // Adoption is only present when the scenario rubric defines transcript
+      // checks; omit the field entirely otherwise to avoid a dangling '—'.
+      ...(grade?.adoption
+        ? [['adoption', pct(grade.adoption.score)]]
+        : []),
     ];
     for (const [k, v] of fields) {
       hdr.appendChild(
@@ -617,6 +654,48 @@
       pane.appendChild(checks);
     }
 
+    // Adoption checks (transcript-aware tool usage). Reported alongside the
+    // outcome score but intentionally excluded from the combined score.
+    if (g.adoption?.hits) {
+      const checks = el('div', { class: 'grade-section' });
+      checks.appendChild(
+        el(
+          'h3',
+          {},
+          'Adoption (tool usage)',
+          el('span', { class: 'score' }, fmtScore(g.adoption.score)),
+        ),
+      );
+      for (const h of g.adoption.hits) {
+        const good = !!h.satisfied;
+        checks.appendChild(
+          el(
+            'div',
+            { class: 'check' + (h.negative ? ' negative' : '') },
+            el(
+              'div',
+              { class: 'marker ' + (good ? 'good' : 'bad') },
+              good ? '✓' : '✗',
+            ),
+            el('div', { class: 'id' }, h.id),
+            el(
+              'div',
+              { class: 'weight' },
+              `w${h.weight}${h.matched != null ? ` · matched=${h.matched}` : ''}`,
+            ),
+          ),
+        );
+      }
+      checks.appendChild(
+        el(
+          'div',
+          { class: 'muted small', style: 'margin-top:0.6rem; font-size:11px' },
+          'Regexes run against the serialized tool-call transcript (tool names + args). Adoption is reported but NOT part of the combined score.',
+        ),
+      );
+      pane.appendChild(checks);
+    }
+
     // Judge scores
     if (g.judge?.scores) {
       const judge = el('div', { class: 'grade-section' });
@@ -836,6 +915,14 @@
     const section = el('div', { class: 'summary-section scenario-breakdown' });
     section.appendChild(el('h2', {}, scenario.scenario));
 
+    // Forward-compat: the aggregate/summary layer (reports/aggregate.ts) does
+    // not yet emit adoption stats (that's HDX-4785). Only surface the adoption
+    // metric row + per-check table when the summary actually carries the data,
+    // so the viewer lights up automatically once aggregation lands.
+    const hasAdoption = Object.values(scenario.cells || {}).some(
+      (c) => c?.adoption != null,
+    );
+
     // Metrics table
     const metrics = [
       {
@@ -852,6 +939,17 @@
         dKey: 'programmaticScore',
         dFmt: signedPct,
       },
+      ...(hasAdoption
+        ? [
+            {
+              label: 'Adoption (tool use)',
+              get: (c) => c?.adoption?.mean,
+              fmt: pct,
+              dKey: 'adoptionScore',
+              dFmt: signedPct,
+            },
+          ]
+        : []),
       {
         label: 'Judge (weighted)',
         get: (c) => c?.judge?.weightedMean,
@@ -1028,6 +1126,51 @@
       );
     }
 
+    // Adoption per-check (forward-compatible: only when the summary carries
+    // adoption.perCheck, populated once HDX-4785 extends aggregate.ts).
+    const allAdoptionChecks = new Set();
+    for (const cell of Object.values(scenario.cells || {})) {
+      if (cell?.adoption?.perCheck) {
+        for (const id of Object.keys(cell.adoption.perCheck))
+          allAdoptionChecks.add(id);
+      }
+    }
+    if (allAdoptionChecks.size > 0) {
+      const aHeader = [el('th', {}, 'Adoption check')];
+      for (const m of mcpOrder) aHeader.push(el('th', {}, m));
+      const aRows = [...allAdoptionChecks].sort().map((id) => {
+        const cells = [el('td', { class: 'metric-label' }, id)];
+        for (const m of mcpOrder) {
+          const v = scenario.cells?.[m]?.adoption?.perCheck?.[id];
+          const cls =
+            v != null
+              ? v >= 0.99
+                ? 'check-pass'
+                : v >= 0.5
+                  ? 'check-partial'
+                  : 'check-fail'
+              : '';
+          cells.push(
+            el('td', { class: `heatmap-cell ${cls}` }, v != null ? pct(v) : '—'),
+          );
+        }
+        return el('tr', {}, ...cells);
+      });
+      section.appendChild(
+        el(
+          'div',
+          { class: 'sub-table' },
+          el('h3', {}, 'Adoption per-check (usage rate)'),
+          el(
+            'table',
+            { class: 'summary-table heatmap' },
+            el('thead', {}, el('tr', {}, ...aHeader)),
+            el('tbody', {}, ...aRows),
+          ),
+        ),
+      );
+    }
+
     // Side-by-side run comparison
     const scenarioCells = state.cells.filter((c) => c.scenario === scenario.scenario);
     if (scenarioCells.length > 0) {
@@ -1054,6 +1197,17 @@
             r.toolErrors > 0
               ? el('span', { class: 'tag error small' }, `${r.toolErrors}err`)
               : null;
+          const adoptBit =
+            r.adoptionScore != null
+              ? el(
+                  'span',
+                  {
+                    class: 'tag adopt small',
+                    title: 'metric-tool adoption',
+                  },
+                  `adopt ${pct(r.adoptionScore)}`,
+                )
+              : null;
           const termBit =
             r.termination !== 'final_answer'
               ? el('span', { class: 'tag small' }, r.termination)
@@ -1069,6 +1223,7 @@
               ' ',
               el('span', { class: 'muted small' }, `${r.toolCalls ?? '?'}c ${fmtMs(r.durationMs)}`),
               termBit ? el('span', {}, ' ', termBit) : null,
+              adoptBit ? el('span', {}, ' ', adoptBit) : null,
               errBit ? el('span', {}, ' ', errBit) : null,
             ),
           );

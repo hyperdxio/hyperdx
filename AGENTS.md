@@ -29,7 +29,9 @@ This is a **monorepo** with six packages:
 - `packages/hdx-eval` - AI eval framework for benchmarking MCP servers against
   observability scenarios. Generates deterministic synthetic telemetry, spawns
   agents, and grades with programmatic checks + LLM-as-judge. See its
-  [`README.md`](packages/hdx-eval/README.md) for setup and usage.
+  [`README.md`](packages/hdx-eval/README.md) for setup and usage, and
+  [`agent_docs/evals.md`](agent_docs/evals.md) for the dual-slot A/B
+  comparison workflow.
 
 **Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
 MongoDB (configuration/metadata)
@@ -90,8 +92,12 @@ before stopping.
    unit/integration tests
 7. **Observability**: This is an observability product - instrument new code as
    you write it. Every team-scoped operation must carry team/user context
-   (`setBusinessContext`), countable log events should also emit a metric, and
-   spans/metric attributes must stay low-cardinality. Use the shared helpers in
+   (`setBusinessContext`), and countable log events should also emit a metric.
+   For our own instrumentation we favor wide events — enrich the unit-of-work
+   span with rich, high-cardinality attributes and keep only span _names_ and
+   _metric_ attributes low-cardinality — while metrics stay first-class
+   (counters/histograms feed alerts and SLOs, and many deployments rely on
+   them). Use the shared helpers in
    `packages/api/src/utils/instrumentation.ts`. See
    [`agent_docs/observability.md`](agent_docs/observability.md).
 
@@ -107,11 +113,14 @@ yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
 ```
 
-**packages/api** (integration tests only):
+**packages/api** (unit and integration tests):
 
 ```bash
-make dev-int-build                  # Build dependencies (run once before tests)
-make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
+cd packages/api
+yarn ci:unit                        # Run unit tests (no services needed)
+
+make dev-int-build                  # Build dependencies (run once before integration tests)
+make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs integration tests.
                                     # Ctrl-C to stop and wait for all services to tear down.
 ```
 

@@ -9,7 +9,7 @@ COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./ts
 # Only copy package.json for workspace resolution during yarn install;
 # full source is copied in the build stages that need it.
 COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
-COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/css.d.ts ./packages/app/eslint.config.mjs ./packages/app/
 RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
     yarn install --mode=skip-build && yarn cache clean
 
@@ -60,6 +60,9 @@ COPY ./packages/app/pages ./packages/app/pages
 COPY ./packages/app/public ./packages/app/public
 COPY ./packages/app/styles ./packages/app/styles
 COPY ./packages/app/types ./packages/app/types
+# next.config.mjs copies this into public/ so the in-app changelog viewer can
+# fetch it; the build fails loudly if it is missing (see next.config.mjs).
+COPY ./packages/app/CHANGELOG.md ./packages/app/CHANGELOG.md
 RUN yarn workspace @hyperdx/app run build
 RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
     rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
