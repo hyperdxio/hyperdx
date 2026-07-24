@@ -23,7 +23,7 @@ export function EmptyContainerPlaceholder({
       mih={isEmpty ? 80 : undefined}
       pos="relative"
     >
-      {isEmpty && (
+      {isEmpty && onAddTile && (
         <Center pos="absolute" top={0} bottom={0} left={0} right={0} px="md">
           <Button
             variant="secondary"

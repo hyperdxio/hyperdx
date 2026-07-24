@@ -97,6 +97,11 @@ export class DashboardPage {
   private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
+  private readonly enterKioskModeMenuItem: Locator;
+  private readonly exitKioskModeBtn: Locator;
+  private readonly kioskHeaderContainer: Locator;
+  private readonly kioskLiveStatusBadge: Locator;
+  readonly appNav: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -154,6 +159,13 @@ export class DashboardPage {
     this.exportDashboardMenuItem = page.getByTestId(
       'export-dashboard-menu-item',
     );
+    this.enterKioskModeMenuItem = page.getByTestId(
+      'enter-kiosk-mode-menu-item',
+    );
+    this.exitKioskModeBtn = page.getByTestId('exit-kiosk-mode-button');
+    this.kioskHeaderContainer = page.getByTestId('kiosk-header');
+    this.kioskLiveStatusBadge = page.getByTestId('kiosk-live-status');
+    this.appNav = page.getByTestId('app-nav');
   }
 
   /**
@@ -1279,6 +1291,79 @@ export class DashboardPage {
     await this.ignoredUrlFiltersBanner
       .getByRole('button', { name: 'Dismiss' })
       .click();
+  }
+
+  // ---- Kiosk mode helpers ----
+
+  /**
+   * Open the dashboard overflow menu and click "Enter kiosk mode".
+   * Expects the menu item with data-testid="enter-kiosk-mode-menu-item".
+   */
+  async enterKioskMode() {
+    await this.dashboardMenuButton.click();
+    await this.enterKioskModeMenuItem.click();
+  }
+
+  /**
+   * Click the "Exit kiosk mode" button (data-testid="exit-kiosk-mode-button")
+   * that is rendered as part of the kiosk chrome.
+   */
+  async exitKioskMode() {
+    await this.exitKioskModeBtn.click();
+  }
+
+  /**
+   * Locator scoped to the kiosk header bar that contains `name` as text.
+   * Used to verify the saved dashboard name is displayed in kiosk mode.
+   */
+  getKioskHeading(name: string): Locator {
+    return this.kioskHeaderContainer.getByText(name, { exact: false });
+  }
+
+  /** The full kiosk header bar (data-testid="kiosk-header"). */
+  get kioskHeader(): Locator {
+    return this.kioskHeaderContainer;
+  }
+
+  /**
+   * The "Live" read-only status badge shown in kiosk mode
+   * (data-testid="kiosk-live-status").
+   */
+  get kioskLiveStatus(): Locator {
+    return this.kioskLiveStatusBadge;
+  }
+
+  /**
+   * The first tile actions (kebab) button. In kiosk mode this should be absent
+   * or hidden, confirming that tile edit affordances are locked.
+   */
+  get firstTileActionsButton(): Locator {
+    return this.page.locator('[data-testid^="tile-actions-button-"]').first();
+  }
+
+  /**
+   * All react-grid-layout resize handles on the dashboard grid. In kiosk mode
+   * the grid is static so every handle must be absent or hidden.
+   */
+  get tileResizeHandles(): Locator {
+    return this.page.locator('.react-resizable-handle');
+  }
+
+  /**
+   * Reload the current page and wait for the network to settle.
+   * Prefer this over `page.reload()` in spec files so all navigation
+   * stays inside the page object.
+   */
+  async reload() {
+    await this.page.reload({ waitUntil: 'networkidle' });
+  }
+
+  /**
+   * The dashboard overflow ("...") menu button. Exposed so specs can assert
+   * it is hidden in kiosk mode without needing to open it.
+   */
+  get menuButton(): Locator {
+    return this.dashboardMenuButton;
   }
 
   // Getters for assertions

@@ -169,6 +169,17 @@ describe('DashboardContainer', () => {
         screen.queryByTestId('group-toggle-default-g1'),
       ).not.toBeInTheDocument();
     });
+
+    it('hides editing controls in read-only mode', () => {
+      renderDashboardContainer({ readOnly: true });
+
+      expect(
+        screen.queryByTestId('group-drag-handle-g1'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('group-add-tile-g1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('group-menu-g1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('group-chevron-g1')).toBeInTheDocument();
+    });
   });
 
   describe('tab bar', () => {

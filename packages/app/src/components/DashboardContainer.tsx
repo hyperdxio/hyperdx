@@ -48,6 +48,8 @@ type DashboardContainerProps = {
   dragHandleProps: DragHandleProps;
   /** Tab IDs that contain tiles with active alerts, if any */
   alertingTabIds: Set<string> | undefined;
+  /** Hide all dashboard-authoring controls while preserving view controls. */
+  readOnly?: boolean;
 };
 
 export default function DashboardContainer({
@@ -70,6 +72,7 @@ export default function DashboardContainer({
   children,
   dragHandleProps,
   alertingTabIds,
+  readOnly = false,
 }: DashboardContainerProps) {
   const [isRenamingGroup, setIsRenamingGroup] = useState(false);
   const [groupRenameValue, setGroupRenameValue] = useState(container.title);
@@ -82,7 +85,7 @@ export default function DashboardContainer({
   const hasTabs = tabs.length >= 2;
   const collapsible = container.collapsible !== false;
   const bordered = container.bordered !== false;
-  const showControls = hovered || menuOpen;
+  const showControls = !readOnly && (hovered || menuOpen);
   const resolvedActiveTabId = activeTabId ?? tabs[0]?.id;
   const isCollapsed = collapsible && collapsed;
 
@@ -133,7 +136,7 @@ export default function DashboardContainer({
     />
   ) : null;
 
-  const addTileButton = !isCollapsed && (
+  const addTileButton = !readOnly && !isCollapsed && (
     <Tooltip label="Add Tile" position="top" withArrow>
       <ActionIcon
         variant="subtle"
@@ -146,7 +149,7 @@ export default function DashboardContainer({
     </Tooltip>
   );
 
-  const overflowMenu = (
+  const overflowMenu = !readOnly && (
     <Menu width={200} position="bottom-end" onChange={setMenuOpen}>
       <Menu.Target>
         <ActionIcon
@@ -199,7 +202,7 @@ export default function DashboardContainer({
     </Menu>
   );
 
-  const dragHandle = (
+  const dragHandle = !readOnly && (
     <Flex
       {...dragHandleProps}
       align="center"
@@ -265,8 +268,8 @@ export default function DashboardContainer({
               tabs={tabs}
               activeTabId={resolvedActiveTabId}
               showControls={showControls}
-              onRenameTab={onRenameTab}
-              onDeleteTab={onDeleteTab}
+              onRenameTab={readOnly ? undefined : onRenameTab}
+              onDeleteTab={readOnly ? undefined : onDeleteTab}
               containerId={container.id}
               alertingTabIds={alertingTabIds}
               hoverControlStyle={hoverControlStyle}
@@ -338,9 +341,11 @@ export default function DashboardContainer({
                 size="sm"
                 fw={500}
                 truncate
-                style={{ cursor: !collapsedTabLabel ? 'text' : undefined }}
+                style={{
+                  cursor: !readOnly && !collapsedTabLabel ? 'text' : undefined,
+                }}
                 onClick={
-                  !collapsedTabLabel
+                  !readOnly && !collapsedTabLabel
                     ? e => {
                         e.stopPropagation();
                         setGroupRenameValue(headerTitle);
