@@ -690,8 +690,8 @@ export const MemoChart = memo(function MemoChart({
   /** Invoked when the cursor leaves an exemplar marker. */
   onExemplarHoverEnd?: () => void;
 }) {
-  const _id = useId();
-  const id = _id.replace(/:/g, '');
+  const rawId = useId();
+  const id = rawId.replace(/:/g, '');
 
   // recharts sync group, scoped via context (see chartSync).
   const syncId = useChartSyncId();

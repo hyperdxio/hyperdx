@@ -445,7 +445,7 @@ function DBTimeChartComponent({
   // `exemplarTraceSourceId`, else the chart source's linked trace source.
   const exemplarTraceSourceId =
     queriedConfig.exemplarTraceSourceId ||
-    (source as { traceSourceId?: string } | undefined)?.traceSourceId;
+    (source && 'traceSourceId' in source ? source.traceSourceId : undefined);
   const { data: exemplarTraceSource } = useSource({
     id: exemplarTraceSourceId,
   });
@@ -457,24 +457,29 @@ function DBTimeChartComponent({
     x: number;
     y: number;
   } | null>(null);
-  const exemplarCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exemplarCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const openExemplarCard = useCallback(
     (exemplar: Exemplar, x: number, y: number) => {
-      if (exemplarCloseTimer.current) clearTimeout(exemplarCloseTimer.current);
+      if (exemplarCloseTimerRef.current)
+        clearTimeout(exemplarCloseTimerRef.current);
       setHoveredExemplar({ exemplar, x, y });
     },
     [],
   );
   const scheduleCloseExemplarCard = useCallback(() => {
-    if (exemplarCloseTimer.current) clearTimeout(exemplarCloseTimer.current);
-    exemplarCloseTimer.current = setTimeout(
+    if (exemplarCloseTimerRef.current)
+      clearTimeout(exemplarCloseTimerRef.current);
+    exemplarCloseTimerRef.current = setTimeout(
       () => setHoveredExemplar(null),
       150,
     );
   }, []);
   useEffect(
     () => () => {
-      if (exemplarCloseTimer.current) clearTimeout(exemplarCloseTimer.current);
+      if (exemplarCloseTimerRef.current)
+        clearTimeout(exemplarCloseTimerRef.current);
     },
     [],
   );
@@ -886,8 +891,8 @@ function DBTimeChartComponent({
             traceSourceConfigured={!!exemplarTraceSource}
             onInspect={navigateToExemplarTrace}
             onMouseEnter={() => {
-              if (exemplarCloseTimer.current)
-                clearTimeout(exemplarCloseTimer.current);
+              if (exemplarCloseTimerRef.current)
+                clearTimeout(exemplarCloseTimerRef.current);
             }}
             onMouseLeave={scheduleCloseExemplarCard}
           />

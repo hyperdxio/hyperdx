@@ -1,3 +1,6 @@
+/* eslint-disable @eslint-react/no-unnecessary-use-prefix --
+   jest.mock factories must mirror the real hook export names (useMe, useSource,
+   useExemplars, …), so the `use` prefix is required here, not accidental. */
 import React from 'react';
 import objectHash from 'object-hash';
 import {

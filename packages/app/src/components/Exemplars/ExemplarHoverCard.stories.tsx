@@ -30,7 +30,7 @@ const mockExemplar: Exemplar = {
 
 const hovered = { exemplar: mockExemplar, x: 60, y: 40 };
 
-const noop = () => {};
+const noop = () => undefined;
 
 // A relative, chart-sized container so the card's absolute positioning and
 // flip/clamp logic resolve against a realistic offset parent.

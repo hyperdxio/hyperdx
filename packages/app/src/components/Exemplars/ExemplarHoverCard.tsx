@@ -42,7 +42,7 @@ export function ExemplarHoverCard({
       return;
     }
     const el = ref.current;
-    const parent = el.offsetParent as HTMLElement | null;
+    const parent = el.offsetParent;
     const pW = parent?.clientWidth ?? window.innerWidth;
     const pH = parent?.clientHeight ?? window.innerHeight;
     const cardW = el.offsetWidth;
