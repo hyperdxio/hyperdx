@@ -1,6 +1,6 @@
 {
   "scenario": "metric-saturation",
-  "agentPrompt": "Shoppers are intermittently seeing slow or missing product recommendations on the storefront, and frontend-proxy has been logging occasional upstream 503s over the last couple of hours. Figure out which service is responsible and what the root cause is, and explain the mechanism end to end.",
+  "agentPrompt": "Shoppers are intermittently seeing slow or missing product recommendations on the storefront. Figure out which service is responsible and what the root cause is, and explain the mechanism end to end.",
   "expected": {
     "affectedService": "recommendation-service",
     "rootCause": "A slow JVM heap memory leak (an unbounded candidate/embedding cache) on recommendation-service. On each of its 3 pods the G1 Old Gen heap climbs steadily from ~600MB toward the ~1950MB limit; full-GC pause time develops a heavy tail that stalls request handling, and each pod OOM-restarts on a ~22-minute cadence (staggered ~7 min apart, so the service never fully goes down — requests intermittently stall or 503). After each restart heap drops back to baseline and the cycle repeats. The leak began ~90 minutes ago — about 15 minutes BEFORE the coincidental 1.43.1 deploy.",

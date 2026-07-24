@@ -349,8 +349,17 @@ describe('metric-saturation scenario', () => {
   describe('blinded-entry localization path', () => {
     it('the agent prompt does not name the culprit service', () => {
       const prompt = metricSaturationScenario.agentPrompt;
-      expect(prompt).not.toMatch(/recommendation-service/);
-      expect(prompt).toMatch(/frontend-proxy/);
+      // Fully blinded: the prompt reports only the storefront symptom and
+      // names none of the generated services.
+      for (const service of [
+        SUBJECT,
+        TWIN,
+        'frontend-proxy',
+        'inventory-service',
+      ]) {
+        expect(prompt).not.toContain(service);
+      }
+      expect(prompt).toMatch(/recommendations/i);
     });
 
     it('seeds trace floors for all four services (localization haystack)', () => {
