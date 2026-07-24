@@ -41,7 +41,7 @@
     "lodash": "^4.18.1",
     "minimist": "^1.2.7",
     "mongodb": "^6.15.0",
-    "mongoose": "^6.13.9",
+    "mongoose": "^6.13.10",
     "ms": "^2.1.3",
     "on-headers": "^1.1.0",
     "passport": "^0.6.0",
