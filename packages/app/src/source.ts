@@ -369,6 +369,9 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
+  // Check if span Links column is available
+  const hasSpanLinks = columns.some(col => col.name === 'Links.TraceId');
+
   // Check if metadata rollup tables exist and, if so, infer the bucketing
   // granularity from the key-rollup view's `as_select`
   const rollupMeta =
@@ -443,6 +446,7 @@ export async function inferTableSourceConfig({
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
           ...(hasSpanEvents ? { spanEventsValueExpression: 'Events' } : {}),
+          ...(hasSpanLinks ? { spanLinksValueExpression: 'Links' } : {}),
           ...metadataMVsConfig,
         }
       : {}),

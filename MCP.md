@@ -146,7 +146,8 @@ with:
 
 `clickstack_timeseries`, `clickstack_table`, and the dashboard builder tile
 tools accept metric sources transparently. Each `select` item on a metric
-query must set `metricType` (`"gauge"`, `"sum"`, or `"histogram"`) and
+query must set `metricType` (`"gauge"`, `"sum"`, `"histogram"`, or
+`"exponential histogram"`) and
 `metricName` (the OTel metric name, e.g. `system.cpu.utilization`).
 `valueExpression` defaults to `"Value"` when omitted, so a typical metric
 series looks like:
@@ -165,9 +166,11 @@ Per-kind aggregation guidance:
   emits a neutral hint when the cap may apply.
 - **Histogram**: `"quantile"` with `level` ∈ {0.5, 0.9, 0.95, 0.99} for
   percentiles, or `"count"` for the total bucket count.
+- **Exponential histogram**: `"quantile"` with `level` ∈
+  {0.5, 0.9, 0.95, 0.99} for percentiles, or `"count"` for the total bucket
+  count.
 
-`summary` and `"exponential histogram"` metric kinds are not yet supported
-by the query renderer.
+`summary` metrics are not yet supported by the query renderer.
 
 Discovery workflow for metrics:
 

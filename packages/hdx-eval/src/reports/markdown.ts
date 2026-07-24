@@ -46,6 +46,11 @@ export function renderMarkdownReport(summary: BatchSummary): string {
       lines.push(programmaticBreakdown);
       lines.push('');
     }
+    const adoptionBreakdown = renderAdoptionBreakdown(scenario, columns);
+    if (adoptionBreakdown) {
+      lines.push(adoptionBreakdown);
+      lines.push('');
+    }
   }
   return lines.join('\n');
 }
@@ -125,6 +130,16 @@ function renderScenarioTable(
     c => val(c?.programmatic.mean, pct),
     d => signedPct(d?.programmaticScore),
   );
+  // Adoption is only graded for scenarios with a transcript rubric; omit the
+  // row entirely when no cell has adoption data.
+  const hasAdoption = columns.some(m => scenario.cells[m]?.adoption);
+  if (hasAdoption) {
+    addRow(
+      'Adoption (tool use)',
+      c => val(c?.adoption?.mean, pct),
+      d => signedPct(d?.adoptionScore),
+    );
+  }
   addRow(
     'Judge mean (weighted)',
     c => val(c?.judge.weightedMean, pct),
@@ -215,6 +230,36 @@ function renderProgrammaticBreakdown(
     const isNegative = id.startsWith('false_');
     const label = isNegative ? `${id} (neg)` : id;
     rows.push(`| ${label} | ${colCells.join(' | ')} |`);
+  }
+  return rows.join('\n');
+}
+
+function renderAdoptionBreakdown(
+  scenario: ScenarioSummary,
+  columns: ColumnKey[],
+): string | null {
+  const allChecks = new Set<string>();
+  for (const cell of Object.values(scenario.cells)) {
+    if (!cell?.adoption) continue;
+    for (const id of Object.keys(cell.adoption.perCheck)) allChecks.add(id);
+  }
+  if (allChecks.size === 0) return null;
+
+  const colHeaders = columns.join(' | ');
+  const rows = [
+    '#### Adoption per-check (usage rate)',
+    '',
+    'Usage rate = share of runs whose tool-call transcript matched the check.',
+    '',
+    `| Adoption check | ${colHeaders} |`,
+    '|---' + '|---'.repeat(columns.length) + '|',
+  ];
+  for (const id of [...allChecks].sort()) {
+    const colCells = columns.map(m => {
+      const v = scenario.cells[m]?.adoption?.perCheck[id];
+      return fmtRate(v);
+    });
+    rows.push(`| ${id} | ${colCells.join(' | ')} |`);
   }
   return rows.join('\n');
 }

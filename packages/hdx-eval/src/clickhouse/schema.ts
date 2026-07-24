@@ -150,24 +150,39 @@ async function removeTtlIfPresent(
 }
 
 /**
- * Return `true` when the scenario's traces table exists and has at least one
- * row. A quick, cheap check to decide whether an auto-seed is needed before
- * a `run`.
+ * Return `true` when ANY of the scenario's primary data tables (traces, logs,
+ * or any metric table) exists and has at least one row. A quick, cheap check
+ * to decide whether an auto-seed is needed before a `run`.
+ *
+ * We check all signal tables (not just traces) because log-only scenarios like
+ * `noisy-signals` and metric-only scenarios legitimately leave the traces table
+ * empty — a traces-only check would report them as unseeded and force a full
+ * (~10 min) reseed on every run.
  */
 export async function scenarioIsSeeded(
   client: ClickHouseClient,
   scenario: string,
 ): Promise<boolean> {
   const tables = scenarioTables(scenario);
-  if (!(await tableExists(client, EVAL_DATABASE, tables.traces))) {
-    return false;
+  const dataTables = [
+    tables.traces,
+    tables.logs,
+    ...METRIC_TABLES.map(({ field }) => tables[field]),
+  ];
+  for (const table of dataTables) {
+    if (!(await tableExists(client, EVAL_DATABASE, table))) {
+      continue;
+    }
+    const rs = await client.query({
+      query: `SELECT 1 FROM ${EVAL_DATABASE}.${table} LIMIT 1`,
+      format: 'JSONEachRow',
+    });
+    const rows = await rs.json<unknown>();
+    if (rows.length > 0) {
+      return true;
+    }
   }
-  const rs = await client.query({
-    query: `SELECT 1 FROM ${EVAL_DATABASE}.${tables.traces} LIMIT 1`,
-    format: 'JSONEachRow',
-  });
-  const rows = await rs.json<unknown>();
-  return rows.length > 0;
+  return false;
 }
 
 export async function truncateScenarioTables(
