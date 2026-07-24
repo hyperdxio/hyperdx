@@ -70,7 +70,7 @@
     "ky-universal": "^0.10.1",
     "lodash": "^4.18.1",
     "ms": "^2.1.3",
-    "next": "^16.1.7",
+    "next": "^16.2.11",
     "next-runtime-env": "1",
     "next-seo": "^4.28.1",
     "numbro": "^2.4.0",
