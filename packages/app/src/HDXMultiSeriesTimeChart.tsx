@@ -19,6 +19,7 @@ import {
   CartesianGrid,
   Legend,
   ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -27,7 +28,7 @@ import {
 } from 'recharts';
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, Exemplar } from '@hyperdx/common-utils/dist/types';
 import { Button, Popover, Tooltip as MantineTooltip } from '@mantine/core';
 import { IconZoomReset } from '@tabler/icons-react';
 
@@ -45,6 +46,7 @@ import {
   toViewportPoint,
   useChartTooltipZIndex,
 } from './components/charts/ChartTooltip';
+import { computeExemplarPoints, ExemplarDot } from './components/Exemplars';
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
@@ -642,6 +644,10 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
+  exemplars,
+  maxExemplars = 12,
+  onExemplarHover,
+  onExemplarHoverEnd,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -675,9 +681,17 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
+  /** Exemplar markers to overlay on the chart (linked to traces). */
+  exemplars?: Exemplar[];
+  /** Target number of exemplar markers to show (0 = unlimited). */
+  maxExemplars?: number;
+  /** Invoked when the cursor enters an exemplar marker, with its pixel coords. */
+  onExemplarHover?: (exemplar: Exemplar, cx: number, cy: number) => void;
+  /** Invoked when the cursor leaves an exemplar marker. */
+  onExemplarHoverEnd?: () => void;
 }) {
-  const _id = useId();
-  const id = _id.replace(/:/g, '');
+  const rawId = useId();
+  const id = rawId.replace(/:/g, '');
 
   // recharts sync group, scoped via context (see chartSync).
   const syncId = useChartSyncId();
@@ -778,6 +792,27 @@ export const MemoChart = memo(function MemoChart({
     captureActivePointY,
   ]);
 
+  // Max value across the visible series. Exemplar markers are clamped to this so
+  // a single slow-trace outlier (which can be 100x the p99 line) can't stretch
+  // the y-axis and crush the series flat — the marker pins to the top of the
+  // series range while its hover card still shows the true duration.
+  const visibleSeriesMax = useMemo(() => {
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+    let max = -Infinity;
+    graphResults.forEach(dataPoint => {
+      lineData.forEach(ld => {
+        const seriesName = ld.displayName || ld.dataKey;
+        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
+          const value = dataPoint[ld.dataKey];
+          if (typeof value === 'number' && !isNaN(value)) {
+            max = Math.max(max, value);
+          }
+        }
+      });
+    });
+    return max;
+  }, [graphResults, lineData, selectedSeriesNames]);
+
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
 
@@ -787,9 +822,9 @@ export const MemoChart = memo(function MemoChart({
     const shouldFitYAxis =
       fitYAxisToData && displayType !== DisplayType.StackedBar;
 
-    // The data min/max is only needed to either zoom into a selection or to
-    // fit the lower bound to the data. When neither applies, let Recharts
-    // auto-calculate the upper bound while pinning the lower bound to zero.
+    // The domain follows the visible series only — exemplar markers are clamped
+    // to the series max at render, so they never need to widen the axis. When
+    // there's no selection or fit, let Recharts auto-scale (lower pinned to 0).
     if (!hasSelection && !shouldFitYAxis) {
       return [0, 'auto'];
     }
@@ -932,6 +967,31 @@ export const MemoChart = memo(function MemoChart({
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
   const mouseDownPosRef = useRef<number | null>(null);
 
+  // While the cursor is over an exemplar marker, the exemplar hover card owns
+  // the tooltip real estate — suppress the series hover tooltip so the two don't
+  // overlap. Wraps the parent's exemplar-hover callbacks to also track it here.
+  // Track the hovered marker by key (not just a boolean) so we can detect when a
+  // refetch/re-thinning unmounts it — React fires no mouseleave in that case, so
+  // the boolean would otherwise stick `true` and permanently suppress the series
+  // tooltip. The reset effect lives after `exemplarPoints` is computed.
+  const [hoveredExemplarKey, setHoveredExemplarKey] = useState<string | null>(
+    null,
+  );
+  const isExemplarHovered = hoveredExemplarKey != null;
+  const handleExemplarHoverStart = useCallback(
+    (exemplar: Exemplar, cx: number, cy: number) => {
+      setHoveredExemplarKey(
+        `exemplar-${exemplar.traceId}-${exemplar.timestamp}`,
+      );
+      onExemplarHover?.(exemplar, cx, cy);
+    },
+    [onExemplarHover],
+  );
+  const handleExemplarHoverEnd = useCallback(() => {
+    setHoveredExemplarKey(null);
+    onExemplarHoverEnd?.();
+  }, [onExemplarHoverEnd]);
+
   // Tracks the time range that was displayed before the user brushed to zoom
   // in, so a "Reset zoom" control can restore it (mirrors Highcharts). It holds
   // the earliest pre-zoom range across consecutive zoom-ins so resetting jumps
@@ -990,6 +1050,37 @@ export const MemoChart = memo(function MemoChart({
     });
     return map;
   }, [lineData]);
+
+  // Place each exemplar at its own value (the trace/span's actual measurement),
+  // never remapped onto the series line — the marker's height must match what
+  // the linked trace reports. Thinned to keep ~maxExemplars markers across the
+  // visible range: the highest-value (most notable, e.g. slowest) trace per
+  // window. The window is coarser than the chart granularity so the count stays
+  // readable even when every fine-grained bucket has an exemplar.
+  // maxExemplars <= 0 means "unlimited" — show every exemplar (deduped).
+  const exemplarPoints = useMemo(
+    () =>
+      computeExemplarPoints(exemplars, {
+        maxExemplars,
+        granularity,
+        dateRange,
+      }),
+    [exemplars, maxExemplars, granularity, dateRange],
+  );
+
+  // If a refetch/re-thinning drops the hovered marker from the rendered set, its
+  // <g> unmounts without a mouseleave. Reset the hover here (against the actual
+  // rendered points) so the series tooltip un-suppresses and the parent's hover
+  // card closes via onExemplarHoverEnd.
+  useEffect(() => {
+    if (
+      hoveredExemplarKey != null &&
+      !exemplarPoints.some(p => p.key === hoveredExemplarKey)
+    ) {
+      setHoveredExemplarKey(null);
+      onExemplarHoverEnd?.();
+    }
+  }, [exemplarPoints, hoveredExemplarKey, onExemplarHoverEnd]);
 
   const xAxisDomain: AxisDomain = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
@@ -1271,7 +1362,7 @@ export const MemoChart = memo(function MemoChart({
               Hidden once a point is clicked, where the pinned tooltip takes over.
               Portaled to body so HDXLineChartTooltip can self-position (see its
               docblock) and escape the chart's bounds near an edge. */}
-          {isClickActive == null && (
+          {isClickActive == null && !isExemplarHovered && (
             <Tooltip
               content={
                 <HDXLineChartTooltip
@@ -1288,6 +1379,28 @@ export const MemoChart = memo(function MemoChart({
           )}
           {referenceLines}
           {annotationElements}
+          {exemplarPoints.map(p => (
+            <ReferenceDot
+              key={p.key}
+              x={p.x}
+              // Clamp to the series max so an outlier pins to the top of the
+              // series range instead of stretching the axis (and getting
+              // discarded by recharts' default ifOverflow). The hover card
+              // still shows the exemplar's true value.
+              y={
+                Number.isFinite(visibleSeriesMax)
+                  ? Math.min(p.y, visibleSeriesMax)
+                  : p.y
+              }
+              shape={
+                <ExemplarDot
+                  exemplar={p.exemplar}
+                  onHoverStart={handleExemplarHoverStart}
+                  onHoverEnd={handleExemplarHoverEnd}
+                />
+              }
+            />
+          ))}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"

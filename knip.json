@@ -39,6 +39,7 @@
     ".github/scripts/**",
     ".github/actions/**",
     "docker/hyperdx/**",
+    "telemetry-generator/**",
     ".claude/**"
   ],
   "ignoreBinaries": ["make", "migrate"],

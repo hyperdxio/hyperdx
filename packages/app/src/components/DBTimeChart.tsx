@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import Router from 'next/router';
 import { add, differenceInSeconds } from 'date-fns';
 import {
   convertGranularityToSeconds,
@@ -21,6 +22,7 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  Exemplar,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 import { IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -39,8 +41,11 @@ import {
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
+import { ExemplarHoverCard } from '@/components/Exemplars';
+import { DEFAULT_MAX_EXEMPLARS } from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useExemplars, useExemplarTraceMeta } from '@/hooks/useExemplars';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
@@ -431,6 +436,79 @@ function DBTimeChartComponent({
     id: sourceId || config.source,
   });
 
+  // Exemplar overlay is configured per-chart via `enableExemplars` (set in the
+  // chart editor next to "As Ratio"), not a runtime toolbar toggle. The hook is
+  // a no-op unless the flag is set and the source kind supports exemplars.
+  const { exemplars } = useExemplars(queriedConfig, source);
+
+  // Trace source an exemplar resolves against: the chart's explicit
+  // `exemplarTraceSourceId`, else the chart source's linked trace source.
+  const exemplarTraceSourceId =
+    queriedConfig.exemplarTraceSourceId ||
+    (source && 'traceSourceId' in source ? source.traceSourceId : undefined);
+  const { data: exemplarTraceSource } = useSource({
+    id: exemplarTraceSourceId,
+  });
+
+  // Hover card state. A short close delay lets the cursor travel from the SVG
+  // marker into the HTML card without it closing.
+  const [hoveredExemplar, setHoveredExemplar] = useState<{
+    exemplar: Exemplar;
+    x: number;
+    y: number;
+  } | null>(null);
+  const exemplarCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const openExemplarCard = useCallback(
+    (exemplar: Exemplar, x: number, y: number) => {
+      if (exemplarCloseTimerRef.current)
+        clearTimeout(exemplarCloseTimerRef.current);
+      setHoveredExemplar({ exemplar, x, y });
+    },
+    [],
+  );
+  const scheduleCloseExemplarCard = useCallback(() => {
+    if (exemplarCloseTimerRef.current)
+      clearTimeout(exemplarCloseTimerRef.current);
+    exemplarCloseTimerRef.current = setTimeout(
+      () => setHoveredExemplar(null),
+      150,
+    );
+  }, []);
+  useEffect(
+    () => () => {
+      if (exemplarCloseTimerRef.current)
+        clearTimeout(exemplarCloseTimerRef.current);
+    },
+    [],
+  );
+  // Note: when a refetch/re-thinning drops the hovered marker, the chart
+  // (MemoChart) detects the unmount against the actually-rendered points and
+  // fires onExemplarHoverEnd, which schedules this card's close — so no separate
+  // cleanup against the raw `exemplars` list is needed (that list is pre-thinning
+  // and would miss the re-thinning case anyway).
+
+  const { data: hoveredTraceMeta, isLoading: isHoveredTraceMetaLoading } =
+    useExemplarTraceMeta(
+      hoveredExemplar?.exemplar.traceId,
+      exemplarTraceSource,
+    );
+
+  const navigateToExemplarTrace = useCallback(
+    (exemplar: Exemplar) => {
+      if (exemplarTraceSourceId) {
+        const params = new URLSearchParams();
+        params.set('source', exemplarTraceSourceId);
+        params.set('traceId', exemplar.traceId);
+        Router.push(`/search?${params.toString()}`);
+      } else {
+        Router.push(`/trace/${encodeURIComponent(exemplar.traceId)}`);
+      }
+    },
+    [exemplarTraceSourceId],
+  );
+
   const { formatByColumn, chartFormat: axisNumberFormat } =
     useChartNumberFormats(queriedConfig, data?.meta);
 
@@ -806,6 +884,18 @@ function DBTimeChartComponent({
             numberFormatByKey={formatByColumn}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
           />
+          <ExemplarHoverCard
+            hovered={hoveredExemplar}
+            meta={hoveredTraceMeta ?? undefined}
+            isLoading={isHoveredTraceMetaLoading}
+            traceSourceConfigured={!!exemplarTraceSource}
+            onInspect={navigateToExemplarTrace}
+            onMouseEnter={() => {
+              if (exemplarCloseTimerRef.current)
+                clearTimeout(exemplarCloseTimerRef.current);
+            }}
+            onMouseLeave={scheduleCloseExemplarCard}
+          />
           <MemoChart
             dateRange={dateRange}
             displayType={displayType}
@@ -829,6 +919,10 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            exemplars={exemplars}
+            maxExemplars={me?.team?.maxExemplars ?? DEFAULT_MAX_EXEMPLARS}
+            onExemplarHover={openExemplarCard}
+            onExemplarHoverEnd={scheduleCloseExemplarCard}
           />
         </>
       )}

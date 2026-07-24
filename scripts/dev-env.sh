@@ -55,6 +55,7 @@ HDX_DEV_OTEL_GRPC_PORT=$((30800 + HDX_DEV_SLOT))
 HDX_DEV_OTEL_HTTP_PORT=$((30900 + HDX_DEV_SLOT))
 HDX_DEV_OTEL_METRICS_PORT=$((31000 + HDX_DEV_SLOT))
 HDX_DEV_OTEL_JSON_HTTP_PORT=$((31100 + HDX_DEV_SLOT))
+HDX_DEV_PROMETHEUS_PORT=$((31200 + HDX_DEV_SLOT))
 
 # --- Docker Compose project name (unique per slot) ---
 HDX_DEV_PROJECT="hdx-dev-${HDX_DEV_SLOT}"
@@ -80,6 +81,7 @@ export HDX_DEV_OTEL_GRPC_PORT
 export HDX_DEV_OTEL_HTTP_PORT
 export HDX_DEV_OTEL_METRICS_PORT
 export HDX_DEV_OTEL_JSON_HTTP_PORT
+export HDX_DEV_PROMETHEUS_PORT
 export HDX_DEV_PROJECT
 export NX_CACHE_DIRECTORY
 
@@ -111,6 +113,7 @@ cat > "${HDX_DEV_SLOTS_DIR}/${HDX_DEV_SLOT}.json" <<EOF
   "otelHttpPort": ${HDX_DEV_OTEL_HTTP_PORT},
   "otelGrpcPort": ${HDX_DEV_OTEL_GRPC_PORT},
   "otelJsonHttpPort": ${HDX_DEV_OTEL_JSON_HTTP_PORT},
+  "prometheusPort": ${HDX_DEV_PROMETHEUS_PORT},
   "logsDir": "${HDX_DEV_LOGS_DIR}",
   "pid": $$,
   "startedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

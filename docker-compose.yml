@@ -74,6 +74,8 @@ services:
       # Uncomment the next two lines to enable PromQL (Prometheus-compatible metrics)
       # ENABLE_PROMQL: 'true'
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'
+      # Uncomment to enable exemplar overlays (trace markers on time charts)
+      # NEXT_PUBLIC_ENABLE_EXEMPLARS: 'true'
       DEFAULT_CONNECTIONS:
         '[{"name":"Local
         ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'

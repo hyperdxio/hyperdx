@@ -1,0 +1,19 @@
+{
+  "name": "telemetry-generator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Synthetic OTLP traces + coherent metric exemplars for local dev and e2e testing of HyperDX.",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.57.2",
+    "@opentelemetry/resources": "^1.30.1",
+    "@opentelemetry/sdk-trace-base": "^1.30.1",
+    "@opentelemetry/sdk-trace-node": "^1.30.1",
+    "@opentelemetry/semantic-conventions": "^1.30.0"
+  }
+}

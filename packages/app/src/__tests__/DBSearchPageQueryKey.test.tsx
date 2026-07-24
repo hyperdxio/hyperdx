@@ -1,3 +1,6 @@
+/* eslint-disable @eslint-react/no-unnecessary-use-prefix --
+   jest.mock factories must mirror the real hook export names (useMe, useSource,
+   useExemplars, …), so the `use` prefix is required here, not accidental. */
 import React from 'react';
 import objectHash from 'object-hash';
 import {
@@ -17,6 +20,13 @@ jest.mock('@/api', () => ({
       isLoading: false,
     }),
   },
+}));
+
+// Exemplar hooks need a QueryClientProvider (via useMetadataWithSettings) and
+// are irrelevant to queryKey consistency, so stub them out.
+jest.mock('@/hooks/useExemplars', () => ({
+  useExemplars: () => ({ exemplars: [], isLoading: false, isError: false }),
+  useExemplarTraceMeta: () => ({ data: null, isLoading: false }),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({

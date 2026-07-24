@@ -1,9 +1,10 @@
 import { Control, useController, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Flex, Stack, Text } from '@mantine/core';
+import { Box, Button, Flex, Stack, Switch, Text } from '@mantine/core';
 
 import PromQLEditor from '@/components/PromQLEditor/PromQLEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { IS_EXEMPLARS_ENABLED } from '@/config';
 import { usePromqlMetricNames } from '@/hooks/usePromqlMetadata';
 import { useSource } from '@/source';
 
@@ -21,6 +22,10 @@ export default function PromqlChartEditor({
   const { field: expressionField } = useController({
     control,
     name: 'promqlExpression',
+  });
+  const { field: exemplarsField } = useController({
+    control,
+    name: 'enableExemplars',
   });
 
   const sourceId = useWatch({ control, name: 'source' });
@@ -57,7 +62,37 @@ export default function PromqlChartEditor({
           metricNames={metricNames}
         />
       </Box>
-      <Flex justify="end">
+      <Flex justify="space-between" align="center" gap="sm">
+        <Flex align="center" gap="sm" wrap="wrap">
+          {IS_EXEMPLARS_ENABLED && (
+            <>
+              <Switch
+                label="Exemplars"
+                size="sm"
+                color="gray"
+                variant="subtle"
+                checked={exemplarsField.value === true}
+                onClick={() => {
+                  exemplarsField.onChange(exemplarsField.value !== true);
+                  onSubmit();
+                }}
+              />
+              {exemplarsField.value === true && (
+                <Flex align="center" gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Trace source
+                  </Text>
+                  <SourceSelectControlled
+                    size="xs"
+                    control={control}
+                    name="exemplarTraceSourceId"
+                    allowedSourceKinds={[SourceKind.Trace]}
+                  />
+                </Flex>
+              )}
+            </>
+          )}
+        </Flex>
         <Button
           onClick={onOpenDisplaySettings}
           size="compact-sm"

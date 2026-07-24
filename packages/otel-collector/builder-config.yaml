@@ -135,6 +135,9 @@ connectors:
   - gomod:
       github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector
       v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector
+      v__OTEL_COLLECTOR_VERSION__
 
 extensions:
   # Core

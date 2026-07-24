@@ -66,3 +66,7 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+// Exemplar overlay (trace markers on time charts). Off by default while the
+// feature is being tested; set NEXT_PUBLIC_ENABLE_EXEMPLARS=true to enable.
+export const IS_EXEMPLARS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_EXEMPLARS') === 'true';

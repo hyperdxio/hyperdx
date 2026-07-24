@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
@@ -15,6 +15,7 @@ import {
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
+  MetricsDataType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -32,7 +33,7 @@ import SourceSchemaPreview, {
 } from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_EXEMPLARS_ENABLED, IS_LOCAL_MODE } from '@/config';
 import { getEventBody, isSingleExpression } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
@@ -41,6 +42,16 @@ import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
 import { buildGroupByConnectionProps } from './utils';
+
+// The builder editor runs ClickHouse metadata/autocomplete against the source's
+// connection, so PromQL sources (Prometheus connections, no ClickHouse tables)
+// are excluded here — they're selected inside PromqlChartEditor instead.
+const BUILDER_ALLOWED_SOURCE_KINDS = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
 
 type ChartEditorControlsProps = {
   control: Control<ChartEditorFormState>;
@@ -111,10 +122,43 @@ export function ChartEditorControls({
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
+  const series = useWatch({ control, name: 'series' });
+
+  // Exemplars overlay (trace links) is available on metric sources for the
+  // time-series display types. Toggling persists `enableExemplars` on the chart
+  // config; charts render the overlay from that flag (no runtime toggle). PromQL
+  // charts use PromqlChartEditor, which has its own exemplars toggle.
+  // Exemplars mark a single series' raw measurement (e.g. latency), so they're
+  // only meaningful on a single, non-ratio series — not on ratio/multi-series.
+  const enableExemplars = useWatch({ control, name: 'enableExemplars' });
+  const canShowExemplars =
+    IS_EXEMPLARS_ENABLED &&
+    (displayType === DisplayType.Line ||
+      displayType === DisplayType.StackedBar) &&
+    tableSource?.kind === SourceKind.Metric &&
+    fields.length === 1 &&
+    seriesReturnType !== 'ratio' &&
+    // Latency-only for now: exemplar values are durations, which only share the
+    // y-axis unit on a histogram metric.
+    Array.isArray(series) &&
+    series[0]?.metricType === MetricsDataType.Histogram;
+
+  // `enableExemplars` persists on the chart config, but the toggle only shows
+  // while `canShowExemplars` holds. If the chart later leaves single-series
+  // (adds a series, switches to ratio, changes source/type), the toggle hides
+  // but the flag would otherwise stay `true` — a stale config that the render
+  // guards ignore but that reads as enabled. Clear it (and the trace source)
+  // when it can no longer apply so it persists correctly on the next save.
+  useEffect(() => {
+    if (!canShowExemplars && enableExemplars === true) {
+      setValue('enableExemplars', false);
+      setValue('exemplarTraceSourceId', undefined);
+    }
+  }, [canShowExemplars, enableExemplars, setValue]);
+
   // The chart-level Group By must be valid against every series query. For
   // metric sources (which fan out to per-type tables) this means offering the
   // intersection of each series' fields; see buildGroupByConnectionProps.
-  const series = useWatch({ control, name: 'series' });
   const groupByConnectionProps = useMemo(
     () => buildGroupByConnectionProps({ tableSource, series, tableConnection }),
     [tableSource, series, tableConnection],
@@ -140,7 +184,7 @@ export function ChartEditorControls({
             allowedSourceKinds={
               displayType === DisplayType.Heatmap
                 ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
+                : BUILDER_ALLOWED_SOURCE_KINDS
             }
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
@@ -341,6 +385,32 @@ export function ChartEditorControls({
                   }}
                   checked={seriesReturnType === 'ratio'}
                 />
+              )}
+              {canShowExemplars && (
+                <Switch
+                  label="Exemplars"
+                  size="sm"
+                  color="gray"
+                  variant="subtle"
+                  onClick={() => {
+                    setValue('enableExemplars', enableExemplars !== true);
+                    onSubmit();
+                  }}
+                  checked={enableExemplars === true}
+                />
+              )}
+              {canShowExemplars && enableExemplars === true && (
+                <Group gap={4} wrap="nowrap">
+                  <Text size="xs" c="dimmed">
+                    Trace source
+                  </Text>
+                  <SourceSelectControlled
+                    size="xs"
+                    control={control}
+                    name="exemplarTraceSourceId"
+                    allowedSourceKinds={[SourceKind.Trace]}
+                  />
+                </Group>
               )}
               {/* Grouped ratios divide per-group by default; this opts into
                   share-of-total (each group's contribution to the blended
