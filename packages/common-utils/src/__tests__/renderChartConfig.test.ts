@@ -3610,6 +3610,31 @@ describe('renderMetricExemplarsChartConfig', () => {
     expect(sql).toContain("ServiceName = 'api'");
   });
 
+  it('ANDs the metric-name predicate even when the chart uses OR filters', async () => {
+    const orConfig = {
+      ...histogramConfig,
+      filtersLogicalOperator: 'OR',
+      filters: [
+        { type: 'sql', condition: "ServiceName = 'api'" },
+        { type: 'sql', condition: "ServiceName = 'web'" },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      orConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    // The required metric-name check must be ANDed as its own group, never
+    // folded into the user OR group (which would let the scan match other
+    // metrics whenever a user filter matches).
+    expect(sql).toContain("AND (MetricName = 'http.server.duration')");
+    // The user filters are still present and OR'd within their own group.
+    expect(sql).toContain("ServiceName = 'api'");
+    expect(sql).toContain("ServiceName = 'web'");
+    expect(sql).not.toMatch(/OR\s*\(?\s*MetricName/);
+  });
+
   it('returns null for a ratio config (exemplars are meaningless on a ratio axis)', async () => {
     const ratioConfig = {
       ...histogramConfig,

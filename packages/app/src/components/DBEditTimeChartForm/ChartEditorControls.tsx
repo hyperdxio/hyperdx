@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
@@ -33,7 +33,7 @@ import SourceSchemaPreview, {
 } from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_EXEMPLARS_ENABLED, IS_LOCAL_MODE } from '@/config';
 import { getEventBody, isSingleExpression } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
@@ -132,6 +132,7 @@ export function ChartEditorControls({
   // only meaningful on a single, non-ratio series — not on ratio/multi-series.
   const enableExemplars = useWatch({ control, name: 'enableExemplars' });
   const canShowExemplars =
+    IS_EXEMPLARS_ENABLED &&
     (displayType === DisplayType.Line ||
       displayType === DisplayType.StackedBar) &&
     tableSource?.kind === SourceKind.Metric &&
@@ -141,6 +142,19 @@ export function ChartEditorControls({
     // y-axis unit on a histogram metric.
     Array.isArray(series) &&
     series[0]?.metricType === MetricsDataType.Histogram;
+
+  // `enableExemplars` persists on the chart config, but the toggle only shows
+  // while `canShowExemplars` holds. If the chart later leaves single-series
+  // (adds a series, switches to ratio, changes source/type), the toggle hides
+  // but the flag would otherwise stay `true` — a stale config that the render
+  // guards ignore but that reads as enabled. Clear it (and the trace source)
+  // when it can no longer apply so it persists correctly on the next save.
+  useEffect(() => {
+    if (!canShowExemplars && enableExemplars === true) {
+      setValue('enableExemplars', false);
+      setValue('exemplarTraceSourceId', undefined);
+    }
+  }, [canShowExemplars, enableExemplars, setValue]);
 
   // The chart-level Group By must be valid against every series query. For
   // metric sources (which fan out to per-type tables) this means offering the

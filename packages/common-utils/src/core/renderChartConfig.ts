@@ -2340,17 +2340,17 @@ export async function renderMetricExemplarsChartConfig(
     // Keep the original select so renderWhere applies the series' aggCondition —
     // otherwise the exemplar scan would surface traces from other series (e.g.
     // other services/routes/tenants) that share the same metric name.
-    filters: [
-      ...(chartConfig.filters ?? []),
-      {
-        type: 'sql',
-        condition: createMetricNameFilter(metricName, metricNameSql),
-      },
-    ],
   };
 
   const where = await renderWhere(whereConfig, metadata);
   const from = renderFrom({ from: whereConfig.from });
+
+  // The metric-name predicate is REQUIRED and must always be ANDed. Appending it
+  // to `chartConfig.filters` would subject it to the chart's
+  // `filtersLogicalOperator`, so an 'OR' filter group would produce
+  // `userFilterA OR userFilterB OR MetricName = ...` and let the exemplar scan
+  // surface traces from other metrics. AND it separately from the user filters.
+  const metricNameCondition = createMetricNameFilter(metricName, metricNameSql);
 
   return concatChSql(' ', [
     chSql`SELECT
@@ -2364,7 +2364,7 @@ export async function renderMetricExemplarsChartConfig(
       \`Exemplars.Value\` AS ex_Value,
       \`Exemplars.TraceId\` AS ex_TraceId,
       \`Exemplars.SpanId\` AS ex_SpanId`,
-    chSql`WHERE ${where.sql ? where : chSql`1 = 1`} AND notEmpty(ex_TraceId)`,
+    chSql`WHERE ${where.sql ? where : chSql`1 = 1`} AND (${metricNameCondition}) AND notEmpty(ex_TraceId)`,
     // Native exemplars carry no interestingness signal; keep the highest-value
     // ones as a stable cap. ponytail: value-desc cap, revisit if even sampling
     // across buckets is wanted.

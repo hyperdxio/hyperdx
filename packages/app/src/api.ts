@@ -541,7 +541,7 @@ type PrometheusLabelValuesResponse = {
 // Native Prometheus /query_exemplars shape: one entry per series, each with its
 // own exemplar list. `labels` carries the trace/span id (label naming varies by
 // exporter, e.g. trace_id vs traceID — normalized downstream).
-type PrometheusExemplarsResult = {
+export type PrometheusExemplarsResult = {
   seriesLabels: PrometheusMetric;
   exemplars: { labels: PrometheusMetric; value: string; timestamp: number }[];
 };

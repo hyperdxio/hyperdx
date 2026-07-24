@@ -40,7 +40,10 @@ export function ExemplarDot({
       <path
         d={`M ${cx} ${cy - s} L ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} Z`}
         fill="var(--color-chart-warning, #f5a623)"
-        stroke="var(--color-bg-default, #fff)"
+        // Outline that contrasts with the background (dark in light mode, light
+        // in dark mode) rather than matching it — the amber fill alone is
+        // low-contrast on a white background, so the marker needs a defined edge.
+        stroke="var(--color-text-default, #1a1a1a)"
         strokeWidth={1}
       />
       <circle cx={cx} cy={cy} r={HIT_RADIUS} fill="transparent" />

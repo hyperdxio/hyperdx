@@ -19,6 +19,7 @@ import { IconHelpCircle, IconPencil } from '@tabler/icons-react';
 
 import api from '@/api';
 import SelectControlled from '@/components/SelectControlled';
+import { IS_EXEMPLARS_ENABLED } from '@/config';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
   DEFAULT_MAX_EXEMPLARS,
@@ -346,25 +347,29 @@ export default function TeamQueryConfigSection() {
         </Stack>
       </Card>
 
-      <Text size="md" mt="lg">
-        Chart Settings
-      </Text>
-      <Divider my="md" />
-      <Card>
-        <Stack>
-          <ClickhouseSettingForm
-            settingKey="maxExemplars"
-            label="Max Exemplars per Chart"
-            tooltip="The most exemplar markers a time chart will show. The slowest/most notable trace per time window is kept. 0 shows all exemplars."
-            type="number"
-            defaultValue={DEFAULT_MAX_EXEMPLARS}
-            placeholder={`default = ${DEFAULT_MAX_EXEMPLARS}, 0 = unlimited`}
-            min={0}
-            max={1000}
-            displayValue={displayValueWithUnit('markers')}
-          />
-        </Stack>
-      </Card>
+      {IS_EXEMPLARS_ENABLED && (
+        <>
+          <Text size="md" mt="lg">
+            Chart Settings
+          </Text>
+          <Divider my="md" />
+          <Card>
+            <Stack>
+              <ClickhouseSettingForm
+                settingKey="maxExemplars"
+                label="Max Exemplars per Chart"
+                tooltip="The most exemplar markers a time chart will show. The slowest/most notable trace per time window is kept. 0 shows all exemplars."
+                type="number"
+                defaultValue={DEFAULT_MAX_EXEMPLARS}
+                placeholder={`default = ${DEFAULT_MAX_EXEMPLARS}, 0 = unlimited`}
+                min={0}
+                max={1000}
+                displayValue={displayValueWithUnit('markers')}
+              />
+            </Stack>
+          </Card>
+        </>
+      )}
     </Box>
   );
 }

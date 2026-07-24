@@ -48,6 +48,26 @@ describe('normalizePrometheusExemplars', () => {
     expect(ex.groupKey).toBeUndefined();
   });
 
+  it('drops the overlay entirely when the query returns multiple series', () => {
+    // Exemplars are single-series only; multi-series markers can't be attributed
+    // or scaled meaningfully, so the whole set is dropped rather than rendered.
+    const multiSeries = [
+      {
+        seriesLabels: { service: 'api' },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '1', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: { service: 'web' },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '2', timestamp: 1700000000 },
+        ],
+      },
+    ];
+    expect(normalizePrometheusExemplars(multiSeries)).toEqual([]);
+  });
+
   it('skips exemplars without a trace id', () => {
     expect(
       normalizePrometheusExemplars([

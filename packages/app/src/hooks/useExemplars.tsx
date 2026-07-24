@@ -1,4 +1,7 @@
-import { renderMetricExemplarsChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import {
+  EXEMPLAR_QUERY_LIMIT,
+  renderMetricExemplarsChartConfig,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { isPromqlChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptDateRange,
@@ -8,8 +11,9 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
-import { prometheusApi } from '@/api';
+import { prometheusApi, type PrometheusExemplarsResult } from '@/api';
 import { useClickhouseClient } from '@/clickhouse';
+import { IS_EXEMPLARS_ENABLED } from '@/config';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { getDurationMsExpression } from '@/source';
 
@@ -37,18 +41,14 @@ function pick(labels: Record<string, string>, keys: string[]) {
  * Exemplar shape. Exported for testing — label naming varies by exporter.
  */
 export function normalizePrometheusExemplars(
-  data:
-    | {
-        seriesLabels: Record<string, string>;
-        exemplars: {
-          labels: Record<string, string>;
-          value: string;
-          timestamp: number;
-        }[];
-      }[]
-    | undefined,
+  data: PrometheusExemplarsResult[] | undefined,
 ): Exemplar[] {
   if (!data) return [];
+  // Exemplars are a single-series feature: their y-position is the trace's own
+  // value on the chart's shared axis, so markers from multiple series can't be
+  // attributed or scaled meaningfully. If the PromQL expression fans out to more
+  // than one series, drop the overlay rather than render ambiguous markers.
+  if (data.length > 1) return [];
   const out: Exemplar[] = [];
   for (const series of data) {
     const seriesLabels = series.seriesLabels ?? {};
@@ -97,7 +97,10 @@ export function useExemplars(
   const metadata = useMetadataWithSettings();
 
   const supported = !!source && EXEMPLAR_SUPPORTED_KINDS.includes(source.kind);
-  const enabled = config.enableExemplars === true && supported;
+  // Global feature gate: even a config with enableExemplars set fetches nothing
+  // while the feature is disabled for the deployment.
+  const enabled =
+    IS_EXEMPLARS_ENABLED && config.enableExemplars === true && supported;
 
   const query = useQuery<Exemplar[]>({
     queryKey: ['exemplars', config],
@@ -116,7 +119,13 @@ export function useExemplars(
         if (resp.status !== 'success') {
           throw new Error(resp.error ?? 'query_exemplars failed');
         }
-        return normalizePrometheusExemplars(resp.data);
+        // Native Prometheus /query_exemplars has no result-limit parameter, so
+        // bound the set client-side to keep an unbounded upstream response from
+        // ballooning downstream thinning/render work. Mirror the ClickHouse
+        // path's EXEMPLAR_QUERY_LIMIT and keep the highest-value exemplars.
+        return normalizePrometheusExemplars(resp.data)
+          .sort((a, b) => b.value - a.value)
+          .slice(0, EXEMPLAR_QUERY_LIMIT);
       }
 
       // Structured metric source → exemplars stored on the OTel metric table.

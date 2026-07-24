@@ -46,7 +46,7 @@ import {
   toViewportPoint,
   useChartTooltipZIndex,
 } from './components/charts/ChartTooltip';
-import { ExemplarDot } from './components/Exemplars';
+import { computeExemplarPoints, ExemplarDot } from './components/Exemplars';
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
@@ -595,10 +595,6 @@ function CaptureActiveDot({
   );
 }
 
-function numOrNull(v: unknown): number | null {
-  return typeof v === 'number' && !isNaN(v) ? v : null;
-}
-
 /**
  * Compute the unique set of hexes referenced by `<linearGradient>` defs
  * inside MemoChart. Exported so a unit test can pin the dedup-and-union
@@ -796,6 +792,27 @@ export const MemoChart = memo(function MemoChart({
     captureActivePointY,
   ]);
 
+  // Max value across the visible series. Exemplar markers are clamped to this so
+  // a single slow-trace outlier (which can be 100x the p99 line) can't stretch
+  // the y-axis and crush the series flat — the marker pins to the top of the
+  // series range while its hover card still shows the true duration.
+  const visibleSeriesMax = useMemo(() => {
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+    let max = -Infinity;
+    graphResults.forEach(dataPoint => {
+      lineData.forEach(ld => {
+        const seriesName = ld.displayName || ld.dataKey;
+        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
+          const value = dataPoint[ld.dataKey];
+          if (typeof value === 'number' && !isNaN(value)) {
+            max = Math.max(max, value);
+          }
+        }
+      });
+    });
+    return max;
+  }, [graphResults, lineData, selectedSeriesNames]);
+
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
 
@@ -805,39 +822,17 @@ export const MemoChart = memo(function MemoChart({
     const shouldFitYAxis =
       fitYAxisToData && displayType !== DisplayType.StackedBar;
 
-    // Exemplars plot at the trace's own value, which can exceed the series
-    // (a slow request above the avg line), so they must influence the upper
-    // bound or they'd be clipped off-chart.
-    const exemplarValues = (exemplars ?? [])
-      .map(e => e.value)
-      .filter((v): v is number => typeof v === 'number' && !isNaN(v));
-    const exemplarMax = exemplarValues.length
-      ? Math.max(...exemplarValues)
-      : -Infinity;
-
-    // The data min/max is only needed to either zoom into a selection, fit the
-    // lower bound to the data, or make room for exemplar markers. When none
-    // apply, let Recharts auto-calculate the upper bound (lower pinned to zero).
+    // The domain follows the visible series only — exemplar markers are clamped
+    // to the series max at render, so they never need to widen the axis. When
+    // there's no selection or fit, let Recharts auto-scale (lower pinned to 0).
     if (!hasSelection && !shouldFitYAxis) {
-      if (exemplarMax === -Infinity) return [0, 'auto'];
-      // Need an explicit upper bound to include exemplars; derive it from the
-      // visible series max and the exemplar max.
-      let seriesMax = -Infinity;
-      graphResults.forEach(dataPoint => {
-        lineData.forEach(ld => {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            seriesMax = Math.max(seriesMax, value);
-          }
-        });
-      });
-      return [0, Math.max(seriesMax, exemplarMax) * 1.05];
+      return [0, 'auto'];
     }
 
     // Calculate domain based on visible series (all series when there's no
     // explicit selection).
     let minValue = Infinity;
-    let maxValue = exemplarMax;
+    let maxValue = -Infinity;
 
     graphResults.forEach(dataPoint => {
       lineData.forEach(ld => {
@@ -870,7 +865,6 @@ export const MemoChart = memo(function MemoChart({
 
     return ['auto', 'auto'];
   }, [
-    exemplars,
     graphResults,
     lineData,
     selectedSeriesNames,
@@ -973,6 +967,31 @@ export const MemoChart = memo(function MemoChart({
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
   const mouseDownPosRef = useRef<number | null>(null);
 
+  // While the cursor is over an exemplar marker, the exemplar hover card owns
+  // the tooltip real estate — suppress the series hover tooltip so the two don't
+  // overlap. Wraps the parent's exemplar-hover callbacks to also track it here.
+  // Track the hovered marker by key (not just a boolean) so we can detect when a
+  // refetch/re-thinning unmounts it — React fires no mouseleave in that case, so
+  // the boolean would otherwise stick `true` and permanently suppress the series
+  // tooltip. The reset effect lives after `exemplarPoints` is computed.
+  const [hoveredExemplarKey, setHoveredExemplarKey] = useState<string | null>(
+    null,
+  );
+  const isExemplarHovered = hoveredExemplarKey != null;
+  const handleExemplarHoverStart = useCallback(
+    (exemplar: Exemplar, cx: number, cy: number) => {
+      setHoveredExemplarKey(
+        `exemplar-${exemplar.traceId}-${exemplar.timestamp}`,
+      );
+      onExemplarHover?.(exemplar, cx, cy);
+    },
+    [onExemplarHover],
+  );
+  const handleExemplarHoverEnd = useCallback(() => {
+    setHoveredExemplarKey(null);
+    onExemplarHoverEnd?.();
+  }, [onExemplarHoverEnd]);
+
   // Tracks the time range that was displayed before the user brushed to zoom
   // in, so a "Reset zoom" control can restore it (mirrors Highcharts). It holds
   // the earliest pre-zoom range across consecutive zoom-ins so resetting jumps
@@ -1039,53 +1058,29 @@ export const MemoChart = memo(function MemoChart({
   // window. The window is coarser than the chart granularity so the count stays
   // readable even when every fine-grained bucket has an exemplar.
   // maxExemplars <= 0 means "unlimited" — show every exemplar (deduped).
-  const exemplarPoints = useMemo(() => {
-    type ExemplarPoint = {
-      x: number;
-      y: number;
-      exemplar: Exemplar;
-      key: string;
-    };
-    if (!exemplars?.length) return [] as ExemplarPoint[];
+  const exemplarPoints = useMemo(
+    () =>
+      computeExemplarPoints(exemplars, {
+        maxExemplars,
+        granularity,
+        dateRange,
+      }),
+    [exemplars, maxExemplars, granularity, dateRange],
+  );
 
-    const toPoint = (exemplar: Exemplar, value: number): ExemplarPoint => ({
-      x: exemplar.timestamp / 1000, // ms -> seconds (chart x unit)
-      y: value,
-      exemplar,
-      key: `exemplar-${exemplar.traceId}-${exemplar.timestamp}`,
-    });
-
-    if (maxExemplars <= 0) {
-      const all = new Map<string, ExemplarPoint>();
-      for (const exemplar of exemplars) {
-        const value = numOrNull(exemplar.value);
-        if (value == null) continue;
-        const p = toPoint(exemplar, value);
-        all.set(p.key, p); // dedupe identical trace+time
-      }
-      return Array.from(all.values());
+  // If a refetch/re-thinning drops the hovered marker from the rendered set, its
+  // <g> unmounts without a mouseleave. Reset the hover here (against the actual
+  // rendered points) so the series tooltip un-suppresses and the parent's hover
+  // card closes via onExemplarHoverEnd.
+  useEffect(() => {
+    if (
+      hoveredExemplarKey != null &&
+      !exemplarPoints.some(p => p.key === hoveredExemplarKey)
+    ) {
+      setHoveredExemplarKey(null);
+      onExemplarHoverEnd?.();
     }
-
-    const granMs = convertGranularityToSeconds(granularity) * 1000;
-    const rangeMs = dateRange[1].getTime() - dateRange[0].getTime();
-    const bucketMs = Math.max(
-      granMs || 1,
-      rangeMs > 0 ? Math.floor(rangeMs / maxExemplars) : granMs || 1,
-    );
-
-    const bestPerBucket = new Map<string, ExemplarPoint>();
-    for (const exemplar of exemplars) {
-      const value = numOrNull(exemplar.value);
-      if (value == null) continue;
-      const bucket = Math.floor(exemplar.timestamp / bucketMs);
-      const key = `${exemplar.groupKey ?? ''}@${bucket}`;
-      const existing = bestPerBucket.get(key);
-      if (!existing || value > existing.y) {
-        bestPerBucket.set(key, toPoint(exemplar, value));
-      }
-    }
-    return Array.from(bestPerBucket.values());
-  }, [exemplars, maxExemplars, granularity, dateRange]);
+  }, [exemplarPoints, hoveredExemplarKey, onExemplarHoverEnd]);
 
   const xAxisDomain: AxisDomain = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
@@ -1367,7 +1362,7 @@ export const MemoChart = memo(function MemoChart({
               Hidden once a point is clicked, where the pinned tooltip takes over.
               Portaled to body so HDXLineChartTooltip can self-position (see its
               docblock) and escape the chart's bounds near an edge. */}
-          {isClickActive == null && (
+          {isClickActive == null && !isExemplarHovered && (
             <Tooltip
               content={
                 <HDXLineChartTooltip
@@ -1388,12 +1383,20 @@ export const MemoChart = memo(function MemoChart({
             <ReferenceDot
               key={p.key}
               x={p.x}
-              y={p.y}
+              // Clamp to the series max so an outlier pins to the top of the
+              // series range instead of stretching the axis (and getting
+              // discarded by recharts' default ifOverflow). The hover card
+              // still shows the exemplar's true value.
+              y={
+                Number.isFinite(visibleSeriesMax)
+                  ? Math.min(p.y, visibleSeriesMax)
+                  : p.y
+              }
               shape={
                 <ExemplarDot
                   exemplar={p.exemplar}
-                  onHoverStart={onExemplarHover}
-                  onHoverEnd={onExemplarHoverEnd}
+                  onHoverStart={handleExemplarHoverStart}
+                  onHoverEnd={handleExemplarHoverEnd}
                 />
               }
             />

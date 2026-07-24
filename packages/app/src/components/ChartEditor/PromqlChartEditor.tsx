@@ -4,6 +4,7 @@ import { Box, Button, Flex, Stack, Switch, Text } from '@mantine/core';
 
 import PromQLEditor from '@/components/PromQLEditor/PromQLEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { IS_EXEMPLARS_ENABLED } from '@/config';
 import { usePromqlMetricNames } from '@/hooks/usePromqlMetadata';
 import { useSource } from '@/source';
 
@@ -63,29 +64,33 @@ export default function PromqlChartEditor({
       </Box>
       <Flex justify="space-between" align="center" gap="sm">
         <Flex align="center" gap="sm" wrap="wrap">
-          <Switch
-            label="Exemplars"
-            size="sm"
-            color="gray"
-            variant="subtle"
-            checked={exemplarsField.value === true}
-            onClick={() => {
-              exemplarsField.onChange(exemplarsField.value !== true);
-              onSubmit();
-            }}
-          />
-          {exemplarsField.value === true && (
-            <Flex align="center" gap={4}>
-              <Text size="xs" c="dimmed">
-                Trace source
-              </Text>
-              <SourceSelectControlled
-                size="xs"
-                control={control}
-                name="exemplarTraceSourceId"
-                allowedSourceKinds={[SourceKind.Trace]}
+          {IS_EXEMPLARS_ENABLED && (
+            <>
+              <Switch
+                label="Exemplars"
+                size="sm"
+                color="gray"
+                variant="subtle"
+                checked={exemplarsField.value === true}
+                onClick={() => {
+                  exemplarsField.onChange(exemplarsField.value !== true);
+                  onSubmit();
+                }}
               />
-            </Flex>
+              {exemplarsField.value === true && (
+                <Flex align="center" gap={4}>
+                  <Text size="xs" c="dimmed">
+                    Trace source
+                  </Text>
+                  <SourceSelectControlled
+                    size="xs"
+                    control={control}
+                    name="exemplarTraceSourceId"
+                    allowedSourceKinds={[SourceKind.Trace]}
+                  />
+                </Flex>
+              )}
+            </>
           )}
         </Flex>
         <Button

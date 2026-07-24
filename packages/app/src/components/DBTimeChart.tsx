@@ -478,6 +478,11 @@ function DBTimeChartComponent({
     },
     [],
   );
+  // Note: when a refetch/re-thinning drops the hovered marker, the chart
+  // (MemoChart) detects the unmount against the actually-rendered points and
+  // fires onExemplarHoverEnd, which schedules this card's close — so no separate
+  // cleanup against the raw `exemplars` list is needed (that list is pre-thinning
+  // and would miss the re-thinning case anyway).
 
   const { data: hoveredTraceMeta, isLoading: isHoveredTraceMetaLoading } =
     useExemplarTraceMeta(
