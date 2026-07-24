@@ -129,6 +129,7 @@ with:
 | `clickstack_search`              | Browse individual log, event, or trace rows                                                  |
 | `clickstack_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
 | `clickstack_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
+| `clickstack_emerging_signals`    | Detect NEW or GONE log/event patterns between a baseline and a current window (two-window Drain novelty diff) |
 | `clickstack_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
 | `clickstack_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
