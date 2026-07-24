@@ -139,7 +139,7 @@
     "jest-environment-jsdom": "^30.2.0",
     "msw": "^2.3.0",
     "msw-storybook-addon": "^2.0.2",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.12",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.0",
     "prettier": "^3.3.2",
