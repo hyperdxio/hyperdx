@@ -5,6 +5,7 @@ import {
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 
 describe('isMissingColumnError', () => {
   it.each([
@@ -122,5 +123,59 @@ describe('convertCHDataTypeToJSType', () => {
 
   it('should handle Nullable(Bool) as Bool', () => {
     expect(convertCHDataTypeToJSType('Nullable(Bool)')).toBe(JSDataType.Bool);
+  });
+});
+
+describe('BaseClickhouseClient.logQuery', () => {
+  const logQuery = (
+    client: ClickhouseClient,
+    query: string,
+    params?: Record<string, any>,
+  ) => (client as any).logQuery(query, params);
+  const makeLogger = () => ({
+    trace: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('stays silent when no customLogger is configured', () => {
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+    const client = new ClickhouseClient({ host: 'http://localhost' });
+    logQuery(client, 'SELECT 1 FROM system.one');
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs through the customLogger passed to the client', () => {
+    const customLogger = makeLogger();
+    const client = new ClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    logQuery(client, 'SELECT 1 FROM system.one');
+    expect(customLogger.trace).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 1 FROM system.one' },
+    });
+  });
+
+  it('interpolates query_params into the logged SQL', () => {
+    const customLogger = makeLogger();
+    const client = new ClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    logQuery(client, 'SELECT {id:Int32}', { id: 5 });
+    expect(customLogger.trace).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 5' },
+    });
   });
 });

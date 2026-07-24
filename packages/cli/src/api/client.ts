@@ -351,9 +351,6 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
     });
   }
 
-  // Silence the "Sending Query: ..." debug output from BaseClickhouseClient
-  protected override logDebugQuery(): void {}
-
   // This subclass always builds a node client, so narrow the base class's
   // platform-agnostic client type to the node-specific one.
   protected getClient(): NodeClickHouseClient {
