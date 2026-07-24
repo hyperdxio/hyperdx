@@ -200,6 +200,23 @@
     sel.onchange = () => loadBatch(sel.value);
   }
 
+  let batchCopyResetTimer = null;
+  $('#batch-copy').onclick = async () => {
+    const name = $('#batch-select').value || state.batch;
+    if (!name) return;
+    const btn = $('#batch-copy');
+    try {
+      await navigator.clipboard.writeText(name);
+      btn.textContent = 'copied';
+    } catch {
+      btn.textContent = 'failed';
+    }
+    clearTimeout(batchCopyResetTimer);
+    batchCopyResetTimer = setTimeout(() => {
+      btn.textContent = 'copy';
+    }, 1200);
+  };
+
   function renderBatchMeta() {
     const sc = state.summary?.scenarios?.length ?? state.cells.length;
     const cells = state.cells.length;
