@@ -1,0 +1,192 @@
+{
+  "scenario": "deploy-regression",
+  "agentPrompt": "Support has been fielding a growing trickle of 'something went wrong at checkout' reports — order completions are down a few percent versus normal for this time of day. Figure out what's going on and explain the mechanism.",
+  "expected": {
+    "affectedService": "checkout-api",
+    "rootCause": "A defective staged rollout of checkout-api 2.0.0-rc1. Three of six pods updated (one every ~2 min starting 45 min ago), then the rollout was paused for canary observation. The new build's rewritten promotion handler assumes every promo code has a percentOff field, so fixed-amount promo codes (FREESHIP, FLAT5, GIFT10) throw TypeError: Cannot read properties of undefined (reading 'percentOff') in applyPromotion and the request 500s. Roughly 7-8% of checkouts fail overall — but ONLY on the three updated pods and ONLY for fixed-amount promo codes. The three pods still on 1.43.1 stay at baseline. checkout-api telemetry carries no service.version resource attribute, so the split must be reconstructed at the pod level and joined against the rollout events.",
+    "mechanismChain": [
+      "POST /api/checkout 500s begin exactly at the first pod flip (45 min ago) and step up twice more as the second and third canary pods flip (~2 min apart) — the error onset is staggered, matching a rolling update, not a single cutover.",
+      "Grouping failed POST /api/checkout spans by k8s.pod.name shows the failures confined to exactly 3 of 6 pods (~15% error rate each); the other 3 pods stay at baseline (~0.3%). Spans carry NO service.version, so the pod split is the only per-pod dimension.",
+      "Deployment rollout events (INFO logs, event.name deployment.rollout) name exactly those 3 pods updating to 2.0.0-rc1 (rolling update 1.43.1 -> 2.0.0-rc1, paused at 3/6 for canary observation) — the join that ties the failing pods to the new build is the smoking gun.",
+      "Every failed checkout carries a fixed-amount promo code (FREESHIP, FLAT5, or GIFT10) in checkout.promo_code; percent codes (SAVE10, VIP20, WELCOME15, SPRING25) and no-promo checkouts succeed on every pod — the failure is confined to the fixed-amount promo path. There is no promo-type label; the fixed-vs-percent distinction is inferred from the failing set.",
+      "Trace-correlated ERROR logs carry the defect's stack trace — TypeError: Cannot read properties of undefined (reading 'percentOff') at applyPromotion (/app/handlers/promotion.js) — naming the exact code path the new build broke. The stack is error-sampled (~1-in-7 failures); the rest log a generic 'Unhandled error processing POST /api/checkout' line."
+    ],
+    "loadBearingSignal": "traces+logs",
+    "whyMetricsNotRequired": "The complete diagnosis — onset time, error-rate step, pod split, defect identity, and the promo-code trigger — is recoverable from traces (k8s.pod.name + http.response.status_code + checkout.promo_code span attributes) and logs (deployment.rollout events naming the updated pods + the sampled TypeError stack trace, trace-correlated to the failing spans). The planted metrics only mirror the aggregate error-rate step (http.server.request.duration{500} histogram, http.server.request.count{5xx} sum) and rule out infra saturation (flat CPU/memory gauges); they are keyed by service, not pod or version, so they cannot reveal the pod split or the defect. Ignoring the metric tools entirely is a valid solve path.",
+    "metricsRole": {
+      "histogram": "http.server.request.duration on checkout-api split by http.response.status_code: the 500-series count steps up at the deploy — corroborates the onset, adds nothing traces don't show.",
+      "sum": "http.server.request.count{status_class=5xx} (cumulative): slope changes at the deploy — same corroboration as a rate.",
+      "gauge": "system.cpu.utilization and process.memory.usage on checkout-api stay flat and healthy — rules out infra saturation as an alternative cause. inventory.sync.queue.depth on inventory-service is a noisy-but-benign red herring.",
+      "adoptionNote": "This scenario measures ORGANIC metric-tool adoption: the transcript checks record whether the agent reaches for metric tools it does not strictly need. Contrast with metric-saturation, where metric-tool use is forced by the scenario design."
+    }
+  },
+  "distractors": [
+    {
+      "kind": "innocent completed deploy (blame-the-other-rollout trap)",
+      "service": "payment-service",
+      "minutesAgo": 58,
+      "whyNotRootCause": "payment-service rolled 3.6.2 -> 3.7.0 starting 58 min ago and completed 6/6 pods by 52 min ago — 7 minutes BEFORE the checkout errors begin. It is the louder deploy (completed, not paused) and sits closest to the onset, but payment.authorize spans are error-free and fast on BOTH its versions, and failed checkouts never reach payment at all. 'A deploy happened around then' cannot attribute blame; only the checkout-api pod split can."
+    },
+    {
+      "kind": "deploy-introduced benign WARN flood (new-pattern-at-the-boundary trap)",
+      "service": "checkout-api",
+      "pattern": "DeprecationWarning: legacy session-cookie format detected (runtime.deprecation)",
+      "whyNotRootCause": "The new 2.0.0-rc1 build also emits a high-rate DeprecationWarning from each updated pod starting exactly at its flip — the flood's rate steps up at the SAME boundaries as the real errors and dwarfs the sampled TypeError stack traces in volume. But it is WARN severity, has no trace correlation to any failed request, and is topically unrelated (session cookies, not promotions). A new pattern appearing at the incident boundary is not automatically the cause."
+    },
+    {
+      "kind": "healthy dependency (blame-the-payment-service decoy)",
+      "service": "payment-service",
+      "whyNotRootCause": "payment.authorize child spans stay fast (20-120ms) and error-free throughout the window, before and after its own rollout. Failed checkouts never even reach payment — the TypeError is thrown in promotion handling first. 'Checkout fails' pattern-matches to 'payments are down', but the payment dependency is provably healthy; blaming it is a calibration failure."
+    },
+    {
+      "kind": "constant-rate caught-exception noise",
+      "service": "checkout-api",
+      "pattern": "NonFatalRetryableError (caught) worker stack traces",
+      "whyNotRootCause": "An error-severity log pattern that exists at the SAME steady rate before and after the deploy, is marked handled=true, and has no trace correlation to failed checkouts. Real incident errors change rate at the incident boundary — this one doesn't."
+    },
+    {
+      "kind": "pre-deploy 502 burst on a neighbor",
+      "service": "recommendation-service",
+      "minutesAgo": 70,
+      "durationMinutes": 5,
+      "whyNotRootCause": "A brief upstream-connect-error burst (HTTP 502) that starts 70 min ago — BEFORE both deploys — and self-resolves within ~5 minutes. Different service, disjoint time window, no causal link to checkout failures that begin 25 minutes later."
+    },
+    {
+      "kind": "noisy-but-benign metric",
+      "service": "inventory-service",
+      "metric": "inventory.sync.queue.depth (gauge)",
+      "whyNotRootCause": "A queue-depth gauge that wobbles (with occasional spikes to ~400) across the ENTIRE two-hour window, on a service that isn't in the checkout path's failure chain. It looks alarming on a chart but is uncorrelated with the incident onset — a metric red herring testing that metric presence doesn't derail a traces/logs-solvable investigation."
+    },
+    {
+      "kind": "infra saturation (ruled out)",
+      "service": "checkout-api",
+      "whyNotRootCause": "CPU (~28%) and process memory (~500MB) stay flat and healthy through the incident. The failure is a code defect, not resource exhaustion — and the fail-fast (6-40ms) error spans corroborate that nothing is starved or queueing."
+    }
+  ],
+  "rubric": {
+    "programmatic": [
+      ["names_affected_service", 1, "checkout-api"],
+      [
+        "blames_the_deploy",
+        3,
+        "2\\.0\\.0-rc1|(deploy|roll[- ]?out|release|canary|new (version|build))[^.\\n]{0,60}?(regress|defect|bug|introduc|caus|broke|break|fault|bad)|(bad|faulty|broken|buggy|defective)[^.\\n]{0,25}?(deploy|release|version|build|rollout)|(caused by|due to|because of)[^.\\n]{0,40}?(deploy|rollout|release|new version)"
+      ],
+      [
+        "names_defect_mechanism",
+        2,
+        "TypeError|applyPromotion|cannot read propert|(missing|undefined|absent|lacks?|without|no)[^.\\n]{0,30}?percent[-_ ]?off|percent[-_ ]?off[^.\\n]{0,40}?(field|property|attribute|undefined|missing|does(?: not|n['’]t) exist)|(field|property|attribute)[^.\\n]{0,30}?percent[-_ ]?off"
+      ],
+      [
+        "names_fixed_amount_trigger",
+        1,
+        "fixed[- ]?(amount|value|dollar|price|discount)|flat[- ]?(rate|amount|discount)|non[- ]?percent(age)?|(FREESHIP|FLAT5|GIFT10)[^\\n]{0,100}?(FREESHIP|FLAT5|GIFT10)"
+      ],
+      [
+        "cites_pod_split",
+        2,
+        "(3|three)\\s*(of|/|out of)\\s*(the )?(6|six)[^.\\n]{0,30}?pods|(only|exclusively|confined to|solely|limited to|isolated to)[^.\\n]{0,60}?(updated|new|canary|flipped|rolled|rc1)[^.\\n]{0,25}?pods|(updated|canary|flipped|new-build|rc1) pods[^.\\n]{0,60}?(fail|error|500)|(old|other|remaining|un-?updated|non-?updated)[^.\\n]{0,20}?pods[^.\\n]{0,60}?(clean|healthy|fine|unaffected|baseline|no (errors|failures)|zero)|k8s\\.pod\\.name|(2\\.0\\.0-rc1[^\\n]{0,140}?1\\.43\\.1)|(1\\.43\\.1[^\\n]{0,140}?2\\.0\\.0-rc1)"
+      ],
+      [
+        "cites_rollout_event_join",
+        2,
+        "deployment\\.rollout|(rollout|deploy(ment)?)[- ]?(event|log)s?[^.\\n]{0,80}?(pod|name|2\\.0\\.0-rc1)|pods?[^.\\n]{0,70}?(named|listed|logged|recorded|identified|announced|shown)[^.\\n]{0,50}?(rollout|deploy)|updated to (version |v)?2\\.0\\.0-rc1|(pod|per[- ]pod)[- ]flip|flip (time|timestamp)s?|(match|matches|matched|matching|exactly the)[^.\\n]{0,60}?(rollout|deploy(ment)?)[- ]?(event|log)"
+      ],
+      [
+        "names_rollout_pause_or_partial",
+        1,
+        "pause[ds]?|3\\s*/\\s*6|(3|three) (of|out of) (the )?(6|six)|half (of )?the (pods|fleet|replicas)|partial(ly)? (roll|deploy|updat)|staged roll|canary"
+      ],
+      [
+        "names_staggered_onset",
+        2,
+        "stagger|(three|3|two|2)[- ]step|step(ped|s)?([- ]| )up (at|as|with) each|one pod at a time|pod[- ]by[- ]pod|every ~?2 ?min|2[- ]min(ute)?s? (interval|stagger|apart)|(ramp|increas|step)[^.\\n]{0,50}?(as|with) (each|every) (pod|flip|replica)|(each|every) pod (flip|updat)[^.\\n]{0,50}?(ramp|increas|step|jump)"
+      ],
+      [
+        "notes_error_sampling",
+        2,
+        "1[- ]?in[- ]?7|one in (every )?seven|error[- ]?sampl|(stack( |-)?trace|stack|TypeError)[^.\\n]{0,80}?(sampl|only (a |a small )?(fraction|subset|minority)|not (every|all)|1\\/7)|(fraction|subset|minority|only some)[^.\\n]{0,60}?(log|carr|emit|contain|includ)[^.\\n]{0,50}?(stack|TypeError)|(most|majority|bulk|rest) of[^.\\n]{0,60}?(failures|errors|500s)[^.\\n]{0,70}?(generic|request_failed|no stack|without (a |the )?stack)|request_failed[^\\n]{0,150}?unhandled_exception|unhandled_exception[^\\n]{0,150}?request_failed"
+      ],
+      [
+        "quantifies_impact",
+        1,
+        "(error|fail|500|checkout)[^.\\n]{0,80}?~?\\s?(?<![\\d.])([678]|1[3-7])(\\.\\d+)?\\s?%|~?\\s?(?<![\\d.])([678]|1[3-7])(\\.\\d+)?\\s?%[^.\\n]{0,80}?(error|fail|500|checkout)|(baseline|error)[^.\\n]{0,40}?0\\.[2-5]\\s?%|0\\.[2-5]\\s?%[^.\\n]{0,40}?(baseline|error)"
+      ],
+      [
+        "rules_out_payment_deploy",
+        1,
+        "payment[- ]service(['’]s)?[^\\n]{0,60}?(deploy|roll[- ]?out|release|update|3\\.7\\.0)[^\\n]{0,120}?(healthy|error[- ]?free|no (new )?errors|zero errors|0 errors|clean|innocent|benign|unrelated|not the (cause|culprit|issue|problem)|ruled? out|red herring|coinciden|completed (well |just )?before|finished before|predates)|(deploy|roll[- ]?out|release|3\\.7\\.0)[^\\n]{0,50}?payment[^\\n]{0,120}?(healthy|error[- ]?free|innocent|benign|unrelated|ruled? out|not the cause|red herring|coinciden)|payment[^\\n]{0,80}?(healthy|error[- ]?free|no errors|0 errors|zero errors)[^\\n]{0,80}?(both|either|old and new|before and after)[^\\n]{0,30}?(version|rollout|build)|(never|don['’]t|doesn['’]t|not) (even )?reach(es|ed|ing)?[^\\n]{0,40}?payment"
+      ],
+      [
+        "rules_out_deprecation_flood",
+        1,
+        "(deprecat|session[- ]?(cookie|store))[^\\n]{0,120}?(benign|harmless|cosmetic|noise|noisy|red herring|unrelated|not (the )?(cause|culprit|related)|no trace|not correlated|uncorrelated|never correlated|warning[- ]only|warn[- ](only|severity|level)|only a warning|ruled? out|coinciden|distract)|(benign|harmless|red herring|noise|cosmetic|unrelated|ruled? out)[^\\n]{0,80}?(deprecat|session[- ]?(cookie|store))"
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )(root cause|caused by|due to|because of|culprit|the (issue|problem|cause) is)(?:(?!not |no evidence |no sign|n['’]t |rul(e|ed|ing)|unrelated|healthy|innocent|clean|error[- ]?free|look|appear|seem|might|could|may|possib|suspect|hypothes|whether|initial|unlikely|doubt)[^.?!\\n]){0,60}?payment[- ](service|gateway|provider)(?![^.!\\n]{0,120}\\?)",
+        true
+      ],
+      [
+        "false_blame_payment_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )(root cause|caused by|due to|because of|culprit|the (issue|problem|cause) is)(?:(?!not |no evidence |no sign|n['’]t |rul(e|ed|ing)|unrelated|healthy|innocent|clean|error[- ]?free|look|appear|seem|might|could|may|possib|suspect|hypothes|whether|initial|unlikely|doubt)[^.?!\\n]){0,80}?payment[- ]service[^.?!\\n]{0,50}?(deploy|roll[- ]?out|release|update|3\\.7\\.0)(?![^.!\\n]{0,120}\\?)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )payment[- ]service(['’]s)?[^.?!\\n]{0,25}?(deploy|roll[- ]?out|release|new version|3\\.7\\.0)(?:(?!not |no evidence |no sign|n['’]t |rul(e|ed|ing)|unrelated|healthy|innocent|clean|error[- ]?free|look|appear|seem|might|could|may|possib|suspect|hypothes|whether|initial|unlikely|doubt)[^.?!\\n]){0,60}?\\b(caus|broke|regress|introduc|fault|blame|responsible)(?![^.!\\n]{0,120}\\?)",
+        true
+      ],
+      [
+        "false_blame_deprecation",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )(root cause|caused by|due to|because of|culprit|the (issue|problem|cause) is)(?:(?!not |no evidence |no sign|n['’]t |rul(e|ed|ing)|unrelated|healthy|innocent|clean|error[- ]?free|look|appear|seem|might|could|may|possib|suspect|hypothes|whether|initial|unlikely|doubt|benign|harmless|cosmetic|nois|red herring|distract)[^.?!\\n]){0,80}?(deprecat|session[- ]?(cookie|store))(?![^.!\\n]{0,120}\\?)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )(deprecation|session[- ]?(cookie|store))(?:(?!not |no evidence |no sign|n['’]t |rul(e|ed|ing)|unrelated|healthy|innocent|clean|error[- ]?free|look|appear|seem|might|could|may|possib|suspect|hypothes|whether|initial|unlikely|doubt|benign|harmless|cosmetic|nois|red herring|distract)[^.?!\\n]){0,60}?\\b(caus(e[sd]?|ing)|broke|breaking|responsible for|behind the)(?![^.!\\n]{0,120}\\?)",
+        true
+      ],
+      [
+        "false_blame_infra",
+        2,
+        "(?<!not )(?<!n['’]t )(?<!never )(root cause|caused by|due to|because of|the (issue|problem|cause) is)(?:(?!not |no evidence |n['’]t |rul(e|ed|ing)|unrelated)[^.\\n]){0,60}?(cpu|memory|oom|out of memory|resource (exhaust|saturat)|disk|node pressure)",
+        true
+      ],
+      [
+        "false_blame_neighbor",
+        2,
+        "(?<!not )(?<!n['’]t )(?<!never )(root cause|caused by|due to|because of|the (issue|problem|cause) is)(?:(?!not |no evidence |n['’]t |rul(e|ed|ing)|unrelated)[^.\\n]){0,60}?(recommendation-service|502 burst|queue[ ._-]?depth|inventory-service)",
+        true
+      ]
+    ],
+    "transcript": [
+      [
+        "used_metric_tool",
+        1,
+        "clickstack_(list_metrics|describe_metric)|clickstack_(timeseries|table)[^\\n]*metricType"
+      ],
+      [
+        "queried_checkout_metrics",
+        1,
+        "(clickstack_describe_metric|clickstack_(timeseries|table)(?=[^\\n]*metricType))[^\\n]*(http[\\s._]server[\\s._]request|checkout)"
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer identify the root cause: the defective checkout-api 2.0.0-rc1 staged rollout, whose promotion handler throws a TypeError (undefined percentOff in applyPromotion) on fixed-amount promo codes on the updated pods? CAP at 4 unless the mechanism also includes the rollout TIMELINE — staggered per-pod flips (~2 min apart), paused at 3/6 for canary. 5 = the complete chain: paused rollout -> fixed-amount promo checkouts on those pods throw the TypeError -> ~7% checkout 500s, onset tied to the pod flips. 'There was a deploy' or 'the new version is broken' without the promo-code trigger caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is the conclusion grounded in the pod-level cross-tab? Telemetry carries NO service.version, so a strong answer reconstructs the split: failures confined to exactly the 3 pods the deployment.rollout events name as updated to 2.0.0-rc1 (other 3 stay at baseline), only fixed-amount promo codes (FREESHIP/FLAT5/GIFT10) fail, and the trace-correlated TypeError/applyPromotion stack names the broken code path. CAP at 3 unless the answer does BOTH: (a) makes the rollout-event join EXPLICIT — ties the specific failing pods to 2.0.0-rc1 — AND (b) dates the error onset at the first pod flip (not merely 'after a deploy'). 5 additionally requires quantified error rates (~15% per bad pod vs ~0.3% baseline, or ~7-8% overall) AND noting the TypeError stack is error-sampled (most failures log a generic request-failed line); join + accurate onset without both caps at 4. Corroborating metrics cannot substitute for the pod/promo cross-tab."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Did the answer avoid the traps? (a) the payment-service 3.7.0 rollout is innocent — payment.authorize is healthy on both versions and failed checkouts never reach payment; (b) the DeprecationWarning (session-cookie) flood from the new build is benign WARN noise with no trace correlation to the 500s; (c) the recommendation-service 502 burst predates both deploys and self-resolved; (d) the constant-rate NonFatalRetryableError logs are handled noise; (e) CPU/memory are flat — not infra saturation; (f) the inventory.sync.queue.depth gauge is noisy but uncorrelated. Blaming any of these scores 1-2. CAP at 3 unless BOTH co-timed traps — (a) and (b) — are explicitly addressed (not merely omitted). CAP at 4 unless each is dismissed WITH its evidence. 5 = both dismissed with evidence plus the background distractors handled."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Was the answer concise, well-structured, and free of filler or unnecessary speculation?"
+        }
+      ]
+    }
+  }
+}
