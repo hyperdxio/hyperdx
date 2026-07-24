@@ -13,6 +13,7 @@ import {
   COLORS,
   evaluateColorCondition,
   formatAttributeClause,
+  formatColumnEquals,
   formatDurationMs,
   formatDurationMsCompact,
   formatNumber,
@@ -42,6 +43,10 @@ describe('formatAttributeClause', () => {
     expect(formatAttributeClause('data', 'user-id', 'abc-123', true)).toBe(
       "data['user-id']='abc-123'",
     );
+
+    expect(formatAttributeClause('data', 'user-id', "O'Brien", true)).toBe(
+      "data['user-id']='O''Brien'",
+    );
   });
 
   it('should format lucene attribute clause correctly', () => {
@@ -55,6 +60,30 @@ describe('formatAttributeClause', () => {
 
     expect(formatAttributeClause('data', 'user-id', 'abc-123', false)).toBe(
       'data.user-id:"abc-123"',
+    );
+
+    expect(formatAttributeClause('data', 'user-id', 'say "hello"', false)).toBe(
+      'data.user-id:"say \\"hello\\""',
+    );
+  });
+});
+
+describe('formatColumnEquals', () => {
+  it('formats SQL column equality with quote escaping', () => {
+    expect(formatColumnEquals('ServiceName', 'my-svc', true)).toBe(
+      "ServiceName = 'my-svc'",
+    );
+    expect(formatColumnEquals('Name', "O'Brien", true)).toBe(
+      "Name = 'O''Brien'",
+    );
+  });
+
+  it('formats Lucene column equality with quote escaping', () => {
+    expect(formatColumnEquals('ServiceName', 'my-svc', false)).toBe(
+      'ServiceName:"my-svc"',
+    );
+    expect(formatColumnEquals('Name', 'say "hello"', false)).toBe(
+      'Name:"say \\"hello\\""',
     );
   });
 });
