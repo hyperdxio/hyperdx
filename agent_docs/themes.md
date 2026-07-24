@@ -256,6 +256,55 @@ function TopBar() {
 Both hooks return memoized JSX elements so component identity stays
 stable across renders.
 
+## Semantic component variants (Alert / Text / danger controls)
+
+On top of the raw `--color-*` vars, we expose **semantic component
+variants** so callouts and status text stay token-driven and consistent
+across brands and color modes. Reach for these instead of raw Mantine
+palette props (`color="yellow"`, `color="red"`, `c="green"`, …).
+
+- **`<Alert variant="info|success|warning|danger">`** — tinted `-subtle`
+  background with the title, icon, and **body text** in the semantic
+  color.
+- **`<Text variant="danger|warning|success">`** — semantic inline status
+  text.
+- **`<Button|ActionIcon variant="danger">`** — a *soft* tinted control
+  (`--color-bg-danger-subtle` + hover), not a solid red fill.
+  `warning`/`success` are intentionally not control variants.
+
+The variant → token mapping is centralized in
+**`packages/app/src/theme/themes/semanticVariants.ts`** (single source of
+truth: `SEMANTIC_ALERT_VARS`, `SEMANTIC_TEXT_COLORS`,
+`SEMANTIC_CONTROL_COLORS`), consumed by both brands' `mantineTheme.ts`
+(`Alert.extend`, `Text.extend`, `Button.extend`, `ActionIcon.extend`). It
+references only `--color-*` design tokens — never raw
+`--mantine-color-*`.
+
+### Semantic token families
+
+- **Semantic text**: `--color-text-{danger,warning,success,info}`
+  (+ `--color-text-success-hover`). Used by `Text` and `Alert`
+  foregrounds.
+- **Subtle backgrounds**: `--color-bg-{danger,warning,success,info}-subtle`
+  (+ `-subtle-hover`). Scheme-aware — pale tints in **light** (Mantine
+  `-0`/`-1`), deep tints in **dark** (inlined hex, since the numbered
+  scale's darkest green/yellow shades are mid-tone and can't hit AA).
+  Consumed by `Alert` and the `danger` soft control.
+
+**Accessibility**: every semantic text token clears **WCAG AA (4.5:1)**
+on its `-subtle` tint (including hover) in both schemes. In light mode
+`success`/`warning` text is darkened past the palette with a small
+`color-mix` because `green-9`/`yellow-9`/`orange-9` are mid-tone —
+preserve these `color-mix` adjustments when editing.
+
+**ClickStack `warning` is orange-based**: ClickStack remaps the `yellow`
+palette to its brand gold, so its warning tokens use Mantine `orange`
+(unremapped) for a true orange warning; HyperDX stays yellow-based.
+
+Storybook: `Components/Alert` (interactive `Playground`) and
+`Design Tokens/Semantic Variants` — use the Brand and Theme toolbar
+toggles to review all combinations.
+
 ## Per-brand differences
 
 ### HyperDX (default, green-first)
@@ -359,6 +408,12 @@ A few things that look like bugs but are intentional:
    `theme/semanticColorsGrouped.ts` so the storybook renders it.
 5. Consume it via `var(--color-…)` in your component.
 
+If the token backs a **semantic component variant** (Alert / Text /
+danger control), wire it through `theme/themes/semanticVariants.ts`
+rather than referencing it directly in each brand's `mantineTheme.ts`,
+and verify it in the `Design Tokens/Semantic Variants` story across both
+brands and schemes.
+
 For chart-specific vars (`--color-chart-*`) there are additional steps —
 see `data_viz_colors.md`.
 
@@ -457,7 +512,8 @@ Why each is wrong:
 | ClickStack brand definition                 | `packages/app/src/theme/themes/clickstack/{index.ts,_tokens.scss,mantineTheme.ts,…}` |
 | SSR fallback CSS vars                       | `packages/app/src/theme/themes/_base-tokens.scss`                                  |
 | Semantic var groups (storybook source)      | `packages/app/src/theme/semanticColorsGrouped.ts`                                  |
-| Storybook visual references                 | `packages/app/src/theme/{SemanticColors,ChartColors}.stories.tsx`                  |
+| Semantic component variants (source of truth)| `packages/app/src/theme/themes/semanticVariants.ts`                                |
+| Storybook visual references                 | `packages/app/src/theme/{SemanticColors,SemanticVariants,ChartColors}.stories.tsx` + `packages/app/src/components/Alert.stories.tsx` |
 | Favicon assets                              | `packages/app/public/favicons/{hyperdx,clickstack}/`                               |
 | Provider tests                              | `packages/app/src/theme/__tests__/ThemeProvider.test.tsx`                          |
 | Theme validation tests                      | `packages/app/src/theme/__tests__/index.test.ts`                                   |

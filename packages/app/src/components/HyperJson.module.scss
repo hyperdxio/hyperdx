@@ -158,6 +158,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+
+  // Cap the key column so long keys (e.g. `longtask.attribution.entry_type`)
+  // can't stretch the row and squeeze the value column to nothing
+  max-width: 50%;
+  min-width: 0;
 }
 
 .key {
@@ -167,6 +172,9 @@
   cursor: pointer;
   display: flex;
   gap: 6px;
+
+  // Wrap unbroken keys (dots don't break) within the keyContainer cap
+  overflow-wrap: anywhere;
 
   // @extend .hoverable;
   // @extend .clickable;
@@ -183,6 +191,7 @@
   align-items: flex-start;
   gap: 3px;
   max-width: 100%;
+  min-width: 0;
 }
 
 .value {
@@ -199,7 +208,10 @@
 .string {
   color: var(--color-json-string);
   white-space: pre;
-  overflow-wrap: break-word;
+
+  // `anywhere` (vs `break-word`) so when wrapping is enabled long
+  // unbroken tokens like URLs/paths break instead of overflowing
+  overflow-wrap: anywhere;
 
   &::before,
   &::after {

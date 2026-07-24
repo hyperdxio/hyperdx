@@ -343,6 +343,66 @@ describe('DBTableChart', () => {
     });
   });
 
+  describe('alternateRowBackground', () => {
+    const builderConfig = {
+      ...baseTestConfig,
+      select: [
+        { aggFn: 'count' as const, valueExpression: '', alias: 'Count' },
+      ],
+    };
+
+    it('threads alternateRowBackground to the Table for builder configs', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={{ ...builderConfig, alternateRowBackground: true }}
+        />,
+      );
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(true);
+    });
+
+    it('passes alternateRowBackground=false when the builder config omits it', () => {
+      renderWithMantine(<DBTableChart config={builderConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(false);
+    });
+
+    it('threads alternateRowBackground to the Table for raw SQL configs', () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        sqlTemplate: 'SELECT count() AS Count FROM t',
+        alternateRowBackground: true,
+      };
+
+      renderWithMantine(<DBTableChart config={rawSqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(true);
+    });
+
+    it('passes alternateRowBackground=false when a raw SQL config omits it', () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        sqlTemplate: 'SELECT count() AS Count FROM t',
+      };
+
+      renderWithMantine(<DBTableChart config={rawSqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(false);
+    });
+  });
+
   it('does not render DateRangeIndicator when MV optimization has no optimized date range', () => {
     // Mock useMVOptimizationExplanation to return data without an optimized config
     jest.mocked(useMVOptimizationExplanation).mockReturnValue({

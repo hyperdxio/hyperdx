@@ -369,6 +369,9 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
+  // Check if span Links column is available
+  const hasSpanLinks = columns.some(col => col.name === 'Links.TraceId');
+
   // Check if metadata rollup tables exist and, if so, infer the bucketing
   // granularity from the key-rollup view's `as_select`
   const rollupMeta =
@@ -386,21 +389,18 @@ export async function inferTableSourceConfig({
               connectionId,
             }),
           ]);
-          return keyMeta != null && kvMeta != null
-            ? { keyMeta, kvMeta }
-            : undefined;
+          return kvMeta != null ? { keyMeta, kvMeta } : undefined;
         })()
       : undefined;
 
   const metadataMVsConfig = rollupMeta
     ? {
         metadataMaterializedViews: {
-          keyRollupTable: `${tableName}_key_rollup_15m`,
           kvRollupTable: `${tableName}_kv_rollup_15m`,
           // Fall back to '15 minute' to preserve the prior default when the
           // MV's `as_select` doesn't contain a recognized bucketing function.
           granularity:
-            inferGranularityFromMVSelect(rollupMeta.keyMeta.as_select) ??
+            inferGranularityFromMVSelect(rollupMeta.kvMeta.as_select) ??
             '15 minute',
         },
       }
@@ -446,6 +446,7 @@ export async function inferTableSourceConfig({
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
           ...(hasSpanEvents ? { spanEventsValueExpression: 'Events' } : {}),
+          ...(hasSpanLinks ? { spanLinksValueExpression: 'Links' } : {}),
           ...metadataMVsConfig,
         }
       : {}),
