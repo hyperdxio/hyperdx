@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import RGL, { WidthProvider } from 'react-grid-layout';
 
 import {
@@ -55,20 +55,48 @@ export default function SnapGridLayout({
   const [isActive, setIsActive] = useState(false);
   const [focus, setFocus] = useState<FocusRect | null>(null);
 
+  // Safety net: tear the overlay down on pointer release even if react-grid-
+  // layout never fires its stop callback (e.g. the pointer is released over a
+  // menu or popover that opened mid-drag), so the grid can't get stuck on.
+  useEffect(() => {
+    if (!isActive) return;
+    const clear = () => {
+      setIsActive(false);
+      setFocus(null);
+    };
+    window.addEventListener('pointerup', clear);
+    window.addEventListener('pointercancel', clear);
+    return () => {
+      window.removeEventListener('pointerup', clear);
+      window.removeEventListener('pointercancel', clear);
+    };
+  }, [isActive]);
+
   // Wrap a caller's drag/resize handler so the overlay tracks the tile, then
   // delegate to the original with its arguments untouched. Stable: it only
   // closes over the setState functions.
   const makeHandler = useCallback(
     (phase: Phase, base: ItemCallback | undefined): ItemCallback =>
-      (layout, oldItem, newItem, ...args) => {
+      (layout, oldItem, newItem, placeholder, ...rest) => {
         if (phase === 'stop') {
           setIsActive(false);
           setFocus(null);
-        } else {
-          if (phase === 'start') setIsActive(true);
-          if (newItem) setFocus(toFocus(newItem));
+        } else if (phase === 'move') {
+          // Show the grid only once the tile actually moves, not on the initial
+          // mousedown. react-grid-layout fires the start callback on any click
+          // on a tile (including clicks on its controls); gating on the first
+          // move means a plain click never flashes the grid, and it can't get
+          // stuck on when no drag follows.
+          setIsActive(true);
+          // Highlight where the tile will actually land, not where the cursor
+          // is. react-grid-layout's placeholder is the compacted drop position;
+          // with vertical compaction a tile dragged over a gap settles above
+          // the cursor, so `newItem` (the raw cursor position) would point at a
+          // cell the tile won't stay in. Fall back to newItem if no placeholder.
+          const landing = placeholder ?? newItem;
+          if (landing) setFocus(toFocus(landing));
         }
-        base?.(layout, oldItem, newItem, ...args);
+        base?.(layout, oldItem, newItem, placeholder, ...rest);
       },
     [],
   );
