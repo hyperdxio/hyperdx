@@ -834,9 +834,30 @@ export abstract class BaseClickhouseClient {
     };
     querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
-    config = isBuilderChartConfig(config)
-      ? setChartSelectsAlias(config)
-      : config;
+    if (isBuilderChartConfig(config)) {
+      config = setChartSelectsAlias(config);
+      if (config.seriesReturnType === 'ratio' && config.ratioMode !== 'share_of_total') {
+        if (config.groupBy) {
+          if (typeof config.groupBy === 'string') {
+            config.groupBy = splitAndTrimWithBracket(config.groupBy).map(gb => ({
+              type: 'string',
+              valueExpression: gb,
+              alias: gb, // Assign the raw expression as the alias so the CTE outputs exactly this column name
+            }));
+          } else if (Array.isArray(config.groupBy)) {
+            config.groupBy = config.groupBy.map(gb => {
+              if (typeof gb === 'string') {
+                return { type: 'string', valueExpression: gb, alias: gb };
+              }
+              if (!gb.alias) {
+                return { ...gb, alias: gb.valueExpression };
+              }
+              return gb;
+            });
+          }
+        }
+      }
+    }
     const queries: ChSql[] = await Promise.all(
       splitChartConfigs(config).map(c =>
         renderChartConfig(c, metadata, querySettings),
@@ -844,6 +865,63 @@ export abstract class BaseClickhouseClient {
     );
 
     const isTimeSeries = isTimeSeriesDisplayType(config.displayType);
+
+    if (
+      isBuilderChartConfig(config) &&
+      config.seriesReturnType === 'ratio' &&
+      config.ratioMode !== 'share_of_total' &&
+      queries.length === 2 &&
+      Array.isArray(config.select)
+    ) {
+      const q0Alias = config.select[0].alias ?? 'q0_val';
+      const originalQ1Alias = config.select[1].alias ?? 'q1_val';
+      const ratioAlias = `${q0Alias}/${originalQ1Alias}`;
+
+      const joinKeys: string[] = [];
+      if (isTimeSeries) {
+        joinKeys.push('__hdx_time_bucket');
+      }
+      if (config.groupBy) {
+        for (const gb of config.groupBy) {
+          if (typeof gb === 'string') {
+            joinKeys.push(gb);
+          } else {
+            joinKeys.push(gb.alias || gb.valueExpression);
+          }
+        }
+      }
+
+      // De-duplicate join keys just in case
+      const uniqueJoinKeys = Array.from(new Set(joinKeys));
+
+      let ratioSql: ChSql;
+      const selectCols = [
+        chSql`(COALESCE(q0.${{ Identifier: q0Alias }}, 0) / q1.${{ Identifier: originalQ1Alias }}) AS ${{ Identifier: ratioAlias }}`,
+        ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
+      ];
+      const selectClause = concatChSql(', ', selectCols);
+
+      if (uniqueJoinKeys.length > 0) {
+        const joinKeysSql = uniqueJoinKeys.map(
+          k => chSql`${{ Identifier: k }}`,
+        );
+        const usingClause = concatChSql(', ', joinKeysSql);
+        ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 FULL OUTER JOIN q1 USING (${usingClause})`;
+      } else {
+        ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 CROSS JOIN q1`;
+      }
+
+      const resp = await this.query<'JSON'>({
+        query: ratioSql.sql,
+        query_params: ratioSql.params,
+        format: 'JSON',
+        abort_signal: opts?.abort_signal,
+        connectionId: config.connection,
+        clickhouse_settings: opts?.clickhouse_settings,
+      });
+
+      return resp.json<any>();
+    }
 
     const resultSets = await Promise.all(
       queries.map(async query => {

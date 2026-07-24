@@ -247,6 +247,66 @@ describe('queryChartConfig Integration Tests', () => {
     }
   });
 
+  it('computes ratio via native CTE when seriesReturnType is "ratio"', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: DATABASE, tableName: TABLE_NAME },
+      metricTables: { [MetricsDataType.Gauge]: TABLE_NAME } as any,
+      seriesReturnType: 'ratio',
+      select: [
+        {
+          aggFn: 'avg',
+          aggCondition: '',
+          aggConditionLanguage: 'sql',
+          valueExpression: 'Value',
+          metricName: 'metric.alpha',
+          metricType: MetricsDataType.Gauge,
+          alias: 'avg(metric.alpha)',
+        },
+        {
+          aggFn: 'avg',
+          aggCondition: '',
+          aggConditionLanguage: 'sql',
+          valueExpression: 'Value',
+          metricName: 'metric.beta',
+          metricType: MetricsDataType.Gauge,
+          alias: 'avg(metric.beta)',
+        },
+      ],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-04-14'), new Date('2025-04-16')],
+      granularity: '1 minute',
+      limit: { limit: 100 },
+    };
+
+    const result = await hdxClient.queryChartConfig({
+      config,
+      metadata,
+      querySettings: undefined,
+    });
+
+    const metaNames = result.meta?.map(m => m.name) ?? [];
+
+    // Check that the ratio is the first column
+    expect(metaNames[0]).toBe('avg(metric.alpha)/avg(metric.beta)');
+    expect(metaNames).toContain('__hdx_time_bucket');
+    expect(metaNames).toContain('ServiceName');
+
+    const data = result.data as any[];
+    expect(data.length).toBeGreaterThan(0);
+    for (const row of data) {
+      expect(row['avg(metric.alpha)/avg(metric.beta)']).toBeDefined();
+      // It might be a number or string depending on ClickHouse formatting for JSON, usually number for Float64
+      expect(
+        Number.isNaN(Number(row['avg(metric.alpha)/avg(metric.beta)'])),
+      ).toBe(false);
+    }
+  });
+
   // Regression: a comma-separated string group-by (with a Map access) must split
   // per-column (not emit toString(col1, col2)); empty-string groups are kept.
   it('handles a multi-column string group-by (with Map access) under seriesLimit', async () => {
