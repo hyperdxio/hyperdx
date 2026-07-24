@@ -1,4 +1,5 @@
 import { dashboardBuildScenario } from './dashboard-build/generate';
+import { deployRegressionScenario } from './deploy-regression/generate';
 import { errorRootCauseScenario } from './error-root-cause/generate';
 import { latencySpikeScenario } from './latency-spike/generate';
 import { metricSaturationScenario } from './metric-saturation/generate';
@@ -9,6 +10,7 @@ import type { Scenario } from './types';
 
 export const SCENARIOS: Record<string, Scenario> = {
   [dashboardBuildScenario.name]: dashboardBuildScenario,
+  [deployRegressionScenario.name]: deployRegressionScenario,
   [errorRootCauseScenario.name]: errorRootCauseScenario,
   [latencySpikeScenario.name]: latencySpikeScenario,
   [metricSaturationScenario.name]: metricSaturationScenario,

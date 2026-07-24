@@ -260,6 +260,7 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 | Scenario | Agent Prompt | What's Planted |
 |---|---|---|
 | `error-root-cause` | "Checkout requests are failing..." | `payment-service` DB timeout cascading into `checkout-api` 5xx. 6M+ spans, 12M logs, 5 distractors. |
+| `deploy-regression` | "Support has been fielding a growing trickle of 'something went wrong at checkout' reports..." | `checkout-api` staged rollout on 3/6 pods → ~7% checkout 500s. Root cause is in **traces/logs** via `k8s.pod.name` cross-tab; metrics only corroborate. 6 distractors. |
 | `latency-spike` | "p99 latency on api-server has jumped..." | `/api/orders/search` p99 spike for enterprise tenants. 12M+ spans, 5 regions, 5 distractors. |
 | `metric-saturation` | "Shoppers are seeing slow/missing recommendations; frontend-proxy logs upstream 503s..." (blinded — culprit service not named) | `recommendation-service` JVM heap leak → GC-pause tail → latency shift → pod-restart cadence. Root cause is **metrics-only** (per-pod × per-pool heap gauges, all five metric types), with 5 distractors incl. a healthy JVM twin. |
 | `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
@@ -407,6 +408,15 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
   > reduce but don't erase per-model scale differences). Hold the judge constant
   > across runs you compare directly.
 - **Tool error penalty** — up to 20% deducted for high tool-call error rates.
+
+**Adoption (tool use)** is reported alongside the outcome score for scenarios
+with a `transcript` rubric block — regex checks over the serialized tool-call
+transcript (tool names + args). It is intentionally **excluded** from the
+combined score: measuring tool usage must not inflate outcome quality.
+`metric-saturation` (metrics load-bearing) should show ≈100% adoption; the
+interesting readout is `deploy-regression` (metrics merely corroborating),
+where adoption measures whether the agent reaches for metric tools it
+doesn't strictly need.
 
 ### Baseline + Challengers
 
