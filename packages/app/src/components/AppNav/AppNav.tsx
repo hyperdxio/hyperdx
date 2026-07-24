@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
@@ -34,6 +34,8 @@ import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
+import { QueryStatsDrawer } from '@/queryStats/QueryStatsDrawer';
+import { QueryStatsErrorBoundary } from '@/queryStats/QueryStatsErrorBoundary';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
@@ -262,6 +264,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const {
     userPreferences: { isUTC },
   } = useUserPreferences();
+
+  const [queryStatsOpen, { toggle: toggleQueryStats, close: closeQueryStats }] =
+    useDisclosure(false);
+  // The drawer subscribes to a global query-event store; mount it only after
+  // the user opens it for the first time so app-wide renders don't pay for
+  // an unmounted debug panel. Stays mounted after that so close animations
+  // still play.
+  const [queryStatsEverOpened, setQueryStatsEverOpened] = useState(false);
+  useEffect(() => {
+    if (queryStatsOpen) setQueryStatsEverOpened(true);
+  }, [queryStatsOpen]);
 
   const [
     showInstallInstructions,
@@ -508,6 +521,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             userName={meData?.name}
             teamName={meData?.team?.name}
             onClickUserPreferences={openUserPreferences}
+            onClickQueryStats={toggleQueryStats}
             logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
           {meData && meData.usageStatsEnabled && (
@@ -522,6 +536,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         opened={UserPreferencesOpen}
         onClose={closeUserPreferences}
       />
+      {queryStatsEverOpened && (
+        <QueryStatsErrorBoundary resetKey={queryStatsOpen}>
+          <QueryStatsDrawer opened={queryStatsOpen} onClose={closeQueryStats} />
+        </QueryStatsErrorBoundary>
+      )}
     </AppNavContext.Provider>
   );
 }
