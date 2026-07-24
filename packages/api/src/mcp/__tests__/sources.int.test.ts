@@ -987,4 +987,495 @@ describe('MCP Source Tools', () => {
       expect(getFirstText(result)).toMatch(/no "sum" metric table/);
     });
   });
+
+  // ── clickstack_save_source ─────────────────────────────────────────────────
+
+  describe('clickstack_save_source (create)', () => {
+    it('creates a log source scoped to the team', async () => {
+      const result = await callTool(client, 'clickstack_save_source', {
+        kind: 'log',
+        name: 'New Logs',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        bodyExpression: 'Body',
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toMatchObject({
+        name: 'New Logs',
+        kind: SourceKind.Log,
+      });
+      expect(output.id).toBeDefined();
+
+      const stored = await Source.findById(output.id);
+      expect(stored).not.toBeNull();
+      expect(stored?.team.toString()).toBe(team._id.toString());
+      expect(stored?.kind).toBe(SourceKind.Log);
+    });
+
+    it('creates a metric source with metricTables', async () => {
+      const result = await callTool(client, 'clickstack_save_source', {
+        kind: 'metric',
+        name: 'New Metrics',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: '',
+        timestampValueExpression: 'TimeUnix',
+        resourceAttributesExpression: 'ResourceAttributes',
+        metricTables: { gauge: 'otel_metrics_gauge' },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.kind).toBe(SourceKind.Metric);
+      expect(output.metricTables).toMatchObject({
+        gauge: 'otel_metrics_gauge',
+      });
+    });
+
+    it('round-trips a full source config through describe -> save (faithful clone incl. correlation IDs)', async () => {
+      // A trace source carrying the fields the curated summary omits:
+      // correlation IDs + parent/span-kind/status-message + default select.
+      const original = await Source.create({
+        kind: SourceKind.Trace,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: DEFAULT_TRACES_TABLE,
+        },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, SpanName, ServiceName',
+        durationExpression: 'Duration',
+        durationPrecision: 9,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        statusCodeExpression: 'StatusCode',
+        statusMessageExpression: 'StatusMessage',
+        serviceNameExpression: 'ServiceName',
+        connection: connection._id,
+        name: 'Correlated Traces',
+        // The previously-invisible correlation link.
+        logSourceId: logSource._id.toString(),
+        // Advanced config that must also round-trip (previously invisible AND
+        // unwritable through save_source).
+        useTextIndexForImplicitColumn: 'enabled',
+        knownColumnsListExpression: 'TraceId, SpanId',
+        sampleRateExpression: 'SampleRate',
+        highlightedTraceAttributeExpressions: [
+          { sqlExpression: "SpanAttributes['http.method']", alias: 'method' },
+        ],
+        metadataMaterializedViews: {
+          kvRollupTable: 'otel_traces_kv_rollup_15m',
+          keyRollupTable: 'otel_traces_key_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      // 1. describe returns a round-trippable config block.
+      const described = await callTool(client, 'clickstack_describe_source', {
+        sourceId: original._id.toString(),
+      });
+      expect(described.isError).toBeFalsy();
+      const config = JSON.parse(getFirstText(described)).source.config;
+      expect(config).toBeDefined();
+      // The formerly-invisible fields are now present.
+      expect(config.logSourceId).toBe(logSource._id.toString());
+      expect(config.parentSpanIdExpression).toBe('ParentSpanId');
+      expect(config.spanKindExpression).toBe('SpanKind');
+      expect(config.statusMessageExpression).toBe('StatusMessage');
+      expect(config.defaultTableSelectExpression).toBe(
+        'Timestamp, SpanName, ServiceName',
+      );
+      // Advanced fields surface too.
+      expect(config.useTextIndexForImplicitColumn).toBe('enabled');
+      expect(config.knownColumnsListExpression).toBe('TraceId, SpanId');
+      expect(config.sampleRateExpression).toBe('SampleRate');
+      expect(config.highlightedTraceAttributeExpressions).toEqual([
+        { sqlExpression: "SpanAttributes['http.method']", alias: 'method' },
+      ]);
+      // Nested subdoc config must NOT leak the Mongoose-injected _id.
+      expect(config.metadataMaterializedViews).toEqual({
+        kvRollupTable: 'otel_traces_kv_rollup_15m',
+        keyRollupTable: 'otel_traces_key_rollup_15m',
+        granularity: '15 minute',
+      });
+
+      // 2. clone: drop id, rename, feed config straight into save_source.
+      const { id: _id, ...cloneInput } = config;
+      const cloned = await callTool(client, 'clickstack_save_source', {
+        ...cloneInput,
+        name: 'Correlated Traces CLONE',
+      });
+      expect(cloned.isError).toBeFalsy();
+      const clone = JSON.parse(getFirstText(cloned));
+
+      // 3. the clone carries over every previously-invisible field, including
+      //    the advanced ones, and the nested subdoc is stored faithfully.
+      const stored = await Source.findById(clone.id);
+      expect(stored?.get('logSourceId')?.toString()).toBe(
+        logSource._id.toString(),
+      );
+      expect(stored?.get('parentSpanIdExpression')).toBe('ParentSpanId');
+      expect(stored?.get('spanKindExpression')).toBe('SpanKind');
+      expect(stored?.get('statusMessageExpression')).toBe('StatusMessage');
+      expect(stored?.get('defaultTableSelectExpression')).toBe(
+        'Timestamp, SpanName, ServiceName',
+      );
+      expect(stored?.get('useTextIndexForImplicitColumn')).toBe('enabled');
+      expect(stored?.get('sampleRateExpression')).toBe('SampleRate');
+
+      // 4. describe the clone: advanced config round-trips identically.
+      const describedClone = await callTool(
+        client,
+        'clickstack_describe_source',
+        { sourceId: clone.id },
+      );
+      const cloneConfig = JSON.parse(getFirstText(describedClone)).source
+        .config;
+      expect(cloneConfig.highlightedTraceAttributeExpressions).toEqual(
+        config.highlightedTraceAttributeExpressions,
+      );
+      expect(cloneConfig.metadataMaterializedViews).toEqual(
+        config.metadataMaterializedViews,
+      );
+    });
+
+    it('rejects a log source missing defaultTableSelectExpression', async () => {
+      const result = await callTool(client, 'clickstack_save_source', {
+        kind: 'log',
+        name: 'Incomplete Logs',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('defaultTableSelectExpression');
+    });
+
+    it('rejects a non-ObjectId connection', async () => {
+      const result = await callTool(client, 'clickstack_save_source', {
+        kind: 'log',
+        name: 'Bad Conn',
+        connection: 'not-an-object-id',
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('connection');
+    });
+
+    it('rejects a connection owned by another team', async () => {
+      const otherTeam = await Team.create({ name: 'Other Team' });
+      const otherConnection = await Connection.create({
+        team: otherTeam._id,
+        name: 'Other',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const result = await callTool(client, 'clickstack_save_source', {
+        kind: 'log',
+        name: 'Cross Team',
+        connection: otherConnection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('existing connection');
+
+      const created = await Source.findOne({ name: 'Cross Team' });
+      expect(created).toBeNull();
+    });
+  });
+
+  describe('clickstack_save_source (update)', () => {
+    it('updates an existing log source (full replace)', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: connection._id,
+        name: 'Update Me',
+      });
+
+      const result = await callTool(client, 'clickstack_save_source', {
+        id: created._id.toString(),
+        kind: 'log',
+        name: 'Updated Name',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body, ServiceName',
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.id).toBe(created._id.toString());
+      expect(output.name).toBe('Updated Name');
+
+      const stored = await Source.findById(created._id);
+      expect(stored?.name).toBe('Updated Name');
+      // Regression: findOneAndReplace replaces the whole doc, so team must be
+      // preserved — otherwise the source becomes invisible to team-scoped
+      // queries (and undeletable).
+      expect(stored?.team.toString()).toBe(team._id.toString());
+      const listing = await Source.find({ team: team._id });
+      expect(
+        listing.some(s => s._id.toString() === created._id.toString()),
+      ).toBe(true);
+    });
+
+    it('returns a user error for a non-existent id', async () => {
+      const result = await callTool(client, 'clickstack_save_source', {
+        id: '000000000000000000000000',
+        kind: 'log',
+        name: 'Ghost',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('not found');
+    });
+
+    it('rejects an invalid id', async () => {
+      const result = await callTool(client, 'clickstack_save_source', {
+        id: 'not-an-object-id',
+        kind: 'log',
+        name: 'Bad',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('source ID');
+    });
+
+    it('updates a source across a kind change (raw replaceOne path) and keeps it team-scoped', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: connection._id,
+        name: 'Log Becoming Trace',
+      });
+
+      const result = await callTool(client, 'clickstack_save_source', {
+        id: created._id.toString(),
+        kind: 'trace',
+        name: 'Now A Trace',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_TRACES_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, SpanName',
+        durationExpression: 'Duration',
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.id).toBe(created._id.toString());
+      expect(output.kind).toBe(SourceKind.Trace);
+
+      // The raw replaceOne path preserves _id/team/connection; verify the row
+      // is still team-scoped-visible and the kind actually flipped.
+      const stored = await Source.findById(created._id);
+      expect(stored?.kind).toBe(SourceKind.Trace);
+      expect(stored?.team.toString()).toBe(team._id.toString());
+      const listing = await Source.find({ team: team._id });
+      expect(
+        listing.some(s => s._id.toString() === created._id.toString()),
+      ).toBe(true);
+    });
+
+    it('full-replaces optional fields on update (omitted => cleared, present => stored)', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: connection._id,
+        name: 'Field Replace',
+        serviceNameExpression: 'ServiceName',
+        bodyExpression: 'Body',
+      });
+
+      // Omit serviceNameExpression (=> cleared), change bodyExpression (=> stored).
+      const result = await callTool(client, 'clickstack_save_source', {
+        id: created._id.toString(),
+        kind: 'log',
+        name: 'Field Replace',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        bodyExpression: 'Body2',
+      });
+
+      expect(result.isError).toBeFalsy();
+      const stored = await Source.findById(created._id);
+      expect(stored?.get('bodyExpression')).toBe('Body2');
+      // Omitted optional field is cleared by the full replace.
+      expect(stored?.get('serviceNameExpression') == null).toBe(true);
+    });
+
+    it('rejects an update that references another team\u2019s correlated source', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Trace,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: DEFAULT_TRACES_TABLE,
+        },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, SpanName',
+        durationExpression: 'Duration',
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        connection: connection._id,
+        name: 'Trace With Bad Link',
+      });
+
+      const otherTeam = await Team.create({ name: 'Other Team 3' });
+      const otherConnection = await Connection.create({
+        team: otherTeam._id,
+        name: 'Other 3',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const otherLogSource = await Source.create({
+        kind: SourceKind.Log,
+        team: otherTeam._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: otherConnection._id,
+        name: 'Other Team Log',
+      });
+
+      const result = await callTool(client, 'clickstack_save_source', {
+        id: created._id.toString(),
+        kind: 'trace',
+        name: 'Trace With Bad Link',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_TRACES_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, SpanName',
+        durationExpression: 'Duration',
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        logSourceId: otherLogSource._id.toString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('logSourceId');
+    });
+  });
+
+  describe('clickstack_delete_source', () => {
+    it('deletes a source', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: connection._id,
+        name: 'Delete Me',
+      });
+
+      const result = await callTool(client, 'clickstack_delete_source', {
+        id: created._id.toString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toMatchObject({
+        deleted: true,
+        id: created._id.toString(),
+      });
+
+      expect(await Source.findById(created._id)).toBeNull();
+    });
+
+    it('returns a user error for a non-existent id', async () => {
+      const result = await callTool(client, 'clickstack_delete_source', {
+        id: '000000000000000000000000',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('not found');
+    });
+
+    it('does not delete a source owned by another team', async () => {
+      const otherTeam = await Team.create({ name: 'Other Team 2' });
+      const otherConnection = await Connection.create({
+        team: otherTeam._id,
+        name: 'Other 2',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const otherSource = await Source.create({
+        kind: SourceKind.Log,
+        team: otherTeam._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: otherConnection._id,
+        name: 'Other Team Source',
+      });
+
+      const result = await callTool(client, 'clickstack_delete_source', {
+        id: otherSource._id.toString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('not found');
+      // Still present.
+      expect(await Source.findById(otherSource._id)).not.toBeNull();
+    });
+  });
 });

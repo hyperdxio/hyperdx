@@ -1,7 +1,11 @@
 import express from 'express';
 import { z } from 'zod';
 
-import Alert from '@/models/alert';
+import {
+  createWebhook,
+  deleteWebhook,
+  updateWebhook,
+} from '@/controllers/webhook';
 import { WebhookDocument } from '@/models/webhook';
 import Webhook from '@/models/webhook';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
@@ -13,10 +17,7 @@ import {
   paginationMeta,
   paginationQuerySchema,
 } from '@/utils/pagination';
-import {
-  validateWebhookUrl,
-  WebhookUrlValidationError,
-} from '@/utils/validators';
+import { WebhookUrlValidationError } from '@/utils/validators';
 import {
   ExternalWebhook,
   externalWebhookCreateSchema,
@@ -484,10 +485,8 @@ router.post(
 
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
-      validateWebhookUrl({ service, url });
 
-      const webhook = await Webhook.create({
-        team: teamId,
+      const webhook = await createWebhook(teamId, {
         name,
         service,
         url,
@@ -597,92 +596,29 @@ router.put(
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
 
-      const existing = await Webhook.findOne({
-        _id: req.params.id,
-        team: teamId,
+      const result = await updateWebhook(teamId, req.params.id, {
+        name,
+        service,
+        url,
+        description,
+        queryParams,
+        headers,
+        body,
       });
-      if (existing == null) {
+
+      if (result.status === 'not_found') {
         return res.status(404).json({ message: 'Webhook not found' });
       }
-      validateWebhookUrl({ service, url });
-
-      // Readable fields are a full replace: present => $set, omitted =>
-      // $unset. Write-only fields (headers/queryParams) are never returned
-      // on read, so a read-modify-write client cannot re-send them — omitting
-      // them normally preserves the stored values; send an explicit {} to
-      // clear.
-      const $set: Record<string, unknown> = { name, service, url };
-      const $unset: Record<string, 1> = {};
-      for (const [key, value] of Object.entries({ description, body })) {
-        if (value === undefined) {
-          $unset[key] = 1;
-        } else {
-          $set[key] = value;
-        }
-      }
-
-      // Security: if the destination changes (url or service), do NOT preserve
-      // omitted write-only secrets. A caller who cannot read headers/queryParams
-      // back could otherwise repoint url at an endpoint they control and have
-      // the stored secret headers forwarded there when the alert fires
-      // (template.ts spreads webhook.headers into the outbound request). When
-      // the destination changes, omitted write-only fields are cleared and the
-      // caller must re-supply them for the new destination.
-      const destinationChanged =
-        url !== existing.url || service !== existing.service;
-      for (const [key, value] of Object.entries({ headers, queryParams })) {
-        if (value === undefined) {
-          if (destinationChanged) {
-            $unset[key] = 1;
-          }
-          continue;
-        }
-        if (Object.keys(value).length === 0) {
-          $unset[key] = 1;
-        } else {
-          $set[key] = value;
-        }
-      }
-
-      const updateOp: Record<string, unknown> =
-        Object.keys($unset).length > 0 ? { $set, $unset } : { $set };
-
-      // The destinationChanged decision above (whether to preserve or clear
-      // omitted write-only secrets) was computed from the `existing` snapshot,
-      // which is not atomic with the write below. Pin the update to the
-      // snapshotted url/service so a concurrent PUT that changes the
-      // destination in between cannot leave a secret configured for one
-      // destination attached to a different url. If they changed, reject with
-      // 409 and let the caller retry against the current state.
-      const webhook = await Webhook.findOneAndUpdate(
-        {
-          _id: req.params.id,
-          team: teamId,
-          url: existing.url,
-          service: existing.service,
-        },
-        updateOp,
-        { new: true },
-      );
-
-      if (webhook == null) {
-        // Distinguish a concurrent-modification conflict from a real 404.
-        const stillExists = await Webhook.exists({
-          _id: req.params.id,
-          team: teamId,
+      if (result.status === 'conflict') {
+        return res.status(409).json({
+          message:
+            'Webhook was modified concurrently; please retry with the current state',
         });
-        if (stillExists != null) {
-          return res.status(409).json({
-            message:
-              'Webhook was modified concurrently; please retry with the current state',
-          });
-        }
-        return res.status(404).json({ message: 'Webhook not found' });
       }
 
-      const data = formatExternalWebhook(webhook);
+      const data = formatExternalWebhook(result.webhook);
       if (data === undefined) {
-        return respondPersistedButUnserializable(res, webhook);
+        return respondPersistedButUnserializable(res, result.webhook);
       }
 
       res.json({ data });
@@ -759,25 +695,14 @@ router.delete(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      // Block deletion while alerts still reference this webhook, so we never
-      // orphan an alert onto a missing webhook (silent notification failure).
-      // Mirrors the internal webhooks router guard.
-      const referencingAlertCount = await Alert.countDocuments({
-        'channel.webhookId': req.params.id,
-        team: teamId,
-      });
-      if (referencingAlertCount > 0) {
+      const result = await deleteWebhook(teamId, req.params.id);
+
+      if (result.status === 'referenced') {
         return res.status(409).json({
-          message: `Cannot delete webhook: ${referencingAlertCount} alert(s) still reference it. Reassign or remove those alerts first.`,
+          message: `Cannot delete webhook: ${result.alertCount} alert(s) still reference it. Reassign or remove those alerts first.`,
         });
       }
-
-      const deleted = await Webhook.findOneAndDelete({
-        _id: req.params.id,
-        team: teamId,
-      });
-
-      if (deleted == null) {
+      if (result.status === 'not_found') {
         return res.status(404).json({ message: 'Webhook not found' });
       }
 

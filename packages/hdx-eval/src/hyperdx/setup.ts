@@ -158,6 +158,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
       'mcp__hyperdx__clickstack_get_alert',
       'mcp__hyperdx__clickstack_get_webhook',
       'mcp__hyperdx__clickstack_save_alert',
+      'mcp__hyperdx__clickstack_save_webhook',
+      'mcp__hyperdx__clickstack_delete_webhook',
+      'mcp__hyperdx__clickstack_save_source',
+      'mcp__hyperdx__clickstack_delete_source',
     ],
   };
 
