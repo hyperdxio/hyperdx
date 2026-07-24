@@ -49,6 +49,7 @@ import {
   Filter,
   getSampleWeightExpression,
   isLogSource,
+  isSearchableSource,
   isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
@@ -685,6 +686,40 @@ const Tile = forwardRef(
       );
     }, [filters, queriedConfig, source]);
 
+    const replaySearchUrl = useMemo(() => {
+      if (!queriedConfig || !source || !isBuilderChartConfig(queriedConfig)) {
+        return null;
+      }
+
+      if (queriedConfig.metricTables != null || !isSearchableSource(source)) {
+        return null;
+      }
+
+      if (Array.isArray(queriedConfig.select)) {
+        const hasPerSeriesCondition = queriedConfig.select.some(
+          select =>
+            typeof select !== 'string' &&
+            select.aggCondition != null &&
+            select.aggCondition.trim().length > 0,
+        );
+        const canPromoteSingleSeriesCondition =
+          queriedConfig.select.length === 1 && queriedConfig.where.length === 0;
+
+        // buildEventsSearchUrl can promote one per-series condition into the
+        // event query, but cannot faithfully replay multiple conditions or
+        // combine a series condition with a global where clause.
+        if (hasPerSeriesCondition && !canPromoteSingleSeriesCondition) {
+          return null;
+        }
+      }
+
+      return buildEventsSearchUrl({
+        source,
+        config: queriedConfig,
+        dateRange,
+      });
+    }, [dateRange, queriedConfig, source]);
+
     const hoverToolbar = useMemo(() => {
       const isRawSql = isRawSqlSavedChartConfig(chart.config);
       const isPromQL = isPromqlSavedChartConfig(chart.config);
@@ -703,6 +738,25 @@ const Tile = forwardRef(
           key="hover-toolbar"
           my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
+          {replaySearchUrl && (
+            <Tooltip label="Replay search" position="top" withArrow>
+              <ActionIcon
+                component={Link}
+                href={replaySearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                prefetch={false}
+                data-testid={`tile-replay-search-button-${chart.id}`}
+                aria-label="Replay search (opens in new tab)"
+                variant="subtle"
+                size="sm"
+                mr={4}
+              >
+                <IconSearch size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+
           {displayTypeSupportsAlerts &&
             (alert ? (
               // Existing alert: bell with a colored status dot indicator.
@@ -852,6 +906,7 @@ const Tile = forwardRef(
       alertIndicatorColor,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.id,
       chart.containerId,
@@ -878,6 +933,17 @@ const Tile = forwardRef(
         onMoveToGroup && moveTargets && moveTargets.length > 0;
       return (
         <>
+          {replaySearchUrl && (
+            <Menu.Item
+              component={Link}
+              href={replaySearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              leftSection={<IconSearch size={14} />}
+            >
+              Replay search
+            </Menu.Item>
+          )}
           {showAlerts && (
             <>
               <Menu.Item
@@ -983,6 +1049,7 @@ const Tile = forwardRef(
       alert,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.containerId,
       chart.tabId,
