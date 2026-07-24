@@ -103,6 +103,14 @@ func TestLoadConfig(t *testing.T) {
 		if cfg.TablesTTL != "720h" {
 			t.Errorf("TablesTTL: got %q, want %q", cfg.TablesTTL, "720h")
 		}
+		for name, got := range map[string]string{"LogsTTL": cfg.LogsTTL, "TracesTTL": cfg.TracesTTL, "MetricsTTL": cfg.MetricsTTL, "SessionsTTL": cfg.SessionsTTL} {
+			if got != "720h" {
+				t.Errorf("%s should default to 720h, got %q", name, got)
+			}
+		}
+		if cfg.ReconcileTableTTL {
+			t.Error("ReconcileTableTTL should default to false")
+		}
 		if cfg.SchemaDir != dir {
 			t.Errorf("SchemaDir: got %q, want %q", cfg.SchemaDir, dir)
 		}
@@ -549,7 +557,7 @@ func TestProcessSchemaDir_Subdirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tempDir, err := processSchemaDir(schemaDir, "testdb", "toIntervalHour(48)")
+	tempDir, err := processSchemaDir(schemaDir, "testdb", map[string]string{"TABLES_TTL": "toIntervalHour(48)"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +580,7 @@ func TestProcessSchemaDir_MultipleReplacements(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tempDir, err := processSchemaDir(schemaDir, "db", "toIntervalDay(7)")
+	tempDir, err := processSchemaDir(schemaDir, "db", map[string]string{"TABLES_TTL": "toIntervalDay(7)"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +603,7 @@ func TestProcessSchemaDir_NoMacros(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tempDir, err := processSchemaDir(schemaDir, "db", "toIntervalDay(30)")
+	tempDir, err := processSchemaDir(schemaDir, "db", map[string]string{"TABLES_TTL": "toIntervalDay(30)"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -611,9 +619,181 @@ func TestProcessSchemaDir_NoMacros(t *testing.T) {
 }
 
 func TestProcessSchemaDir_NonexistentDir(t *testing.T) {
-	_, err := processSchemaDir("/nonexistent/schema", "db", "toIntervalDay(30)")
+	_, err := processSchemaDir("/nonexistent/schema", "db", map[string]string{"TABLES_TTL": "toIntervalDay(30)"})
 	if err == nil {
 		t.Fatal("expected error for nonexistent schema dir")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// per-signal TTL resolution + reconcile helpers
+// ---------------------------------------------------------------------------
+
+func TestLoadConfig_PerSignalTTL(t *testing.T) {
+	dir := t.TempDir()
+	os.Args = []string{"migrate", dir}
+	t.Setenv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "30d")
+	t.Setenv("HYPERDX_OTEL_EXPORTER_LOGS_TTL", "180d")
+	t.Setenv("HYPERDX_OTEL_EXPORTER_TRACES_TTL", "180d")
+	t.Setenv("HYPERDX_OTEL_EXPORTER_RECONCILE_TABLE_TTL", "true")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogsTTL != "180d" || cfg.TracesTTL != "180d" {
+		t.Errorf("per-signal override not applied: logs=%q traces=%q", cfg.LogsTTL, cfg.TracesTTL)
+	}
+	// Not individually set -> fall back to TABLES_TTL.
+	if cfg.MetricsTTL != "30d" || cfg.SessionsTTL != "30d" {
+		t.Errorf("fallback to TABLES_TTL failed: metrics=%q sessions=%q", cfg.MetricsTTL, cfg.SessionsTTL)
+	}
+	if !cfg.ReconcileTableTTL {
+		t.Error("ReconcileTableTTL should be true")
+	}
+}
+
+func TestClassifySignal(t *testing.T) {
+	cases := map[string]string{
+		"otel_logs":                 "LOGS_TTL",
+		"otel_logs_kv_rollup_15m":   "LOGS_TTL",
+		"otel_traces":               "TRACES_TTL",
+		"otel_traces_kv_rollup_15m": "TRACES_TTL",
+		"otel_metrics_sum":          "METRICS_TTL",
+		"otel_metrics_gauge":        "METRICS_TTL",
+		"hyperdx_sessions":          "SESSIONS_TTL",
+	}
+	for table, want := range cases {
+		if got, ok := classifySignal(table); !ok || got != want {
+			t.Errorf("classifySignal(%q) = %q,%v; want %q,true", table, got, ok, want)
+		}
+	}
+	// metrics_ts is the PromQL TimeSeries table (no otel_ prefix, no TTL) and must
+	// NOT be classified; some_other_table is unmanaged.
+	for _, name := range []string{"metrics_ts", "some_other_table"} {
+		if _, ok := classifySignal(name); ok {
+			t.Errorf("classifySignal(%q) should return ok=false", name)
+		}
+	}
+}
+
+func TestExtractTTLExpr(t *testing.T) {
+	cases := []struct {
+		name, query, want string
+		ok                bool
+	}{
+		{
+			name:  "trailing SETTINGS",
+			query: "CREATE TABLE default.otel_logs (Timestamp DateTime64(9)) ENGINE = MergeTree ORDER BY Timestamp TTL toDateTime(Timestamp) + toIntervalDay(30) SETTINGS index_granularity = 8192",
+			want:  "toDateTime(Timestamp) + toIntervalDay(30)", ok: true,
+		},
+		{
+			name:  "TTL is the final clause (no SETTINGS)",
+			query: "CREATE TABLE default.otel_traces (Timestamp DateTime) ENGINE = MergeTree ORDER BY Timestamp TTL toDate(Timestamp) + toIntervalDay(30)",
+			want:  "toDate(Timestamp) + toIntervalDay(30)", ok: true,
+		},
+		{
+			name:  "column-level TTL earlier; table-level TTL wins",
+			query: "CREATE TABLE default.otel_logs (Timestamp DateTime, Body String TTL Timestamp + toIntervalDay(1)) ENGINE = MergeTree ORDER BY Timestamp TTL toDateTime(Timestamp) + toIntervalDay(30) SETTINGS ttl_only_drop_parts = 1",
+			want:  "toDateTime(Timestamp) + toIntervalDay(30)", ok: true,
+		},
+		{
+			name:  "no TTL clause",
+			query: "CREATE TABLE x (a Int) ENGINE = MergeTree ORDER BY a", ok: false,
+		},
+	}
+	for _, c := range cases {
+		got, ok := extractTTLExpr(c.query)
+		if ok != c.ok || (c.ok && got != c.want) {
+			t.Errorf("%s: extractTTLExpr = %q,%v; want %q,%v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestIntervalSeconds(t *testing.T) {
+	cases := map[string]int64{
+		"toIntervalDay(30)":    30 * 86400,
+		"toIntervalDay(180)":   180 * 86400,
+		"toIntervalHour(12)":   12 * 3600,
+		"toIntervalMinute(90)": 90 * 60,
+		"toIntervalSecond(90)": 90,
+		"INTERVAL 7 DAY":       7 * 86400, // ClickHouse-rendered form
+		"INTERVAL 30 DAYS":     30 * 86400,
+	}
+	for term, want := range cases {
+		if got, ok := intervalSeconds(term); !ok || got != want {
+			t.Errorf("intervalSeconds(%q) = %d,%v; want %d", term, got, ok, want)
+		}
+	}
+	if _, ok := intervalSeconds("toDateTime(Timestamp)"); ok {
+		t.Error("expected ok=false when no interval present")
+	}
+}
+
+func TestPlanTTLReconcile(t *testing.T) {
+	ttlExprs := map[string]string{
+		"LOGS_TTL": "toIntervalDay(180)", "TRACES_TTL": "toIntervalDay(180)",
+		"METRICS_TTL": "toIntervalDay(30)", "SESSIONS_TTL": "toIntervalDay(30)",
+	}
+	ct := func(table, ttl string) string {
+		return "CREATE TABLE default." + table + " (Timestamp DateTime) ENGINE = MergeTree ORDER BY Timestamp TTL " + ttl + " SETTINGS index_granularity = 8192"
+	}
+	cases := []struct {
+		name, table, createQuery string
+		wantAction               ttlAction
+		wantNewTTL               string
+		wantExtend               bool
+	}{
+		{"unmanaged table", "some_table", ct("some_table", "toDateTime(Timestamp) + toIntervalDay(30)"), ttlSkip, "", false},
+		{"already at desired retention", "otel_metrics_sum", ct("otel_metrics_sum", "toDateTime(TimeUnix) + toIntervalDay(30)"), ttlSkip, "", false},
+		{"diff-guard equal across syntaxes", "otel_logs", ct("otel_logs", "toDateTime(Timestamp) + INTERVAL 180 DAY"), ttlSkip, "", false},
+		{"extend logs 30d -> 180d", "otel_logs", ct("otel_logs", "toDateTime(Timestamp) + toIntervalDay(30)"), ttlAlter, "toDateTime(Timestamp) + toIntervalDay(180)", true},
+		{"shrink metrics 90d -> 30d", "otel_metrics_gauge", ct("otel_metrics_gauge", "toDateTime(TimeUnix) + toIntervalDay(90)"), ttlAlter, "toDateTime(TimeUnix) + toIntervalDay(30)", false},
+		{"traces anchor preserved", "otel_traces", ct("otel_traces", "toDate(Timestamp) + toIntervalDay(30)"), ttlAlter, "toDate(Timestamp) + toIntervalDay(180)", true},
+		{"rewrite CH-rendered INTERVAL form", "otel_logs", ct("otel_logs", "toDateTime(Timestamp) + INTERVAL 30 DAY"), ttlAlter, "toDateTime(Timestamp) + toIntervalDay(180)", true},
+		{"managed table with no TTL", "otel_logs", "CREATE TABLE default.otel_logs (Timestamp DateTime) ENGINE = MergeTree ORDER BY Timestamp", ttlWarn, "", false},
+		{"multi-interval TTL refused", "otel_logs", ct("otel_logs", "toDateTime(Timestamp) + toIntervalDay(7) TO VOLUME 'cold', toDateTime(Timestamp) + toIntervalDay(30)"), ttlWarn, "", false},
+	}
+	for _, c := range cases {
+		got := planTTLReconcile(c.table, c.createQuery, ttlExprs)
+		if got.action != c.wantAction {
+			t.Errorf("%s: action = %v; want %v (reason: %s)", c.name, got.action, c.wantAction, got.reason)
+			continue
+		}
+		if c.wantAction == ttlAlter && (got.newTTL != c.wantNewTTL || got.extend != c.wantExtend) {
+			t.Errorf("%s: newTTL=%q extend=%v; want %q, %v", c.name, got.newTTL, got.extend, c.wantNewTTL, c.wantExtend)
+		}
+	}
+
+	// A signal with no configured TTL entry must warn, not silently skip.
+	if got := planTTLReconcile("otel_logs", ct("otel_logs", "toDateTime(Timestamp) + toIntervalDay(30)"), map[string]string{}); got.action != ttlWarn {
+		t.Errorf("missing ttlExprs entry: action = %v; want ttlWarn", got.action)
+	}
+}
+
+func TestProcessSchemaDir_PerSignalMacros(t *testing.T) {
+	schemaDir := t.TempDir()
+	content := "logs ${LOGS_TTL} traces ${TRACES_TTL} metrics ${METRICS_TTL} sessions ${SESSIONS_TTL}"
+	if err := os.WriteFile(filepath.Join(schemaDir, "001.sql"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tempDir, err := processSchemaDir(schemaDir, "db", map[string]string{
+		"LOGS_TTL":     "toIntervalDay(180)",
+		"TRACES_TTL":   "toIntervalDay(180)",
+		"METRICS_TTL":  "toIntervalDay(30)",
+		"SESSIONS_TTL": "toIntervalDay(30)",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+	got, err := os.ReadFile(filepath.Join(tempDir, "001.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "logs toIntervalDay(180) traces toIntervalDay(180) metrics toIntervalDay(30) sessions toIntervalDay(30)"
+	if string(got) != want {
+		t.Errorf("got %q, want %q", string(got), want)
 	}
 }
 
@@ -944,7 +1124,7 @@ SETTINGS ttl_only_drop_parts = 1;`
 		t.Fatal(err)
 	}
 
-	tempDir, err := processSchemaDir(schemaDir, "mydb", "toIntervalDay(30)")
+	tempDir, err := processSchemaDir(schemaDir, "mydb", map[string]string{"TABLES_TTL": "toIntervalDay(30)"})
 	if err != nil {
 		t.Fatal(err)
 	}
