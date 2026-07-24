@@ -46,6 +46,7 @@ import {
   toViewportPoint,
   useChartTooltipZIndex,
 } from './components/charts/ChartTooltip';
+import { ExemplarDot } from './components/Exemplars';
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
@@ -596,35 +597,6 @@ function CaptureActiveDot({
 
 function numOrNull(v: unknown): number | null {
   return typeof v === 'number' && !isNaN(v) ? v : null;
-}
-
-/**
- * Diamond marker for an exemplar, drawn via <ReferenceDot shape={...} />.
- * Recharts injects cx/cy. Hovering opens a floating menu (handled by the parent
- * via onHoverStart/onHoverEnd) to inspect the linked trace — the marker itself
- * is not a click target. A larger transparent hit circle eases hovering.
- */
-function ExemplarDot(props: any) {
-  const { cx, cy, exemplar, onHoverStart, onHoverEnd } = props;
-  if (typeof cx !== 'number' || typeof cy !== 'number') {
-    return null;
-  }
-  const s = 4;
-  return (
-    <g
-      style={{ cursor: 'pointer' }}
-      onMouseEnter={() => onHoverStart?.(exemplar, cx, cy)}
-      onMouseLeave={() => onHoverEnd?.()}
-    >
-      <path
-        d={`M ${cx} ${cy - s} L ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} Z`}
-        fill="var(--color-chart-warning, #f5a623)"
-        stroke="var(--color-bg-default, #fff)"
-        strokeWidth={1}
-      />
-      <circle cx={cx} cy={cy} r={9} fill="transparent" />
-    </g>
-  );
 }
 
 /**
