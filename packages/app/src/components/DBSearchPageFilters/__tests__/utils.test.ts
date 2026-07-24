@@ -6,7 +6,7 @@ import {
   groupFacetsByBaseName,
   toClickHouseKeyExpression,
   toQuotedClickHouseKeyExpression,
-} from './utils';
+} from '@/components/DBSearchPageFilters/utils';
 
 describe('cleanClickHouseExpression', () => {
   it('strips backticks from a bare quoted identifier', () => {
@@ -17,6 +17,51 @@ describe('cleanClickHouseExpression', () => {
     expect(
       cleanClickHouseExpression('toString(ResourceAttributes.`hdx`.`sdk`)'),
     ).toBe('ResourceAttributes.hdx.sdk');
+  });
+
+  it('decodes escaped JSON path segments', () => {
+    expect(
+      cleanClickHouseExpression(
+        'toString(ResourceAttributes.`path\\\\segment`.`tick``segment`)',
+      ),
+    ).toBe('ResourceAttributes.path\\segment.tick`segment');
+  });
+
+  it('decodes the empty JSON key expression', () => {
+    expect(
+      cleanClickHouseExpression(
+        "JSONExtractString(toJSONString(ResourceAttributes), '')",
+      ),
+    ).toBe("ResourceAttributes['']");
+  });
+
+  it('strips typed JSON subcolumn suffixes', () => {
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String',
+      ),
+    ).toBe('ResourceAttributes.k8s.namespace.name');
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`http`.`status_code`.:Int64',
+      ),
+    ).toBe('ResourceAttributes.http.status_code');
+    expect(
+      cleanClickHouseExpression('ResourceAttributes.`duration_ms`.:Float64'),
+    ).toBe('ResourceAttributes.duration_ms');
+    expect(
+      cleanClickHouseExpression('LogAttributes.`time`.:`DateTime64(9)`'),
+    ).toBe('LogAttributes.time');
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`http`.`headers`.:LowCardinality(Nullable(String))',
+      ),
+    ).toBe('ResourceAttributes.http.headers');
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`status_codes`.:Array(Nullable(Int64))',
+      ),
+    ).toBe('ResourceAttributes.status_codes');
   });
 
   it('leaves a plain identifier unchanged', () => {
@@ -238,6 +283,70 @@ describe('toQuotedClickHouseKeyExpression', () => {
     expect(
       toQuotedClickHouseKeyExpression('LogAttributes.host', knownColumns),
     ).toBe("LogAttributes['host']");
+  });
+
+  it('converts JSON dot-form keys to string expressions', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'ResourceAttributes.k8s.namespace.name',
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`k8s`.`namespace`.`name`)');
+  });
+
+  it('converts JSON bracket-form keys to string expressions', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        "ResourceAttributes['k8s.namespace.name']",
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`k8s`.`namespace`.`name`)');
+  });
+
+  it('escapes backslashes inside JSON path segments', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        "ResourceAttributes['foo\\bar.name']",
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`foo\\\\bar`.`name`)');
+  });
+
+  it('renders an empty JSON path without invalid dot notation', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        "ResourceAttributes['']",
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe("JSONExtractString(toJSONString(ResourceAttributes), '')");
+  });
+
+  it('converts typed JSON subcolumn keys to string expressions', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'ResourceAttributes.`cloud`.`account`.`id`.:Int64',
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`cloud`.`account`.`id`)');
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'LogAttributes.`time`.:`DateTime64(9)`',
+        new Set(['LogAttributes']),
+        { jsonColumns: ['LogAttributes'] },
+      ),
+    ).toBe('toString(LogAttributes.`time`)');
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'ResourceAttributes.`status_codes`.:Array(Nullable(Int64))',
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`status_codes`)');
   });
 
   it('quotes only the root of a bracket map access that needs it', () => {

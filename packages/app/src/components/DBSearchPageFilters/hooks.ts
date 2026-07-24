@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -135,12 +135,14 @@ function useFacets({
 
     const sqlKeyToUiKey = new Map<string, string>();
     const escapedKeysToFetch = keysToFetch.map(key => {
-      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns, {
+        jsonColumns: jsonColumns ?? [],
+      });
       sqlKeyToUiKey.set(sqlKey, key);
       return sqlKey;
     });
     return { escapedKeysToFetch, sqlKeyToUiKey };
-  }, [isColumnsLoading, keysToFetch, knownColumns]);
+  }, [isColumnsLoading, jsonColumns, keysToFetch, knownColumns]);
 
   const facetsChartConfig = useMemo(
     () =>
@@ -174,7 +176,9 @@ function useFacets({
   const loadMoreFacetsForKey = useCallback(
     async (key: string): Promise<Facet | undefined> => {
       try {
-        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns, {
+          jsonColumns: jsonColumns ?? [],
+        });
         if (mode === 'exact') {
           const strippedFilterState: FilterState = { ...filterState };
           delete strippedFilterState[key];
@@ -184,7 +188,11 @@ function useFacets({
               ...chartConfig,
               dateRange,
               filters: filtersToQuery(
-                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                escapeFilterStateKeys(
+                  strippedFilterState,
+                  knownColumns,
+                  jsonColumns ?? [],
+                ),
                 { dateTimeColumns },
               ),
             },
@@ -234,6 +242,7 @@ function useFacets({
       source,
       filterState,
       dateTimeColumns,
+      jsonColumns,
     ],
   );
 
@@ -275,6 +284,7 @@ export function useFetchFacets({
   });
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);
+  const loadMoreGenerationRef = useRef(0);
   const facets = useMemo<Facet[] | undefined>(() => {
     const base = facetsQuery.data.keyValues;
     const hasExtras = !!extraFacets && extraFacets.length > 0;
@@ -321,26 +331,35 @@ export function useFetchFacets({
   const areExtraFacetsLoading = loadMoreLoadingKeys.size > 0;
   const loadMoreFacetsForKey = useCallback(
     async (key: string) => {
+      const requestGeneration = loadMoreGenerationRef.current;
       const strategy = facetsQuery.loadMoreFacetsForKey;
       setLoadMoreLoadingKeys(prev =>
         produce(prev, draft => {
           draft.add(key);
         }),
       );
-      const newFacet = await strategy(key);
-      if (newFacet) {
-        setExtraFacets(prev => [...(prev ?? []), newFacet]);
-        setExtraFacetKeys(prev =>
-          produce(prev, draft => {
-            draft.add(key);
-          }),
-        );
+      try {
+        const newFacet = await strategy(key);
+        if (newFacet && requestGeneration === loadMoreGenerationRef.current) {
+          setExtraFacets(prev => [
+            ...(prev ?? []).filter(facet => facet.key !== newFacet.key),
+            newFacet,
+          ]);
+          setExtraFacetKeys(prev =>
+            produce(prev, draft => {
+              draft.add(key);
+            }),
+          );
+        }
+      } finally {
+        if (requestGeneration === loadMoreGenerationRef.current) {
+          setLoadMoreLoadingKeys(prev =>
+            produce(prev, draft => {
+              draft.delete(key);
+            }),
+          );
+        }
       }
-      setLoadMoreLoadingKeys(prev =>
-        produce(prev, draft => {
-          draft.delete(key);
-        }),
-      );
     },
     [facetsQuery.loadMoreFacetsForKey],
   );
@@ -348,9 +367,12 @@ export function useFetchFacets({
   // Clear extras when the query scope that produced them changes; otherwise
   // they'd persist against a query they were never fetched for.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadMoreGenerationRef.current += 1;
+
     setExtraFacets(null);
     setExtraFacetKeys(new Set());
+
+    setLoadMoreLoadingKeys(new Set());
   }, [
     sourceId,
     dateRange,
