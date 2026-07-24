@@ -3,6 +3,7 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   bucketExponentialHistogramObservations,
   bulkInsertLogs,
+  bulkInsertMetricsHistogram,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   DEFAULT_METRICS_TABLE,
@@ -185,6 +186,180 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     expect(result.isError).toBeFalsy();
   });
 
+  // Regression: a metric source rendered as a categorical (bar/pie) tile with a
+  // groupBy runs the chart config through convertToCategoricalChartConfig, which
+  // structuredClones it. `source.metricTables` is a live Mongoose subdocument
+  // that structuredClone cannot copy, so the tile used to fail with
+  // "DataCloneError: [object Array] could not be cloned". These cover the
+  // grouped bar/pie histogram paths that surface a group-array column.
+  describe('metric histogram categorical (bar/pie) tiles with groupBy', () => {
+    const now = new Date();
+
+    it('queries a grouped bar tile over an exponential histogram', async () => {
+      const metricSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.ExponentialHistogram.toLowerCase()]:
+            DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: ctx.connection._id,
+        name: 'Exponential Metrics Bar',
+      });
+      await seedExponentialHistogramMetric({
+        metricName: 'exp.histogram.by.route',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: now,
+            Attributes: { route: '/a' },
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: now,
+            Attributes: { route: '/b' },
+            ...bucketExponentialHistogramObservations([1, 2]),
+          },
+        ],
+      });
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Exp Histogram Bar Dashboard',
+          tiles: [
+            {
+              name: 'P95 by route',
+              config: {
+                displayType: 'bar',
+                sourceId: metricSource._id.toString(),
+                groupBy: "Attributes['route']",
+                select: [
+                  {
+                    aggFn: 'quantile',
+                    level: 0.95,
+                    metricType: 'exponential histogram',
+                    metricName: 'exp.histogram.by.route',
+                    alias: 'P95 Duration',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      );
+      if (createResult.isError) {
+        throw new Error(getFirstText(createResult));
+      }
+      const dashboard = JSON.parse(getFirstText(createResult));
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed: { result: { data: Array<{ group?: string[] }> } } =
+        JSON.parse(getFirstText(result));
+      const rows = parsed.result.data;
+      // Each row carries the group-array column that triggered the clone bug.
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every(r => Array.isArray(r.group))).toBe(true);
+      const routes = rows
+        .map(r => r.group?.[0])
+        .filter((v): v is string => typeof v === 'string')
+        .sort();
+      expect(routes).toEqual(['/a', '/b']);
+    });
+
+    it('queries a grouped bar tile over a (regular) histogram', async () => {
+      const metricSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Histogram.toLowerCase()]:
+            DEFAULT_METRICS_TABLE.HISTOGRAM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: ctx.connection._id,
+        name: 'Histogram Metrics Bar',
+      });
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: 'histogram.by.route',
+          ResourceAttributes: {},
+          Attributes: { route: '/a' },
+          TimeUnix: now,
+          Count: 3,
+          BucketCounts: [1, 1, 1],
+          ExplicitBounds: [1, 5],
+          AggregationTemporality: 1,
+        },
+        {
+          MetricName: 'histogram.by.route',
+          ResourceAttributes: {},
+          Attributes: { route: '/b' },
+          TimeUnix: now,
+          Count: 2,
+          BucketCounts: [2, 0, 0],
+          ExplicitBounds: [1, 5],
+          AggregationTemporality: 1,
+        },
+      ]);
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Histogram Bar Dashboard',
+          tiles: [
+            {
+              name: 'P95 by route',
+              config: {
+                displayType: 'bar',
+                sourceId: metricSource._id.toString(),
+                groupBy: "Attributes['route']",
+                select: [
+                  {
+                    aggFn: 'quantile',
+                    level: 0.95,
+                    metricType: 'histogram',
+                    metricName: 'histogram.by.route',
+                    alias: 'P95 Duration',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      );
+      if (createResult.isError) {
+        throw new Error(getFirstText(createResult));
+      }
+      const dashboard = JSON.parse(getFirstText(createResult));
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed: { result: { data: Array<{ group?: string[] }> } } =
+        JSON.parse(getFirstText(result));
+      const rows = parsed.result.data;
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every(r => Array.isArray(r.group))).toBe(true);
+    });
+  });
+
   describe('raw SQL macro warnings', () => {
     it('attaches a non-blocking warning when a raw SQL tile omits macros', async () => {
       const connectionId = ctx.connection._id.toString();
@@ -358,8 +533,9 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
         endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
       });
       expect(result.isError).toBeFalsy();
-      const parsed = JSON.parse(getFirstText(result));
-      return parsed.result.data as Record<string, string>[];
+      const parsed: { result: { data: Array<Record<string, string>> } } =
+        JSON.parse(getFirstText(result));
+      return parsed.result.data;
     };
 
     it('returns every group when no limit is set', async () => {
