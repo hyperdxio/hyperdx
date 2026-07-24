@@ -938,6 +938,140 @@ describe('tmp metrics v2 render', () => {
     expect(rendered).not.toMatch(/ORDER BY AttributesHash/);
   });
 
+  describe('parity-harness query-recipe fixes', () => {
+    it('raw delta reads dedup same-(SeriesHash, TimeUnix) transport retries', async () => {
+      // Scalar sum: per-ts max(Value), summed per bucket — never sum(Value),
+      // which double-counts a re-delivered OTLP export (+25% measured).
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        otherMetricTypes: [],
+      });
+      const sum = parameterizedQueryToSql(
+        await renderChartConfig(sumCfg(), mockMetadata, undefined),
+      );
+      expect(sum).toContain('max(Value) AS ValueMax');
+      expect(sum).toContain('sum(ValueMax) AS RateIfDelta');
+      expect(sum).not.toContain('ValueSum');
+
+      // Histogram quantile: per-ts argMax pick, not an additive sumForEach.
+      const hist = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...base,
+            ...quantileWindow,
+            select: [
+              {
+                aggFn: 'quantile',
+                level: 0.5,
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'test.duration',
+                metricType: MetricsDataType.Histogram,
+              },
+            ],
+          } as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(hist).toContain('argMax(BucketCounts, Count)');
+      expect(hist).not.toContain('sumForEach(BucketCounts)');
+    });
+
+    it('tier chained-increase recovers mid-bucket resets via the stored Max', async () => {
+      const cfg = () =>
+        sumCfg({
+          metricTables: { ...base.metricTables, points1h: 'points_1h' },
+          granularity: '1 day',
+          dateRange: [
+            new Date('2025-02-06T00:00:00Z'),
+            new Date('2025-02-13T00:00:00Z'),
+          ],
+        });
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      const cum = parameterizedQueryToSql(
+        await renderChartConfig(cfg(), mockMetadata, undefined),
+      );
+      expect(cum).toContain('max(Max) AS MaxV');
+      // within-bucket reset: credit the pre-reset climb (Max-F) plus the
+      // post-reset accumulation (L); detection keys on Max, not L < F
+      expect(cum).toContain('IF(L >= MaxV, L - F, (MaxV - F) + L)');
+
+      // delta tier reads are plain Sum-state sums — no Max chain
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        otherMetricTypes: [],
+      });
+      const delta = parameterizedQueryToSql(
+        await renderChartConfig(cfg(), mockMetadata, undefined),
+      );
+      expect(delta).not.toContain('MaxV');
+    });
+
+    it('exp raw cumulative diff rescales across a scale renegotiation', async () => {
+      const cfg = () => ({
+        ...base,
+        ...quantileWindow,
+        metricTables: {
+          ...base.metricTables,
+          expHistogramPoints: 'otel_metrics_exp_histogram_points',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.99,
+            aggCondition: '',
+            valueExpression: 'Value',
+            metricName: 'test.exp.duration',
+            metricType: MetricsDataType.ExponentialHistogram,
+          },
+        ],
+      });
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const cum = parameterizedQueryToSql(
+        await renderChartConfig(
+          cfg() as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      );
+      // both maps downscale to the pair's min scale before mapSubtract
+      // (an SDK re-bucket preserves Count, so the reset branch cannot fire)
+      expect(cum).toContain('least(Scale, prev_scale)');
+      expect(cum).toContain('arrayReduce(');
+      // diffs are keyed per eff_scale so maps are summed within ONE scale
+      expect(cum).toContain(
+        'GROUP BY SeriesHash, `__hdx_time_bucket`, eff_scale',
+      );
+      expect(cum).not.toContain('min(Scale) AS scale');
+
+      // delta: per-ts retry dedup + per-scale grouping (mirrors the tier R1)
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        otherMetricTypes: [],
+      });
+      const delta = parameterizedQueryToSql(
+        await renderChartConfig(
+          cfg() as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(delta).toContain('GROUP BY SeriesHash, TimeUnix');
+      expect(delta).toContain(
+        'GROUP BY SeriesHash, `__hdx_time_bucket`, Scale',
+      );
+      expect(delta).not.toContain('min(Scale) AS scale');
+    });
+  });
+
   const summaryQuantileCfg = (windowHours: number) =>
     ({
       ...base,

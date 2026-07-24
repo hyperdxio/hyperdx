@@ -398,12 +398,15 @@ export const sumCtesV2 = ({
   return [
     {
       // Same-timestamp duplicates are collapsed per (series, ts) BEFORE any
-      // window function: a lower-valued duplicate would otherwise look like a
-      // counter reset and the reset branch would re-add the full value.
-      // Cumulative reads take max(Value) (the true counter sample); delta
-      // reads take sum(Value) (duplicates are additive contributions). With
-      // no duplicates max == sum == the single value, so results are
-      // unchanged. The GROUP BY streams in primary-key order
+      // window function or bucket sum. Same-(SeriesHash, TimeUnix) rows are
+      // OTLP transport retries by definition (a re-delivered export whose
+      // rebatched insert block evades the exporter's dedup token), so BOTH
+      // temporalities read max(Value): for cumulative a lower-valued
+      // duplicate would otherwise look like a counter reset; for delta,
+      // summing would double-count the retry. Delta points remain additive
+      // across DISTINCT timestamps — that sum happens per display bucket.
+      // With no duplicates max == the single value, so results are unchanged.
+      // The GROUP BY streams in primary-key order
       // (MetricName, SeriesHash, TimeUnix).
       //
       // On the first row of each series partition lagInFrame returns NULL and
@@ -439,7 +442,7 @@ export const sumCtesV2 = ({
         }${
           needDelta
             ? `,
-        sum(ValueSum) OVER (PARTITION BY SeriesHash ORDER BY TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS SumIfDelta`
+        sum(ValueMax) OVER (PARTITION BY SeriesHash ORDER BY TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS SumIfDelta`
             : ''
         }
       FROM (
@@ -447,8 +450,7 @@ export const sumCtesV2 = ({
           MetricName,
           SeriesHash,
           TimeUnix,
-          max(Value) AS ValueMax,
-          sum(Value) AS ValueSum
+          max(Value) AS ValueMax
         FROM ${pointsFrom}
         WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
         GROUP BY MetricName, SeriesHash, TimeUnix
@@ -481,7 +483,7 @@ export const sumCtesV2 = ({
           }${
             needDelta
               ? `,
-          sum(ValueSum) AS RateIfDelta,
+          sum(ValueMax) AS RateIfDelta,
           argMax(SumIfDelta, TimeUnix) AS SumIfDelta`
               : ''
           }${
@@ -555,10 +557,15 @@ export const gaugeRollupCtesV2 = ({
 
 /**
  * Sum (counter) over a rollup tier — the cookbook §5.8 chained-increase
- * shape: per tier bucket take (First, Last) via argMin/argMaxMerge, chain
- * buckets per series with reset detection (a drop between buckets means the
- * counter restarted: count F fully), then re-bucket to the display
- * granularity. For delta temporality the rollup Sum column is exact.
+ * shape: per tier bucket take (First, Last, Max) via argMin/argMaxMerge and
+ * max, chain buckets per series with reset detection (a drop between buckets
+ * means the counter restarted: count F fully; the stored Max recovers resets
+ * INSIDE a bucket), then re-bucket to the display granularity. For delta
+ * temporality the rollup Sum column is exact for once-delivered points;
+ * transport retries that evade the exporter's insert-dedup token are baked
+ * into the summed MV states and cannot be query-deduped here (the raw path
+ * dedups per (SeriesHash, TimeUnix) at query time) — fixable only by
+ * request-scoped dedup at the exporter.
  */
 export const sumRollupCtesV2 = ({
   fast,
@@ -618,7 +625,12 @@ export const sumRollupCtesV2 = ({
         SeriesHash AS AttributesHash,
         TimeBucket,
         argMinMerge(First) AS F,
-        argMaxMerge(Last) AS L,
+        argMaxMerge(Last) AS L,${
+          needCumMono
+            ? `
+        max(Max) AS MaxV,`
+            : ''
+        }
         sum(Sum) AS SumAgg
       FROM ${rollupFrom}
       WHERE ${rollupWhere}${seriesScanFilter(fast)}
@@ -641,8 +653,8 @@ export const sumRollupCtesV2 = ({
         }${
           needCumMono
             ? `,
-        ${'' /* cross-bucket part (reset between buckets: count F fully) + within-bucket part (reset inside the bucket: count L fully — refines the cookbook §5.8 formula, which under-counts/negates mid-bucket resets per §7.1) */}
-        IF(prevL IS NULL, 0, IF(F >= prevL, F - prevL, F)) + IF(L >= F, L - F, L) AS IncIfCumulative`
+        ${'' /* cross-bucket part (reset between buckets: count F fully) + within-bucket part. The tier's stored Max detects a reset INSIDE the bucket (Max > L means some sample exceeded the final one, i.e. the counter restarted mid-bucket) and recovers the pre-reset climb: (Max - F) + L. Keying detection on Max rather than L < F also counts resets whose post-reset accumulation re-crosses F. Residual: 2+ resets inside ONE tier bucket still undercount (the climb between them is invisible to First/Last/Max) — the raw path remains exact. The histogram/exp tier COUNT chains have no Max-of-Count column, so mid-bucket resets stay a raw-path-only guarantee there (tier quantiles are rank-insensitive to the loss). */}
+        IF(prevL IS NULL, 0, IF(F >= prevL, F - prevL, F)) + IF(L >= MaxV, L - F, (MaxV - F) + L) AS IncIfCumulative`
             : ''
         }${
           needCumNonMono
@@ -888,6 +900,33 @@ const expTupleToMap = (tuple: string) =>
     CAST(${tuple}.1, 'Array(Int64)')
   )`;
 
+/** Like expTupleToMap, but with the absolute indices downscaled from
+ * `fromScale` to `toScale` (k -> floor(k / 2^(from - to)) — exact bucket
+ * algebra, recipe R4). Downscaling collapses neighboring source buckets onto
+ * one target index, so the map is built through arrayReduce('sumMap') which
+ * merges duplicate keys — mapFromArrays would keep them, and mapSubtract
+ * silently mis-merges duplicated keys (verified). With fromScale = toScale
+ * this degenerates to expTupleToMap (exp2(0) = 1). */
+const expTupleToMapAtScale = (
+  tuple: string,
+  fromScale: string,
+  toScale: string,
+) =>
+  `CAST(arrayReduce(
+    'sumMap',
+    [arrayMap(i -> toInt64(floor((${tuple}.2 + i - 1) / exp2(${fromScale} - ${toScale}))), arrayEnumerate(${tuple}.1))],
+    [CAST(${tuple}.1, 'Array(Int64)')]
+  ), 'Map(Int64, Int64)')`;
+
+/** Downscales an already-built absolute-index bucket map from `fromScale` to
+ * `toScale`, merging the collapsed keys (see expTupleToMapAtScale). */
+const expMapAtScale = (map: string, fromScale: string, toScale: string) =>
+  `CAST(arrayReduce(
+    'sumMap',
+    [arrayMap(k -> toInt64(floor(k / exp2(${fromScale} - ${toScale}))), mapKeys(${map}))],
+    [mapValues(${map})]
+  ), 'Map(Int64, Int64)')`;
+
 type ExpBranchArgs = {
   fast?: boolean;
   timeBucketSelect: TemplatedInput;
@@ -895,9 +934,14 @@ type ExpBranchArgs = {
   pointsWhere: TemplatedInput;
 };
 
-/** Delta branch: points (and same-ts duplicates) are additive, so a single
- * GROUP BY collapses raw points directly to (series, display bucket) —
- * no per-ts dedup pass and no window sort. */
+/** Delta branch: points are additive across DISTINCT timestamps, but
+ * same-(series, ts) rows are OTLP transport retries (re-delivered exports
+ * whose rebatched insert blocks evade the exporter's dedup token) — so a
+ * per-(series, ts) dedup pass picks the max-Count sample first, then one
+ * GROUP BY collapses to (series, display bucket, scale). Still no window
+ * sort. Scale stays in the aggregation key — bucket maps are only ever
+ * summed within one scale, mirroring the rollup path (R1); the shared tail
+ * downscale-merges across scales (R4). */
 const deltaExpCtes = ({
   fast,
   timeBucketSelect,
@@ -905,22 +949,30 @@ const deltaExpCtes = ({
   pointsWhere,
 }: ExpBranchArgs): WithClauses => [
   {
-    name: 'ExpPerSeries',
+    name: 'ExpRaw',
     sql: chSql`
       SELECT
         ${timeBucketSelect},
         SeriesHash,
-        min(Scale) AS scale,
-        sumMap(
-          mapFromArrays(
-            arrayMap(i -> toInt64(PositiveOffset + i - 1), arrayEnumerate(PositiveBucketCounts)),
-            CAST(PositiveBucketCounts, 'Array(Int64)')
-          )
-        ) AS pos,
-        sum(toInt64(ZeroCount)) AS zero
+        any(Scale) AS Scale,
+        argMax((PositiveBucketCounts, PositiveOffset), Count) AS tpl,
+        max(toInt64(ZeroCount)) AS zero_count
       FROM ${pointsFrom}
       WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
-      GROUP BY SeriesHash, \`__hdx_time_bucket\`
+      GROUP BY SeriesHash, TimeUnix
+    `,
+  },
+  {
+    name: 'ExpPerSeries',
+    sql: chSql`
+      SELECT
+        \`__hdx_time_bucket\`,
+        SeriesHash,
+        Scale AS scale,
+        sumMap(${expTupleToMap('tpl')}) AS pos,
+        sum(zero_count) AS zero
+      FROM ExpRaw
+      GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
     `,
   },
 ];
@@ -947,16 +999,26 @@ const cumulativeExpCtes = ({
         zero_count,
         total_count,
         any(tpl) OVER w AS prev_tpl,
+        any(Scale) OVER w AS prev_scale,
         any(toNullable(zero_count)) OVER w AS prev_zero,
         any(toNullable(total_count)) OVER w AS prev_total,
-        ${'' /* first sample emits 0 (canonical rule: a newly-born series' cumulative history is NOT an increase); ONLY a genuine reset (count decrease) credits the full current value. Empty-map arm must match expTupleToMap's Map(Int64, Int64) exactly or the IF arms collapse into a Variant. */}
+        ${'' /* scale renegotiation: an SDK re-bucket changes Scale WITHOUT a Count decrease, so the reset branch never fires — diffing maps across the transition would mix index spaces. Downscale BOTH maps to the pair's min scale before subtracting (what Prometheus native histograms do: CopyToSchema before Sub) and emit the diff AT that scale (eff_scale); the per-eff_scale grouping below plus the shared tail then merge exactly. prev_scale's first-row default (0) is never read: every consumer sits behind the prev_total IS NULL guard. */}
+        multiIf(
+          prev_total IS NULL, Scale,
+          total_count < prev_total, Scale,
+          least(Scale, prev_scale)
+        ) AS eff_scale,
+        ${'' /* first sample emits 0 (canonical rule: a newly-born series' cumulative history is NOT an increase); ONLY a genuine reset (count decrease) credits the full current value. Empty-map arm must match the Map(Int64, Int64) of the other arms exactly or the IF arms collapse into a Variant. */}
         IF(
           prev_total IS NULL,
           CAST(map(), 'Map(Int64, Int64)'),
           IF(
             total_count < prev_total,
             ${expTupleToMap('tpl')},
-            mapSubtract(${expTupleToMap('tpl')}, ${expTupleToMap('prev_tpl')})
+            mapSubtract(
+              ${expTupleToMapAtScale('tpl', 'Scale', 'eff_scale')},
+              ${expTupleToMapAtScale('prev_tpl', 'prev_scale', 'eff_scale')}
+            )
           )
         ) AS pos_if_cum,
         multiIf(
@@ -981,16 +1043,19 @@ const cumulativeExpCtes = ({
     `,
   },
   {
+    // Grouped per eff_scale (not min(Scale) per bucket): each diff map is
+    // internally at ONE scale, and the shared tail's minScale merge handles
+    // buckets whose rows span a renegotiation.
     name: 'ExpPerSeries',
     sql: chSql`
       SELECT
         \`__hdx_time_bucket\`,
         SeriesHash,
-        min(Scale) AS scale,
+        eff_scale AS scale,
         sumMap(pos_if_cum) AS pos,
         sum(zero_if_cum) AS zero
       FROM ExpRaw
-      GROUP BY SeriesHash, \`__hdx_time_bucket\`
+      GROUP BY SeriesHash, \`__hdx_time_bucket\`, eff_scale
     `,
   },
 ];
@@ -1004,9 +1069,11 @@ const dualExpCtes = ({
   pointsWhere,
 }: ExpBranchArgs): WithClauses => [
   {
-    // Same-timestamp duplicates collapse per (series, ts) first: cumulative
-    // reads take the row with the highest Count (argMax/max — the true
-    // counter state); delta reads merge additively (sumMap/sum).
+    // Same-timestamp duplicates collapse per (series, ts) first — same-ts
+    // rows are OTLP transport retries, so BOTH temporality variants read the
+    // row with the highest Count (argMax/max — the true sample; a per-ts sum
+    // would double-count a delta retry). Delta stays additive across
+    // distinct timestamps, summed per display bucket below.
     name: 'ExpRaw',
     sql: chSql`
       SELECT
@@ -1015,21 +1082,28 @@ const dualExpCtes = ({
         SeriesHash,
         Scale,
         posMap,
-        posMap_delta,
         zero_count,
-        zero_delta,
         total_count,
         any(posMap) OVER w AS prev_posMap,
+        any(Scale) OVER w AS prev_scale,
         any(toNullable(zero_count)) OVER w AS prev_zero,
         any(toNullable(total_count)) OVER w AS prev_total,
-        ${'' /* first sample emits 0; only a genuine reset credits the full current map (see cumulativeExpCtes) */}
+        multiIf(
+          prev_total IS NULL, Scale,
+          total_count < prev_total, Scale,
+          least(Scale, prev_scale)
+        ) AS eff_scale,
+        ${'' /* first sample emits 0; only a genuine reset credits the full current map; a scale renegotiation downscales both maps to the pair's min scale before diffing (see cumulativeExpCtes) */}
         IF(
           prev_total IS NULL,
           CAST(map(), 'Map(Int64, Int64)'),
           IF(
             total_count < prev_total,
             posMap,
-            mapSubtract(posMap, prev_posMap)
+            mapSubtract(
+              ${expMapAtScale('posMap', 'Scale', 'eff_scale')},
+              ${expMapAtScale('prev_posMap', 'prev_scale', 'eff_scale')}
+            )
           )
         ) AS pos_if_cum,
         multiIf(
@@ -1050,14 +1124,7 @@ const dualExpCtes = ({
             ),
             Count
           ) AS posMap,
-          sumMap(
-            mapFromArrays(
-              arrayMap(i -> toInt64(PositiveOffset + i - 1), arrayEnumerate(PositiveBucketCounts)),
-              CAST(PositiveBucketCounts, 'Array(Int64)')
-            )
-          ) AS posMap_delta,
           max(toInt64(ZeroCount)) AS zero_count,
-          sum(toInt64(ZeroCount)) AS zero_delta,
           max(toInt64(Count)) AS total_count
         FROM ${pointsFrom}
         WHERE ${pointsWhere} AND ${SERIES_HASH_FILTER} AND ${NOT_STALENESS_MARKER}
@@ -1067,18 +1134,23 @@ const dualExpCtes = ({
     `,
   },
   {
+    // Delta maps stay at the row's Scale; cumulative diffs sit at eff_scale
+    // (= Scale except on a renegotiation transition row). Both scales ride
+    // the group key so each variant's maps are summed within one scale; the
+    // ExpJoined pick chooses the matching scale column per temporality.
     name: 'ExpPerSeries',
     sql: chSql`
       SELECT
         \`__hdx_time_bucket\`,
         SeriesHash,
-        min(Scale) AS scale,
-        sumMap(posMap_delta) AS pos_if_delta,
+        Scale AS scale_if_delta,
+        eff_scale AS scale_if_cum,
+        sumMap(posMap) AS pos_if_delta,
         sumMap(pos_if_cum) AS pos_if_cum,
-        sum(zero_delta) AS zero_if_delta,
+        sum(zero_count) AS zero_if_delta,
         sum(zero_if_cum) AS zero_if_cum
       FROM ExpRaw
-      GROUP BY SeriesHash, \`__hdx_time_bucket\`
+      GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale, eff_scale
     `,
   },
 ];
@@ -1091,14 +1163,16 @@ const dualExpCtes = ({
  * emitted (the dual-path shape computes both variants per point and picks
  * post-join — measured −39% wall / −47% spill for cumulative; delta
  * additionally drops the whole window-sort phase):
- *   delta      → duplicates and points are additive, so one GROUP BY goes
- *                straight from raw points to (series, display bucket) — no
- *                dedup pass, no window.
+ *   delta      → per-(series, ts) dedup collapses transport retries, then
+ *                one GROUP BY to (series, display bucket, scale) — no window
+ *                sort.
  *   cumulative → per-(series, ts) dedup picks the true counter sample as an
  *                argMax (buckets, offset) TUPLE state; the lag window carries
  *                tuples too, and maps are built only at the differencing
  *                step (a Count decrease marks a reset → full counts,
- *                Prometheus semantics).
+ *                Prometheus semantics; a Scale change downscales both maps
+ *                to the pair's min scale before diffing — an SDK re-bucket
+ *                preserves Count, so the reset branch cannot catch it).
  *   undefined  → legacy dual-path shape (both variants per point, chosen by
  *                s.Temporality after the join) — fallback for the
  *                not-a-real-case of mixed temporality under one name.
@@ -1154,7 +1228,7 @@ const expHistogramQuantileCtesV2 = ({
       SELECT
         p.\`__hdx_time_bucket\` AS \`__hdx_time_bucket\`,
         ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
-        p.scale AS scale,
+        IF(s.Temporality = 'delta', p.scale_if_delta, p.scale_if_cum) AS scale,
         IF(s.Temporality = 'delta', p.pos_if_delta, p.pos_if_cum) AS chosenMap,
         IF(s.Temporality = 'delta', p.zero_if_delta, p.zero_if_cum) AS chosenZero
       FROM ExpPerSeries AS p
@@ -1687,9 +1761,11 @@ const histogramCountCtesV2 = ({
         : `IF(s.Temporality = 'delta', p.inc_if_delta, p.inc_if_cumulative)`;
   return [
     {
-      // Same-timestamp duplicates collapse per (series, ts) first: cumulative
-      // reads take max(Count) (the true counter sample — a lower duplicate
-      // must not fire the reset branch), delta reads take sum(Count).
+      // Same-timestamp duplicates collapse per (series, ts) first — same-ts
+      // rows are OTLP transport retries, so BOTH temporalities take
+      // max(Count): cumulative because a lower duplicate must not fire the
+      // reset branch, delta because summing would double-count the retry
+      // (delta stays additive across distinct timestamps only).
       //
       // Prometheus reset semantics, consistent with the scalar counter path:
       // first row of a series contributes NULL (ignored by sum), a Count
@@ -1730,7 +1806,7 @@ const histogramCountCtesV2 = ({
           }${
             needDelta
               ? `,
-          sum(toInt64(Count)) AS count_delta`
+          max(toInt64(Count)) AS count_delta`
               : ''
           }
         FROM ${pointsFrom}
@@ -1813,8 +1889,10 @@ const histogramQuantileCtesV2 = ({
   return [
     {
       // Same-timestamp duplicates collapse per (series, ts) before the window
-      // lag: cumulative reads take argMax(BucketCounts, Count) (the row with
-      // the true counter state), delta reads take sumForEach (additive).
+      // lag — same-ts rows are OTLP transport retries, so BOTH temporalities
+      // take argMax(BucketCounts, Count) (the row with the true counter
+      // state; summing per-ts would double-count a delta retry — delta stays
+      // additive across distinct timestamps only).
       name: 'HistRaw',
       sql: chSql`
       SELECT
@@ -1857,7 +1935,7 @@ const histogramQuantileCtesV2 = ({
           }${
             needDelta
               ? `,
-          CAST(sumForEach(BucketCounts) AS Array(Int64)) AS counts_delta`
+          CAST(argMax(BucketCounts, Count) AS Array(Int64)) AS counts_delta`
               : ''
           }
         FROM ${pointsFrom}
@@ -2265,9 +2343,11 @@ const histogramAvgCtesV2 = ({
           / sum(IF(s.Temporality = 'delta', p.count_inc_delta, p.count_inc_cum))`;
   return [
     {
-      // Same-timestamp duplicates collapse per (series, ts) first: cumulative
-      // picks argMax(Sum, Count)/max(Count) (the true counter samples), delta
-      // picks are additive sums.
+      // Same-timestamp duplicates collapse per (series, ts) first — same-ts
+      // rows are OTLP transport retries, so BOTH temporalities pick
+      // argMax(Sum, Count)/max(Count) (the true counter samples; per-ts sums
+      // would double-count a delta retry — delta stays additive across
+      // distinct timestamps only).
       name: 'source',
       sql: chSql`
       SELECT
@@ -2301,8 +2381,8 @@ const histogramAvgCtesV2 = ({
           }${
             needDelta
               ? `,
-          sum(toFloat64(Count)) AS c_delta,
-          sum(Sum) AS sm_delta`
+          max(toFloat64(Count)) AS c_delta,
+          argMax(Sum, Count) AS sm_delta`
               : ''
           }
         FROM ${pointsFrom}
