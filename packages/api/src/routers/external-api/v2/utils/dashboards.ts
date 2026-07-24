@@ -220,6 +220,7 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          alternateRowBackground: config.alternateRowBackground,
           onClick: config.onClick,
         };
       case DisplayType.Number:
@@ -372,6 +373,7 @@ const convertToExternalTileChartConfig = (
           'having',
           'numberFormat',
           'groupByColumnsOnLeft',
+          'alternateRowBackground',
           'onClick',
         ]),
         displayType: config.displayType,
@@ -666,6 +668,13 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
+          // Zebra striping is a table-only presentational flag that lives on
+          // the shared raw SQL config; only table tiles honor it, mirroring
+          // onClick above. `_.omitBy(_.isNil)` below drops it for other types.
+          alternateRowBackground:
+            externalConfig.displayType === 'table'
+              ? externalConfig.alternateRowBackground
+              : undefined,
           // Only the raw SQL number variant carries `color`; table and pie
           // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
           color:
@@ -714,6 +723,7 @@ export function convertToInternalTileConfig(
             'having',
             'orderBy',
             'groupByColumnsOnLeft',
+            'alternateRowBackground',
             'onClick',
           ]),
           displayType: DisplayType.Table,
