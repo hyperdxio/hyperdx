@@ -6,12 +6,16 @@
 // #2362 where a semantic-hex `lineData[].color` (e.g. the output of
 // `getChartColorInfo()` on HyperDX) would not have a matching gradient
 // def after the `COLORS` palette was unified to Observable 10.
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import type { LineData } from '@/ChartUtils';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
   getVisibleLineData,
   HARD_LINES_LIMIT,
+  resolveTooltipMode,
+  selectTooltipRows,
 } from '@/HDXMultiSeriesTimeChart';
 import { COLORS } from '@/utils';
 
@@ -193,5 +197,180 @@ describe('buildActiveClickSeries', () => {
       isPreviousPeriod: true,
       previousValue: undefined,
     });
+  });
+});
+
+// The hover tooltip shows a different set of rows depending on its mode and
+// whether the cursor is over this chart or a synced follower. These pin that
+// selection so a dense chart never regresses to a wall of rows, and a follower
+// never surfaces a series the user is not actually hovering.
+describe('selectTooltipRows', () => {
+  const row = (dataKey: string, value: number, name?: string) => ({
+    dataKey,
+    name: name ?? dataKey,
+    value,
+  });
+
+  describe('all-series mode', () => {
+    it('returns every row sorted high to low by value', () => {
+      const payload = [row('a', 10), row('b', 30), row('c', 20)];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: false,
+        isChartHovered: true,
+      });
+      expect(rows?.map(r => r.dataKey)).toEqual(['b', 'c', 'a']);
+    });
+
+    it('sorts a copy and never reorders the payload in place', () => {
+      // Recharts 3 freezes the payload; an in-place sort throws. The order of
+      // the caller's array must be untouched after the call.
+      const payload = [row('a', 10), row('b', 30), row('c', 20)];
+      const before = payload.map(r => r.dataKey);
+      selectTooltipRows({ payload, nearestOnly: false, isChartHovered: true });
+      expect(payload.map(r => r.dataKey)).toEqual(before);
+    });
+
+    it('ignores hover flags: all rows show even off the hovered chart', () => {
+      const payload = [row('a', 10), row('b', 30)];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: false,
+        isChartHovered: false,
+        crossChartHoveredName: 'no-such-series',
+      });
+      expect(rows?.map(r => r.dataKey)).toEqual(['b', 'a']);
+    });
+  });
+
+  describe('single-series mode on the hovered chart', () => {
+    it('returns only the series matching nearestKey', () => {
+      const payload = [row('a', 10), row('b', 30), row('c', 20)];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: true,
+        isChartHovered: true,
+        nearestKey: 'a',
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].dataKey).toBe('a');
+    });
+
+    it('falls back to the top series by value when nearestKey is undefined', () => {
+      const payload = [row('a', 10), row('b', 30), row('c', 20)];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: true,
+        isChartHovered: true,
+      });
+      expect(rows?.map(r => r.dataKey)).toEqual(['b']);
+    });
+
+    it('falls back to the top series by value when nearestKey is absent from the payload', () => {
+      const payload = [row('a', 10), row('b', 30)];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: true,
+        isChartHovered: true,
+        nearestKey: 'ghost',
+      });
+      expect(rows?.map(r => r.dataKey)).toEqual(['b']);
+    });
+  });
+
+  describe('single-series mode on a synced follower', () => {
+    it('returns the series whose display name matches the one hovered elsewhere', () => {
+      const payload = [row('a', 10, 'Alpha'), row('b', 30, 'Beta')];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: true,
+        isChartHovered: false,
+        crossChartHoveredName: 'Alpha',
+      });
+      expect(rows?.map(r => r.dataKey)).toEqual(['a']);
+    });
+
+    it('returns null (render nothing) when no series matches the hovered name', () => {
+      const payload = [row('a', 10, 'Alpha'), row('b', 30, 'Beta')];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: true,
+        isChartHovered: false,
+        crossChartHoveredName: 'Gamma',
+      });
+      expect(rows).toBeNull();
+    });
+
+    it('returns null when there is no hovered series to match', () => {
+      const payload = [row('a', 10, 'Alpha')];
+      const rows = selectTooltipRows({
+        payload,
+        nearestOnly: true,
+        isChartHovered: false,
+      });
+      expect(rows).toBeNull();
+    });
+  });
+
+  describe('empty payload', () => {
+    it('returns an empty list in all-series mode', () => {
+      expect(
+        selectTooltipRows({
+          payload: [],
+          nearestOnly: false,
+          isChartHovered: true,
+        }),
+      ).toEqual([]);
+    });
+
+    it('returns an empty list on the hovered chart', () => {
+      expect(
+        selectTooltipRows({
+          payload: [],
+          nearestOnly: true,
+          isChartHovered: true,
+        }),
+      ).toEqual([]);
+    });
+
+    it('returns null on a synced follower', () => {
+      expect(
+        selectTooltipRows({
+          payload: [],
+          nearestOnly: true,
+          isChartHovered: false,
+          crossChartHoveredName: 'Alpha',
+        }),
+      ).toBeNull();
+    });
+  });
+});
+
+// Whether a chart uses the single-series tooltip is decided from the chart type
+// and the count of series actually drawn (after legend selection), not the raw
+// series count. Pins the two easy-to-regress cases: stacked bars and filtered
+// dense charts.
+describe('resolveTooltipMode', () => {
+  it('collapses a dense line/area chart to a single-series tooltip', () => {
+    expect(resolveTooltipMode(DisplayType.Line, 11)).toBe('single');
+    expect(resolveTooltipMode(undefined, 42)).toBe('single');
+  });
+
+  it('keeps the full tooltip at or below the density threshold', () => {
+    expect(resolveTooltipMode(DisplayType.Line, 10)).toBe('all');
+    expect(resolveTooltipMode(DisplayType.Line, 1)).toBe('all');
+  });
+
+  it('never collapses a stacked-bar chart, however many series it has', () => {
+    // Stacked bars capture no per-point Y for the nearest-series pick, and a
+    // single row would hide the rest of the stack.
+    expect(resolveTooltipMode(DisplayType.StackedBar, 50)).toBe('all');
+    expect(resolveTooltipMode(DisplayType.StackedBar, 11)).toBe('all');
+  });
+
+  it('switches on the visible count so legend filtering restores the full tooltip', () => {
+    // The caller passes the drawn count, so a dense chart narrowed by the
+    // legend to a handful of series shows the full comparison again.
+    expect(resolveTooltipMode(DisplayType.Line, 3)).toBe('all');
   });
 });
