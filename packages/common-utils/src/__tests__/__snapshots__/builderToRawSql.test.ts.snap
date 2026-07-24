@@ -329,12 +329,16 @@ exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) gen
           ExplicitBounds,
           attr_hash,
           any(attr_hash) OVER prev_row AS prev_attr_hash,
+          count() OVER prev_row = 0
+          OR prev_attr_hash != attr_hash AS is_first_series_point,
           any(bounds_hash) OVER prev_row AS prev_bounds_hash,
           any(counts) OVER prev_row AS prev_counts,
           counts,
-          IF(
+          multiIf(
+            AggregationTemporality = 2
+            AND is_first_series_point,
+            arrayWithConstant(length(counts), toInt64(0)),
             AggregationTemporality = 1
-            OR prev_attr_hash != attr_hash
             OR bounds_hash != prev_bounds_hash
             OR arrayExists((x) -> x .2 < x .1, arrayZip(prev_counts, counts)),
             counts,
@@ -374,11 +378,11 @@ exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) gen
           )
       )
     GROUP BY
-      \`__hdx_time_bucket\`,
+      __hdx_time_bucket,
       MetricName,
       ExplicitBounds
     ORDER BY
-      \`__hdx_time_bucket\`
+      __hdx_time_bucket
   ),
   points AS (
     SELECT

@@ -8,6 +8,7 @@ function pair(
   mcp: string,
   i: number,
   plugin = 'none',
+  adoption?: { score: number; hits: Array<{ id: string; satisfied: boolean }> },
 ): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
@@ -58,6 +59,17 @@ function pair(
     gradedAt: '',
     judgeModel: 'claude-opus-4-7',
   };
+  if (adoption) {
+    grade.adoption = {
+      score: adoption.score,
+      hits: adoption.hits.map(h => ({
+        id: h.id,
+        weight: 1,
+        matched: h.satisfied,
+        satisfied: h.satisfied,
+      })),
+    };
+  }
   return { run, grade };
 }
 
@@ -111,6 +123,11 @@ describe('renderMarkdownReport', () => {
     expect(md).toContain('names_root');
   });
 
+  it('omits the adoption row and breakdown when no cell has adoption', () => {
+    expect(md).not.toContain('Adoption (tool use)');
+    expect(md).not.toContain('Adoption per-check');
+  });
+
   it('uses the batch basename in the title', () => {
     expect(md.split('\n')[0]).toContain('2026-05-09T07-50-58-566Z');
   });
@@ -118,6 +135,42 @@ describe('renderMarkdownReport', () => {
   it('shows MCPs and baseline in the header', () => {
     expect(md).toContain('MCPs: clickhouse, hyperdx');
     expect(md).toContain('Baseline: clickhouse');
+  });
+});
+
+describe('renderMarkdownReport with adoption data', () => {
+  const adopt = (score: number, used: boolean, named: boolean) => ({
+    score,
+    hits: [
+      { id: 'used_metric_tool', satisfied: used },
+      { id: 'named_jvm_memory', satisfied: named },
+    ],
+  });
+  const summary = buildAggregate({
+    batchDir: '/tmp/2026-05-09T07-50-58-566Z',
+    pairs: [
+      pair(
+        'metric-saturation',
+        'clickhouse',
+        0,
+        'none',
+        adopt(0, false, false),
+      ),
+      pair('metric-saturation', 'hyperdx', 0, 'none', adopt(1, true, true)),
+    ],
+  });
+  const md = renderMarkdownReport(summary);
+
+  it('adds an "Adoption (tool use)" row to the scenario metrics table', () => {
+    expect(md).toContain('Adoption (tool use)');
+  });
+
+  it('emits an adoption per-check breakdown with the check ids and a delta', () => {
+    expect(md).toContain('Adoption per-check (usage rate)');
+    expect(md).toContain('used_metric_tool');
+    expect(md).toContain('named_jvm_memory');
+    // hyperdx (challenger) adoption 1.0 vs clickhouse (baseline) 0.0 → +100%.
+    expect(md).toContain('+100%');
   });
 });
 

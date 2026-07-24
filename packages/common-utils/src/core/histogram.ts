@@ -1,4 +1,4 @@
-import { ChSql, chSql } from '@/clickhouse';
+import { ChSql, chSql, concatChSql } from '@/clickhouse';
 import { BuilderChartConfig } from '@/types';
 
 import { FIXED_TIME_BUCKET_EXPR_ALIAS } from './renderChartConfig';
@@ -6,11 +6,51 @@ import { FIXED_TIME_BUCKET_EXPR_ALIAS } from './renderChartConfig';
 type WithClauses = BuilderChartConfig['with'];
 type TemplatedInput = ChSql | string;
 type HistogramCountInput = {
-  timeBucketSelect: TemplatedInput;
+  timeBucketSelect?: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;
   where: TemplatedInput;
   valueAlias: TemplatedInput;
+};
+
+export const GROUP_ALIAS = 'group';
+
+const renderTimeBucketProjection = (
+  timeBucketSelect: TemplatedInput | undefined,
+) => (timeBucketSelect ? chSql`${timeBucketSelect},` : chSql``);
+
+const renderChSqlList = (
+  list: (TemplatedInput | undefined)[],
+  separator: string = ', ',
+) =>
+  concatChSql(
+    separator,
+    list.filter(item => item !== undefined).map(item => chSql`${item}`),
+  );
+
+const renderOutputDimensions = ({
+  timeBucketSelect,
+  groupBy,
+}: Pick<HistogramCountInput, 'timeBucketSelect' | 'groupBy'>) => {
+  const rendered = renderChSqlList(
+    [
+      timeBucketSelect ? `\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : undefined,
+      groupBy ? GROUP_ALIAS : undefined,
+    ],
+    ',\n',
+  );
+  return rendered.sql.length > 0 ? chSql`${rendered},` : chSql``;
+};
+
+const renderDimensionGroupBy = ({
+  timeBucketSelect,
+  groupBy,
+}: Pick<HistogramCountInput, 'timeBucketSelect' | 'groupBy'>) => {
+  const rendered = renderChSqlList([
+    timeBucketSelect ? `\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : undefined,
+    groupBy ? GROUP_ALIAS : undefined,
+  ]);
+  return rendered.sql.length > 0 ? chSql`GROUP BY ${rendered}` : chSql``;
 };
 
 // SQL expression for hashing metric attributes into a per-series key.
@@ -26,7 +66,7 @@ export const translateHistogram = ({
   ...rest
 }: {
   select: Exclude<BuilderChartConfig['select'], string>[number];
-  timeBucketSelect: TemplatedInput;
+  timeBucketSelect?: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;
   where: TemplatedInput;
@@ -59,18 +99,23 @@ const translateHistogramCount = ({
         SELECT
             TimeUnix,
             AggregationTemporality,
-            ${timeBucketSelect},
-            ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
+            ${renderTimeBucketProjection(timeBucketSelect)}
+            ${groupBy ? chSql`[${groupBy}] AS ${GROUP_ALIAS},` : ''}
             ${ATTR_HASH_EXPR} AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
-                PARTITION BY ${groupBy ? `group, ` : ''} attr_hash, bounds_hash, AggregationTemporality
+                PARTITION BY ${groupBy ? `${GROUP_ALIAS}, ` : ''}attr_hash, bounds_hash, AggregationTemporality
                 ORDER BY TimeUnix
             ) AS prev_count,
             CASE
                 WHEN AggregationTemporality = 1 THEN current_count
-                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                WHEN AggregationTemporality = 2 AND prev_count IS NOT NULL
+                  THEN if( ${'' /** When the series resets, take the new current_count as the delta (since it's counting up from 0) */}
+                    current_count < prev_count,
+                    current_count,
+                    current_count - prev_count
+                  )
                 ELSE 0
             END AS delta
         FROM ${from}
@@ -81,11 +126,10 @@ const translateHistogramCount = ({
     name: 'metrics',
     sql: chSql`
         SELECT
-            \`__hdx_time_bucket\`,
-            ${groupBy ? 'group,' : ''}
+            ${renderOutputDimensions({ timeBucketSelect, groupBy })}
             sum(delta) AS "${valueAlias}"
         FROM source
-        GROUP BY ${groupBy ? 'group, ' : ''}\`__hdx_time_bucket\`
+        ${renderDimensionGroupBy({ timeBucketSelect, groupBy })}
     `,
   },
 ];
@@ -98,7 +142,7 @@ const translateHistogramQuantile = ({
   valueAlias,
   level,
 }: {
-  timeBucketSelect: TemplatedInput;
+  timeBucketSelect?: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;
   where: TemplatedInput;
@@ -111,26 +155,30 @@ const translateHistogramQuantile = ({
           SELECT
             MetricName,
             ExplicitBounds,
-            ${timeBucketSelect},
-            ${groupBy ? 'group,' : ''}
+            ${renderTimeBucketProjection(timeBucketSelect)}
+            ${groupBy ? `${GROUP_ALIAS},` : ''}
             sumForEach(deltas) as rates
           FROM (
             SELECT
               TimeUnix,
               MetricName,
               ExplicitBounds,
-              ${groupBy ? chSql` group,` : ''}
+              ${groupBy ? chSql` ${GROUP_ALIAS},` : ''}
               attr_hash,
               any(attr_hash) OVER prev_row AS prev_attr_hash,
+              count() OVER prev_row = 0 OR prev_attr_hash != attr_hash AS is_first_series_point,
               any(bounds_hash) OVER prev_row AS prev_bounds_hash,
               any(counts) OVER prev_row AS prev_counts,
               counts,
-              IF(
+              multiIf(
+                  AggregationTemporality = 2 AND is_first_series_point, ${'' /** The first point in a cumulative/monotonic series contributes 0 delta */}
+                  arrayWithConstant(length(counts), toInt64(0)),
+
                   AggregationTemporality = 1 ${'' /* denotes a metric that is not monotonic e.g. already a delta */}
-                      OR prev_attr_hash != attr_hash ${'' /* the attributes have changed so this is a different metric */}
                       OR bounds_hash != prev_bounds_hash ${'' /* the bucketing has changed so should be treated as different metric */}
                       OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), ${'' /* a data point has gone down, probably a reset event */}
                   counts,
+
                   counts - prev_counts
               ) AS deltas
             FROM (
@@ -140,31 +188,30 @@ const translateHistogramQuantile = ({
                   AggregationTemporality,
                   ExplicitBounds,
                   ResourceAttributes,
-                  Attributes,${groupBy ? chSql`[${groupBy}] as group,` : ''}
+                  Attributes,${groupBy ? chSql`[${groupBy}] as ${GROUP_ALIAS},` : ''}
                   ${ATTR_HASH_EXPR} AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM ${from}
               WHERE ${where}
-              ORDER BY ${groupBy ? 'group, ' : ''}attr_hash, TimeUnix ASC
+              ORDER BY ${groupBy ? `${GROUP_ALIAS}, ` : ''}attr_hash, TimeUnix ASC
             )
             WINDOW prev_row AS (
-            ${groupBy ? chSql` PARTITION BY group` : ''}
+            ${groupBy ? chSql` PARTITION BY ${GROUP_ALIAS}` : ''}
               ORDER BY attr_hash, TimeUnix
               ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, ${groupBy ? 'group, ' : ''}ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
+          GROUP BY ${timeBucketSelect ? chSql`${FIXED_TIME_BUCKET_EXPR_ALIAS},` : ''} MetricName, ${groupBy ? `${GROUP_ALIAS}, ` : ''}ExplicitBounds
+          ${timeBucketSelect ? chSql`ORDER BY ${FIXED_TIME_BUCKET_EXPR_ALIAS}` : ''}
           `,
   },
   {
     name: 'points',
     sql: chSql`
           SELECT
-            \`__hdx_time_bucket\`,
+            ${renderOutputDimensions({ timeBucketSelect, groupBy })}
             MetricName,
-            ${groupBy ? 'group,' : ''}
             arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
             length(point) as n
           FROM source
@@ -174,9 +221,8 @@ const translateHistogramQuantile = ({
     name: 'metrics',
     sql: chSql`
           SELECT
-            \`__hdx_time_bucket\`,
+            ${renderOutputDimensions({ timeBucketSelect, groupBy })}
             MetricName,
-            ${groupBy ? 'group,' : ''}
             point[n].1 AS total,
             ${{ Float64: level }} * total AS rank,
             arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
@@ -208,7 +254,7 @@ export const translateExponentialHistogram = ({
   ...rest
 }: {
   select: Exclude<BuilderChartConfig['select'], string>[number];
-  timeBucketSelect: TemplatedInput;
+  timeBucketSelect?: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;
   where: TemplatedInput;
@@ -245,8 +291,8 @@ const translateExponentialHistogramCount = ({
         TimeUnix,
         StartTimeUnix,
         AggregationTemporality,
-        ${timeBucketSelect},
-        ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
+        ${renderTimeBucketProjection(timeBucketSelect)}
+        ${groupBy ? chSql`[${groupBy}] AS ${GROUP_ALIAS},` : ''}
         ${ATTR_HASH_EXPR} AS attr_hash,
         toInt64(Count) AS current_count,
         count() OVER prev_row = 0 AS is_first_series_point,
@@ -265,7 +311,7 @@ const translateExponentialHistogramCount = ({
       FROM ${from}
       WHERE ${where}
       WINDOW prev_row AS (
-        PARTITION BY ${groupBy ? 'group, ' : ''}MetricName, attr_hash, AggregationTemporality
+        PARTITION BY ${groupBy ? `${GROUP_ALIAS}, ` : ''}MetricName, attr_hash, AggregationTemporality
         ORDER BY TimeUnix
         ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
       )
@@ -275,11 +321,10 @@ const translateExponentialHistogramCount = ({
     name: 'metrics',
     sql: chSql`
       SELECT
-        ${FIXED_TIME_BUCKET_EXPR_ALIAS},
-        ${groupBy ? 'group,' : ''}
+        ${renderOutputDimensions({ timeBucketSelect, groupBy })}
         sum(delta) AS "${valueAlias}"
       FROM source
-      GROUP BY ${FIXED_TIME_BUCKET_EXPR_ALIAS}${groupBy ? ', group' : ''}
+      ${renderDimensionGroupBy({ timeBucketSelect, groupBy })}
     `,
   },
 ];
@@ -292,7 +337,7 @@ const translateExponentialHistogramQuantile = ({
   valueAlias,
   level,
 }: {
-  timeBucketSelect: TemplatedInput;
+  timeBucketSelect?: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;
   where: TemplatedInput;
@@ -310,7 +355,7 @@ const translateExponentialHistogramQuantile = ({
         AggregationTemporality,
         Scale,
         ${ATTR_HASH_EXPR} AS attr_hash,
-        ${groupBy ? chSql`[${groupBy}] as group,` : ''}
+        ${groupBy ? chSql`[${groupBy}] as ${GROUP_ALIAS},` : ''}
         ZeroCount,
         PositiveOffset,
         PositiveBucketCounts,
@@ -333,7 +378,7 @@ const translateExponentialHistogramQuantile = ({
         AggregationTemporality,
         normalized_scale AS Scale,
         attr_hash,
-        ${groupBy ? 'group,' : ''}
+        ${groupBy ? `${GROUP_ALIAS},` : ''}
         ZeroCount,
         
         assumeNotNull((SELECT min(Scale) FROM filtered_series)) AS normalized_scale,
@@ -387,7 +432,7 @@ const translateExponentialHistogramQuantile = ({
         MetricName,
         TimeUnix,
         Scale,
-        ${groupBy ? 'group,' : ''}
+        ${groupBy ? `${GROUP_ALIAS},` : ''}
 
         ${'' /* Points with no usable predecessor or (StartTimeUnix = TimeUnix) contribute no delta */}
         is_first_series_point OR StartTimeUnix = TimeUnix AS use_zero_counts,
@@ -444,7 +489,7 @@ const translateExponentialHistogramQuantile = ({
           StartTimeUnix,
           Scale,
           attr_hash,
-          ${groupBy ? 'group,' : ''}
+          ${groupBy ? `${GROUP_ALIAS},` : ''}
           PositiveOffset,
           NegativeOffset,
 
@@ -503,10 +548,10 @@ const translateExponentialHistogramQuantile = ({
           FROM series_with_normalized_scale
           WHERE AggregationTemporality = 2
           ${'' /** Keep the input ordering aligned with the prev_row window sort/partition keys. */}
-          ORDER BY ${groupBy ? 'group, ' : ''}MetricName, attr_hash, TimeUnix
+          ORDER BY ${groupBy ? `${GROUP_ALIAS}, ` : ''}MetricName, attr_hash, TimeUnix
         ) AS series
         WINDOW prev_row AS (
-          PARTITION BY ${groupBy ? 'group, ' : ''}MetricName, attr_hash
+          PARTITION BY ${groupBy ? `${GROUP_ALIAS}, ` : ''}MetricName, attr_hash
           ORDER BY TimeUnix
           ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
         )
@@ -519,7 +564,7 @@ const translateExponentialHistogramQuantile = ({
         MetricName,
         TimeUnix,
         Scale,
-        ${groupBy ? 'group,' : ''}
+        ${groupBy ? `${GROUP_ALIAS},` : ''}
         toUInt8(0) AS use_zero_counts,
         toUInt8(1) AS use_current_counts,
         toInt64(ZeroCount) AS ZeroCount,
@@ -543,14 +588,14 @@ const translateExponentialHistogramQuantile = ({
     name: 'summed_buckets',
     sql: chSql`
       SELECT
-        ${timeBucketSelect},
-        ${groupBy ? 'group,' : ''}
+        ${renderTimeBucketProjection(timeBucketSelect)}
+        ${groupBy ? `${GROUP_ALIAS},` : ''}
         any(Scale) AS Scale,
         sum(ZeroCount) AS ZeroCount,
         sumMap(positive_bucket_indexes, positive_bucket_counts) AS positive_buckets,
         sumMap(negative_bucket_indexes, negative_bucket_counts) AS negative_buckets
       FROM normalized_deltas
-      GROUP BY ${FIXED_TIME_BUCKET_EXPR_ALIAS}${groupBy ? ', group' : ''}
+      ${renderDimensionGroupBy({ timeBucketSelect, groupBy })}
     `,
   },
   // Select the bucket containing the requested quantile rank.
@@ -558,8 +603,7 @@ const translateExponentialHistogramQuantile = ({
     name: 'selected_quantile_buckets',
     sql: chSql`
       SELECT
-        ${FIXED_TIME_BUCKET_EXPR_ALIAS},
-        ${groupBy ? 'group,' : ''}
+        ${renderOutputDimensions({ timeBucketSelect, groupBy })}
         Scale,
 
         ${'' /* Negative, zero, and positive buckets arranged in ascending value order. */}
@@ -603,8 +647,7 @@ const translateExponentialHistogramQuantile = ({
     name: 'metrics',
     sql: chSql`
       SELECT
-        ${FIXED_TIME_BUCKET_EXPR_ALIAS},
-        ${groupBy ? 'group,' : ''}
+        ${renderOutputDimensions({ timeBucketSelect, groupBy })}
         multiIf(
           selected_bucket_side < 0,
           -exp2((selected_bucket_index + 1 - fraction_within_bucket) * exp2(-Scale)),
