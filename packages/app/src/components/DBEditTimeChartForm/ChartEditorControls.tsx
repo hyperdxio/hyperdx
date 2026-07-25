@@ -8,6 +8,7 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { isExemplarEligible } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   HEATMAP_ALLOWED_SOURCE_KINDS,
   isBuilderChartConfig,
@@ -15,7 +16,6 @@ import {
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
-  MetricsDataType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -131,30 +131,48 @@ export function ChartEditorControls({
   // Exemplars mark a single series' raw measurement (e.g. latency), so they're
   // only meaningful on a single, non-ratio series — not on ratio/multi-series.
   const enableExemplars = useWatch({ control, name: 'enableExemplars' });
-  const canShowExemplars =
-    IS_EXEMPLARS_ENABLED &&
+
+  // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
+  // is only meaningful when a Group By is set, so gate it on a non-empty value.
+  const groupBy = useWatch({ control, name: 'groupBy' });
+  const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
+
+  // Whether the chart's *shape* can carry exemplars — same rule the SQL renderer
+  // applies (isExemplarEligible), so the toggle and the query can't disagree.
+  const isExemplarShape =
     (displayType === DisplayType.Line ||
       displayType === DisplayType.StackedBar) &&
     tableSource?.kind === SourceKind.Metric &&
-    fields.length === 1 &&
-    seriesReturnType !== 'ratio' &&
-    // Latency-only for now: exemplar values are durations, which only share the
-    // y-axis unit on a histogram metric.
     Array.isArray(series) &&
-    series[0]?.metricType === MetricsDataType.Histogram;
+    isExemplarEligible({
+      seriesCount: fields.length,
+      seriesReturnType,
+      metricType: series[0]?.metricType,
+      hasGroupBy,
+    });
+  const canShowExemplars = IS_EXEMPLARS_ENABLED && isExemplarShape;
 
   // `enableExemplars` persists on the chart config, but the toggle only shows
-  // while `canShowExemplars` holds. If the chart later leaves single-series
-  // (adds a series, switches to ratio, changes source/type), the toggle hides
-  // but the flag would otherwise stay `true` — a stale config that the render
-  // guards ignore but that reads as enabled. Clear it (and the trace source)
-  // when it can no longer apply so it persists correctly on the next save.
+  // while the chart keeps an exemplar-compatible shape. If the chart later
+  // leaves it (adds a series, switches to ratio, adds a Group By, changes
+  // source/type), the toggle hides but the flag would otherwise stay `true` — a
+  // stale config that the render guards ignore but that reads as enabled. Clear
+  // the flag so it persists correctly on the next save — but leave
+  // `exemplarTraceSourceId` alone: it's inert while the flag is false, and
+  // keeping it makes re-enabling lossless (this effect fires on every Group By
+  // keystroke, so clearing it would discard the user's trace source on a typo).
+  // Deliberately keyed on the shape only, NOT on IS_EXEMPLARS_ENABLED: with the
+  // deployment flag off, opening a saved exemplar chart must suppress rendering,
+  // not silently strip the persisted config on the next save.
   useEffect(() => {
-    if (!canShowExemplars && enableExemplars === true) {
+    // `tableSource` is async (useSource), so it's undefined on first render —
+    // shape *unknown*, not shape *wrong*. Clearing here would strip a saved
+    // chart's exemplar config on every cold load, before the source resolves.
+    if (!tableSource) return;
+    if (!isExemplarShape && enableExemplars === true) {
       setValue('enableExemplars', false);
-      setValue('exemplarTraceSourceId', undefined);
     }
-  }, [canShowExemplars, enableExemplars, setValue]);
+  }, [tableSource, isExemplarShape, enableExemplars, setValue]);
 
   // The chart-level Group By must be valid against every series query. For
   // metric sources (which fan out to per-type tables) this means offering the
@@ -163,11 +181,6 @@ export function ChartEditorControls({
     () => buildGroupByConnectionProps({ tableSource, series, tableConnection }),
     [tableSource, series, tableConnection],
   );
-
-  // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
-  // is only meaningful when a Group By is set, so gate it on a non-empty value.
-  const groupBy = useWatch({ control, name: 'groupBy' });
-  const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
 
   return (
     <>

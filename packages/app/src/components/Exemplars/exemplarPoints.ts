@@ -75,3 +75,44 @@ export function computeExemplarPoints(
   }
   return Array.from(bestPerBucket.values());
 }
+
+/** The y range an exemplar marker may be drawn in. */
+export type ExemplarYBounds = { min: number; max: number };
+
+/**
+ * Derive the marker clamp range from the y-axis domain the chart actually
+ * renders. A recharts `ReferenceDot` defaults to `ifOverflow="discard"`, so a
+ * marker outside the domain simply vanishes — which cuts both ways: an outlier
+ * above the series max would stretch the axis (crushing the line flat) or be
+ * dropped, and a `fitYAxisToData` floor can sit *above* a marker's value
+ * (routine when the series is a high quantile and exemplars are individual
+ * durations), silently emptying the overlay.
+ *
+ * `'auto'` bounds are resolved by recharts against the series data, so the
+ * series max is in-domain by construction and 0 is a safe floor for the
+ * non-negative durations exemplars are scoped to today.
+ */
+export function computeExemplarYBounds(
+  yAxisDomain: unknown,
+  visibleSeriesMax: number,
+): ExemplarYBounds {
+  const [lower, upper] = Array.isArray(yAxisDomain)
+    ? yAxisDomain
+    : [undefined, undefined];
+  return {
+    min: typeof lower === 'number' ? lower : 0,
+    max: typeof upper === 'number' ? upper : visibleSeriesMax,
+  };
+}
+
+/**
+ * Pin an exemplar's value inside `bounds` so recharts keeps drawing it. The
+ * hover card still reports the exemplar's true value. Degenerate bounds (no
+ * numeric data yet, or inverted) leave the value untouched — better an
+ * occasionally-discarded marker than one pinned to a meaningless height.
+ */
+export function clampExemplarY(y: number, bounds: ExemplarYBounds): number {
+  const { min, max } = bounds;
+  if (!Number.isFinite(max) || !Number.isFinite(min) || min > max) return y;
+  return Math.min(Math.max(y, min), max);
+}

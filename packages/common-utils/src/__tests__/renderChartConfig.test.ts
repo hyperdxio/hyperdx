@@ -3,6 +3,7 @@ import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
   EXEMPLAR_QUERY_LIMIT,
+  isExemplarEligible,
   renderChartConfig,
   renderMetricExemplarsChartConfig,
   timeFilterExpr,
@@ -3511,6 +3512,60 @@ describe('renderChartConfig', () => {
   // cross-scope integration test in packages/api/src/clickhouse/__tests__.
 });
 
+describe('isExemplarEligible', () => {
+  // The single rule the chart-editor toggle and the SQL renderer both delegate
+  // to; each clause below is a case where a marker can't be attributed to a
+  // point on the chart's y-axis.
+  const eligible = {
+    seriesCount: 1,
+    seriesReturnType: 'column' as const,
+    metricType: MetricsDataType.Histogram,
+    hasGroupBy: false,
+  };
+
+  it('accepts a single, non-ratio, non-grouped histogram series', () => {
+    expect(isExemplarEligible(eligible)).toBe(true);
+  });
+
+  it('accepts an unset seriesReturnType (defaults to a plain column series)', () => {
+    expect(
+      isExemplarEligible({ ...eligible, seriesReturnType: undefined }),
+    ).toBe(true);
+  });
+
+  it('rejects multi-series and zero-series charts', () => {
+    expect(isExemplarEligible({ ...eligible, seriesCount: 2 })).toBe(false);
+    expect(isExemplarEligible({ ...eligible, seriesCount: 0 })).toBe(false);
+  });
+
+  it('rejects a ratio chart', () => {
+    expect(isExemplarEligible({ ...eligible, seriesReturnType: 'ratio' })).toBe(
+      false,
+    );
+  });
+
+  it('rejects a grouped chart', () => {
+    expect(isExemplarEligible({ ...eligible, hasGroupBy: true })).toBe(false);
+  });
+
+  it('rejects non-histogram and missing metric types', () => {
+    expect(
+      isExemplarEligible({ ...eligible, metricType: MetricsDataType.Gauge }),
+    ).toBe(false);
+    expect(isExemplarEligible({ ...eligible, metricType: undefined })).toBe(
+      false,
+    );
+  });
+
+  it('rejects a differently-cased metric type', () => {
+    // The comparison is by value, so a caller passing the app package's legacy
+    // MetricsDataType ('Histogram') must not silently read as eligible.
+    expect(isExemplarEligible({ ...eligible, metricType: 'Histogram' })).toBe(
+      false,
+    );
+  });
+});
+
 describe('renderMetricExemplarsChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
@@ -3653,6 +3708,38 @@ describe('renderMetricExemplarsChartConfig', () => {
     } as ChartConfigWithOptDateRange;
     expect(
       await renderMetricExemplarsChartConfig(multiConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null when the chart has a Group By', async () => {
+    // A grouped chart draws one line per group, but the exemplar scan is not
+    // group-aware: it would pool exemplars from every group into one
+    // unattributable set. Drop the overlay instead.
+    const groupedConfig = {
+      ...histogramConfig,
+      groupBy: 'ServiceName',
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(groupedConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null for a non-histogram metric (value is on a different scale)', async () => {
+    const gaugeConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'avg',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'system.memory.usage',
+          metricType: MetricsDataType.Gauge,
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(gaugeConfig, mockMetadata),
     ).toBeNull();
   });
 

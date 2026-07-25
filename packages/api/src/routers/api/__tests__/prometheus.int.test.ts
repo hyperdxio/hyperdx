@@ -285,6 +285,39 @@ describe('prometheus router', () => {
       });
     });
 
+    it('returns 400 when connectionId is missing', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({ query: 'up' })
+        .expect(400);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('connectionId'),
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a connection owned by another team', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      // A real, resolvable connection — just not this team's. The 404 must come
+      // from the team scoping, not from the id simply not existing.
+      const otherTeamConn = await seedPrometheusConnection(
+        new Types.ObjectId(),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({ query: 'up', connectionId: otherTeamConn._id.toString() })
+        .expect(404);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        error: 'Connection not found',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);

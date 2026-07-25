@@ -46,7 +46,12 @@ import {
   toViewportPoint,
   useChartTooltipZIndex,
 } from './components/charts/ChartTooltip';
-import { computeExemplarPoints, ExemplarDot } from './components/Exemplars';
+import {
+  clampExemplarY,
+  computeExemplarPoints,
+  computeExemplarYBounds,
+  ExemplarDot,
+} from './components/Exemplars';
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
@@ -792,10 +797,11 @@ export const MemoChart = memo(function MemoChart({
     captureActivePointY,
   ]);
 
-  // Max value across the visible series. Exemplar markers are clamped to this so
-  // a single slow-trace outlier (which can be 100x the p99 line) can't stretch
-  // the y-axis and crush the series flat — the marker pins to the top of the
-  // series range while its hover card still shows the true duration.
+  // Max value across the visible series. Used as the exemplar clamp's upper
+  // bound when the y-axis domain is 'auto', so a single slow-trace outlier (which
+  // can be 100x the p99 line) can't stretch the axis and crush the series flat —
+  // the marker pins to the top of the series range while its hover card still
+  // shows the true duration. See computeExemplarYBounds.
   const visibleSeriesMax = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
     let max = -Infinity;
@@ -871,6 +877,14 @@ export const MemoChart = memo(function MemoChart({
     fitYAxisToData,
     displayType,
   ]);
+
+  // Bounds an exemplar marker is clamped into before rendering, derived from the
+  // domain the y-axis actually renders — see computeExemplarYBounds for why an
+  // unclamped marker can silently vanish.
+  const exemplarYBounds = useMemo(
+    () => computeExemplarYBounds(yAxisDomain, visibleSeriesMax),
+    [yAxisDomain, visibleSeriesMax],
+  );
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -1383,15 +1397,8 @@ export const MemoChart = memo(function MemoChart({
             <ReferenceDot
               key={p.key}
               x={p.x}
-              // Clamp to the series max so an outlier pins to the top of the
-              // series range instead of stretching the axis (and getting
-              // discarded by recharts' default ifOverflow). The hover card
-              // still shows the exemplar's true value.
-              y={
-                Number.isFinite(visibleSeriesMax)
-                  ? Math.min(p.y, visibleSeriesMax)
-                  : p.y
-              }
+              // Pinned into the rendered y-domain — see exemplarYBounds.
+              y={clampExemplarY(p.y, exemplarYBounds)}
               shape={
                 <ExemplarDot
                   exemplar={p.exemplar}

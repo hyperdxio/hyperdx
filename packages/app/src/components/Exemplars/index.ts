@@ -1,3 +1,7 @@
 export { ExemplarDot } from './ExemplarDot';
 export { ExemplarHoverCard } from './ExemplarHoverCard';
-export { computeExemplarPoints } from './exemplarPoints';
+export {
+  clampExemplarY,
+  computeExemplarPoints,
+  computeExemplarYBounds,
+} from './exemplarPoints';

@@ -1,6 +1,10 @@
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
 
-import { computeExemplarPoints } from '@/components/Exemplars/exemplarPoints';
+import {
+  clampExemplarY,
+  computeExemplarPoints,
+  computeExemplarYBounds,
+} from '@/components/Exemplars/exemplarPoints';
 
 const ex = (
   over: Partial<Exemplar> & { timestamp: number; value: number },
@@ -83,5 +87,62 @@ describe('computeExemplarPoints', () => {
       dateRange: [RANGE[0], RANGE[0]],
     });
     expect(points).toHaveLength(1);
+  });
+});
+
+describe('computeExemplarYBounds', () => {
+  it('uses both numeric domain bounds when the axis is fitted to data', () => {
+    expect(computeExemplarYBounds([120, 480], 400)).toEqual({
+      min: 120,
+      max: 480,
+    });
+  });
+
+  it("falls back to the visible series max for an 'auto' upper bound", () => {
+    expect(computeExemplarYBounds([0, 'auto'], 400)).toEqual({
+      min: 0,
+      max: 400,
+    });
+  });
+
+  it("floors at 0 for an 'auto' lower bound", () => {
+    expect(computeExemplarYBounds(['auto', 'auto'], 400)).toEqual({
+      min: 0,
+      max: 400,
+    });
+  });
+
+  it('tolerates a non-array domain (recharts allows a function)', () => {
+    expect(computeExemplarYBounds(() => [0, 1], 400)).toEqual({
+      min: 0,
+      max: 400,
+    });
+  });
+});
+
+describe('clampExemplarY', () => {
+  it('pins an outlier to the top of the domain instead of overflowing it', () => {
+    // Without this, recharts' default ifOverflow="discard" drops the marker and
+    // the overlay silently loses the slowest trace.
+    expect(clampExemplarY(9000, { min: 0, max: 400 })).toBe(400);
+  });
+
+  it('lifts a marker below a fitted axis floor up to the floor', () => {
+    // The regression this guards: fitYAxisToData puts the floor above an
+    // individual duration when the series is a high quantile.
+    expect(clampExemplarY(12, { min: 120, max: 480 })).toBe(120);
+  });
+
+  it('leaves an in-domain value untouched', () => {
+    expect(clampExemplarY(200, { min: 120, max: 480 })).toBe(200);
+  });
+
+  it('leaves the value alone when there is no numeric series data yet', () => {
+    // visibleSeriesMax is -Infinity before any data arrives.
+    expect(clampExemplarY(200, { min: 0, max: -Infinity })).toBe(200);
+  });
+
+  it('leaves the value alone for inverted bounds', () => {
+    expect(clampExemplarY(200, { min: 480, max: 120 })).toBe(200);
   });
 });

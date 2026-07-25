@@ -2288,6 +2288,46 @@ export async function renderChartConfig(
 export const EXEMPLAR_QUERY_LIMIT = 200;
 
 /**
+ * The exemplar-eligibility rule, in one place. An exemplar marker sits at a
+ * single trace's raw measurement on the chart's y-axis, so it is only
+ * attributable when the chart draws exactly one series of a compatible unit:
+ *
+ * - single series, no Group By — a marker can't be attributed (or scaled) across
+ *   series, and a grouped scan pools exemplars from every group.
+ * - not a ratio — the exemplar value isn't on a ratio axis.
+ * - histogram — the exemplar value is a duration, which only shares the y-axis
+ *   unit on a latency histogram (counts/gauges/rates are a different scale).
+ *
+ * The chart-editor toggle and the SQL renderer both delegate here so they can't
+ * drift apart.
+ */
+export function isExemplarEligible({
+  seriesCount,
+  seriesReturnType,
+  metricType,
+  hasGroupBy,
+}: {
+  seriesCount: number;
+  seriesReturnType?: 'ratio' | 'column';
+  // Deliberately `string`, and compared by value below. tsup emits this
+  // declaration without importing MetricsDataType, so any annotation naming the
+  // enum resolves against the *consumer's* scope: in packages/app it binds to
+  // that package's unrelated legacy MetricsDataType, whose values are
+  // capitalised ('Histogram'), and the build fails on the mismatch.
+  // Callers must pass a common-utils MetricsDataType value (lowercase
+  // 'histogram'); a legacy-enum value would compile but never match.
+  metricType?: string;
+  hasGroupBy: boolean;
+}): boolean {
+  return (
+    seriesCount === 1 &&
+    seriesReturnType !== 'ratio' &&
+    metricType === MetricsDataType.Histogram &&
+    !hasGroupBy
+  );
+}
+
+/**
  * Builds a ClickHouse query that surfaces native exemplars stored on an OTel
  * metric table (`Exemplars.TraceId/SpanId/Value/TimeUnix`). Returns null when
  * the config is not a single-metric chart we can resolve a table for.
@@ -2305,26 +2345,28 @@ export async function renderMetricExemplarsChartConfig(
     isRawSqlChartConfig(chartConfig) ||
     isPromqlChartConfig(chartConfig) ||
     !isMetricChartConfig(chartConfig) ||
-    !Array.isArray(chartConfig.select) ||
-    // Exemplars carry a single series' raw measurement (e.g. latency). They are
-    // meaningless on a ratio axis and ambiguous across multiple series, so only
-    // surface them for a single, non-ratio metric series.
-    chartConfig.select.length !== 1 ||
-    chartConfig.seriesReturnType === 'ratio'
+    !Array.isArray(chartConfig.select)
   ) {
     return null;
   }
   const { metricTables, select } = chartConfig;
   const { metricType, metricName, metricNameSql } = select[0] ?? {};
+  // Shared eligibility rule (single, non-ratio, non-grouped histogram series) —
+  // see isExemplarEligible. A Group By in particular would pool exemplars from
+  // every group into one unattributable set.
+  if (
+    !isExemplarEligible({
+      seriesCount: select.length,
+      seriesReturnType: chartConfig.seriesReturnType,
+      metricType,
+      hasGroupBy: isUsingGroupBy(chartConfig),
+    })
+  ) {
+    return null;
+  }
   const table =
     metricType && metricTables ? metricTables[metricType] : undefined;
   if (!metricType || !metricName || !table) {
-    return null;
-  }
-  // Keep exemplars to latency metrics for now: a histogram's exemplar value is a
-  // request duration, which shares the chart's y-axis unit. Other metric types
-  // (counts/gauges/rates) put exemplars on an incompatible scale.
-  if (metricType !== MetricsDataType.Histogram) {
     return null;
   }
 
