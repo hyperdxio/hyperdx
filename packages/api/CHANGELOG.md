@@ -1,5 +1,18 @@
 # @hyperdx/api
 
+## 2.31.0
+
+### Patch Changes
+
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+- 3d02a56a: fix: Disable redirects when delivering alert webhooks
+- 758ab638: Fix: Prevent grouped alerts from getting permanently stuck in the ALERT state by resetting history state to OK when thresholds are no longer exceeded.
+- Updated dependencies [ff05b3df]
+- Updated dependencies [1705b37a]
+- Updated dependencies [73819932]
+- Updated dependencies [7accfd2e]
+  - @hyperdx/common-utils@0.23.0
+
 ## 2.30.1
 
 ## 2.30.0

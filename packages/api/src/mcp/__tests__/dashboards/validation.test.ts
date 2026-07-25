@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 
+import { mcpTilesParam } from '@/mcp/tools/dashboards/schemas';
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
@@ -9,6 +10,38 @@ import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 const connectionId = new mongoose.Types.ObjectId().toString();
 const sourceId = new mongoose.Types.ObjectId().toString();
+
+describe('metric tile schema', () => {
+  it('accepts exponential histograms and defaults their value expression', () => {
+    const parsed = mcpTilesParam.parse([
+      {
+        name: 'P95 Duration',
+        config: {
+          displayType: 'line',
+          sourceId,
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.95,
+              metricType: 'exponential histogram',
+              metricName: 'http.server.request.duration',
+            },
+          ],
+        },
+      },
+    ]);
+
+    const config = parsed[0].config;
+    expect(config).toMatchObject({ displayType: 'line' });
+    if (!('select' in config)) {
+      throw new Error('Expected a builder tile');
+    }
+    expect(config.select[0]).toMatchObject({
+      metricType: 'exponential histogram',
+      valueExpression: 'Value',
+    });
+  });
+});
 
 function makeSqlTile(overrides: {
   name?: string;

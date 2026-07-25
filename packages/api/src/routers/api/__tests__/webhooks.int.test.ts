@@ -191,6 +191,22 @@ describe('webhooks router', () => {
       .expect(400);
   });
 
+  it('POST / - rejects a private webhook URL without persisting it', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const response = await agent
+      .post('/webhooks')
+      .send({
+        ...MOCK_WEBHOOK,
+        service: WebhookService.Generic,
+        url: 'http://10.0.0.1/webhook',
+      })
+      .expect(400);
+
+    expect(response.body.message).toContain('private or reserved address');
+    expect(await Webhook.countDocuments({})).toBe(0);
+  });
+
   it('DELETE /:id - deletes a webhook', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
@@ -308,7 +324,7 @@ describe('webhooks router', () => {
         .post('/webhooks')
         .send({
           ...MOCK_WEBHOOK,
-          url: 'https://example.com/valid-headers',
+          url: 'https://hooks.slack.com/valid-headers',
           headers: validHeaders,
         })
         .expect(200);
@@ -406,7 +422,7 @@ describe('webhooks router', () => {
         .post('/webhooks')
         .send({
           ...MOCK_WEBHOOK,
-          url: 'https://example.com/valid-header-values',
+          url: 'https://hooks.slack.com/valid-header-values',
           headers: validHeaders,
         })
         .expect(200);
@@ -830,7 +846,7 @@ describe('webhooks router', () => {
         team: team._id,
       });
 
-      const newUrl = 'https://example.com/webhook/new-endpoint';
+      const newUrl = 'https://hooks.slack.com/webhook/new-endpoint';
 
       await agent
         .put(`/webhooks/${webhook._id}`)
@@ -842,6 +858,26 @@ describe('webhooks router', () => {
 
       const stored = await Webhook.findById(webhook._id);
       expect(stored!.url).toBe(newUrl);
+    });
+
+    it('PUT - rejects a private webhook URL without updating it', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          service: WebhookService.Generic,
+          url: 'http://[fd00::1]/webhook',
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('private or reserved address');
+      expect((await Webhook.findById(webhook._id))!.url).toBe(MOCK_WEBHOOK.url);
     });
 
     it('PUT - redacted header values preserve existing stored values', async () => {
@@ -999,7 +1035,7 @@ describe('webhooks router', () => {
       });
 
       // A URL that happens to have /****  in its path but is a different origin
-      const differentOriginUrl = 'https://attacker.example.com/****';
+      const differentOriginUrl = 'https://api.slack.com/****';
 
       await agent
         .put(`/webhooks/${webhook._id}`)
@@ -1109,13 +1145,13 @@ describe('webhooks router', () => {
         .put(`/webhooks/${webhook._id}`)
         .send({
           ...MOCK_WEBHOOK,
-          url: 'https://new-host.example.com/webhook',
+          url: 'https://api.slack.com/webhook',
           headers: { Authorization: 'Bearer brand-new-token' },
         })
         .expect(200);
 
       const stored = await Webhook.findById(webhook._id);
-      expect(stored!.url).toBe('https://new-host.example.com/webhook');
+      expect(stored!.url).toBe('https://api.slack.com/webhook');
       const plain = stored!.toJSON({ flattenMaps: true });
       expect(plain.headers).toEqual({
         Authorization: 'Bearer brand-new-token',
@@ -1138,7 +1174,7 @@ describe('webhooks router', () => {
         .send({
           name: MOCK_WEBHOOK.name,
           service: MOCK_WEBHOOK.service,
-          url: 'https://new-host.example.com/webhook',
+          url: 'https://api.slack.com/webhook',
           description: MOCK_WEBHOOK.description,
           body: MOCK_WEBHOOK.body,
           // headers and queryParams intentionally omitted
@@ -1146,7 +1182,7 @@ describe('webhooks router', () => {
         .expect(200);
 
       const stored = await Webhook.findById(webhook._id);
-      expect(stored!.url).toBe('https://new-host.example.com/webhook');
+      expect(stored!.url).toBe('https://api.slack.com/webhook');
       const plain = stored!.toJSON({ flattenMaps: true });
       // Stored secrets must NOT have been carried over to the new URL
       expect(plain.headers).toBeUndefined();
@@ -1351,6 +1387,63 @@ describe('webhooks router', () => {
       expect(sentWebhook.url).toBe('https://example.com/webhook');
     });
 
+    it('returns an error without making a request for a private IP webhook (SSRF prevention)', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      genericSpy.mockRestore();
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'http://10.0.0.1/webhook',
+          body: '{"message": "{{body}}"}',
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('private or reserved address');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns an error without making a request for a private IPv6 webhook', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      genericSpy.mockRestore();
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'http://[fd00::1]/webhook',
+          body: '{"message": "{{body}}"}',
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('private or reserved address');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns an error without making a request for localhost with a trailing dot', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      genericSpy.mockRestore();
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'http://localhost./webhook',
+          body: '{"message": "{{body}}"}',
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('private or reserved address');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('returns 400 when service is missing', async () => {
       const { agent } = await getLoggedInAgent(server);
 
@@ -1373,8 +1466,10 @@ describe('webhooks router', () => {
         .expect(400);
     });
 
-    it('returns 400 when URL is invalid', async () => {
+    it('returns 400 without making a request when URL is invalid', async () => {
       const { agent } = await getLoggedInAgent(server);
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
 
       await agent
         .post('/webhooks/test')
@@ -1383,6 +1478,8 @@ describe('webhooks router', () => {
           url: 'not-a-valid-url',
         })
         .expect(400);
+
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('returns 400 when service is invalid', async () => {

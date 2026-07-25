@@ -9,6 +9,9 @@
   "targetDefaults": {
     "build": {
       "dependsOn": ["^build"]
+    },
+    "ci:build": {
+      "dependsOn": ["^ci:build"]
     }
   },
   "tasksRunnerOptions": {

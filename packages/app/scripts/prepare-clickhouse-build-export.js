@@ -12,6 +12,7 @@ const ALLOWED_EXTENSIONS = [
   '.png',
   '.svg',
   '.ico',
+  '.md', // CHANGELOG.md, fetched by the in-app "What's new" viewer
 ];
 
 // removes pyodide from a next static build. We want a small bundle size, so that feature would just be ignored

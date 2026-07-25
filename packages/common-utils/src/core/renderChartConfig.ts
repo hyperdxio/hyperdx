@@ -3,7 +3,11 @@ import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { translateHistogram } from '@/core/histogram';
+import {
+  GROUP_ALIAS,
+  translateExponentialHistogram,
+  translateHistogram,
+} from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
@@ -23,10 +27,10 @@ import {
 } from '@/guards';
 import { replaceMacros } from '@/macros';
 import {
-  buildKvItemsLookup,
+  buildTextIndexInfoLookup,
   CustomSchemaSQLSerializerV2,
-  KvItemsLookup,
   SearchQueryBuilder,
+  TextIndexInfoLookup,
 } from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
@@ -48,7 +52,6 @@ import {
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
-  SelectSQLStatement,
   SortSpecificationList,
   SqlAstFilter,
   SQLInterval,
@@ -75,14 +78,6 @@ type ColumnRef = SQLParser.ColumnRef & {
     index: { type: string; value: string };
   }[];
 };
-
-function determineTableName(select: SelectSQLStatement): string {
-  if ('metricTables' in select.from) {
-    return select.from.tableName;
-  }
-
-  return '';
-}
 
 const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
@@ -338,7 +333,7 @@ const fastifySQL = ({
     traverse(ast.where);
 
     return parser.sqlify(ast);
-  } catch (e) {
+  } catch {
     return rawSQL;
   }
 };
@@ -359,9 +354,9 @@ function generateHasSqlForKvItemsColumn(
 
 export const rewriteSqlFilterWithKvItems = (
   condition: string,
-  kvItemsLookup: KvItemsLookup,
+  textIndexInfoLookup: TextIndexInfoLookup,
 ): string => {
-  if (kvItemsLookup.size === 0) return condition;
+  if (textIndexInfoLookup.size === 0) return condition;
   try {
     const parser = new SQLParser.Parser();
     const prefix = 'SELECT 1 FROM `t` WHERE ';
@@ -400,7 +395,7 @@ export const rewriteSqlFilterWithKvItems = (
         return;
       }
       const mapKey: string = idxNode.value;
-      const info = kvItemsLookup.get(mapColumn);
+      const info = textIndexInfoLookup.get(mapColumn)?.kv;
       if (!info) return;
 
       let values: string[];
@@ -436,7 +431,7 @@ export const rewriteSqlFilterWithKvItems = (
       let replacement: string;
       if (values.length === 1) {
         replacement = generateHasSqlForKvItemsColumn(
-          info.kvItemsColumn,
+          info.columnName,
           mapKey,
           info.separator,
           values[0],
@@ -445,7 +440,7 @@ export const rewriteSqlFilterWithKvItems = (
         // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
         // column in a single call.
         replacement = `hasAny(${SqlString.format('??', [
-          info.kvItemsColumn,
+          info.columnName,
         ])}, array(${values
           .map(v =>
             SqlString.format('concat(?, ?, ?)', [mapKey, info.separator, v]),
@@ -457,7 +452,7 @@ export const rewriteSqlFilterWithKvItems = (
         replacement = `(${values
           .map(v =>
             generateHasSqlForKvItemsColumn(
-              info.kvItemsColumn,
+              info.columnName,
               mapKey,
               info.separator,
               v,
@@ -1171,12 +1166,12 @@ async function renderWhere(
 
   const hasSqlFilter =
     chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const kvItemsLookup: KvItemsLookup =
+  const textIndexInfoLookup: TextIndexInfoLookup =
     hasSqlFilter &&
     chartConfig.from.databaseName &&
     chartConfig.from.tableName &&
     !hasSubqueryCte(chartConfig.with)
-      ? await buildKvItemsLookup({
+      ? await buildTextIndexInfoLookup({
           metadata,
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
@@ -1195,7 +1190,7 @@ async function renderWhere(
       } else if (filter.type === 'lucene' || filter.type === 'sql') {
         const condition =
           filter.type === 'sql'
-            ? rewriteSqlFilterWithKvItems(filter.condition, kvItemsLookup)
+            ? rewriteSqlFilterWithKvItems(filter.condition, textIndexInfoLookup)
             : filter.condition;
         return wrapChSqlIfNotEmpty(
           await renderWhereExpression({
@@ -1653,7 +1648,7 @@ async function translateMetricChartConfig(
   }
 
   // assumes all the selects are from a single metric type, for now
-  const { select, from, filters, where, ...restChartConfig } = chartConfig;
+  const { select, from, filters, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
@@ -1666,6 +1661,17 @@ async function translateMetricChartConfig(
       `aggFn 'increase' is only supported for Sum (counter) metrics (got metricType=${metricType})`,
     );
   }
+
+  const isExponentialHistogram =
+    metricType === MetricsDataType.ExponentialHistogram &&
+    metricName &&
+    MetricsDataType.ExponentialHistogram in metricTables &&
+    metricTables[MetricsDataType.ExponentialHistogram];
+  const isHistogram =
+    metricType === MetricsDataType.Histogram &&
+    metricName &&
+    MetricsDataType.Histogram in metricTables &&
+    metricTables[MetricsDataType.Histogram];
 
   // AttributesHash is computed inline with a variadic cityHash64 call
   // (HDX-4466). This works for both Map(LowCardinality(String), String) and
@@ -2021,12 +2027,7 @@ async function translateMetricChartConfig(
         : restChartConfig.whereLanguage,
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
-  } else if (
-    metricType === MetricsDataType.Histogram &&
-    metricName &&
-    MetricsDataType.Histogram in metricTables &&
-    metricTables[MetricsDataType.Histogram]
-  ) {
+  } else if (isHistogram || isExponentialHistogram) {
     const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
@@ -2034,12 +2035,12 @@ async function translateMetricChartConfig(
     // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
     // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
     // a reasonable value on the ends of the series.
-
     const cteChartConfig = {
       ...chartConfig,
       from: {
         ...from,
-        tableName: metricTables[MetricsDataType.Histogram],
+        // eslint-disable-next-line security/detect-object-injection
+        tableName: metricTables[metricType],
       },
       filters: [
         ...(filters ?? []),
@@ -2055,14 +2056,15 @@ async function translateMetricChartConfig(
           : chartConfig.granularity,
     } satisfies BuilderChartConfigWithOptDateRangeEx;
 
-    const timeBucketSelect = isUsingGranularity(cteChartConfig)
+    const hasGranularity = isUsingGranularity(cteChartConfig);
+    const timeBucketSelect = hasGranularity
       ? timeBucketExpr({
           interval: cteChartConfig.granularity,
           timestampValueExpression: cteChartConfig.timestampValueExpression,
           dateRange: cteChartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
         })
-      : chSql``;
+      : undefined;
     const where = await renderWhere(cteChartConfig, metadata);
 
     // Time bucket grouping is being handled separately, so make sure to ignore the granularity
@@ -2075,34 +2077,46 @@ async function translateMetricChartConfig(
       );
     }
 
+    const translationInput = {
+      select: _select,
+      timeBucketSelect,
+      groupBy,
+      from: renderFrom({
+        from: {
+          ...from,
+          // eslint-disable-next-line security/detect-object-injection
+          tableName: metricTables[metricType],
+        },
+        isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+        metricType,
+      }),
+      where,
+      valueAlias,
+    };
+
     return {
       ...restChartConfig,
-      with: translateHistogram({
-        select: _select,
-        timeBucketSelect: timeBucketSelect.sql
-          ? chSql`${timeBucketSelect}`
-          : 'TimeUnix AS `__hdx_time_bucket`',
-        groupBy,
-        from: renderFrom({
-          from: {
-            ...from,
-            tableName: metricTables[MetricsDataType.Histogram],
-          },
-          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
-          metricType: MetricsDataType.Histogram,
-        }),
-        where,
-        valueAlias,
-      }),
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
+      with: isExponentialHistogram
+        ? translateExponentialHistogram(translationInput)
+        : translateHistogram(translationInput),
+      select: [
+        ...(hasGranularity ? [`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``] : []),
+        ...(groupBy ? [GROUP_ALIAS] : []),
+        `"${valueAlias}"`,
+      ].join(', '),
       from: {
         databaseName: '',
         tableName: 'metrics',
       },
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      // Timeseries queries discard padded buckets here. Non-timeseries queries
+      // scan only the visible range and have no time dimension to filter.
+      dateRange: hasGranularity ? restChartConfig.dateRange : undefined,
       groupBy: undefined,
       granularity: undefined, // time bucketing and granularity is applied at the source CTE
-      timestampValueExpression: '`__hdx_time_bucket`',
+      timestampValueExpression: hasGranularity
+        ? `\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
+        : restChartConfig.timestampValueExpression,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
   }

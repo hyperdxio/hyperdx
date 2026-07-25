@@ -61,13 +61,22 @@ export function buildSystemPrompt(
   );
 }
 
-function buildInvestigationSystemPrompt(
+export function buildInvestigationSystemPrompt(
   scenarioName: string,
   anchorTimeIso?: string,
   variant: PromptVariant = 'baseline',
   maxTurns?: number,
+  opts?: {
+    /**
+     * Extra note injected into the data-source list. Scenarios that
+     * seed additional signals (e.g. metrics) use this to tell the agent
+     * those sources exist.
+     */
+    signalsNote?: string;
+  },
 ): string {
   const { traces, logs } = scenarioTables(scenarioName);
+  const signalsNote = opts?.signalsNote ?? '';
   const sharedSchema = '';
   //   `These follow the standard OpenTelemetry ClickHouse schema:
   // - traces have Timestamp DateTime64(9), TraceId, SpanId, ParentSpanId,
@@ -141,6 +150,7 @@ observability data. The OpenTelemetry data lives in ClickHouse:
 
 - Traces: default.${traces}
 - Logs:   default.${logs}
+${signalsNote}
 ${anchorBlock}
 ${sharedSchema}
 

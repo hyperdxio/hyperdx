@@ -1,5 +1,8 @@
+import React from 'react';
+import { enableMapSet } from 'immer';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field } from '@hyperdx/common-utils/dist/core/metadata';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 
 import { LuceneLanguageFormatter } from '@/components/SearchInput/SearchInputV2';
@@ -8,18 +11,66 @@ import {
   tokenizeAtCursor,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
-import { useGetKeyValues, useMultipleAllFields } from '@/hooks/useMetadata';
+import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 
-// Mock dependencies
-jest.mock('../useMetadata', () => ({
-  ...jest.requireActual('../useMetadata.tsx'),
-  useMultipleAllFields: jest.fn(),
-  useGetKeyValues: jest.fn(),
+enableMapSet();
+
+// The hook transitively pulls in `useFetchFacets`, which touches almost
+// every hook in `useMetadata` plus `usePinnedFilters` and `api.useMe`.
+// Mocking each direct dependency is cheaper than wiring up a live
+// QueryClient + source config just to render the tree.
+jest.mock('@/api', () => ({
+  __esModule: true,
+  default: {
+    useMe: jest
+      .fn()
+      .mockReturnValue({ data: null, isFetched: true, isLoading: false }),
+  },
 }));
+
+jest.mock('@/searchFilters', () => ({
+  __esModule: true,
+  usePinnedFilters: jest.fn().mockReturnValue({
+    isFieldPinned: () => false,
+    isSharedFieldPinned: () => false,
+  }),
+  escapeFilterStateKeys: (state: unknown) => state,
+}));
+
+jest.mock('../useMetadata', () => {
+  const actual = jest.requireActual('../useMetadata.tsx');
+  return {
+    __esModule: true,
+    ...actual,
+    useMetadataWithSettings: jest.fn().mockReturnValue({
+      getKeyValuesWithMVs: jest.fn(),
+      getAllKeyValues: jest.fn(),
+    }),
+    useAllFields: jest.fn(),
+    useMultipleAllFields: jest.fn(),
+    useGetKeyValues: jest.fn(),
+    useColumns: jest.fn().mockReturnValue({ data: [], isLoading: false }),
+    useDateTimeColumns: jest.fn().mockReturnValue(new Map()),
+    useJsonColumns: jest.fn().mockReturnValue({ data: [] }),
+    useMapColumns: jest.fn().mockReturnValue({ data: [] }),
+  };
+});
 
 jest.mock('../../source', () => ({
+  __esModule: true,
   useSource: jest.fn().mockReturnValue({ data: undefined }),
+  useSources: jest.fn().mockReturnValue({ data: [], isLoading: false }),
 }));
+
+function makeWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return wrapper;
+}
 
 const luceneFormatter = new LuceneLanguageFormatter();
 
@@ -48,26 +99,32 @@ const mockTableConnection = {
 };
 
 describe('useAutoCompleteOptions', () => {
+  let wrapper: React.FC<{ children: React.ReactNode }>;
+
   beforeEach(() => {
-    // Reset mocks before each test
     jest.clearAllMocks();
 
-    // Setup default mock implementations
-    (useMultipleAllFields as jest.Mock).mockReturnValue({
+    (useAllFields as jest.Mock).mockReturnValue({
       data: mockFields,
+      isLoading: false,
+      error: null,
     });
 
     (useGetKeyValues as jest.Mock).mockReturnValue({
       data: null,
       isFetching: false,
     });
+
+    wrapper = makeWrapper();
   });
 
   it('should return field options with correct lucene formatting', () => {
-    const { result } = renderHook(() =>
-      useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnection: mockTableConnection,
-      }),
+    const { result } = renderHook(
+      () =>
+        useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
+          tableConnection: mockTableConnection,
+        }),
+      { wrapper },
     );
 
     expect(result.current.options).toEqual([
@@ -97,14 +154,16 @@ describe('useAutoCompleteOptions', () => {
       isFetching: false,
     });
 
-    const { result } = renderHook(() =>
-      useAutoCompleteOptions(
-        luceneFormatter,
-        'ResourceAttributes.service.name',
-        {
-          tableConnection: mockTableConnection,
-        },
-      ),
+    const { result } = renderHook(
+      () =>
+        useAutoCompleteOptions(
+          luceneFormatter,
+          'ResourceAttributes.service.name',
+          {
+            tableConnection: mockTableConnection,
+          },
+        ),
+      { wrapper },
     );
 
     expect(result.current.options).toEqual([
@@ -147,10 +206,12 @@ describe('useAutoCompleteOptions', () => {
       isFetching: false,
     });
 
-    const { result } = renderHook(() =>
-      useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnection: mockTableConnection,
-      }),
+    const { result } = renderHook(
+      () =>
+        useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
+          tableConnection: mockTableConnection,
+        }),
+      { wrapper },
     );
 
     expect(result.current.options).toEqual([
@@ -178,11 +239,13 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should handle additional suggestions', () => {
-    const { result } = renderHook(() =>
-      useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnection: mockTableConnection,
-        additionalSuggestions: ['custom.field'],
-      }),
+    const { result } = renderHook(
+      () =>
+        useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
+          tableConnection: mockTableConnection,
+          additionalSuggestions: ['custom.field'],
+        }),
+      { wrapper },
     );
 
     expect(result.current.options).toEqual([

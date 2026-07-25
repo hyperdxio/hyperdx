@@ -107,6 +107,7 @@ import {
   IconZoomExclamation,
 } from '@tabler/icons-react';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import DashboardContainer from '@/components/DashboardContainer';
 import {
@@ -1452,22 +1453,26 @@ const EditTileModal = ({
     >
       {chart != null && (
         <ZIndexContext.Provider value={modalZIndex + 10}>
-          <EditTimeChartForm
-            dashboardId={dashboardId}
-            chartConfig={chart.config}
-            dateRange={dateRange}
-            isSaving={isSaving}
-            onSave={config => {
-              onSave({
-                ...chart,
-                config: config,
-              });
-            }}
-            onClose={handleClose}
-            onDirtyChange={setHasUnsavedChanges}
-            isDashboardForm
-            autoRun
-          />
+          {/* Isolate chart cross-syncing to this edit modal: the preview chart
+              must not drive shadow tooltips on the dashboard tiles behind it. */}
+          <IsolatedChartSyncProvider>
+            <EditTimeChartForm
+              dashboardId={dashboardId}
+              chartConfig={chart.config}
+              dateRange={dateRange}
+              isSaving={isSaving}
+              onSave={config => {
+                onSave({
+                  ...chart,
+                  config: config,
+                });
+              }}
+              onClose={handleClose}
+              onDirtyChange={setHasUnsavedChanges}
+              isDashboardForm
+              autoRun
+            />
+          </IsolatedChartSyncProvider>
         </ZIndexContext.Provider>
       )}
     </Modal>

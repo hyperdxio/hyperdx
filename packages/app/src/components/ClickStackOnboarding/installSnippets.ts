@@ -20,6 +20,17 @@
  */
 export const SERVER_NAME = 'clickstack';
 
+/**
+ * Environment variable the Codex CLI snippet reads the bearer token
+ * from. The current `codex mcp add` command has no `--header` flag;
+ * for a Streamable HTTP server with bearer auth it accepts
+ * `--bearer-token-env-var <NAME>` and reads the token from that env
+ * var at connect time (see https://developers.openai.com/codex/mcp).
+ * We emit an `export` line for the same name so the copy-paste is
+ * self-contained.
+ */
+export const CODEX_TOKEN_ENV_VAR = 'CLICKSTACK_ACCESS_KEY';
+
 export interface DeploymentShape {
   /** Origin used to build the MCP URL, e.g. `https://example.com/api`. */
   apiUrl: string;
@@ -107,15 +118,31 @@ function buildUrl(deployment: DeploymentShape): string {
 }
 
 /**
+ * Escape a value for safe inclusion inside a double-quoted shell
+ * argument. Defensive: today's `accessKey` is a UUIDv4 with no
+ * shell metacharacters, but a future format that permits `"`, `$`,
+ * `\`, or backtick would otherwise turn a copy-paste install into a
+ * shell-injection vector.
+ */
+function shellEscape(value: string): string {
+  return value.replace(/(["\\$`])/g, '\\$1');
+}
+
+/**
+ * Wrap a value in double quotes with the metacharacters escaped,
+ * for use as a standalone shell argument (e.g. the right-hand side
+ * of an `export`).
+ */
+function shellQuoteValue(value: string): string {
+  return `"${shellEscape(value)}"`;
+}
+
+/**
  * Quote and escape a header value for safe inclusion inside a
- * double-quoted shell argument. Defensive: today's `accessKey` is
- * a UUIDv4 with no shell metacharacters, but a future format that
- * permits `"`, `$`, `\`, or backtick would otherwise turn a
- * copy-paste install into a shell-injection vector.
+ * double-quoted `--header "Name: value"` shell argument.
  */
 function shellQuoteHeader(name: string, value: string): string {
-  const escaped = value.replace(/(["\\$`])/g, '\\$1');
-  return `--header "${name}: ${escaped}"`;
+  return `--header "${name}: ${shellEscape(value)}"`;
 }
 
 function headerArgs(headers: Record<string, string>): string {
@@ -125,17 +152,32 @@ function headerArgs(headers: Record<string, string>): string {
 }
 
 /**
- * Shared one-liner builder for CLI hosts whose `mcp add` primitive
- * matches Claude Code's documented shape: `<binary> mcp add <name>
- * --transport http <url> --header "..."`. Codex CLI mirrors this
- * verbatim (see https://developers.openai.com/codex/mcp), so the
- * two hosts share the same generator and differ only in the binary
- * name.
+ * Claude Code `mcp add` one-liner: `claude mcp add <name>
+ * --transport http <url> --header "..."`. Claude passes the bearer
+ * token inline as an `Authorization` header.
  */
-function buildCliOneLiner(binary: string, deployment: DeploymentShape): string {
+function buildClaudeOneLiner(deployment: DeploymentShape): string {
   const url = buildUrl(deployment);
   const headers = buildHeaders(deployment);
-  return `${binary} mcp add ${SERVER_NAME} --transport http ${url} ${headerArgs(headers)}`;
+  return `claude mcp add ${SERVER_NAME} --transport http ${url} ${headerArgs(headers)}`;
+}
+
+/**
+ * OpenAI Codex CLI `mcp add` command. Unlike Claude Code, the
+ * current Codex CLI (see https://developers.openai.com/codex/mcp)
+ * does not accept `--transport` or `--header`; its Streamable HTTP
+ * form is `codex mcp add <name> --url <url>` and bearer auth is
+ * supplied via `--bearer-token-env-var <ENV_VAR>`, which reads the
+ * token from the named environment variable rather than embedding
+ * it in the command. We prepend an `export` for that variable so
+ * the snippet is a self-contained copy-paste.
+ */
+function buildCodexOneLiner(deployment: DeploymentShape): string {
+  const url = buildUrl(deployment);
+  const token = deployment.accessKey || '<accessKey>';
+  const exportLine = `export ${CODEX_TOKEN_ENV_VAR}=${shellQuoteValue(token)}`;
+  const addLine = `codex mcp add ${SERVER_NAME} --url ${url} --bearer-token-env-var ${CODEX_TOKEN_ENV_VAR}`;
+  return `${exportLine}\n${addLine}`;
 }
 
 /**
@@ -221,10 +263,10 @@ function buildMcpJsonBlock(deployment: DeploymentShape): string {
  */
 export function buildAllSnippets(deployment: DeploymentShape): BuiltSnippets {
   return {
-    claudeCode: buildCliOneLiner('claude', deployment),
+    claudeCode: buildClaudeOneLiner(deployment),
     cursor: buildCursorDeeplink(deployment),
     vscode: buildVSCodeDeeplink(deployment),
-    codexCli: buildCliOneLiner('codex', deployment),
+    codexCli: buildCodexOneLiner(deployment),
     openCode: buildOpenCodeJsonBlock(deployment),
     jsonBlock: buildMcpJsonBlock(deployment),
   };

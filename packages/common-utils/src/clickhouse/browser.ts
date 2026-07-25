@@ -101,6 +101,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       clickhouse_settings: clickhouseSettings,
       username: this.username ?? '',
       password: this.password ?? '',
+      use_multipart_params_auto: true,
       // Disable keep-alive to prevent multiple concurrent dashboard requests from exceeding the 64KB payload size limit.
       keep_alive: {
         enabled: false,

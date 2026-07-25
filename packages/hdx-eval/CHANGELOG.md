@@ -1,5 +1,12 @@
 # @hyperdx/hdx-eval
 
+## 0.2.2
+
+### Patch Changes
+
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+- ab9dbcdf: feat(evals): support metric types and seeding
+
 ## 0.2.1
 
 ### Patch Changes

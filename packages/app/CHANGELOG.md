@@ -1,5 +1,82 @@
 # @hyperdx/app
 
+## 2.31.0
+
+### Minor Changes
+
+- ff05b3df: feat: Convert current builder config to SQL during editor switch
+- d137eaab: chore(charts): upgrade Recharts from 2.13 to 3.x. Reworks chart event handlers
+  to the Recharts 3 event API (zoom-brush selection, click drill-down), replaces
+  the histogram's imperative `chart.setState` tooltip-pin hack with the controlled
+  `active`/`defaultIndex` Tooltip props, updates custom tooltip/shape typings
+  (`TooltipContentProps`, `BarProps`), and suppresses the browser focus ring that
+  Recharts 3's default `accessibilityLayer` shows when a chart is clicked.
+
+### Patch Changes
+
+- 697006ba: feat(dashboards): add background area sparklines to the Browser RUM dashboard
+  number tiles. Each of the ten single-value tiles (LCP / INP / CLS p75, Median
+  and p90 Page Load, Page Views, Active Sessions, Sessions w/ Errors, JS Errors,
+  AJAX Errors) now renders a faint trend line behind its value so the metric's
+  movement over the selected range is visible at a glance. Implemented entirely
+  via the existing number-tile `backgroundChart` field — no renderer changes.
+- dc8705ba: feat(dashboards): revamp the out-of-the-box Browser RUM dashboard. Reorganize it
+  into four focused sections — Core Web Vitals, Load Time, Traffic & Page Views,
+  and Errors — so each metric lives with its peers instead of a single catch-all
+  "Performance Overview". Tiles are now color-coded by value: the Core Web Vitals
+  tiles (LCP, INP, CLS) render green / amber / red using Google's official good /
+  needs-improvement / poor thresholds, the Median and p90 Page Load tiles use
+  opinionated latency bands, and the error-count tiles (Sessions w/ Errors, JS
+  Errors, AJAX Errors) turn amber when any errors are present. A Markdown legend
+  tile in the Core Web Vitals section documents the thresholds (with a link to
+  web.dev) so viewers understand the standard behind the colors. Implemented
+  entirely via the existing number-tile `colorRules` and Markdown-tile mechanisms
+  — no renderer changes.
+- 7099e287: feat(charts): add per-series actions to the chart drill-down menu. Each series in the "Filter by group" list now shows its legend color swatch and offers icon actions with tooltips: Drill in (opens the underlying events in a new tab), Copy name (copies the series name to the clipboard), and Focus (narrows the view to that series). "View All Events" and "Drill in" now open in a new tab so the current view is preserved. On the search page, Focus applies the series as a real search filter so both the chart and the results list narrow together (previously it only isolated the line on the chart, leaving the results unchanged); standalone charts fall back to the prior chart-only visual focus.
+- 18268f7e: feat(charts): clicking a time-chart point now locks the tooltip in place instead of opening a separate drill-down menu. Hovering shows a passive tooltip (timestamp header, series swatches, values, previous-period percent change, nearest-series emphasis) and clicking locks a matching tooltip in place that reveals the drill-down actions inline ("View All Events" plus a per-series Search/Copy/Focus cluster) and a close (X) button in the header. The hover and pinned tooltips share the same building blocks (header, series rows, container) so they stay visually aligned. recharts' own tooltip is kept only for its synced cursor. Dismiss the pinned tooltip via the X, clicking anywhere else, or pressing Escape. The tooltip renders in a portal so it is never clipped by surrounding layout.
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+- 2f769200: fix: render side panel controls in error state
+- d96af848: fix(charts): Keep selected source when switching from builder to SQL mode
+- 7accfd2e: fix: support Group By on ratio charts
+
+  A ratio chart (`seriesReturnType: 'ratio'`) with a Group By previously collapsed
+  to a single line. Two issues in the multi-series merge: (1) rows were keyed by
+  time bucket only, so groups at the same bucket overwrote each other, and (2) the
+  ratio computation dropped every non-value column, discarding the group
+  dimension. The merge now keys by (time bucket + group dimensions) and the ratio
+  result carries the group columns through, so a grouped ratio renders one series
+  per group.
+
+  Grouped ratios use share-of-total semantics: each group's denominator is the
+  total of the denominator column across all groups in the same time bucket, so
+  the grouped lines are each group's contribution to the overall ratio and sum to
+  the ungrouped value (e.g. each tenant's share of the overall error rate), rather
+  than each group's in-group rate. Ungrouped ratios are unchanged (one row per
+  bucket → the bucket total is that row's denominator). A group absent from the
+  filtered numerator (e.g. a tenant with zero errors) contributes 0%, not N/A.
+
+  Also fixed alongside grouped ratios:
+
+  - A ratio whose two series resolve to the same value-column alias (e.g.
+    `count(request)` filtered / unfiltered for an error rate) previously collapsed
+    to one column and threw "Unable to compute ratio". The two operands are now
+    kept distinct through the merge.
+  - The chart-level Group By for metric sources offered the union of every
+    series' fields, which could suggest a native column that exists in one metric
+    table (e.g. gauge) but not another (e.g. sum), making that series' query fail.
+    It now offers only fields valid for every series (the intersection).
+
+- c86ed556: feat(app): make the selected source clearer in the source picker. The dropdown now marks the current source with a trailing check and a persistent highlight background, adds a small gap between options for readability, and documents the component in Storybook. Introduces a reusable `--color-bg-option-active` theme token (HyperDX + ClickStack, light + dark) for highlighting hovered/selected rows in floating surfaces.
+- ae5daba7: fix(traces): Prevent duplicate ticks in waterfall/minimap
+- Updated dependencies [ff05b3df]
+- Updated dependencies [1705b37a]
+- Updated dependencies [3d02a56a]
+- Updated dependencies [758ab638]
+- Updated dependencies [73819932]
+- Updated dependencies [7accfd2e]
+  - @hyperdx/common-utils@0.23.0
+  - @hyperdx/api@2.31.0
+
 ## 2.30.1
 
 ### Patch Changes

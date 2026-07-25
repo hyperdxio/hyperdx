@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/otel-collector",
   "description": "HyperDX OpenTelemetry Collector configuration and Docker image",
-  "version": "2.30.1",
+  "version": "2.31.0",
   "license": "MIT",
   "private": true
 }

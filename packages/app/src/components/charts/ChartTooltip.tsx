@@ -1,10 +1,41 @@
 import { memo } from 'react';
-import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
+import { ActionIcon, getDefaultZIndex, Group } from '@mantine/core';
+import {
+  IconCaretDownFilled,
+  IconCaretUpFilled,
+  IconX,
+} from '@tabler/icons-react';
 
 import type { NumberFormat } from '@/types';
+import { FormatTime } from '@/useFormatTime';
 import { formatNumber, truncateMiddle } from '@/utils';
+import { useZIndex } from '@/zIndex';
 
 import styles from '@styles/HDXLineChart.module.scss';
+
+/**
+ * z-index for a body-portaled chart tooltip: above any modal/drawer the chart
+ * is in (via ZIndexContext), but never below the default popover layer. Shared
+ * so hover and pinned tooltips stack the same way.
+ */
+export function useChartTooltipZIndex() {
+  const contextZIndex = useZIndex();
+  return Math.max(getDefaultZIndex('popover'), contextZIndex + 1);
+}
+
+/**
+ * Convert a chart-relative point (recharts' `activeCoordinate`) into
+ * `position: fixed` viewport coordinates using the container's bounding rect.
+ */
+export function toViewportPoint(
+  containerRect: DOMRect | undefined,
+  point: { x: number; y: number },
+): { x: number; y: number } {
+  return {
+    x: (containerRect?.left ?? 0) + point.x,
+    y: (containerRect?.top ?? 0) + point.y,
+  };
+}
 
 const percentFormatter = new Intl.NumberFormat('en-US', {
   style: 'percent',
@@ -108,17 +139,91 @@ export const ChartTooltipItem = memo(
   },
 );
 
+/**
+ * The tooltip header timestamp: the bucket time, plus the previous-period time
+ * in parentheses when comparing. `labelSeconds` is epoch seconds (number from
+ * the hover tooltip, string from the pinned one — both coerced).
+ */
+const ChartTooltipTimestamp = ({
+  labelSeconds,
+  previousPeriodOffsetSeconds,
+}: {
+  labelSeconds: number | string;
+  previousPeriodOffsetSeconds?: number;
+}) => {
+  const sec = Number(labelSeconds);
+  return (
+    <>
+      <FormatTime value={sec * 1000} />
+      {previousPeriodOffsetSeconds != null && (
+        <>
+          {' (vs '}
+          <FormatTime value={(sec - previousPeriodOffsetSeconds) * 1000} />
+          {')'}
+        </>
+      )}
+    </>
+  );
+};
+
+/**
+ * The tooltip header row: timestamp + close (X) button. Shared by hover and
+ * pinned so they can't drift. The X is always rendered (hidden when `onClose`
+ * is omitted) so both modes have the same height and layout.
+ */
+export const ChartTooltipHeader = ({
+  labelSeconds,
+  previousPeriodOffsetSeconds,
+  onClose,
+}: {
+  labelSeconds: number | string;
+  previousPeriodOffsetSeconds?: number;
+  /** Pinned only; when omitted the X is rendered but hidden. */
+  onClose?: () => void;
+}) => (
+  <Group gap={8} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
+    <span>
+      <ChartTooltipTimestamp
+        labelSeconds={labelSeconds}
+        previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+      />
+    </span>
+    <ActionIcon
+      variant="subtle"
+      size="xs"
+      color="gray"
+      aria-label="Close"
+      data-testid="chart-tooltip-close"
+      onClick={() => onClose?.()}
+      style={{
+        flexShrink: 0,
+        // Kept in the layout even when hidden (hover) so both modes match.
+        visibility: onClose != null ? 'visible' : 'hidden',
+        pointerEvents: onClose != null ? undefined : 'none',
+      }}
+    >
+      <IconX size={13} />
+    </ActionIcon>
+  </Group>
+);
+
 export const ChartTooltipContainer = ({
   header,
   children,
+  footer,
 }: {
   header?: React.ReactNode;
   children: React.ReactNode;
+  /** Bordered block below the content; the pinned tooltip's drill-down actions. */
+  footer?: React.ReactNode;
 }) => (
   <div className={styles.chartTooltip}>
     {header != null && (
       <div className={styles.chartTooltipHeader}>{header}</div>
     )}
     <div className={styles.chartTooltipContent}>{children}</div>
+    {footer != null && (
+      <div className={styles.chartTooltipFooter}>{footer}</div>
+    )}
   </div>
 );

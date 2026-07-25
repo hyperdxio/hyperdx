@@ -31,6 +31,7 @@ export default function EventViewer({
   savedSearches,
   onSavedSearchSelect,
   onOpenAlerts,
+  onOpenDashboards,
   initialQuery = '',
   follow = true,
 }: EventViewerProps) {
@@ -231,6 +232,7 @@ export default function EventViewer({
     findActiveIndex,
     onSavedSearchSelect,
     onOpenAlerts,
+    onOpenDashboards,
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,

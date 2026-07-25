@@ -10,6 +10,7 @@ import {
 import { Drawer, Grid, Text } from '@mantine/core';
 import { IconServer } from '@tabler/icons-react';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
@@ -86,134 +87,136 @@ export default function ServiceDashboardEndpointSidePanel({
       }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
-          <DrawerHeader
-            header={
-              <>
-                Details for {endpoint}
-                {service && (
-                  <Text component="span" c="gray" fz="xs">
-                    <IconServer size={14} className="ms-3 me-1" />
-                    {service}
-                  </Text>
-                )}
-              </>
-            }
-            onClose={onClose}
-          />
-          <DrawerBody>
-            <Grid grow={false} w="100%" maw="100%">
-              <Grid.Col span={6}>
-                <ChartBox style={{ height: 350 }}>
-                  {source && expressions && (
-                    <DBTimeChart
-                      title="Request Error Rate"
-                      sourceId={source.id}
-                      hiddenSeries={['total_count', 'error_count']}
-                      config={{
-                        source: source.id,
-                        ...pick(source, [
-                          'timestampValueExpression',
-                          'connection',
-                          'from',
-                        ]),
-                        ...pickSampleWeightExpressionProps(source),
-                        where: '',
-                        whereLanguage: 'sql',
-                        select: [
-                          // Separate the aggregations from the conversion to rate so that AggregatingMergeTree MVs can be used
-                          {
-                            valueExpression: '',
-                            aggFn: 'count',
-                            alias: 'error_count',
-                            aggCondition: expressions.isError,
-                            aggConditionLanguage: 'sql',
-                          },
-                          {
-                            valueExpression: '',
-                            aggFn: 'count',
-                            alias: 'total_count',
-                          },
-                          {
-                            valueExpression: `error_count / total_count`,
-                            alias: 'Error Rate %',
-                          },
-                        ],
-                        numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                        filters: endpointFilters,
-                        dateRange: searchedTimeRange,
-                      }}
-                      showDisplaySwitcher={false}
-                    />
+        <IsolatedChartSyncProvider>
+          <div className={styles.panel}>
+            <DrawerHeader
+              header={
+                <>
+                  Details for {endpoint}
+                  {service && (
+                    <Text component="span" c="gray" fz="xs">
+                      <IconServer size={14} className="ms-3 me-1" />
+                      {service}
+                    </Text>
                   )}
-                </ChartBox>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <ChartBox style={{ height: 350 }}>
-                  {source && expressions && (
-                    <DBTimeChart
-                      title="Request Throughput"
-                      sourceId={source.id}
-                      config={{
-                        source: source.id,
-                        ...pick(source, [
-                          'timestampValueExpression',
-                          'connection',
-                          'from',
-                        ]),
-                        ...pickSampleWeightExpressionProps(source),
-                        where: '',
-                        whereLanguage: 'sql',
-                        select: [
-                          {
-                            aggFn: 'count' as const,
-                            valueExpression: 'value',
-                            alias: 'Requests',
-                            aggCondition: '',
-                            aggConditionLanguage: 'sql',
+                </>
+              }
+              onClose={onClose}
+            />
+            <DrawerBody>
+              <Grid grow={false} w="100%" maw="100%">
+                <Grid.Col span={6}>
+                  <ChartBox style={{ height: 350 }}>
+                    {source && expressions && (
+                      <DBTimeChart
+                        title="Request Error Rate"
+                        sourceId={source.id}
+                        hiddenSeries={['total_count', 'error_count']}
+                        config={{
+                          source: source.id,
+                          ...pick(source, [
+                            'timestampValueExpression',
+                            'connection',
+                            'from',
+                          ]),
+                          ...pickSampleWeightExpressionProps(source),
+                          where: '',
+                          whereLanguage: 'sql',
+                          select: [
+                            // Separate the aggregations from the conversion to rate so that AggregatingMergeTree MVs can be used
+                            {
+                              valueExpression: '',
+                              aggFn: 'count',
+                              alias: 'error_count',
+                              aggCondition: expressions.isError,
+                              aggConditionLanguage: 'sql',
+                            },
+                            {
+                              valueExpression: '',
+                              aggFn: 'count',
+                              alias: 'total_count',
+                            },
+                            {
+                              valueExpression: `error_count / total_count`,
+                              alias: 'Error Rate %',
+                            },
+                          ],
+                          numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+                          filters: endpointFilters,
+                          dateRange: searchedTimeRange,
+                        }}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </ChartBox>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <ChartBox style={{ height: 350 }}>
+                    {source && expressions && (
+                      <DBTimeChart
+                        title="Request Throughput"
+                        sourceId={source.id}
+                        config={{
+                          source: source.id,
+                          ...pick(source, [
+                            'timestampValueExpression',
+                            'connection',
+                            'from',
+                          ]),
+                          ...pickSampleWeightExpressionProps(source),
+                          where: '',
+                          whereLanguage: 'sql',
+                          select: [
+                            {
+                              aggFn: 'count' as const,
+                              valueExpression: 'value',
+                              alias: 'Requests',
+                              aggCondition: '',
+                              aggConditionLanguage: 'sql',
+                            },
+                          ],
+                          displayType: DisplayType.Line,
+                          numberFormat: {
+                            ...INTEGER_NUMBER_FORMAT,
+                            unit: 'requests',
                           },
-                        ],
-                        displayType: DisplayType.Line,
-                        numberFormat: {
-                          ...INTEGER_NUMBER_FORMAT,
-                          unit: 'requests',
-                        },
-                        filters: endpointFilters,
-                        dateRange: searchedTimeRange,
-                      }}
-                    />
-                  )}
-                </ChartBox>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <ServiceDashboardEndpointPerformanceChart
-                  source={source}
-                  dateRange={searchedTimeRange}
-                  service={service}
-                  endpoint={endpoint}
-                />
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <EndpointLatencyChart
-                  source={source}
-                  dateRange={searchedTimeRange}
-                  extraFilters={endpointFilters}
-                />
-              </Grid.Col>
-              <Grid.Col span={12}>
-                {/* Ensure expressions exists to ensure that endpointFilters has set */}
-                {expressions && (
-                  <SlowestEventsTile
-                    title="Slowest 5% of Transactions"
+                          filters: endpointFilters,
+                          dateRange: searchedTimeRange,
+                        }}
+                      />
+                    )}
+                  </ChartBox>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <ServiceDashboardEndpointPerformanceChart
+                    source={source}
+                    dateRange={searchedTimeRange}
+                    service={service}
+                    endpoint={endpoint}
+                  />
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <EndpointLatencyChart
                     source={source}
                     dateRange={searchedTimeRange}
                     extraFilters={endpointFilters}
                   />
-                )}
-              </Grid.Col>
-            </Grid>
-          </DrawerBody>
-        </div>
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  {/* Ensure expressions exists to ensure that endpointFilters has set */}
+                  {expressions && (
+                    <SlowestEventsTile
+                      title="Slowest 5% of Transactions"
+                      source={source}
+                      dateRange={searchedTimeRange}
+                      extraFilters={endpointFilters}
+                    />
+                  )}
+                </Grid.Col>
+              </Grid>
+            </DrawerBody>
+          </div>
+        </IsolatedChartSyncProvider>
       </ZIndexContext.Provider>
     </Drawer>
   );
