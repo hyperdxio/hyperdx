@@ -13,10 +13,13 @@
     "dist/*"
   ],
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.92.0",
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/openai": "^3.0.47",
     "@clickhouse/client": "1.23.0-head.fae5998.1",
+    "ai": "^6.0.116",
     "commander": "^12.1.0",
-    "ms": "^2.1.3"
+    "ms": "^2.1.3",
+    "zod": "3.25"
   },
   "devDependencies": {
     "@dotenvx/dotenvx": "^1.51.1",

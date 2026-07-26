@@ -3,8 +3,8 @@ import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 /**
  * Metric kinds the query renderer can translate today. Mirrors the three
  * MetricsDataType members that `translateMetricChartConfig` in
- * common-utils branches over; `summary` and `"exponential histogram"`
- * are intentionally excluded because the renderer throws on them.
+ * common-utils branches over. `summary` is intentionally excluded because
+ * the renderer throws on it.
  *
  * Declared as plain string literals (not MetricsDataType enum members)
  * so `z.enum(...)` narrows correctly at the MCP SDK callback boundary —
@@ -19,7 +19,12 @@ import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
  * clickstack_list_metrics, clickstack_describe_metric) and by the
  * clickstack_timeseries / clickstack_table select-item schema.
  */
-export const QUERYABLE_METRIC_KINDS = ['gauge', 'sum', 'histogram'] as const;
+export const QUERYABLE_METRIC_KINDS = [
+  'gauge',
+  'sum',
+  'histogram',
+  'exponential histogram',
+] as const;
 
 export type QueryableMetricKind = (typeof QUERYABLE_METRIC_KINDS)[number];
 
@@ -30,15 +35,15 @@ const _assertKindsMatchEnum: readonly QueryableMetricKind[] = [
   MetricsDataType.Gauge,
   MetricsDataType.Sum,
   MetricsDataType.Histogram,
+  MetricsDataType.ExponentialHistogram,
 ];
 void _assertKindsMatchEnum;
 
 /**
  * Allowed kind keys on the `metricTables` map when serialising a metric
- * source into an MCP response. Includes the non-queryable kinds
- * (`summary`, `exponential histogram`) because the model schema declares
- * tables for them even though the query renderer cannot yet translate
- * them.
+ * source into an MCP response. Includes the non-queryable `summary` kind
+ * because the model schema declares its table even though the query renderer
+ * cannot translate it.
  */
 const ALLOWED_METRIC_TABLE_KINDS: readonly string[] =
   Object.values(MetricsDataType);
