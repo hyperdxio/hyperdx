@@ -577,11 +577,12 @@ export class ChartEditorComponent {
 
   /**
    * Toggle the "Display Group By Columns on Left" checkbox in the open
-   * Display Settings drawer to the given state.
+   * Display Settings panel/drawer to the given state.
    */
   async setGroupByColumnsOnLeft(checked: boolean) {
-    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
-    const checkbox = drawer.getByLabel('Display Group By Columns on Left');
+    const checkbox = this.displaySettingsContainer.getByLabel(
+      'Display Group By Columns on Left',
+    );
     const isChecked = await checkbox.isChecked();
     if (isChecked !== checked) {
       await checkbox.click();
