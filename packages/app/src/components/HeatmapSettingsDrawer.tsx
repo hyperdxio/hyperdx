@@ -54,10 +54,16 @@ export default function HeatmapSettingsDrawer({
     defaultValues,
   });
 
+  // Reset on the closed→open transition (and whenever the applied config
+  // changes while open) so every dismiss path — Apply, Cancel, Esc, or a tab
+  // change that closes the panel via the bare disclosure — behaves like cancel:
+  // abandoned edits never linger in the sub-form to be written by the next Apply.
   useEffect(() => {
-    form.reset(defaultValues);
+    if (opened) {
+      form.reset(defaultValues);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- form object is stable from useForm
-  }, [defaultValues]);
+  }, [opened, defaultValues]);
 
   const handleClose = useCallback(() => {
     form.reset(defaultValues);

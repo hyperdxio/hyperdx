@@ -358,14 +358,27 @@ export default function EditTimeChartForm({
   // than closing the whole tile drawer. Intercept on the capture phase and stop
   // propagation so the drawer's own (bubble-phase) Esc handler never fires —
   // this is what fixes a single Esc press closing both.
+  //
+  // Bail out when Esc originated inside a nested overlay (popover dropdown, code
+  // editor, select listbox, dialog) or has already been handled, so those
+  // widgets get to consume their own Esc (e.g. closing an autocomplete) instead
+  // of us swallowing the key before they ever see it.
   useEffect(() => {
     if (!showSettingsPanel) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        closeDisplaySettings();
-        closeHeatmapSettings();
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          '.mantine-Popover-dropdown, .cm-editor, [role="dialog"], [role="listbox"]',
+        )
+      ) {
+        return;
       }
+      e.stopPropagation();
+      closeDisplaySettings();
+      closeHeatmapSettings();
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);

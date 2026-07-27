@@ -141,9 +141,15 @@ export default function ChartDisplaySettingsDrawer({
     defaultValues: appliedDefaults,
   });
 
+  // Reset on the closed→open transition (and whenever the applied config
+  // changes while open) so every dismiss path — Apply, Cancel, Esc, or a tab
+  // change that closes the panel via the bare disclosure — behaves like cancel:
+  // abandoned edits never linger in the sub-form to be written by the next Apply.
   useEffect(() => {
-    reset(appliedDefaults);
-  }, [appliedDefaults, reset]);
+    if (opened) {
+      reset(appliedDefaults);
+    }
+  }, [opened, appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
