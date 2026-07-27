@@ -1,17 +1,24 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
-import { Button, Group, Paper, Stack, Text } from '@mantine/core';
+import { Button, CloseButton, Group, Paper, Stack, Text } from '@mantine/core';
 
+import type { PositionedExemplar } from '@/components/Exemplars/exemplarPoints';
 import type { ExemplarTraceMeta } from '@/hooks/useExemplars';
 
 type ExemplarHoverCardProps = {
   /** The hovered exemplar plus its on-screen position; null hides the card. */
-  hovered: { exemplar: Exemplar; x: number; y: number } | null;
+  hovered: PositionedExemplar | null;
   /** Trace metadata resolved from the configured exemplar trace source. */
   meta?: ExemplarTraceMeta;
   isLoading: boolean;
   /** Whether an exemplar trace source is configured for this chart. */
   traceSourceConfigured: boolean;
+  /**
+   * Clicking a marker pins the card open: it stops following the cursor and
+   * only closes via `onClose` (or a click elsewhere on the chart).
+   */
+  pinned?: boolean;
+  onClose?: () => void;
   onInspect: (exemplar: Exemplar) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -26,6 +33,8 @@ export function ExemplarHoverCard({
   meta,
   isLoading,
   traceSourceConfigured,
+  pinned = false,
+  onClose,
   onInspect,
   onMouseEnter,
   onMouseLeave,
@@ -75,6 +84,9 @@ export function ExemplarHoverCard({
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      // A pinned card is a click target of its own; the chart's onClick would
+      // otherwise treat clicks inside it as clicks on the plot area.
+      onClick={e => e.stopPropagation()}
     >
       <Paper shadow="md" p="xs" withBorder maw={280}>
         <Stack gap={6}>
@@ -82,9 +94,14 @@ export function ExemplarHoverCard({
             <Text size="xs" c="dimmed">
               Exemplar
             </Text>
-            <Text size="xs" ff="monospace" truncate>
-              {exemplar.traceId.slice(0, 16)}…
-            </Text>
+            <Group gap={4} wrap="nowrap">
+              <Text size="xs" ff="monospace" truncate>
+                {exemplar.traceId.slice(0, 16)}…
+              </Text>
+              {pinned && (
+                <CloseButton size="xs" aria-label="Close" onClick={onClose} />
+              )}
+            </Group>
           </Group>
           {!traceSourceConfigured ? (
             <Text size="xs" c="dimmed">

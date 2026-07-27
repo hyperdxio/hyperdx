@@ -4,6 +4,7 @@ import { EXEMPLAR_QUERY_LIMIT } from '@hyperdx/common-utils/dist/core/renderChar
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
+  Exemplar,
   MetricsDataType,
   SourceKind,
   TSource,
@@ -14,6 +15,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { prometheusApi } from '@/api';
 import { useClickhouseClient } from '@/clickhouse';
 import {
+  capExemplarsPerBucket,
   normalizePrometheusExemplars,
   useExemplars,
 } from '@/hooks/useExemplars';
@@ -103,6 +105,78 @@ describe('normalizePrometheusExemplars', () => {
     expect(ex.groupKey).toBeUndefined();
   });
 
+  it('merges the per-`le` entries a histogram query returns', () => {
+    // /query_exemplars reports one entry per underlying series, so a
+    // histogram_quantile chart — a single plotted line — comes back split
+    // across its bucket series. Those are the same series to the overlay.
+    const histogramBuckets = [
+      {
+        seriesLabels: { __name__: 'http_latency_bucket', le: '0.1' },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '0.09', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: { __name__: 'http_latency_bucket', le: '0.5' },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '0.4', timestamp: 1700000001 },
+        ],
+      },
+    ];
+    const result = normalizePrometheusExemplars(
+      histogramBuckets,
+      'histogram_quantile(0.99, rate(http_latency_bucket[5m]))',
+    );
+    expect(result.map(e => e.traceId)).toEqual(['a', 'b']);
+    expect(result.every(e => e.groupKey === undefined)).toBe(true);
+  });
+
+  it('keeps `le` significant when the expression does not collapse buckets', () => {
+    // `rate(x_bucket[5m])` genuinely draws one line per bucket, so merging the
+    // entries would plot markers that belong to no drawn line.
+    const perBucketLines = [
+      {
+        seriesLabels: { __name__: 'http_latency_bucket', le: '0.1' },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '0.09', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: { __name__: 'http_latency_bucket', le: '0.5' },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '0.4', timestamp: 1700000001 },
+        ],
+      },
+    ];
+    expect(
+      normalizePrometheusExemplars(
+        perBucketLines,
+        'rate(http_latency_bucket[5m])',
+      ),
+    ).toEqual([]);
+  });
+
+  it('drops the overlay when entries span different metrics', () => {
+    // Both entries carry no labels beyond __name__, so a label-only identity
+    // would collapse them to one series and plot markers from an unrelated
+    // metric against the drawn line.
+    const twoMetrics = [
+      {
+        seriesLabels: { __name__: 'foo' },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '1', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: { __name__: 'bar' },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '2', timestamp: 1700000001 },
+        ],
+      },
+    ];
+    expect(normalizePrometheusExemplars(twoMetrics)).toEqual([]);
+  });
+
   it('drops the overlay entirely when the query returns multiple series', () => {
     // Exemplars are single-series only; multi-series markers can't be attributed
     // or scaled meaningfully, so the whole set is dropped rather than rendered.
@@ -132,6 +206,50 @@ describe('normalizePrometheusExemplars', () => {
         },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe('capExemplarsPerBucket', () => {
+  const start = new Date('2026-01-01T00:00:00Z');
+  const end = new Date('2026-01-01T01:00:00Z');
+  const at = (offsetMs: number, value: number): Exemplar => ({
+    timestamp: start.getTime() + offsetMs,
+    value,
+    traceId: `t-${offsetMs}-${value}`,
+  });
+
+  it('returns the set untouched when it is already within the limit', () => {
+    const few = [at(0, 1), at(1000, 2)];
+    expect(capExemplarsPerBucket(few, start, end)).toBe(few);
+  });
+
+  it('keeps the peak of each bucket rather than a value-blind stride', () => {
+    // One slow trace early on, buried among many fast ones. A uniform index
+    // stride would drop it with ~98% probability; it is the whole reason the
+    // overlay exists.
+    const spanMs = end.getTime() - start.getTime();
+    const many = Array.from({ length: EXEMPLAR_QUERY_LIMIT * 5 }, (_, i) =>
+      at((i * spanMs) / (EXEMPLAR_QUERY_LIMIT * 5), i === 7 ? 9999 : 1),
+    );
+    const capped = capExemplarsPerBucket(many, start, end);
+    expect(capped.length).toBeLessThanOrEqual(EXEMPLAR_QUERY_LIMIT);
+    expect(capped.some(ex => ex.value === 9999)).toBe(true);
+    // Still chronological and still spanning the range.
+    expect(capped.map(ex => ex.timestamp)).toEqual(
+      [...capped.map(ex => ex.timestamp)].sort((a, b) => a - b),
+    );
+    expect(capped[capped.length - 1].timestamp).toBeGreaterThan(
+      start.getTime() + spanMs * 0.75,
+    );
+  });
+
+  it('falls back to the highest values when the range is degenerate', () => {
+    const many = Array.from({ length: EXEMPLAR_QUERY_LIMIT + 10 }, (_, i) =>
+      at(0, i),
+    );
+    const capped = capExemplarsPerBucket(many, start, start);
+    expect(capped).toHaveLength(EXEMPLAR_QUERY_LIMIT);
+    expect(Math.min(...capped.map(ex => ex.value))).toBe(10);
   });
 });
 
@@ -307,7 +425,7 @@ describe('useExemplars', () => {
   });
 
   describe('promql source', () => {
-    it('caps the result at EXEMPLAR_QUERY_LIMIT, keeping the highest values', async () => {
+    it('caps the result at EXEMPLAR_QUERY_LIMIT, thinning evenly across time', async () => {
       const exemplars = Array.from(
         { length: EXEMPLAR_QUERY_LIMIT + 50 },
         (_, i) => ({
@@ -329,9 +447,25 @@ describe('useExemplars', () => {
       await waitFor(() =>
         expect(result.current.exemplars).toHaveLength(EXEMPLAR_QUERY_LIMIT),
       );
-      // Highest value first, and the low-value tail is what got dropped.
-      expect(result.current.exemplars[0].value).toBe(EXEMPLAR_QUERY_LIMIT + 49);
-      expect(result.current.exemplars.every(ex => ex.value >= 50)).toBe(true);
+      // Chronological and spanning the range — a value-ranked cap over the
+      // whole set would keep only the slowest traces and leave most of the
+      // range bare — while still keeping the peak within each bucket, which a
+      // uniform index stride would discard.
+      const timestamps = result.current.exemplars.map(ex => ex.timestamp);
+      expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
+      // Markers survive at both ends of the response, so neither the start nor
+      // the tail of the range is left bare.
+      const start = 1700000000 * 1000;
+      const inputSpan = (EXEMPLAR_QUERY_LIMIT + 49) * 1000;
+      expect(timestamps[0]).toBeLessThan(start + inputSpan * 0.25);
+      expect(timestamps[timestamps.length - 1]).toBeGreaterThan(
+        start + inputSpan * 0.75,
+      );
+      // The single slowest exemplar survives the cap.
+      const slowest = EXEMPLAR_QUERY_LIMIT + 49;
+      expect(result.current.exemplars.some(ex => ex.value === slowest)).toBe(
+        true,
+      );
       expect(mockQuery).not.toHaveBeenCalled();
     });
 

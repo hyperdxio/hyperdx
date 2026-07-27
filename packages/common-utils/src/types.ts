@@ -1709,7 +1709,10 @@ export const TeamClickHouseSettingsUpdateSchema = z.object({
   metadataMaxRowsToRead: z.number().nullish(),
   parallelizeWhenPossible: z.boolean().nullish(),
   filterKeysFetchLimit: z.number().nullish(),
-  maxExemplars: z.number().nullish(),
+  // Bounded here, not just in the settings form: the form's min/max are
+  // client-side only, and a fractional or negative value reaches the chart's
+  // marker-budget arithmetic directly.
+  maxExemplars: z.number().int().min(0).max(1000).nullish(),
 });
 export type TeamClickHouseSettingsUpdate = z.infer<
   typeof TeamClickHouseSettingsUpdateSchema

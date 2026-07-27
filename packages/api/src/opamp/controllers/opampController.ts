@@ -106,7 +106,7 @@ type CollectorConfig = {
       }>;
     };
     span_metrics?: {
-      histogram: { unit: string; explicit: { buckets: string[] } };
+      histogram: { unit: string; exponential: { max_size: number } };
       dimensions: Array<{ name: string }>;
       exemplars: { enabled: boolean };
       metrics_flush_interval: string;
@@ -373,22 +373,13 @@ export const buildOtelCollectorConfig = (
       otelCollectorConfig.connectors.span_metrics = {
         histogram: {
           unit: 'ms',
-          explicit: {
-            buckets: [
-              '2ms',
-              '5ms',
-              '10ms',
-              '25ms',
-              '50ms',
-              '100ms',
-              '250ms',
-              '500ms',
-              '1s',
-              '2.5s',
-              '5s',
-              '10s',
-            ],
-          },
+          // Exponential (OTLP) / native (Prometheus) buckets rather than a fixed
+          // ladder. Explicit bounds put everything slow into one wide top bucket
+          // — with a 5s–10s bucket, a p99 interpolates towards 10s while the
+          // slowest real request was half that, and no exemplar can ever sit on
+          // the line. max_size is the connector's default; scale adapts to the
+          // observed range, giving sub-percent quantile error at any latency.
+          exponential: { max_size: 160 },
         },
         dimensions: [
           { name: 'http.route' },

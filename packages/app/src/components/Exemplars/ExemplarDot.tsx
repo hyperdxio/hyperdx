@@ -12,13 +12,14 @@ type ExemplarDotProps = {
   exemplar: Exemplar;
   onHoverStart?: (exemplar: Exemplar, cx: number, cy: number) => void;
   onHoverEnd?: () => void;
+  onSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
 };
 
 /**
  * Diamond marker for an exemplar, drawn via <ReferenceDot shape={...} />.
  * Recharts injects cx/cy. Hovering opens a floating menu (handled by the parent
- * via onHoverStart/onHoverEnd) to inspect the linked trace — the marker itself
- * is not a click target. A larger transparent hit circle eases hovering.
+ * via onHoverStart/onHoverEnd) to inspect the linked trace; clicking pins that
+ * menu open via onSelect. A larger transparent hit circle eases hovering.
  */
 export function ExemplarDot({
   cx,
@@ -26,6 +27,7 @@ export function ExemplarDot({
   exemplar,
   onHoverStart,
   onHoverEnd,
+  onSelect,
 }: ExemplarDotProps) {
   if (typeof cx !== 'number' || typeof cy !== 'number') {
     return null;
@@ -36,6 +38,13 @@ export function ExemplarDot({
       style={{ cursor: 'pointer' }}
       onMouseEnter={() => onHoverStart?.(exemplar, cx, cy)}
       onMouseLeave={() => onHoverEnd?.()}
+      // The chart's own onClick pins a drill-down tooltip over the whole plot
+      // area; without stopping here, clicking a marker would open that instead
+      // of the exemplar's menu.
+      onClick={e => {
+        e.stopPropagation();
+        onSelect?.(exemplar, cx, cy);
+      }}
     >
       <path
         d={`M ${cx} ${cy - s} L ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} Z`}

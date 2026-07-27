@@ -41,9 +41,9 @@ services:
       OTEL_SUPERVISOR_LOGS: 'true'
       HYPERDX_OTEL_EXPORTER_TABLES_TTL: '24h'
       ENABLE_PROMQL: 'true'
-      # Remote-write the span-derived metrics (with exemplars) to the dev
-      # Prometheus so the native query_exemplars path is testable with real data.
-      SPAN_METRICS_PROM_RW_ENDPOINT: 'http://prometheus:9090/api/v1/write'
+      # Note: SPAN_METRICS_PROM_RW_ENDPOINT belongs to the API, not here — the
+      # API resolves it and inlines it into the generated collector config. It
+      # lives in packages/api/.env.development.
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
@@ -166,7 +166,9 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--enable-feature=exemplar-storage'
+      # native-histograms: the collector remote-writes the span-derived metrics
+      # as native histograms; without the flag Prometheus drops those samples.
+      - '--enable-feature=exemplar-storage,native-histograms'
       - '--web.enable-remote-write-receiver'
       - '--web.enable-lifecycle'
     ports:

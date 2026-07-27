@@ -41,7 +41,10 @@ import {
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
-import { ExemplarHoverCard } from '@/components/Exemplars';
+import {
+  ExemplarHoverCard,
+  type PositionedExemplar,
+} from '@/components/Exemplars';
 import { DEFAULT_MAX_EXEMPLARS } from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -451,12 +454,14 @@ function DBTimeChartComponent({
   });
 
   // Hover card state. A short close delay lets the cursor travel from the SVG
-  // marker into the HTML card without it closing.
-  const [hoveredExemplar, setHoveredExemplar] = useState<{
-    exemplar: Exemplar;
-    x: number;
-    y: number;
-  } | null>(null);
+  // marker into the HTML card without it closing. Clicking a marker pins the
+  // same card open (`pinnedExemplar`), which then outranks hover until it's
+  // dismissed — via its close button, a click elsewhere on the chart, or
+  // another chart pinning something of its own.
+  const [hoveredExemplar, setHoveredExemplar] =
+    useState<PositionedExemplar | null>(null);
+  const [pinnedExemplar, setPinnedExemplar] =
+    useState<PositionedExemplar | null>(null);
   const exemplarCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -489,11 +494,29 @@ function DBTimeChartComponent({
   // cleanup against the raw `exemplars` list is needed (that list is pre-thinning
   // and would miss the re-thinning case anyway).
 
+  // A pin outranks hover, so the card doesn't swap contents under the cursor
+  // while the user is reading (or clicking) it.
+  const activeExemplar = pinnedExemplar ?? hoveredExemplar;
+
+  const unpinExemplarCard = useCallback(() => setPinnedExemplar(null), []);
+  // Key of the pinned marker, so the chart can close the card when a refetch or
+  // re-thinning drops that marker from the rendered set.
+  const pinnedExemplarKey = pinnedExemplar
+    ? `exemplar-${pinnedExemplar.exemplar.traceId}-${pinnedExemplar.exemplar.timestamp}`
+    : null;
+
+  // Escape closes the pinned card, matching the rest of the app's overlays.
+  useEffect(() => {
+    if (!pinnedExemplar) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPinnedExemplar(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [pinnedExemplar]);
+
   const { data: hoveredTraceMeta, isLoading: isHoveredTraceMetaLoading } =
-    useExemplarTraceMeta(
-      hoveredExemplar?.exemplar.traceId,
-      exemplarTraceSource,
-    );
+    useExemplarTraceMeta(activeExemplar?.exemplar.traceId, exemplarTraceSource);
 
   const navigateToExemplarTrace = useCallback(
     (exemplar: Exemplar) => {
@@ -604,14 +627,37 @@ function DBTimeChartComponent({
     ActiveClickPayload | undefined
   >(undefined);
 
-  const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
+  const dismissPinned = useCallback(() => {
+    setActiveClickPayload(undefined);
+    setPinnedExemplar(null);
+  }, []);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
+
+  // Clicking an exemplar marker pins its card. The marker stops the click from
+  // reaching the chart, so this never races the drill-down tooltip — but the
+  // two are still mutually exclusive, here and in setPinnedPayload below.
+  const pinExemplarCard = useCallback(
+    (exemplar: Exemplar, x: number, y: number) => {
+      if (exemplarCloseTimerRef.current) {
+        clearTimeout(exemplarCloseTimerRef.current);
+      }
+      notifyTooltipPinned();
+      setActiveClickPayload(undefined);
+      setHoveredExemplar(null);
+      setPinnedExemplar({ exemplar, x, y });
+    },
+    [notifyTooltipPinned],
+  );
 
   // Pin the tooltip on click. Not gated on `source`: source-less charts still
   // show values/percent-change, and the drill-down actions hide themselves when
   // there's no source. `disableDrillDown` stays an explicit opt-out.
   const setPinnedPayload = useCallback(
     (payload: ActiveClickPayload | undefined) => {
+      // Any click that reaches the plot area dismisses a pinned exemplar card —
+      // before the drill-down opt-out, so the card still closes on charts that
+      // have drill-down disabled.
+      setPinnedExemplar(null);
       if (disableDrillDown) {
         return;
       }
@@ -885,10 +931,12 @@ function DBTimeChartComponent({
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
           />
           <ExemplarHoverCard
-            hovered={hoveredExemplar}
+            hovered={activeExemplar}
             meta={hoveredTraceMeta ?? undefined}
             isLoading={isHoveredTraceMetaLoading}
             traceSourceConfigured={!!exemplarTraceSource}
+            pinned={pinnedExemplar != null}
+            onClose={unpinExemplarCard}
             onInspect={navigateToExemplarTrace}
             onMouseEnter={() => {
               if (exemplarCloseTimerRef.current)
@@ -923,6 +971,9 @@ function DBTimeChartComponent({
             maxExemplars={me?.team?.maxExemplars ?? DEFAULT_MAX_EXEMPLARS}
             onExemplarHover={openExemplarCard}
             onExemplarHoverEnd={scheduleCloseExemplarCard}
+            onExemplarSelect={pinExemplarCard}
+            pinnedExemplarKey={pinnedExemplarKey}
+            onExemplarPinEnd={unpinExemplarCard}
           />
         </>
       )}

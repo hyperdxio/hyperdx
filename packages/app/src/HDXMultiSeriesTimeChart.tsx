@@ -653,6 +653,9 @@ export const MemoChart = memo(function MemoChart({
   maxExemplars = 12,
   onExemplarHover,
   onExemplarHoverEnd,
+  onExemplarSelect,
+  pinnedExemplarKey = null,
+  onExemplarPinEnd,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -694,6 +697,16 @@ export const MemoChart = memo(function MemoChart({
   onExemplarHover?: (exemplar: Exemplar, cx: number, cy: number) => void;
   /** Invoked when the cursor leaves an exemplar marker. */
   onExemplarHoverEnd?: () => void;
+  /** Invoked when an exemplar marker is clicked, with its pixel coords. */
+  onExemplarSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
+  /**
+   * Key of the exemplar whose card is pinned open, or null. A key rather than a
+   * boolean so the chart can tell when that marker stops being rendered — see
+   * the reset effect below. A pin also suppresses the series tooltip.
+   */
+  pinnedExemplarKey?: string | null;
+  /** Invoked when the pinned marker is no longer in the rendered set. */
+  onExemplarPinEnd?: () => void;
 }) {
   const rawId = useId();
   const id = rawId.replace(/:/g, '');
@@ -1021,6 +1034,22 @@ export const MemoChart = memo(function MemoChart({
   const suppressNextClickRef = useRef(false);
   const prevDateRangeRef = useRef<[number, number] | null>(null);
 
+  // A brush-to-zoom ends in a synthetic click. When that click lands on a
+  // marker's hit circle, ExemplarDot stops propagation and the chart's own
+  // onClick — the only other consumer of this flag — never runs, so the flag
+  // stays set and silently swallows the *next* real click. Consume it here and
+  // ignore the click: it belongs to the drag, not to the marker.
+  const handleExemplarSelect = useCallback(
+    (exemplar: Exemplar, cx: number, cy: number) => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        return;
+      }
+      onExemplarSelect?.(exemplar, cx, cy);
+    },
+    [onExemplarSelect],
+  );
+
   // Clear the reset-zoom affordance whenever the time range changes for a
   // reason other than our own brush-zoom (e.g. the time picker or live tail),
   // so the button never restores a stale range. Compared by value because
@@ -1067,19 +1096,13 @@ export const MemoChart = memo(function MemoChart({
 
   // Place each exemplar at its own value (the trace/span's actual measurement),
   // never remapped onto the series line — the marker's height must match what
-  // the linked trace reports. Thinned to keep ~maxExemplars markers across the
-  // visible range: the highest-value (most notable, e.g. slowest) trace per
-  // window. The window is coarser than the chart granularity so the count stays
-  // readable even when every fine-grained bucket has an exemplar.
-  // maxExemplars <= 0 means "unlimited" — show every exemplar (deduped).
+  // the linked trace reports. Thinned to at most `maxExemplars` markers, spread
+  // evenly across the range and bucketed at the chart's own granularity so each
+  // marker sits in the bucket of the point it explains — see
+  // computeExemplarPoints. maxExemplars <= 0 means "unlimited" (deduped only).
   const exemplarPoints = useMemo(
-    () =>
-      computeExemplarPoints(exemplars, {
-        maxExemplars,
-        granularity,
-        dateRange,
-      }),
-    [exemplars, maxExemplars, granularity, dateRange],
+    () => computeExemplarPoints(exemplars, { maxExemplars, granularity }),
+    [exemplars, maxExemplars, granularity],
   );
 
   // If a refetch/re-thinning drops the hovered marker from the rendered set, its
@@ -1095,6 +1118,19 @@ export const MemoChart = memo(function MemoChart({
       onExemplarHoverEnd?.();
     }
   }, [exemplarPoints, hoveredExemplarKey, onExemplarHoverEnd]);
+
+  // Same guard for the pinned marker. Without it a refetch, live tail, or
+  // brush-zoom leaves the card floating at pre-refetch coordinates over a marker
+  // that no longer exists — and because a pin suppresses the series tooltip
+  // chart-wide, hover stays dead until the user finds the close button.
+  useEffect(() => {
+    if (
+      pinnedExemplarKey != null &&
+      !exemplarPoints.some(p => p.key === pinnedExemplarKey)
+    ) {
+      onExemplarPinEnd?.();
+    }
+  }, [exemplarPoints, pinnedExemplarKey, onExemplarPinEnd]);
 
   const xAxisDomain: AxisDomain = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
@@ -1376,21 +1412,23 @@ export const MemoChart = memo(function MemoChart({
               Hidden once a point is clicked, where the pinned tooltip takes over.
               Portaled to body so HDXLineChartTooltip can self-position (see its
               docblock) and escape the chart's bounds near an edge. */}
-          {isClickActive == null && !isExemplarHovered && (
-            <Tooltip
-              content={
-                <HDXLineChartTooltip
-                  numberFormat={fallbackNumberFormat}
-                  numberFormatByKey={tooltipNumberFormatsByKey}
-                  lineDataMap={lineDataMap}
-                  previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-                  activePointYByKeyRef={activePointYByKeyRef}
-                  containerRef={containerRef}
-                />
-              }
-              portal={typeof document !== 'undefined' ? document.body : null}
-            />
-          )}
+          {isClickActive == null &&
+            !isExemplarHovered &&
+            pinnedExemplarKey == null && (
+              <Tooltip
+                content={
+                  <HDXLineChartTooltip
+                    numberFormat={fallbackNumberFormat}
+                    numberFormatByKey={tooltipNumberFormatsByKey}
+                    lineDataMap={lineDataMap}
+                    previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+                    activePointYByKeyRef={activePointYByKeyRef}
+                    containerRef={containerRef}
+                  />
+                }
+                portal={typeof document !== 'undefined' ? document.body : null}
+              />
+            )}
           {referenceLines}
           {annotationElements}
           {exemplarPoints.map(p => (
@@ -1404,6 +1442,7 @@ export const MemoChart = memo(function MemoChart({
                   exemplar={p.exemplar}
                   onHoverStart={handleExemplarHoverStart}
                   onHoverEnd={handleExemplarHoverEnd}
+                  onSelect={handleExemplarSelect}
                 />
               }
             />

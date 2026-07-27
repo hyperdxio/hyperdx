@@ -3,6 +3,7 @@ import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
   EXEMPLAR_QUERY_LIMIT,
+  exemplarScanBucketing,
   isExemplarEligible,
   renderChartConfig,
   renderMetricExemplarsChartConfig,
@@ -3566,6 +3567,73 @@ describe('isExemplarEligible', () => {
   });
 });
 
+describe('exemplarScanBucketing', () => {
+  const hours = (n: number): [Date, Date] => [
+    new Date('2026-01-01T00:00:00Z'),
+    new Date(new Date('2026-01-01T00:00:00Z').getTime() + n * 3600_000),
+  ];
+
+  it('keeps the chart granularity when it fits the row budget', () => {
+    // 1 hour at 1 minute = 60 buckets, comfortably inside the 200-row budget.
+    expect(exemplarScanBucketing('1 minute', hours(1))).toEqual({
+      interval: '1 minute',
+      perBucket: 3,
+    });
+  });
+
+  it('widens the bucket when the granularity would outrun the budget', () => {
+    const { interval, perBucket } = exemplarScanBucketing(
+      '1 minute',
+      hours(48),
+    );
+    expect(interval).toBe('869 second');
+    expect(perBucket).toBe(1);
+  });
+
+  it('leaves room for the extra epoch-aligned bucket', () => {
+    // toStartOfInterval aligns to the epoch, not the range start, so an
+    // unaligned range spans one more bucket than ceil(range / bucket). Without
+    // headroom the trailing LIMIT clips the newest bucket.
+    const [start, end] = hours(48);
+    const { interval, perBucket } = exemplarScanBucketing('1 minute', [
+      start,
+      end,
+    ]);
+    const bucketSeconds = Number(interval.split(' ')[0]);
+    const rangeSeconds = (end.getTime() - start.getTime()) / 1000;
+    const worstCaseBuckets = Math.ceil(rangeSeconds / bucketSeconds) + 1;
+    expect(worstCaseBuckets * perBucket).toBeLessThanOrEqual(
+      EXEMPLAR_QUERY_LIMIT,
+    );
+  });
+
+  it('falls back safely for degenerate inputs', () => {
+    expect(exemplarScanBucketing('1 minute', undefined)).toEqual({
+      interval: '1 minute',
+      perBucket: 1,
+    });
+    const [start] = hours(1);
+    expect(exemplarScanBucketing('1 minute', [start, start])).toEqual({
+      interval: '1 minute',
+      perBucket: 1,
+    });
+    expect(exemplarScanBucketing('1 minute', [start, new Date(NaN)])).toEqual({
+      interval: '1 minute',
+      perBucket: 1,
+    });
+  });
+
+  it('rejects a granularity that is not a valid SQL interval', () => {
+    // The interval is spliced into the query as raw SQL, and granularity
+    // reaches this function from a URL param.
+    const { interval } = exemplarScanBucketing(
+      '1 minute) UNION ALL SELECT' as never,
+      hours(1),
+    );
+    expect(interval).toBe('1 minute');
+  });
+});
+
 describe('renderMetricExemplarsChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
@@ -3639,6 +3707,44 @@ describe('renderMetricExemplarsChartConfig', () => {
     // Drops empty trace ids and caps the result set
     expect(sql).toContain('notEmpty(ex_TraceId)');
     expect(sql).toContain(`LIMIT ${EXEMPLAR_QUERY_LIMIT}`);
+  });
+
+  it('spends the row budget per time bucket, not on the slowest traces overall', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      // 1 hour at 1-minute granularity: 60 buckets, so the budget stretches to
+      // several rows each.
+      {
+        ...histogramConfig,
+        dateRange: [
+          new Date('2025-02-12T00:00:00Z'),
+          new Date('2025-02-12T01:00:00Z'),
+        ],
+      },
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain(
+      'toStartOfInterval(toDateTime(ex_TimeUnix), INTERVAL 1 minute)',
+    );
+    // Ordering by bucket first is what makes the trailing LIMIT a backstop
+    // rather than a value-ranked cut of the whole range.
+    expect(sql).toContain('ORDER BY bucket ASC, value DESC');
+    expect(sql).toContain('LIMIT 3 BY bucket');
+  });
+
+  it('widens the scan bucket when the granularity would outrun the row budget', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      // 2 days at 1-minute granularity is 2880 buckets — far more than the
+      // budget covers. Widening keeps markers spread over the whole range
+      // instead of running out partway along the x-axis.
+      histogramConfig,
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain(
+      'toStartOfInterval(toDateTime(ex_TimeUnix), INTERVAL 869 second)',
+    );
+    expect(sql).toContain('LIMIT 1 BY bucket');
   });
 
   it("scopes exemplars to the series' aggCondition so markers match the plotted line", async () => {
@@ -3741,6 +3847,33 @@ describe('renderMetricExemplarsChartConfig', () => {
     expect(
       await renderMetricExemplarsChartConfig(gaugeConfig, mockMetadata),
     ).toBeNull();
+  });
+
+  it('scans the exponential histogram table for a native-histogram metric', async () => {
+    // Exponential (OTLP) / native (Prometheus) histograms carry exemplars in
+    // the same `Exemplars.*` columns, on their own metric-type table.
+    const exponentialConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'quantile',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          level: 0.95,
+          metricName: 'traces.span.metrics.duration',
+          metricType: MetricsDataType.ExponentialHistogram,
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      exponentialConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain('otel_metrics_exponential_histogram');
+    expect(sql).toContain('`Exemplars.TraceId` AS ex_TraceId');
   });
 
   it('returns null for a non-metric config', async () => {

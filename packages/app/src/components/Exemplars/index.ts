@@ -4,4 +4,5 @@ export {
   clampExemplarY,
   computeExemplarPoints,
   computeExemplarYBounds,
+  type PositionedExemplar,
 } from './exemplarPoints';

@@ -7,6 +7,9 @@ const configState = {
   INGESTION_API_KEY: '' as string,
   IS_PROMQL_ENABLED: false,
   ENABLE_DATADOG_RECEIVER: false,
+  IS_SPAN_METRICS_ENABLED: false,
+  IS_SPAN_METRICS_PROM_RW_ENABLED: false,
+  SPAN_METRICS_PROM_RW_ENDPOINT: undefined as string | undefined,
 };
 
 jest.mock('@/config', () => ({
@@ -28,6 +31,15 @@ jest.mock('@/config', () => ({
   get ENABLE_DATADOG_RECEIVER() {
     return configState.ENABLE_DATADOG_RECEIVER;
   },
+  get IS_SPAN_METRICS_ENABLED() {
+    return configState.IS_SPAN_METRICS_ENABLED;
+  },
+  get IS_SPAN_METRICS_PROM_RW_ENABLED() {
+    return configState.IS_SPAN_METRICS_PROM_RW_ENABLED;
+  },
+  get SPAN_METRICS_PROM_RW_ENDPOINT() {
+    return configState.SPAN_METRICS_PROM_RW_ENDPOINT;
+  },
 }));
 
 import { buildOtelCollectorConfig } from '@/opamp/controllers/opampController';
@@ -39,6 +51,9 @@ const resetConfig = () => {
   configState.INGESTION_API_KEY = '';
   configState.IS_PROMQL_ENABLED = false;
   configState.ENABLE_DATADOG_RECEIVER = false;
+  configState.IS_SPAN_METRICS_ENABLED = false;
+  configState.IS_SPAN_METRICS_PROM_RW_ENABLED = false;
+  configState.SPAN_METRICS_PROM_RW_ENDPOINT = undefined;
 };
 
 describe('opampController', () => {
@@ -121,6 +136,37 @@ describe('opampController', () => {
       expect(cfg.service.extensions).toContain('bearertokenauth/datadog');
       // The otlp/hyperdx auth extension stays intact alongside it.
       expect(cfg.service.extensions).toContain('bearertokenauth/hyperdx');
+    });
+  });
+
+  describe('buildOtelCollectorConfig span metrics', () => {
+    it('omits the span metrics connector when the flag is off (default)', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+      expect(cfg.connectors?.span_metrics).toBeUndefined();
+    });
+
+    it('derives span metrics as exponential histograms with exemplars', () => {
+      configState.IS_SPAN_METRICS_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      // Exponential rather than explicit buckets: a fixed ladder's wide top
+      // bucket makes high quantiles interpolate well past the slowest real
+      // request, so no exemplar can ever sit on the plotted line.
+      expect(cfg.connectors?.span_metrics?.histogram).toEqual({
+        unit: 'ms',
+        exponential: { max_size: 160 },
+      });
+      expect(cfg.connectors?.span_metrics?.exemplars).toEqual({
+        enabled: true,
+      });
+      expect(cfg.service.pipelines['metrics/spanmetrics']?.exporters).toEqual([
+        'clickhouse',
+      ]);
     });
   });
 });
