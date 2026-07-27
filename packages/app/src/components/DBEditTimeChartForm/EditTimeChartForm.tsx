@@ -346,6 +346,9 @@ export default function EditTimeChartForm({
     { open: openHeatmapSettings, close: closeHeatmapSettings },
   ] = useDisclosure(false);
 
+  // Need to force a rerender on change as the modal will not be mounted when initially rendered
+  const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
+
   // On a dashboard the editor lives inside a Drawer, so opening a settings
   // view (regular Display Settings or the heatmap variant) docks a side panel
   // next to the editor/preview instead of stacking a second drawer. On the
@@ -368,13 +371,14 @@ export default function EditTimeChartForm({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const target = e.target;
-      if (
-        target instanceof HTMLElement &&
-        target.closest(
+      if (target instanceof HTMLElement) {
+        const overlay = target.closest(
           '.mantine-Popover-dropdown, .cm-editor, [role="dialog"], [role="listbox"]',
-        )
-      ) {
-        return;
+        );
+        // A match that wraps the form is the containing tile drawer, not a
+        // nested overlay — don't bail, or Esc would fall through and close the
+        // whole editor. Only bail for overlays nested inside the panel.
+        if (overlay && !overlay.contains(parentRef)) return;
       }
       e.stopPropagation();
       closeDisplaySettings();
@@ -382,7 +386,12 @@ export default function EditTimeChartForm({
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [showSettingsPanel, closeDisplaySettings, closeHeatmapSettings]);
+  }, [
+    showSettingsPanel,
+    parentRef,
+    closeDisplaySettings,
+    closeHeatmapSettings,
+  ]);
 
   // Whether the current tab has a regular Display Settings view. Search,
   // Patterns and Markdown have none; Heatmap uses its own variant instead.
@@ -676,9 +685,6 @@ export default function EditTimeChartForm({
   );
 
   const previousDateRange = getPreviousDateRange(dateRange);
-
-  // Need to force a rerender on change as the modal will not be mounted when initially rendered
-  const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
   const handleUpdateDisplaySettings = useCallback(
     (
