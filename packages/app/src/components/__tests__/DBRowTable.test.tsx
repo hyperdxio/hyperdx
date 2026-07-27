@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -194,6 +194,47 @@ describe('RawLogTable', () => {
       const headers = container.querySelectorAll('th');
       expect(headers).toHaveLength(2);
       expect((headers[0] as HTMLElement).style.width).not.toBe('250px');
+    });
+  });
+
+  describe('Error state', () => {
+    const paginationProps = {
+      displayedColumns: ['col1'],
+      rows: [] as Record<string, any>[],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: true,
+      onRowDetailsClick: () => {},
+      generateRowId: () => mockRowWhereResult,
+      columnTypeMap: new Map(),
+    };
+
+    it('should not request another page while the query is in an error state', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable
+          {...paginationProps}
+          isError
+          error={new Error('Timeout exceeded')}
+          fetchNextPage={fetchNextPage}
+        />,
+      );
+
+      // The error must be surfaced instead of silently retrying, otherwise the
+      // table stays in a perpetual loading state showing zero results.
+      expect(await screen.findByText(/Error loading chart/i)).toBeTruthy();
+      expect(fetchNextPage).not.toHaveBeenCalled();
+    });
+
+    it('should still request another page when there is no error', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable {...paginationProps} fetchNextPage={fetchNextPage} />,
+      );
+
+      await waitFor(() => expect(fetchNextPage).toHaveBeenCalled());
     });
   });
 });
