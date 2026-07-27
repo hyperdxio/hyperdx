@@ -1,26 +1,53 @@
 {
   "scenario": "metric-saturation",
-  "agentPrompt": "recommendation-service has been intermittently slow and has thrown occasional 503s over the last couple of hours, but request logs and traces look mostly normal. Figure out the root cause and explain the mechanism.",
+  "agentPrompt": "Shoppers are intermittently seeing slow or missing product recommendations on the storefront. Figure out which service is responsible and what the root cause is, and explain the mechanism end to end.",
   "expected": {
     "affectedService": "recommendation-service",
-    "rootCause": "A slow JVM heap memory leak (an unbounded candidate/embedding cache) on recommendation-service. The G1 Old Gen heap climbs steadily until it approaches the ~2GB limit; full-GC pause time develops a heavy tail that stalls request handling, and the pod OOM-restarts on a cadence (~every 20-25 min). After each restart heap drops back to baseline and the cycle repeats.",
+    "rootCause": "A slow JVM heap memory leak (an unbounded candidate/embedding cache) on recommendation-service. On each of its 3 pods the G1 Old Gen heap climbs steadily from ~600MB toward the ~1950MB limit; full-GC pause time develops a heavy tail that stalls request handling, and each pod OOM-restarts on a ~22-minute cadence (staggered ~7 min apart, so the service never fully goes down — requests intermittently stall or 503). After each restart heap drops back to baseline and the cycle repeats. The leak began ~90 minutes ago — about 15 minutes BEFORE the coincidental 1.43.1 deploy.",
     "mechanismChain": [
-      "process.runtime.jvm.memory.used (gauge) shows a sawtooth: heap climbs from ~600MB toward the ~1950MB limit, then resets on restart. Pre-incident it was flat.",
-      "jvm.gc.pause (exponential histogram) develops a heavy tail (full GCs of 400-2200ms) as the heap fills — the mechanism linking memory pressure to latency. Pre-incident pauses were tight and small (young-gen, ~5-25ms).",
-      "http.server.request.duration (histogram) mass shifts from the low buckets into the 500-5000ms buckets during the incident window.",
-      "k8s.pod.restarts (cumulative sum) steps up repeatedly; its rate/delta reveals a restart storm. jvm.gc.collections{G1 Old Gen} accelerates over the same window."
+      "process.runtime.jvm.memory.used (gauge, per pod x per pool) shows a sawtooth in the G1 Old Gen pool only: heap climbs from ~600MB toward the ~1950MB limit, then resets on restart. Eden/Survivor/Metaspace stay healthy, and the 3 pods are out of phase, so the un-grouped service-level average is a blurred climb — the clean sawtooth requires grouping by k8s.pod.name and filtering to the Old Gen pool.",
+      "jvm.gc.pause (exponential histogram) develops a heavy tail (full GCs of 400-2200ms) as heap fills — the mechanism linking memory pressure to latency. Pre-incident pauses were tight and small (young-gen, ~5-25ms). The identically-named metric on search-service stays healthy throughout.",
+      "http.server.request.duration (histogram) mass shifts from the low buckets into the 500-5000ms buckets during the incident window on recommendation-service (frontend-proxy's histogram stays healthy).",
+      "k8s.pod.restarts (cumulative sum, per pod) steps up repeatedly on all 3 pods at staggered times; its rate/delta reveals the restart cadence. jvm.gc.collections{G1 Old Generation} accelerates over the same window.",
+      "jvm.threads.count (gauge) rises with each fill cycle — but it is a downstream symptom (threads pile up while requests stall in full GCs), not the cause."
     ],
     "loadBearingSignal": "metrics",
-    "whyTracesLogsInsufficient": "Traces show only mildly elevated latency and a few generic 503s ('context deadline exceeded'); they carry no memory/GC/heap attributes. Logs carry only ambiguous restart lines (liveness probe failed, SIGTERM) with no usable memory signal. The climbing-heap / GC-pause-tail / restart-cadence chain is only reconstructable from metrics.",
+    "timeline": {
+      "leakStartMinutesAgo": 90,
+      "deployMinutesAgo": 75,
+      "restartCadenceMinutes": 22,
+      "podStaggerMinutes": 7
+    },
+    "whyTracesLogsInsufficient": "Traces show only mildly elevated latency and a few generic 503s ('context deadline exceeded') on recommendation-service; they carry no memory/GC/heap attributes. Proxy access logs name recommendation-service as the failing upstream (localization) but say nothing about why. Logs carry only ambiguous restart lines (liveness probe failed, SIGTERM) with no usable memory signal. The climbing-heap / GC-pause-tail / restart-cadence chain is only reconstructable from metrics — and only by filtering to the G1 Old Gen pool and grouping by pod.",
     "metricTypesUsed": {
-      "gauge": "process.runtime.jvm.memory.used (leak, load-bearing); system.cpu.utilization (flat, rules out CPU)",
-      "sum": "k8s.pod.restarts + jvm.gc.collections (cumulative; need a rate/delta)",
-      "histogram": "http.server.request.duration (latency shift, delta temporality)",
-      "exponentialHistogram": "jvm.gc.pause (heavy tail, delta temporality)",
+      "gauge": "process.runtime.jvm.memory.used per pod x pool (Old Gen leaks — load-bearing; other pools healthy); jvm.threads.count (correlated symptom distractor); system.cpu.utilization (flat, rules out CPU); process.memory.usage on inventory-service (flat decoy)",
+      "sum": "k8s.pod.restarts per pod + jvm.gc.collections (cumulative; need a rate/delta); http.server.request.count on frontend-proxy (healthy)",
+      "histogram": "http.server.request.duration (latency shift on recommendation-service, delta temporality; healthy twin series on frontend-proxy)",
+      "exponentialHistogram": "jvm.gc.pause (heavy tail on recommendation-service, delta temporality; healthy twin series on search-service)",
       "summary": "db.client.operation.duration on inventory-service (stable distractor)"
     }
   },
   "distractors": [
+    {
+      "kind": "coincidental deploy",
+      "service": "recommendation-service",
+      "versionFrom": "1.43.0",
+      "versionTo": "1.43.1",
+      "minutesAgo": 75,
+      "whyNotRootCause": "recommendation-service rolled out a new version ~75 min ago — squarely inside the incident window and only ~15 min after the leak began, so it is very tempting to blame. But the Old Gen heap was already climbing (and pod-0 was already >1GB) BEFORE the rollout timestamp, and the leak/restart cadence continues unchanged across the version boundary. Ruling it out requires comparing the heap-climb onset (~90 min ago) against the rollout time (~75 min ago) at scrape granularity."
+    },
+    {
+      "kind": "correlated symptom metric",
+      "service": "recommendation-service",
+      "metric": "jvm.threads.count (gauge)",
+      "whyNotRootCause": "Thread count rises and falls in lockstep with the incident, so it looks causal. It is downstream: request threads pile up while full GCs stall the JVM, then the count resets on restart. Diagnosing 'a thread leak' or 'thread-pool exhaustion' as the root cause is a calibration failure — the thread growth is explained by the GC stalls, not the other way around."
+    },
+    {
+      "kind": "healthy JVM twin",
+      "service": "search-service",
+      "metric": "process.runtime.jvm.memory.used / jvm.gc.pause / jvm.gc.collections (same names as the subject)",
+      "whyNotRootCause": "search-service emits the exact same JVM metric names, so a keyword hunt for 'jvm' or 'memory' returns two services. Its heap pools are flat, its GC pauses stay small, and its counters tick at baseline all window — it is healthy. Isolating the leaker requires grouping or filtering by service rather than eyeballing metric names."
+    },
     {
       "kind": "neighbor db.client latency summary",
       "service": "inventory-service",
@@ -28,22 +55,14 @@
       "whyNotRootCause": "A Summary metric with stable precomputed quantiles (p50/p95/p99) on a DIFFERENT service. It looks like 'a database is a bit slow', but the quantiles are flat across the whole window and uncorrelated with the recommendation-service incident. Crucially, a Summary cannot be re-aggregated or re-bucketed — you cannot zoom into the incident window to recompute it — so it is not diagnostic here. Blaming the database is a calibration failure."
     },
     {
-      "kind": "coincidental deploy",
-      "service": "recommendation-service",
-      "versionFrom": "1.43.0",
-      "versionTo": "1.43.1",
-      "minutesAgo": 40,
-      "whyNotRootCause": "recommendation-service rolled out a new version ~40 min ago. Tempting to blame the deploy, but the heap was already climbing ~90 min ago — well before the rollout — and the leak/restart cadence continues unchanged across the version boundary. The deploy did not start or stop the leak."
-    },
-    {
       "kind": "flat CPU",
       "metric": "system.cpu.utilization (gauge)",
       "approxValue": 0.35,
-      "whyNotRootCause": "CPU utilization stays flat and healthy (~35%) throughout. The saturation is memory/GC, not CPU — ruling out CPU exhaustion is part of the diagnosis."
+      "whyNotRootCause": "CPU utilization stays flat and healthy (~35%) on recommendation-service (and every other service) throughout. The saturation is memory/GC, not CPU — ruling out CPU exhaustion is part of the diagnosis."
     },
     {
-      "kind": "generic 503s in traces",
-      "whyNotRootCause": "The occasional 503s ('context deadline exceeded') are a symptom of GC stalls at restart, not an independent cause. Stopping at 'the service returns 503s' without the memory/GC mechanism is an incomplete answer."
+      "kind": "generic 503s in traces and proxy logs",
+      "whyNotRootCause": "The occasional 503s ('context deadline exceeded' spans; proxy access lines with upstream recommendation-service) are a symptom of GC stalls at restart, not an independent cause. They localize the failing service but stopping at 'the service returns 503s' without the memory/GC mechanism is an incomplete answer."
     }
   ],
   "rubric": {
@@ -63,6 +82,17 @@
         "names_restart_cadence",
         2,
         "(restart|oom|out of memory|oomkill|crashloop|recycl)"
+      ],
+      ["identifies_old_gen_pool", 1, "old[ ._-]?gen(eration)?\\b"],
+      [
+        "quantifies_cadence_or_sawtooth",
+        1,
+        "sawtooth|saw[- ]tooth|(every|each|~|about|roughly|approx\\w*)\\s*~?\\s*2[0-5][ -]?min|2[0-5][ -]?min\\w*\\s*(cycle|cadence|interval|period|restart)"
+      ],
+      [
+        "anchors_leak_onset_before_deploy",
+        2,
+        "(leak|heap|memory|climb|growth|onset|issue|problem)[^.\\n]{0,80}?(pre-?dates?|preced\\w*|prior to|before|already[^.\\n]{0,40}?(climbing|rising|growing|under ?way|in progress|leaking|elevated))[^.\\n]{0,80}?(deploy|roll[- ]?out|release|version|1\\.43)|(deploy|roll[- ]?out|release|1\\.43\\.1)[^.\\n]{0,80}?(after|post-?dat\\w*|~?15\\s*min)[^.\\n]{0,80}?(leak|onset|start|begun|began|climb)"
       ],
       [
         "cites_metric_evidence",
@@ -86,6 +116,18 @@
         2,
         "(root cause|caused by|due to|because of|the (issue|problem|cause) is)[^.\\n]{0,60}?(database|db\\b|inventory-service|db\\.client)",
         true
+      ],
+      [
+        "false_blame_threads",
+        2,
+        "(root cause|caused by|due to|because of|the (issue|problem|cause) is)[^.\\n]{0,60}?(thread[- ](leak|pool exhaustion|exhaustion|starvation)|too many threads|runaway threads)",
+        true
+      ],
+      [
+        "false_blame_search_service",
+        2,
+        "(root cause|caused by|due to|because of|the (issue|problem|cause) is)[^.\\n]{0,60}?search-service",
+        true
       ]
     ],
     "transcript": [
@@ -103,6 +145,11 @@
         "described_gc_pause_metric",
         1,
         "(clickstack_describe_metric|clickstack_(timeseries|table)(?=[^\\n]*metricType))[^\\n]*(gc[\\s._]?pause|jvm[\\s._]gc)"
+      ],
+      [
+        "grouped_memory_by_pod_or_pool",
+        1,
+        "clickstack_(timeseries|table)(?=[^\\n]*metricType)(?=[^\\n]*(jvm[\\s._]memory|memory[\\s._]used))[^\\n]*(pool|pod)"
       ]
     ],
     "judge": {
@@ -110,17 +157,17 @@
         {
           "id": "correctness",
           "weight": 3,
-          "description": "Did the answer identify the root cause as a JVM heap memory leak on recommendation-service that drives GC-pause growth and periodic OOM/restarts? The full mechanism (heap climb -> full-GC pause tail -> request latency -> restart cadence) should be present, not just 'the service is slow' or 'it restarts'."
+          "description": "Did the answer identify the root cause as a JVM heap memory leak on recommendation-service that drives GC-pause growth and periodic OOM/restarts? A 5 requires the full mechanism (Old Gen heap climb -> full-GC pause tail -> request latency/503s -> per-pod restart cadence) AND a quantified timeline: the leak began ~90 min ago (before the 1.43.1 deploy) and pods restart on a ~20-25 min cycle. Deduct for missing pool-level specifics (G1 Old Gen), a missing/incorrect timeline, or stopping at 'the service is slow / it restarts'."
         },
         {
           "id": "metric_grounding",
           "weight": 3,
-          "description": "Is the conclusion grounded in metric evidence that is NOT recoverable from traces/logs alone? A strong answer references the climbing memory gauge (sawtooth), the GC-pause distribution tail, the latency histogram shift, and/or the cumulative restart counter (as a rate). An answer that only cites trace latency / 503 counts has not used the load-bearing signal."
+          "description": "Is the conclusion grounded in metric evidence that is NOT recoverable from traces/logs alone, at the right granularity? A 5 requires pool-level (G1 Old Gen vs other pools) and/or pod-level (per-pod sawtooth, staggered restarts) evidence — not just a service-wide average — plus at least two corroborating signals from: the GC-pause distribution tail, the latency histogram shift, the cumulative restart counter read as a rate, or Old-Gen GC-collection acceleration. An answer that only cites trace latency / 503 counts, or only an un-grouped service-level memory average, has not used the load-bearing signal."
         },
         {
           "id": "calibration",
           "weight": 2,
-          "description": "Did the answer rule out the distractors? Specifically: (a) the coincidental 1.43.1 deploy is not the cause because the leak predates it; (b) CPU is flat, so it is not CPU exhaustion; (c) the inventory-service db.client Summary is stable, unrelated, and cannot be re-aggregated into the incident window; (d) the 503s are a symptom, not the cause. Blaming any of these is a calibration failure."
+          "description": "Did the answer rule out the distractors? Specifically: (a) the coincidental 1.43.1 deploy ~75 min ago is not the cause because the heap was already climbing ~15 min before it — a 5 REQUIRES explicitly addressing the deploy; (b) jvm.threads.count rises with the incident but is a downstream symptom of GC stalls, not a thread leak; (c) CPU is flat, so it is not CPU exhaustion; (d) search-service emits the same JVM metrics but is healthy; (e) the inventory-service db.client Summary is stable, unrelated, and cannot be re-aggregated into the incident window; (f) the 503s are a symptom, not the cause. Blaming any of these is a calibration failure; a 5 requires the deploy plus at least two others explicitly addressed."
         },
         {
           "id": "conciseness",
