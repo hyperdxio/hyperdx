@@ -236,6 +236,42 @@ describe('RawLogTable', () => {
 
       await waitFor(() => expect(fetchNextPage).toHaveBeenCalled());
     });
+
+    // Searching for a highlighted row that has not been loaded yet also
+    // auto-advances pages. Both auto-advance paths are active in jsdom, so
+    // these two cases pin the highlighted-line guard alongside the scroll one.
+    it('should not search for a highlighted row while the query is in an error state', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable
+          {...paginationProps}
+          rows={[{ col1: 'value1' }]}
+          highlightedLineId="not-a-loaded-row"
+          isError
+          error={new Error('Timeout exceeded')}
+          fetchNextPage={fetchNextPage}
+        />,
+      );
+
+      expect(await screen.findByText(/Error loading chart/i)).toBeTruthy();
+      expect(fetchNextPage).not.toHaveBeenCalled();
+    });
+
+    it('should search for a highlighted row when there is no error', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable
+          {...paginationProps}
+          rows={[{ col1: 'value1' }]}
+          highlightedLineId="not-a-loaded-row"
+          fetchNextPage={fetchNextPage}
+        />,
+      );
+
+      await waitFor(() => expect(fetchNextPage).toHaveBeenCalled());
+    });
   });
 });
 
