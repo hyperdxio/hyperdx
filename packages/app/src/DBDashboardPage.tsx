@@ -1410,6 +1410,9 @@ const EditTileDrawer = ({
   const drawerZIndex = contextZIndex + 10;
   const confirm = useConfirm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // While a settings side panel is docked, hand Esc over to the panel so it
+  // closes only the panel instead of dismissing the whole tile editor.
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
 
   // Reset dirty state only when a *different* tile is opened, not on every
   // chart-object reference change (onSubmit recreates the chart object with
@@ -1445,6 +1448,7 @@ const EditTileDrawer = ({
     <Drawer
       opened={chart != null}
       onClose={handleClose}
+      closeOnEscape={!settingsPanelOpen}
       withCloseButton={false}
       position="right"
       size="90%"
@@ -1473,6 +1477,7 @@ const EditTileDrawer = ({
               }}
               onClose={handleClose}
               onDirtyChange={setHasUnsavedChanges}
+              onSettingsPanelOpenChange={setSettingsPanelOpen}
               isDashboardForm
               autoRun
             />

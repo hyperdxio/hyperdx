@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
@@ -141,14 +141,19 @@ export default function ChartDisplaySettingsDrawer({
     defaultValues: appliedDefaults,
   });
 
-  // Reset on the closed→open transition (and whenever the applied config
-  // changes while open) so every dismiss path — Apply, Cancel, Esc, or a tab
-  // change that closes the panel via the bare disclosure — behaves like cancel:
-  // abandoned edits never linger in the sub-form to be written by the next Apply.
+  // Reset only on the closed→open transition so every dismiss path — Apply,
+  // Cancel, Esc, or a tab change that closes the panel via the bare disclosure —
+  // behaves like cancel: abandoned edits never linger to be written by the next
+  // Apply. This is edge-triggered on `opened` (via a ref) rather than on
+  // `appliedDefaults` identity: `defaultNumberFormat` is a fresh object literal
+  // on every render, so a level-triggered reset would fire on each keystroke in
+  // the main form while the panel is open, silently discarding unapplied edits.
+  const wasOpened = useRef(false);
   useEffect(() => {
-    if (opened) {
+    if (opened && !wasOpened.current) {
       reset(appliedDefaults);
     }
+    wasOpened.current = opened;
   }, [opened, appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });

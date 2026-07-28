@@ -108,6 +108,11 @@ type EditTimeChartFormProps = {
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
   isDashboardForm?: boolean;
+  /**
+   * Notifies the containing drawer whether a settings side panel is docked, so
+   * it can disable its own Esc-to-close and let the panel own Esc instead.
+   */
+  onSettingsPanelOpenChange?: (open: boolean) => void;
   autoRun?: boolean;
 };
 
@@ -146,6 +151,7 @@ export default function EditTimeChartForm({
   'data-testid': dataTestId,
   submitRef,
   isDashboardForm = false,
+  onSettingsPanelOpenChange,
   autoRun = false,
 }: EditTimeChartFormProps) {
   const formValue: ChartEditorFormState = useMemo(
@@ -357,41 +363,37 @@ export default function EditTimeChartForm({
   const showSettingsPanel =
     isDashboardForm && (displaySettingsOpened || heatmapSettingsOpened);
 
-  // While a settings side panel is open, Esc should just close the panel rather
-  // than closing the whole tile drawer. Intercept on the capture phase and stop
-  // propagation so the drawer's own (bubble-phase) Esc handler never fires —
-  // this is what fixes a single Esc press closing both.
-  //
-  // Bail out when Esc originated inside a nested overlay (popover dropdown, code
-  // editor, select listbox, dialog) or has already been handled, so those
-  // widgets get to consume their own Esc (e.g. closing an autocomplete) instead
-  // of us swallowing the key before they ever see it.
+  // Tell the containing drawer to hand Esc over to the docked panel: while a
+  // panel is open the drawer disables its own Esc-to-close (see EditTileDrawer),
+  // so Esc closes just the panel and can never dismiss the whole tile editor.
+  useEffect(() => {
+    onSettingsPanelOpenChange?.(showSettingsPanel);
+  }, [showSettingsPanel, onSettingsPanelOpenChange]);
+
+  // The panel owns Esc: while it's docked, Esc closes the panel. The drawer's
+  // own Esc is disabled above, so there's no double-close and no need to stop
+  // propagation. Bail out when Esc originated inside a nested overlay (popover
+  // dropdown, code editor, select listbox) or was already handled, so those
+  // widgets consume their own Esc (e.g. closing an autocomplete) first.
   useEffect(() => {
     if (!showSettingsPanel) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const target = e.target;
-      if (target instanceof HTMLElement) {
-        const overlay = target.closest(
-          '.mantine-Popover-dropdown, .cm-editor, [role="dialog"], [role="listbox"]',
-        );
-        // A match that wraps the form is the containing tile drawer, not a
-        // nested overlay — don't bail, or Esc would fall through and close the
-        // whole editor. Only bail for overlays nested inside the panel.
-        if (overlay && !overlay.contains(parentRef)) return;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          '.mantine-Popover-dropdown, .cm-editor, [role="listbox"]',
+        )
+      ) {
+        return;
       }
-      e.stopPropagation();
       closeDisplaySettings();
       closeHeatmapSettings();
     };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [
-    showSettingsPanel,
-    parentRef,
-    closeDisplaySettings,
-    closeHeatmapSettings,
-  ]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showSettingsPanel, closeDisplaySettings, closeHeatmapSettings]);
 
   // Whether the current tab has a regular Display Settings view. Search,
   // Patterns and Markdown have none; Heatmap uses its own variant instead.
