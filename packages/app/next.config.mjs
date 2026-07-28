@@ -1,5 +1,5 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import { copyFileSync, readFileSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -26,17 +26,25 @@ try {
     join(__dirname, 'public', 'CHANGELOG.md'),
   );
 } catch (err) {
-  // Fail loudly during a production build: a missing CHANGELOG.md there means
-  // the shipped image would silently render "Unable to load" for every user.
-  // Stay non-fatal otherwise — `next start` re-evaluates this config at runtime
-  // where the source file is absent but public/CHANGELOG.md already exists from
-  // the build stage, and dev tolerates its absence.
-  if (process.env.NEXT_PHASE === 'phase-production-build') {
+  // The invariant is "the app must not ship without the asset", so key the
+  // failure on that rather than on which phase we think we are in. `next start`
+  // re-evaluates this config at runtime, where the source file is absent but
+  // public/CHANGELOG.md already exists from the build stage — that case is
+  // fine. Nothing having produced the asset at all is not.
+  //
+  // Deliberately not keyed on NEXT_PHASE alone: that is an undocumented Next
+  // internal, and if it were ever unset the build would fall through to a warn
+  // and ship an image whose "What's new" renders "Unable to load" for everyone.
+  if (!existsSync(join(__dirname, 'public', 'CHANGELOG.md'))) {
     throw new Error(
-      `Failed to copy CHANGELOG.md into public/ during build: ${err.message}`,
+      `Failed to copy CHANGELOG.md into public/ and no previously copied file ` +
+        `exists, so the build would ship without it: ${err.message}`,
     );
   }
-  console.warn('Could not copy CHANGELOG.md into public/:', err.message);
+  console.warn(
+    'Could not refresh public/CHANGELOG.md; using the existing copy:',
+    err.message,
+  );
 }
 
 // Support legacy consumers of next-runtime-env that expect this value under window.__ENV

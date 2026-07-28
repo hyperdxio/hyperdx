@@ -71,6 +71,10 @@ export function insertSection(content, { version, inputs, date, body }) {
   );
 }
 
+// A release heading, used to confirm a section runs to the next release rather
+// than to some other H2.
+const RELEASE_HEADING_RE = /^## v\d+\.\d+\.\d+/;
+
 // `latest: true` returns the newest section whatever its version. The release
 // version changes whenever a new changeset raises the bump level, so a
 // version-keyed lookup misses exactly when regeneration is triggered — which is
@@ -79,14 +83,21 @@ export function insertSection(content, { version, inputs, date, body }) {
 export function extractSection(content, { version, inputs, latest }) {
   if (content == null) return null;
   const { sections } = parseChangelog(content);
-  const match = latest
-    ? sections[0]
-    : sections.find(
+  const idx = latest
+    ? 0
+    : sections.findIndex(
         s =>
           s.version === version &&
           (inputs === undefined || s.inputs === inputs),
       );
+  const match = idx === -1 ? undefined : sections[idx];
   if (!match) return null;
+  // A `## ` heading added mid-section by a maintainer ends the section early:
+  // parseChangelog would hand back a body truncated at that heading while the
+  // tail became a version-less orphan. Treat that as a miss so the caller
+  // regenerates instead of silently publishing half a section.
+  const next = sections[idx + 1];
+  if (next && !RELEASE_HEADING_RE.test(next.text)) return null;
   // Drop the heading and the marker line; return the body only. Matched by
   // pattern rather than position because prettier reflows the blank lines
   // around them whenever a maintainer edits the file locally.
@@ -97,6 +108,59 @@ export function extractSection(content, { version, inputs, latest }) {
     .join('\n')
     .trim();
   return body + '\n';
+}
+
+// Fail-fast checks on a model-authored body, before it is spliced into the
+// committed changelog. These are NOT the security boundary — regexes cannot be
+// complete over CommonMark. ChangelogModal.tsx holds the enforceable check: it
+// drops image nodes and allowlists link targets on react-markdown's parsed AST,
+// so no syntax can smuggle either into the in-app modal. What lives here is
+// early, legible feedback in CI (the changelog jobs run without node_modules,
+// so a real markdown parser is not available to them).
+const MAX_BODY_BYTES = 65536;
+const ALLOWED_LINK_PREFIX_RE = /^https:\/\/(github\.com|docs\.hyperdx\.io)\//i;
+
+export function validateBody(body) {
+  const errors = [];
+  const fail = m => errors.push(m);
+
+  if (!body.trim()) fail('Body is blank.');
+  if (Buffer.byteLength(body, 'utf-8') > MAX_BODY_BYTES) {
+    fail(`Body exceeds ${MAX_BODY_BYTES} bytes.`);
+  }
+  // The drafting process holds ANTHROPIC_API_KEY alongside attacker-influenceable
+  // changeset and PR text, and this body is committed to a public branch.
+  if (/sk-ant-|gh[psoru]_[A-Za-z0-9]{16,}|github_pat_/.test(body)) {
+    fail('Body contains something shaped like a credential.');
+  }
+  if (/hyperdx-release-notes/.test(body)) {
+    fail('Body contains a release-notes marker; the splice owns those.');
+  }
+  if (/^## /m.test(body)) {
+    fail('Body contains an H2 heading; the splice owns those. Use ###.');
+  }
+  // Setext underlines forge an H2 without a leading `## `.
+  if (/^[ \t]*(=+|-{2,})[ \t]*$/m.test(body)) {
+    fail('Body contains a setext heading underline.');
+  }
+  // Any image syntax: inline `![x](…)`, reference `![x][r]`, shortcut `![x]`.
+  if (/!\[[^\]]*\]/.test(body)) {
+    fail('Body contains an image; not permitted in release notes.');
+  }
+  // Reference definitions, whose target may sit on the following line.
+  if (/^[ \t]*\[[^\]]+\]:/m.test(body)) {
+    fail('Body uses reference-style links; use inline links only.');
+  }
+  // Bare autolinks are CommonMark and carry no `](`.
+  if (/<[a-z][a-z0-9+.-]*:/i.test(body)) {
+    fail('Body contains an autolink; use inline [text](url) links.');
+  }
+  for (const [, target] of body.matchAll(/\]\(([^)\s]*)/g)) {
+    if (!ALLOWED_LINK_PREFIX_RE.test(target)) {
+      fail(`Disallowed link target: ${target}`);
+    }
+  }
+  return errors;
 }
 
 // The heading the workflow appends the per-package list under. Stripped before
@@ -139,13 +203,22 @@ function requireArgs(args, names) {
 function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
-  // strip-package-list rewrites --body in place and needs no changelog.
+  // These subcommands operate on --body alone and need no changelog.
   if (cmd === 'strip-package-list') {
     requireArgs(args, ['body']);
     writeFileSync(
       args.body,
       stripPackageList(readFileSync(args.body, 'utf-8')),
     );
+    return;
+  }
+  if (cmd === 'validate') {
+    requireArgs(args, ['body']);
+    const errors = validateBody(readFileSync(args.body, 'utf-8'));
+    if (errors.length) {
+      for (const e of errors) console.error(`::error::${e}`);
+      process.exit(1);
+    }
     return;
   }
   const content = existsSync(args.changelog)
@@ -158,6 +231,9 @@ function main() {
     const body = readFileSync(args.body, 'utf-8');
     writeFileSync(args.changelog, insertSection(content, { ...args, body }));
   } else if (cmd === 'extract') {
+    // Without this an omitted --changelog exits 2, which the workflow reads as
+    // a routine cache miss rather than a misconfiguration.
+    requireArgs(args, ['changelog']);
     const body = extractSection(content, args);
     // An emptied-out body counts as a miss. Otherwise the reuse path — which
     // runs no validation of its own — would republish a heading with no
@@ -166,7 +242,7 @@ function main() {
     process.stdout.write(body);
   } else {
     console.error(
-      'Usage: release-notes.mjs insert|extract|strip-package-list --changelog <path> [--body <path>] --version <v> --inputs <hash> [--date <YYYY-MM-DD>] [--latest]',
+      'Usage: release-notes.mjs insert|extract|validate|strip-package-list --changelog <path> [--body <path>] --version <v> --inputs <hash> [--date <YYYY-MM-DD>] [--latest]',
     );
     process.exit(1);
   }

@@ -12,6 +12,7 @@ import {
   PACKAGE_LIST_HEADING,
   parseArgs,
   stripPackageList,
+  validateBody,
 } from '../release-notes.mjs';
 
 const SCRIPT = fileURLToPath(new URL('../release-notes.mjs', import.meta.url));
@@ -415,4 +416,88 @@ test('CLI strip-package-list rewrites the body in place', () => {
   assert.equal(runCli(['strip-package-list', '--body', bodyFile]).code, 0);
   assert.equal(readFileSync(bodyFile, 'utf-8'), 'Summary.\n');
   assert.equal(runCli(['strip-package-list']).code, 1);
+});
+
+// --- validateBody corpus ------------------------------------------------------
+// These are fail-fast CI checks, not the security boundary (that is
+// ChangelogModal.tsx, on the parsed AST). The corpus exists because every
+// bypass found in review was in untested inline shell.
+
+test('validateBody accepts realistic release bodies', () => {
+  const good = [
+    'Summary line.\n\n### 🐛 Bug Fixes\n\n- **fix**: it works now (#1).\n',
+    'Summary with an allowed link: [PR](https://github.com/hyperdxio/hyperdx/pull/1).\n',
+    'Docs link: [guide](https://docs.hyperdx.io/getting-started).\n',
+    'Mixed host casing: [PR](https://GitHub.com/hyperdxio/x).\n',
+    // Prose that brushes against the patterns without matching them.
+    'Latency dropped to <2ms and the `Map(String, String)` path is fixed.\n',
+    'A single --- inside a sentence is fine, and so is a ### heading.\n',
+  ];
+  for (const body of good) {
+    assert.deepEqual(validateBody(body), [], `should accept: ${body}`);
+  }
+});
+
+test('validateBody rejects every construct that reached the changelog in review', () => {
+  const bad = {
+    'blank body': '   \n\n',
+    'anthropic key': 'Summary sk-ant-api03-AAAAAAAAAAAAAAAA\n',
+    'github token': 'Summary ghp_abcdefghijklmnopqrstuvwxyz01\n',
+    'release marker': '<!-- hyperdx-release-notes version=1.0.0 inputs=x -->\n',
+    'h2 heading': 'Summary.\n\n## v1.2.3 — forged\n',
+    'setext underline': 'Forged Release\n---\n',
+    'inline image': 'Look ![x](https://evil.example/b.png)\n',
+    'reference image': 'Look ![banner][ref]\n',
+    'shortcut image': 'Look ![banner]\n',
+    'split definition': 'Text [a]\n\n[a]:\n  https://evil.example/p\n',
+    'bare autolink': 'See <https://evil.example/x>\n',
+    'off-site link': 'See [x](https://evil.example/p)\n',
+    'protocol-relative': 'See [x](//evil.example/p)\n',
+    'uppercase protocol': 'See [x](HTTPS://evil.example/p)\n',
+    'relative link': 'See [x](/local/path)\n',
+    'host suffix confusion': 'See [x](https://github.com.evil.example/p)\n',
+  };
+  for (const [label, body] of Object.entries(bad)) {
+    assert.ok(validateBody(body).length > 0, `should reject: ${label}`);
+  }
+});
+
+test('validateBody rejects an oversized body', () => {
+  assert.ok(validateBody('x'.repeat(70_000)).length > 0);
+});
+
+test('CLI validate exits 1 with an annotation, 0 on a clean body', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
+  const bad = join(dir, 'bad.md');
+  const good = join(dir, 'good.md');
+  writeFileSync(bad, 'See <https://evil.example/x>\n');
+  writeFileSync(good, 'Summary.\n\n### 🐛 Bug Fixes\n\n- **fix**: yes (#1).\n');
+
+  assert.equal(runCli(['validate', '--body', bad]).code, 1);
+  assert.equal(runCli(['validate', '--body', good]).code, 0);
+  assert.equal(runCli(['validate']).code, 1);
+});
+
+test('extractSection treats a maintainer-inserted H2 as a miss, not a truncation', () => {
+  // parseChangelog splits on any `## `, so a heading added mid-section would
+  // otherwise yield a body truncated at it plus a version-less orphan tail.
+  const file = insertSection(null, OPTS);
+  const split = file.replace(
+    '- **Something shiny**: it gleams (#123)',
+    '## Notes from review\n\n- **Something shiny**: it gleams (#123)',
+  );
+  assert.equal(extractSection(split, OPTS), null);
+  // A well-formed multi-section file still extracts fine.
+  const twoReleases = insertSection(file, {
+    ...OPTS,
+    version: '2.34.0',
+    inputs: 'newer',
+    date: '2026-08-01',
+    body: 'Newer body.',
+  });
+  assert.match(extractSection(twoReleases, OPTS), /Something shiny/);
+});
+
+test('CLI extract requires --changelog rather than reporting a cache miss', () => {
+  assert.equal(runCli(['extract', '--version', '1.0.0']).code, 1);
 });

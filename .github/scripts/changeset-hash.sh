@@ -11,10 +11,44 @@ set -euo pipefail
 
 REF="${1:-origin/main}"
 
-# `$4 != ".changeset/README.md"` is anchored to the exact path: contributors
-# hand-name changesets, so a file like `fix-README-links.md` must still count.
-git ls-tree -r "$REF" -- .changeset \
-  | awk '$4 ~ /\.md$/ && $4 != ".changeset/README.md" {print $3, $4}' \
-  | sort -k2 \
-  | sha256sum \
-  | cut -c1-12
+LISTING="$(mktemp)"
+trap 'rm -f "$LISTING"' EXIT
+
+# `-z` plus core.quotePath=false gives records with a literal tab before the
+# path and no C-quoting, so a changeset whose name contains a space or a
+# non-ASCII character stays in one field. Splitting `git ls-tree` on whitespace
+# instead would push such a path out of $4 and drop it from the hash, silently
+# weakening both the reuse decision and the staleness guard.
+#
+# The NUL-to-newline conversion has to happen inside the pipeline: a shell
+# variable cannot hold NUL bytes (command substitution strips them, which
+# collapses every record onto one line).
+git -c core.quotePath=false ls-tree -r -z "$REF" -- .changeset \
+  | tr '\0' '\n' > "$LISTING"
+
+# `README.md` is excluded by exact path: contributors hand-name changesets, so
+# something like `fix-README-links.md` must still count.
+hashed() {
+  awk -F'\t' '
+    NF == 2 && $2 ~ /\.md$/ && $2 != ".changeset/README.md" {
+      split($1, meta, " ")
+      print meta[3], $2
+    }
+  ' "$LISTING" | sort -k2
+}
+
+# Cross-check the parse by counting the same paths a different way. A dropped
+# path is a silent correctness hole in the reuse decision, so fail rather than
+# hash a subset.
+EXPECTED="$(cut -f2- "$LISTING" \
+  | { grep -E '\.md$' || true; } \
+  | { grep -vFx '.changeset/README.md' || true; } \
+  | { grep -c . || true; })"
+ACTUAL="$(hashed | { grep -c . || true; })"
+
+if [ "$ACTUAL" -ne "$EXPECTED" ]; then
+  echo "changeset-hash: parsed ${ACTUAL} of ${EXPECTED} changeset paths on ${REF}" >&2
+  exit 1
+fi
+
+hashed | sha256sum | cut -c1-12

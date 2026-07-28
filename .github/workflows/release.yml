@@ -88,7 +88,12 @@ jobs:
           path: /tmp/prev-release-notes/
           if-no-files-found: ignore
           retention-days: 1
-          overwrite: true
+          # Deliberately NOT overwrite: true. Artifacts are scoped to the run,
+          # not the attempt, so re-running this job after an unrelated failure
+          # would re-capture an already-rebuilt branch and replace the good
+          # capture — destroying the only copy of a maintainer's edit. Without
+          # overwrite the re-upload conflicts, which continue-on-error above
+          # turns into a warning, leaving the first attempt's capture intact.
       - name: Create Release Pull Request or Publish to npm
         if: always()
         id: changesets
@@ -128,8 +133,13 @@ jobs:
     if: needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'true'
     timeout-minutes: 20
     concurrency:
+      # Queue rather than cancel. A cancelled job is not a failure and nothing
+      # needs this one, so under pushes arriving faster than a full generation
+      # cycle every draft would be cancelled in turn and the release PR would
+      # silently end up with no changelog section. Stale runs are discarded at
+      # the push instead (non-fast-forward) or by the publish staleness guard.
       group: release-changelog-${{ github.workflow }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     permissions:
       contents: read
     outputs:
@@ -174,6 +184,7 @@ jobs:
           # regenerated. Shared with the publish job's staleness guard.
           INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prev_version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
           echo "inputs=${INPUTS}" >> "$GITHUB_OUTPUT"
 
       - name: Download previous release notes
@@ -209,6 +220,9 @@ jobs:
         if:
           steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
           'false'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          PREV_VERSION: ${{ steps.meta.outputs.prev_version }}
         run: |
           set -euo pipefail
           # The changeset set changed, so the section must be regenerated — but
@@ -222,8 +236,21 @@ jobs:
             --latest \
             > /tmp/previous-section.md \
             || rm -f /tmp/previous-section.md
+          # On the first run of a cycle the newest captured section belongs to
+          # the PREVIOUS release. The prompt calls this file "the previous
+          # generation of this very section" and asks for its phrasing to be
+          # preserved, which would carry last release's bullets into the new
+          # notes — so keep it only when it really is this version's section.
+          if [ -f /tmp/previous-section.md ] \
+             && ! node .github/scripts/release-notes.mjs extract \
+                    --changelog /tmp/prev-release-notes/CHANGELOG.md \
+                    --version "$VERSION" > /dev/null 2>&1; then
+            echo "Captured section is from ${PREV_VERSION}, not ${VERSION}; generating from scratch"
+            rm -f /tmp/previous-section.md
+          fi
 
       - name: Export changesets for the generator
+        id: changesets_export
         if:
           steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
           'false'
@@ -239,15 +266,20 @@ jobs:
                 git show "origin/main:${f}" > "/tmp/changesets/$(basename "$f")"
               done
           if [ -z "$(ls -A /tmp/changesets)" ]; then
-            echo "::warning::No changesets on main (release PR already merged?); skipping generation"
-            exit 1
+            # Routine: the release PR was merged mid-run, which consumes every
+            # changeset. Signalled as an output, not exit 1 — a red Release run
+            # for an expected condition trains people to ignore red runs.
+            echo "::notice::No changesets on main (release PR already merged?); skipping generation"
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+            ls /tmp/changesets
           fi
-          ls /tmp/changesets
 
       - name: Generate release notes with Claude
         if:
           steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
-          'false'
+          'false' && steps.changesets_export.outputs.empty != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -268,7 +300,10 @@ jobs:
             /tmp/release-notes-body.md for this release.
 
       - name: Upload generated body
-        if: steps.meta.outputs.skip == 'false'
+        # Nothing to hand over if generation was skipped for want of changesets.
+        if:
+          steps.meta.outputs.skip == 'false' &&
+          steps.changesets_export.outputs.empty != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: release-notes-body
@@ -326,79 +361,16 @@ jobs:
 
       - name: Validate generated notes
         if: steps.guard.outputs.stale == 'false'
+        # Every check lives in release-notes.mjs with a must-accept/must-reject
+        # corpus under `node --test`. It used to be inline greps here, which is
+        # how several CommonMark constructs slipped past unnoticed. These checks
+        # are fail-fast feedback, not the security boundary — that is
+        # ChangelogModal.tsx, which drops image nodes and allowlists link
+        # targets on the parsed AST.
         run: |
           set -euo pipefail
-          # Non-blank, not merely non-empty: a body of "\n" would otherwise
-          # publish a section containing nothing but the package list, which the
-          # next run's extract would then treat as a cache hit and republish.
-          if ! grep -q '[^[:space:]]' /tmp/release-notes-body.md; then
-            echo "::error::Generated body is blank."
-            exit 1
-          fi
-          # Size cap. The model runs with ANTHROPIC_API_KEY in its process and
-          # this file is the one thing it hands across the job boundary, so bound
-          # how much can cross at all.
-          if [ "$(wc -c < /tmp/release-notes-body.md)" -gt 65536 ]; then
-            echo "::error::Generated body exceeds 64KB."
-            exit 1
-          fi
-          # Secret-shaped content. The job split confines the push token, but the
-          # API key lives in the drafting process alongside attacker-influenceable
-          # changeset and PR text, and this body is committed to a public branch.
-          # Checked here, where the model has no influence over what runs.
-          if grep -qE 'sk-ant-|gh[psoru]_[A-Za-z0-9]{16,}|github_pat_' /tmp/release-notes-body.md; then
-            echo "::error::Generated body contains something shaped like a credential."
-            exit 1
-          fi
-          # Body only: this script owns headings, markers, and lists.
-          # Spelled out rather than `! grep -q …`: `set -e` is ignored for a
-          # command whose status is inverted with `!`, so that form never fails.
-          # Rejects any `^## `, not just `^## v`: parseChangelog treats every
-          # `## ` line as a section boundary, so a stray H2 would truncate the
-          # notes on the next extract and orphan a permanent duplicate.
-          if grep -qE 'hyperdx-release-notes|^## ' /tmp/release-notes-body.md; then
-            echo "::error::Generated body contains a heading or marker; the splice script owns those."
-            exit 1
-          fi
-          # Untrusted content reaches this file. These greps are fail-fast
-          # feedback, NOT the security boundary: grep cannot be complete over
-          # CommonMark. The enforceable check is in ChangelogModal.tsx, which
-          # drops every image node and allowlists link targets on the parsed
-          # AST, so no syntax can smuggle either into the modal.
-          # Inline `![x](…)`, reference `![x][ref]`, and shortcut `![x]`.
-          if grep -qE '!\[[^]]*\]' /tmp/release-notes-body.md; then
-            echo "::error::Generated body contains an image; not permitted in release notes."
-            exit 1
-          fi
-          # Reference-style link definitions bypass the inline check below.
-          # No trailing-content requirement: the target may sit on the next line.
-          if grep -qiE '^[[:space:]]*\[[^]]+\]:' /tmp/release-notes-body.md; then
-            echo "::error::Generated body uses reference-style links; use inline links only."
-            exit 1
-          fi
-          # Bare autolinks `<https://host/x>` are CommonMark and carry no `](`.
-          if grep -qiE '<[a-z][a-z0-9+.-]*:' /tmp/release-notes-body.md; then
-            echo "::error::Generated body contains an autolink; use inline [text](url) links."
-            exit 1
-          fi
-          # Setext underlines forge an <h2> without a leading `## `.
-          if grep -qE '^[[:space:]]*(=+|-{2,})[[:space:]]*$' /tmp/release-notes-body.md; then
-            echo "::error::Generated body contains a setext heading underline."
-            exit 1
-          fi
-          # Allowlist every inline link target rather than pattern-matching the
-          # bad ones: `-i` because `HTTPS://` parses the same in a browser, and
-          # the target is matched as a whole so protocol-relative `//evil.com`
-          # and relative targets are rejected too, not silently unmatched.
-          # Captured rather than piped into `grep -qv`: on empty input BSD grep
-          # exits 0 and GNU exits 1, so the pipeline form is platform-dependent.
-          OFFSITE="$(grep -oiE '\]\([^)[:space:]]*' /tmp/release-notes-body.md \
-            | grep -viE '^\]\(https://(github\.com|docs\.hyperdx\.io)/' || true)"
-          if [ -n "$OFFSITE" ]; then
-            echo "::error::Generated body has disallowed link target(s); only https://github.com/ and https://docs.hyperdx.io/ are permitted:"
-            echo "$OFFSITE"
-            exit 1
-          fi
+          node .github/scripts/release-notes.mjs validate \
+            --body /tmp/release-notes-body.md
 
       - name: Append package changelog list
         if: steps.guard.outputs.stale == 'false'
@@ -464,12 +436,22 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
           git commit -m "chore(release): update root CHANGELOG.md"
-          # A push to main during generation force-rebuilds the branch and this
-          # push is rejected. The next run regenerates on top of the rebuilt
-          # branch. Note this does NOT recover a maintainer's edit made during
-          # that window — see the caveat in AGENTS.md.
-          git push origin HEAD:changeset-release/main \
-            || echo "::warning::changeset-release/main moved during generation; the next run will regenerate"
+          # A push to main during generation force-rebuilds the branch, which
+          # rejects this push as non-fast-forward. That case is routine and the
+          # next run regenerates on top of the rebuilt branch. Anything else —
+          # a revoked permission, a new ruleset on changeset-release/* — must
+          # fail loudly rather than silently stop publishing every release.
+          # Note neither case recovers a maintainer's edit made during that
+          # window; see the caveat in AGENTS.md.
+          if ! PUSH_OUT="$(git push origin HEAD:changeset-release/main 2>&1)"; then
+            echo "$PUSH_OUT"
+            if grep -qiE 'non-fast-forward|fetch first|rejected.*(stale info|behind)' <<< "$PUSH_OUT"; then
+              echo "::warning::changeset-release/main moved during generation; the next run will regenerate"
+            else
+              echo "::error::Pushing the changelog failed for a reason other than losing the branch race."
+              exit 1
+            fi
+          fi
 
   # ---------------------------------------------------------------------------
   # Check if version already published (skip-if-exists)
@@ -1166,6 +1148,8 @@ jobs:
     needs:
       [
         check_changesets,
+        release_changelog_draft,
+        release_changelog_publish,
         publish-app,
         publish-otel-collector,
         publish-local,
