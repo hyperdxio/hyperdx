@@ -146,7 +146,12 @@ describe('useTileSelection — handleGroupSelected', () => {
 
 describe('useTileSelection — Escape hotkey', () => {
   it('clears the selection on Escape without preventing default', () => {
-    const dashboard = { name: 'Test', tiles: [] } as unknown as Dashboard;
+    const dashboard: Dashboard = {
+      id: 'd1',
+      name: 'Test',
+      tiles: [],
+      tags: [],
+    };
     const { hook } = renderSelectionHook(dashboard);
 
     act(() => {
