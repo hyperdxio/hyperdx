@@ -1113,9 +1113,13 @@ describe('metrics v2 render', () => {
       expect(cum).toContain('arrayReverse(mergedNeg.1) AS nks');
       // rank inside the zero bucket resolves to 0
       expect(cum).toContain('rank <= negTotal + zeroTotal, 0.');
-      // negative-side interpolation: the positive rule with negated bounds
-      expect(cum).toContain(
-        '-pow(base, nks[nidx] + 1) + (pow(base, nks[nidx] + 1) - pow(base, nks[nidx]))',
+      // in-bucket interpolation is EXPONENTIAL (Prometheus 3.x native
+      // histogram semantics): positive base^(k + frac), negative
+      // -base^(k + 1 - frac) — never the linear lo + (hi - lo) * frac
+      expect(cum).toContain('-pow(base, nks[nidx] + 1 - ((rank -');
+      expect(cum).toContain('pow(base, ks[idx] + ((rank -');
+      expect(cum).not.toContain(
+        '(pow(base, ks[idx] + 1) - pow(base, ks[idx]))',
       );
 
       const delta = parameterizedQueryToSql(

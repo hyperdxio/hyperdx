@@ -359,6 +359,11 @@ function DBTimeChartComponent({
   const configMetricTables =
     'metricTables' in config ? config.metricTables : undefined;
   const isV2MetricConfig = isMetricsV2Tables(configMetricTables);
+  // PromQL panels share the metrics fill semantics: Prometheus returns NO
+  // evaluations where the lookback window has no data, and zero-filling
+  // those instants draws values that were never computed — render gaps,
+  // matching the v2 metric panels beside them.
+  const isMetricLikeConfig = isV2MetricConfig || isPromqlChartConfig(config);
   // Estimate-driven snapping is DISABLED (the 1m auto-ladder floor covers
   // ≤60s scrape intervals statically, with no estimator query or query
   // gating) — see SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED.
@@ -526,10 +531,12 @@ function DBTimeChartComponent({
         dateRange,
         granularity,
         generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
-        // Metrics: a missing bucket means NO MEASUREMENT and renders as a
-        // gap; zero-filling draws a plausible-looking value that was never
-        // observed. Event charts keep zero (no rows = zero events).
-        emptyBucketValue: isV2MetricConfig ? null : 0,
+        // Metrics (v2 and PromQL): a missing bucket means NO MEASUREMENT
+        // (Prometheus returns no evaluation at all past the data edge) and
+        // renders as a gap; zero-filling draws a plausible-looking value
+        // that was never observed. Event charts keep zero (no rows = zero
+        // events).
+        emptyBucketValue: isMetricLikeConfig ? null : 0,
         // v2 histogram quantiles emit one row per ExplicitBounds cohort: a
         // bucket straddling a bounds renegotiation keeps the conservative
         // worst-case percentile instead of an arbitrary last-write.
@@ -556,6 +563,7 @@ function DBTimeChartComponent({
     isSuccess,
     fillNulls,
     isV2MetricConfig,
+    isMetricLikeConfig,
     source,
     config.compareToPreviousPeriod,
     previousPeriodData,
@@ -898,7 +906,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
-            connectNulls={!isV2MetricConfig}
+            connectNulls={!isMetricLikeConfig}
           />
         </>
       )}

@@ -336,7 +336,7 @@ export function useQueriedChartConfig(
         const endSec = endDate.getTime() / 1000;
 
         // Convert HyperDX granularity ("5 minute") to Prometheus step ("300s")
-        let stepStr = '60s';
+        let stepSec = 60;
         if (config.granularity && config.granularity !== 'auto') {
           const granToSec: Record<string, number> = {
             '15 second': 15,
@@ -352,8 +352,9 @@ export function useQueriedChartConfig(
             '12 hour': 43200,
             '1 day': 86400,
           };
-          stepStr = `${granToSec[config.granularity] ?? 60}s`;
+          stepSec = granToSec[config.granularity] ?? 60;
         }
+        const stepStr = `${stepSec}s`;
 
         const resp = await prometheusApi.queryRange({
           query: config.promqlExpression,
@@ -398,7 +399,14 @@ export function useQueriedChartConfig(
 
           for (const [ts, val] of series.values) {
             data.push({
-              __hdx_time_bucket: new Date(ts * 1000).toISOString(),
+              // PromQL stamps an evaluation at the WINDOW END; every other
+              // HyperDX chart labels a point with the START of the bucket
+              // containing it. Shift by -step so the same rate step-up lands
+              // in the same time bucket on PromQL and SQL panels sharing a
+              // dashboard (verified: identical values, labels one step
+              // apart). The first evaluation (at range start) shifts one
+              // step left of the window and is clipped by the x-domain.
+              __hdx_time_bucket: new Date((ts - stepSec) * 1000).toISOString(),
               value: parseFloat(val),
               series_name: seriesName,
             });
