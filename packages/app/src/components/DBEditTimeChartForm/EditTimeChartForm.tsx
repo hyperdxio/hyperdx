@@ -374,7 +374,10 @@ export default function EditTimeChartForm({
   // own Esc is disabled above, so there's no double-close and no need to stop
   // propagation. Bail out when Esc originated inside a nested overlay (popover
   // dropdown, code editor, select listbox) or was already handled, so those
-  // widgets consume their own Esc (e.g. closing an autocomplete) first.
+  // widgets consume their own Esc (e.g. closing an autocomplete) first. A
+  // Mantine Select keeps DOM focus on its input (via aria-activedescendant)
+  // rather than the listbox, so also bail on an expanded combobox so its Esc
+  // closes the dropdown instead of the whole panel.
   useEffect(() => {
     if (!showSettingsPanel) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -383,7 +386,7 @@ export default function EditTimeChartForm({
       if (
         target instanceof HTMLElement &&
         target.closest(
-          '.mantine-Popover-dropdown, .cm-editor, [role="listbox"]',
+          '.mantine-Popover-dropdown, .cm-editor, [role="listbox"], [aria-expanded="true"]',
         )
       ) {
         return;
