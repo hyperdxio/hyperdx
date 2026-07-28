@@ -121,7 +121,9 @@ with:
 | Tool                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `clickstack_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
-| `clickstack_describe_source`     | Full column schema, attribute keys, and sampled low-cardinality values for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_describe_source`     | Full column schema, attribute keys, sampled low-cardinality values, and a round-trippable `config` block (the exact shape `clickstack_save_source` accepts, incl. correlation IDs) for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_save_source`         | Create (omit id) or update (provide id) a data source (log, trace, session, metric, or promql) so shipped telemetry becomes queryable. To clone a source, read its `config` from `clickstack_describe_source`, drop `id`, and pass it here |
+| `clickstack_delete_source`       | Permanently delete a data source by ID                                                        |
 | `clickstack_list_metrics`        | Paginated catalog of metric names on a metric source with optional kind / namePattern / time-window filters |
 | `clickstack_describe_metric`     | Per-metric drill-down: kind(s), unit, description, attribute keys per map column, and sampled values |
 | `clickstack_timeseries`          | Plot metrics over time as a line or stacked bar chart (works on log, trace, and metric sources)        |
@@ -141,6 +143,8 @@ with:
 | `clickstack_trace_waterfall`     | Fetch all spans in a single trace as a parent/child waterfall tree with optional correlated logs |
 | `clickstack_trace_top_time_consuming_operations` | Aggregate breakdown of child operations by cumulative time across matching parent traces |
 | `clickstack_get_webhook`         | List available webhook destinations for use as alert notification channels                    |
+| `clickstack_save_webhook`        | Create (omit id) or update (provide id) a webhook notification destination (slack, generic, or incidentio) |
+| `clickstack_delete_webhook`      | Permanently delete a webhook by ID (blocked while alerts still reference it)                   |
 
 ### Metric Sources
 
