@@ -797,4 +797,30 @@ describe('DBEditTimeChartForm - Docked panel Esc inside a real Drawer', () => {
     expect(screen.getByTestId('drawer-content-marker')).toBeInTheDocument();
     expect(onDrawerClose).not.toHaveBeenCalled();
   });
+
+  it('closes the panel on the first Escape and the drawer on the second', async () => {
+    const onDrawerClose = jest.fn();
+    renderWithMantine(<EditTileDrawerHarness onDrawerClose={onDrawerClose} />);
+
+    await userEvent.click(screen.getByTestId('display-settings-button'));
+    expect(
+      await screen.findByTestId('display-settings-panel'),
+    ).toBeInTheDocument();
+
+    // First Escape: closes the panel, drawer stays open.
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('display-settings-panel'),
+      ).not.toBeInTheDocument();
+    });
+    expect(onDrawerClose).not.toHaveBeenCalled();
+
+    // Second Escape: now that the panel is gone the drawer re-owns Esc and
+    // closes. This is the two-step contract the user expects.
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(onDrawerClose).toHaveBeenCalledTimes(1);
+    });
+  });
 });

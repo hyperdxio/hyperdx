@@ -1,13 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 
 const mockSetKioskMode = jest.fn();
+let mockIsKiosk = false;
 
 jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
     // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
-    useQueryState: () => [false, mockSetKioskMode],
+    useQueryState: () => [mockIsKiosk, mockSetKioskMode],
   };
 });
 
@@ -19,7 +20,15 @@ jest.mock('@mantine/hooks', () => {
   };
 });
 
+import { useHotkeys } from '@mantine/hooks';
+
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
+
+function getEscapeHotkey() {
+  const lastCall = jest.mocked(useHotkeys).mock.calls.at(-1);
+  const items = lastCall?.[0] ?? [];
+  return items.find(([key]) => key === 'Escape');
+}
 
 describe('useDashboardKioskMode', () => {
   let fullscreenElement: Element | null;
@@ -31,6 +40,8 @@ describe('useDashboardKioskMode', () => {
     requestFullscreen = jest.fn().mockResolvedValue(undefined);
     exitFullscreen = jest.fn().mockResolvedValue(undefined);
     mockSetKioskMode.mockReset();
+    mockIsKiosk = false;
+    jest.mocked(useHotkeys).mockClear();
 
     Object.defineProperty(document, 'fullscreenElement', {
       configurable: true,
@@ -70,5 +81,34 @@ describe('useDashboardKioskMode', () => {
     act(() => document.dispatchEvent(new Event('fullscreenchange')));
 
     expect(mockSetKioskMode).not.toHaveBeenCalled();
+  });
+
+  // Regression: the Escape hotkey used to be registered as
+  // `['Escape', exitKioskMode]`, which (a) fired regardless of kiosk state and
+  // (b) preventDefaulted by default. Because Mantine's useHotkeys listens on
+  // documentElement and bubbles before window-level Esc handlers, that marked
+  // every Escape as handled and left the tile editor's docked settings panel —
+  // which bails on `event.defaultPrevented` — unable to close on Esc.
+  it('registers Escape without preventDefault so it never swallows the key', () => {
+    renderHook(() => useDashboardKioskMode());
+    const escape = getEscapeHotkey();
+    expect(escape).toBeDefined();
+    expect(escape?.[2]).toEqual({ preventDefault: false });
+  });
+
+  it('ignores Escape when not in kiosk mode', () => {
+    mockIsKiosk = false;
+    renderHook(() => useDashboardKioskMode());
+    const escape = getEscapeHotkey();
+    act(() => escape?.[1](new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(mockSetKioskMode).not.toHaveBeenCalled();
+  });
+
+  it('exits kiosk mode on Escape when active', () => {
+    mockIsKiosk = true;
+    renderHook(() => useDashboardKioskMode());
+    const escape = getEscapeHotkey();
+    act(() => escape?.[1](new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(mockSetKioskMode).toHaveBeenCalledWith(null);
   });
 });
