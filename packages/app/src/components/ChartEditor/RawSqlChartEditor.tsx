@@ -162,20 +162,17 @@ export default function RawSqlChartEditor({
     };
   }, [debouncedRawSqlConfig]);
 
-  const { chartErrors, chartWarnings, sqlValidationAlertColor } =
+  const { chartErrors, chartWarnings, sqlValidationAlertVariant } =
     useMemo(() => {
       const { errors, warnings } = validateRawSqlChartConfig(
         debouncedRawSqlConfig,
         { isDashboardTile: isDashboardForm },
       );
 
-      const sqlValidationAlertColor =
-        errors.length > 0 ? 'red' : warnings.length > 0 ? 'yellow' : undefined;
-
       return {
         chartErrors: errors,
         chartWarnings: warnings,
-        sqlValidationAlertColor,
+        sqlValidationAlertVariant: errors.length > 0 ? 'danger' : 'warning',
       };
     }, [debouncedRawSqlConfig, isDashboardForm]);
 
@@ -350,7 +347,7 @@ export default function RawSqlChartEditor({
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
       {(chartErrors.length > 0 || chartWarnings.length > 0) && (
-        <Alert color={sqlValidationAlertColor} py="xs">
+        <Alert variant={sqlValidationAlertVariant} py="xs">
           <List size="xs" spacing={2}>
             {chartErrors.map(message => (
               <List.Item key={message}>Error: {message}</List.Item>
