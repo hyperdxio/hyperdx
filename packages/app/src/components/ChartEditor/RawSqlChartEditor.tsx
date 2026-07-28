@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsRawSqlAlerts,
+  validateRawSqlChartConfig,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
@@ -17,7 +18,17 @@ import {
   isMetricSource,
   isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  Alert,
+  Box,
+  Button,
+  Group,
+  List,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
@@ -132,19 +143,41 @@ export default function RawSqlChartEditor({
         sqlTemplate: sqlTemplate ?? '',
         connection: connection ?? '',
         from: sourceObject?.from,
+        metricTables:
+          sourceObject && isMetricSource(sourceObject)
+            ? sourceObject.metricTables
+            : undefined,
         displayType,
       }) satisfies RawSqlChartConfig,
-    [sqlTemplate, connection, sourceObject?.from, displayType],
+    [sqlTemplate, connection, sourceObject, displayType],
   );
 
+  const [debouncedRawSqlConfig] = useDebouncedValue(rawSqlConfig, 300);
+
   const { alertErrorMessage, alertWarningMessage } = useMemo(() => {
-    const { errors, warnings } = validateRawSqlForAlert(rawSqlConfig);
+    const { errors, warnings } = validateRawSqlForAlert(debouncedRawSqlConfig);
     return {
-      alertErrorMessage: errors.length > 0 ? errors.join('. ') : undefined,
-      alertWarningMessage:
-        warnings.length > 0 ? warnings.join('. ') : undefined,
+      alertErrorMessage: errors.length > 0 ? errors.join(' ') : undefined,
+      alertWarningMessage: warnings.length > 0 ? warnings.join(' ') : undefined,
     };
-  }, [rawSqlConfig]);
+  }, [debouncedRawSqlConfig]);
+
+  const { chartErrors, chartWarnings, sqlValidationAlertColor } =
+    useMemo(() => {
+      const { errors, warnings } = validateRawSqlChartConfig(
+        debouncedRawSqlConfig,
+        { isDashboardTile: isDashboardForm },
+      );
+
+      const sqlValidationAlertColor =
+        errors.length > 0 ? 'red' : warnings.length > 0 ? 'yellow' : undefined;
+
+      return {
+        chartErrors: errors,
+        chartWarnings: warnings,
+        sqlValidationAlertColor,
+      };
+    }, [debouncedRawSqlConfig, isDashboardForm]);
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -316,6 +349,18 @@ export default function RawSqlChartEditor({
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
+      {(chartErrors.length > 0 || chartWarnings.length > 0) && (
+        <Alert color={sqlValidationAlertColor} py="xs">
+          <List size="xs" spacing={2}>
+            {chartErrors.map(message => (
+              <List.Item key={message}>Error: {message}</List.Item>
+            ))}
+            {chartWarnings.map(message => (
+              <List.Item key={message}>Warning: {message}</List.Item>
+            ))}
+          </List>
+        </Alert>
+      )}
       {alert && (
         <TileAlertEditor
           control={control}
