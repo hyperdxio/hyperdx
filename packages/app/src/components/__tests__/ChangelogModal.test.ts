@@ -42,10 +42,11 @@ describe('toChangelogBody', () => {
     );
   });
 
-  it('leaves content untouched when there are no release sections yet', () => {
-    const seedOnly = '# HyperDX Changelog\n\nNothing released yet.\n';
-    expect(toChangelogBody(seedOnly)).toBe(
-      '# HyperDX Changelog\n\nNothing released yet.',
-    );
+  it('returns empty when there are no release sections yet', () => {
+    // The preamble is addressed to maintainers ("keep the marker intact"), so
+    // it must never be shown to users as if it were release notes.
+    const seedOnly =
+      '# HyperDX Changelog\n\nKeep the `hyperdx-release-notes` marker intact.\n';
+    expect(toChangelogBody(seedOnly)).toBe('');
   });
 });

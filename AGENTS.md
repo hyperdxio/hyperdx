@@ -214,10 +214,14 @@ efficient and accurate:
    release, CI writes an AI-generated cross-package summary section into the
    root `CHANGELOG.md` on the "Release HyperDX" PR. Review and edit it there
    like any other file — but keep the `<!-- hyperdx-release-notes … -->` comment
-   marker intact; it is how your edits survive when the release branch is
-   rebuilt. Edits are only discarded when new changesets land on `main` (the
-   summary is regenerated to include them). Never edit the root `CHANGELOG.md`
-   in feature PRs.
+   marker intact; it is how your edits are recognised when the release branch is
+   rebuilt. Your edits are regenerated away when new changesets land on `main`
+   (the previous text is passed to the generator, so phrasing is preserved
+   best-effort, not guaranteed). They can also be lost outright if a second push
+   to `main` lands while a changelog run is still in flight — the edit is held
+   only in that run's artifact. If an edit matters, re-check it on the release
+   PR before merging. Don't edit the root `CHANGELOG.md` in feature PRs; the
+   only exception is the one-time seed that introduced the file.
 
 ## GitHub Action Workflow (when invoked via @claude)
 

@@ -14,10 +14,16 @@ const CHANGELOG_FILE = 'CHANGELOG.md';
  * the `# HyperDX Changelog` H1 and its maintainer-facing preamble, and strip
  * the release-notes markers that the release workflow uses to identify
  * sections.
+ *
+ * Returns '' when the file has no release sections yet. The preamble is
+ * addressed to maintainers ("keep the marker intact when editing"), so falling
+ * back to the whole file would show them instructions instead of release notes.
  */
 export function toChangelogBody(text: string): string {
   const firstSection = text.indexOf('\n## ');
-  return (firstSection === -1 ? text : text.slice(firstSection + 1))
+  if (firstSection === -1) return '';
+  return text
+    .slice(firstSection + 1)
     .replace(/<!-- hyperdx-release-notes[^>]*-->\n?/g, '')
     .trim();
 }
@@ -59,6 +65,10 @@ export const ChangelogModal = ({
         {isError ? (
           <Text size="sm" c="dimmed">
             Unable to load the changelog.
+          </Text>
+        ) : markdown === '' ? (
+          <Text size="sm" c="dimmed">
+            No releases yet.
           </Text>
         ) : markdown == null ? (
           <Center py="xl">

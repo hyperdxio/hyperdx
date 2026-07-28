@@ -56,7 +56,14 @@ export function insertSection(content, { version, inputs, date, body }) {
     '',
     body.trim(),
   ].join('\n');
-  const kept = sections.filter(s => s.version !== version);
+  // Match on the heading as well as the marker. A section whose marker a
+  // maintainer deleted parses as version:null, and filtering on the marker
+  // alone would keep it — leaving two sections for the same version that no
+  // later run ever cleans up.
+  const headingPrefix = `## v${version} `;
+  const kept = sections.filter(
+    s => s.version !== version && !s.text.startsWith(headingPrefix),
+  );
   return (
     [header.trimEnd(), section, ...kept.map(s => s.text.trimEnd())].join(
       '\n\n',
@@ -64,12 +71,21 @@ export function insertSection(content, { version, inputs, date, body }) {
   );
 }
 
-export function extractSection(content, { version, inputs }) {
+// `latest: true` returns the newest section whatever its version. The release
+// version changes whenever a new changeset raises the bump level, so a
+// version-keyed lookup misses exactly when regeneration is triggered — which is
+// the moment the maintainer's previous prose is most worth handing to the
+// generator as context.
+export function extractSection(content, { version, inputs, latest }) {
   if (content == null) return null;
   const { sections } = parseChangelog(content);
-  const match = sections.find(
-    s => s.version === version && (inputs === undefined || s.inputs === inputs),
-  );
+  const match = latest
+    ? sections[0]
+    : sections.find(
+        s =>
+          s.version === version &&
+          (inputs === undefined || s.inputs === inputs),
+      );
   if (!match) return null;
   // Drop the heading and the marker line; return the body only. Matched by
   // pattern rather than position because prettier reflows the blank lines
@@ -83,13 +99,20 @@ export function extractSection(content, { version, inputs }) {
   return body + '\n';
 }
 
-function parseArgs(argv) {
+const BOOLEAN_FLAGS = new Set(['latest']);
+
+export function parseArgs(argv) {
   const args = {};
-  for (let i = 0; i < argv.length; i += 2) {
-    if (!argv[i]?.startsWith('--') || argv[i + 1] === undefined) {
-      throw new Error(`Bad argument: ${argv[i]}`);
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i];
+    if (!flag?.startsWith('--')) throw new Error(`Bad argument: ${flag}`);
+    const name = flag.slice(2);
+    if (BOOLEAN_FLAGS.has(name)) {
+      args[name] = true;
+      continue;
     }
-    args[argv[i].slice(2)] = argv[i + 1];
+    if (argv[i + 1] === undefined) throw new Error(`Bad argument: ${flag}`);
+    args[name] = argv[++i];
   }
   return args;
 }
@@ -105,7 +128,10 @@ function main() {
     writeFileSync(args.changelog, insertSection(content, { ...args, body }));
   } else if (cmd === 'extract') {
     const body = extractSection(content, args);
-    if (body === null) process.exit(2);
+    // An emptied-out body counts as a miss. Otherwise the reuse path — which
+    // runs no validation of its own — would republish a heading with no
+    // content instead of falling through to regeneration.
+    if (body === null || body.trim() === '') process.exit(2);
     process.stdout.write(body);
   } else {
     console.error(

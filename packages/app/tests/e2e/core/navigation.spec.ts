@@ -151,6 +151,27 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     });
 
     await test.step('Open changelog from help menu with rendered markdown', async () => {
+      // Serve a deterministic root-changelog fixture. The real file's release
+      // sections are written by CI at release time, so its shape depends on
+      // whether a release has landed — mocking pins the assertions below to
+      // the transformation under test rather than to ambient repo state.
+      await page.route('**/CHANGELOG.md', route =>
+        route.fulfill({
+          status: 200,
+          body: [
+            '# HyperDX Changelog',
+            '',
+            'Maintainer preamble that must never reach users.',
+            '',
+            '## v9.9.9 — 2026-07-28',
+            '',
+            '<!-- hyperdx-release-notes version=9.9.9 inputs=abc123 -->',
+            '',
+            'Fixture release summary.',
+          ].join('\n'),
+        }),
+      );
+
       const changelogItem = page.getByTestId('changelog-menu-item');
       await changelogItem.scrollIntoViewIfNeeded();
       await changelogItem.click();
@@ -159,11 +180,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await expect(dialog).toBeVisible({ timeout: 10_000 });
 
       const modal = dialog.getByTestId('changelog-modal');
-      // The modal shows the repo-root CHANGELOG.md, whose release sections are
-      // written by CI at release time. Between the seed state (H1 preamble
-      // only) and a populated one (`## vX.Y.Z` sections, H1 stripped) the top
-      // heading level differs, so match either rather than pinning to <h2>.
-      const heading = modal.locator('h1, h2').first();
+      const heading = modal.locator('h2').first();
       const errorText = modal.getByText('Unable to load the changelog.');
 
       // Wait for the async fetch to settle into either outcome, then assert it
@@ -173,10 +190,11 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await expect(heading.or(errorText)).toBeVisible({ timeout: 10_000 });
       await expect(errorText).toHaveCount(0);
 
-      // The changelog markdown renders as real HTML (headings become real
-      // heading elements), so a visible heading proves it was parsed, not
-      // shown raw.
-      await expect(heading).toBeVisible();
+      // Pinned to <h2>, against the mocked fixture above: the H1 and its
+      // maintainer-facing preamble must be stripped, so an <h1> surviving here
+      // is the regression this asserts against.
+      await expect(modal.locator('h1')).toHaveCount(0);
+      await expect(heading).toContainText('9.9.9');
 
       // Close so the help menu can be reopened for the next step.
       await page.keyboard.press('Escape');
