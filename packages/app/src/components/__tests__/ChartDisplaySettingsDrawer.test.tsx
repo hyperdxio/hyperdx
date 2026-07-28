@@ -569,4 +569,55 @@ describe('ChartDisplaySettingsDrawer', () => {
       });
     });
   });
+
+  // The dashboard tile editor renders this component as a docked side panel
+  // (asPanel) instead of an overlay Drawer. That fork was previously untested.
+  describe('asPanel (docked side panel) mode', () => {
+    it('renders the docked panel, not an overlay dialog, when opened', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          asPanel
+        />,
+      );
+
+      expect(screen.getByTestId('display-settings-panel')).toBeInTheDocument();
+      // The panel is a plain Box, so it must not expose the Drawer's dialog role.
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('renders nothing when asPanel and not opened', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          opened={false}
+          displayType={DisplayType.Line}
+          asPanel
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('display-settings-panel'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('invokes onClose when the panel close button is clicked', async () => {
+      const onClose = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onClose={onClose}
+          asPanel
+        />,
+      );
+
+      await user.click(screen.getByTestId('settings-panel-close-button'));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
 });

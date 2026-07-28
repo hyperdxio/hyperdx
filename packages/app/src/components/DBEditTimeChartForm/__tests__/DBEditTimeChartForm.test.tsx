@@ -141,6 +141,10 @@ jest.mock('@/HDXMarkdownChart', () => ({
   default: () => <div>Markdown Chart</div>,
 }));
 
+// The docked Display Settings panel renders a Mantine Select (number format);
+// its Combobox calls scrollIntoView when opened, which jsdom lacks.
+window.HTMLElement.prototype.scrollIntoView = jest.fn();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -618,5 +622,83 @@ describe('DBEditTimeChartForm - Column color', () => {
       await screen.findByTestId('color-swatch-input-trigger'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('series-color-apply')).toBeInTheDocument();
+  });
+});
+
+// The dashboard tile editor lives inside a Drawer and docks Display Settings as
+// a side panel. Esc must close only that panel (never the whole editor). This
+// behavior has regressed repeatedly and was previously untested at the unit
+// level (no test rendered with isDashboardForm).
+describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
+  const renderDashboardForm = (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) =>
+    renderComponent({
+      chartConfig: { ...defaultChartConfig, displayType: DisplayType.Line },
+      dashboardId: 'test-dashboard-id',
+      isDashboardForm: true,
+      ...props,
+    });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('docks the Display Settings panel and notifies the drawer when opened', async () => {
+    const onSettingsPanelOpenChange = jest.fn();
+    renderDashboardForm({ onSettingsPanelOpenChange });
+
+    await userEvent.click(screen.getByTestId('display-settings-button'));
+
+    expect(
+      await screen.findByTestId('display-settings-panel'),
+    ).toBeInTheDocument();
+    // The containing drawer relies on this notification to disable its own
+    // Esc-to-close before the panel is ever visible (guards the capture-phase
+    // race that would otherwise dismiss the entire editor).
+    expect(onSettingsPanelOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('closes only the panel on Escape, leaving the editor mounted', async () => {
+    const onSettingsPanelOpenChange = jest.fn();
+    const onClose = jest.fn();
+    renderDashboardForm({ onSettingsPanelOpenChange, onClose });
+
+    await userEvent.click(screen.getByTestId('display-settings-button'));
+    expect(
+      await screen.findByTestId('display-settings-panel'),
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('display-settings-panel'),
+      ).not.toBeInTheDocument();
+    });
+    // The editor form is still there and was never asked to close.
+    expect(screen.getByTestId('chart-name-input')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSettingsPanelOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('ignores Escape originating inside an open combobox/listbox', async () => {
+    renderDashboardForm();
+
+    await userEvent.click(screen.getByTestId('display-settings-button'));
+    expect(
+      await screen.findByTestId('display-settings-panel'),
+    ).toBeInTheDocument();
+
+    // Simulate Esc dispatched while a Mantine Select dropdown is open: the
+    // target sits inside an [aria-expanded="true"] combobox, so the dropdown
+    // consumes that Esc and the panel must stay open.
+    const openCombobox = document.createElement('div');
+    openCombobox.setAttribute('aria-expanded', 'true');
+    document.body.appendChild(openCombobox);
+    fireEvent.keyDown(openCombobox, { key: 'Escape' });
+
+    expect(screen.getByTestId('display-settings-panel')).toBeInTheDocument();
+    openCombobox.remove();
   });
 });

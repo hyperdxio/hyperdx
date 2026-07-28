@@ -29,7 +29,11 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { useDisclosure, usePrevious } from '@mantine/hooks';
+import {
+  useDisclosure,
+  useIsomorphicEffect,
+  usePrevious,
+} from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconBracketsContain,
@@ -366,7 +370,16 @@ export default function EditTimeChartForm({
   // Tell the containing drawer to hand Esc over to the docked panel: while a
   // panel is open the drawer disables its own Esc-to-close (see EditTileDrawer),
   // so Esc closes just the panel and can never dismiss the whole tile editor.
-  useEffect(() => {
+  //
+  // This MUST be a layout effect, not a passive effect. Mantine's Drawer reads
+  // `closeOnEscape` live via a window capture-phase keydown listener. If we
+  // notified the parent from a passive effect it would flip `closeOnEscape`
+  // only after the browser paints the just-opened panel, leaving a window in
+  // which Esc (pressed right after opening) still reaches Mantine as `true` and
+  // dismisses the entire tile editor. A layout effect flushes the parent state
+  // update synchronously before paint, so `closeOnEscape` is already `false`
+  // before the panel is ever visible to press Esc against.
+  useIsomorphicEffect(() => {
     onSettingsPanelOpenChange?.(showSettingsPanel);
   }, [showSettingsPanel, onSettingsPanelOpenChange]);
 
@@ -384,7 +397,11 @@ export default function EditTimeChartForm({
   // autocomplete), which the defaultPrevented guard above already covers;
   // exempting it wholesale would swallow Esc and leave the panel open when no
   // completion is showing.
-  useEffect(() => {
+  // Attach as a layout effect (pre-paint) for the same reason as the notifier
+  // above: the panel must own Esc from the very first frame it is visible, so
+  // an Esc pressed immediately after opening closes the panel rather than
+  // doing nothing (or racing the drawer's own listener).
+  useIsomorphicEffect(() => {
     if (!showSettingsPanel) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -397,12 +414,22 @@ export default function EditTimeChartForm({
       ) {
         return;
       }
-      closeDisplaySettings();
-      closeHeatmapSettings();
+      // Mark the event handled so any later listener (e.g. the containing
+      // drawer's, should its `closeOnEscape` not yet have flipped) bails on
+      // the `defaultPrevented` guard instead of tearing down the editor.
+      e.preventDefault();
+      if (displaySettingsOpened) closeDisplaySettings();
+      if (heatmapSettingsOpened) closeHeatmapSettings();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettingsPanel, closeDisplaySettings, closeHeatmapSettings]);
+  }, [
+    showSettingsPanel,
+    displaySettingsOpened,
+    heatmapSettingsOpened,
+    closeDisplaySettings,
+    closeHeatmapSettings,
+  ]);
 
   // Whether the current tab has a regular Display Settings view. Search,
   // Patterns and Markdown have none; Heatmap uses its own variant instead.
