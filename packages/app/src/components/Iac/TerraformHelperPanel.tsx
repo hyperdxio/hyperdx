@@ -90,7 +90,14 @@ export function TerraformHelperPanel({
             s.collapsible ? (
               <CollapsibleSnippet key={s.label} snippet={s} />
             ) : (
-              <CopySnippet key={s.label} label={s.label} snippet={s.snippet} />
+              <Stack key={s.label} gap="xs">
+                <CopySnippet label={s.label} snippet={s.snippet} />
+                {s.hint && (
+                  <Text size="xs" style={{ color: 'var(--color-text-muted)' }}>
+                    {s.hint}
+                  </Text>
+                )}
+              </Stack>
             ),
           )}
         </Stack>

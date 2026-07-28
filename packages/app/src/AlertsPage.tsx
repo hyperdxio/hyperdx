@@ -40,7 +40,10 @@ import {
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import EmptyState from '@/components/EmptyState';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
+import { isImportableAlert } from '@/components/Iac/terraformSnippets';
 import { PageHeader } from '@/components/PageHeader';
+import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from '@/config';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
@@ -266,6 +269,27 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       </Group>
 
       <Group>
+        {/* Eligibility comes from the shared predicate rather than an inline
+            source check, so this and the bulk export can't diverge on which
+            alerts the provider can actually model. */}
+        {IS_IAC_HELPERS_ENABLED &&
+          !IS_LOCAL_MODE &&
+          isImportableAlert(alert) && (
+            <ResourceTerraformPopover
+              resource={{
+                type: 'alert',
+                // Deliberately NOT falling back to the saved search's name.
+                // The manifest the bulk export reads carries only the alert's
+                // own name, so a fallback here would give the same alert two
+                // different Terraform addresses depending on which surface it
+                // was exported from — and Terraform would then manage the one
+                // object twice. Nameless alerts get a stable `alert_<id>`
+                // label, which is also immune to a saved-search rename.
+                id: alert._id,
+                name: alert.name ?? undefined,
+              }}
+            />
+          )}
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
       </Group>

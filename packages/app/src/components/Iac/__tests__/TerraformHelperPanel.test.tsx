@@ -5,7 +5,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { TerraformHelperPanel } from '@/components/Iac/TerraformHelperPanel';
 
 const SNIPPETS = [
-  { label: 'Import command', snippet: 'terraform import foo.bar 123' },
+  {
+    label: 'Import block',
+    snippet: 'import { to = foo.bar }',
+    hint: 'Add to your Terraform project.',
+  },
   {
     label: 'Provider setup',
     snippet: 'terraform { required_providers {} }',
@@ -26,10 +30,8 @@ describe('TerraformHelperPanel', () => {
   it('renders a plain snippet inline', () => {
     renderPanel();
 
-    expect(screen.getByText('Import command')).toBeInTheDocument();
-    expect(
-      screen.getByText('terraform import foo.bar 123'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Import block')).toBeInTheDocument();
+    expect(screen.getByText('import { to = foo.bar }')).toBeInTheDocument();
   });
 
   it('hides a collapsible snippet behind a toggle and reveals its hint', () => {

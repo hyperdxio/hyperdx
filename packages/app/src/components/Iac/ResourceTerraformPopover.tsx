@@ -6,10 +6,17 @@ import {
   TerraformHelperPanel,
   type TerraformSnippet,
 } from './TerraformHelperPanel';
-import { buildImportCommand, buildProviderBlock } from './terraformSnippets';
+import {
+  buildImportBlock,
+  buildProviderBlock,
+  type IacResourceRef,
+} from './terraformSnippets';
 
 /**
- * Import-only by design. An earlier revision also generated the resource's
+ * Per-resource "Export to Terraform" affordance: an `import {}` block for
+ * one resource, plus a collapsible provider-setup block.
+ *
+ * Import-only by design. An earlier revision also generated a dashboard's
  * `dashboard_json` from the external v2 API body, on the premise that the body
  * is exactly what the Terraform provider reads. That premise does not hold:
  * `convertToExternalTileChartConfig` is a per-displayType field allowlist, so a
@@ -19,27 +26,35 @@ import { buildImportCommand, buildProviderBlock } from './terraformSnippets';
  * emitting that body as configuration would write the loss back on apply.
  *
  * `terraform plan -generate-config-out` reads through the provider instead of
- * through us, so importing stays safe and accurate. Everything here is derived
- * synchronously from the id and name — no fetch, nothing to be stale.
+ * through us, so importing stays safe and accurate for every resource type.
+ * Everything here is derived synchronously from the ref — no fetch.
+ *
+ * Callers own eligibility: the provider models only saved-search alerts, so an
+ * alert call site must not render this for a tile alert.
  */
-export default function DashboardTerraformPopover({
-  dashboardId,
-  dashboardName,
+export default function ResourceTerraformPopover({
+  resource,
 }: {
-  dashboardId: string;
-  dashboardName?: string;
+  resource: IacResourceRef;
 }) {
   const [opened, setOpened] = useState(false);
+  // Destructured so the memo keys off primitives. Call sites build `resource`
+  // inline in JSX, so depending on the object itself would re-run this on
+  // every render.
+  const { type, id, name } = resource;
 
   const snippets = useMemo<TerraformSnippet[]>(
     () => [
       {
-        label: 'Import command',
-        snippet: buildImportCommand({
-          type: 'dashboard',
-          id: dashboardId,
-          name: dashboardName,
-        }),
+        // An `import {}` block, not the CLI `terraform import` one-liner: the
+        // CLI form refuses to run unless the resource address is already
+        // declared in configuration, and this feature deliberately generates
+        // no configuration. The block form is what `-generate-config-out`
+        // consumes, so it works in a fresh project — and matches what the
+        // bulk export writes, so both surfaces produce the same artefact.
+        label: 'Import block',
+        hint: 'Add to your Terraform project, then run `terraform plan -generate-config-out=generated.tf` and review before applying. The address is derived from this resource’s current name — if you rename it later, keep the old address or add a `moved` block, or Terraform will manage the object twice.',
+        snippet: buildImportBlock({ type, id, name }),
       },
       {
         // Terraform permits one `required_providers` and one default provider
@@ -51,7 +66,7 @@ export default function DashboardTerraformPopover({
         snippet: buildProviderBlock(`${window.location.origin}/api`),
       },
     ],
-    [dashboardId, dashboardName],
+    [type, id, name],
   );
 
   return (
@@ -70,7 +85,7 @@ export default function DashboardTerraformPopover({
             variant="secondary"
             size="input-xs"
             onClick={() => setOpened(o => !o)}
-            data-testid="terraform-popover-button"
+            data-testid={`terraform-popover-button-${id}`}
           >
             <IconBrandTerraform size={14} />
           </ActionIcon>

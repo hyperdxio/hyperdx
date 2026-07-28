@@ -1,4 +1,7 @@
-import type { IacImportManifest } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertSource,
+  type IacImportManifest,
+} from '@hyperdx/common-utils/dist/types';
 
 //
 // Single source of truth for everything HyperDX asserts about the ClickHouse
@@ -42,6 +45,29 @@ export type { IacImportManifest };
 // carry an entry without one. `terraformResourceLabel` falls back to the type.
 export type IacConnectionRef = IacImportManifest['connections'][number];
 
+/**
+ * The provider models only saved-search alerts — a tile alert has no
+ * corresponding resource, so offering one for import produces a command that
+ * fails. Shared by the bulk export and the per-alert popover so the two cannot
+ * disagree about what is eligible.
+ */
+export function isImportableAlert(alert: {
+  source?: string;
+  savedSearchId?: string;
+}): boolean {
+  // `source` is authoritative whenever it is set. The savedSearchId fallback
+  // covers only legacy rows that predate the discriminator — it must NOT be an
+  // unconditional `||`, because converting a saved-search alert to a tile alert
+  // leaves the old savedSearch reference behind: `makeAlert` passes
+  // `savedSearch: undefined` and Mongoose 6 deletes undefined keys from the
+  // `$set` instead of clearing the field. A tile alert can therefore still
+  // report a savedSearchId, and the provider cannot model it.
+  return (
+    alert.source === AlertSource.SAVED_SEARCH ||
+    (alert.source == null && !!alert.savedSearchId)
+  );
+}
+
 export function terraformResourceLabel({
   type,
   id,
@@ -58,12 +84,7 @@ export function terraformResourceLabel({
   return `${base}_${id.slice(-5)}`;
 }
 
-export function buildImportCommand(ref: IacResourceRef): string {
-  // Always the plain-id form: the <teamId>/<id> form errors on ClickHouse Cloud.
-  return `terraform import ${TERRAFORM_RESOURCE_TYPES[ref.type]}.${terraformResourceLabel(ref)} ${ref.id}`;
-}
-
-function buildImportBlock(ref: IacResourceRef): string {
+export function buildImportBlock(ref: IacResourceRef): string {
   return `import {
   to = ${TERRAFORM_RESOURCE_TYPES[ref.type]}.${terraformResourceLabel(ref)}
   id = "${ref.id}"
@@ -170,8 +191,7 @@ export function collectImportableResources(
     for (const item of manifest[key]) {
       if (type === 'alert') {
         const alert = item as IacImportManifest['alerts'][number];
-        // The provider only models saved-search alerts.
-        if (alert.source !== 'saved_search' && !alert.savedSearchId) {
+        if (!isImportableAlert(alert)) {
           skippedTileAlerts += 1;
           continue;
         }

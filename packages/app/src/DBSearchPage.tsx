@@ -93,6 +93,7 @@ import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -105,7 +106,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
@@ -2097,6 +2098,16 @@ export function DBSearchPage() {
                   {savedSearch.tags?.length || 0}
                 </Button>
               </Tags>
+
+              {IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE && (
+                <ResourceTerraformPopover
+                  resource={{
+                    type: 'saved_search',
+                    id: savedSearch.id,
+                    name: savedSearch.name,
+                  }}
+                />
+              )}
 
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {

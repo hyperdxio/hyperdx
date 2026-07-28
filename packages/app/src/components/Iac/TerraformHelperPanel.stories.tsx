@@ -2,7 +2,7 @@ import React from 'react';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { TerraformHelperPanel } from './TerraformHelperPanel';
-import { buildImportCommand, buildProviderBlock } from './terraformSnippets';
+import { buildImportBlock, buildProviderBlock } from './terraformSnippets';
 
 const meta = {
   title: 'Components/Iac/TerraformHelperPanel',
@@ -29,7 +29,7 @@ const ref = {
 export const Default: Story = {
   args: {
     snippets: [
-      { label: 'Import command', snippet: buildImportCommand(ref) },
+      { label: 'Import block', snippet: buildImportBlock(ref) },
       {
         label: 'Provider setup',
         collapsible: true,
