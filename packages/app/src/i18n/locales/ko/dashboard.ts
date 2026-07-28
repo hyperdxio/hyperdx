@@ -1,4 +1,101 @@
 import type { dashboard as englishDashboard } from '@/i18n/locales/en/dashboard';
 import type { DeepPartial } from '@/i18n/types';
 
-export const dashboard = {} satisfies DeepPartial<typeof englishDashboard>;
+export const dashboard = {
+  heatmap: { viewEventDeltas: '이벤트 델타로 보기' },
+  tile: {
+    addAlert: '알림 추가',
+    alertState: '알림이 설정되어 있으며 현재 {{state}} 상태입니다',
+    acknowledged: '{{time}}에 확인함',
+    filtersMacroMissing:
+      'SQL에 필수 매크로인 $__filters가 없어 필터가 적용되지 않았습니다',
+    luceneMetricsUnsupported:
+      '메트릭 소스에서는 Lucene 필터를 지원하지 않아 적용되지 않았습니다.',
+    filterSourceMissing:
+      '이 차트에 소스가 설정되어 있지 않아 필터가 적용되지 않았습니다',
+    moreActions: '더 보기',
+    duplicate: '복제',
+    fullscreen: '전체 화면으로 보기',
+    edit: '편집',
+    moveToGroup: '그룹으로 이동',
+    ungrouped: '(그룹 없음)',
+    delete: '삭제',
+    renderError: '차트를 렌더링하는 중 오류가 발생했습니다.',
+    sourceMissing:
+      '이 타일의 데이터 소스가 더 이상 존재하지 않습니다. 타일을 편집해 새 소스를 선택하세요.',
+    sourceUnset:
+      '이 타일의 데이터 소스가 설정되지 않았습니다. 타일을 편집해 데이터 소스를 선택하세요.',
+  },
+  filters: {
+    updated: '필터를 업데이트했습니다',
+    updateError: '필터를 업데이트하지 못했습니다',
+  },
+  saveError: '대시보드를 저장할 수 없습니다',
+  editor: {
+    discardPrompt:
+      '저장하지 않은 변경 사항이 있습니다. 버리고 편집기를 닫을까요?',
+    discard: '변경 사항 버리기',
+  },
+  page: {
+    querySavedTitle: '쿼리를 저장하고 실행했습니다',
+    querySavedMessage: '필터 쿼리와 드롭다운 값이 대시보드에 저장되었습니다',
+    defaultsRemovedTitle: '기본 쿼리와 필터를 제거했습니다',
+    defaultsRemovedMessage:
+      '이제 대시보드에서 저장된 기본값이 자동으로 적용되지 않습니다',
+    duplicatePrompt: '<name>"{{name}}"</name>을(를) 복제할까요?',
+    deletePrompt: '<name>{{name}}</name>을(를) 삭제할까요?',
+    tagsUpdated: '태그를 업데이트했습니다',
+    updateError: '오류가 발생했습니다.',
+    defaultName: '내 대시보드',
+    createdBy: '만든 사람',
+    updatedBy: '·',
+    updated: '{{time}}에 업데이트되었습니다.',
+    dashboards: '대시보드',
+    temporary: '임시 대시보드',
+    untitled: '제목 없음',
+    tagCount_one: '태그 {{count}}개',
+    tagCount_other: '태그 {{count}}개',
+    view: '보기',
+    hideAnnotations: '알림 주석 숨기기',
+    showAnnotations: '알림 주석 표시',
+    hideToc: '목차 숨기기',
+    showToc: '목차 표시',
+    collapseAll: '모든 섹션 접기',
+    expandAll: '모든 섹션 펼치기',
+    exportFailed: '내보내기 실패',
+    export: '대시보드 내보내기',
+    importNew: '새 대시보드 가져오기',
+    import: '대시보드 가져오기',
+    updateDefaults: '기본 쿼리 및 필터 업데이트',
+    saveDefaults: '쿼리 및 필터를 기본값으로 저장',
+    removeDefaults: '기본 쿼리 및 필터 제거',
+    delete: '대시보드 삭제',
+    where: 'WHERE',
+    autoRefresh: '{{interval}} 간격으로 자동 새로고침 중',
+    enableAutoRefresh: '자동 새로고침 켜기',
+    disableAutoRefresh: '자동 새로고침 끄기',
+    live: '실시간',
+    refresh: '대시보드 새로고침',
+    editFilters: '필터 편집',
+    run: '실행',
+    browserTitle: '{{name}} – {{brandName}}',
+    defaultTitle: '대시보드',
+    temporaryDescription: '이 대시보드는 임시 대시보드라 저장할 수 없습니다.',
+    createSaved: '새 대시보드로 저장',
+    ignoredTitle: '일부 필터를 적용하지 못했습니다',
+    dismiss: '닫기',
+    ignoredDescription_one:
+      'URL의 표현식에 해당하는 대시보드 필터가 없습니다: {{expressions}}. 같은 표현식의 필터를 추가하면 적용됩니다.',
+    ignoredDescription_other:
+      'URL의 표현식에 해당하는 대시보드 필터가 없습니다: {{expressions}}. 같은 표현식의 필터를 추가하면 적용됩니다.',
+    selected_one: '타일 {{count}}개 선택됨',
+    selected_other: '타일 {{count}}개 선택됨',
+    groupSelected: '선택한 타일 그룹화 (Cmd+G)',
+    group: '그룹화',
+    clear: '선택 해제',
+    renderError: '대시보드를 렌더링하는 중 오류가 발생했습니다.',
+    add: '추가',
+    newTile: '새 타일',
+    newGroup: '새 그룹',
+  },
+} satisfies DeepPartial<typeof englishDashboard>;

@@ -1,4 +1,272 @@
 import type { sources as englishSources } from '@/i18n/locales/en/sources';
 import type { DeepPartial } from '@/i18n/types';
 
-export const sources = {} satisfies DeepPartial<typeof englishSources>;
+export const sources = {
+  select: {
+    placeholder: '데이터 소스',
+    actions: '소스 작업',
+    viewSchema: '스키마 보기',
+    edit: '소스 편집',
+    manage: '소스 관리',
+    create: '새 소스 만들기',
+  },
+  list: {
+    loading: '소스를 불러오는 중...',
+    errorTitle: '소스를 불러오지 못했습니다',
+    errorMessage: '데이터 소스를 불러오는 중 오류가 발생했습니다.',
+    emptyTitle: '아직 구성된 데이터 소스가 없습니다.',
+    emptyDescription: '소스를 추가하면 데이터를 조회할 수 있습니다.',
+    disabled: '비활성',
+    add: '소스 추가',
+  },
+  schema: {
+    trigger: '스키마',
+    tooltip_one: '테이블 스키마 보기',
+    tooltip_other: '테이블 스키마 보기',
+    disabledTooltip: '스키마를 보려면 테이블을 선택하세요',
+    modalTitle_one: '테이블 스키마',
+    modalTitle_other: '테이블 스키마',
+    distributedTable: '분산 테이블',
+    localTable: '로컬 테이블',
+    unavailable: '스키마를 사용할 수 없습니다',
+    materializedViewTab: '{{tableName}} (MV)',
+    metricType: {
+      sum: 'Sum',
+      gauge: 'Gauge',
+      histogram: 'Histogram',
+      summary: 'Summary',
+      exponentialHistogram: 'Exponential Histogram',
+    },
+  },
+  validation: {
+    title: '"{{name}}" 소스에 검증 문제가 있습니다',
+    fields: '필드: {{fields}}. ',
+    editSources: '소스 편집',
+  },
+  form: {
+    title: '소스 설정',
+    enabled: '활성화',
+    disabled: '비활성화',
+    name: '이름',
+    nameRequired: '이름을 입력해 주세요',
+    section: '섹션',
+    sectionPlaceholder: '선택 그룹, 예: Billing 또는 Control Plane Prod',
+    kind: '소스 데이터 타입',
+    kindLog: '로그',
+    kindTrace: '트레이스',
+    kindMetric: 'OTEL 메트릭',
+    kindSession: '세션',
+    kindPromql: 'PromQL',
+    connection: '서버 연결',
+    database: '데이터베이스',
+    table: '테이블',
+    tableRequired: '테이블을 선택해 주세요',
+    querySettings: '쿼리 설정',
+    querySettingsHelp:
+      '이 소스의 모든 쿼리에 추가되는 쿼리 수준 세션 설정입니다.',
+    settingPlaceholder: '설정',
+    valuePlaceholder: '값',
+    removeSetting: '설정 제거',
+    addSetting: '설정 추가',
+    saveNew: '새 소스 저장',
+    save: '소스 저장',
+    inferred: '테이블 스키마에서 소스 구성을 자동으로 추론했습니다.',
+    createFailedTitle: '소스를 생성하지 못했습니다',
+    created: '소스를 생성했습니다',
+    createFailed: '소스를 생성하지 못했습니다',
+    updated: '소스를 수정했습니다',
+    updateFailed: '소스를 수정하지 못했습니다',
+  },
+  pairing: {
+    modalTitle: '소스 구성 확인',
+    recommended: '권장 ({{recommendation}}):',
+    useValue: '이 값 사용',
+    saveAnyway: '무시하고 저장',
+    bodyWithoutImplicit:
+      '<field>Body Expression</field>은 설정되어 있지만 <field>Implicit Column Expression</field>이 비어 있습니다. 일반 텍스트 Lucene 검색은 <field>Body Expression</field>을 사용하게 됩니다.',
+    implicitWithoutBody:
+      '<field>Implicit Column Expression</field>은 설정되어 있지만 <field>Body Expression</field>이 비어 있습니다. 행 패널의 본문 표시는 <field>Implicit Column Expression</field>을 사용하게 됩니다.',
+    recommendationBody: 'Body Expression 값',
+    recommendationImplicit: 'Implicit Column Expression 값',
+  },
+  fields: {
+    timestampColumn: '타임스탬프 컬럼',
+    timestampColumnHelpLog:
+      '테이블 기본 키에 포함된 DateTime 컬럼 또는 표현식입니다.',
+    timestampColumnHelpTrace:
+      '스팬의 시작 시각을 나타내는 DateTime 컬럼 또는 표현식입니다',
+    defaultSelect: '기본 조회 컬럼',
+    defaultSelectHelp:
+      '검색 결과에 기본으로 표시할 컬럼입니다 (검색별로 나중에 변경할 수 있습니다)',
+    configureOptionalFields: '선택 항목 설정',
+    hideOptionalFields: '선택 항목 숨기기',
+    serviceNameExpression: '서비스 이름 표현식',
+    logLevelExpression: '로그 레벨 표현식',
+    bodyExpression: '본문 표현식',
+    logAttributesExpression: '로그 속성 표현식',
+    resourceAttributesExpression: '리소스 속성 표현식',
+    eventAttributesExpression: '이벤트 속성 표현식',
+    displayedTimestampColumn: '표시용 타임스탬프 컬럼',
+    displayedTimestampColumnHelp:
+      '검색 결과를 표시하고 정렬할 때 사용하는 DateTime 컬럼입니다.',
+    correlatedLogSource: '연결된 로그 소스',
+    correlatedLogSourceHelpTrace:
+      '트레이스와 연관된 로그의 {{brandName}} 소스입니다. 선택 사항',
+    correlatedLogSourceHelpMetric:
+      '메트릭과 연관된 로그의 {{brandName}} 소스입니다. 선택 사항',
+    correlatedTraceSource: '연결된 트레이스 소스',
+    correlatedTraceSourceHelpLog:
+      '로그와 연관된 트레이스의 {{brandName}} 소스입니다. 선택 사항',
+    correlatedTraceSourceHelpSession:
+      '세션과 연관된 트레이스의 {{brandName}} 소스입니다. 필수',
+    correlatedMetricSource: '연결된 메트릭 소스',
+    correlatedMetricSourceHelpLog:
+      '로그와 연관된 메트릭의 {{brandName}} 소스입니다. 선택 사항',
+    correlatedMetricSourceHelpTrace:
+      '트레이스와 연관된 메트릭의 {{brandName}} 소스입니다. 선택 사항',
+    correlatedSessionSource: '연결된 세션 소스',
+    correlatedSessionSourceHelpTrace:
+      '트레이스와 연관된 세션의 {{brandName}} 소스입니다. 선택 사항',
+    traceIdExpression: '트레이스 ID 표현식',
+    spanIdExpression: '스팬 ID 표현식',
+    parentSpanIdExpression: '상위 스팬 ID 표현식',
+    spanNameExpression: '스팬 이름 표현식',
+    spanKindExpression: '스팬 종류 표현식',
+    statusCodeExpression: '상태 코드 표현식',
+    statusMessageExpression: '상태 메시지 표현식',
+    durationExpression: '소요 시간 표현식',
+    durationPlaceholder: '소요 시간 컬럼',
+    durationPrecision: '소요 시간 정밀도',
+    durationPrecisionSeconds: '초',
+    durationPrecisionMillisecond: '밀리초',
+    durationPrecisionMicrosecond: '마이크로초',
+    durationPrecisionNanosecond: '나노초',
+    sampleRateExpression: '샘플링 비율 표현식',
+    sampleRateExpressionHelp:
+      '업스트림 샘플링 가중치(1/N)를 나타내는 컬럼 또는 표현식입니다. 설정하면 집계(count, avg, sum, quantile)가 샘플링을 반영해 보정됩니다. 백분위수는 근사치인 quantileTDigestWeighted를 사용하므로 정확한 값과 다소 차이가 있을 수 있습니다. 스팬을 샘플링하지 않는다면 비워 두세요.',
+    spanLinksExpression: '스팬 링크 표현식',
+    spanLinksExpressionHelp:
+      '스팬 링크를 추출하는 표현식으로, 한 스팬에서 다른 트레이스의 스팬으로 이어지는 링크를 수집할 때 사용합니다. Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) ) 형태여야 합니다',
+    spanEventsExpression: '스팬 이벤트 표현식',
+    spanEventsExpressionHelp:
+      '스팬 이벤트를 추출하는 표현식으로, 스팬과 연관된 이벤트를 수집할 때 사용합니다. Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String) 형태여야 합니다',
+    implicitColumnExpression: '암시적 컬럼 표현식',
+    implicitColumnExpressionHelp:
+      'Lucene 검색에서 속성을 지정하지 않았을 때 전문 검색에 사용하는 컬럼입니다. 보통 로그의 메시지 본문을 사용합니다.',
+    knownColumnsList: '알려진 컬럼 목록',
+    knownColumnsListHelp:
+      '대상 테이블마다 컬럼 구성이 다른 분산 테이블 소스를 위한 설정입니다. 모든 대상 테이블에서 지원되는 컬럼 목록을 지정하면, 전체 행 데이터를 가져올 때(예: 행 사이드 패널) SELECT * 대신 이 목록이 사용됩니다. 비워 두면 모든 컬럼을 조회합니다. 컬럼 이름을 쉼표로 구분해 입력하고, 컬럼이 아닌 표현식이나 별칭은 넣지 마세요.',
+    useTextIndex: '텍스트 인덱스 사용',
+    useTextIndexHelp:
+      'Lucene 검색이 암시적 컬럼을 검색할 때 hasAllTokens()를 사용할지 결정합니다. 기본값인 "자동"은 쿼리 시점에 skip-index 메타데이터에서 커버링 텍스트 인덱스를 감지하고, "강제 사용"은 항상 hasAllTokens()를 사용하므로 merge 테이블 엔진을 조회할 때 유용하며, "강제 미사용"은 hasToken()을 사용합니다.',
+    useTextIndexAuto: '자동 (스키마에서 감지)',
+    useTextIndexEnabled: '강제 사용',
+    useTextIndexDisabled: '강제 미사용',
+    defaultOrderBy: '기본 정렬 기준',
+    defaultOrderByHelp:
+      '기본 정렬을 대체하는 사용자 지정 ORDER BY 표현식입니다. 비워 두면 자동으로 감지된 기본값을 사용합니다. (검색별로 나중에 변경할 수 있습니다)',
+    defaultOrderByPlaceholder: '예: Timestamp DESC',
+    highlightedAttributes: '강조 속성',
+    highlightedAttributesHelpLog:
+      '선택한 행의 사이드 패널에 표시할 행 수준 속성을 정의하는 표현식입니다.',
+    highlightedAttributesHelpTrace:
+      '선택한 행의 사이드 패널에 표시할 행 수준 속성을 정의하는 표현식입니다',
+    highlightedTraceAttributes: '강조 트레이스 속성',
+    highlightedTraceAttributesHelp:
+      '선택한 트레이스의 트레이스 뷰에 표시할 트레이스 수준 속성을 정의하는 표현식입니다.',
+    aliasPlaceholder: '별칭 (선택)',
+    lucenePlaceholder: 'ResourceAttributes.http.host (선택)',
+    luceneHelp:
+      '위 표현식의 Lucene 버전입니다(선택). 입력하면 이 속성 값을 검색할 때 사용됩니다.',
+    addExpression: '표현식 추가',
+    validateExpression: '표현식 검증',
+    expressionValid: '올바른 표현식입니다.',
+    expressionInvalid: '올바르지 않은 표현식입니다',
+    detected: '감지됨',
+    apply: '적용',
+    multipleCandidates: '후보가 여러 개입니다:',
+    otherCandidates: '다른 후보:',
+    metricTable: '{{metricType}} 테이블',
+    metricTableHelp: '{{metricType}} 메트릭 데이터가 있는 테이블입니다',
+    metricTableHelpUnsupported:
+      '{{metricType}} 메트릭 데이터가 있는 테이블입니다. 참고: {{brandName}}에서 아직 완전히 지원되지 않습니다',
+    metricTableInvalid:
+      '{{tableName}}은(는) 올바른 OTEL {{metricType}} 스키마가 아닙니다.',
+    metricTablesAutoDetected:
+      '데이터베이스에서 메트릭 테이블을 자동으로 감지했습니다.',
+    sessionsTableInvalid:
+      '{{tableName}}은(는) 올바른 Sessions 스키마가 아닙니다.',
+  },
+  materializedViews: {
+    title: '머티리얼라이즈드 뷰',
+    help: '쿼리 최적화를 위한 머티리얼라이즈드 뷰를 구성합니다. 미리 집계된 이 뷰를 사용하면 집계 쿼리 성능이 크게 향상될 수 있습니다.',
+    add: '머티리얼라이즈드 뷰 추가',
+    metadataTitle: '메타데이터 머티리얼라이즈드 뷰',
+    metadataHelp:
+      '빠른 필드 탐색과 값 자동완성을 위한 머티리얼라이즈드 뷰를 구성합니다. 미리 집계된 이 테이블은 필터 로딩과 검색 추천 속도를 높여 줍니다.',
+    metadataAdd: '메타데이터 머티리얼라이즈드 뷰 추가',
+    keyRollupTable: '키 롤업 테이블 (선택, 지원 중단 예정)',
+    kvRollupTable: 'KV 롤업 테이블',
+    granularity: '집계 단위',
+    granularityHelp: '타임스탬프 컬럼의 집계 단위입니다',
+    granularityPlaceholder: '집계 단위',
+    rollupGranularityPlaceholder: '롤업 집계 단위 선택',
+    minimumDate: '최소 날짜',
+    minimumDateHelp:
+      '(선택) 머티리얼라이즈드 뷰에 데이터가 존재하는 가장 이른 날짜와 시각(현지 시간대)입니다. 입력하지 않으면 {{brandName}}는 원본 테이블에 데이터가 있는 모든 날짜에 대해 머티리얼라이즈드 뷰에도 데이터가 있다고 가정합니다.',
+    dimensionColumns: '디멘션 컬럼 (쉼표로 구분)',
+    dimensionColumnsHelp:
+      '머티리얼라이즈드 뷰에서 미리 집계되지 않아 필터링과 그룹화에 사용할 수 있는 컬럼입니다.',
+    preAggregatedColumns: '사전 집계 컬럼',
+    preAggregatedColumnsHelp: '머티리얼라이즈드 뷰가 미리 집계하는 컬럼입니다',
+    addColumn: '컬럼 추가',
+    sourceColumnPlaceholder: '원본 컬럼',
+    viewColumnPlaceholder: '뷰 컬럼',
+    inferSuccess: '뷰 스키마에서 머티리얼라이즈드 뷰 구성 일부를 추론했습니다.',
+    inferFailure: '머티리얼라이즈드 뷰 구성을 추론할 수 없습니다.',
+    granularityOptions: {
+      oneSecond: '1초',
+      fifteenSecond: '15초',
+      thirtySecond: '30초',
+      oneMinute: '1분',
+      fiveMinute: '5분',
+      fifteenMinute: '15분',
+      thirtyMinute: '30분',
+      oneHour: '1시간',
+      twoHour: '2시간',
+      sixHour: '6시간',
+      twelveHour: '12시간',
+      oneDay: '1일',
+      twoDay: '2일',
+      sevenDay: '7일',
+      thirtyDay: '30일',
+    },
+  },
+  optimization: {
+    accelerated: '가속됨',
+    notAccelerated: '가속되지 않음',
+    modalTitle_one: '머티리얼라이즈드 뷰',
+    modalTitle_other: '머티리얼라이즈드 뷰',
+    description_one:
+      '이 소스에는 일부 집계를 가속하기 위한 머티리얼라이즈드 뷰가 구성되어 있습니다.',
+    description_other:
+      '이 소스에는 일부 집계를 가속하기 위한 머티리얼라이즈드 뷰가 구성되어 있습니다.',
+    statusActive: '사용 중',
+    statusIncompatible: '호환 불가',
+    statusSkipped: '건너뜀',
+    rowEstimate: '예상 스캔 행 수: {{rowEstimate}}',
+    rowEstimateUnknown: '해당 없음',
+    incompatibleTooltip:
+      '이 머티리얼라이즈드 뷰는 선택한 쿼리와 호환되지 않습니다.',
+    errorsTitle:
+      '다음 이유로 이 머티리얼라이즈드 뷰로는 쿼리를 가속할 수 없습니다:',
+    summaryGranularity: '집계 단위',
+    summaryGranularityHelp:
+      '데이터를 미리 집계하는 시간 구간의 크기입니다. 선택한 시간 범위가 뷰의 집계 단위와 맞지 않으면 머티리얼라이즈드 뷰와 원본 테이블의 집계 값이 조금 다를 수 있습니다.',
+    summaryMinimumDate: '최소 날짜',
+    summaryDimensionColumns: '사용 가능한 그룹·필터 컬럼',
+    summaryAggregatedColumns: '사용 가능한 집계 컬럼',
+    summaryColumn: '컬럼',
+    summaryAggregation: '집계 함수',
+  },
+} satisfies DeepPartial<typeof englishSources>;
