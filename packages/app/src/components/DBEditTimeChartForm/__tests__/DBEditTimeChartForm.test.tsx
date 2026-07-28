@@ -5,6 +5,7 @@ import {
   SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
+import { Drawer } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -730,5 +731,70 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
       ).not.toBeInTheDocument();
     });
     accordionControl.remove();
+  });
+});
+
+// The unit tests above render the form bare. This suite wraps it in a real
+// Mantine Drawer wired exactly like EditTileDrawer (closeOnEscape driven by the
+// panel-open notification), which is the only place the capture/bubble ordering
+// between the drawer's Esc handling and the panel's Esc handling actually
+// matters.
+describe('DBEditTimeChartForm - Docked panel Esc inside a real Drawer', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const EditTileDrawerHarness = ({
+    onDrawerClose,
+  }: {
+    onDrawerClose: () => void;
+  }) => {
+    const [settingsPanelOpen, setSettingsPanelOpen] = React.useState(false);
+    return (
+      <Drawer
+        opened
+        onClose={onDrawerClose}
+        closeOnEscape={!settingsPanelOpen}
+        withCloseButton={false}
+      >
+        <div data-testid="drawer-content-marker" />
+        <QueryClientProvider client={queryClient}>
+          <DBEditTimeChartForm
+            chartConfig={{
+              ...defaultChartConfig,
+              displayType: DisplayType.Line,
+            }}
+            dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
+            dashboardId="test-dashboard-id"
+            isDashboardForm
+            onSettingsPanelOpenChange={setSettingsPanelOpen}
+          />
+        </QueryClientProvider>
+      </Drawer>
+    );
+  };
+
+  it('closes only the docked panel on Escape, keeping the drawer open', async () => {
+    const onDrawerClose = jest.fn();
+    renderWithMantine(<EditTileDrawerHarness onDrawerClose={onDrawerClose} />);
+
+    await userEvent.click(screen.getByTestId('display-settings-button'));
+    const panel = await screen.findByTestId('display-settings-panel');
+    expect(panel).toBeInTheDocument();
+
+    // Dispatch Escape the way a real keypress does: on the focused element,
+    // through the full event system, so it hits both the drawer's own window
+    // keydown listener (Mantine closes the drawer on Esc via useWindowEvent)
+    // and the window listener the panel installs.
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('display-settings-panel'),
+      ).not.toBeInTheDocument();
+    });
+    // The drawer must survive: only the panel closed.
+    expect(screen.getByTestId('drawer-content-marker')).toBeInTheDocument();
+    expect(onDrawerClose).not.toHaveBeenCalled();
   });
 });

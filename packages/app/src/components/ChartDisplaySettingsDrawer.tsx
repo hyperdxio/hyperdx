@@ -17,6 +17,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { DEFAULT_SERIES_LIMIT } from '@/defaults';
@@ -402,7 +403,11 @@ export default function ChartDisplaySettingsDrawer({
         setValue={setValue}
         disclaimer={
           isPerSeriesNumberFormatAllowed ? (
-            <Alert variant="outline" color="yellow" p="xs">
+            <Alert
+              variant="warning"
+              p="xs"
+              icon={<IconAlertTriangle size={16} />}
+            >
               <Text size="xs" m={0}>
                 Format may be overridden on individual series.
               </Text>

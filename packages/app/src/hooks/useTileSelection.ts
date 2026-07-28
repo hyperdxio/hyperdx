@@ -70,7 +70,13 @@ export default function useTileSelection({
         handleGroupSelected();
       },
     ],
-    ['escape', () => setSelectedTileIds(new Set())],
+    // Clearing the tile selection is a passive side-effect, not a consumption
+    // of the key, so don't preventDefault (Mantine's useHotkeys does by
+    // default). This listener sits on documentElement and fires before any
+    // window-level Esc handler; preventDefaulting here makes a docked overlay
+    // that guards on `event.defaultPrevented` — e.g. the tile editor's settings
+    // panel — bail out, leaving Esc looking dead while the panel is open.
+    ['escape', () => setSelectedTileIds(new Set()), { preventDefault: false }],
   ]);
 
   return {

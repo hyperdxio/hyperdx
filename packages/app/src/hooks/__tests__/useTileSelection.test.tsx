@@ -143,3 +143,34 @@ describe('useTileSelection — handleGroupSelected', () => {
     expect(result.containers!.some(c => c.id === 'c-empty')).toBe(true);
   });
 });
+
+describe('useTileSelection — Escape hotkey', () => {
+  it('clears the selection on Escape without preventing default', () => {
+    const dashboard = { name: 'Test', tiles: [] } as unknown as Dashboard;
+    const { hook } = renderSelectionHook(dashboard);
+
+    act(() => {
+      hook.result.current.setSelectedTileIds(new Set(['t1', 't2']));
+    });
+    expect(hook.result.current.selectedTileIds.size).toBe(2);
+
+    // useHotkeys listens on documentElement; dispatch there so the hotkey fires.
+    const event = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      document.documentElement.dispatchEvent(event);
+    });
+
+    expect(hook.result.current.selectedTileIds.size).toBe(0);
+    // Overlays docked over the dashboard (e.g. the tile editor's settings
+    // panel) own Esc via a window listener that bails on defaultPrevented.
+    // Clearing the selection must not swallow the key, or those panels look
+    // frozen while open.
+    expect(event.defaultPrevented).toBe(false);
+
+    hook.unmount();
+  });
+});
