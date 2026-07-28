@@ -660,10 +660,12 @@ export class ChartEditorComponent {
   /**
    * Select the "Output format" option in whichever number format drawer is
    * currently open (Display Settings OR Series Display Settings). Both drawers
-   * embed the same NumberFormatForm with a NativeSelect labeled "Output format".
+   * embed the same NumberFormatForm with a Mantine Select labeled "Output
+   * format", so open the combobox and click the option.
    */
   async setNumberFormatOutput(label: string) {
-    await this.page.getByLabel('Output format').selectOption({ label });
+    await this.page.getByRole('combobox', { name: 'Output format' }).click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
   }
 
   /**
