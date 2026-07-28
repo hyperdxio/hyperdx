@@ -194,7 +194,6 @@ export const NumberFormatForm: React.FC<{
                 allowDeselect={false}
                 onChange={value => {
                   if (!value) return;
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                   const newOutput = value as NumberFormat['output'];
                   onChange(newOutput);
                   setValue(

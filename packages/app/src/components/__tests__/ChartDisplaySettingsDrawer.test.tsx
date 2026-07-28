@@ -7,6 +7,10 @@ import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
 
+// Mantine's Combobox (used by the number format Select) calls scrollIntoView
+// when its dropdown opens; jsdom lacks it.
+window.HTMLElement.prototype.scrollIntoView = jest.fn();
+
 // FormatTime depends on useUserPreferences (jotai + localStorage); mock it
 // so the drawer renders in isolation.
 jest.mock('@/useFormatTime', () => ({
@@ -521,9 +525,11 @@ describe('ChartDisplaySettingsDrawer', () => {
         />,
       );
 
-      await user.selectOptions(
+      await user.click(
         screen.getByRole('combobox', { name: /output format/i }),
-        'number',
+      );
+      await user.click(
+        await screen.findByRole('option', { name: 'Number', hidden: true }),
       );
       await user.click(screen.getByRole('button', { name: /apply/i }));
 
