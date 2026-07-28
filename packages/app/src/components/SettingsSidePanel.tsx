@@ -31,7 +31,9 @@ export default function SettingsSidePanel({
       data-testid={dataTestId}
       style={{
         flexShrink: 0,
-        width: 340,
+        // Cap at 340px but yield to the editor column on narrow viewports (the
+        // panel lives inside a 90% drawer), so the editor is never crushed.
+        width: 'min(340px, 45%)',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',

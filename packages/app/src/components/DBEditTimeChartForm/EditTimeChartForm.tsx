@@ -884,7 +884,10 @@ export default function EditTimeChartForm({
           pb={isDashboardForm ? 'md' : undefined}
           style={{
             flex: 1,
-            minWidth: 0,
+            // Floor the editor column when a panel can dock beside it so a
+            // narrow drawer never crushes it; keep 0 on Chart Explorer so the
+            // sole column can shrink/overflow freely.
+            minWidth: isDashboardForm ? 320 : 0,
             ...(isDashboardForm
               ? { height: '100%', overflowY: 'auto' as const }
               : {}),
