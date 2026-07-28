@@ -24,6 +24,7 @@ import {
   type QueryableMetricKind,
   sanitizeMetricTables,
 } from './metricKinds';
+import { extractSourceConfig } from './schemas';
 
 // How far back to look when querying the rollup tables for value samples.
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -252,6 +253,9 @@ async function describeSourceSchema(
     kind: source.kind,
     connectionId: source.connection.toString(),
     timestampColumn: source.timestampValueExpression,
+    // Round-trippable config for clickstack_save_source (clone / read-modify-
+    // write); includes fields the curated summary below omits.
+    config: extractSourceConfig(source.toObject()),
   };
 
   if (source.section) {
