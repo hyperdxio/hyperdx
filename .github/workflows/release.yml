@@ -297,13 +297,41 @@ jobs:
           ref: changeset-release/main
           fetch-depth: 0
 
+      # A later run can rebuild changeset-release/main between this run's draft
+      # and publish. Because this job re-checks-out the branch, the push would
+      # fast-forward cleanly onto that newer state and commit THIS run's
+      # (now stale) version metadata — leaving an orphan section for a version
+      # the branch no longer builds, which insertSection never cleans up
+      # because it only replaces a matching version. Re-derive both keys from
+      # the fresh checkout and bail if either moved; the newer run publishes
+      # the correct section, so skipping here is self-correcting.
+      - name: Verify the release branch still matches the draft
+        id: guard
+        env:
+          DRAFT_VERSION: ${{ needs.release_changelog_draft.outputs.version }}
+          DRAFT_INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./packages/app/package.json').version")"
+          INPUTS="$(git ls-tree -r origin/main -- .changeset \
+            | awk '$4 ~ /\.md$/ && $4 != ".changeset/README.md" {print $3, $4}' \
+            | sort -k2 | sha256sum | cut -c1-12)"
+          if [ "$VERSION" != "$DRAFT_VERSION" ] || [ "$INPUTS" != "$DRAFT_INPUTS" ]; then
+            echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}); skipping publish, the newer run will regenerate"
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download generated body
+        if: steps.guard.outputs.stale == 'false'
         uses: actions/download-artifact@v8
         with:
           name: release-notes-body
           path: /tmp
 
       - name: Validate generated notes
+        if: steps.guard.outputs.stale == 'false'
         run: |
           set -euo pipefail
           test -s /tmp/release-notes-body.md
@@ -331,6 +359,7 @@ jobs:
           fi
 
       - name: Append package changelog table
+        if: steps.guard.outputs.stale == 'false'
         env:
           # Absolute URLs: this markdown is also rendered inside the in-app
           # "What's new" modal, where relative links would resolve against the
@@ -359,6 +388,7 @@ jobs:
           } >> /tmp/release-notes-body.md
 
       - name: Splice into CHANGELOG.md and push
+        if: steps.guard.outputs.stale == 'false'
         env:
           VERSION: ${{ needs.release_changelog_draft.outputs.version }}
           INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
