@@ -36,6 +36,7 @@ import {
   AggFnSelectControlled,
   getMetricV2DefaultAggFn,
   isMetricV2AggFnAllowed,
+  levelToPLabel,
   SumMonotonicity,
 } from '@/components/AggFnSelect';
 import {
@@ -58,6 +59,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import {
   useFetchMetricMetadata,
   useMetricSeriesProfile,
+  useMetricSummaryQuantiles,
 } from '@/hooks/useFetchMetricMetadata';
 import {
   parseAttributeKeysFromSuggestions,
@@ -255,10 +257,43 @@ export function ChartSeriesEditor({
           ? 'monotonic'
           : 'unknown';
 
+  // Summary sources: the levels the metric actually records (series-table
+  // Quantiles array; the hook self-gates to Summary+v2). The picker is
+  // restricted to these, and a saved chart whose level is NOT stored gets a
+  // substitution badge — the query recipe serves the nearest stored level
+  // >= the requested one (else the highest), and that must never be silent.
+  const { data: summaryStoredLevels } = useMetricSummaryQuantiles({
+    databaseName,
+    metricType,
+    metricName,
+    tableSource: metricTableSource,
+    dateRange,
+  });
+
   // §4: v2 metric types gate the aggregate list (see AggFnSelect) — reset a
   // stale selection that is illegal for the (new) metric type/regime to the
   // type's primary aggregate so the translator never sees it.
   const quantileLevel = useWatch({ control, name: `${namePrefix}level` });
+
+  const summaryLevelWarning = useMemo(() => {
+    if (
+      !isV2Source ||
+      metricType !== MetricsDataType.Summary ||
+      aggFn !== 'quantile' ||
+      quantileLevel == null ||
+      !Array.isArray(summaryStoredLevels) ||
+      summaryStoredLevels.length === 0 ||
+      summaryStoredLevels.some(l => Math.abs(l - quantileLevel) < 1e-9)
+    ) {
+      return undefined;
+    }
+    // Mirror the SQL's pick: first stored level >= requested, else highest
+    // (metadata returns the levels sorted ascending).
+    const substitute =
+      summaryStoredLevels.find(l => l >= quantileLevel) ??
+      summaryStoredLevels[summaryStoredLevels.length - 1];
+    return `${levelToPLabel(quantileLevel)} is not recorded for this metric — the chart shows ${levelToPLabel(substitute)}`;
+  }, [isV2Source, metricType, aggFn, quantileLevel, summaryStoredLevels]);
   useEffect(() => {
     if (!isV2Source || !metricType) {
       return;
@@ -469,7 +504,23 @@ export function ChartSeriesEditor({
             }
             metricsV2={isV2Source}
             sumMonotonicity={sumMonotonicity}
+            histogramTemporality={
+              metricType === MetricsDataType.Histogram
+                ? seriesProfile?.temporality
+                : undefined
+            }
+            summaryStoredLevels={summaryStoredLevels ?? undefined}
           />
+          {summaryLevelWarning && (
+            <Text
+              size="xs"
+              c="yellow"
+              mt={4}
+              data-testid="summary-level-warning"
+            >
+              {summaryLevelWarning}
+            </Text>
+          )}
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
           <div style={{ minWidth: 220 }}>

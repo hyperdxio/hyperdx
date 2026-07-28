@@ -12,7 +12,7 @@ import {
   MetricsDataType,
 } from '@/types';
 
-describe('tmp metrics v2 render', () => {
+describe('metrics v2 render', () => {
   let mockMetadata: jest.Mocked<Metadata>;
   beforeAll(() => {
     jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -851,13 +851,13 @@ describe('tmp metrics v2 render', () => {
         }) as ChartConfigWithOptDateRange;
       await expect(
         renderChartConfig(
-          cfgFor(MetricsDataType.ExponentialHistogram, 'avg', {
+          cfgFor(MetricsDataType.ExponentialHistogram, 'min', {
             expHistogramPoints: 'otel_metrics_exp_histogram_points',
           }),
           mockMetadata,
           undefined,
         ),
-      ).rejects.toThrow('avg is not supported for exponential histograms');
+      ).rejects.toThrow('min is not supported for exponential histograms');
       await expect(
         renderChartConfig(
           cfgFor(MetricsDataType.Summary, 'avg', {
@@ -869,11 +869,11 @@ describe('tmp metrics v2 render', () => {
       ).rejects.toThrow('avg is not supported for summaries');
       await expect(
         renderChartConfig(
-          cfgFor(MetricsDataType.Histogram, 'max', {}),
+          cfgFor(MetricsDataType.Histogram, 'sum', {}),
           mockMetadata,
           undefined,
         ),
-      ).rejects.toThrow('max is not supported for histograms');
+      ).rejects.toThrow('sum is not supported for histograms');
     });
 
     it('snapDisplayGranularity + granularitySecondsToSQLInterval', () => {
@@ -1069,6 +1069,185 @@ describe('tmp metrics v2 render', () => {
         'GROUP BY SeriesHash, `__hdx_time_bucket`, Scale',
       );
       expect(delta).not.toContain('min(Scale) AS scale');
+    });
+  });
+
+  describe('round-2 recipe fixes', () => {
+    const expQuantileCfg = (temporality: 'delta' | 'cumulative') => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality,
+        otherMetricTypes: [],
+      });
+      return {
+        ...base,
+        ...quantileWindow,
+        metricTables: {
+          ...base.metricTables,
+          expHistogramPoints: 'otel_metrics_exp_histogram_points',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.5,
+            aggCondition: '',
+            valueExpression: 'Value',
+            metricName: 'test.exp.duration',
+            metricType: MetricsDataType.ExponentialHistogram,
+          },
+        ],
+      } as ChartConfigWithOptDateRange;
+    };
+
+    it('exp quantiles walk the full signed distribution (negative buckets)', async () => {
+      const cum = parameterizedQueryToSql(
+        await renderChartConfig(
+          expQuantileCfg('cumulative'),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(cum).toContain('NegativeBucketCounts, NegativeOffset');
+      expect(cum).toContain('neg_if_cum');
+      expect(cum).toContain('chosenNegMap');
+      // ascending-VALUE order over negative indices = descending index order
+      expect(cum).toContain('arrayReverse(mergedNeg.1) AS nks');
+      // rank inside the zero bucket resolves to 0
+      expect(cum).toContain('rank <= negTotal + zeroTotal, 0.');
+      // negative-side interpolation: the positive rule with negated bounds
+      expect(cum).toContain(
+        '-pow(base, nks[nidx] + 1) + (pow(base, nks[nidx] + 1) - pow(base, nks[nidx]))',
+      );
+
+      const delta = parameterizedQueryToSql(
+        await renderChartConfig(
+          expQuantileCfg('delta'),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(delta).toContain('NegativeBucketCounts, NegativeOffset');
+      expect(delta).toContain('chosenNegMap');
+    });
+
+    it('exp rollup quantiles carry the negative tier states', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...base, // 24h window
+            metricTables: {
+              ...base.metricTables,
+              expHistogramPoints: 'otel_metrics_exp_histogram_points',
+              expHistogramPoints5m: 'otel_metrics_exp_histogram_points_5m',
+              expHistogramPoints1h: 'otel_metrics_exp_histogram_points_1h',
+            },
+            granularity: '1 hour',
+            select: [
+              {
+                aggFn: 'quantile',
+                level: 0.9,
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'test.exp.duration',
+                metricType: MetricsDataType.ExponentialHistogram,
+              },
+            ],
+          } as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_exp_histogram_points_1h');
+      expect(rendered).toContain('sumMap(SumNegative)');
+      expect(rendered).toContain("tupleElement(f, 'NegativeBuckets') AS fNeg");
+      expect(rendered).toContain('neg_inc_cum');
+    });
+
+    it('histogram min/max read the stored extremes on raw and tier paths', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const histCfg = (aggFn: 'min' | 'max', over?: Record<string, unknown>) =>
+        ({
+          ...base,
+          select: [
+            {
+              aggFn,
+              aggCondition: '',
+              valueExpression: 'Value',
+              metricName: 'test.duration',
+              metricType: MetricsDataType.Histogram,
+            },
+          ],
+          ...over,
+        }) as ChartConfigWithOptDateRange;
+
+      const raw = parameterizedQueryToSql(
+        await renderChartConfig(histCfg('max'), mockMetadata, undefined),
+      );
+      expect(raw).toContain('max(Max) AS extreme');
+      expect(raw).toContain('max(p.extreme)');
+      // Rule 6: a marker row's zero extremes would poison min()/pin max()
+      expect(raw).toContain('bitAnd(Flags, 1) = 0');
+      // extremes are restart-insensitive: no reset chain, no window
+      expect(raw).not.toContain('lagInFrame');
+
+      const tier = parameterizedQueryToSql(
+        await renderChartConfig(
+          histCfg('min', {
+            metricTables: {
+              ...base.metricTables,
+              histogramPoints5m: 'otel_metrics_histogram_points_5m',
+            },
+            granularity: '5 minute',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(tier).toContain('otel_metrics_histogram_points_5m');
+      expect(tier).toContain('min(Min) AS extreme');
+      expect(tier).not.toContain('bitAnd(Flags, 1)'); // tiers are marker-free
+    });
+
+    it('exp avg renders the scalar Sum/Count recipe and never routes to tiers', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...base, // 24h window; 1h buckets would tier-route a quantile
+            granularity: '1 hour',
+            metricTables: {
+              ...base.metricTables,
+              expHistogramPoints: 'otel_metrics_exp_histogram_points',
+              expHistogramPoints5m: 'otel_metrics_exp_histogram_points_5m',
+              expHistogramPoints1h: 'otel_metrics_exp_histogram_points_1h',
+            },
+            select: [
+              {
+                aggFn: 'avg',
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'test.exp.duration',
+                metricType: MetricsDataType.ExponentialHistogram,
+              },
+            ],
+          } as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_exp_histogram_points');
+      expect(rendered).not.toContain('_5m');
+      expect(rendered).not.toContain('_1h');
+      expect(rendered).toContain('sum_inc_cum'); // Sum/Count increase ratio
     });
   });
 

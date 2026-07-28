@@ -85,6 +85,23 @@ export const METRIC_V2_AGG_FN_OPTIONS: Record<
       description: 'Sum ÷ Count — the average event value, not a series mean',
     },
     { value: 'count', label: 'Count of Events' },
+    // Stored event extremes (OTLP Min/Max fields). For CUMULATIVE
+    // histograms these are since-start (since the last restart) — the
+    // labels say so; getMetricV2AggFnOptions relabels them per-bucket when
+    // the profile resolves to delta. Prometheus drops these fields at
+    // remote-write, so this is a v2-only capability.
+    {
+      value: 'max',
+      label: 'Maximum (lifetime)',
+      description:
+        'Stored event extreme — the max since the process started/restarted, NOT the bucket max',
+    },
+    {
+      value: 'min',
+      label: 'Minimum (lifetime)',
+      description:
+        'Stored event extreme — the min since the process started/restarted, NOT the bucket min',
+    },
   ],
   [MetricsDataType.ExponentialHistogram]: [
     {
@@ -95,6 +112,12 @@ export const METRIC_V2_AGG_FN_OPTIONS: Record<
     { value: 'p95', label: '95th Percentile' },
     { value: 'p90', label: '90th Percentile' },
     { value: 'p50', label: 'Median' },
+    {
+      value: 'avg',
+      label: 'Average',
+      description:
+        'Sum ÷ Count — the average event value, not a series mean (raw points only; long windows may be slow)',
+    },
     { value: 'count', label: 'Count of Events' },
   ],
   [MetricsDataType.Summary]: [
@@ -153,9 +176,39 @@ const METRIC_V2_SUM_UNKNOWN_AGG_FN_OPTIONS: MetricAggFnOption[] =
       'Monotonicity unresolved for this metric — treated as a counter',
   }));
 
+const PRESET_PERCENTS = [50, 90, 95, 99];
+
+/** Formats a quantile level as its pXX label (0.999 → "p99.9"). */
+export function levelToPLabel(level: number): string {
+  return `p${String(+(level * 100).toFixed(2))}`;
+}
+
+/** UI option value for a quantile level: the pXX presets keep their legacy
+ * values; any other stored level gets an exact `q:<level>` value so the
+ * select round-trips without rounding (p99.9 must not collapse to p100). */
+export function quantileLevelToOptionValue(level: number): string {
+  const pct = level * 100;
+  const rounded = Math.round(pct);
+  if (Math.abs(pct - rounded) < 1e-6 && PRESET_PERCENTS.includes(rounded)) {
+    return `p${rounded}`;
+  }
+  return `q:${level}`;
+}
+
 export function getMetricV2AggFnOptions(
   metricType: MetricsDataType,
   sumMonotonicity: SumMonotonicity = 'unknown',
+  opts?: {
+    /** Histogram profile temporality: delta extremes are true per-bucket
+     * extremes, so the "(lifetime)" caveat is dropped. */
+    histogramTemporality?: 'delta' | 'cumulative';
+    /** Summary sources: the levels actually recorded on the series (from
+     * the series table's Quantiles array). When known, the percentile
+     * entries are RESTRICTED to these — requesting an unstored level would
+     * silently serve the nearest stored one (§3: never silently
+     * substitute). */
+    summaryStoredLevels?: number[];
+  },
 ): MetricAggFnOption[] {
   if (metricType === MetricsDataType.Sum) {
     return sumMonotonicity === 'monotonic'
@@ -163,6 +216,39 @@ export function getMetricV2AggFnOptions(
       : sumMonotonicity === 'updown'
         ? METRIC_V2_SUM_UPDOWN_AGG_FN_OPTIONS
         : METRIC_V2_SUM_UNKNOWN_AGG_FN_OPTIONS;
+  }
+  if (
+    metricType === MetricsDataType.Histogram &&
+    opts?.histogramTemporality === 'delta'
+  ) {
+    return METRIC_V2_AGG_FN_OPTIONS[MetricsDataType.Histogram].map(o =>
+      o.value === 'max' || o.value === 'min'
+        ? {
+            value: o.value,
+            label: o.value === 'max' ? 'Maximum' : 'Minimum',
+            description:
+              'Stored event extreme — true per-bucket extreme for delta histograms',
+          }
+        : o,
+    );
+  }
+  if (
+    metricType === MetricsDataType.Summary &&
+    opts?.summaryStoredLevels != null &&
+    opts.summaryStoredLevels.length > 0
+  ) {
+    const levels = [...opts.summaryStoredLevels].sort((a, b) => b - a);
+    return [
+      ...levels.map((level, i) => ({
+        value: quantileLevelToOptionValue(level),
+        label: `${levelToPLabel(level)} (avg of per-series ${levelToPLabel(level)})`,
+        description:
+          i === 0
+            ? 'Stored quantile levels only — summaries cannot serve levels they did not record'
+            : undefined,
+      })),
+      { value: 'count', label: 'Count of Events' },
+    ];
   }
   return METRIC_V2_AGG_FN_OPTIONS[metricType];
 }
@@ -221,6 +307,8 @@ function AggFnSelect({
   metricType,
   metricsV2,
   sumMonotonicity,
+  histogramTemporality,
+  summaryStoredLevels,
 }: {
   value: string;
   defaultValue: string;
@@ -233,6 +321,12 @@ function AggFnSelect({
   metricsV2?: boolean;
   /** Sum-typed metrics only: monotonicity regime from the series profile. */
   sumMonotonicity?: SumMonotonicity;
+  /** Histogram-typed metrics: temporality from the series profile (drops
+   * the "(lifetime)" extremes caveat on delta histograms). */
+  histogramTemporality?: 'delta' | 'cumulative';
+  /** Summary-typed metrics: recorded quantile levels — restricts the
+   * percentile entries so an unstored level cannot be picked. */
+  summaryStoredLevels?: number[];
 }) {
   const _onChange = useCallback(
     (value: string | null) => {
@@ -243,6 +337,9 @@ function AggFnSelect({
           aggFn: 'quantile',
           level: Number.parseFloat(value.replace('p', '0.')),
         });
+      } else if (value.startsWith('q:')) {
+        // Exact stored summary level (non-preset, e.g. 0.999).
+        onChange({ aggFn: 'quantile', level: Number(value.slice(2)) });
       } else {
         // @ts-ignore
         onChange({ aggFn: value });
@@ -253,7 +350,10 @@ function AggFnSelect({
 
   const options = useMemo(() => {
     if (metricsV2 && metricType != null) {
-      return getMetricV2AggFnOptions(metricType, sumMonotonicity);
+      return getMetricV2AggFnOptions(metricType, sumMonotonicity, {
+        histogramTemporality,
+        summaryStoredLevels,
+      });
     }
     let opts: MetricAggFnOption[] = hideCustom
       ? AGG_FNS.filter(fn => fn.value !== 'none')
@@ -263,7 +363,14 @@ function AggFnSelect({
       opts = opts.filter(fn => fn.value !== 'increase');
     }
     return opts;
-  }, [hideCustom, metricType, metricsV2, sumMonotonicity]);
+  }, [
+    hideCustom,
+    metricType,
+    metricsV2,
+    sumMonotonicity,
+    histogramTemporality,
+    summaryStoredLevels,
+  ]);
 
   const descriptionByValue = useMemo(
     () =>
@@ -309,6 +416,8 @@ export function AggFnSelectControlled({
   metricType,
   metricsV2,
   sumMonotonicity,
+  histogramTemporality,
+  summaryStoredLevels,
   ...props
 }: {
   defaultValue: string;
@@ -318,6 +427,8 @@ export function AggFnSelectControlled({
   metricType?: MetricsDataType;
   metricsV2?: boolean;
   sumMonotonicity?: SumMonotonicity;
+  histogramTemporality?: 'delta' | 'cumulative';
+  summaryStoredLevels?: number[];
 } & Omit<UseControllerProps<any>, 'name'>) {
   const {
     field: { onChange: onAggFnChange, value: aggFnValue },
@@ -346,8 +457,11 @@ export function AggFnSelectControlled({
   );
 
   const value = useMemo(() => {
-    if (aggFnValue === 'quantile') {
-      return `p${Math.round(quantileLevelValue * 100)}`;
+    if (aggFnValue === 'quantile' && quantileLevelValue != null) {
+      // Presets keep their pXX values; non-preset levels round-trip as
+      // exact q:<level> values (used by summary stored-level options) —
+      // Math.round alone would collapse p99.9 into p100.
+      return quantileLevelToOptionValue(quantileLevelValue);
     }
     return aggFnValue;
   }, [aggFnValue, quantileLevelValue]);
@@ -361,6 +475,8 @@ export function AggFnSelectControlled({
       metricType={metricType}
       metricsV2={metricsV2}
       sumMonotonicity={sumMonotonicity}
+      histogramTemporality={histogramTemporality}
+      summaryStoredLevels={summaryStoredLevels}
     />
   );
 }

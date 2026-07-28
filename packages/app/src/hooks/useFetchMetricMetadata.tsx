@@ -175,6 +175,56 @@ export const useMetricSeriesProfile = ({
   });
 };
 
+/**
+ * The quantile levels a v2 SUMMARY metric actually records (from the series
+ * table's Quantiles array, via the shared day-cached MetadataCache lookup).
+ * The picker restricts to these levels and the editor badges a saved level
+ * that is not stored — the query recipe substitutes the nearest stored
+ * level >= the requested one (else the highest), and that substitution must
+ * never be silent. Returns undefined while unknown (fail open).
+ */
+export const useMetricSummaryQuantiles = ({
+  databaseName,
+  metricType,
+  metricName,
+  tableSource,
+  dateRange,
+}: MetricSeriesProfileProps) => {
+  const metadata = getMetadata();
+  const isV2 =
+    tableSource?.kind === SourceKind.Metric &&
+    isMetricsV2Tables(tableSource.metricTables);
+  const seriesTable = isV2 ? (tableSource?.metricTables?.series ?? '') : '';
+  const enabled = Boolean(
+    isV2 &&
+      databaseName &&
+      metricName &&
+      metricType === MetricsDataType.Summary &&
+      seriesTable,
+  );
+  const dayBounds = dateRange?.map(d => d.toISOString().slice(0, 10));
+  return useQuery({
+    queryKey: [
+      'metric-summary-quantiles',
+      tableSource?.connection,
+      databaseName,
+      seriesTable,
+      metricName,
+      dayBounds,
+    ],
+    queryFn: async () =>
+      (await metadata.getMetricSummaryQuantiles({
+        databaseName,
+        tableName: seriesTable,
+        metricNameCondition: createMetricNameFilter(metricName!),
+        dateRange,
+        connectionId: tableSource!.connection,
+      })) ?? null,
+    enabled,
+    staleTime: 1000 * 60 * 5,
+  });
+};
+
 /** v2 points table holding a metric type's raw samples (same mapping the
  * query translator uses to pick its scan table). */
 const V2_POINTS_TABLE_KEY: Record<

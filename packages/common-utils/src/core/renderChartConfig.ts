@@ -2747,7 +2747,8 @@ async function translateMetricChartConfigV2(
     (metricType === MetricsDataType.Gauge && !_select.isDelta) ||
     metricType === MetricsDataType.Sum ||
     metricType === MetricsDataType.Histogram ||
-    metricType === MetricsDataType.ExponentialHistogram;
+    (metricType === MetricsDataType.ExponentialHistogram &&
+      _select.aggFn !== 'avg');
   const rollupTable = !canUseRollup
     ? undefined
     : intervalSeconds >= 3600 && tier1h

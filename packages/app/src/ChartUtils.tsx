@@ -635,6 +635,7 @@ function addResponseToFormattedData({
   previousPeriodOffsetSeconds,
   isPreviousPeriod,
   hiddenSeries = [],
+  duplicateSeriesPointPolicy = 'overwrite',
 }: {
   tsBucketMap: Map<number, Record<string, any>>;
   lineDataMap: { [keyName: string]: LineDataWithOptionalColor };
@@ -643,6 +644,7 @@ function addResponseToFormattedData({
   isPreviousPeriod: boolean;
   previousPeriodOffsetSeconds: number;
   hiddenSeries?: string[];
+  duplicateSeriesPointPolicy?: 'overwrite' | 'max';
 }) {
   const { meta, data } = response;
   if (meta == null) {
@@ -692,8 +694,22 @@ function addResponseToFormattedData({
       const value =
         typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
 
-      // Mutate the existing bucket object to avoid repeated large object copies
-      tsBucket[keyName] = value;
+      // Mutate the existing bucket object to avoid repeated large object
+      // copies. Two rows can legitimately land on one (bucket, series) key:
+      // v2 histogram quantiles emit one row per ExplicitBounds set, so a
+      // display bucket straddling a bounds renegotiation carries one row
+      // per cohort (the per-cohort math is the verified-correct shape —
+      // merging quantiles across different bounds sets is not defined).
+      // 'max' keeps the conservative worst-case percentile instead of an
+      // arbitrary, row-order-dependent last-write.
+      const prev = tsBucket[keyName];
+      tsBucket[keyName] =
+        duplicateSeriesPointPolicy === 'max' &&
+        typeof prev === 'number' &&
+        !Number.isNaN(prev) &&
+        !Number.isNaN(value)
+          ? Math.max(prev, value)
+          : value;
 
       // Special handling for log level / trace severity colors
       let color: string | undefined = undefined;
@@ -723,6 +739,7 @@ export function formatResponseForTimeChart({
   granularity,
   generateEmptyBuckets = true,
   emptyBucketValue = 0,
+  duplicateSeriesPointPolicy = 'overwrite',
   source,
   hiddenSeries = [],
   previousPeriodOffsetSeconds = 0,
@@ -739,6 +756,14 @@ export function formatResponseForTimeChart({
    * (e.g. an all-zero-observations quantile) still renders as a point.
    */
   emptyBucketValue?: number | null;
+  /**
+   * How two result rows landing on the SAME (bucket, series) key combine.
+   * v2 metric charts pass 'max': histogram quantiles emit one row per
+   * ExplicitBounds cohort, so a display bucket straddling a bounds
+   * renegotiation shows the conservative worst-case percentile instead of
+   * an arbitrary last-write. Default keeps last-write for raw SQL charts.
+   */
+  duplicateSeriesPointPolicy?: 'overwrite' | 'max';
   source?: TSource;
   hiddenSeries?: string[];
   previousPeriodOffsetSeconds?: number;
@@ -780,6 +805,7 @@ export function formatResponseForTimeChart({
     isPreviousPeriod: false,
     previousPeriodOffsetSeconds,
     hiddenSeries,
+    duplicateSeriesPointPolicy,
   });
 
   if (previousPeriodResponse != null) {
@@ -791,6 +817,7 @@ export function formatResponseForTimeChart({
       isPreviousPeriod: true,
       previousPeriodOffsetSeconds,
       hiddenSeries,
+      duplicateSeriesPointPolicy,
     });
   }
 

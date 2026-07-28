@@ -530,6 +530,10 @@ function DBTimeChartComponent({
         // gap; zero-filling draws a plausible-looking value that was never
         // observed. Event charts keep zero (no rows = zero events).
         emptyBucketValue: isV2MetricConfig ? null : 0,
+        // v2 histogram quantiles emit one row per ExplicitBounds cohort: a
+        // bucket straddling a bounds renegotiation keeps the conservative
+        // worst-case percentile instead of an arbitrary last-write.
+        duplicateSeriesPointPolicy: isV2MetricConfig ? 'max' : 'overwrite',
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,

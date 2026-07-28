@@ -756,6 +756,14 @@ export const translateHistogramV2 = ({
   if (select.aggFn === 'avg') {
     return histogramAvgCtesV2({ ...rest, fast, resolved });
   }
+  if (select.aggFn === 'min' || select.aggFn === 'max') {
+    return histogramExtremeCtesV2({
+      ...rest,
+      mode: select.aggFn,
+      fast: fast != null,
+      rawMarkerFilter: true,
+    });
+  }
   throw new Error(`${select.aggFn} is not supported for histograms currently`);
 };
 
@@ -810,6 +818,16 @@ export const translateHistogramRollupV2 = ({
       resolved,
     });
   }
+  if (select.aggFn === 'min' || select.aggFn === 'max') {
+    // Tier Min/Max are marker-free SimpleAggregateFunction columns with the
+    // same names as the raw columns, so the same shape serves both paths.
+    return histogramExtremeCtesV2({
+      ...rest,
+      mode: select.aggFn,
+      fast: fast != null,
+      rawMarkerFilter: false,
+    });
+  }
   throw new Error(
     `${select.aggFn} is not supported for histogram rollups currently`,
   );
@@ -850,6 +868,13 @@ export const translateExpHistogramV2 = ({
   }
   if (select.aggFn === 'count') {
     return histogramCountCtesV2({ ...rest, fast, resolved: { temporality } });
+  }
+  if (select.aggFn === 'avg') {
+    // Sum/Count increase ratio — the same scalar recipe as explicit
+    // histograms (exp points carry Count/Sum too). RAW ONLY: there is no exp
+    // rollup avg recipe, so the router pins exp avg to raw points (see
+    // canUseRollup) and translateExpHistogramRollupV2 keeps throwing.
+    return histogramAvgCtesV2({ ...rest, fast, resolved: { temporality } });
   }
   throw new Error(
     `${select.aggFn} is not supported for exponential histograms currently`,
@@ -956,6 +981,7 @@ const deltaExpCtes = ({
         SeriesHash,
         any(Scale) AS Scale,
         argMax((PositiveBucketCounts, PositiveOffset), Count) AS tpl,
+        argMax((NegativeBucketCounts, NegativeOffset), Count) AS ntpl,
         max(toInt64(ZeroCount)) AS zero_count
       FROM ${pointsFrom}
       WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
@@ -970,6 +996,7 @@ const deltaExpCtes = ({
         SeriesHash,
         Scale AS scale,
         sumMap(${expTupleToMap('tpl')}) AS pos,
+        sumMap(${expTupleToMap('ntpl')}) AS neg,
         sum(zero_count) AS zero
       FROM ExpRaw
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
@@ -999,6 +1026,7 @@ const cumulativeExpCtes = ({
         zero_count,
         total_count,
         any(tpl) OVER w AS prev_tpl,
+        any(ntpl) OVER w AS prev_ntpl,
         any(Scale) OVER w AS prev_scale,
         any(toNullable(zero_count)) OVER w AS prev_zero,
         any(toNullable(total_count)) OVER w AS prev_total,
@@ -1021,6 +1049,18 @@ const cumulativeExpCtes = ({
             )
           )
         ) AS pos_if_cum,
+        IF(
+          prev_total IS NULL,
+          CAST(map(), 'Map(Int64, Int64)'),
+          IF(
+            total_count < prev_total,
+            ${expTupleToMap('ntpl')},
+            mapSubtract(
+              ${expTupleToMapAtScale('ntpl', 'Scale', 'eff_scale')},
+              ${expTupleToMapAtScale('prev_ntpl', 'prev_scale', 'eff_scale')}
+            )
+          )
+        ) AS neg_if_cum,
         multiIf(
           prev_total IS NULL, toInt64(0),
           total_count < prev_total, zero_count,
@@ -1033,6 +1073,7 @@ const cumulativeExpCtes = ({
           SeriesHash,
           any(Scale) AS Scale,
           argMax((PositiveBucketCounts, PositiveOffset), Count) AS tpl,
+          argMax((NegativeBucketCounts, NegativeOffset), Count) AS ntpl,
           max(toInt64(ZeroCount)) AS zero_count,
           max(toInt64(Count)) AS total_count
         FROM ${pointsFrom}
@@ -1053,6 +1094,7 @@ const cumulativeExpCtes = ({
         SeriesHash,
         eff_scale AS scale,
         sumMap(pos_if_cum) AS pos,
+        sumMap(neg_if_cum) AS neg,
         sum(zero_if_cum) AS zero
       FROM ExpRaw
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, eff_scale
@@ -1082,9 +1124,11 @@ const dualExpCtes = ({
         SeriesHash,
         Scale,
         posMap,
+        negMap,
         zero_count,
         total_count,
         any(posMap) OVER w AS prev_posMap,
+        any(negMap) OVER w AS prev_negMap,
         any(Scale) OVER w AS prev_scale,
         any(toNullable(zero_count)) OVER w AS prev_zero,
         any(toNullable(total_count)) OVER w AS prev_total,
@@ -1106,6 +1150,18 @@ const dualExpCtes = ({
             )
           )
         ) AS pos_if_cum,
+        IF(
+          prev_total IS NULL,
+          CAST(map(), 'Map(Int64, Int64)'),
+          IF(
+            total_count < prev_total,
+            negMap,
+            mapSubtract(
+              ${expMapAtScale('negMap', 'Scale', 'eff_scale')},
+              ${expMapAtScale('prev_negMap', 'prev_scale', 'eff_scale')}
+            )
+          )
+        ) AS neg_if_cum,
         multiIf(
           prev_total IS NULL, toInt64(0),
           total_count < prev_total, zero_count,
@@ -1124,6 +1180,13 @@ const dualExpCtes = ({
             ),
             Count
           ) AS posMap,
+          argMax(
+            mapFromArrays(
+              arrayMap(i -> toInt64(NegativeOffset + i - 1), arrayEnumerate(NegativeBucketCounts)),
+              CAST(NegativeBucketCounts, 'Array(Int64)')
+            ),
+            Count
+          ) AS negMap,
           max(toInt64(ZeroCount)) AS zero_count,
           max(toInt64(Count)) AS total_count
         FROM ${pointsFrom}
@@ -1147,6 +1210,8 @@ const dualExpCtes = ({
         eff_scale AS scale_if_cum,
         sumMap(posMap) AS pos_if_delta,
         sumMap(pos_if_cum) AS pos_if_cum,
+        sumMap(negMap) AS neg_if_delta,
+        sumMap(neg_if_cum) AS neg_if_cum,
         sum(zero_count) AS zero_if_delta,
         sum(zero_if_cum) AS zero_if_cum
       FROM ExpRaw
@@ -1178,9 +1243,10 @@ const dualExpCtes = ({
  *                not-a-real-case of mixed temporality under one name.
  *
  * All variants converge on ExpJoined(bucket, group?, scale, chosenMap,
- * chosenZero), then the shared tail: ExpScaled (min Scale per group+bucket),
- * source (downscale indices k -> floor(k / 2^d), merge across series),
- * metrics (rank incl. zero bucket, interpolate within (base^k, base^(k+1)]).
+ * chosenNegMap, chosenZero), then the shared tail: ExpScaled (min Scale per
+ * group+bucket), source (downscale indices k -> floor(k / 2^d), merge across
+ * series), metrics (3-region rank walk over negative/zero/positive buckets —
+ * see expQuantileTailCtes).
  */
 const expHistogramQuantileCtesV2 = ({
   fast,
@@ -1216,6 +1282,7 @@ const expHistogramQuantileCtesV2 = ({
         ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
         p.scale AS scale,
         p.pos AS chosenMap,
+        p.neg AS chosenNegMap,
         p.zero AS chosenZero
       FROM ExpPerSeries AS p${
         fast
@@ -1230,6 +1297,7 @@ const expHistogramQuantileCtesV2 = ({
         ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
         IF(s.Temporality = 'delta', p.scale_if_delta, p.scale_if_cum) AS scale,
         IF(s.Temporality = 'delta', p.pos_if_delta, p.pos_if_cum) AS chosenMap,
+        IF(s.Temporality = 'delta', p.neg_if_delta, p.neg_if_cum) AS chosenNegMap,
         IF(s.Temporality = 'delta', p.zero_if_delta, p.zero_if_cum) AS chosenZero
       FROM ExpPerSeries AS p
       INNER JOIN Series AS s ON p.SeriesHash = s.SeriesHash
@@ -1240,10 +1308,20 @@ const expHistogramQuantileCtesV2 = ({
 
 /**
  * Shared exp-histogram quantile tail. Consumes ExpJoined(bucket, group?,
- * scale, chosenMap, chosenZero): ExpScaled finds the min scale per
- * group+bucket, source downscale-merges bucket indices (k -> floor(k / 2^d),
- * exact bucket algebra — recipe R4), metrics ranks (zero bucket included)
- * and interpolates within (base^k, base^(k+1)].
+ * scale, chosenMap, chosenNegMap, chosenZero): ExpScaled finds the min scale
+ * per group+bucket, source downscale-merges bucket indices
+ * (k -> floor(k / 2^d), exact bucket algebra — recipe R4), metrics ranks and
+ * interpolates over the FULL SIGNED distribution (Prometheus native-histogram
+ * semantics — AllBucketIterator order):
+ *   1. negative buckets, most-negative first (negative index k holds
+ *      observations in [-base^(k+1), -base^k), so ascending VALUE order is
+ *      DESCENDING index order — the merged arrays are reversed);
+ *   2. the zero bucket (a rank inside it resolves to 0);
+ *   3. positive buckets ascending, interpolated within (base^k, base^(k+1)].
+ * Negative-side interpolation is the positive linear rule with negated
+ * bounds: v = -base^(k+1) + (base^(k+1) - base^k) * frac. With no negative
+ * observations (negTotal = 0) every branch reduces bit-for-bit to the
+ * positive-only walk.
  */
 const expQuantileTailCtes = ({
   groupBy,
@@ -1274,6 +1352,10 @@ const expQuantileTailCtes = ({
           arrayMap(k -> toInt64(floor(k / exp2(scale - minScale))), mapKeys(chosenMap)),
           arrayMap(v -> toInt64(v), mapValues(chosenMap))
         ) AS merged,
+        sumMap(
+          arrayMap(k -> toInt64(floor(k / exp2(scale - minScale))), mapKeys(chosenNegMap)),
+          arrayMap(v -> toInt64(v), mapValues(chosenNegMap))
+        ) AS mergedNeg,
         sum(toInt64(chosenZero)) AS zeroTotal
       FROM ExpScaled
       GROUP BY \`__hdx_time_bucket\`, ${groupBy ? 'group, ' : ''}minScale
@@ -1287,16 +1369,24 @@ const expQuantileTailCtes = ({
         ${groupBy ? 'group,' : ''}
         merged.1 AS ks,
         merged.2 AS vs,
+        arrayReverse(mergedNeg.1) AS nks,
+        arrayReverse(mergedNeg.2) AS nvs,
         arrayCumSum(vs) AS cum,
-        zeroTotal + arraySum(vs) AS total,
+        arrayCumSum(nvs) AS ncum,
+        arraySum(nvs) AS negTotal,
+        negTotal + zeroTotal + arraySum(vs) AS total,
         ${{ Float64: level }} * total AS rank,
         exp2(exp2(-minScale)) AS base,
-        arrayFirstIndex(c -> (c + zeroTotal) >= rank, cum) AS idx,
+        arrayFirstIndex(c -> c >= rank, ncum) AS nidx,
+        arrayFirstIndex(c -> (c + negTotal + zeroTotal) >= rank, cum) AS idx,
         multiIf(
-          rank <= zeroTotal, 0.,
+          negTotal > 0 AND rank <= negTotal AND nidx = 0, -pow(base, nks[length(nks)]), ${'' /* numeric edge: rank at the top of the negative region */}
+          negTotal > 0 AND rank <= negTotal AND nvs[nidx] = 0, -pow(base, nks[nidx] + 1),
+          negTotal > 0 AND rank <= negTotal, -pow(base, nks[nidx] + 1) + (pow(base, nks[nidx] + 1) - pow(base, nks[nidx])) * ((rank - if(nidx = 1, 0, ncum[nidx - 1])) / nvs[nidx]),
+          rank <= negTotal + zeroTotal, 0.,
           idx = 0, pow(base, ks[length(ks)] + 1), ${'' /* numeric edge: rank past the last bucket */}
           vs[idx] = 0, pow(base, ks[idx]),
-          pow(base, ks[idx]) + (pow(base, ks[idx] + 1) - pow(base, ks[idx])) * ((rank - (zeroTotal + if(idx = 1, 0, cum[idx - 1]))) / vs[idx])
+          pow(base, ks[idx]) + (pow(base, ks[idx] + 1) - pow(base, ks[idx])) * ((rank - (negTotal + zeroTotal + if(idx = 1, 0, cum[idx - 1]))) / vs[idx])
         ) AS "${valueAlias}"
       FROM source
       WHERE total > 0
@@ -1373,6 +1463,7 @@ const expTierCte = ({
       argMinMerge(First) AS f,
       argMaxMerge(Last) AS l,
       sumMap(SumPositive) AS pos_delta,
+      sumMap(SumNegative) AS neg_delta,
       sum(SumZeroCount) AS zero_delta
     FROM ${pointsFrom}
     WHERE ${pointsWhere}${seriesScanFilter(fast)}
@@ -1397,14 +1488,18 @@ const expChainedCte = (): WithClauses[number] => ({
       TimeBucket,
       Scale,
       pos_delta,
+      neg_delta,
       zero_delta,
       tupleElement(f, 'PositiveBuckets') AS fPos,
       tupleElement(l, 'PositiveBuckets') AS lPos,
+      tupleElement(f, 'NegativeBuckets') AS fNeg,
+      tupleElement(l, 'NegativeBuckets') AS lNeg,
       toFloat64(tupleElement(f, 'Count')) AS fCount,
       toFloat64(tupleElement(l, 'Count')) AS lCount,
       toInt64(tupleElement(f, 'ZeroCount')) AS fZero,
       toInt64(tupleElement(l, 'ZeroCount')) AS lZero,
       any(lPos) OVER w AS prevLPos,
+      any(lNeg) OVER w AS prevLNeg,
       any(toNullable(lCount)) OVER w AS prevLCount,
       any(toNullable(lZero)) OVER w AS prevLZero,
       ${'' /* mapSubtract keeps unsigned value types on some versions, so cast to signed maps first — every IF arm must be Map(Int32, Int64) or the arms collapse into a Variant */}
@@ -1424,6 +1519,22 @@ const expChainedCte = (): WithClauses[number] => ({
           CAST(lPos, 'Map(Int32, Int64)')
         )
       ) AS pos_inc_cum,
+      mapAdd(
+        IF(
+          prevLCount IS NULL,
+          CAST(map(), 'Map(Int32, Int64)'),
+          IF(
+            fCount >= prevLCount,
+            mapSubtract(CAST(fNeg, 'Map(Int32, Int64)'), CAST(prevLNeg, 'Map(Int32, Int64)')),
+            CAST(fNeg, 'Map(Int32, Int64)')
+          )
+        ),
+        IF(
+          lCount >= fCount,
+          mapSubtract(CAST(lNeg, 'Map(Int32, Int64)'), CAST(fNeg, 'Map(Int32, Int64)')),
+          CAST(lNeg, 'Map(Int32, Int64)')
+        )
+      ) AS neg_inc_cum,
       assumeNotNull(
         IF(prevLCount IS NULL, 0, IF(fCount >= prevLCount, fZero - prevLZero, fZero))
           + IF(lCount >= fCount, lZero - fZero, lZero)
@@ -1469,6 +1580,7 @@ const expHistogramRollupQuantileCtesV2 = ({
         SeriesHash,
         Scale AS scale,
         sumMap(SumPositive) AS pos,
+        sumMap(SumNegative) AS neg,
         sum(SumZeroCount) AS zero
       FROM ${pointsFrom}
       WHERE ${pointsWhere}${seriesScanFilter(fast)}
@@ -1488,6 +1600,7 @@ const expHistogramRollupQuantileCtesV2 = ({
         SeriesHash,
         Scale AS scale,
         sumMap(pos_inc_cum) AS pos,
+        sumMap(neg_inc_cum) AS neg,
         sum(zero_inc_cum) AS zero
       FROM ExpChained
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
@@ -1505,8 +1618,10 @@ const expHistogramRollupQuantileCtesV2 = ({
         SeriesHash,
         Scale AS scale,
         sumMap(pos_delta) AS pos_if_delta,
+        sumMap(neg_delta) AS neg_if_delta,
         sum(zero_delta) AS zero_if_delta,
         sumMap(pos_inc_cum) AS pos_if_cum,
+        sumMap(neg_inc_cum) AS neg_if_cum,
         sum(zero_inc_cum) AS zero_if_cum
       FROM ExpChained
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
@@ -1523,6 +1638,7 @@ const expHistogramRollupQuantileCtesV2 = ({
         ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
         p.scale AS scale,
         p.pos AS chosenMap,
+        p.neg AS chosenNegMap,
         p.zero AS chosenZero
       FROM ExpPerSeries AS p${
         fast
@@ -1537,6 +1653,7 @@ const expHistogramRollupQuantileCtesV2 = ({
         ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
         p.scale AS scale,
         IF(s.Temporality = 'delta', CAST(p.pos_if_delta, 'Map(Int32, Int64)'), p.pos_if_cum) AS chosenMap,
+        IF(s.Temporality = 'delta', CAST(p.neg_if_delta, 'Map(Int32, Int64)'), p.neg_if_cum) AS chosenNegMap,
         IF(s.Temporality = 'delta', toInt64(p.zero_if_delta), p.zero_if_cum) AS chosenZero
       FROM ExpPerSeries AS p
       INNER JOIN Series AS s ON p.SeriesHash = s.SeriesHash
@@ -2437,3 +2554,74 @@ const histogramAvgCtesV2 = ({
     },
   ];
 };
+
+/**
+ * Histogram min/max: the STORED event extremes — min(Min)/max(Max) per
+ * (series, display bucket), then folded across series after the label join.
+ * No temporality branch and no reset chain: extremes are order- and
+ * restart-insensitive (a restart only shrinks the window they cover), and
+ * byte-identical transport retries are idempotent under min/max, so no
+ * per-(series, ts) dedup pass is needed either. Raw scans keep the Rule-6
+ * marker filter (a marker row's Min/Max are meaningless zeros that would
+ * poison min()); the 5m/1h tiers' Min/Max are marker-free
+ * SimpleAggregateFunction columns with the same names, so one shape serves
+ * both paths. Extremes are scalar math — no raw-window cap needed (same
+ * class as count/avg).
+ *
+ * Caveats (schema-inherent, surfaced in the UI labels): the exporter stores
+ * 0 when the SDK omits HasMin/HasMax, and CUMULATIVE-temporality extremes
+ * cover the window since the series started (i.e. since the last restart),
+ * NOT the display bucket — the chart shows "the lifetime extreme as of this
+ * bucket". Delta-temporality extremes are true per-bucket extremes.
+ */
+const histogramExtremeCtesV2 = ({
+  fast,
+  timeBucketSelect,
+  groupBy,
+  pointsFrom,
+  pointsWhere,
+  valueAlias,
+  mode,
+  rawMarkerFilter,
+}: {
+  fast?: boolean;
+  timeBucketSelect: TemplatedInput;
+  groupBy?: TemplatedInput;
+  pointsFrom: TemplatedInput;
+  pointsWhere: TemplatedInput;
+  valueAlias: TemplatedInput;
+  mode: 'min' | 'max';
+  /** Raw points carry Flags (Rule 6); rollup tiers are marker-free. */
+  rawMarkerFilter: boolean;
+}): WithClauses => [
+  {
+    name: 'ExtremesPerSeries',
+    sql: chSql`
+      SELECT
+        ${timeBucketSelect},
+        SeriesHash,
+        ${mode === 'min' ? 'min(Min)' : 'max(Max)'} AS extreme
+      FROM ${pointsFrom}
+      WHERE ${pointsWhere}${seriesScanFilter(fast)}${
+        rawMarkerFilter ? ` AND ${NOT_STALENESS_MARKER}` : ''
+      }
+      GROUP BY SeriesHash, \`__hdx_time_bucket\`
+    `,
+  },
+  {
+    name: 'metrics',
+    sql: chSql`
+      SELECT
+        \`__hdx_time_bucket\`,
+        ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
+        ${mode === 'min' ? 'min(p.extreme)' : 'max(p.extreme)'} AS "${valueAlias}"
+      FROM ExtremesPerSeries AS p${
+        fast
+          ? ''
+          : `
+      INNER JOIN Series AS s ON p.SeriesHash = s.SeriesHash`
+      }
+      GROUP BY ${groupBy ? 'group, ' : ''}\`__hdx_time_bucket\`
+    `,
+  },
+];

@@ -1279,6 +1279,65 @@ export class Metadata {
   }
 
   /**
+   * The quantile levels a v2 summary metric actually RECORDS, from the
+   * series table's `Quantiles` array (a bounded sample union-distincts them
+   * — level sets are per-SDK-config and near-constant across series).
+   * Summary points carry values ONLY for these levels; the quantile recipe
+   * substitutes the nearest stored level >= the requested one (else the
+   * highest), so the UI restricts the level picker to this list and badges
+   * any saved chart whose level is not stored (§3: never silently
+   * substitute). Returns undefined on failure or no rows (callers fail
+   * open: unrestricted picker, no badge); unresolved lookups are not
+   * cached.
+   */
+  async getMetricSummaryQuantiles({
+    databaseName,
+    tableName,
+    metricNameCondition,
+    dateRange,
+    connectionId,
+  }: {
+    metricNameCondition: string;
+    dateRange?: [Date, Date];
+  } & TableConnection): Promise<number[] | undefined> {
+    const toDay = (d: Date) => d.toISOString().slice(0, 10);
+    const dayBounds = dateRange
+      ? `${toDay(dateRange[0])}..${toDay(dateRange[1])}`
+      : 'all';
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${metricNameCondition}.${dayBounds}.summaryQuantiles`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      const dateBound = dateRange
+        ? chSql` AND Date >= toDate(${{ String: toDay(dateRange[0]) }}) AND Date <= toDate(${{ String: toDay(dateRange[1]) }})`
+        : chSql``;
+      const sql = chSql`
+        SELECT arraySort(arrayDistinct(arrayFlatten(groupArray(Quantiles)))) AS levels
+        FROM (
+          SELECT Quantiles
+          FROM ${tableExpr({ database: databaseName, table: tableName })}
+          WHERE (${{ UNSAFE_RAW_SQL: metricNameCondition }})
+            AND MetricType = 'summary'${dateBound}
+          LIMIT 1000
+        )
+      `;
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ levels: (number | string)[] }>());
+        const levels = json.data?.[0]?.levels?.map(Number) ?? [];
+        return levels.length > 0 ? levels : undefined;
+      } catch (e) {
+        console.warn('Failed to resolve summary quantile levels', e);
+        return undefined;
+      }
+    });
+  }
+
+  /**
    * Estimates how many series a v2 metric query matches by running
    * uniq(SeriesHash) over the narrow series resolution (the rendered
    * seriesWhere: Date bounds + MetricName + MetricType + the user's label

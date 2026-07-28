@@ -182,11 +182,10 @@ function NumberTileBackgroundChartInner({
           // Metrics: an empty bucket is no measurement, not zero — null
           // points are skipped by sparklinePointsFromGraphResults, so the
           // decorative line connects across instead of dipping to zero.
-          emptyBucketValue: isMetricsV2Tables(
-            'metricTables' in timeConfig ? timeConfig.metricTables : undefined,
-          )
-            ? null
-            : 0,
+          emptyBucketValue: isV2MetricConfig ? null : 0,
+          // Bounds-cohort collisions keep the worst-case percentile (see
+          // DBTimeChart).
+          duplicateSeriesPointPolicy: isV2MetricConfig ? 'max' : 'overwrite',
           source,
         });
       return sparklinePointsFromGraphResults(
@@ -199,7 +198,7 @@ function NumberTileBackgroundChartInner({
       // render nothing rather than surfacing an error behind the value.
       return [];
     }
-  }, [data, dateRange, granularity, fillNulls, source, timeConfig]);
+  }, [data, dateRange, granularity, fillNulls, source, isV2MetricConfig]);
 
   // A single point has no trend to draw; wait for at least two buckets.
   if (points.length < 2) return null;

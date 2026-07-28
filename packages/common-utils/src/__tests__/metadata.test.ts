@@ -434,6 +434,28 @@ describe('Metadata', () => {
       ).toBeUndefined();
     });
 
+    it('summary stored quantile levels: parses, coerces strings, and fails open', async () => {
+      const qArgs = {
+        databaseName: 'default',
+        tableName: 'otel_metrics_series',
+        metricNameCondition: "MetricName = 'test.latency'",
+        connectionId: 'conn-1',
+      };
+      mockRow({ levels: ['0.5', '0.9', '0.99'] });
+      expect(await metadata.getMetricSummaryQuantiles(qArgs)).toEqual([
+        0.5, 0.9, 0.99,
+      ]);
+
+      // no summary series rows → undefined (unrestricted picker, no badge)
+      mockRow({ levels: [] });
+      expect(await metadata.getMetricSummaryQuantiles(qArgs)).toBeUndefined();
+
+      (mockClickhouseClient.query as jest.Mock).mockRejectedValue(
+        new Error('boom'),
+      );
+      expect(await metadata.getMetricSummaryQuantiles(qArgs)).toBeUndefined();
+    });
+
     it('anchors the sample window at a HISTORICAL dateRange end; live windows keep the now()-relative bound', async () => {
       mockRow({ interval_s: 60, max_interval_s: 60 });
       // live: window ends within 6h of now
