@@ -341,6 +341,144 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('alternate row background setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the toggle for builder table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the toggle for raw SQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the toggle for line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /alternate row background/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show the toggle for number tiles', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Number}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /alternate row background/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with alternateRowBackground = true when enabled and applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        alternateRowBackground: true,
+      });
+    });
+
+    it('calls onChange with alternateRowBackground = true for raw SQL table charts', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        alternateRowBackground: true,
+      });
+    });
+  });
+
+  describe('display group by columns on left setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the toggle for builder table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the toggle for raw SQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      // Group By ordering needs the builder select structure, so it stays
+      // builder-only even though Alternate Row Background is shown for SQL.
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as

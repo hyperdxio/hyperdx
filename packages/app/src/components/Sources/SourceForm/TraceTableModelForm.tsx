@@ -324,6 +324,21 @@ export function TraceTableModelForm(props: TableModelProps) {
           placeholder="Events"
         />
       </FormRow>
+      <FormRow
+        label={'Span Links Expression'}
+        helpText="Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )"
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="spanLinksValueExpression"
+          placeholder="Links"
+        />
+      </FormRow>
       <ExpressionFormRow
         control={control}
         setValue={setValue}

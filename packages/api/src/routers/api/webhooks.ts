@@ -19,6 +19,10 @@ import {
 } from '@/tasks/checkAlerts/template';
 import { isDuplicateKeyError } from '@/utils/errors';
 import {
+  validateWebhookUrl,
+  WebhookUrlValidationError,
+} from '@/utils/validators';
+import {
   webhookHeaderNameSchema,
   webhookHeaderValueSchema,
   webhookQueryParamKeySchema,
@@ -109,6 +113,15 @@ const emptyToUndefined = (
 ): Record<string, string> | undefined =>
   map && Object.keys(map).length > 0 ? map : undefined;
 
+const handleWebhookUrlValidationError = (
+  err: unknown,
+  res: express.Response,
+): boolean => {
+  if (!(err instanceof WebhookUrlValidationError)) return false;
+  res.status(400).json({ message: err.message });
+  return true;
+};
+
 router.get(
   '/',
   validateRequest({
@@ -168,6 +181,7 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
+      validateWebhookUrl({ service, url });
       // The unique index is on (team, service, name), so the pre-flight check
       // must query the same fields — otherwise a name+service collision slips
       // past this guard and surfaces as an uncaught duplicate-key 500 below.
@@ -191,6 +205,7 @@ router.post(
         data: sanitizeWebhook(serializeWebhook(webhook)),
       });
     } catch (err) {
+      if (handleWebhookUrlValidationError(err, res)) return;
       // Backstop the pre-flight check against a concurrent create racing on the
       // same (team, service, name): the unique index rejects it as a duplicate.
       if (isDuplicateKeyError(err)) {
@@ -268,6 +283,8 @@ router.put(
         });
       }
 
+      validateWebhookUrl({ service, url: resolvedUrl });
+
       // When the URL is changing, use submitted values as-is (no merge).
       // An omitted field becomes undefined → $unset, so stored secrets
       // are never silently carried over to a new destination.
@@ -338,6 +355,7 @@ router.put(
         data: sanitizeWebhook(serializeWebhook(updatedWebhook)),
       });
     } catch (err) {
+      if (handleWebhookUrlValidationError(err, res)) return;
       // Backstop the pre-flight check against a concurrent rename racing onto
       // the same (team, service, name): the unique index rejects it.
       if (isDuplicateKeyError(err)) {
@@ -438,6 +456,8 @@ router.post(
         }
       }
 
+      validateWebhookUrl({ service, url });
+
       // Create a temporary webhook object for testing
       const testWebhook = new Webhook({
         team: new ObjectId(teamId),
@@ -476,6 +496,7 @@ router.post(
         message: 'Test webhook sent successfully',
       });
     } catch (err) {
+      if (handleWebhookUrlValidationError(err, res)) return;
       next(err);
     }
   },
