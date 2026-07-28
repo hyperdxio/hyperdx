@@ -2322,7 +2322,7 @@ export const IacImportManifestSchema = z.object({
       // Tri-state, mirroring the Connection model: undefined = unknown
       // provenance, true = platform-provisioned, false = self-managed.
       // Only an explicit `false` makes a connection safe to import.
-      provisioned: z.boolean().optional(),
+      platformProvisioned: z.boolean().optional(),
     }),
   ),
   webhooks: z.array(IacManifestEntrySchema),

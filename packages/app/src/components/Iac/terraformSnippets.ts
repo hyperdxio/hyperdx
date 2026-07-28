@@ -108,16 +108,17 @@ provider "clickhouse" {
 }`;
 }
 
-// Connections are platform-provisioned on ClickHouse Cloud and cannot be
-// managed by the provider there, so they are exposed as reference-only locals
-// (never as import blocks) on every deployment flavour.
+// Connections whose provenance is unknown, or which the server marks as
+// platform-provisioned, are exposed as reference-only locals: on ClickHouse
+// Cloud the provider cannot manage them. Only a connection the server marks
+// explicitly self-managed becomes an import block instead.
 function buildConnectionLocalsBlock(connections: IacConnectionRef[]): string {
   const lines = connections.map(
     c =>
       `  ${terraformResourceLabel({ type: 'connection', id: c.id, name: c.name })}_id = "${c.id}"`,
   );
-  return `# Connections are platform-provisioned on ClickHouse Cloud and cannot be
-# managed by Terraform there. Reference them by id via these locals.
+  return `# These connections are either platform-provisioned or of unrecorded
+# provenance, so Terraform cannot manage them. Reference them by id instead.
 locals {
 ${lines.join('\n')}
 }`;
@@ -147,8 +148,9 @@ export function buildImportFile({
 #    "terraform" and "provider" blocks below — Terraform allows only one of
 #    each per module.
 # 2. export CLICKSTACK_API_KEY=<your Personal API Access Key>
-# 3. terraform plan -generate-config-out=generated.tf
-# 4. Review generated.tf carefully, then: terraform apply
+# 3. terraform init          # installs the ClickHouse provider declared above
+# 4. terraform plan -generate-config-out=generated.tf
+# 5. Review generated.tf carefully, then: terraform apply
 #
 # Before you apply:
 #
@@ -167,15 +169,6 @@ ${sections.join('\n\n')}
 `;
 }
 
-const MANIFEST_KEYS: { type: IacResourceType; key: keyof IacImportManifest }[] =
-  [
-    { type: 'source', key: 'sources' },
-    { type: 'saved_search', key: 'savedSearches' },
-    { type: 'webhook', key: 'webhooks' },
-    { type: 'alert', key: 'alerts' },
-    { type: 'dashboard', key: 'dashboards' },
-  ];
-
 export function collectImportableResources(
   manifest: IacImportManifest,
   selectedTypes: IacResourceType[],
@@ -186,19 +179,36 @@ export function collectImportableResources(
 } {
   const resources: IacResourceRef[] = [];
   let skippedTileAlerts = 0;
-  for (const { type, key } of MANIFEST_KEYS) {
-    if (!selectedTypes.includes(type)) continue;
-    for (const item of manifest[key]) {
-      if (type === 'alert') {
-        const alert = item as IacImportManifest['alerts'][number];
-        if (!isImportableAlert(alert)) {
-          skippedTileAlerts += 1;
-          continue;
-        }
-      }
+
+  // Dispatched explicitly rather than looping a {type, key} table. The table
+  // form could not tie a resource type to its manifest key, so a mispaired
+  // entry compiled fine and needed an `as` cast to read alert-only fields —
+  // between them that silently dropped resources and miscounted skips.
+  const add = (
+    type: IacResourceType,
+    items: { id: string; name?: string }[],
+  ) => {
+    if (!selectedTypes.includes(type)) return;
+    for (const item of items) {
       resources.push({ type, id: item.id, name: item.name });
     }
+  };
+
+  add('source', manifest.sources);
+  add('saved_search', manifest.savedSearches);
+  add('webhook', manifest.webhooks);
+
+  if (selectedTypes.includes('alert')) {
+    for (const alert of manifest.alerts) {
+      if (!isImportableAlert(alert)) {
+        skippedTileAlerts += 1;
+        continue;
+      }
+      resources.push({ type: 'alert', id: alert.id, name: alert.name });
+    }
   }
+
+  add('dashboard', manifest.dashboards);
 
   // A connection is only safe to import when the server affirmatively says it
   // is self-managed. Platform-provisioned connections (ClickHouse Cloud) can't
@@ -209,7 +219,7 @@ export function collectImportableResources(
   // from self-hosted: IS_CLICKHOUSE_BUILD marks the bundled ClickStack
   // distribution (itself self-hosted), and an origin/domain check breaks on
   // custom domains and misreads the public `*.clickhouse.com` demo servers.
-  // Only the server knows, via Connection.provisioned.
+  // Only the server knows, via Connection.platformProvisioned.
   //
   // Nothing populates that field yet, so today every connection takes the
   // locals path — the same behaviour as before it existed.
@@ -217,7 +227,7 @@ export function collectImportableResources(
   const connectionLocals: IacConnectionRef[] = [];
   if (connectionsSelected) {
     for (const c of manifest.connections) {
-      if (c.provisioned === false) {
+      if (c.platformProvisioned === false) {
         resources.push({ type: 'connection', id: c.id, name: c.name });
       } else {
         connectionLocals.push(c);

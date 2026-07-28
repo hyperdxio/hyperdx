@@ -35,13 +35,13 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // `provisioned` records how a connection came to exist and decides
+      // `platformProvisioned` records how a connection came to exist and decides
       // whether IaC export treats it as safe to `terraform import`. It is
       // server-owned, but `validateRequest` only validates — it does not
       // replace `req.body` — and ConnectionSchema is non-strict, so a
       // client-supplied value survives into the model unless dropped here.
       // (The type below doesn't admit the key; the runtime object can.)
-      const body = omit(req.body, 'provisioned');
+      const body = omit(req.body, 'platformProvisioned');
 
       const connection = await createConnection(teamId.toString(), {
         ...body,
@@ -80,10 +80,10 @@ router.put(
         req.body.hyperdxSettingPrefix === null ||
         req.body.hyperdxSettingPrefix === '';
 
-      // `provisioned` is server-owned — see the POST handler above.
+      // `platformProvisioned` is server-owned — see the POST handler above.
       const { hyperdxSettingPrefix, ...restBody } = omit(
         req.body,
-        'provisioned',
+        'platformProvisioned',
       );
 
       const newConnection = {

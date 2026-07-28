@@ -3,6 +3,7 @@ import {
   getPinoTransport,
 } from '@hyperdx/node-opentelemetry';
 import type { Request, Response } from 'express';
+import type { IncomingMessage } from 'http';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
 
@@ -62,7 +63,18 @@ export const REDACTED_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'res.headers["set-cookie"]',
+  // A redirect can carry a token in its target.
+  'res.headers.location',
 ];
+
+// `redact` addresses object paths, so it cannot reach a credential embedded in
+// a URL string. These two routes each take a standalone bearer token as a path
+// segment, which pino-http emits via `req.url` and which the custom message
+// builders interpolate into `msg`.
+const TOKEN_PATH_RE = /\/(ext\/silence-alert|team\/setup)\/[^/?#]+/g;
+
+export const scrubUrlTokens = (url: string): string =>
+  url.replace(TOKEN_PATH_RE, '/$1/[REDACTED]');
 
 const logger = pino({
   level: MAX_LEVEL,
@@ -82,10 +94,10 @@ export const expressLogger = pinoHttp({
     return 'info';
   },
   customSuccessMessage: (req: Request, res: Response) => {
-    return `HTTP ${req.method} ${req.originalUrl}`;
+    return `HTTP ${req.method} ${scrubUrlTokens(req.originalUrl)}`;
   },
   customErrorMessage: (req: Request, res: Response, err) => {
-    return `HTTP ${req.method} ${req.originalUrl}`;
+    return `HTTP ${req.method} ${scrubUrlTokens(req.originalUrl)}`;
   },
   customProps: (req: Request, res: Response) => {
     const user = req.user;
@@ -105,7 +117,17 @@ export const expressLogger = pinoHttp({
           res: () => undefined,
         },
       }
-    : {}),
+    : {
+        serializers: {
+          // Wraps the default rather than replacing it, so header redaction
+          // and every other standard field are preserved — only the URL is
+          // scrubbed.
+          req: (req: IncomingMessage) => {
+            const serialised = pino.stdSerializers.req(req);
+            return { ...serialised, url: scrubUrlTokens(serialised.url) };
+          },
+        },
+      }),
 });
 
 export default logger;

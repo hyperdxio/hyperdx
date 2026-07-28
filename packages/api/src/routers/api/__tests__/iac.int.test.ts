@@ -59,6 +59,8 @@ describe('iac router', () => {
   it('excludes provisioned dashboards', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
+    // Dashboard.provisioned is the unrelated machine-managed flag, not the
+    // connection's platformProvisioned tri-state.
     await Dashboard.create({
       name: 'Provisioned',
       tiles: [],
@@ -126,12 +128,12 @@ describe('iac router', () => {
     expect(resp.body.savedSearches).toEqual([
       { id: savedSearch._id.toString(), name: 'Production errors' },
     ]);
-    // `provisioned` is absent, not false — the export needs "unknown" to stay
+    // `platformProvisioned` is absent, not false — the export needs "unknown" to stay
     // distinguishable from an explicit self-managed marker.
     expect(resp.body.connections).toEqual([
       { id: expect.stringMatching(/^[a-f0-9]{24}$/), name: 'Local ClickHouse' },
     ]);
-    expect(resp.body.connections[0]).not.toHaveProperty('provisioned');
+    expect(resp.body.connections[0]).not.toHaveProperty('platformProvisioned');
     expect(resp.body.webhooks).toEqual([
       { id: expect.stringMatching(/^[a-f0-9]{24}$/), name: 'Ops Slack' },
     ]);
@@ -149,7 +151,7 @@ describe('iac router', () => {
     ]);
   });
 
-  it('surfaces an explicit provisioned marker on a connection', async () => {
+  it('surfaces an explicit platformProvisioned marker on a connection', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     await Connection.create({
@@ -157,7 +159,7 @@ describe('iac router', () => {
       name: 'Cloud ClickHouse',
       host: 'https://abc.clickhouse.cloud:8443',
       username: 'default',
-      provisioned: true,
+      platformProvisioned: true,
     });
 
     const resp = await agent.get('/iac/import-manifest').expect(200);
@@ -166,7 +168,7 @@ describe('iac router', () => {
       {
         id: expect.stringMatching(/^[a-f0-9]{24}$/),
         name: 'Cloud ClickHouse',
-        provisioned: true,
+        platformProvisioned: true,
       },
     ]);
   });
@@ -175,7 +177,7 @@ describe('iac router', () => {
   // `terraform import`, so it must be server-owned. Adding it to the Mongoose
   // schema is what made a client-supplied value persistable at all — strict
   // mode used to drop it — so this pins the explicit strip in the router.
-  it('ignores a client-supplied provisioned flag on connection create', async () => {
+  it('ignores a client-supplied platformProvisioned flag on connection create', async () => {
     const { agent } = await getLoggedInAgent(server);
 
     await agent
@@ -185,14 +187,46 @@ describe('iac router', () => {
         host: 'http://localhost:8123',
         username: 'default',
         password: '',
-        provisioned: false,
+        platformProvisioned: false,
       })
       .expect(200);
 
     const resp = await agent.get('/iac/import-manifest').expect(200);
 
     expect(resp.body.connections).toHaveLength(1);
-    expect(resp.body.connections[0]).not.toHaveProperty('provisioned');
+    expect(resp.body.connections[0]).not.toHaveProperty('platformProvisioned');
+  });
+
+  // The PUT handler repeats the POST handler's strip, so it needs its own pin
+  // — consolidating the two `omit` calls could otherwise regress update only.
+  it('ignores a client-supplied platformProvisioned flag on connection update', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Cloud ClickHouse',
+      host: 'https://abc.clickhouse.cloud:8443',
+      username: 'default',
+      platformProvisioned: true,
+    });
+
+    await agent
+      .put(`/connections/${connection._id.toString()}`)
+      .send({
+        id: connection._id.toString(),
+        name: 'Cloud ClickHouse',
+        host: 'https://abc.clickhouse.cloud:8443',
+        username: 'default',
+        password: '',
+        platformProvisioned: false,
+      })
+      .expect(200);
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+
+    // Still true: the client could not flip it, so the connection stays
+    // reference-only rather than becoming importable.
+    expect(resp.body.connections[0].platformProvisioned).toBe(true);
   });
 
   it("excludes every other team's resources", async () => {

@@ -32,7 +32,10 @@ router.get('/import-manifest', async (req, res, next) => {
         ).lean(),
         SavedSearch.find({ team: teamId }, { name: 1 }).lean(),
         Source.find({ team: teamId }, { name: 1 }).lean(),
-        Connection.find({ team: teamId }, { name: 1, provisioned: 1 }).lean(),
+        Connection.find(
+          { team: teamId },
+          { name: 1, platformProvisioned: 1 },
+        ).lean(),
         Webhook.find({ team: teamId }, { name: 1 }).lean(),
       ]);
 
@@ -56,7 +59,7 @@ router.get('/import-manifest', async (req, res, next) => {
         name: c.name,
         // Passed through verbatim, including undefined — the export
         // distinguishes "unknown" from an explicit false.
-        provisioned: c.provisioned,
+        platformProvisioned: c.platformProvisioned,
       })),
       webhooks: webhooks.map(w => ({ id: w._id.toString(), name: w.name })),
     };

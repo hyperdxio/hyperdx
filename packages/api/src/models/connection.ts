@@ -17,7 +17,9 @@ export interface IConnection {
    *  it. When false/unset, `host` is a ClickHouse HTTP endpoint and PromQL
    *  queries use ClickHouse's prometheusQuery() function. */
   isPrometheusEndpoint?: boolean;
-  /** How this connection came to exist, for IaC tooling.
+  /** How this connection came to exist, for IaC tooling. Named distinctly
+   *  from `Dashboard.provisioned`, which is an unrelated boolean (machine-
+   *  managed by ProvisionDashboardsTask) that DOES carry `default: false`.
    *
    *  Deliberately tri-state — there is NO Mongoose default, so `undefined`
    *  stays distinguishable from an explicit `false`:
@@ -31,7 +33,7 @@ export interface IConnection {
    *  can mark its own records. Until something populates it, IaC export
    *  treats every connection as reference-only (see collectImportableResources
    *  in packages/app/src/components/Iac/terraformSnippets.ts). */
-  provisioned?: boolean;
+  platformProvisioned?: boolean;
 }
 
 export type ConnectionDocument = mongoose.HydratedDocument<IConnection>;
@@ -54,9 +56,9 @@ export default mongoose.model<IConnection>(
       },
       hyperdxSettingPrefix: String,
       isPrometheusEndpoint: Boolean,
-      // No `default` on purpose — see IConnection.provisioned. A default of
+      // No `default` on purpose — see IConnection.platformProvisioned. A default of
       // false would erase the "unknown" state the export relies on.
-      provisioned: Boolean,
+      platformProvisioned: Boolean,
     },
     {
       timestamps: true,

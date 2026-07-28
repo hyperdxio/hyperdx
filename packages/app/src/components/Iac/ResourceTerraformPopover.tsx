@@ -43,8 +43,17 @@ export default function ResourceTerraformPopover({
   // every render.
   const { type, id, name } = resource;
 
-  const snippets = useMemo<TerraformSnippet[]>(
-    () => [
+  const snippets = useMemo<TerraformSnippet[]>(() => {
+    // Nothing is built until the popover is opened, which can only happen
+    // client-side. `buildProviderBlock` reads `window.location.origin`, and
+    // this component renders inside a list row on the alerts page — computing
+    // it during render would throw under both Next output modes, including the
+    // ClickStack static export, where that failure is a build-time crash.
+    // The dropdown is unmounted while closed, so there is nothing to show
+    // anyway. (`McpServerSection` dodges the same hazard by returning early
+    // before it touches `window`.)
+    if (!opened) return [];
+    return [
       {
         // An `import {}` block, not the CLI `terraform import` one-liner: the
         // CLI form refuses to run unless the resource address is already
@@ -65,9 +74,8 @@ export default function ResourceTerraformPopover({
         hint: 'Add once per Terraform module. Skip if your project already declares the ClickHouse provider.',
         snippet: buildProviderBlock(`${window.location.origin}/api`),
       },
-    ],
-    [type, id, name],
-  );
+    ];
+  }, [opened, type, id, name]);
 
   return (
     <Popover

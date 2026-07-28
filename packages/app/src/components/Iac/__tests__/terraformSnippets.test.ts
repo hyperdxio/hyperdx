@@ -202,7 +202,11 @@ describe('collectImportableResources', () => {
       {
         ...manifest,
         connections: [
-          { id: '6'.repeat(24), name: 'Cloud ClickHouse', provisioned: true },
+          {
+            id: '6'.repeat(24),
+            name: 'Cloud ClickHouse',
+            platformProvisioned: true,
+          },
         ],
       },
       ['connection'],
@@ -216,7 +220,11 @@ describe('collectImportableResources', () => {
       {
         ...manifest,
         connections: [
-          { id: '6'.repeat(24), name: 'Local ClickHouse', provisioned: false },
+          {
+            id: '6'.repeat(24),
+            name: 'Local ClickHouse',
+            platformProvisioned: false,
+          },
         ],
       },
       ['connection'],
