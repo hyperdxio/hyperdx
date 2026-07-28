@@ -44,6 +44,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /migrate ./cmd/migrate
 
 FROM node:${NODE_VERSION}-alpine AS node_base
 
+# Needed to key the Yarn cache mount per target platform. Multi-platform builds
+# run their per-arch stages concurrently, and a shared cache id lets one arch's
+# `yarn cache clean` delete zips the other arch is still linking from.
+ARG TARGETPLATFORM
+
 WORKDIR /app
 
 COPY .yarn ./.yarn
@@ -59,7 +64,7 @@ RUN apk add --no-cache libc6-compat
 
 # Use BuildKit cache mount to persist Yarn download cache across builds,
 # so unchanged packages aren't re-downloaded even when yarn.lock changes.
-RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache-${TARGETPLATFORM} \
     yarn install --mode=skip-build && yarn cache clean
 
 
@@ -73,6 +78,9 @@ RUN yarn workspace @hyperdx/common-utils run build
 
 ## API/APP Builder Image ##########################################################################
 FROM node_base AS builder
+
+# Re-declared here because ARGs do not carry across stages; see node_base.
+ARG TARGETPLATFORM
 
 WORKDIR /app
 
@@ -92,7 +100,7 @@ ENV NEXT_OUTPUT_STANDALONE=true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE=false
 RUN yarn workspace @hyperdx/api run build && \
     yarn workspace @hyperdx/app run build
-RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
+RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache-${TARGETPLATFORM} \
     rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 
