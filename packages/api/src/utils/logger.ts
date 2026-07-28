@@ -54,10 +54,21 @@ const getTransport = () => {
   }
 };
 
+// pino-http's default request serializer copies `req.headers` verbatim, and
+// in production the serializers below are left enabled, so without this the
+// Authorization bearer and session cookie are written to stdout and shipped
+// off-box via the HyperDX transport.
+export const REDACTED_PATHS = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'res.headers["set-cookie"]',
+];
+
 const logger = pino({
   level: MAX_LEVEL,
   transport: getTransport(),
   mixin: getPinoMixinFunction,
+  redact: { paths: REDACTED_PATHS, censor: '[REDACTED]' },
 });
 
 export const expressLogger = pinoHttp({

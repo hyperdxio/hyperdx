@@ -126,10 +126,12 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
+import DashboardTerraformPopover from '@/components/Iac/DashboardTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
+import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from '@/config';
 import {
   Dashboard,
   type Tile,
@@ -2613,6 +2615,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
           </Button>
         </Tags>
+      )}
+      {IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE && dashboard?.id && (
+        <DashboardTerraformPopover
+          dashboardId={dashboard.id}
+          dashboardName={dashboard.name}
+        />
       )}
       {/* local dashboards cant be "deleted" */}
       <Menu width={250}>

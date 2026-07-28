@@ -19,6 +19,7 @@ import { IconPencil } from '@tabler/icons-react';
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
+import IacMigrationSection from './components/TeamSettings/IacMigrationSection';
 import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
 import McpServerSection from './components/TeamSettings/McpServerSection';
 import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesSection';
@@ -27,6 +28,7 @@ import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
+import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from './config';
 import { withAppNav } from './layout';
 
 type TeamTab = {
@@ -144,6 +146,14 @@ export default function TeamPage() {
           id: 'team-api-agents-mcp-server',
           content: <McpServerSection />,
         },
+        ...(IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE
+          ? [
+              {
+                id: 'team-api-agents-iac',
+                content: <IacMigrationSection />,
+              },
+            ]
+          : []),
       ],
     },
     {
