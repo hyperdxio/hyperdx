@@ -82,6 +82,10 @@ Rules:
   feature — never one bullet per package for the same feature.
 - Skip pure noise: lockstep version bumps, `Updated dependencies` roll-ups,
   internal test/CI changes — unless they change behaviour users see.
+- Keep it to roughly 25 bullets. A big release is where clustering matters most,
+  not where the list should get longer: merge related changesets, and drop the
+  small fixes a user would never notice. This is a highlights page, and the
+  per-package changelogs already hold the full record.
 - If the release contains only housekeeping, write a single short sentence
   saying there are no user-facing changes in this release and omit every
   section.

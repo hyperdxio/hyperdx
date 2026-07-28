@@ -161,9 +161,14 @@ test('extractSection --latest returns the newest section regardless of version',
 test('the HEADER scaffold stays in sync with the committed root CHANGELOG.md', () => {
   // Enforced here rather than by a comment: prettier reflows CHANGELOG.md
   // whenever a maintainer edits it, and drift would silently resurrect stale
-  // preamble text through the scaffold path.
+  // preamble text through the scaffold path. Compare the preamble only — the
+  // committed file also carries every released section.
   const committed = readFileSync(join(REPO_ROOT, 'CHANGELOG.md'), 'utf-8');
-  assert.ok(insertSection(null, OPTS).startsWith(committed.trimEnd()));
+  const firstSection = committed.indexOf('\n## ');
+  const committedHeader =
+    firstSection === -1 ? committed : committed.slice(0, firstSection);
+
+  assert.ok(insertSection(null, OPTS).startsWith(committedHeader.trimEnd()));
 });
 
 test('parseArgs handles value flags, boolean flags, and rejects malformed input', () => {

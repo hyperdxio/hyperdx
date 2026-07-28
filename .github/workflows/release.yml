@@ -352,9 +352,14 @@ jobs:
             echo "::error::Generated body contains an image; not permitted in release notes."
             exit 1
           fi
-          if grep -oE '\]\((https?://[^)]*)\)' /tmp/release-notes-body.md \
-              | grep -qvE "\]\(https://(github\.com|docs\.hyperdx\.io)/"; then
-            echo "::error::Generated body links off-site; only github.com and docs.hyperdx.io are allowed."
+          # Captured rather than piped into `grep -qv`: on empty input (a body
+          # with no links at all) BSD grep exits 0 and GNU exits 1, so the
+          # pipeline form means something different depending on where it runs.
+          OFFSITE="$(grep -oE '\]\(https?://[^)]*\)' /tmp/release-notes-body.md \
+            | grep -vE '^\]\(https://(github\.com|docs\.hyperdx\.io)/' || true)"
+          if [ -n "$OFFSITE" ]; then
+            echo "::error::Generated body links off-site; only github.com and docs.hyperdx.io are allowed:"
+            echo "$OFFSITE"
             exit 1
           fi
 
