@@ -223,6 +223,49 @@ efficient and accurate:
    PR before merging. Don't edit the root `CHANGELOG.md` in feature PRs; the
    only exception is the one-time seed that introduced the file.
 
+### How the root changelog is generated
+
+Defined in `.github/workflows/release.yml`; the splicing logic lives in
+`.github/scripts/release-notes.mjs`.
+
+```
+push to main
+    |
+    v
+check_changesets
+    |  1. capture the branch's current CHANGELOG.md -> artifact
+    |     (must happen BEFORE the next step destroys it)
+    |  2. changesets/action force-rebuilds changeset-release/main from main
+    |     and opens/updates the "Release HyperDX" PR
+    v
+release_changelog_draft            contents: read - no push token
+    |
+    |  app version unchanged?  --yes-->  skip (CLI/common-utils-only release)
+    |  changeset hash matches?  --yes-->  reuse previous section verbatim
+    |                           --no-->  Claude writes a fresh body, given
+    |                                    the old section as context
+    v
+  body artifact                    the model's only output
+    |
+    v
+release_changelog_publish          contents: write - the model never ran here
+    |
+    |  branch moved since drafting?  --yes-->  skip, the newer run republishes
+    |  validate (no headings/markers/images/off-site links)
+    |  append the package list, splice into CHANGELOG.md
+    v
+push to changeset-release/main  ->  appears as a diff in the release PR,
+    |                               where a maintainer can edit it
+    v
+merge the release PR  ->  CHANGELOG.md lands on main  ->  served in "What's new"
+```
+
+The job split is a security boundary, not tidiness: the model reads changeset
+bodies, commit messages and PR bodies, which anyone opening a PR controls. It
+therefore runs with no credentials and no ability to alter the script that
+does the splicing. A tool allowlist would not be enough on its own — `git log
+--output=<path> --format=format:<content>` writes an arbitrary file.
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:
