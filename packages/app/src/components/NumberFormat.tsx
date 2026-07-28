@@ -9,8 +9,8 @@ import {
 import { NumberFormat, NumericUnit } from '@hyperdx/common-utils/dist/types';
 import {
   Checkbox as MCheckbox,
-  NativeSelect,
   Paper,
+  Select,
   Slider,
   Stack,
   TextInput,
@@ -184,15 +184,18 @@ export const NumberFormatForm: React.FC<{
             key="numberFormat.output"
             name="numberFormat.output"
             render={({ field: { onChange, ...field } }) => (
-              <NativeSelect
+              <Select
                 {...field}
                 label="Output format"
                 leftSection={format.output && FORMAT_ICONS[format.output]}
                 style={{ flex: 1 }}
                 data={OUTPUT_CATEGORY_OPTIONS}
-                onChange={e => {
+                value={field.value ?? null}
+                allowDeselect={false}
+                onChange={value => {
+                  if (!value) return;
                   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  const newOutput = e.target.value as NumberFormat['output'];
+                  const newOutput = value as NumberFormat['output'];
                   onChange(newOutput);
                   setValue(
                     'numberFormat.numericUnit',
@@ -220,13 +223,16 @@ export const NumberFormatForm: React.FC<{
             key="numberFormat.numericUnit"
             name="numberFormat.numericUnit"
             render={({ field: { value, onChange, ...field } }) => (
-              <NativeSelect
+              <Select
                 {...field}
                 label="Unit"
                 value={
-                  value ?? DEFAULT_NUMERIC_UNIT_BY_OUTPUT[format.output ?? '']
+                  value ??
+                  DEFAULT_NUMERIC_UNIT_BY_OUTPUT[format.output ?? ''] ??
+                  null
                 }
-                onChange={e => onChange(e.target.value)}
+                allowDeselect={false}
+                onChange={val => val && onChange(val)}
                 data={unitOptions}
               />
             )}
@@ -315,12 +321,13 @@ export const NumberFormatForm: React.FC<{
                     ?.value ?? '1';
 
                 return (
-                  <NativeSelect
+                  <Select
                     {...field}
                     size="sm"
                     label="Input unit"
                     value={stringValue}
-                    onChange={e => onChange(parseFloat(e.target.value))}
+                    allowDeselect={false}
+                    onChange={val => onChange(parseFloat(val ?? '1'))}
                     data={options}
                   />
                 );

@@ -375,14 +375,15 @@ export default function EditTimeChartForm({
   // propagation. Bail out when Esc originated inside a nested overlay that
   // consumes it: a popover dropdown, a select listbox, or an expanded combobox
   // (a Mantine Select keeps DOM focus on its input via aria-activedescendant,
-  // so match the input itself). Native <select> elements (e.g. the number
-  // format selector) are also exempt: they render no listbox/aria-expanded, so
-  // the Esc the browser uses to dismiss their popup would otherwise bubble up
-  // and close the panel, discarding unapplied settings. A focused CodeMirror
-  // editor is intentionally NOT exempt here — it calls preventDefault only when
-  // it actually consumes Esc (e.g. closing an open autocomplete), which the
-  // defaultPrevented guard above already covers; exempting it wholesale would
-  // swallow Esc and leave the panel open when no completion is showing.
+  // so match the input itself). Every dismissible control inside the panel is a
+  // JS combobox (Mantine Select) rather than a native <select>, so its open
+  // state is visible here via aria-expanded/role="listbox"; a closed control
+  // exposes neither and correctly lets Esc fall through to close the panel. A
+  // focused CodeMirror editor is intentionally NOT exempt here — it calls
+  // preventDefault only when it actually consumes Esc (e.g. closing an open
+  // autocomplete), which the defaultPrevented guard above already covers;
+  // exempting it wholesale would swallow Esc and leave the panel open when no
+  // completion is showing.
   useEffect(() => {
     if (!showSettingsPanel) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -391,7 +392,7 @@ export default function EditTimeChartForm({
       if (
         target instanceof HTMLElement &&
         target.closest(
-          '.mantine-Popover-dropdown, [role="listbox"], [aria-expanded="true"], select',
+          '.mantine-Popover-dropdown, [role="listbox"], [aria-expanded="true"]',
         )
       ) {
         return;
