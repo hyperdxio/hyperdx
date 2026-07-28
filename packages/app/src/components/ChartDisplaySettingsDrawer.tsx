@@ -148,12 +148,12 @@ export default function ChartDisplaySettingsDrawer({
   // `appliedDefaults` identity: `defaultNumberFormat` is a fresh object literal
   // on every render, so a level-triggered reset would fire on each keystroke in
   // the main form while the panel is open, silently discarding unapplied edits.
-  const wasOpened = useRef(false);
+  const wasOpenedRef = useRef(false);
   useEffect(() => {
-    if (opened && !wasOpened.current) {
+    if (opened && !wasOpenedRef.current) {
       reset(appliedDefaults);
     }
-    wasOpened.current = opened;
+    wasOpenedRef.current = opened;
   }, [opened, appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
