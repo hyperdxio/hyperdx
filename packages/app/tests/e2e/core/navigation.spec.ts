@@ -159,7 +159,11 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await expect(dialog).toBeVisible({ timeout: 10_000 });
 
       const modal = dialog.getByTestId('changelog-modal');
-      const heading = modal.locator('h2').first();
+      // The modal shows the repo-root CHANGELOG.md, whose release sections are
+      // written by CI at release time. Between the seed state (H1 preamble
+      // only) and a populated one (`## vX.Y.Z` sections, H1 stripped) the top
+      // heading level differs, so match either rather than pinning to <h2>.
+      const heading = modal.locator('h1, h2').first();
       const errorText = modal.getByText('Unable to load the changelog.');
 
       // Wait for the async fetch to settle into either outcome, then assert it
@@ -169,8 +173,9 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await expect(heading.or(errorText)).toBeVisible({ timeout: 10_000 });
       await expect(errorText).toHaveCount(0);
 
-      // The changelog markdown renders as real HTML (version headings become
-      // <h2>), so a visible heading proves it was parsed, not shown raw.
+      // The changelog markdown renders as real HTML (headings become real
+      // heading elements), so a visible heading proves it was parsed, not
+      // shown raw.
       await expect(heading).toBeVisible();
 
       // Close so the help menu can be reopened for the next step.

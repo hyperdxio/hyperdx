@@ -12,8 +12,9 @@ const packageJson = JSON.parse(
 );
 const { version } = packageJson;
 
-// Copy CHANGELOG.md into public/ so the in-app "What's new" viewer can fetch it
-// as a static asset. Done here (rather than a package.json pre-script) because
+// Copy the repo-root CHANGELOG.md — the cross-package release summary, not the
+// app-only package changelog — into public/ so the in-app "What's new" viewer
+// can fetch it as a static asset. Done here (rather than a pre-script) because
 // Yarn 4 does not run arbitrary pre/post lifecycle scripts; next.config is
 // evaluated by both `next dev` (Turbopack) and `next build` (Webpack), so this
 // runs in every build mode. The ClickStack static export additionally needs
@@ -21,7 +22,7 @@ const { version } = packageJson;
 // Docker builder stages must COPY the file in (see the Dockerfiles).
 try {
   copyFileSync(
-    join(__dirname, 'CHANGELOG.md'),
+    join(__dirname, '..', '..', 'CHANGELOG.md'),
     join(__dirname, 'public', 'CHANGELOG.md'),
   );
 } catch (err) {
