@@ -21,7 +21,7 @@ import {
   useQueryState,
 } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
-import RGL, { WidthProvider } from 'react-grid-layout';
+import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -110,6 +110,7 @@ import {
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
 import { ContactSupportText } from '@/components/ContactSupportText';
+import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
 import {
   EmptyContainerPlaceholder,
@@ -338,8 +339,6 @@ function HeatmapTile({
     </div>
   );
 }
-
-const ReactGridLayout = WidthProvider(RGL);
 
 type MoveTarget = {
   containerId: string;
@@ -1624,7 +1623,7 @@ function DashboardContainerRow({
             }
           >
             {visibleTiles.length > 0 && (
-              <ReactGridLayout
+              <SnapGridLayout
                 layout={visibleTiles.map(tileToLayoutItem)}
                 containerPadding={[0, 0]}
                 onLayoutChange={readOnly ? undefined : layoutChangeHandler}
@@ -1634,7 +1633,7 @@ function DashboardContainerRow({
                 rowHeight={32}
               >
                 {visibleTiles.map(renderTileComponent)}
-              </ReactGridLayout>
+              </SnapGridLayout>
             )}
           </EmptyContainerPlaceholder>
         );
@@ -3037,7 +3036,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   onReorderContainers={handleReorderContainers}
                 >
                   {ungroupedTiles.length > 0 && (
-                    <ReactGridLayout
+                    <SnapGridLayout
                       layout={ungroupedTiles.map(tileToLayoutItem)}
                       containerPadding={[0, 0]}
                       onLayoutChange={
@@ -3049,7 +3048,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       rowHeight={32}
                     >
                       {ungroupedTiles.map(renderTileComponent)}
-                    </ReactGridLayout>
+                    </SnapGridLayout>
                   )}
                   {containers.map(container => (
                     <SortableContainerWrapper
