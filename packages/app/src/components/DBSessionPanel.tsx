@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
@@ -103,6 +104,7 @@ export const DBSessionPanel = ({
   serviceName: string;
   onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
 }) => {
+  const { t } = useTranslation('sessions');
   const { data: traceSource } = useSource({
     id: traceSourceId,
     kinds: [SourceKind.Trace],
@@ -123,11 +125,12 @@ export const DBSessionPanel = ({
     <>
       {!sessionSource ? (
         <div className="m-2 fs-8 p-4">
-          No correlated session source found.
+          {t('correlation.notFound')}
           <br />
-          Go to <Link href="/team#sources">Team Settings</Link> and update the{' '}
-          <strong>{traceSource?.name}</strong> source to include the correlated
-          session source.
+          {t('correlation.goTo')}{' '}
+          <Link href="/team#sources">{t('correlation.teamSettings')}</Link>{' '}
+          {t('correlation.updatePrefix')} <strong>{traceSource?.name}</strong>{' '}
+          {t('correlation.updateSuffix')}
         </div>
       ) : rumSessionId && traceSource ? (
         <SessionSubpanel
@@ -141,7 +144,7 @@ export const DBSessionPanel = ({
           initialTs={focusDate.getTime()}
         />
       ) : (
-        <span className="p-3 text-muted">Session ID not found.</span>
+        <span className="p-3 text-muted">{t('correlation.idNotFound')}</span>
       )}
     </>
   );

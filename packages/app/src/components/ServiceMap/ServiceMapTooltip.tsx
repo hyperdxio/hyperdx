@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import SqlString from 'sqlstring';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Group, Stack, Text } from '@mantine/core';
@@ -49,6 +50,7 @@ export default function ServiceMapTooltip({
   // immediate dependencies (or clears that scope when already focused).
   onFocus?: () => void;
 }) {
+  const { t } = useTranslation('services');
   const requestText = `${isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)} incoming request${
     totalRequests !== 1 ? 's' : ''
   }`;
@@ -143,9 +145,11 @@ export default function ServiceMapTooltip({
               {/* Percentiles are estimated (approximate quantiles, over sampled
                   spans), so prefix each value with ~. */}
               <Text size="xs">
-                p50 ~{formatDurationMs(latencyMs.p50)} · p95 ~
-                {formatDurationMs(latencyMs.p95)} · p99 ~
-                {formatDurationMs(latencyMs.p99)}
+                {t('map.percentiles', {
+                  p50: formatDurationMs(latencyMs.p50),
+                  p95: formatDurationMs(latencyMs.p95),
+                  p99: formatDurationMs(latencyMs.p99),
+                })}
               </Text>
             </Group>
           ) : null}
@@ -164,7 +168,7 @@ export default function ServiceMapTooltip({
               isFocused ? <IconTargetOff size={14} /> : <IconTarget size={14} />
             }
           >
-            {isFocused ? 'Clear focus' : 'Focus on this service'}
+            {isFocused ? t('map.clearFocus') : t('map.focusOnService')}
           </Button>
         </>
       ) : null}

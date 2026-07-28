@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Button,
@@ -71,6 +72,7 @@ export const ColorSwatchInput = ({
   disabled = false,
   ariaLabel,
 }: ColorSwatchInputProps) => {
+  const { t } = useTranslation('charts');
   const [opened, setOpened] = React.useState(false);
 
   // Accept both current hue-named tokens and legacy `chart-1`..`chart-10`
@@ -134,9 +136,11 @@ export const ColorSwatchInput = ({
       <Popover.Dropdown p="xs" style={{ zIndex: Z_INDEX }}>
         <Stack gap="xs">
           <div>
-            <VisuallyHidden>Categorical colors</VisuallyHidden>
+            <VisuallyHidden>
+              {t('colorSwatch.categoricalColors')}
+            </VisuallyHidden>
             <Text size="xs" c="dimmed" mb={4} aria-hidden>
-              Categorical
+              {t('colorSwatch.categorical')}
             </Text>
             <SwatchGrid
               tokens={CATEGORICAL_PALETTE_TOKENS}
@@ -145,9 +149,9 @@ export const ColorSwatchInput = ({
             />
           </div>
           <div>
-            <VisuallyHidden>Semantic colors</VisuallyHidden>
+            <VisuallyHidden>{t('colorSwatch.semanticColors')}</VisuallyHidden>
             <Text size="xs" c="dimmed" mb={4} aria-hidden>
-              Semantic
+              {t('colorSwatch.semantic')}
             </Text>
             <SwatchGrid
               tokens={SEMANTIC_PALETTE_TOKENS}
@@ -165,7 +169,7 @@ export const ColorSwatchInput = ({
               onClick={() => handleChange(undefined)}
               data-testid="color-swatch-input-clear"
             >
-              Clear
+              {t('colorSwatch.clear')}
             </Button>
           )}
         </Stack>

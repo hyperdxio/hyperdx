@@ -9,6 +9,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,
@@ -67,12 +68,14 @@ function InfrastructureTab({
   connection: string;
   onTimeRangeSelect: (start: Date, end: Date) => void;
 }) {
+  const { t } = useTranslation('infrastructure');
+
   return (
     <Grid mt="md">
       <Grid.Col span={6}>
         <ChartBox style={{ height: 400 }}>
           <DBTimeChart
-            title="CPU Usage (Cores)"
+            title={t('clickhouse.charts.cpuUsageCores')}
             config={{
               select: [
                 {
@@ -98,7 +101,7 @@ function InfrastructureTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 400 }}>
           <DBTimeChart
-            title="Memory Usage"
+            title={t('clickhouse.charts.memoryUsage')}
             config={{
               select: [
                 {
@@ -127,7 +130,7 @@ function InfrastructureTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 400 }}>
           <DBTimeChart
-            title="Disk"
+            title={t('clickhouse.charts.disk')}
             config={{
               select: [
                 {
@@ -164,7 +167,7 @@ function InfrastructureTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 400 }}>
           <DBTimeChart
-            title="S3 Requests"
+            title={t('clickhouse.charts.s3Requests')}
             config={{
               select: [
                 {
@@ -218,10 +221,10 @@ function InfrastructureTab({
             title={
               <Stack gap={0}>
                 <Text size="sm" mb="xs">
-                  Network
+                  {t('clickhouse.charts.network')}
                 </Text>
                 <Text size="xs" mb="sm">
-                  Network activity for the entire machine, not only Clickhouse.
+                  {t('clickhouse.charts.networkDescription')}
                 </Text>
               </Stack>
             }
@@ -265,6 +268,7 @@ function InsertsTab({
   connection: string;
   onTimeRangeSelect: (start: Date, end: Date) => void;
 }) {
+  const { t } = useTranslation('infrastructure');
   const [insertsBy, setInsertsBy] = useQueryState(
     'insertsBy',
     parseAsStringEnum(['queries', 'rows', 'bytes']).withDefault('queries'),
@@ -359,13 +363,13 @@ function InsertsTab({
           <DBTimeChart
             title={
               <Text size="sm">
-                Insert{' '}
+                {t('clickhouse.charts.insert')}{' '}
                 {insertsBy === 'queries'
-                  ? 'Queries'
+                  ? t('clickhouse.charts.insertQueries')
                   : insertsBy === 'rows'
-                    ? 'Rows'
-                    : 'Bytes'}{' '}
-                Per Table
+                    ? t('clickhouse.charts.insertRows')
+                    : t('clickhouse.charts.insertBytes')}{' '}
+                {t('clickhouse.charts.insertPerTable')}
               </Text>
             }
             toolbarPrefix={[
@@ -378,9 +382,12 @@ function InsertsTab({
                   setInsertsBy(value);
                 }}
                 data={[
-                  { label: 'Queries', value: 'queries' },
-                  { label: 'Rows', value: 'rows' },
-                  { label: 'Bytes', value: 'bytes' },
+                  {
+                    label: t('clickhouse.charts.insertQueries'),
+                    value: 'queries',
+                  },
+                  { label: t('clickhouse.charts.insertRows'), value: 'rows' },
+                  { label: t('clickhouse.charts.insertBytes'), value: 'bytes' },
                 ]}
               />,
             ]}
@@ -392,7 +399,7 @@ function InsertsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 200 }}>
           <DBTimeChart
-            title="Max Active Parts per Partition"
+            title={t('clickhouse.charts.maxActiveParts')}
             config={{
               select: [
                 {
@@ -424,12 +431,10 @@ function InsertsTab({
             title={
               <Stack gap={0}>
                 <Text size="sm" mb="sm">
-                  Active Parts Per Partition
+                  {t('clickhouse.charts.activePartsPerPartition')}
                 </Text>
                 <Text size="xs" mb="md">
-                  Recommended to stay under 300, ClickHouse will automatically
-                  throttle inserts after 1,000 parts per partition and stop
-                  inserts at 3,000 parts per partition.
+                  {t('clickhouse.charts.activePartsDescription')}
                 </Text>
               </Stack>
             }
@@ -491,6 +496,8 @@ function InsertsTab({
 }
 
 function ClickhousePage() {
+  const { t } = useTranslation('infrastructure');
+  const { t: tDashboard } = useTranslation('dashboard');
   const brandName = useBrandDisplayName();
   const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();
@@ -581,11 +588,11 @@ function ClickhousePage() {
             onSearch(DEFAULT_INTERVAL);
           }}
         >
-          Reset
+          {t('clickhouse.reset')}
         </Button>,
       ];
     }
-  }, [latencyFilter, onSearch, setLatencyFilter]);
+  }, [latencyFilter, onSearch, setLatencyFilter, t]);
 
   const headerActions = (
     <Group gap="xs">
@@ -602,14 +609,19 @@ function ClickhousePage() {
           onSearch={onSearch}
         />
       </form>
-      <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+      <Tooltip
+        withArrow
+        label={tDashboard('page.refresh')}
+        fz="xs"
+        color="gray"
+      >
         <ActionIcon
           onClick={refresh}
           loading={manualRefreshCooloff}
           disabled={manualRefreshCooloff}
           variant="secondary"
-          title="Refresh dashboard"
-          aria-label="Refresh dashboard"
+          title={tDashboard('page.refresh')}
+          aria-label={tDashboard('page.refresh')}
           size="lg"
         >
           <IconRefresh size={18} />
@@ -621,10 +633,10 @@ function ClickhousePage() {
   const pageBreadcrumbs = (
     <Breadcrumbs fz="sm">
       <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-        Dashboards
+        {tDashboard('page.dashboards')}
       </Anchor>
       <Text fz="sm" c="dimmed">
-        ClickHouse
+        {t('clickhouse.breadcrumb')}
       </Text>
     </Breadcrumbs>
   );
@@ -645,7 +657,7 @@ function ClickhousePage() {
       content={
         <>
           <Head>
-            <title>ClickHouse Dashboard – {brandName}</title>
+            <title>{t('clickhouse.browserTitle', { brandName })}</title>
           </Head>
           <OnboardingModal requireSource={false} />
           <Tabs
@@ -657,17 +669,21 @@ function ClickhousePage() {
             value={tab}
           >
             <Tabs.List>
-              <Tabs.Tab value="selects">Select</Tabs.Tab>
-              <Tabs.Tab value="inserts">Inserts</Tabs.Tab>
+              <Tabs.Tab value="selects">{t('clickhouse.tabs.select')}</Tabs.Tab>
+              <Tabs.Tab value="inserts">
+                {t('clickhouse.tabs.inserts')}
+              </Tabs.Tab>
               {/* <Tabs.Tab value="merges">Merges / Mutations</Tabs.Tab> */}
-              <Tabs.Tab value="infrastructure">Infrastructure</Tabs.Tab>
+              <Tabs.Tab value="infrastructure">
+                {t('clickhouse.tabs.infrastructure')}
+              </Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="selects">
               <Grid mt="md">
                 <Grid.Col span={12}>
                   <ChartBox style={{ height: 250 }}>
                     <DBHeatmapChart
-                      title="Query Latency"
+                      title={t('clickhouse.charts.queryLatency')}
                       toolbarSuffix={heatmapToolbarItems}
                       config={{
                         displayType: DisplayType.Heatmap,
@@ -703,7 +719,7 @@ function ClickhousePage() {
                 <Grid.Col span={12}>
                   <ChartBox style={{ height: 400 }}>
                     <DBTimeChart
-                      title="Query Count by Table"
+                      title={t('clickhouse.charts.queryCountByTable')}
                       config={{
                         select: [
                           {
@@ -742,7 +758,7 @@ function ClickhousePage() {
                 <Grid.Col span={12}>
                   <ChartBox style={{ height: 400 }}>
                     <DBTableChart
-                      title="Most Time Consuming Query Patterns"
+                      title={t('clickhouse.charts.mostTimeConsuming')}
                       config={{
                         select: [
                           {
@@ -803,7 +819,7 @@ function ClickhousePage() {
                     }}
                   >
                     <Text size="sm" mb="md">
-                      Slowest Queries
+                      {t('clickhouse.charts.slowestQueries')}
                     </Text>
                     <DBSqlRowTable
                       renderRowDetails={row => {

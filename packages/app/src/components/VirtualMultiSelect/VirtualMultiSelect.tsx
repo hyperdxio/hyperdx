@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CheckIcon,
   CloseButton,
@@ -35,6 +36,7 @@ export function VirtualMultiSelect({
   onChange,
   'data-testid': dataTestId,
 }: VirtualMultiSelectProps) {
+  const { t } = useTranslation('common');
   const viewportRef = useRef<HTMLDivElement>(null);
 
   const [search, setSearch] = useState('');
@@ -217,7 +219,7 @@ export function VirtualMultiSelect({
               </div>
             </ScrollArea.Autosize>
           ) : (
-            <Combobox.Empty>Nothing found...</Combobox.Empty>
+            <Combobox.Empty>{t('states.nothingFound')}</Combobox.Empty>
           )}
         </Combobox.Options>
       </Combobox.Dropdown>

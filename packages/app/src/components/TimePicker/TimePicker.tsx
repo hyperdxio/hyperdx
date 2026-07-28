@@ -3,6 +3,7 @@ import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import {
   Button,
   Card,
@@ -35,6 +36,7 @@ import {
   LIVE_TAIL_DURATION_MS,
   LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
+  RELATIVE_TIME_LABEL_KEYS,
   RELATIVE_TIME_OPTIONS,
 } from './utils';
 
@@ -123,7 +125,21 @@ const TimePickerComponent = ({
     userPreferences: { timeFormat },
   } = useUserPreferences();
 
+  const { t } = useTranslation('common');
   const [opened, { close, toggle }] = useDisclosure(false);
+
+  // Presets are stored as English query values (chrono parses them); only the
+  // menu label is localized.
+  const presetLabel = React.useCallback(
+    (query: string) => {
+      const key =
+        RELATIVE_TIME_LABEL_KEYS[
+          query as keyof typeof RELATIVE_TIME_LABEL_KEYS
+        ];
+      return key ? t(`timePicker.presets.${key}`) : query;
+    },
+    [t],
+  );
 
   useHotkeys('d', () => toggle(), { preventDefault: true }, [toggle]);
 
@@ -296,7 +312,7 @@ const TimePickerComponent = ({
           value={value}
           onChange={event => onChange(event.currentTarget.value)}
           onClick={toggle}
-          placeholder="Time Range"
+          placeholder={t('timePicker.placeholder')}
           size={size}
           w={width}
           onKeyDown={e => {
@@ -319,16 +335,13 @@ const TimePickerComponent = ({
         <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
             {typeof onRelativeSearch === 'function' && (
-              <Tooltip
-                label="Set how far back Live Tail begins streaming logs."
-                refProp="rootRef"
-              >
+              <Tooltip label={t('timePicker.liveTailHint')} refProp="rootRef">
                 <Switch
                   data-testid="time-picker-relative-switch"
                   size="xs"
                   checked={isRelative}
                   onChange={e => setIsRelative(e.currentTarget.checked)}
-                  label="Relative Time"
+                  label={t('timePicker.relativeTime')}
                   labelPosition="right"
                   styles={{
                     label: {
@@ -347,7 +360,7 @@ const TimePickerComponent = ({
               onClick={handleMove.bind(null, { hours: -1 })}
               disabled={isLiveMode || isRelative}
             >
-              1h back
+              {t('timePicker.hourBack')}
             </Button>
             <Button
               data-testid="time-picker-1h-forward"
@@ -356,7 +369,7 @@ const TimePickerComponent = ({
               onClick={handleMove.bind(null, { hours: 1 })}
               disabled={isLiveMode || isRelative}
             >
-              1h forward
+              {t('timePicker.hourForward')}
             </Button>
             <CloseButton data-testid="time-picker-close" onClick={close} />
           </Group>
@@ -392,7 +405,7 @@ const TimePickerComponent = ({
                       fullWidth
                       justify="space-between"
                     >
-                      {item[0]}
+                      {presetLabel(item[0])}
                     </Button>
                   ),
                 )}
@@ -446,7 +459,7 @@ const TimePickerComponent = ({
               />
               {mode === TimePickerMode.Range ? (
                 <>
-                  <H>Start time</H>
+                  <H>{t('timePicker.startTime')}</H>
                   <DateInputCmp
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
@@ -454,7 +467,7 @@ const TimePickerComponent = ({
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
-                  <H>End time</H>
+                  <H>{t('timePicker.endTime')}</H>
                   <DateInputCmp
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
@@ -465,7 +478,7 @@ const TimePickerComponent = ({
                 </>
               ) : (
                 <>
-                  <H>Time</H>
+                  <H>{t('timePicker.time')}</H>
                   <DateInputCmp
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
@@ -473,9 +486,9 @@ const TimePickerComponent = ({
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
-                  <H>Duration ±</H>
+                  <H>{t('timePicker.duration')}</H>
                   <Select
-                    placeholder="Pick value"
+                    placeholder={t('timePicker.pickValue')}
                     data={DURATION_OPTIONS}
                     comboboxProps={dateComponentPopoverProps}
                     searchable
@@ -488,8 +501,7 @@ const TimePickerComponent = ({
               )}
             </Stack>
             <Text size="xxs" lh={1.2}>
-              You can use natural language to select dates (e.g. yesterday, last
-              monday at 5pm)
+              {t('timePicker.naturalLanguageHint')}
             </Text>
             <Space flex={1} />
             <Group
@@ -505,7 +517,7 @@ const TimePickerComponent = ({
                 disabled={!form.isValid() || isRelative}
                 onClick={handleApply}
               >
-                Apply
+                {t('timePicker.apply')}
               </Button>
             </Group>
           </Card>

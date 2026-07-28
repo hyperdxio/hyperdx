@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Badge,
@@ -39,6 +40,7 @@ const OnboardingChecklist = ({
 }: {
   onAddDataClick?: () => void;
 }) => {
+  const { t } = useTranslation('navigation');
   const [isCollapsed, setIsCollapsed] = useLocalStorage(
     'onboardingChecklistCollapsed',
     false,
@@ -113,24 +115,24 @@ const OnboardingChecklist = ({
     () => [
       {
         id: 'connection',
-        title: 'Connect to ClickHouse',
-        description: 'Set up your database connection',
+        title: t('onboarding.connectClickHouse'),
+        description: t('onboarding.connectClickHouseDescription'),
         isComplete: hasConnections ?? false,
         isLoading: isConnectionsLoading,
         href: hasConnections ? undefined : '/team',
       },
       {
         id: 'sources',
-        title: 'Create Data Sources',
-        description: 'Configure where your data comes from',
+        title: t('onboarding.createSources'),
+        description: t('onboarding.createSourcesDescription'),
         isComplete: hasSources ?? false,
         isLoading: isSourcesLoading,
         href: hasSources ? undefined : '/team',
       },
       {
         id: 'data',
-        title: 'Add Data',
-        description: 'Start sending logs, metrics, or traces',
+        title: t('onboarding.addData'),
+        description: t('onboarding.addDataDescription'),
         isComplete: hasData,
         isLoading: isSourceRowsLoading, // We'll implement data checking later
         onClick: hasData ? undefined : onAddDataClick,
@@ -144,6 +146,7 @@ const OnboardingChecklist = ({
       isSourcesLoading,
       onAddDataClick,
       isSourceRowsLoading,
+      t,
     ],
   );
 
@@ -160,7 +163,7 @@ const OnboardingChecklist = ({
       <Group justify="space-between" align="center" mb={isCollapsed ? 0 : 'xs'}>
         <Group gap="xs" align="center">
           <Text size="sm" fw="bold">
-            Get Started
+            {t('onboarding.getStarted')}
           </Text>
           <Badge
             size="xs"
@@ -307,7 +310,7 @@ const OnboardingChecklist = ({
           {isAllComplete && (
             <Group justify="center" mt="xs" p="xs">
               <Text size="sm" c="green" fw="bold">
-                🎉 Great job! You&apos;re all set up.
+                {t('onboarding.complete')}
               </Text>
             </Group>
           )}

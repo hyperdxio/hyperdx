@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
+import { useTranslation } from 'react-i18next';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
@@ -14,7 +15,7 @@ export default function AutocompleteInput({
   inputRef,
   value,
   onChange,
-  placeholder = 'Search your events for anything...',
+  placeholder,
   autocompleteOptions,
   isLoadingValues,
   tokenInfo,
@@ -22,7 +23,7 @@ export default function AutocompleteInput({
   aboveSuggestions,
   belowSuggestions,
   showSuggestionsOnEmpty,
-  suggestionsHeader = 'Properties',
+  suggestionsHeader,
   zIndex = 999,
   onLanguageChange,
   language,
@@ -49,7 +50,10 @@ export default function AutocompleteInput({
   queryHistoryType?: string;
   'data-testid'?: string;
 }) {
+  const { t } = useTranslation('search');
   const suggestionsLimit = 10;
+  const resolvedPlaceholder = placeholder ?? t('input.defaultPlaceholder');
+  const resolvedSuggestionsHeader = suggestionsHeader ?? t('input.properties');
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -182,7 +186,7 @@ export default function AutocompleteInput({
         <Popover.Target>
           <Textarea
             ref={inputRef}
-            placeholder={placeholder}
+            placeholder={resolvedPlaceholder}
             className={cx(
               styles.textarea,
               !isSearchInputFocused && styles.collapseFade,
@@ -301,14 +305,14 @@ export default function AutocompleteInput({
               <div className={styles.suggestionsSection}>
                 <div className={styles.suggestionsHeaderRow}>
                   <div className={styles.suggestionsHeader}>
-                    {suggestionsHeader}
+                    {resolvedSuggestionsHeader}
                     {isLoadingValues && (
                       <Loader size={12} ml={6} color="var(--color-text)" />
                     )}
                   </div>
                   {suggestedProperties.length > suggestionsLimit && (
                     <div className={styles.suggestionsLimit}>
-                      (Showing Top {suggestionsLimit})
+                      {t('input.showingTop', { count: suggestionsLimit })}
                     </div>
                   )}
                 </div>
@@ -341,7 +345,7 @@ export default function AutocompleteInput({
           <div>
             {showSearchHistory && (
               <div className={styles.historySection}>
-                <div className={styles.historyTitle}>Search History:</div>
+                <div className={styles.historyTitle}>{t('input.history')}</div>
                 {queryHistoryList.map(({ value, label }, i) => {
                   return (
                     <UnstyledButton

@@ -1,13 +1,8 @@
+import { useTranslation } from 'react-i18next';
 import { BackgroundChart } from '@hyperdx/common-utils/dist/types';
 import { Box, Select, Text } from '@mantine/core';
 
 import { ColorSwatchInput } from './ColorSwatchInput';
-
-const TYPE_OPTIONS = [
-  { value: 'none', label: 'None' },
-  { value: 'line', label: 'Line' },
-  { value: 'area', label: 'Area' },
-];
 
 /**
  * Editor for a number tile's optional background sparkline. The type select
@@ -28,19 +23,25 @@ export function BackgroundChartInput({
   onChange: (value: BackgroundChart | undefined) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('charts');
+  const typeOptions = [
+    { value: 'none', label: t('background.none') },
+    { value: 'line', label: t('background.line') },
+    { value: 'area', label: t('background.area') },
+  ];
   return (
     <Box>
       <Text size="xs" c="dimmed" mb={4}>
-        Background chart
+        {t('background.backgroundChart')}
       </Text>
       <Select
         size="xs"
-        data={TYPE_OPTIONS}
+        data={typeOptions}
         value={value?.type ?? 'none'}
         disabled={disabled}
         allowDeselect={false}
         comboboxProps={{ withinPortal: false }}
-        aria-label="Number tile background chart type"
+        aria-label={t('background.typeAriaLabel')}
         onChange={next => {
           if (next === 'line' || next === 'area') {
             onChange({ ...value, type: next });
@@ -51,18 +52,18 @@ export function BackgroundChartInput({
       />
       {disabled ? (
         <Text size="xs" c="dimmed" mt={4}>
-          Available on query-builder number tiles.
+          {t('background.availableHint')}
         </Text>
       ) : (
         value && (
           <Box mt="xs">
             <Text size="xs" c="dimmed" mb={4}>
-              Background color
+              {t('background.backgroundColor')}
             </Text>
             <ColorSwatchInput
               value={value.color}
               onChange={color => onChange({ ...value, color })}
-              ariaLabel="Number tile background chart color"
+              ariaLabel={t('background.colorAriaLabel')}
             />
           </Box>
         )

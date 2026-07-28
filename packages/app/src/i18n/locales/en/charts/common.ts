@@ -1,0 +1,16 @@
+export const common = {
+  loadingData: 'Loading Chart Data...',
+  noData: 'No data found within time range.',
+  loading: 'Loading...',
+  displaySettings: 'Display Settings',
+  cancel: 'Cancel',
+  apply: 'Apply',
+  save: 'Save',
+  run: 'Run',
+  reset: 'Reset',
+  copied: 'Copied!',
+  copy: 'Copy',
+  errorMessage: 'Error Message:',
+  originalQuery: 'Original Query:',
+  sentQuery: 'Sent Query:',
+} as const;

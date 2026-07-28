@@ -36,6 +36,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
+import i18n from '@/i18n';
+
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
 import { DEFAULT_SERIES_LIMIT } from './defaults';
@@ -47,23 +49,22 @@ import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';
 type SortOrder = 'asc' | 'desc';
 
 export const AGG_FNS = [
-  { value: 'count' as const, label: 'Count of Events', isAttributable: false },
-  { value: 'sum' as const, label: 'Sum', isAttributable: false },
-  { value: 'p99' as const, label: '99th Percentile' },
-  { value: 'p95' as const, label: '95th Percentile' },
-  { value: 'p90' as const, label: '90th Percentile' },
-  { value: 'p50' as const, label: 'Median' },
-  { value: 'avg' as const, label: 'Average' },
-  { value: 'max' as const, label: 'Maximum' },
-  { value: 'min' as const, label: 'Minimum' },
+  { value: 'count' as const, isAttributable: false },
+  { value: 'sum' as const, isAttributable: false },
+  { value: 'p99' as const },
+  { value: 'p95' as const },
+  { value: 'p90' as const },
+  { value: 'p50' as const },
+  { value: 'avg' as const },
+  { value: 'max' as const },
+  { value: 'min' as const },
   {
     value: 'count_distinct' as const,
-    label: 'Count Distinct',
     isAttributable: false,
   },
-  { value: 'any' as const, label: 'Any' },
-  { value: 'increase' as const, label: 'Increase', isAttributable: false },
-  { value: 'none' as const, label: 'Custom' },
+  { value: 'any' as const },
+  { value: 'increase' as const, isAttributable: false },
+  { value: 'none' as const },
 ];
 
 export const DEFAULT_CHART_CONFIG: Omit<
@@ -966,7 +967,7 @@ export function buildEventsSearchUrl({
     if (logSourceId == null) {
       notifications.show({
         color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
+        message: i18n.t('charts:page.noLogSource'),
       });
       return null;
     }

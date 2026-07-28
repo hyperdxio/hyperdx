@@ -1,4 +1,5 @@
 import { useRouter } from 'next/router';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import { Center, Loader, Modal, ScrollArea, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
@@ -15,6 +16,7 @@ export const ChangelogModal = ({
   opened: boolean;
   onClose: () => void;
 }) => {
+  const { t } = useTranslation('navigation');
   // basePath is '' normally and '/clickstack' in the ClickStack build, where
   // the static asset is served under that prefix.
   const { basePath } = useRouter();
@@ -38,7 +40,7 @@ export const ChangelogModal = ({
     <Modal
       opened={opened}
       onClose={onClose}
-      title="What's New"
+      title={t('changelog.title')}
       size="lg"
       centered
       scrollAreaComponent={ScrollArea.Autosize}
@@ -46,7 +48,7 @@ export const ChangelogModal = ({
       <div className="hdx-markdown" data-testid="changelog-modal">
         {isError ? (
           <Text size="sm" c="dimmed">
-            Unable to load the changelog.
+            {t('changelog.loadError')}
           </Text>
         ) : markdown == null ? (
           <Center py="xl">

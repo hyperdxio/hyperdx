@@ -9,6 +9,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { PresetDashboard, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -65,6 +66,7 @@ function ServiceSelectControlled({
   dateRange: [Date, Date];
   onCreate?: () => void;
 } & UseControllerProps<any>) {
+  const { t } = useTranslation('services');
   const { data: source } = useSource({
     id: sourceId,
     kinds: [SourceKind.Trace],
@@ -108,11 +110,11 @@ function ServiceSelectControlled({
     return [
       {
         value: '',
-        label: 'All Services',
+        label: t('dashboard.allServices'),
       },
       ...services,
     ];
-  }, [data]);
+  }, [data, t]);
 
   return (
     <SelectControlled
@@ -121,7 +123,7 @@ function ServiceSelectControlled({
       disabled={isLoading || isError}
       comboboxProps={{ withinPortal: false }}
       searchable
-      placeholder="All Services"
+      placeholder={t('dashboard.allServices')}
       maxDropdownHeight={280}
       onCreate={onCreate}
       nothingFoundMessage={isLoading ? 'Loading more...' : 'No matches found'}
@@ -140,6 +142,8 @@ const appliedConfigMap = {
 };
 
 function ServicesDashboardPage() {
+  const { t } = useTranslation('services');
+  const { t: tDashboard } = useTranslation('dashboard');
   const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',
@@ -286,14 +290,14 @@ function ServicesDashboardPage() {
   return (
     <Box p="sm" data-testid="services-dashboard-page">
       <Head>
-        <title>Services Dashboard – {brandName}</title>
+        <title>{t('dashboard.browserTitle', { brandName })}</title>
       </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          {tDashboard('page.dashboards')}
         </Anchor>
         <Text fz="sm" c="dimmed">
-          Services
+          {t('dashboard.breadcrumb')}
         </Text>
       </Breadcrumbs>
       <OnboardingModal requireSource={false} />
@@ -342,7 +346,12 @@ function ServicesDashboardPage() {
               onSearch={onSearch}
             />
             {!IS_LOCAL_MODE && (
-              <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+              <Tooltip
+                withArrow
+                label={t('dashboard.editFilters')}
+                fz="xs"
+                color="gray"
+              >
                 <ActionIcon
                   variant="secondary"
                   onClick={() => setShowFiltersModal(true)}
@@ -352,14 +361,19 @@ function ServicesDashboardPage() {
                 </ActionIcon>
               </Tooltip>
             )}
-            <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Tooltip
+              withArrow
+              label={tDashboard('page.refresh')}
+              fz="xs"
+              color="gray"
+            >
               <ActionIcon
                 onClick={refresh}
                 loading={manualRefreshCooloff}
                 disabled={manualRefreshCooloff}
                 variant="secondary"
-                title="Refresh dashboard"
-                aria-label="Refresh dashboard"
+                title={tDashboard('page.refresh')}
+                aria-label={tDashboard('page.refresh')}
                 size="lg"
               >
                 <IconRefresh size={18} />
@@ -372,7 +386,7 @@ function ServicesDashboardPage() {
               leftSection={<IconPlayerPlay size={16} />}
               style={{ flexShrink: 0 }}
             >
-              Run
+              {t('dashboard.run')}
             </Button>
           </Group>
         </Group>
@@ -385,7 +399,7 @@ function ServicesDashboardPage() {
       />
       {source?.kind !== 'trace' ? (
         <Group align="center" justify="center" h="300px">
-          <Text c="gray">Please select a trace source</Text>
+          <Text c="gray">{t('dashboard.selectTraceSource')}</Text>
         </Group>
       ) : (
         <Tabs
@@ -396,9 +410,9 @@ function ServicesDashboardPage() {
           value={tab}
         >
           <Tabs.List>
-            <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
-            <Tabs.Tab value="database">Database</Tabs.Tab>
-            <Tabs.Tab value="errors">Errors</Tabs.Tab>
+            <Tabs.Tab value="http">{t('dashboard.tabs.http')}</Tabs.Tab>
+            <Tabs.Tab value="database">{t('dashboard.tabs.database')}</Tabs.Tab>
+            <Tabs.Tab value="errors">{t('dashboard.tabs.errors')}</Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="http">
             <HttpTab

@@ -1,0 +1,472 @@
+[
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Node.js",
+    "reason": "SDK name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Go",
+    "reason": "Programming language name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Python",
+    "reason": "Programming language name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Java",
+    "reason": "Programming language name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Elixir",
+    "reason": "Programming language name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Ruby on Rails",
+    "reason": "Framework name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "Kubernetes",
+    "reason": "Platform name displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "JavaScript/TypeScript",
+    "reason": "Programming language names displayed verbatim"
+  },
+  {
+    "file": "src/InstallInstructionsModal.tsx",
+    "text": "OpenTelemetry",
+    "reason": "Project name displayed verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/InputLanguageSwitch.tsx",
+    "text": "SQL",
+    "reason": "Query language identifier displayed verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/InputLanguageSwitch.tsx",
+    "text": "Lucene",
+    "reason": "Query language identifier displayed verbatim"
+  },
+  {
+    "file": "src/SessionEventList.tsx",
+    "text": "console.error",
+    "reason": "Telemetry event name displayed verbatim"
+  },
+  {
+    "file": "src/SessionEventList.tsx",
+    "text": "console.log",
+    "reason": "Telemetry event name displayed verbatim"
+  },
+  {
+    "file": "src/SessionEventList.tsx",
+    "text": "console.warn",
+    "reason": "Telemetry event name displayed verbatim"
+  },
+  {
+    "file": "src/components/DBSearchPageFilters/NestedFilterGroup.tsx",
+    "text": "p-0",
+    "reason": "Mantine class name, not user-visible copy"
+  },
+  {
+    "file": "src/components/SpanEventsSubpanel.tsx",
+    "text": "An error occurred while rendering span events",
+    "reason": "Error message is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "my log",
+    "reason": "Lucene query example displayed and inserted verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "*err*",
+    "reason": "Lucene query example displayed and inserted verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "level:",
+    "reason": "Lucene query example displayed verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "info",
+    "reason": "Lucene query example displayed verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "-level:info",
+    "reason": "Lucene query example displayed and inserted verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "service:*",
+    "reason": "Lucene query example displayed and inserted verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SearchInputV2.tsx",
+    "text": "(foo OR bar)",
+    "reason": "Lucene query example displayed verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SyntaxReferenceModal.tsx",
+    "text": "SQL",
+    "reason": "Query language identifier displayed verbatim"
+  },
+  {
+    "file": "src/components/SearchInput/SyntaxReferenceModal.tsx",
+    "text": "Lucene",
+    "reason": "Query language identifier displayed verbatim"
+  },
+  {
+    "file": "src/LogSidePanelElements.tsx",
+    "text": "in_app: false",
+    "reason": "OpenTelemetry stack-frame attribute displayed verbatim"
+  },
+  {
+    "file": "src/components/ExceptionSubpanel.tsx",
+    "text": "in_app: false",
+    "reason": "OpenTelemetry stack-frame attribute displayed verbatim"
+  },
+  {
+    "file": "src/components/ExceptionSubpanel.tsx",
+    "text": "An error occurred while rendering stacktrace",
+    "reason": "Error message is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/SessionsPage.tsx",
+    "text": "hyperdx_sessions",
+    "reason": "ClickHouse table identifier displayed verbatim"
+  },
+  {
+    "file": "src/components/DBSearchPageFilters.tsx",
+    "text": "p-0",
+    "reason": "Mantine class name, not user-visible copy"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "This query may have failed due to an invalid",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "Known Columns List",
+    "reason": "Error guidance and source configuration field name are outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "configuration. Check the",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "for this source and ensure that it references valid columns that exist in all target tables of the Distributed or Merge table.",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "This query may have failed due to a",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "SELECT *",
+    "reason": "Executable SQL syntax in excluded error guidance is displayed verbatim"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "query on a Distributed table that declares columns missing in one or more of its target tables. If this is the case, the",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "can be overridden by setting a",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/components/DBRowSidePanelErrorState.tsx",
+    "text": "for this source.",
+    "reason": "Error guidance is explicitly outside the localization scope"
+  },
+  {
+    "file": "src/DBSearchPage.tsx",
+    "text": "SELECT",
+    "reason": "Executable SQL keyword displayed verbatim"
+  },
+  {
+    "file": "src/DBSearchPage.tsx",
+    "text": "FROM",
+    "reason": "Executable SQL keyword displayed verbatim"
+  },
+  {
+    "file": "src/DBSearchPage.tsx",
+    "text": "WHERE",
+    "reason": "Executable SQL keyword displayed verbatim"
+  },
+  {
+    "file": "src/DBSearchPage.tsx",
+    "text": "ORDER BY",
+    "reason": "Executable SQL keyword displayed verbatim"
+  },
+  {
+    "file": "src/DBSearchPage.tsx",
+    "text": "FILTERS",
+    "reason": "Executable query section keyword displayed verbatim"
+  },
+  {
+    "file": "src/components/ChartEditor/PromqlChartEditor.tsx",
+    "text": "rate(http_requests_total{service='api'}[5m])",
+    "reason": "PromQL example expression shown as an editor placeholder; executable syntax, not natural-language UI copy"
+  },
+  {
+    "file": "src/components/DBEditTimeChartForm/OnClickForm/FilterTemplateList.tsx",
+    "text": "Template (e.g. {{ServiceName}})",
+    "reason": "Placeholder contains literal i18next interpolation syntax {{ }}; moving it to the catalog would blank out {{ServiceName}}"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/HighlightedAttributes.tsx",
+    "text": "ResourceAttributes['http.host']",
+    "reason": "ClickHouse map access expression shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/HighlightedAttributes.tsx",
+    "text": "AS",
+    "reason": "Executable SQL keyword displayed verbatim"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "ServiceName",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "SeverityText",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "Body",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "LogAttributes",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "ResourceAttributes",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "TraceId",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "SpanId",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "Timestamp, Body",
+    "reason": "ClickHouse column identifier list shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/LogTableModelForm.tsx",
+    "text": "Timestamp, Body, ServiceName",
+    "reason": "ClickHouse column identifier list shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/MaterializedViews.tsx",
+    "text": "Timestamp",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/MaterializedViews.tsx",
+    "text": "ServiceName, StatusCode",
+    "reason": "ClickHouse column identifier list shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/MaterializedViews.tsx",
+    "text": "YYYY-MM-DD HH:mm:ss",
+    "reason": "Date input format pattern that must match the parsed value format"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/SessionTableModelForm.tsx",
+    "text": "ResourceAttributes",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "Timestamp",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "TraceId",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "SpanId",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "ParentSpanId",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "SpanName",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "SpanKind",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "StatusCode",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "StatusMessage",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "ServiceName",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "ResourceAttributes",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "SpanAttributes",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "SampleRate",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "Events",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "Timestamp, ServiceName, StatusCode, Duration, SpanName",
+    "reason": "ClickHouse column identifier list shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "Timestamp, Body, ServiceName",
+    "reason": "ClickHouse column identifier list shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/ConnectionForm.tsx",
+    "text": "hyperdx",
+    "reason": "ClickHouse custom setting prefix value shown as an input placeholder"
+  },
+  {
+    "file": "src/components/ClickStackOnboarding/McpInstallPanel.tsx",
+    "text": "Claude Code",
+    "reason": "MCP host product name displayed verbatim"
+  },
+  {
+    "file": "src/components/ClickStackOnboarding/McpInstallPanel.tsx",
+    "text": "Cursor",
+    "reason": "MCP host product name displayed verbatim"
+  },
+  {
+    "file": "src/components/ClickStackOnboarding/McpInstallPanel.tsx",
+    "text": "VS Code",
+    "reason": "MCP host product name displayed verbatim"
+  },
+  {
+    "file": "src/components/ClickStackOnboarding/McpInstallPanel.tsx",
+    "text": "Codex CLI",
+    "reason": "MCP host product name displayed verbatim"
+  },
+  {
+    "file": "src/components/ClickStackOnboarding/McpInstallPanel.tsx",
+    "text": "OpenCode",
+    "reason": "MCP host product name displayed verbatim"
+  },
+  {
+    "file": "src/components/TimePicker/TimePicker.tsx",
+    "text": "d",
+    "reason": "Keyboard shortcut key hint that must match the bound hotkey"
+  },
+  {
+    "file": "src/components/HyperJson.tsx",
+    "text": "null",
+    "reason": "JSON literal rendered verbatim"
+  },
+  {
+    "file": "src/components/HyperJson.tsx",
+    "text": "true",
+    "reason": "JSON literal rendered verbatim"
+  },
+  {
+    "file": "src/components/HyperJson.tsx",
+    "text": "false",
+    "reason": "JSON literal rendered verbatim"
+  },
+  {
+    "file": "src/components/MetricNameSelect.tsx",
+    "text": "(Gauge)",
+    "reason": "OpenTelemetry metric type suffix displayed verbatim"
+  },
+  {
+    "file": "src/components/MetricNameSelect.tsx",
+    "text": "(Histogram)",
+    "reason": "OpenTelemetry metric type suffix displayed verbatim"
+  },
+  {
+    "file": "src/components/MetricNameSelect.tsx",
+    "text": "(Sum)",
+    "reason": "OpenTelemetry metric type suffix displayed verbatim"
+  },
+  {
+    "file": "src/hooks/usePromqlMetadata.ts",
+    "text": "__name__",
+    "reason": "PromQL reserved label name displayed verbatim"
+  },
+  {
+    "file": "src/SVGIcons.tsx",
+    "text": "Incident.io",
+    "reason": "Product name displayed verbatim"
+  },
+  {
+    "file": "src/theme/themes/hyperdx/Wordmark.tsx",
+    "text": "HyperDX",
+    "reason": "Brand wordmark displayed verbatim"
+  },
+  {
+    "file": "src/components/Sources/SourceForm/TraceTableModelForm.tsx",
+    "text": "Links",
+    "reason": "ClickHouse column identifier shown as an editor placeholder"
+  },
+  {
+    "file": "src/components/MetricNameSelect.tsx",
+    "text": "(Exponential Histogram)",
+    "reason": "OpenTelemetry metric type suffix displayed verbatim"
+  }
+]

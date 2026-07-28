@@ -1,4 +1,5 @@
 import { CSSProperties, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -71,6 +72,7 @@ export default function DashboardContainer({
   dragHandleProps,
   alertingTabIds,
 }: DashboardContainerProps) {
+  const { t } = useTranslation('dashboards');
   const [isRenamingGroup, setIsRenamingGroup] = useState(false);
   const [groupRenameValue, setGroupRenameValue] = useState(container.title);
   const [hovered, setHovered] = useState(false);
@@ -113,7 +115,7 @@ export default function DashboardContainer({
       role="button"
       tabIndex={0}
       aria-expanded={!isCollapsed}
-      aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}
+      aria-label={isCollapsed ? t('groups.expand') : t('groups.collapse')}
       size={16}
       style={{
         transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
@@ -134,7 +136,7 @@ export default function DashboardContainer({
   ) : null;
 
   const addTileButton = !isCollapsed && (
-    <Tooltip label="Add Tile" position="top" withArrow>
+    <Tooltip label={t('groups.addTile')} position="top" withArrow>
       <ActionIcon
         variant="subtle"
         size="sm"
@@ -163,28 +165,32 @@ export default function DashboardContainer({
           onClick={onAddTab}
           data-testid={`group-add-tab-${container.id}`}
         >
-          Add Tab
+          {t('groups.addTab')}
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
           onClick={onToggleCollapsible}
           data-testid={`group-toggle-collapsible-${container.id}`}
         >
-          {collapsible ? 'Disable Collapse' : 'Enable Collapse'}
+          {collapsible
+            ? t('groups.disableCollapse')
+            : t('groups.enableCollapse')}
         </Menu.Item>
         {collapsible && (
           <Menu.Item
             onClick={onToggleDefaultCollapsed}
             data-testid={`group-toggle-default-${container.id}`}
           >
-            {defaultCollapsed ? 'Expand by Default' : 'Collapse by Default'}
+            {defaultCollapsed
+              ? t('groups.expandDefault')
+              : t('groups.collapseDefault')}
           </Menu.Item>
         )}
         <Menu.Item
           onClick={onToggleBordered}
           data-testid={`group-toggle-bordered-${container.id}`}
         >
-          {bordered ? 'Hide Border' : 'Show Border'}
+          {bordered ? t('groups.hideBorder') : t('groups.showBorder')}
         </Menu.Item>
         <Menu.Divider />
         <Menu.Item
@@ -193,7 +199,7 @@ export default function DashboardContainer({
           onClick={openDeleteModal}
           data-testid={`group-delete-${container.id}`}
         >
-          Delete Group
+          {t('groups.delete')}
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>
@@ -378,13 +384,14 @@ export default function DashboardContainer({
         withCloseButton={false}
       >
         <Text size="sm" opacity={0.7}>
-          Delete{' '}
-          <Text component="span" fw={700}>
-            {headerTitle}
-          </Text>
-          ?
+          <Trans
+            t={t}
+            i18nKey="groups.deletePrompt"
+            values={{ name: headerTitle }}
+            components={{ name: <Text component="span" fw={700} /> }}
+          />
           {tileCount > 0
-            ? ` This group contains ${tileCount} tile${tileCount > 1 ? 's' : ''}.`
+            ? ` ${t('groups.contains', { count: tileCount })}`
             : ''}
         </Text>
         <Group justify="flex-end" mt="md" gap="xs">
@@ -394,7 +401,7 @@ export default function DashboardContainer({
             variant="secondary"
             onClick={closeDeleteModal}
           >
-            Cancel
+            {t('groups.cancel')}
           </Button>
           {tileCount > 0 && (
             <Button
@@ -406,7 +413,7 @@ export default function DashboardContainer({
                 closeDeleteModal();
               }}
             >
-              Ungroup Tiles
+              {t('groups.ungroup')}
             </Button>
           )}
           <Button
@@ -418,7 +425,7 @@ export default function DashboardContainer({
               closeDeleteModal();
             }}
           >
-            {tileCount > 0 ? 'Delete Group & Tiles' : 'Delete Group'}
+            {tileCount > 0 ? t('groups.deleteWithTiles') : t('groups.delete')}
           </Button>
         </Group>
       </Modal>

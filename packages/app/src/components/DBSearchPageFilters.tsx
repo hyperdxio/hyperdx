@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import {
   TableMetadata,
   tcFromSource,
@@ -206,6 +207,7 @@ const FilterCheckbox = ({
   percentage,
   isPercentageLoading,
 }: FilterCheckboxProps) => {
+  const { t } = useTranslation('search');
   const [pinMenuOpened, setPinMenuOpened] = useState(false);
   const testIdPrefix = `filter-checkbox-${columnName}-${label}`;
   const isPinnedAny = pinned || sharedPinned;
@@ -262,7 +264,9 @@ const FilterCheckbox = ({
               flex={1}
               title={label}
             >
-              {label || <span className="fst-italic">(empty)</span>}
+              {label || (
+                <span className="fst-italic">{t('filters.emptyValue')}</span>
+              )}
             </Text>
             {percentage != null && (
               <FilterPercentage
@@ -281,14 +285,14 @@ const FilterCheckbox = ({
         {onClickOnly && (
           <TextButton
             onClick={onClickOnly}
-            label="Only"
+            label={t('filters.only')}
             data-testid={`${testIdPrefix}-only`}
           />
         )}
         {onClickExclude && (
           <TextButton
             onClick={onClickExclude}
-            label="Exclude"
+            label={t('filters.exclude')}
             data-testid={`${testIdPrefix}-exclude`}
           />
         )}
@@ -300,7 +304,9 @@ const FilterCheckbox = ({
           size={12}
           onChange={setPinMenuOpened}
           data-testid={`${testIdPrefix}-pin`}
-          aria-label={isPinnedAny ? 'Unpin value' : 'Pin value'}
+          aria-label={
+            isPinnedAny ? t('filters.unpinValue') : t('filters.pinValue')
+          }
         />
       </div>
       <PinShareIndicator
@@ -325,6 +331,7 @@ const FilterRangeDisplay = ({
   onClearClick: VoidFunction;
   onRangeChange?: (range: { min: number; max: number }) => void;
 }) => {
+  const { t } = useTranslation('search');
   const [localMin, setLocalMin] = useState(range.min);
   const [localMax, setLocalMax] = useState(range.max);
 
@@ -353,7 +360,7 @@ const FilterRangeDisplay = ({
       <Group gap={4} wrap="nowrap">
         <NumberInput
           size="xs"
-          placeholder="Min"
+          placeholder={t('filters.min')}
           value={localMin}
           onChange={handleMinChange}
           styles={{ input: { fontSize: '11px' } }}
@@ -361,11 +368,11 @@ const FilterRangeDisplay = ({
           hideControls
         />
         <Text size="xs" c="dimmed">
-          to
+          {t('filters.to')}
         </Text>
         <NumberInput
           size="xs"
-          placeholder="Max"
+          placeholder={t('filters.max')}
           value={localMax}
           onChange={handleMaxChange}
           styles={{ input: { fontSize: '11px' } }}
@@ -456,6 +463,7 @@ const FilterGroupBody = ({
   onDistributionError: () => void;
   onFetchingDistributionChange: (isFetching: boolean) => void;
 }) => {
+  const { t } = useTranslation('search');
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
   const [shouldShowMore, setShowMore] = useState(false);
@@ -507,13 +515,13 @@ const FilterGroupBody = ({
     if (distributionError) {
       notifications.show({
         color: 'red',
-        title: 'Error loading filter distribution',
+        title: t('filters.distributionError'),
         message: distributionError?.message,
         autoClose: 5000,
       });
       onDistributionError();
     }
-  }, [distributionError, onDistributionError]);
+  }, [distributionError, onDistributionError, t]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
@@ -643,7 +651,7 @@ const FilterGroupBody = ({
         <div className="px-2 pb-2">
           <TextInput
             size="xs"
-            placeholder="Search values..."
+            placeholder={t('filters.searchValues')}
             value={search}
             data-testid={`filter-search-${name}`}
             onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
@@ -693,26 +701,26 @@ const FilterGroupBody = ({
         <Group m={6} gap="xs">
           <Loader size={12} color="gray" />
           <Text c="dimmed" size="xs">
-            Loading...
+            {t('filters.loading')}
           </Text>
         </Group>
       ) : displayedOptions.length === 0 ? (
         <Group m={6} gap="xs">
           <Text c="dimmed" size="xs">
-            No options found
+            {t('filters.noOptions')}
           </Text>
         </Group>
       ) : null}
       {isLimitingDisplayedItems && (shouldShowMore || search) && (
         <Text size="xxs" ms={28} fs="italic">
-          Search to see more
+          {t('filters.searchForMore')}
         </Text>
       )}
       {loadMoreLoading && (
         <Group m={6} gap="xs">
           <Loader size={12} color="gray" />
           <Text c="dimmed" size="xs">
-            Loading more...
+            {t('filters.loadingMore')}
           </Text>
         </Group>
       )}
@@ -723,11 +731,11 @@ const FilterGroupBody = ({
             label={
               shouldShowMore ? (
                 <>
-                  <IconChevronUp size={12} /> Less
+                  <IconChevronUp size={12} /> {t('filters.less')}
                 </>
               ) : (
                 <>
-                  <IconChevronRight size={12} /> Show more
+                  <IconChevronRight size={12} /> {t('filters.showMore')}
                 </>
               )
             }
@@ -752,7 +760,7 @@ const FilterGroupBody = ({
               display={hasLoadedMore ? 'none' : undefined}
               label={
                 <>
-                  <IconChevronRight size={12} /> Load more
+                  <IconChevronRight size={12} /> {t('filters.loadMore')}
                 </>
               }
               onClick={() => onLoadMore(name)}
@@ -793,13 +801,16 @@ function FilterGroupActions({
   onToggleSharedFieldPin,
   onClearClick,
 }: FilterGroupActionsProps) {
+  const { t } = useTranslation('search');
   return (
     <Group gap={0} wrap="nowrap">
       {!hasRange && (
         <>
           <Tooltip
             label={
-              showDistributions ? 'Hide Distribution' : 'Show Distribution'
+              showDistributions
+                ? t('filters.hideDistribution')
+                : t('filters.showDistribution')
             }
             position="top"
             withArrow
@@ -828,7 +839,11 @@ function FilterGroupActions({
           </Tooltip>
           {onColumnToggle && (
             <Tooltip
-              label={isColumnDisplayed ? 'Remove Column' : 'Add Column'}
+              label={
+                isColumnDisplayed
+                  ? t('filters.removeColumn')
+                  : t('filters.addColumn')
+              }
               position="top"
               withArrow
               fz="xxs"
@@ -859,7 +874,7 @@ function FilterGroupActions({
       )}
       {totalAppliedFiltersSize > 0 && (
         <Tooltip
-          label="Clear Filters"
+          label={t('filters.clear')}
           position="top"
           withArrow
           fz="xxs"
@@ -1086,6 +1101,7 @@ const DBSearchPageFiltersComponent = ({
   displayedColumns?: string[];
   onCollapse?: () => void;
 } & FilterStateHook) => {
+  const { t } = useTranslation('search');
   const setFilterValue = useCallback(
     (
       property: string,
@@ -1623,7 +1639,7 @@ const DBSearchPageFiltersComponent = ({
         <Stack gap="sm" p="xs">
           <Flex align="center" justify="space-between">
             <Text size="xxs" c="dimmed" fw="bold">
-              Analysis Mode
+              {t('filters.analysisMode')}
             </Text>
             <Group gap={0}>
               {showRefreshButton && (
@@ -1649,12 +1665,12 @@ const DBSearchPageFiltersComponent = ({
                 onShowAllValuesChange={setShowAllValues}
               />
               {onCollapse && (
-                <Tooltip label="Hide filters" position="bottom">
+                <Tooltip label={t('filters.hide')} position="bottom">
                   <ActionIcon
                     variant="subtle"
                     size="xs"
                     onClick={onCollapse}
-                    aria-label="Hide filters"
+                    aria-label={t('filters.hide')}
                   >
                     <IconArrowBarToLeft size={14} />
                   </ActionIcon>
@@ -1673,16 +1689,16 @@ const DBSearchPageFiltersComponent = ({
           >
             <Tabs.List w="100%">
               <Tabs.Tab value="results" size="xs" h="24px">
-                <Text size="xs">Results Table</Text>
+                <Text size="xs">{t('filters.resultsTable')}</Text>
               </Tabs.Tab>
               {showDelta && (
                 <Tabs.Tab value="delta" size="xs" h="24px">
-                  <Text size="xs">Event Deltas</Text>
+                  <Text size="xs">{t('filters.eventDeltas')}</Text>
                 </Tabs.Tab>
               )}
               {!IS_CLICKHOUSE_BUILD && (
                 <Tabs.Tab value="pattern" size="xs" h="24px">
-                  <Text size="xs">Event Patterns</Text>
+                  <Text size="xs">{t('filters.eventPatterns')}</Text>
                 </Tabs.Tab>
               )}
             </Tabs.List>
@@ -1723,13 +1739,13 @@ const DBSearchPageFiltersComponent = ({
                   fw="bold"
                   className={isFacetsFetching ? 'effect-pulse' : ''}
                 >
-                  Filters {isFacetsFetching && '···'}
+                  {t('filters.title')} {isFacetsFetching && '···'}
                 </Text>
               </UnstyledButton>
               <Group gap={0} wrap="nowrap">
                 {showFiltersClearButton && (
                   <Tooltip
-                    label="Clear Filters"
+                    label={t('filters.clear')}
                     position="top"
                     withArrow
                     fz="xxs"
@@ -1740,7 +1756,7 @@ const DBSearchPageFiltersComponent = ({
                       color="gray"
                       size="xs"
                       onClick={clearRegularSelections}
-                      aria-label="Clear Filters"
+                      aria-label={t('filters.clear')}
                     >
                       <IconFilterOff size={14} />
                     </ActionIcon>
@@ -1775,7 +1791,7 @@ const DBSearchPageFiltersComponent = ({
                         color="gray"
                         position="right"
                         withArrow
-                        label="Denoise results will visually remove events matching common event patterns from the results table."
+                        label={t('filters.denoiseDescription')}
                       >
                         <Text size="xs" mt="-2px" component="div">
                           <Group gap={2}>
@@ -1786,7 +1802,7 @@ const DBSearchPageFiltersComponent = ({
                                 verticalAlign: 'middle',
                               }}
                             />
-                            Denoise Results
+                            {t('filters.denoise')}
                           </Group>
                         </Text>
                       </Tooltip>
@@ -1807,7 +1823,7 @@ const DBSearchPageFiltersComponent = ({
                           color="gray"
                           position="right"
                           withArrow
-                          label="Only show root spans (spans with no parent span)."
+                          label={t('filters.rootSpansDescription')}
                         >
                           <Text size="xs" mt="-2px" component="div">
                             <Group gap={2}>
@@ -1818,7 +1834,7 @@ const DBSearchPageFiltersComponent = ({
                                   verticalAlign: 'middle',
                                 }}
                               />
-                              Root Spans Only
+                              {t('filters.rootSpansOnly')}
                             </Group>
                           </Text>
                         </Tooltip>
@@ -1833,7 +1849,7 @@ const DBSearchPageFiltersComponent = ({
                   </Flex>
                 ) : (
                   shownFacets.length === 0 && (
-                    <Text size="xxs">No filters available</Text>
+                    <Text size="xxs">{t('filters.unavailable')}</Text>
                   )
                 )}
                 {/* Show facets even when loading to ensure pinned filters are visible while loading */}
@@ -1852,17 +1868,17 @@ const DBSearchPageFiltersComponent = ({
                   }
                   onClick={() => setShowMoreFields(!showMoreFields)}
                 >
-                  {showMoreFields ? 'Less filters' : 'More filters'}
+                  {showMoreFields
+                    ? t('filters.lessFilters')
+                    : t('filters.moreFilters')}
                 </Button>
 
                 {showMoreFields && (
                   <div>
                     <Text size="xs" fw="bold">
-                      Not seeing a filter?
+                      {t('filters.missingFilter')}
                     </Text>
-                    <Text size="xxs">
-                      {`Try searching instead (e.g. column:foo)`}
-                    </Text>
+                    <Text size="xxs">{t('filters.searchInstead')}</Text>
                   </div>
                 )}
               </Stack>

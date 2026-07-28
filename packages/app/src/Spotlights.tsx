@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useRouter } from 'next/router';
+import { useTranslation } from 'react-i18next';
 import { Spotlight, SpotlightActionData } from '@mantine/spotlight';
 import {
   IconActivityHeartbeat,
@@ -22,6 +23,7 @@ import { useSavedSearches } from './savedSearch';
 import '@mantine/spotlight/styles.css';
 
 export const useSpotlightActions = () => {
+  const { t } = useTranslation('navigation');
   const router = useRouter();
   const brandName = useBrandDisplayName();
   const logomark = useLogomark({ size: 16 });
@@ -39,7 +41,7 @@ export const useSpotlightActions = () => {
     logViews.forEach(logView => {
       logViewActions.push({
         id: logView.id,
-        group: 'Saved searches',
+        group: t('spotlight.groups.savedSearches'),
         leftSection: <IconLogs size={16} />,
         label: logView.name,
         keywords: ['search', 'log', 'saved'],
@@ -53,7 +55,7 @@ export const useSpotlightActions = () => {
     dashboards.forEach(dashboard => {
       logViewActions.push({
         id: dashboard.id,
-        group: 'Dashboards',
+        group: t('spotlight.groups.dashboards'),
         leftSection: <IconLayout size={16} />,
         label: dashboard.name,
         keywords: ['dashboard'],
@@ -67,15 +69,15 @@ export const useSpotlightActions = () => {
     const presetDashboards = [
       {
         id: 'preset-services',
-        label: 'Services',
-        description: 'Monitor HTTP endpoints, latency, and error rates',
+        label: t('links.services'),
+        description: t('spotlight.servicesDescription'),
         href: '/services',
         keywords: ['preset', 'dashboard', 'http', 'latency', 'errors'],
       },
       {
         id: 'preset-clickhouse',
-        label: 'ClickHouse',
-        description: 'ClickHouse cluster health and query performance',
+        label: t('links.clickhouse'),
+        description: t('spotlight.clickhouseDescription'),
         href: '/clickhouse',
         keywords: ['preset', 'dashboard', 'database', 'queries'],
       },
@@ -83,8 +85,8 @@ export const useSpotlightActions = () => {
         ? [
             {
               id: 'preset-kubernetes',
-              label: 'Kubernetes',
-              description: 'Kubernetes cluster monitoring and pod health',
+              label: t('links.kubernetes'),
+              description: t('spotlight.kubernetesDescription'),
               href: '/kubernetes',
               keywords: ['preset', 'dashboard', 'k8s', 'pods', 'cluster'],
             },
@@ -95,7 +97,7 @@ export const useSpotlightActions = () => {
     presetDashboards.forEach(preset => {
       logViewActions.push({
         id: preset.id,
-        group: 'Preset Dashboards',
+        group: t('spotlight.groups.presetDashboards'),
         leftSection: <IconLayout size={16} />,
         label: preset.label,
         description: preset.description,
@@ -109,10 +111,10 @@ export const useSpotlightActions = () => {
     logViewActions.push(
       {
         id: 'search',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconLogs size={16} />,
-        label: 'Search',
-        description: 'Start a new search',
+        label: t('links.search'),
+        description: t('spotlight.searchDescription'),
         keywords: ['log', 'events', 'logs'],
         onClick: () => {
           router.push('/search');
@@ -120,10 +122,10 @@ export const useSpotlightActions = () => {
       },
       {
         id: 'chart-explorer',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconChartLine size={16} />,
-        label: 'Chart Explorer',
-        description: 'Explore your data',
+        label: t('links.chartExplorer'),
+        description: t('spotlight.chartDescription'),
         keywords: ['graph', 'metrics'],
         onClick: () => {
           router.push('/chart');
@@ -131,10 +133,10 @@ export const useSpotlightActions = () => {
       },
       {
         id: 'new-dashboard',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconGridDots size={16} />,
-        label: 'New Dashboard',
-        description: 'Create a new dashboard',
+        label: t('links.newDashboard'),
+        description: t('spotlight.dashboardDescription'),
         keywords: ['graph'],
         onClick: () => {
           router.push('/dashboards');
@@ -142,10 +144,10 @@ export const useSpotlightActions = () => {
       },
       {
         id: 'sessions',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconDeviceLaptop size={16} />,
-        label: 'Client Sessions',
-        description: 'View client sessions',
+        label: t('links.clientSessions'),
+        description: t('spotlight.sessionsDescription'),
         keywords: ['browser', 'web'],
         onClick: () => {
           router.push('/sessions');
@@ -153,29 +155,29 @@ export const useSpotlightActions = () => {
       },
       {
         id: 'alerts',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconBell size={16} />,
-        label: 'Alerts',
-        description: 'View and manage alerts',
+        label: t('links.alerts'),
+        description: t('spotlight.alertsDescription'),
         onClick: () => {
           router.push('/alerts');
         },
       },
       {
         id: 'service-health',
-        group: 'Menu',
-        label: 'Service Health',
+        group: t('spotlight.groups.menu'),
+        label: t('links.serviceHealth'),
         leftSection: <IconActivityHeartbeat size={16} />,
-        description: 'HTTP, Database and Infrastructure metrics',
+        description: t('spotlight.serviceHealthDescription'),
         onClick: () => {
           router.push('/services');
         },
       },
       {
         id: 'team-settings',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconSettings size={16} />,
-        label: 'Team Settings',
+        label: t('links.teamSettings'),
 
         onClick: () => {
           router.push('/team');
@@ -183,9 +185,9 @@ export const useSpotlightActions = () => {
       },
       {
         id: 'documentation',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: <IconHelpCircle size={16} />,
-        label: 'Documentation',
+        label: t('links.documentation'),
         keywords: ['help', 'docs'],
         onClick: () => {
           router.push(
@@ -195,10 +197,10 @@ export const useSpotlightActions = () => {
       },
       {
         id: 'cloud',
-        group: 'Menu',
+        group: t('spotlight.groups.menu'),
         leftSection: logomark,
-        label: `${brandName} Cloud`,
-        description: `Ready to use ${brandName} Cloud? Get started for free.`,
+        label: `${brandName} ${t('spotlight.cloud')}`,
+        description: t('spotlight.cloudReady', { brandName }),
         keywords: ['account', 'profile'],
         onClick: () => {
           router.push(
@@ -209,7 +211,7 @@ export const useSpotlightActions = () => {
     );
 
     return logViewActions;
-  }, [brandName, logomark, logViewsData, dashboardsData, router]);
+  }, [brandName, dashboardsData, logViewsData, logomark, router, t]);
 
   return { actions };
 };
@@ -219,6 +221,7 @@ export const HDXSpotlightProvider = ({
 }: {
   children: React.ReactNode;
 }) => {
+  const { t } = useTranslation('navigation');
   const { actions } = useSpotlightActions();
 
   return (
@@ -228,9 +231,9 @@ export const HDXSpotlightProvider = ({
         shortcut="mod + K"
         searchProps={{
           leftSection: <IconSearch size={16} />,
-          placeholder: 'Search',
+          placeholder: t('spotlight.searchPlaceholder'),
         }}
-        nothingFound="Nothing found"
+        nothingFound={t('spotlight.nothingFound')}
         zIndex={200001} // above the autocomplete
         tagsToIgnore={[]}
         highlightQuery

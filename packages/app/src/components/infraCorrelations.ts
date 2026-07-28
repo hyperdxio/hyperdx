@@ -8,8 +8,15 @@ import { NumberFormat } from '@/types';
 // One metric chart inside an infrastructure correlation group. The rendered
 // metric field is `${fieldPrefix}${field} - Gauge` (see DBInfraPanel), so
 // `field` is the metric name without the resource prefix or the type suffix.
+// Catalog key suffixes under `infrastructure:panel.charts` /
+// `infrastructure:panel.correlations`. Keeping them as literal unions lets the
+// panel build the catalog key without losing type safety.
+type InfraChartTitleKey = 'cpuUsagePercent' | 'memoryUsed' | 'diskAvailable';
+
+type InfraCorrelationTitleKey = 'pod' | 'node';
+
 export type InfraChartSpec = {
-  readonly title: string;
+  readonly titleKey: InfraChartTitleKey;
   // data-testid for the chart card; the e2e suite selects on these.
   readonly cardTestId: string;
   readonly field: string;
@@ -23,7 +30,7 @@ export type InfraChartSpec = {
 // detect on one attribute and correlate on another can be added as data rather
 // than new code paths.
 export type InfraCorrelation = {
-  readonly title: string;
+  readonly titleKey: InfraCorrelationTitleKey;
   readonly detectAttribute: string;
   readonly correlateAttribute: string;
   // Metric field prefix, e.g. "k8s.pod.".
@@ -39,19 +46,19 @@ export type InfraCorrelation = {
 // correlate filter differ, so the specs are shared.
 const K8S_CHART_SPECS: readonly InfraChartSpec[] = [
   {
-    title: 'CPU Usage (%)',
+    titleKey: 'cpuUsagePercent',
     cardTestId: 'cpu-usage-card',
     field: 'cpu.utilization',
     numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   },
   {
-    title: 'Memory Used',
+    titleKey: 'memoryUsed',
     cardTestId: 'memory-usage-card',
     field: 'memory.usage',
     numberFormat: K8S_MEM_NUMBER_FORMAT,
   },
   {
-    title: 'Disk Available',
+    titleKey: 'diskAvailable',
     cardTestId: 'disk-usage-card',
     field: 'filesystem.available',
     numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
@@ -62,7 +69,7 @@ const K8S_CHART_SPECS: readonly InfraChartSpec[] = [
 // Infrastructure panel (Pod, then Node), matching the prior hardcoding.
 export const INFRA_CORRELATIONS: readonly InfraCorrelation[] = [
   {
-    title: 'Pod',
+    titleKey: 'pod',
     detectAttribute: 'k8s.pod.uid',
     correlateAttribute: 'k8s.pod.uid',
     fieldPrefix: 'k8s.pod.',
@@ -70,7 +77,7 @@ export const INFRA_CORRELATIONS: readonly InfraCorrelation[] = [
     timeline: { queryAttribute: 'k8s.pod.uid' },
   },
   {
-    title: 'Node',
+    titleKey: 'node',
     detectAttribute: 'k8s.node.name',
     correlateAttribute: 'k8s.node.name',
     fieldPrefix: 'k8s.node.',

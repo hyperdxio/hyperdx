@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -116,6 +117,7 @@ export default function ChartDisplaySettingsDrawer({
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
 }: ChartDisplaySettingsDrawerProps) {
+  const { t } = useTranslation('charts');
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
     [settings, defaultNumberFormat],
@@ -215,7 +217,7 @@ export default function ChartDisplaySettingsDrawer({
 
   return (
     <Drawer
-      title="Display Settings"
+      title={t('common.displaySettings')}
       opened={opened}
       onClose={handleClose}
       position="right"
@@ -227,12 +229,12 @@ export default function ChartDisplaySettingsDrawer({
               control={control}
               name="alignDateRangeToGranularity"
               size="xs"
-              label="Show Complete Intervals"
+              label={t('displaySettings.showCompleteIntervals')}
             />
             <Box>
               <Checkbox
                 size="xs"
-                label="Fill Missing Intervals with Zero"
+                label={t('displaySettings.fillMissingIntervals')}
                 checked={isFillNullsEnabled}
                 onChange={e => {
                   setValue('fillNulls', e.currentTarget.checked ? 0 : false);
@@ -243,7 +245,7 @@ export default function ChartDisplaySettingsDrawer({
               control={control}
               name="compareToPreviousPeriod"
               size="xs"
-              label="Compare to Previous Period"
+              label={t('displaySettings.compareToPreviousPeriod')}
               description={
                 previousDateRange && (
                   <>
@@ -259,8 +261,8 @@ export default function ChartDisplaySettingsDrawer({
               control={control}
               name="fitYAxisToData"
               size="xs"
-              label="Fit Y-Axis to Data"
-              description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
+              label={t('displaySettings.fitYAxisToData')}
+              description={t('displaySettings.fitYAxisToDataDescription')}
             />
             {showSeriesLimit && (
               <Box>
@@ -270,9 +272,11 @@ export default function ChartDisplaySettingsDrawer({
                   render={({ field: { onChange, value } }) => (
                     <NumberInput
                       size="xs"
-                      label="Series Limit"
-                      description="Maximum number of series fetched for a group-by chart. Leave empty to fetch every series."
-                      placeholder={`Disabled (e.g. ${DEFAULT_SERIES_LIMIT})`}
+                      label={t('displaySettings.seriesLimit')}
+                      description={t('displaySettings.seriesLimitDescription')}
+                      placeholder={t('displaySettings.seriesLimitPlaceholder', {
+                        example: DEFAULT_SERIES_LIMIT,
+                      })}
                       min={1}
                       allowDecimal={false}
                       value={value ?? ''}
@@ -297,9 +301,13 @@ export default function ChartDisplaySettingsDrawer({
                 render={({ field: { onChange, value } }) => (
                   <NumberInput
                     size="xs"
-                    label="Series Limit"
-                    description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
-                    placeholder="Disabled (e.g. 10)"
+                    label={t('displaySettings.seriesLimit')}
+                    description={t(
+                      'displaySettings.categoricalLimitDescription',
+                    )}
+                    placeholder={t(
+                      'displaySettings.categoricalLimitPlaceholder',
+                    )}
                     min={1}
                     allowDecimal={false}
                     value={value ?? ''}
@@ -321,14 +329,14 @@ export default function ChartDisplaySettingsDrawer({
                 control={control}
                 name="groupByColumnsOnLeft"
                 size="xs"
-                label="Display Group By Columns on Left"
+                label={t('displaySettings.displayGroupByColumnsOnLeft')}
               />
             )}
             <CheckBoxControlled
               control={control}
               name="alternateRowBackground"
               size="xs"
-              label="Alternate Row Background"
+              label={t('tableChart.alternateRowBackground')}
             />
             <Divider />
           </>
@@ -338,7 +346,7 @@ export default function ChartDisplaySettingsDrawer({
           <>
             <Box>
               <Text size="xs" c="dimmed" mb={4}>
-                Color
+                {t('displaySettings.color')}
               </Text>
               <Controller
                 control={control}
@@ -347,7 +355,7 @@ export default function ChartDisplaySettingsDrawer({
                   <ColorSwatchInput
                     value={value}
                     onChange={onChange}
-                    ariaLabel="Number tile color"
+                    ariaLabel={t('displaySettings.numberTileColorAriaLabel')}
                   />
                 )}
               />
@@ -389,7 +397,7 @@ export default function ChartDisplaySettingsDrawer({
             isPerSeriesNumberFormatAllowed ? (
               <Alert variant="outline" color="yellow" p="xs">
                 <Text size="xs" m={0}>
-                  Format may be overridden on individual series.
+                  {t('displaySettings.formatOverridden')}
                 </Text>
               </Alert>
             ) : undefined
@@ -398,7 +406,7 @@ export default function ChartDisplaySettingsDrawer({
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>
-            Reset to Defaults
+            {t('displaySettings.resetToDefaults')}
           </Button>
           <Button
             type="submit"
@@ -406,7 +414,7 @@ export default function ChartDisplaySettingsDrawer({
             onClick={applyChanges}
             data-testid="display-settings-apply-button"
           >
-            Apply
+            {t('common.apply')}
           </Button>
         </Group>
       </Stack>

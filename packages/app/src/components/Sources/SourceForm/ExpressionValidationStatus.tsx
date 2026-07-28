@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Box, MantineSpacing, Text } from '@mantine/core';
 
 import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
@@ -15,6 +16,7 @@ export function ExpressionValidationStatus({
   tableConnection: TableConnectionLike;
   mt?: MantineSpacing;
 }) {
+  const { t } = useTranslation('sources');
   const { shouldShowResult, isInvalid, isValid, error } =
     useExpressionValidation({ expression, tableConnection });
 
@@ -26,7 +28,7 @@ export function ExpressionValidationStatus({
     return (
       <Box mt={mt}>
         <ErrorCollapse
-          summary="Expression is invalid"
+          summary={t('fields.expressionInvalid')}
           details={error?.message}
         />
       </Box>
@@ -36,7 +38,7 @@ export function ExpressionValidationStatus({
   if (isValid) {
     return (
       <Text c="green" size="xs" mt={mt}>
-        Expression is valid.
+        {t('fields.expressionValid')}
       </Text>
     );
   }

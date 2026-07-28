@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -81,6 +82,7 @@ const rowsMarginTop = 32;
 const maxScale = 100;
 
 export const TimelineChart = memo(function (props: TimelineChartProps) {
+  const { t } = useTranslation('search');
   const {
     initialScrollRowIndex,
     labelWidth: initialLabelWidth,
@@ -406,7 +408,8 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
     <Flex h={maxHeight} mah={maxHeight} direction="column">
       <Flex justify="end" mb="sm">
         <Text>
-          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
+          <Kbd>{t('timeline.zoomModifier')}</Kbd> +{' '}
+          <Kbd>{t('timeline.scroll')}</Kbd> {t('timeline.zoomHint')}
         </Text>
       </Flex>
 

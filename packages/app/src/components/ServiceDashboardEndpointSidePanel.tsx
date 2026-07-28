@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import {
   DisplayType,
   type Filter,
@@ -36,6 +37,7 @@ export default function ServiceDashboardEndpointSidePanel({
   service?: string;
   searchedTimeRange: [Date, Date];
 }) {
+  const { t } = useTranslation('services');
   const { data: source } = useSource({
     id: sourceId,
     kinds: [SourceKind.Trace],
@@ -92,7 +94,7 @@ export default function ServiceDashboardEndpointSidePanel({
             <DrawerHeader
               header={
                 <>
-                  Details for {endpoint}
+                  {t('sidePanel.detailsFor', { name: endpoint })}
                   {service && (
                     <Text component="span" c="gray" fz="xs">
                       <IconServer size={14} className="ms-3 me-1" />
@@ -109,7 +111,7 @@ export default function ServiceDashboardEndpointSidePanel({
                   <ChartBox style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
-                        title="Request Error Rate"
+                        title={t('http.requestErrorRate')}
                         sourceId={source.id}
                         hiddenSeries={['total_count', 'error_count']}
                         config={{
@@ -154,7 +156,7 @@ export default function ServiceDashboardEndpointSidePanel({
                   <ChartBox style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
-                        title="Request Throughput"
+                        title={t('http.requestThroughput')}
                         sourceId={source.id}
                         config={{
                           source: source.id,
@@ -206,7 +208,7 @@ export default function ServiceDashboardEndpointSidePanel({
                   {/* Ensure expressions exists to ensure that endpointFilters has set */}
                   {expressions && (
                     <SlowestEventsTile
-                      title="Slowest 5% of Transactions"
+                      title={t('sidePanel.slowestTransactions')}
                       source={source}
                       dateRange={searchedTimeRange}
                       extraFilters={endpointFilters}

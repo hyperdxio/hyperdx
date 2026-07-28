@@ -38,6 +38,7 @@ import {
 
 import { hdxServer } from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
+import i18n from '@/i18n';
 import { localSources } from '@/localStore';
 
 // Columns for the sessions table as of OTEL Collector v0.129.1
@@ -134,15 +135,15 @@ export function useSources() {
           notifications.show({
             id: getSourceValidationNotificationId(source.id),
             color: 'yellow',
-            title: `Source "${source.name}" has validation issues`,
+            title: i18n.t('sources:validation.title', { name: source.name }),
             message: React.createElement(
               React.Fragment,
               null,
-              fields ? `Fields: ${fields}. ` : '',
+              fields ? i18n.t('sources:validation.fields', { fields }) : '',
               React.createElement(
                 'a',
                 { href: '/team#sources' },
-                'Edit sources',
+                i18n.t('sources:validation.editSources'),
               ),
               ' to ensure compatibility.',
             ),

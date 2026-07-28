@@ -1,5 +1,6 @@
 import * as React from 'react';
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
 import { useThrottledValue } from '@mantine/hooks';
@@ -59,6 +60,7 @@ const EventRow = React.forwardRef(
     },
     ref: React.Ref<HTMLDivElement>,
   ) => {
+    const { t } = useTranslation('sessions');
     return (
       <div
         data-index={dataIndex}
@@ -78,7 +80,11 @@ const EventRow = React.forwardRef(
         <div className={styles.eventRowContent} onClick={onClick}>
           <div className={styles.eventRowTitle}>
             {event.title}{' '}
-            {event.duration > 0 && <span>{event.duration}ms</span>}
+            {event.duration > 0 && (
+              <span>
+                {t('events.durationMs', { duration: event.duration })}
+              </span>
+            )}
           </div>
           <div className={styles.eventRowDescription} title={event.description}>
             {event.description}
@@ -113,6 +119,7 @@ export const SessionEventList = ({
   onTimeClick: (ts: number) => void;
   eventsFollowPlayerPosition: boolean;
 }) => {
+  const { t } = useTranslation('sessions');
   const { data, isLoading } = useQueriedChartConfig(queriedConfig, {
     placeholderData: (prev: any) => prev,
     queryKey: ['SessionEventList', queriedConfig],
@@ -182,7 +189,7 @@ export const SessionEventList = ({
                   ? 'chat'
                   : 'log',
           title: isNavigation
-            ? `Navigated`
+            ? t('events.navigated')
             : spanName === 'console.error'
               ? 'console.error'
               : spanName === 'console.log'
@@ -192,7 +199,7 @@ export const SessionEventList = ({
                   : url.length > 0
                     ? `${statusCode} ${method}`
                     : spanName === 'intercom.onShow'
-                      ? 'Intercom Chat Opened'
+                      ? t('events.intercomChatOpened')
                       : isCustomEvent
                         ? spanName
                         : component === 'console'
@@ -217,7 +224,7 @@ export const SessionEventList = ({
         } satisfies SessionEvent;
       }) ?? []
     );
-  }, [events, showRelativeTime, minTs, formatTime]);
+  }, [events, showRelativeTime, minTs, formatTime, t]);
 
   const parentRef = React.useRef<HTMLDivElement>(null);
 

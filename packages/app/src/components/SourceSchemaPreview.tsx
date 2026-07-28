@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import {
   MetricsDataType,
   TLogSource,
@@ -27,11 +29,10 @@ const SourceSchemaInfoIcon = ({
   iconStyles,
   variant = 'icon',
 }: SourceSchemaInfoIconProps) => {
+  const { t } = useTranslation('sources');
   const tooltipText = isEnabled
-    ? tableCount > 1
-      ? `Show Table Schemas`
-      : 'Show Table Schema'
-    : 'Select a table to view its schema';
+    ? t('schema.tooltip', { count: tableCount })
+    : t('schema.disabledTooltip');
 
   return (
     <Tooltip
@@ -47,7 +48,7 @@ const SourceSchemaInfoIcon = ({
           className="text-success-hover"
           style={{ cursor: isEnabled ? 'pointer' : 'default', ...iconStyles }}
         >
-          Schema
+          {t('schema.trigger')}
         </Text>
       ) : (
         <IconCode size={16} />
@@ -67,6 +68,7 @@ const TableSchemaPreview = ({
   tableName,
   connectionId,
 }: TableSchemaPreviewProps) => {
+  const { t } = useTranslation('sources');
   const { data, isLoading } = useTableMetadata({
     databaseName,
     tableName,
@@ -89,18 +91,18 @@ const TableSchemaPreview = ({
         <Stack gap="sm">
           {data?.create_local_table_query && (
             <Text size="xs" fw={600} c="dimmed">
-              Distributed Table
+              {t('schema.distributedTable')}
             </Text>
           )}
           <SQLPreview
-            data={data?.create_table_query ?? 'Schema is not available'}
+            data={data?.create_table_query ?? t('schema.unavailable')}
             enableCopy={!!data?.create_table_query}
             copyButtonSize="xs"
           />
           {data?.create_local_table_query && (
             <>
               <Text size="xs" fw={600} c="dimmed">
-                Local Table
+                {t('schema.localTable')}
               </Text>
               <SQLPreview
                 data={data.create_local_table_query}
@@ -139,13 +141,14 @@ interface SourceSchemaPreviewProps {
   onClose?: () => void;
 }
 
-const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
-  [MetricsDataType.Sum]: 'Sum',
-  [MetricsDataType.Gauge]: 'Gauge',
-  [MetricsDataType.Histogram]: 'Histogram',
-  [MetricsDataType.Summary]: 'Summary',
-  [MetricsDataType.ExponentialHistogram]: 'Exponential Histogram',
-};
+/** Catalog key suffix under `sources:schema.metricType` for each metric type. */
+const METRIC_TYPE_KEYS = {
+  [MetricsDataType.Sum]: 'sum',
+  [MetricsDataType.Gauge]: 'gauge',
+  [MetricsDataType.Histogram]: 'histogram',
+  [MetricsDataType.Summary]: 'summary',
+  [MetricsDataType.ExponentialHistogram]: 'exponentialHistogram',
+} as const satisfies Record<MetricsDataType, string>;
 
 /**
  * Build the list of tables (and their titles) to show in the schema preview
@@ -156,6 +159,7 @@ const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
  */
 function getSourceSchemaTables(
   source?: SourceSchemaPreviewSource,
+  t?: TFunction<'sources'>,
 ): (TableSchemaPreviewProps & { title: string })[] {
   const tables: (TableSchemaPreviewProps & { title: string })[] = [];
   if (!source) return tables;
@@ -173,7 +177,9 @@ function getSourceSchemaTables(
           databaseName: source.from.databaseName,
           tableName: tableName!,
           connectionId: source.connection,
-          title: METRIC_TYPE_NAMES[metricType],
+          title: t
+            ? t(`schema.metricType.${METRIC_TYPE_KEYS[metricType]}`)
+            : metricType,
         })),
     );
   } else if (source.from.tableName) {
@@ -191,7 +197,7 @@ function getSourceSchemaTables(
       databaseName,
       tableName,
       connectionId: source.connection,
-      title: `${tableName} (MV)`,
+      title: t ? t('schema.materializedViewTab', { tableName }) : tableName,
     })),
   );
 
@@ -212,6 +218,7 @@ const SourceSchemaPreview = ({
   open,
   onClose,
 }: SourceSchemaPreviewProps) => {
+  const { t } = useTranslation('sources');
   const [internalOpen, setInternalOpen] = useState(false);
   const isModalOpen = controlled ? !!open : internalOpen;
   const handleClose = () => {
@@ -222,7 +229,7 @@ const SourceSchemaPreview = ({
     }
   };
 
-  const tables = getSourceSchemaTables(source);
+  const tables = getSourceSchemaTables(source, t);
   const isEnabled = isSourceSchemaPreviewEnabled(source);
 
   return (
@@ -241,7 +248,7 @@ const SourceSchemaPreview = ({
           opened={isModalOpen}
           onClose={handleClose}
           size="auto"
-          title={tables.length > 1 ? `Table Schemas` : `Table Schema`}
+          title={t('schema.modalTitle', { count: tables.length })}
         >
           <Tabs
             defaultValue={`${tables[0]?.databaseName}.${tables[0]?.tableName}.${tables[0]?.title}`}

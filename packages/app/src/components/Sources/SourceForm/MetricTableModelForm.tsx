@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Stack } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -17,6 +18,7 @@ import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
 
 export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+  const { t } = useTranslation('sources');
   const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
@@ -59,7 +61,10 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
               if (!isValid) {
                 notifications.show({
                   color: 'red',
-                  message: `${newValue} is not a valid OTEL ${metricType} schema.`,
+                  message: t('fields.metricTableInvalid', {
+                    tableName: newValue,
+                    metricType,
+                  }),
                 });
               }
             }
@@ -74,7 +79,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         });
       }
     })();
-  }, [metricTables, databaseName, connectionId, metadata]);
+  }, [t, metricTables, databaseName, connectionId, metadata]);
 
   // Auto-fill metric table dropdowns by matching table names to metric types.
   // One-shot per database+connection pair: runs once when tables load for a
@@ -138,7 +143,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
 
       notifications.show({
         color: 'green',
-        message: 'Auto-detected metric tables from database.',
+        message: t('fields.metricTablesAutoDetected'),
       });
     })();
 
@@ -154,12 +159,17 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         {Object.values(MetricsDataType).map(metricType => (
           <FormRow
             key={metricType.toLowerCase()}
-            label={`${metricType} Table`}
+            label={t('fields.metricTable', { metricType })}
             helpText={
               metricType === MetricsDataType.ExponentialHistogram ||
               metricType === MetricsDataType.Summary
-                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by ${brandName}`
-                : `Table containing ${metricType.toLowerCase()} metrics data`
+                ? t('fields.metricTableHelpUnsupported', {
+                    metricType: metricType.toLowerCase(),
+                    brandName,
+                  })
+                : t('fields.metricTableHelp', {
+                    metricType: metricType.toLowerCase(),
+                  })
             }
           >
             <DBTableSelectControlled
@@ -171,8 +181,8 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
           </FormRow>
         ))}
         <FormRow
-          label={'Correlated Log Source'}
-          helpText={`${brandName} Source for logs associated with metrics. Optional`}
+          label={t('fields.correlatedLogSource')}
+          helpText={t('fields.correlatedLogSourceHelpMetric', { brandName })}
         >
           <SourceSelectControlled control={control} name="logSourceId" />
         </FormRow>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { HTTPError } from 'ky';
 import CopyToClipboard from 'react-copy-to-clipboard';
+import { useTranslation } from 'react-i18next';
 import {
   Badge,
   Box,
@@ -21,6 +22,8 @@ import api from '@/api';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 export default function TeamMembersSection() {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const brandName = useBrandDisplayName();
   const hasAdminAccess = true;
 
@@ -67,8 +70,7 @@ export default function TeamMembersSection() {
           onSuccess: () => {
             notifications.show({
               color: 'green',
-              message:
-                'Click "Copy URL" and share the URL with your team member',
+              message: t('members.inviteCopyHint'),
             });
             refetchInvitations();
           },
@@ -86,7 +88,7 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message: `Something went wrong. Please contact ${brandName} team.`,
+                    message: tCommon('errors.contactTeam', { brandName }),
 
                     autoClose: 5000,
                   });
@@ -94,7 +96,7 @@ export default function TeamMembersSection() {
             } else {
               notifications.show({
                 color: 'red',
-                message: `Something went wrong. Please contact ${brandName} team.`,
+                message: tCommon('errors.contactTeam', { brandName }),
                 autoClose: 5000,
               });
             }
@@ -125,7 +127,7 @@ export default function TeamMembersSection() {
           onSuccess: () => {
             notifications.show({
               color: 'green',
-              message: 'Deleted team invite',
+              message: t('members.inviteDeleted'),
             });
             refetchInvitations();
           },
@@ -143,7 +145,7 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message: `Something went wrong. Please contact ${brandName} team.`,
+                    message: tCommon('errors.contactTeam', { brandName }),
 
                     autoClose: 5000,
                   });
@@ -151,7 +153,7 @@ export default function TeamMembersSection() {
             } else {
               notifications.show({
                 color: 'red',
-                message: `Something went wrong. Please contact ${brandName} team.`,
+                message: tCommon('errors.contactTeam', { brandName }),
                 autoClose: 5000,
               });
             }
@@ -168,7 +170,7 @@ export default function TeamMembersSection() {
           onSuccess: () => {
             notifications.show({
               color: 'green',
-              message: 'Deleted team member',
+              message: t('members.memberDeleted'),
             });
             refetchMembers();
           },
@@ -186,14 +188,14 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message: `Something went wrong. Please contact ${brandName} team.`,
+                    message: tCommon('errors.contactTeam', { brandName }),
                     autoClose: 5000,
                   });
                 });
             } else {
               notifications.show({
                 color: 'red',
-                message: `Something went wrong. Please contact ${brandName} team.`,
+                message: tCommon('errors.contactTeam', { brandName }),
                 autoClose: 5000,
               });
             }
@@ -205,19 +207,19 @@ export default function TeamMembersSection() {
 
   return (
     <Box id="team_members" data-testid="team-members-section">
-      <Text size="md">Team Members</Text>
+      <Text size="md">{t('sections.members')}</Text>
       <Divider my="md" />
       <Card>
         <Card.Section withBorder py="sm" px="lg">
           <Group align="center" justify="space-between">
-            <div className="fs-7">Team Members</div>
+            <div className="fs-7">{t('sections.members')}</div>
             <Button
               data-testid="invite-member-button"
               variant="primary"
               leftSection={<IconUserPlus size={16} />}
               onClick={() => setTeamInviteModalShow(true)}
             >
-              Invite Team Member
+              {t('members.invite')}
             </Button>
           </Group>
         </Card.Section>
@@ -232,7 +234,7 @@ export default function TeamMembersSection() {
                       <div>
                         {member.isCurrentUser && (
                           <Badge variant="light" mr="xs" tt="none">
-                            You
+                            {t('members.currentUser')}
                           </Badge>
                         )}
                         <span className="text-white fw-bold fs-7">
@@ -243,7 +245,7 @@ export default function TeamMembersSection() {
                         <div>{member.email}</div>
                         {member.hasPasswordAuth && (
                           <div>
-                            <IconLock size={14} /> Password Auth
+                            <IconLock size={14} /> {t('members.passwordAuth')}
                           </div>
                         )}
                       </Group>
@@ -274,7 +276,7 @@ export default function TeamMembersSection() {
                               })
                             }
                           >
-                            Remove
+                            {t('members.remove')}
                           </Button>
                         </Group>
                       )}
@@ -292,11 +294,11 @@ export default function TeamMembersSection() {
                     </Table.Td>
                     <Table.Td>
                       <Badge variant="dot" color="gray" fw="normal" tt="none">
-                        Pending Invite
+                        {t('members.pendingInvite')}
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
                         <Button size="compact-xs" variant="secondary" ml="xs">
-                          📋 Copy URL
+                          {t('members.copyUrl')}
                         </Button>
                       </CopyToClipboard>
                     </Table.Td>
@@ -314,7 +316,7 @@ export default function TeamMembersSection() {
                               })
                             }
                           >
-                            Delete
+                            {tCommon('actions.delete')}
                           </Button>
                         </Group>
                       )}
@@ -330,7 +332,7 @@ export default function TeamMembersSection() {
         centered
         onClose={() => setTeamInviteModalShow(false)}
         opened={teamInviteModalShow}
-        title="Invite Team Member"
+        title={t('members.invite')}
       >
         <InviteTeamMemberForm
           onSubmit={onSubmitTeamInviteForm}
@@ -349,14 +351,13 @@ export default function TeamMembersSection() {
         }
         opened={deleteTeamMemberConfirmationModalData.id != null}
         size="lg"
-        title="Delete Team Member"
+        title={t('members.deleteTitle')}
       >
         <Stack>
           <Text>
-            Deleting this team member (
-            {deleteTeamMemberConfirmationModalData.email}) will revoke their
-            access to the team&apos;s resources and services. This action is not
-            reversible.
+            {t('members.deleteDescription', {
+              email: deleteTeamMemberConfirmationModalData.email ?? '',
+            })}
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
@@ -370,7 +371,7 @@ export default function TeamMembersSection() {
                 })
               }
             >
-              Cancel
+              {tCommon('actions.cancel')}
             </Button>
             <Button
               data-testid="confirm-delete-member"
@@ -382,7 +383,7 @@ export default function TeamMembersSection() {
                 )
               }
             >
-              Confirm
+              {tCommon('actions.confirm')}
             </Button>
           </Group>
         </Stack>
@@ -398,6 +399,7 @@ function InviteTeamMemberForm({
   isSubmitting?: boolean;
   onSubmit: (arg0: { email: string }) => void;
 }) {
+  const { t } = useTranslation('settings');
   const [email, setEmail] = useState<string>('');
 
   return (
@@ -410,25 +412,23 @@ function InviteTeamMemberForm({
       <Stack>
         <TextInput
           data-testid="invite-email-input"
-          label="Email"
+          label={t('members.email')}
           name="email"
           type="email"
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
-          placeholder="you@company.com"
+          placeholder={t('members.emailPlaceholder')}
           withAsterisk={false}
         />
-        <div className="fs-8">
-          The invite link will automatically expire after 30 days.
-        </div>
+        <div className="fs-8">{t('members.inviteExpiry')}</div>
         <Button
           data-testid="send-invite-button"
           variant="primary"
           type="submit"
           disabled={!email || isSubmitting}
         >
-          Send Invite
+          {t('members.sendInvite')}
         </Button>
       </Stack>
     </form>

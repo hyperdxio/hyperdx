@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
+import { Trans, useTranslation } from 'react-i18next';
 import { Box, Button, Card, Divider, Group, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconClipboard } from '@tabler/icons-react';
@@ -13,6 +14,7 @@ function APIKeyCopyButton({
   value: string;
   dataTestId?: string;
 }) {
+  const { t } = useTranslation('common');
   const [copied, setCopied] = useState(false);
 
   return (
@@ -24,7 +26,7 @@ function APIKeyCopyButton({
         rightSection={
           <Group wrap="nowrap" gap={4} ms="xs">
             {copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
-            {copied ? 'Copied!' : 'Copy'}
+            {copied ? t('actions.copied') : t('actions.copy')}
           </Group>
         }
       >
@@ -37,6 +39,8 @@ function APIKeyCopyButton({
 }
 
 export default function ApiKeysSection() {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const { data: team, refetch: refetchTeam } = api.useTeam();
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
@@ -51,7 +55,7 @@ export default function ApiKeysSection() {
       onSuccess: () => {
         notifications.show({
           color: 'green',
-          message: 'Revoked old API key and generated new key.',
+          message: t('apiKeys.rotated'),
         });
         refetchTeam();
       },
@@ -72,10 +76,10 @@ export default function ApiKeysSection() {
 
   return (
     <Box id="api_keys" data-testid="api-keys-section">
-      <Text size="md">API Keys</Text>
+      <Text size="md">{t('sections.apiKeys')}</Text>
       <Divider my="md" />
       <Card mb="md">
-        <Text mb="md">Ingestion API Key</Text>
+        <Text mb="md">{t('apiKeys.ingestionKey')}</Text>
         <Group gap="xs">
           {team?.apiKey && (
             <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
@@ -86,7 +90,7 @@ export default function ApiKeysSection() {
               variant="danger"
               onClick={() => setRotateApiKeyConfirmationModalShow(true)}
             >
-              Rotate API Key
+              {t('apiKeys.rotate')}
             </Button>
           )}
         </Group>
@@ -98,14 +102,17 @@ export default function ApiKeysSection() {
           size="lg"
           title={
             <Text size="xl">
-              <b>Rotate API Key</b>
+              <b>{t('apiKeys.rotate')}</b>
             </Text>
           }
         >
           <Modal.Body>
             <Text size="md">
-              Rotating the API key will invalidate your existing API key and
-              generate a new one for you. This action is <b>not reversible</b>.
+              <Trans
+                t={t}
+                i18nKey="apiKeys.rotateDescription"
+                components={{ bold: <b /> }}
+              />
             </Text>
             <Group justify="end">
               <Button
@@ -115,7 +122,7 @@ export default function ApiKeysSection() {
                 size="sm"
                 onClick={() => setRotateApiKeyConfirmationModalShow(false)}
               >
-                Cancel
+                {tCommon('actions.cancel')}
               </Button>
               <Button
                 data-testid="rotate-api-key-confirm"
@@ -124,7 +131,7 @@ export default function ApiKeysSection() {
                 size="sm"
                 onClick={onConfirmUpdateTeamApiKey}
               >
-                Confirm
+                {tCommon('actions.confirm')}
               </Button>
             </Group>
           </Modal.Body>
@@ -133,7 +140,7 @@ export default function ApiKeysSection() {
       {!isLoadingMe && me != null && (
         <Card>
           <Card.Section p="md">
-            <Text mb="md">Personal API Access Key</Text>
+            <Text mb="md">{t('apiKeys.personalKey')}</Text>
             <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
           </Card.Section>
         </Card>

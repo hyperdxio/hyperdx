@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import type {
   ChartPaletteToken,
   ColorCondition,
@@ -45,6 +46,7 @@ export default function SeriesColorDrawer({
   onChange,
   onClose,
 }: SeriesColorDrawerProps) {
+  const { t } = useTranslation('charts');
   // Attach client-side localIds once per incoming value so the dnd-kit rows
   // keep stable keys for the editing session; strip them on apply. Mirrors
   // ChartDisplaySettingsDrawer's handling of number-tile color rules.
@@ -95,7 +97,7 @@ export default function SeriesColorDrawer({
 
   return (
     <Drawer
-      title="Column Color"
+      title={t('seriesColor.drawerTitle')}
       opened={opened}
       onClose={handleClose}
       position="right"
@@ -104,10 +106,10 @@ export default function SeriesColorDrawer({
         <Stack gap="xs">
           <div>
             <Text size="xs" fw={500} mb={2}>
-              Color
+              {t('seriesColor.color')}
             </Text>
             <Text size="xs" c="dimmed">
-              Applies to every cell in this column unless a rule below matches.
+              {t('seriesColor.description')}
             </Text>
           </div>
           <Controller
@@ -117,7 +119,7 @@ export default function SeriesColorDrawer({
               <ColorSwatchInput
                 value={field.value}
                 onChange={field.onChange}
-                ariaLabel="Column color"
+                ariaLabel={t('seriesColor.columnColorAriaLabel')}
               />
             )}
           />
@@ -139,7 +141,7 @@ export default function SeriesColorDrawer({
               onClick={clearColor}
               data-testid="series-color-clear"
             >
-              Clear
+              {t('seriesColor.clear')}
             </Button>
           ) : (
             <span />
@@ -149,7 +151,7 @@ export default function SeriesColorDrawer({
             onClick={applyChanges}
             data-testid="series-color-apply"
           >
-            Apply
+            {t('seriesColor.apply')}
           </Button>
         </Group>
       </Stack>

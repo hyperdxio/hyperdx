@@ -1,8 +1,15 @@
 import React from 'react';
 import { MantineProvider, MantineThemeOverride } from '@mantine/core';
+import { DatesProvider } from '@mantine/dates';
 import { Notifications } from '@mantine/notifications';
 
+import { useLocale } from '@/i18n/useLocale';
+
 import { useAppTheme } from './theme/ThemeProvider';
+
+// Locale data for every supported locale must be registered before
+// `DatesProvider` can hand it to Mantine's date components.
+import 'dayjs/locale/ko';
 
 export const ThemeWrapper = ({
   fontFamily,
@@ -14,6 +21,7 @@ export const ThemeWrapper = ({
   children: React.ReactNode;
 }) => {
   const { theme: appTheme } = useAppTheme();
+  const { locale } = useLocale();
 
   const mantineTheme = React.useMemo<MantineThemeOverride>(() => {
     // Start with the current theme's Mantine theme
@@ -36,8 +44,10 @@ export const ThemeWrapper = ({
 
   return (
     <MantineProvider forceColorScheme={colorScheme} theme={mantineTheme}>
-      <Notifications zIndex={999999} />
-      {children}
+      <DatesProvider settings={{ locale }}>
+        <Notifications zIndex={999999} />
+        {children}
+      </DatesProvider>
     </MantineProvider>
   );
 };

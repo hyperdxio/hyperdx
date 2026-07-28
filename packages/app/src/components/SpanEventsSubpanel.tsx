@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useTranslation } from 'react-i18next';
 import { Box, Button } from '@mantine/core';
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { ColumnDef } from '@tanstack/react-table';
@@ -17,10 +18,15 @@ interface SpanEventData extends Record<string, unknown> {
   Attributes: Record<string, string>;
 }
 
-const spanEventColumns: ColumnDef<SpanEventData>[] = [
+const getSpanEventColumns = (labels: {
+  timestamp: string;
+  name: string;
+  attributes: string;
+  empty: string;
+}): ColumnDef<SpanEventData>[] => [
   {
     accessorKey: 'Timestamp',
-    header: 'Timestamp',
+    header: labels.timestamp,
     size: 120,
     cell: ({ row }) => (
       <span className="text-muted" title={row.original.Timestamp}>
@@ -33,7 +39,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
   },
   {
     accessorKey: 'Name',
-    header: 'Name',
+    header: labels.name,
     size: 180,
     cell: ({ row }) => (
       <span className="d-flex align-items-center gap-2">
@@ -43,7 +49,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
   },
   {
     accessorKey: 'Attributes',
-    header: 'Attributes',
+    header: labels.attributes,
     size: 400,
     cell: ({ row }) => {
       const attributes = row.original.Attributes;
@@ -54,7 +60,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
           </Box>
         );
       }
-      return <span className="text-muted">Empty</span>;
+      return <span className="text-muted">{labels.empty}</span>;
     },
   },
 ];
@@ -64,6 +70,17 @@ export const SpanEventsSubpanel = ({
 }: {
   spanEvents?: Record<string, unknown>[] | null;
 }) => {
+  const { t } = useTranslation('search');
+  const spanEventColumns = useMemo(
+    () =>
+      getSpanEventColumns({
+        timestamp: t('spanEvents.timestamp'),
+        name: t('spanEvents.name'),
+        attributes: t('spanEvents.attributes'),
+        empty: t('spanEvents.empty'),
+      }),
+    [t],
+  );
   const sortedEvents = useMemo(() => {
     if (!spanEvents || spanEvents.length === 0) {
       return [];
@@ -94,9 +111,7 @@ export const SpanEventsSubpanel = ({
 
   if (!sortedEvents || sortedEvents.length === 0) {
     return (
-      <div className="p-3 text-muted fs-7">
-        No span events available for this trace
-      </div>
+      <div className="p-3 text-muted fs-7">{t('spanEvents.unavailable')}</div>
     );
   }
 
@@ -116,7 +131,7 @@ export const SpanEventsSubpanel = ({
           <Table
             columns={spanEventColumns}
             data={visibleRows}
-            emptyMessage="No span events found"
+            emptyMessage={t('spanEvents.notFound')}
           />
         </ErrorBoundary>
 
@@ -129,12 +144,13 @@ export const SpanEventsSubpanel = ({
           >
             {isExpanded ? (
               <>
-                <IconChevronUp size={14} className="me-2" /> Hide events
+                <IconChevronUp size={14} className="me-2" />
+                {t('spanEvents.hide')}
               </>
             ) : (
               <>
                 <IconChevronDown size={14} className="me-2" />
-                Show {hiddenRowsCount} more events
+                {t('spanEvents.showMore', { count: hiddenRowsCount })}
               </>
             )}
           </Button>

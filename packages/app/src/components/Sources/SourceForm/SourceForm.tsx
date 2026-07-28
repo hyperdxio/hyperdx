@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import {
   SourceKind,
@@ -86,6 +87,8 @@ export function TableSourceForm({
   isNew?: boolean;
   defaultName?: string;
 }) {
+  const { t } = useTranslation('sources');
+  const { t: tCommon } = useTranslation('common');
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
 
@@ -185,8 +188,7 @@ export function TableSourceForm({
             if (Object.keys(config).length > 0) {
               notifications.show({
                 color: 'green',
-                message:
-                  'Automatically inferred source configuration from table schema.',
+                message: t('form.inferred'),
               });
             }
             Object.entries(config).forEach(([key, value]) => {
@@ -214,6 +216,7 @@ export function TableSourceForm({
     metadata,
     setValue,
     isPrometheusOnlyConnection,
+    t,
   ]);
 
   // Sets the default connection field to the first connection after the
@@ -386,7 +389,7 @@ export function TableSourceForm({
         message: (
           <Stack>
             <Text size="sm">
-              <b>Failed to create source</b>
+              <b>{t('form.createFailedTitle')}</b>
             </Text>
             {notificationMsgs.map((message, i) => (
               <Text key={i} size="sm">
@@ -397,7 +400,7 @@ export function TableSourceForm({
         ),
       });
     },
-    [setError],
+    [setError, t],
   );
 
   const [pendingSave, setPendingSave] = useState<{
@@ -485,13 +488,13 @@ export function TableSourceForm({
               onCreate?.(newSource);
               notifications.show({
                 color: 'green',
-                message: 'Source created',
+                message: t('form.created'),
               });
             },
             onError: error => {
               notifications.show({
                 color: 'red',
-                message: `Failed to create source - ${error.message}`,
+                message: `${t('form.createFailed')} - ${error.message}`,
               });
             },
           },
@@ -514,6 +517,7 @@ export function TableSourceForm({
     onCreate,
     sources,
     updateSource,
+    t,
   ]);
 
   const _onSave = useCallback(() => {
@@ -533,13 +537,13 @@ export function TableSourceForm({
               onSave?.();
               notifications.show({
                 color: 'green',
-                message: 'Source updated',
+                message: t('form.updated'),
               });
             },
             onError: () => {
               notifications.show({
                 color: 'red',
-                message: 'Failed to update source',
+                message: t('form.updateFailed'),
               });
             },
           },
@@ -554,7 +558,7 @@ export function TableSourceForm({
 
       persist(parseResult.data);
     })();
-  }, [handleSubmit, updateSource, onSave, clearErrors, handleError]);
+  }, [handleSubmit, updateSource, onSave, clearErrors, handleError, t]);
 
   const databaseName = useWatch({
     control,
@@ -583,7 +587,7 @@ export function TableSourceForm({
     >
       <Stack gap="md" mb="md">
         <Flex justify="space-between" align="center" mb="lg">
-          <Text>Source Settings</Text>
+          <Text>{t('form.title')}</Text>
           {!isNew && (
             <Controller
               control={control}
@@ -593,29 +597,29 @@ export function TableSourceForm({
                   size="sm"
                   checked={!value}
                   onChange={event => onChange(!event.currentTarget.checked)}
-                  label={value ? 'Disabled' : 'Enabled'}
+                  label={value ? t('form.disabled') : t('form.enabled')}
                 />
               )}
             />
           )}
         </Flex>
-        <FormRow label={'Name'}>
+        <FormRow label={t('form.name')}>
           <InputControlled
             control={control}
             name="name"
-            rules={{ required: 'Name is required' }}
+            rules={{ required: t('form.nameRequired') }}
           />
         </FormRow>
-        <FormRow label={'Section'}>
+        <FormRow label={t('form.section')}>
           <AutocompleteControlled
             control={control}
             name="section"
             data={sectionSuggestions}
-            placeholder="Optional group, e.g. Billing or Control Plane Prod"
+            placeholder={t('form.sectionPlaceholder')}
             maxLength={256}
           />
         </FormRow>
-        <FormRow label={'Source Data Type'}>
+        <FormRow label={t('form.kind')}>
           <Controller
             control={control}
             name="kind"
@@ -626,28 +630,37 @@ export function TableSourceForm({
                 withAsterisk
               >
                 <Group>
-                  <Radio value={SourceKind.Log} label="Log" />
-                  <Radio value={SourceKind.Trace} label="Trace" />
+                  <Radio value={SourceKind.Log} label={t('form.kindLog')} />
+                  <Radio value={SourceKind.Trace} label={t('form.kindTrace')} />
                   {IS_METRICS_ENABLED && (
-                    <Radio value={SourceKind.Metric} label="OTEL Metrics" />
+                    <Radio
+                      value={SourceKind.Metric}
+                      label={t('form.kindMetric')}
+                    />
                   )}
                   {IS_SESSIONS_ENABLED && (
-                    <Radio value={SourceKind.Session} label="Session" />
+                    <Radio
+                      value={SourceKind.Session}
+                      label={t('form.kindSession')}
+                    />
                   )}
                   {IS_PROMQL_ENABLED && (
-                    <Radio value={SourceKind.Promql} label="PromQL" />
+                    <Radio
+                      value={SourceKind.Promql}
+                      label={t('form.kindPromql')}
+                    />
                   )}
                 </Group>
               </Radio.Group>
             )}
           />
         </FormRow>
-        <FormRow label={'Server Connection'}>
+        <FormRow label={t('form.connection')}>
           <ConnectionSelectControlled control={control} name={`connection`} />
         </FormRow>
         {!isPrometheusOnlyConnection && (
           <>
-            <FormRow label={'Database'}>
+            <FormRow label={t('form.database')}>
               <DatabaseSelectControlled
                 control={control}
                 name={`from.databaseName`}
@@ -655,13 +668,13 @@ export function TableSourceForm({
               />
             </FormRow>
             {kind !== SourceKind.Metric && (
-              <FormRow label={'Table'}>
+              <FormRow label={t('form.table')}>
                 <DBTableSelectControlled
                   database={databaseName}
                   control={control}
                   name={`from.tableName`}
                   connectionId={connectionId}
-                  rules={{ required: 'Table is required' }}
+                  rules={{ required: t('form.tableRequired') }}
                 />
               </FormRow>
             )}
@@ -674,24 +687,24 @@ export function TableSourceForm({
               size="sm"
               target="_blank"
             >
-              Query Settings
+              {t('form.querySettings')}
             </Anchor>
           }
-          helpText="Query-level Session Settings that will be added to each query for this source."
+          helpText={t('form.querySettingsHelp')}
         >
           <Grid columns={11}>
             {querySettingFields.map((field, index) => (
               <Fragment key={field.id}>
                 <Grid.Col span={5} pe={0}>
                   <InputControlled
-                    placeholder="Setting"
+                    placeholder={t('form.settingPlaceholder')}
                     control={control}
                     name={`querySettings.${index}.setting`}
                   />
                 </Grid.Col>
                 <Grid.Col span={5} pe={0}>
                   <InputControlled
-                    placeholder="Value"
+                    placeholder={t('form.valuePlaceholder')}
                     control={control}
                     name={`querySettings.${index}.value`}
                   />
@@ -701,7 +714,7 @@ export function TableSourceForm({
                     <ActionIcon
                       variant="subtle"
                       color="gray"
-                      title="Remove setting"
+                      title={t('form.removeSetting')}
                       onClick={() => removeSetting(index)}
                     >
                       <IconTrash size={16} />
@@ -724,7 +737,7 @@ export function TableSourceForm({
             }}
           >
             <IconCirclePlus size={14} className="me-2" />
-            Add Setting
+            {t('form.addSetting')}
           </Button>
         </FormRow>
       </Stack>
@@ -732,7 +745,7 @@ export function TableSourceForm({
       <Group justify="flex-end" mt="lg">
         {onCancel && (
           <Button variant="secondary" onClick={onCancel} size="xs">
-            Cancel
+            {tCommon('actions.cancel')}
           </Button>
         )}
         {isNew ? (
@@ -742,7 +755,7 @@ export function TableSourceForm({
             size="xs"
             loading={createSource.isPending}
           >
-            Save New Source
+            {t('form.saveNew')}
           </Button>
         ) : (
           <>
@@ -755,7 +768,7 @@ export function TableSourceForm({
               size="xs"
               loading={createSource.isPending}
             >
-              Save Source
+              {t('form.save')}
             </Button>
           </>
         )}
@@ -764,15 +777,26 @@ export function TableSourceForm({
         size="lg"
         opened={!!pendingSave}
         onClose={() => setPendingSave(undefined)}
-        title="Review source configuration"
+        title={t('pairing.modalTitle')}
         centered
       >
         <Stack gap="md">
           {pendingSave?.warnings.map(warning => (
             <Paper key={warning.field} p="sm">
-              <Text size="sm">{warning.message}</Text>
+              <Text size="sm">
+                <Trans
+                  t={t}
+                  i18nKey={`pairing.${warning.kind}`}
+                  components={{ field: <strong /> }}
+                />
+              </Text>
               <Text mt="md" fw="bold" color="green" size="sm">
-                Recommended ({warning.recommendation}):
+                {t('pairing.recommended', {
+                  recommendation:
+                    warning.kind === 'bodyWithoutImplicit'
+                      ? t('pairing.recommendationBody')
+                      : t('pairing.recommendationImplicit'),
+                })}
               </Text>
 
               <Group
@@ -800,7 +824,7 @@ export function TableSourceForm({
                   style={{ flexShrink: 0 }}
                   onClick={() => applyPairingFix(warning)}
                 >
-                  Use this value
+                  {t('pairing.useValue')}
                 </Button>
               </Group>
             </Paper>
@@ -811,7 +835,7 @@ export function TableSourceForm({
               size="xs"
               onClick={() => setPendingSave(undefined)}
             >
-              Cancel
+              {tCommon('actions.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -822,7 +846,7 @@ export function TableSourceForm({
                 p?.persist(p.parsedData);
               }}
             >
-              Save anyway
+              {t('pairing.saveAnyway')}
             </Button>
           </Group>
         </Stack>

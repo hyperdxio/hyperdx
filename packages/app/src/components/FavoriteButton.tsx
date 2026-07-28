@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { IconStar, IconStarFilled } from '@tabler/icons-react';
 
@@ -12,6 +13,7 @@ export function FavoriteButton({
   resourceId: string;
   size?: 'sm' | 'xs';
 }) {
+  const { t } = useTranslation('dashboards');
   const { isFavorited, toggleFavorite } = useToggleFavorite(
     resourceType,
     resourceId,
@@ -20,7 +22,7 @@ export function FavoriteButton({
   const iconSize = size === 'sm' ? 16 : 14;
 
   return (
-    <Tooltip label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}>
+    <Tooltip label={isFavorited ? t('favorites.remove') : t('favorites.add')}>
       <ActionIcon
         variant="subtle"
         size={size}
@@ -29,7 +31,7 @@ export function FavoriteButton({
           e.stopPropagation();
           toggleFavorite();
         }}
-        aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={isFavorited ? t('favorites.remove') : t('favorites.add')}
         data-testid="favorite-button"
       >
         {isFavorited ? (

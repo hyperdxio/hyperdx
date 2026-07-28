@@ -3,6 +3,7 @@ import { AlertState, AlertTransition } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import i18n from '@/i18n';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 /**
@@ -20,7 +21,9 @@ export function alertTransitionsToAnnotations(
     const isFiring = transition.state === AlertState.ALERT;
     return {
       time: transition.createdAt,
-      label: isFiring ? 'Alert' : 'OK',
+      label: isFiring
+        ? i18n.t('alerts:annotations.alert')
+        : i18n.t('alerts:annotations.ok'),
       color: isFiring ? alertColor : okColor,
       key: `alert-annotation-${transition.createdAt}-${transition.state}`,
     };

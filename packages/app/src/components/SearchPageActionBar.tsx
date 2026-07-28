@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, Menu } from '@mantine/core';
 import { IconCopy, IconDotsVertical, IconTrash } from '@tabler/icons-react';
 
@@ -8,6 +9,7 @@ export default function SearchPageActionBar({
   onClickDeleteSavedSearch: () => void;
   onClickSaveAsNew: () => void;
 }) {
+  const { t } = useTranslation('search');
   return (
     <Menu width={250}>
       <Menu.Target>
@@ -26,14 +28,14 @@ export default function SearchPageActionBar({
           leftSection={<IconCopy size={16} />}
           onClick={onClickSaveAsNew}
         >
-          Save as New Search
+          {t('actions.saveAsNew')}
         </Menu.Item>
         <Menu.Item
           leftSection={<IconTrash size={16} />}
           color="red"
           onClick={onClickDeleteSavedSearch}
         >
-          Delete Saved Search
+          {t('actions.deleteSaved')}
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, Center, Menu } from '@mantine/core';
 import { IconPin, IconPinFilled, IconUsers } from '@tabler/icons-react';
 
@@ -30,6 +31,7 @@ export function PinShareMenu({
   'data-testid'?: string;
   'aria-label'?: string;
 }) {
+  const { t } = useTranslation('search');
   const isPinnedAny = personalPinned || sharedPinned;
 
   // Personal pin icon takes priority over shared icon
@@ -54,7 +56,9 @@ export function PinShareMenu({
           size="xs"
           variant="subtle"
           color="gray"
-          aria-label={ariaLabel ?? (isPinnedAny ? 'Unpin' : 'Pin')}
+          aria-label={
+            ariaLabel ?? (isPinnedAny ? t('filters.unpin') : t('filters.pin'))
+          }
           data-testid={dataTestId}
         >
           {triggerIcon}
@@ -67,7 +71,7 @@ export function PinShareMenu({
             onClick={onToggleSharedPin}
             fz="xs"
           >
-            Remove from Shared
+            {t('filters.removeFromShared')}
           </Menu.Item>
         )}
         <Menu.Item
@@ -77,7 +81,7 @@ export function PinShareMenu({
           onClick={onTogglePersonalPin}
           fz="xs"
         >
-          {personalPinned ? 'Unpin for me' : 'Pin for me'}
+          {personalPinned ? t('filters.unpinForMe') : t('filters.pinForMe')}
         </Menu.Item>
         {onToggleSharedPin && !sharedPinned && (
           <Menu.Item
@@ -85,7 +89,7 @@ export function PinShareMenu({
             onClick={onToggleSharedPin}
             fz="xs"
           >
-            Share with team
+            {t('filters.shareWithTeam')}
           </Menu.Item>
         )}
       </Menu.Dropdown>

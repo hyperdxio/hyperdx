@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsInteger, parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Button, Code, Grid, Stack, Table, Text, Title } from '@mantine/core';
@@ -133,6 +134,7 @@ function useIndexes(
 }
 
 function BenchmarkPage() {
+  const { t } = useTranslation('marketing');
   const [queries, setQueries] = useQueryState<string[]>(
     'queries',
     parseAsJson(),
@@ -217,14 +219,14 @@ function BenchmarkPage() {
   return (
     <div className="p-4">
       <Title order={1} fw={400} mb="md">
-        Clickhouse Query Benchmark
+        {t('benchmark.title')}
       </Title>
       <form onSubmit={handleSubmit(onSubmit)}>
         <Stack gap="md">
           <Grid>
             <Grid.Col span={6}>
               <Stack>
-                <Text size="lg">Query 1</Text>
+                <Text size="lg">{t('benchmark.queryOne')}</Text>
                 <ConnectionSelectControlled
                   control={control}
                   name="connections.0"
@@ -234,7 +236,7 @@ function BenchmarkPage() {
             </Grid.Col>
             <Grid.Col span={6}>
               <Stack>
-                <Text size="lg">Query 2</Text>
+                <Text size="lg">{t('benchmark.queryTwo')}</Text>
                 <ConnectionSelectControlled
                   control={control}
                   name="connections.1"
@@ -244,19 +246,19 @@ function BenchmarkPage() {
             </Grid.Col>
           </Grid>
           <Button variant="primary" type="submit" loading={isQueryIdsLoading}>
-            Run Benchmark
+            {t('benchmark.run')}
           </Button>
           {isQueryIdsLoading && (
             <Text ta="center" c="green" size="xl">
-              Running Benchmark...
+              {t('benchmark.running')}
             </Text>
           )}
         </Stack>
         <Grid mt="md">
           <Grid.Col span={12}>
             <Stack>
-              <Text size="lg">Query Estimate & Indexes</Text>
-              <Text size="sm">Index utilization of your query</Text>
+              <Text size="lg">{t('benchmark.estimates')}</Text>
+              <Text size="sm">{t('benchmark.estimatesDescription')}</Text>
             </Stack>
           </Grid.Col>
           <Grid.Col span={6}>

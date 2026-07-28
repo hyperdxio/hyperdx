@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, getDefaultZIndex, Group } from '@mantine/core';
 import {
   IconCaretDownFilled,
@@ -151,13 +152,14 @@ const ChartTooltipTimestamp = ({
   labelSeconds: number | string;
   previousPeriodOffsetSeconds?: number;
 }) => {
+  const { t } = useTranslation('charts');
   const sec = Number(labelSeconds);
   return (
     <>
       <FormatTime value={sec * 1000} />
       {previousPeriodOffsetSeconds != null && (
         <>
-          {' (vs '}
+          {t('timeChart.vsPrevious')}
           <FormatTime value={(sec - previousPeriodOffsetSeconds) * 1000} />
           {')'}
         </>
@@ -180,32 +182,36 @@ export const ChartTooltipHeader = ({
   previousPeriodOffsetSeconds?: number;
   /** Pinned only; when omitted the X is rendered but hidden. */
   onClose?: () => void;
-}) => (
-  <Group gap={8} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
-    <span>
-      <ChartTooltipTimestamp
-        labelSeconds={labelSeconds}
-        previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-      />
-    </span>
-    <ActionIcon
-      variant="subtle"
-      size="xs"
-      color="gray"
-      aria-label="Close"
-      data-testid="chart-tooltip-close"
-      onClick={() => onClose?.()}
-      style={{
-        flexShrink: 0,
-        // Kept in the layout even when hidden (hover) so both modes match.
-        visibility: onClose != null ? 'visible' : 'hidden',
-        pointerEvents: onClose != null ? undefined : 'none',
-      }}
-    >
-      <IconX size={13} />
-    </ActionIcon>
-  </Group>
-);
+}) => {
+  const { t } = useTranslation('common');
+
+  return (
+    <Group gap={8} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
+      <span>
+        <ChartTooltipTimestamp
+          labelSeconds={labelSeconds}
+          previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+        />
+      </span>
+      <ActionIcon
+        variant="subtle"
+        size="xs"
+        color="gray"
+        aria-label={t('actions.close')}
+        data-testid="chart-tooltip-close"
+        onClick={() => onClose?.()}
+        style={{
+          flexShrink: 0,
+          // Kept in the layout even when hidden (hover) so both modes match.
+          visibility: onClose != null ? 'visible' : 'hidden',
+          pointerEvents: onClose != null ? undefined : 'none',
+        }}
+      >
+        <IconX size={13} />
+      </ActionIcon>
+    </Group>
+  );
+};
 
 export const ChartTooltipContainer = ({
   header,

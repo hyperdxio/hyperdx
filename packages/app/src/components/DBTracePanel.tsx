@@ -3,6 +3,7 @@ import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -102,6 +103,7 @@ function SpanDetailPanel({
   isSideLayout: boolean;
   onToggleLayout: () => void;
 }) {
+  const { t } = useTranslation('search');
   const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(
     SpanDetailTab.Overview,
   );
@@ -129,17 +131,17 @@ function SpanDetailPanel({
           className="fs-8"
           items={[
             {
-              text: 'Overview',
+              text: t('trace.overview'),
               value: SpanDetailTab.Overview,
             },
             {
-              text: 'Column Values',
+              text: t('trace.columnValues'),
               value: SpanDetailTab.Parsed,
             },
             ...(hasK8sContext
               ? [
                   {
-                    text: 'Infrastructure',
+                    text: t('trace.infrastructure'),
                     value: SpanDetailTab.Infrastructure,
                   },
                 ]
@@ -156,8 +158,8 @@ function SpanDetailPanel({
           <Tooltip
             label={
               isSideLayout
-                ? 'Show details at the bottom'
-                : 'Show details on the side'
+                ? t('trace.showDetailsBottom')
+                : t('trace.showDetailsSide')
             }
             position="bottom"
           >
@@ -166,7 +168,7 @@ function SpanDetailPanel({
               color="gray"
               size="sm"
               onClick={onToggleLayout}
-              aria-label="Toggle span detail layout"
+              aria-label={t('trace.toggleDetailLayout')}
               data-testid="trace-detail-layout-toggle"
             >
               {isSideLayout ? (
@@ -176,13 +178,13 @@ function SpanDetailPanel({
               )}
             </ActionIcon>
           </Tooltip>
-          <Tooltip label="Close" position="bottom">
+          <Tooltip label={t('trace.close')} position="bottom">
             <ActionIcon
               variant="subtle"
               color="gray"
               size="sm"
               onClick={onClose}
-              aria-label="Close span details"
+              aria-label={t('trace.closeSpanDetails')}
             >
               <IconX size={16} />
             </ActionIcon>
@@ -242,6 +244,7 @@ export default function DBTracePanel({
   emptyState?: ReactNode;
   'data-testid'?: string;
 }) {
+  const { t } = useTranslation('search');
   const { control, setValue } = useForm({
     defaultValues: {
       source: childSourceId,
@@ -375,12 +378,12 @@ export default function DBTracePanel({
           panel header (Copy Trace ID), so it's not duplicated here. */}
       {!traceId && parentSourceId != null && (
         <Stack gap="xs" mb="sm">
-          <Text size="xs">Trace ID Expression</Text>
+          <Text size="xs">{t('trace.idExpression')}</Text>
           <Flex align="center">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"
-              placeholder="Log Trace ID Column (ex. trace_id)"
+              placeholder={t('trace.idExpressionPlaceholder')}
               control={traceIdControl}
               size="xs"
               parentRef={typeof document !== 'undefined' ? document.body : null}
@@ -406,7 +409,7 @@ export default function DBTracePanel({
               })}
               size="xs"
             >
-              Save
+              {t('trace.save')}
             </Button>
           </Flex>
         </Stack>
@@ -444,7 +447,7 @@ export default function DBTracePanel({
               controlsExtra={
                 <Group gap={4} align="center" wrap="nowrap">
                   <Text size="xxs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                    Correlated logs
+                    {t('trace.correlatedLogs')}
                   </Text>
                   <SourceSelectControlled
                     control={control}

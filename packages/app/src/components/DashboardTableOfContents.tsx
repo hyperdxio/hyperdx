@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { DashboardContainer as DashboardContainerSchema } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -26,6 +27,7 @@ export default function DashboardTableOfContents({
   onToggleCollapse,
   onClose,
 }: DashboardTableOfContentsProps) {
+  const { t } = useTranslation('dashboards');
   if (containers.length === 0) return null;
 
   const handleJumpTo = (container: DashboardContainerSchema) => {
@@ -45,7 +47,7 @@ export default function DashboardTableOfContents({
   return (
     <Box
       component="nav"
-      aria-label="Table of contents"
+      aria-label={t('tableOfContents.label')}
       data-testid="dashboard-toc"
       style={{
         width: 240,
@@ -70,14 +72,14 @@ export default function DashboardTableOfContents({
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
         <Text size="sm" fw={500}>
-          Sections
+          {t('tableOfContents.sections')}
         </Text>
-        <Tooltip label="Hide table of contents" position="left" withArrow>
+        <Tooltip label={t('tableOfContents.hide')} position="left" withArrow>
           <ActionIcon
             variant="subtle"
             size="sm"
             onClick={onClose}
-            aria-label="Hide table of contents"
+            aria-label={t('tableOfContents.hide')}
             data-testid="dashboard-toc-close"
           >
             <IconX size={14} />

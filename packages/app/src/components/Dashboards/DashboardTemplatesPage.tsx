@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import {
   Anchor,
   Breadcrumbs,
@@ -18,6 +19,7 @@ import { withAppNav } from '@/layout';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 export default function DashboardTemplatesPage() {
+  const { t } = useTranslation('dashboards');
   const brandName = useBrandDisplayName();
 
   const templatesByTag = useMemo(() => {
@@ -44,14 +46,14 @@ export default function DashboardTemplatesPage() {
   return (
     <div data-testid="dashboard-templates-page">
       <Head>
-        <title>Dashboard Templates - {brandName}</title>
+        <title>{t('templates.browserTitle', { brandName })}</title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
+          {t('templates.dashboards')}
         </Anchor>
         <Text fz="sm" c="dimmed">
-          Templates
+          {t('templates.templates')}
         </Text>
       </Breadcrumbs>
       <Container maw={1200} py="lg" px="lg">
@@ -62,8 +64,8 @@ export default function DashboardTemplatesPage() {
                 {tag}
               </Text>
               <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-                {templates.map(t => (
-                  <Card key={t.id} withBorder padding="lg" radius="sm">
+                {templates.map(template => (
+                  <Card key={template.id} withBorder padding="lg" radius="sm">
                     <Stack justify="space-between" h="100%">
                       <Stack>
                         <Text
@@ -71,24 +73,24 @@ export default function DashboardTemplatesPage() {
                           lineClamp={1}
                           mb="xs"
                           style={{ minWidth: 0 }}
-                          title={t.name}
+                          title={template.name}
                         >
-                          {t.name}
+                          {template.name}
                         </Text>
                         <Text size="sm" c="dimmed">
-                          {t.description}
+                          {template.description}
                         </Text>
                       </Stack>
                       <Button
                         component={Link}
-                        href={`/dashboards/import?template=${t.id}`}
+                        href={`/dashboards/import?template=${template.id}`}
                         variant="secondary"
                         leftSection={<IconUpload size={16} />}
                         mt="md"
                         size="xs"
-                        data-testid={`import-template-${t.id}`}
+                        data-testid={`import-template-${template.id}`}
                       >
-                        Import
+                        {t('templates.import')}
                       </Button>
                     </Stack>
                   </Card>

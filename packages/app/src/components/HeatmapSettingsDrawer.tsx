@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
@@ -40,6 +41,7 @@ export default function HeatmapSettingsDrawer({
   defaultValues: HeatmapSettingsValues;
   onSubmit: (v: HeatmapSettingsValues) => void;
 }) {
+  const { t } = useTranslation('charts');
   const form = useForm({
     resolver: zodResolver(HeatmapSettingsSchema),
     defaultValues,
@@ -59,7 +61,7 @@ export default function HeatmapSettingsDrawer({
 
   return (
     <Drawer
-      title="Display Settings"
+      title={t('common.displaySettings')}
       opened={opened}
       onClose={handleClose}
       position="right"
@@ -70,7 +72,7 @@ export default function HeatmapSettingsDrawer({
         <Stack gap="md">
           <Box>
             <Text size="sm" fw={500} mb={4}>
-              Scale
+              {t('heatmap.scale')}
             </Text>
             <SegmentedControl
               size="xs"
@@ -81,8 +83,8 @@ export default function HeatmapSettingsDrawer({
                 }
               }}
               data={[
-                { label: 'Log', value: 'log' },
-                { label: 'Linear', value: 'linear' },
+                { label: t('heatmap.scaleLog'), value: 'log' },
+                { label: t('heatmap.scaleLinear'), value: 'linear' },
               ]}
             />
           </Box>
@@ -96,10 +98,10 @@ export default function HeatmapSettingsDrawer({
             name="value"
             size="xs"
             tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
-            placeholder="SQL expression"
+            placeholder={t('heatmap.sqlExpressionPlaceholder')}
             language="sql"
             onSubmit={form.handleSubmit(onSubmit)}
-            label="Value"
+            label={t('heatmap.value')}
             error={form.formState.errors.value?.message}
             rules={{ required: true }}
           />
@@ -109,26 +111,26 @@ export default function HeatmapSettingsDrawer({
             tableConnection={connection}
             control={form.control}
             name="count"
-            placeholder="SQL expression"
+            placeholder={t('heatmap.sqlExpressionPlaceholder')}
             language="sql"
             size="xs"
             tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
             onSubmit={form.handleSubmit(onSubmit)}
-            label="Count"
+            label={t('heatmap.count')}
             error={form.formState.errors.count?.message}
           />
 
           <Divider />
           <Group gap="xs" justify="flex-end">
             <Button variant="secondary" onClick={handleClose}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               type="submit"
               leftSection={<IconPlayerPlay size={16} />}
             >
-              Apply
+              {t('common.apply')}
             </Button>
           </Group>
         </Stack>

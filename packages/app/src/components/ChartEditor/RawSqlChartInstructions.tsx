@@ -1,4 +1,5 @@
 import { atom, useAtom } from 'jotai';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   QUERY_PARAM_EXAMPLES,
   QUERY_PARAMS_BY_DISPLAY_TYPE,
@@ -24,7 +25,7 @@ import {
   IconCopy,
 } from '@tabler/icons-react';
 
-import { DISPLAY_TYPE_INSTRUCTIONS } from './constants';
+import { useDisplayTypeInstructions } from './constants';
 
 const helpOpenedAtom = atom(true);
 
@@ -35,12 +36,16 @@ function ParamSnippet({
   value: string;
   description: string;
 }) {
+  const { t } = useTranslation('charts');
   const clipboard = useClipboard({ timeout: 1500 });
 
   return (
     <Group gap={4} display="inline-flex">
       <Code fz="xs">{value}</Code>
-      <Tooltip label={clipboard.copied ? 'Copied!' : 'Copy'} withArrow>
+      <Tooltip
+        label={clipboard.copied ? t('common.copied') : t('common.copy')}
+        withArrow
+      >
         <ActionIcon
           variant="subtle"
           size="xs"
@@ -62,10 +67,12 @@ export function RawSqlChartInstructions({
 }: {
   displayType: DisplayType;
 }) {
+  const { t } = useTranslation('charts');
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
   const availableParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
   const exampleClipboard = useClipboard({ timeout: 1500 });
+  const displayTypeInstructions = useDisplayTypeInstructions();
 
   return (
     <Paper
@@ -88,15 +95,15 @@ export function RawSqlChartInstructions({
             <IconChevronRight size={12} />
           )}
           <Text size="xs" mt={1}>
-            SQL Chart Instructions
+            {t('editor.instructionsTitle')}
           </Text>
         </Group>
         <Collapse expanded={helpOpened}>
           <Stack gap={6} pl="xs" pt="md">
-            {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
+            {displayTypeInstructions[displayType]}
 
             <Text size="xs" fw="bold">
-              The following parameters and macros can be used in this chart:
+              {t('editor.parametersHint')}
             </Text>
             <List size="xs" withPadding spacing={3}>
               {availableParams.map(({ name, type, description }) => (
@@ -110,34 +117,43 @@ export function RawSqlChartInstructions({
               <List.Item>
                 <ParamSnippet
                   value={`$__sourceTable([metricType])`}
-                  description="Resolves to selected source table (Source must be selected)"
+                  description={t('editor.sourceTableDescription')}
                 />
               </List.Item>
               <List.Item>
                 <ParamSnippet
                   value={`$__filters`}
-                  description="Applies the selected dashboard filter conditions to the chart (Source must be selected)"
+                  description={t('editor.filtersDescription')}
                 />
               </List.Item>
               <List.Item>
                 <Text size="xs">
-                  Other available macros are described in the{' '}
-                  <Anchor
-                    href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
-                    target="_blank"
-                  >
-                    ClickStack documentation.
-                  </Anchor>
+                  <Trans
+                    t={t}
+                    i18nKey="editor.otherMacros"
+                    components={{
+                      docLink: (
+                        <Anchor
+                          href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
+                          target="_blank"
+                        />
+                      ),
+                    }}
+                  />
                 </Text>
               </List.Item>
             </List>
 
             <Text size="xs" fw="bold">
-              Example:
+              {t('editor.example')}
             </Text>
             <div style={{ position: 'relative' }}>
               <Tooltip
-                label={exampleClipboard.copied ? 'Copied!' : 'Copy'}
+                label={
+                  exampleClipboard.copied
+                    ? t('common.copied')
+                    : t('common.copy')
+                }
                 withArrow
               >
                 <ActionIcon

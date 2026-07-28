@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
@@ -41,6 +42,7 @@ export default function PatternTable({
   totalCountQueryKeyPrefix: string;
   source?: TSource;
 }) {
+  const { t } = useTranslation('search');
   const SAMPLES = 10_000;
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
@@ -108,7 +110,7 @@ export default function PatternTable({
         <Container style={{ overflow: 'auto' }}>
           <Box mt="lg">
             <Text my="sm" size="sm">
-              Error Message:
+              {t('patterns.errorMessage')}
             </Text>
             <Code
               block
@@ -122,7 +124,7 @@ export default function PatternTable({
           {error instanceof ClickHouseQueryError && (
             <Box mt="lg">
               <Text my="sm" size="sm">
-                Original Query:
+                {t('patterns.originalQuery')}
               </Text>
               <Code
                 block
@@ -155,10 +157,10 @@ export default function PatternTable({
             columnTypeMap={emptyMap}
             generateRowId={row => ({ where: row.id, aliasWith: [] })}
             columnNameMap={{
-              __hdx_pattern_trend: 'Trend',
-              countStr: 'Count',
-              pattern: 'Pattern',
-              severityText: 'Level',
+              __hdx_pattern_trend: t('patterns.trend'),
+              countStr: t('patterns.count'),
+              pattern: t('patterns.title'),
+              severityText: t('patterns.level'),
             }}
             config={patternQueryConfig}
             showExpandButton={false}

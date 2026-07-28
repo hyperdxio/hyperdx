@@ -9,6 +9,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SearchCondition,
@@ -72,6 +73,7 @@ function SessionCard({
   onClick: () => void;
   sessionId: string;
 }) {
+  const { t } = useTranslation('sessions');
   const timeAgo = formatDistanceToNowStrictShort(maxTime);
   const durationStr = new Date(maxTime.getTime() - minTime.getTime())
     .toISOString()
@@ -85,19 +87,25 @@ function SessionCard({
       role="button"
     >
       <div style={{ width: '50%', maxWidth: 500 }} className={styles.emailText}>
-        {email || `Anonymous Session ${sessionId}`}
+        {email || t('panel.anonymous', { id: sessionId })}
       </div>
       <div>
-        <div className="text-muted fs-8">{numEvents} Events</div>
+        <div className="text-muted fs-8">
+          {t('list.events', { count: numEvents })}
+        </div>
         {numErrors > 0 && (
-          <div className="text-danger fs-8">{numErrors} Errors</div>
+          <div className="text-danger fs-8">
+            {t('list.errors', { count: numErrors })}
+          </div>
         )}
-        <div className="text-muted fs-8">Duration {durationStr}</div>
+        <div className="text-muted fs-8">
+          {t('list.duration', { duration: durationStr })}
+        </div>
       </div>
       <div className="text-end">
-        <div>Last active {timeAgo} ago</div>
+        <div>{t('list.lastActive', { time: timeAgo })}</div>
         <div className="text-muted fs-8 mt-1">
-          Started on <FormatTime value={minTime} />
+          {t('list.startedOn')} <FormatTime value={minTime} />
         </div>
       </div>
     </div>
@@ -113,6 +121,7 @@ function SessionCardList({
   isSessionLoading?: boolean;
   onClick: (session: Session) => void;
 }) {
+  const { t } = useTranslation('sessions');
   const brandName = useBrandDisplayName();
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -129,18 +138,15 @@ function SessionCardList({
       {isSessionLoading === true && (
         <Group mt="md" align="center" justify="center" gap="xs">
           <IconRefresh className="spin-animate" size={14} />
-          Searching sessions...
+          {t('list.searching')}
         </Group>
       )}
       {!isSessionLoading && sessions.length === 0 && (
         <div className="text-center align-items-center justify-content-center my-3">
-          No results found.
+          {t('list.noResults')}
+          <div className="text-muted mt-3">{t('list.queryHint')}</div>
           <div className="text-muted mt-3">
-            Try checking the query explainer in the search bar if there are any
-            search syntax issues.
-          </div>
-          <div className="text-muted mt-3">
-            Add new data sources by setting up a {brandName} integration.
+            {t('list.addSources', { brandName })}
           </div>
           <Button
             component="a"
@@ -149,7 +155,7 @@ function SessionCardList({
             target="_blank"
             href="/docs/install/browser"
           >
-            Install {brandName} Browser Integration
+            {t('list.installBrowser', { brandName })}
           </Button>
         </div>
       )}
@@ -232,6 +238,7 @@ const appliedConfigMap = {
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 function SessionsPage() {
+  const { t } = useTranslation('sessions');
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
 
@@ -369,7 +376,7 @@ function SessionsPage() {
   return (
     <>
       <Head>
-        <title>Client Sessions - {brandName}</title>
+        <title>{t('list.pageTitle', { brandName })}</title>
       </Head>
       <OnboardingModal />
       {selectedSession != null &&
@@ -441,15 +448,20 @@ function SessionsPage() {
                   leftSection={<IconPlayerPlay size={16} />}
                   style={{ flexShrink: 0 }}
                 >
-                  Run
+                  {t('list.run')}
                 </Button>
-                <Tooltip withArrow label="Refresh results" fz="xs" color="gray">
+                <Tooltip
+                  withArrow
+                  label={t('list.refresh')}
+                  fz="xs"
+                  color="gray"
+                >
                   <ActionIcon
                     onClick={refresh}
                     loading={manualRefreshCooloff}
                     disabled={manualRefreshCooloff}
                     variant="secondary"
-                    title="Refresh results"
+                    title={t('list.refresh')}
                     size="input-sm"
                   >
                     <IconRefresh size={18} />
@@ -465,8 +477,8 @@ function SessionsPage() {
                 <Group mt="md" align="center" justify="center" gap="xs">
                   <IconRefresh className="spin-animate" size={14} />
                   {isSessionSourceLoading
-                    ? 'Loading...'
-                    : 'Searching sessions...'}
+                    ? t('list.loading')
+                    : t('list.searching')}
                 </Group>
               ) : (
                 <>
@@ -512,17 +524,13 @@ SessionsPageDynamic.getLayout = withAppNav;
 export default SessionsPageDynamic;
 
 function SessionSetupInstructions() {
+  const { t } = useTranslation('sessions');
   const brandName = useBrandDisplayName();
   return (
     <EmptyState
       icon={<IconDeviceLaptop size={32} />}
-      title="Set up session replays"
-      description={
-        <>
-          Follow these steps to start recording and viewing session replays with
-          the {brandName} Otel Collector.
-        </>
-      }
+      title={t('setup.title')}
+      description={t('setup.description', { brandName })}
       maw={600}
     >
       <Paper withBorder radius="md" p="xl">
@@ -530,43 +538,49 @@ function SessionSetupInstructions() {
           <Stepper.Step
             label={
               <>
-                Create a new source with <Code>Session</Code> type
+                {t('setup.createSourcePrefix')}{' '}
+                <Code>{t('setup.sourceType')}</Code>{' '}
+                {t('setup.createSourceSuffix')}
               </>
             }
             description={
               <>
-                Go to Team Settings, click <Code>Add Source</Code> under Sources
-                section, and select <Code>Session</Code> as the source type.
+                {t('setup.sourceInstructionsPrefix')}{' '}
+                <Code>{t('setup.addSource')}</Code>{' '}
+                {t('setup.sourceInstructionsMiddle')}{' '}
+                <Code>{t('setup.sourceType')}</Code>{' '}
+                {t('setup.sourceInstructionsSuffix')}
               </>
             }
           />
           <Stepper.Step
             label={
               <>
-                Choose the <Code>hyperdx_sessions</Code> table
+                {t('setup.chooseTablePrefix')} <Code>hyperdx_sessions</Code>{' '}
+                {t('setup.chooseTableSuffix')}
               </>
             }
             description={
               <>
-                Select the <Code>hyperdx_sessions</Code> table from the
-                dropdown, and select the corresponding trace source.
+                {t('setup.selectTablePrefix')} <Code>hyperdx_sessions</Code>{' '}
+                {t('setup.selectTableSuffix')}
               </>
             }
           />
           <Stepper.Step
-            label="Start recording sessions"
+            label={t('setup.startRecording')}
             description={
               <>
-                Install the{' '}
+                {t('setup.installPrefix')}{' '}
                 <Anchor
                   href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
                   target="_blank"
                   rel="noopener noreferrer"
                   size="xs"
                 >
-                  {brandName} Browser Integration
+                  {t('setup.browserIntegration', { brandName })}
                 </Anchor>{' '}
-                to start recording sessions.
+                {t('setup.installSuffix')}
               </>
             }
           />

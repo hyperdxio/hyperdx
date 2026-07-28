@@ -11,6 +11,7 @@ import { add } from 'date-fns';
 import { isString } from 'lodash';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import SqlString from 'sqlstring';
 import {
   isLogSource,
@@ -120,6 +121,7 @@ function SidePanelHeaderActions({
   isFullWidth?: boolean;
   onToggleFullWidth?: () => void;
 }) {
+  const { t } = useTranslation('search');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   return (
@@ -131,13 +133,13 @@ function SidePanelHeaderActions({
             onToggle={onToggleFullWidth}
           />
         )}
-        <Tooltip label="Keyboard shortcuts" position="bottom">
+        <Tooltip label={t('sidePanel.keyboardShortcuts')} position="bottom">
           <ActionIcon
             variant="subtle"
             color="gray"
             size="sm"
             onClick={() => setShortcutsOpen(true)}
-            aria-label="Keyboard shortcuts"
+            aria-label={t('sidePanel.keyboardShortcuts')}
           >
             <IconKeyboard size={16} />
           </ActionIcon>
@@ -147,7 +149,7 @@ function SidePanelHeaderActions({
         >
           {({ copied, copy }) => (
             <Tooltip
-              label={copied ? 'Copied!' : 'Share link'}
+              label={copied ? t('sidePanel.copied') : t('sidePanel.shareLink')}
               position="bottom"
             >
               <ActionIcon
@@ -155,20 +157,20 @@ function SidePanelHeaderActions({
                 color="gray"
                 size="sm"
                 onClick={copy}
-                aria-label="Share"
+                aria-label={t('sidePanel.share')}
               >
                 <IconShare size={16} />
               </ActionIcon>
             </Tooltip>
           )}
         </CopyButton>
-        <Tooltip label="Close" position="bottom">
+        <Tooltip label={t('sidePanel.close')} position="bottom">
           <ActionIcon
             variant="subtle"
             color="gray"
             size="sm"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('sidePanel.close')}
           >
             <IconX size={16} />
           </ActionIcon>
@@ -182,22 +184,29 @@ function SidePanelHeaderActions({
   );
 }
 
-const SPAN_KIND_LABELS: Record<string, string> = {
-  '1': 'Internal',
-  '2': 'Server',
-  '3': 'Client',
-  '4': 'Producer',
-  '5': 'Consumer',
-  Internal: 'Internal',
-  Server: 'Server',
-  Client: 'Client',
-  Producer: 'Producer',
-  Consumer: 'Consumer',
-  SPAN_KIND_INTERNAL: 'Internal',
-  SPAN_KIND_SERVER: 'Server',
-  SPAN_KIND_CLIENT: 'Client',
-  SPAN_KIND_PRODUCER: 'Producer',
-  SPAN_KIND_CONSUMER: 'Consumer',
+const SPAN_KIND_KEYS: Record<
+  string,
+  | 'sidePanel.spanKind.internal'
+  | 'sidePanel.spanKind.server'
+  | 'sidePanel.spanKind.client'
+  | 'sidePanel.spanKind.producer'
+  | 'sidePanel.spanKind.consumer'
+> = {
+  '1': 'sidePanel.spanKind.internal',
+  '2': 'sidePanel.spanKind.server',
+  '3': 'sidePanel.spanKind.client',
+  '4': 'sidePanel.spanKind.producer',
+  '5': 'sidePanel.spanKind.consumer',
+  Internal: 'sidePanel.spanKind.internal',
+  Server: 'sidePanel.spanKind.server',
+  Client: 'sidePanel.spanKind.client',
+  Producer: 'sidePanel.spanKind.producer',
+  Consumer: 'sidePanel.spanKind.consumer',
+  SPAN_KIND_INTERNAL: 'sidePanel.spanKind.internal',
+  SPAN_KIND_SERVER: 'sidePanel.spanKind.server',
+  SPAN_KIND_CLIENT: 'sidePanel.spanKind.client',
+  SPAN_KIND_PRODUCER: 'sidePanel.spanKind.producer',
+  SPAN_KIND_CONSUMER: 'sidePanel.spanKind.consumer',
 };
 
 type DBRowSidePanelProps = {
@@ -231,6 +240,7 @@ export const DBRowSidePanelInner = ({
   onNavigateToParent,
   sidePanelStack,
 }: DBRowSidePanelInnerProps) => {
+  const { t } = useTranslation('search');
   const {
     sourceStack,
     navStack,
@@ -552,12 +562,13 @@ export const DBRowSidePanelInner = ({
       handleSourceStackPush({
         sourceId: traceSourceData.id,
         rowId,
-        label: `Trace ${link.TraceId.slice(0, 8)}`,
+        label: `${t('sidePanel.trace')} ${link.TraceId.slice(0, 8)}`,
         sourceKind: traceSourceData.kind as SourceKind,
         aliasWith: [],
       });
     },
     [
+      t,
       traceSourceData,
       traceIdExpression,
       spanIdExpression,
@@ -604,8 +615,9 @@ export const DBRowSidePanelInner = ({
 
   const spanKindLabel = useMemo(() => {
     if (spanKind == null) return undefined;
-    return SPAN_KIND_LABELS[String(spanKind)] ?? String(spanKind);
-  }, [spanKind]);
+    const key = SPAN_KIND_KEYS[String(spanKind)];
+    return key ? t(key) : String(spanKind);
+  }, [spanKind, t]);
 
   const allBreadcrumbs = useMemo((): BreadcrumbItem[] => {
     const items: BreadcrumbItem[] = [];
@@ -710,7 +722,7 @@ export const DBRowSidePanelInner = ({
   );
 
   if (isRowLoading || isResolvingSource) {
-    return <div className={styles.loadingState}>Loading...</div>;
+    return <div className={styles.loadingState}>{t('sidePanel.loading')}</div>;
   }
 
   // The leaf cross-source frame points at a source that no longer resolves
@@ -725,9 +737,7 @@ export const DBRowSidePanelInner = ({
         </Box>
         <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <Text size="sm" c="dimmed">
-            This source is no longer available. It may have been deleted,
-            renamed, or belong to a different workspace. Use the back button or
-            the breadcrumbs above to return.
+            {t('sidePanel.sourceMissing')}
           </Text>
         </Box>
       </>
@@ -752,7 +762,7 @@ export const DBRowSidePanelInner = ({
         <Box px="sm" pt="sm" pb="xs">
           {controls}
         </Box>
-        <div className={styles.loadingState}>Error loading row data</div>
+        <div className={styles.loadingState}>{t('sidePanel.rowLoadError')}</div>
       </>
     );
   }
@@ -768,7 +778,8 @@ export const DBRowSidePanelInner = ({
           {timestampDate && !isNaN(timestampDate.getTime()) && (
             <Text size="xs" c="dimmed">
               <FormatTime value={timestampDate} /> ·{' '}
-              {formatDistanceToNowStrictShort(timestampDate)} ago
+              {formatDistanceToNowStrictShort(timestampDate)}{' '}
+              {t('sidePanel.ago')}
             </Text>
           )}
           {serviceName && (
@@ -778,7 +789,7 @@ export const DBRowSidePanelInner = ({
               </Text>
               <Group gap={4}>
                 <Text size="xs" c="dimmed">
-                  Service
+                  {t('sidePanel.service')}
                 </Text>
                 <Text size="xs" fw={500}>
                   {serviceName}
@@ -793,7 +804,7 @@ export const DBRowSidePanelInner = ({
               </Text>
               <Group gap={4}>
                 <Text size="xs" c="dimmed">
-                  Duration
+                  {t('sidePanel.duration')}
                 </Text>
                 <Text size="xs" fw={500}>
                   {formattedDuration}
@@ -808,7 +819,7 @@ export const DBRowSidePanelInner = ({
               </Text>
               <Group gap={4}>
                 <Text size="xs" c="dimmed">
-                  Status
+                  {t('sidePanel.status')}
                 </Text>
                 <Text
                   size="xs"
@@ -839,7 +850,11 @@ export const DBRowSidePanelInner = ({
               <CopyButton value={traceId ?? ''}>
                 {({ copied, copy }) => (
                   <Tooltip
-                    label={copied ? 'Copied!' : 'Copy Trace ID'}
+                    label={
+                      copied
+                        ? t('sidePanel.copied')
+                        : t('sidePanel.copyTraceId')
+                    }
                     position="bottom"
                   >
                     <Group
@@ -850,7 +865,7 @@ export const DBRowSidePanelInner = ({
                     >
                       <IconCopy size={12} color="var(--mantine-color-dimmed)" />
                       <Text size="xs" c="dimmed">
-                        Trace ID
+                        {t('sidePanel.traceId')}
                       </Text>
                     </Group>
                   </Tooltip>
@@ -876,7 +891,7 @@ export const DBRowSidePanelInner = ({
               }}
               disabled={!traceSourceData || !traceSpanRowId}
             >
-              View Trace →
+              {t('sidePanel.viewTrace')}
             </Button>
           )}
         </Group>
@@ -895,7 +910,7 @@ export const DBRowSidePanelInner = ({
           ...(hasOverviewPanel && !sourceIsTrace
             ? [
                 {
-                  text: 'Overview',
+                  text: t('sidePanel.overview'),
                   value: Tab.Overview,
                 },
               ]
@@ -903,7 +918,7 @@ export const DBRowSidePanelInner = ({
           ...(!sourceIsTrace
             ? [
                 {
-                  text: 'Column Values',
+                  text: t('sidePanel.columnValues'),
                   value: Tab.Parsed,
                 },
               ]
@@ -911,7 +926,7 @@ export const DBRowSidePanelInner = ({
           ...(sourceIsTrace
             ? [
                 {
-                  text: 'Trace',
+                  text: t('sidePanel.trace'),
                   value: Tab.Trace,
                 },
               ]
@@ -919,19 +934,19 @@ export const DBRowSidePanelInner = ({
           ...(enableServiceMap
             ? [
                 {
-                  text: 'Service Map',
+                  text: t('sidePanel.serviceMap'),
                   value: Tab.ServiceMap,
                 },
               ]
             : []),
           {
-            text: 'Surrounding Context',
+            text: t('sidePanel.surroundingContext'),
             value: Tab.Context,
           },
           ...(rumSessionId != null
             ? [
                 {
-                  text: 'Session Replay',
+                  text: t('sidePanel.sessionReplay'),
                   value: Tab.Replay,
                 },
               ]
@@ -939,7 +954,7 @@ export const DBRowSidePanelInner = ({
           ...(hasK8sContext
             ? [
                 {
-                  text: 'Infrastructure',
+                  text: t('sidePanel.infrastructure'),
                   value: Tab.Infrastructure,
                 },
               ]
@@ -955,7 +970,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -975,7 +990,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -999,7 +1014,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -1019,7 +1034,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -1038,7 +1053,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -1059,7 +1074,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -1085,7 +1100,7 @@ export const DBRowSidePanelInner = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
+              {t('sidePanel.renderError')}
             </div>
           )}
         >
@@ -1105,29 +1120,32 @@ export const DBRowSidePanelInner = ({
 export const SidePanelErrorFallback = ({
   error,
   onClose,
-}: FallbackProps & { onClose: () => void }) => (
-  <Stack>
-    <Group justify="flex-end" p="xs">
-      <Button
-        variant="subtle"
-        color="gray"
-        size="compact-sm"
-        leftSection={<IconX size={14} />}
-        onClick={onClose}
-        aria-label="Close"
-      >
-        Close
-      </Button>
-    </Group>
-    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-      An error occurred while rendering this event.
-    </div>
+}: FallbackProps & { onClose: () => void }) => {
+  const { t } = useTranslation('search');
+  return (
+    <Stack>
+      <Group justify="flex-end" p="xs">
+        <Button
+          variant="subtle"
+          color="gray"
+          size="compact-sm"
+          leftSection={<IconX size={14} />}
+          onClick={onClose}
+          aria-label={t('sidePanel.close')}
+        >
+          {t('sidePanel.close')}
+        </Button>
+      </Group>
+      <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+        {t('sidePanel.renderError')}
+      </div>
 
-    <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
-      {error?.message}
-    </div>
-  </Stack>
-);
+      <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
+        {error?.message}
+      </div>
+    </Stack>
+  );
+};
 
 export default function DBRowSidePanelErrorBoundary({
   onClose,

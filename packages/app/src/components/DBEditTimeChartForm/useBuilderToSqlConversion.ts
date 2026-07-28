@@ -17,6 +17,7 @@ import { notifications } from '@mantine/notifications';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { convertFormStateToChartConfig } from '@/components/ChartEditor/utils';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import i18n from '@/i18n';
 
 type ConfigType = ChartEditorFormState['configType'];
 
@@ -121,7 +122,7 @@ export function useBuilderToSqlConversion({
       });
       notifications.show({
         id: 'builder-to-sql-error',
-        title: 'Could not auto-convert to SQL',
+        title: i18n.t('charts:sqlConversion.failedTitle'),
         message,
         color: 'red',
       });
@@ -170,8 +171,8 @@ export function useBuilderToSqlConversion({
       ) {
         setValue('sqlTemplate', result.sql);
         notifications.show({
-          title: 'Chart converted to SQL',
-          message: 'The existing chart configuration has been converted to SQL',
+          title: i18n.t('charts:sqlConversion.convertedTitle'),
+          message: i18n.t('charts:sqlConversion.convertedMessage'),
           color: 'green',
         });
       }

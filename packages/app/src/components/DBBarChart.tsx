@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Bar,
   BarChart,
@@ -59,6 +60,7 @@ const BarChartTooltip = memo(
 );
 
 export const DBBarChart = (props: CategoricalChartProps) => {
+  const { t } = useTranslation('charts');
   const {
     resolvedNumberFormat,
     toolbarItems,
@@ -74,7 +76,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
     <ChartContainer title={props.title} toolbarItems={toolbarItems}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {t('common.loadingData')}
         </div>
       ) : isError && error ? (
         <ChartErrorState error={error} variant={props.errorVariant} />
@@ -85,7 +87,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
         />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {t('common.noData')}
         </div>
       ) : (
         <Flex

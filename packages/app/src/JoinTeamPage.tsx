@@ -1,21 +1,23 @@
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
+import { useTranslation } from 'react-i18next';
 import { Button, Paper, Text, TextInput } from '@mantine/core';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 
 export default function JoinTeam() {
+  const { t } = useTranslation('auth');
   const router = useRouter();
   const brandName = useBrandDisplayName();
   const { err, token } = router.query;
 
   return (
     <div className="AuthPage">
-      <NextSeo title={`Join Team - ${brandName}`} />
+      <NextSeo title={t('joinTeam.browserTitle', { brandName })} />
       <div className="d-flex align-items-center justify-content-center vh-100 p-2">
         <div>
           <div className="text-center mb-4">
-            <h2 className="me-2 text-center">Join Team</h2>
+            <h2 className="me-2 text-center">{t('joinTeam.title')}</h2>
           </div>
           <Paper p="xl" withBorder>
             <div className="text-center">
@@ -28,7 +30,7 @@ export default function JoinTeam() {
                   id="password"
                   name="password"
                   type="password"
-                  label="Password"
+                  label={t('common.password')}
                   styles={{
                     label: {
                       fontSize: '0.875rem',
@@ -40,8 +42,8 @@ export default function JoinTeam() {
                 {err != null && (
                   <Text c="red" mt="sm" data-test-id="auth-error-msg">
                     {err === 'invalid'
-                      ? 'Password is invalid'
-                      : 'Unknown error occurred, please try again later.'}
+                      ? t('errors.invalidPassword')
+                      : t('errors.unknown')}
                   </Text>
                 )}
                 <div className="text-center mt-4">
@@ -51,7 +53,7 @@ export default function JoinTeam() {
                     type="submit"
                     data-test-id="submit"
                   >
-                    Setup a password
+                    {t('joinTeam.setupPassword')}
                   </Button>
                 </div>
               </form>

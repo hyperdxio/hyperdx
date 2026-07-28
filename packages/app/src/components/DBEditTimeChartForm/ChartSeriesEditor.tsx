@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   DateRange,
   isChartPaletteToken,
@@ -105,6 +106,7 @@ export function ChartSeriesEditor({
   errors,
   clearErrors,
 }: ChartSeriesEditorProps) {
+  const { t } = useTranslation('charts');
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
     control,
@@ -235,13 +237,13 @@ export function ChartSeriesEditor({
       <Divider
         label={
           <Group gap="xs">
-            <Text size="xxs">Alias</Text>
+            <Text size="xxs">{t('seriesEditor.alias')}</Text>
 
             <div style={{ width: 150 }}>
               <TextInputControlled
                 name={`${namePrefix}alias`}
                 control={control}
-                placeholder="Series alias"
+                placeholder={t('seriesEditor.aliasPlaceholder')}
                 onChange={() => onSubmit()}
                 size="xs"
                 data-testid="series-alias-input"
@@ -253,7 +255,7 @@ export function ChartSeriesEditor({
                 color="gray"
                 size="xxs"
                 onClick={() => onSwapSeries(index, index - 1)}
-                title="Move up"
+                title={t('seriesEditor.moveUp')}
               >
                 <IconArrowUp size={14} />
               </Button>
@@ -264,7 +266,7 @@ export function ChartSeriesEditor({
                 color="gray"
                 size="xxs"
                 onClick={() => onSwapSeries(index, index + 1)}
-                title="Move down"
+                title={t('seriesEditor.moveDown')}
               >
                 <IconArrowDown size={14} />
               </Button>
@@ -275,7 +277,7 @@ export function ChartSeriesEditor({
                 color="gray"
                 size="xxs"
                 onClick={() => onDuplicateSeries(index)}
-                title="Duplicate series"
+                title={t('seriesEditor.duplicateSeries')}
                 data-testid="series-duplicate-button"
               >
                 <IconCopy size={14} />
@@ -289,28 +291,28 @@ export function ChartSeriesEditor({
                 onClick={() => onRemoveSeries(index)}
               >
                 <IconTrash size={14} className="me-2" />
-                Remove Series
+                {t('seriesEditor.removeSeries')}
               </Button>
             )}
-            <Tooltip label="Edit series display format">
+            <Tooltip label={t('seriesEditor.editDisplayFormat')}>
               <ActionIcon
                 variant="subtle"
                 color="gray"
                 size="xs"
                 onClick={openSeriesNumberFormat}
-                aria-label="Edit series display format"
+                aria-label={t('seriesEditor.editDisplayFormat')}
               >
                 {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
               </ActionIcon>
             </Tooltip>
             {showColor && (
-              <Tooltip label="Edit column color">
+              <Tooltip label={t('seriesColor.editColumnColor')}>
                 <ActionIcon
                   variant="subtle"
                   color="gray"
                   size="xs"
                   onClick={openSeriesColor}
-                  aria-label="Edit column color"
+                  aria-label={t('seriesColor.editColumnColor')}
                   data-testid="series-color-button"
                 >
                   <IconPalette
@@ -369,7 +371,7 @@ export function ChartSeriesEditor({
                 <CheckBoxControlled
                   control={control}
                   name={`${namePrefix}isDelta`}
-                  label="Delta"
+                  label={t('seriesEditor.delta')}
                   size="xs"
                   className="mt-2"
                 />
@@ -388,7 +390,7 @@ export function ChartSeriesEditor({
               tableConnection={tableConnection}
               control={control}
               name={`${namePrefix}valueExpression`}
-              placeholder="SQL Column"
+              placeholder={t('seriesEditor.sqlColumnPlaceholder')}
               onSubmit={onSubmit}
             />
           </div>
@@ -403,7 +405,7 @@ export function ChartSeriesEditor({
           >
             {showWhere && (
               <>
-                <Text size="sm">Where</Text>
+                <Text size="sm">{t('seriesEditor.where')}</Text>
                 <div
                   style={{
                     gridColumn:
@@ -424,7 +426,7 @@ export function ChartSeriesEditor({
             {showGroupBy && (
               <>
                 <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
+                  {t('seriesEditor.groupBy')}
                 </Text>
                 <div
                   style={{
@@ -439,7 +441,7 @@ export function ChartSeriesEditor({
                     tableConnection={tableConnection}
                     control={control}
                     name={`groupBy`}
-                    placeholder="SQL Columns"
+                    placeholder={t('seriesEditor.sqlColumnsPlaceholder')}
                     disableKeywordAutocomplete
                     onSubmit={onSubmit}
                   />
@@ -447,14 +449,14 @@ export function ChartSeriesEditor({
                 {showHaving && (
                   <>
                     <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
+                      {t('seriesEditor.having')}
                     </Text>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
                         control={control}
                         name="having"
-                        placeholder="SQL HAVING clause (ex. count() > 100)"
+                        placeholder={t('seriesEditor.havingPlaceholder')}
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
                       />

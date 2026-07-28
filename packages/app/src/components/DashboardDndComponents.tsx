@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Box, Button, Center } from '@mantine/core';
@@ -17,6 +18,8 @@ export function EmptyContainerPlaceholder({
   isEmpty?: boolean;
   onAddTile?: () => void;
 }) {
+  const { t } = useTranslation('common');
+
   return (
     <Box
       data-testid={`container-placeholder-${containerId}`}
@@ -32,7 +35,7 @@ export function EmptyContainerPlaceholder({
             leftSection={<IconPlus size={16} />}
             onClick={onAddTile}
           >
-            Add
+            {t('actions.add')}
           </Button>
         </Center>
       )}

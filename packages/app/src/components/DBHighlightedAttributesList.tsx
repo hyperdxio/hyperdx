@@ -1,4 +1,5 @@
 import { useContext, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Flex } from '@mantine/core';
 
@@ -20,6 +21,7 @@ export function DBHighlightedAttributesList({
 }: {
   attributes: HighlightedAttribute[];
 }) {
+  const { t } = useTranslation('search');
   const [isExpanded, setIsExpanded] = useState(false);
 
   const {
@@ -72,7 +74,9 @@ export function DBHighlightedAttributesList({
       ))}
       {attributes.length > DEFAULT_ATTRIBUTES_TO_SHOW && (
         <Anchor size="xs" onClick={() => setIsExpanded(!isExpanded)}>
-          {isExpanded ? 'Show Less' : `Show ${hiddenAttributesCount} More...`}
+          {isExpanded
+            ? t('attributes.showLess')
+            : t('attributes.showMore', { count: hiddenAttributesCount })}
         </Anchor>
       )}
     </Flex>

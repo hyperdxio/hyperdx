@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Control, UseFormSetValue } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Flex } from '@mantine/core';
@@ -22,6 +23,7 @@ export function HeatmapSeriesEditor({
   onSubmit,
   onOpenDisplaySettings,
 }: HeatmapSeriesEditorProps) {
+  const { t } = useTranslation('charts');
   const connection = useMemo(() => tcFromSource(tableSource), [tableSource]);
 
   return (
@@ -43,7 +45,7 @@ export function HeatmapSeriesEditor({
           size="compact-sm"
           variant="secondary"
         >
-          Display Settings
+          {t('common.displaySettings')}
         </Button>
       </Flex>
     </Flex>

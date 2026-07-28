@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { sub } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -177,6 +178,7 @@ export const KubeTimeline = ({
   dateRange?: [Date, Date];
   anchorEvent?: AnchorEvent;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const startDate = React.useMemo(
     // eslint-disable-next-line no-restricted-syntax
     () => dateRange?.[0] ?? sub(new Date(), { days: 1 }),
@@ -280,7 +282,7 @@ export const KubeTimeline = ({
   if (isLoading) {
     return (
       <Text c="muted" ta="center">
-        Loading...
+        {t('kubernetes.events.loading')}
       </Text>
     );
   }
@@ -288,7 +290,7 @@ export const KubeTimeline = ({
   if (allPodEvents.length === 0) {
     return (
       <Text c="muted" ta="center">
-        No events
+        {t('kubernetes.events.empty')}
       </Text>
     );
   }
@@ -320,41 +322,43 @@ export const KubeTimeline = ({
 };
 
 export const FormatPodStatus = ({ status }: { status?: number }) => {
+  const { t } = useTranslation('infrastructure');
+
   switch (status) {
     case KubePhase.Pending:
       return (
         <Badge variant="light" color="yellow" fw="normal" tt="none" size="md">
-          Pending
+          {t('kubernetes.pods.phasePending')}
         </Badge>
       );
     case KubePhase.Running:
       return (
         <Badge variant="light" color="green" fw="normal" tt="none" size="md">
-          Running
+          {t('kubernetes.pods.phaseRunning')}
         </Badge>
       );
     case KubePhase.Succeeded:
       return (
         <Badge variant="light" color="indigo" fw="normal" tt="none" size="md">
-          Succeeded
+          {t('kubernetes.pods.phaseSucceeded')}
         </Badge>
       );
     case KubePhase.Failed:
       return (
         <Badge variant="light" color="red" fw="normal" tt="none" size="md">
-          Failed
+          {t('kubernetes.pods.phaseFailed')}
         </Badge>
       );
     case KubePhase.Unknown:
       return (
         <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
-          Unknown
+          {t('kubernetes.pods.phaseUnknown')}
         </Badge>
       );
     default:
       return (
         <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
-          Unknown
+          {t('kubernetes.pods.phaseUnknown')}
         </Badge>
       );
   }

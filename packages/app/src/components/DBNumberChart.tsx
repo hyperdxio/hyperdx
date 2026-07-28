@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useTranslation } from 'react-i18next';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -219,6 +220,7 @@ export default function DBNumberChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
+  const { t: tCharts } = useTranslation('charts');
   const queriedConfig = useMemo(
     () =>
       isBuilderChartConfig(config)
@@ -352,7 +354,7 @@ export default function DBNumberChart({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {tCharts('common.loadingData')}
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
@@ -360,7 +362,7 @@ export default function DBNumberChart({
         <ChartErrorState error={resultError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {tCharts('common.noData')}
         </div>
       ) : (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>

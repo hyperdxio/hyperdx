@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
@@ -60,6 +61,7 @@ const PodDetails = ({
   logSource: TLogSource;
   podName: string;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const { data: logsData } = useV2LogBatch<{
     'k8s.node.name': string;
     'k8s.pod.name': string;
@@ -111,15 +113,24 @@ const PodDetails = ({
   return (
     <Grid.Col span={12}>
       <div className="p-2 gap-2 d-flex flex-wrap">
-        <PodDetailsProperty label="Node" value={properties['k8s.node.name']} />
-        <PodDetailsProperty label="Pod" value={properties['k8s.pod.name']} />
-        <PodDetailsProperty label="Pod UID" value={properties['k8s.pod.uid']} />
         <PodDetailsProperty
-          label="Namespace"
+          label={t('kubernetes.details.node')}
+          value={properties['k8s.node.name']}
+        />
+        <PodDetailsProperty
+          label={t('kubernetes.details.pod')}
+          value={properties['k8s.pod.name']}
+        />
+        <PodDetailsProperty
+          label={t('kubernetes.details.podUid')}
+          value={properties['k8s.pod.uid']}
+        />
+        <PodDetailsProperty
+          label={t('kubernetes.details.namespace')}
           value={properties['k8s.namespace.name']}
         />
         <PodDetailsProperty
-          label="Deployment"
+          label={t('kubernetes.details.deployment')}
           value={properties['k8s.deployment.name']}
         />
       </div>
@@ -136,6 +147,7 @@ function PodLogs({
   logSource: TLogSource;
   where: string;
 }) {
+  const { t } = useTranslation('infrastructure');
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
   const _where = where + (resultType === 'error' ? ' Severity:err' : '');
@@ -183,7 +195,7 @@ function PodLogs({
     <Card p="md">
       <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
-          Latest Pod Logs & Spans
+          {t('kubernetes.details.podLogs')}
           <Flex gap="xs" align="center">
             <SegmentedControl
               size="xs"
@@ -194,8 +206,11 @@ function PodLogs({
                 }
               }}
               data={[
-                { label: 'All', value: 'all' },
-                { label: 'Errors', value: 'error' },
+                { label: t('kubernetes.details.resultsAll'), value: 'all' },
+                {
+                  label: t('kubernetes.details.resultsErrors'),
+                  value: 'error',
+                },
               ]}
             />
           </Flex>
@@ -220,6 +235,7 @@ export default function PodDetailsSidePanel({
   logSource: TLogSource;
   metricSource: TMetricSource;
 }) {
+  const { t } = useTranslation('infrastructure');
   const [podName, setPodName] = useQueryState(
     'podName',
     parseAsString.withDefault(''),
@@ -363,7 +379,7 @@ export default function PodDetailsSidePanel({
                   <Card p="md" data-testid="pod-details-cpu-usage-chart">
                     <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                       <DBTimeChart
-                        title="CPU Usage by Pod"
+                        title={t('kubernetes.charts.cpuUsageByPod')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -395,7 +411,7 @@ export default function PodDetailsSidePanel({
                   <Card p="md" data-testid="pod-details-memory-usage-chart">
                     <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                       <DBTimeChart
-                        title="Memory Usage"
+                        title={t('kubernetes.charts.memoryUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -426,7 +442,7 @@ export default function PodDetailsSidePanel({
                 <Grid.Col span={12}>
                   <Card p="md">
                     <Card.Section p="md" py="xs">
-                      Latest Pod Events
+                      {t('kubernetes.events.podTitle')}
                     </Card.Section>
                     <Card.Section>
                       <ScrollArea

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Button, Code, CopyButton, Group, Stack, Text } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 
@@ -12,6 +13,8 @@ interface CopySnippetProps {
  * `<CopyButton>`.
  */
 export function CopySnippet({ label, snippet }: CopySnippetProps) {
+  const { t: tCommon } = useTranslation('common');
+
   return (
     <Stack gap="xs">
       <Text size="sm" fw={500}>
@@ -39,7 +42,7 @@ export function CopySnippet({ label, snippet }: CopySnippetProps) {
                 copied ? <IconCheck size={14} /> : <IconCopy size={14} />
               }
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? tCommon('actions.copied') : tCommon('actions.copy')}
             </Button>
           )}
         </CopyButton>

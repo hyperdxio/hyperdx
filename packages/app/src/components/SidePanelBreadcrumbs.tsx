@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -50,6 +51,7 @@ function SidePanelBreadcrumbs({
   items: BreadcrumbItem[];
   onBack: () => void;
 }) {
+  const { t } = useTranslation('search');
   const breadcrumbElements = useMemo(() => {
     return items.map((item, i) => {
       const isLast = i === items.length - 1;
@@ -119,12 +121,12 @@ function SidePanelBreadcrumbs({
       wrap="nowrap"
       style={{ minWidth: 0, flex: 1 }}
     >
-      <Tooltip label="Back" position="bottom">
+      <Tooltip label={t('actions.back')} position="bottom">
         <ActionIcon
           variant="subtle"
           size="sm"
           onClick={onBack}
-          aria-label="Back"
+          aria-label={t('actions.back')}
         >
           <IconArrowLeft size={14} />
         </ActionIcon>

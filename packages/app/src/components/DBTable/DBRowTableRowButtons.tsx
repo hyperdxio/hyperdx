@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { notifications } from '@mantine/notifications';
 import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
@@ -27,6 +28,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   isWrapped,
   onToggleWrap,
 }) => {
+  const { t } = useTranslation('search');
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
 
@@ -102,7 +104,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         <DBRowTableIconButton
           onClick={onToggleWrap}
           variant="copy"
-          title="Wrap All Lines"
+          title={t('row.wrapLines')}
         >
           <IconTextWrap size={16} />
         </DBRowTableIconButton>
@@ -111,9 +113,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         onClick={copyRowData}
         variant="copy"
         isActive={isCopied}
-        title={
-          isCopied ? 'Copied entire row as JSON!' : 'Copy entire row as JSON'
-        }
+        title={isCopied ? t('row.copiedJson') : t('row.copyJson')}
       >
         <IconCopy size={16} />
       </DBRowTableIconButton>
@@ -121,11 +121,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         onClick={copyRowUrl}
         variant="copy"
         isActive={isUrlCopied}
-        title={
-          isUrlCopied
-            ? 'Copied shareable link!'
-            : 'Copy shareable link to this specific row'
-        }
+        title={isUrlCopied ? t('row.copiedLink') : t('row.copyLink')}
       >
         <IconLink size={16} />
       </DBRowTableIconButton>

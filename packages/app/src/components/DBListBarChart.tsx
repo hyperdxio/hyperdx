@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
+import { useTranslation } from 'react-i18next';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
 import { Box, Flex, HoverCard, Text } from '@mantine/core';
@@ -201,6 +202,7 @@ export default function DBListBarChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
+  const { t: tCharts } = useTranslation('charts');
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -273,13 +275,13 @@ export default function DBListBarChart({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {tCharts('common.loadingData')}
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {tCharts('common.noData')}
         </div>
       ) : (
         <ListBar

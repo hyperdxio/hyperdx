@@ -1,4 +1,3 @@
-import { JSX } from 'react';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
@@ -208,10 +207,15 @@ export type SourceConfigPairingInput = {
   implicitColumnExpression?: string | null;
 };
 
+/**
+ * Which pairing rule fired. The rendering surface maps this to catalog copy so
+ * this module stays language-neutral.
+ */
+type PairingWarningKind = 'bodyWithoutImplicit' | 'implicitWithoutBody';
+
 export type PairingWarning = {
   field: SourceFieldKind;
-  message: JSX.Element;
-  recommendation: string;
+  kind: PairingWarningKind;
   suggestedFix: { field: SourceFieldKind; value: string };
 };
 
@@ -230,27 +234,13 @@ export function getSourceConfigPairingWarnings(
   if (body && !implicit) {
     warnings.push({
       field: 'implicitColumnExpression',
-      message: (
-        <>
-          <strong>Body Expression</strong> is set but{' '}
-          <strong>Implicit Column Expression</strong> is empty. Bare-text Lucene
-          search will fall back to <strong>Body Expression</strong>.
-        </>
-      ),
-      recommendation: 'Body Expression value',
+      kind: 'bodyWithoutImplicit',
       suggestedFix: { field: 'implicitColumnExpression', value: body },
     });
   } else if (implicit && !body) {
     warnings.push({
       field: 'bodyExpression',
-      message: (
-        <>
-          <strong>Implicit Column Expression</strong> is set but{' '}
-          <strong>Body Expression</strong> is empty. Row-panel body display will
-          fall back to <strong>Implicit Column Expression</strong>.
-        </>
-      ),
-      recommendation: 'Implicit Column Expression value',
+      kind: 'implicitWithoutBody',
       suggestedFix: { field: 'bodyExpression', value: implicit },
     });
   }

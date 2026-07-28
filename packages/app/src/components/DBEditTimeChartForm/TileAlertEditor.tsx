@@ -4,6 +4,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   AlertThresholdType,
   isRangeThresholdType,
@@ -62,6 +63,7 @@ export function TileAlertEditor({
   warning?: string;
   tooltip?: string;
 }) {
+  const { t } = useTranslation('charts');
   const [opened, { toggle }] = useDisclosure(true);
 
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
@@ -100,7 +102,7 @@ export function TileAlertEditor({
             />
             <Group gap={4} align="center">
               <Text size="sm" fw={500} mt={2}>
-                Alert
+                {t('alertEditor.alert')}
               </Text>
               {tooltip && (
                 <Tooltip label={tooltip} withArrow>
@@ -115,14 +117,14 @@ export function TileAlertEditor({
                     variant="light"
                     ml="xs"
                   >
-                    Invalid Query
+                    {t('alertEditor.invalidQuery')}
                   </Badge>
                 </Tooltip>
               )}
               {warning && (
                 <Tooltip label={warning} withArrow>
                   <Badge color="yellow" size="xs" variant="light" ml="xs">
-                    Warning
+                    {t('alertEditor.warning')}
                   </Badge>
                 </Tooltip>
               )}
@@ -132,7 +134,7 @@ export function TileAlertEditor({
         <Group gap="xs">
           {alertItem && <AlertHistoryCardList alert={alertItem} />}
           {alertItem && <AckAlert alert={alertItem} />}
-          <Tooltip label="Remove alert">
+          <Tooltip label={t('alertEditor.removeAlert')}>
             <ActionIcon
               variant="danger"
               color="red"
@@ -149,7 +151,7 @@ export function TileAlertEditor({
         <Box px="sm" pb="sm">
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
-              Trigger when the value
+              {t('alertEditor.triggerWhenValue')}
             </Text>
             <Controller
               control={control}
@@ -181,7 +183,7 @@ export function TileAlertEditor({
             {isRangeThresholdType(alertThresholdType as AlertThresholdType) && (
               <>
                 <Text size="sm" opacity={0.7}>
-                  and
+                  {t('alertEditor.and')}
                 </Text>
                 <Controller
                   control={control}
@@ -197,7 +199,7 @@ export function TileAlertEditor({
                 />
               </>
             )}
-            over
+            {t('alertEditor.over')}
             <Controller
               control={control}
               name="alert.interval"
@@ -210,7 +212,7 @@ export function TileAlertEditor({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              via
+              {t('alertEditor.via')}
             </Text>
             <Controller
               control={control}
@@ -226,7 +228,9 @@ export function TileAlertEditor({
           </Group>
           {alert?.createdBy && (
             <Text size="xs" opacity={0.6} mt="xs">
-              Created by {alert.createdBy.name || alert.createdBy.email}
+              {t('alertEditor.createdBy', {
+                name: alert.createdBy.name || alert.createdBy.email,
+              })}
             </Text>
           )}
           <AlertScheduleFields
@@ -245,7 +249,7 @@ export function TileAlertEditor({
             numConsecutiveWindows={alertnumConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="sm">
-            Send to
+            {t('alertEditor.sendTo')}
           </Text>
           <AlertChannelForm
             control={control}
@@ -265,8 +269,7 @@ export function TileAlertEditor({
               py="xs"
               mt="md"
             >
-              Note: Floating-point query results are not rounded during equality
-              comparison.
+              {t('alertEditor.floatingPointNote')}
             </Alert>
           )}
         </Box>

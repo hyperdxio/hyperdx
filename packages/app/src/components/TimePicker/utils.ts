@@ -75,8 +75,17 @@ export function parseTimeRangeInput(
 export const LIVE_TAIL_TIME_QUERY = 'Live Tail' as const;
 export const LIVE_TAIL_DURATION_MS = ms('15m');
 
+/**
+ * Preset time ranges.
+ *
+ * The first tuple element is the *query value*, not display copy: picking a
+ * preset writes it into the time input, persists it in the `tq` URL param, and
+ * it is parsed back by chrono, which only understands English. The presets
+ * therefore stay in English and carry their display label separately — see
+ * {@link RELATIVE_TIME_LABEL_KEYS}.
+ */
 export const RELATIVE_TIME_OPTIONS: (
-  | [label: string, duration: number, relativeSupport?: boolean]
+  | [query: string, duration: number, relativeSupport?: boolean]
   | 'divider'
 )[] = [
   // ['Last 15 seconds', '15s'],
@@ -99,6 +108,28 @@ export const RELATIVE_TIME_OPTIONS: (
   ['Last 14 days', ms('14d')],
   ['Last 30 days', ms('30d')],
 ];
+
+/**
+ * Catalog key suffix (under `common:timePicker.presets`) for each preset query
+ * value, so the menu can be localized without changing what gets queried.
+ */
+export const RELATIVE_TIME_LABEL_KEYS = {
+  [LIVE_TAIL_TIME_QUERY]: 'liveTail',
+  'Last 1 minute': 'last1Minute',
+  'Last 5 minutes': 'last5Minutes',
+  'Last 15 minutes': 'last15Minutes',
+  'Last 30 minutes': 'last30Minutes',
+  'Last 45 minutes': 'last45Minutes',
+  'Last 1 hour': 'last1Hour',
+  'Last 3 hours': 'last3Hours',
+  'Last 6 hours': 'last6Hours',
+  'Last 12 hours': 'last12Hours',
+  'Last 1 days': 'last1Day',
+  'Last 2 days': 'last2Days',
+  'Last 7 days': 'last7Days',
+  'Last 14 days': 'last14Days',
+  'Last 30 days': 'last30Days',
+} as const satisfies Record<string, string>;
 
 export function getRelativeTimeOptionLabel(value: number) {
   if (value === LIVE_TAIL_DURATION_MS) {

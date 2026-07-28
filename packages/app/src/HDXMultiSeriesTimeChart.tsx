@@ -10,6 +10,7 @@ import {
 import cx from 'classnames';
 import { add, isSameSecond, sub } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Area,
   AreaChart,
@@ -251,7 +252,9 @@ const HDXLineChartTooltip = withErrorBoundary(
     onError: console.error,
     fallback: (
       <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
-        An error occurred while rendering the tooltip.
+        <Trans ns="charts" i18nKey="timeChart.tooltipError">
+          An error occurred while rendering the tooltip.
+        </Trans>
       </div>
     ),
   },
@@ -270,6 +273,7 @@ function ExpandableLegendItem({
   isDisabled?: boolean;
   onToggle?: (isShiftKey: boolean) => void;
 }) {
+  const { t } = useTranslation('charts');
   const [_expanded, setExpanded] = useState(false);
   const isExpanded = _expanded || expanded;
 
@@ -292,8 +296,8 @@ function ExpandableLegendItem({
       }}
       title={
         isSelected
-          ? 'Click to show all (Shift+click to deselect)'
-          : 'Click to show only this (Shift+click for multi-select)'
+          ? t('timeChart.legendShowAll')
+          : t('timeChart.legendShowOnly')
       }
     >
       <div>
@@ -328,6 +332,7 @@ const LegendRenderer = memo<{
   selectedSeries?: Set<string>;
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
 }>(props => {
+  const { t } = useTranslation('charts');
   const { payload, lineDataMap, allLineData, selectedSeries, onToggleSeries } =
     props;
 
@@ -392,7 +397,7 @@ const LegendRenderer = memo<{
         <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
           <Popover.Target>
             <div className={cx(styles.legendItem, styles.legendMoreLink)}>
-              +{restItems.length} more
+              {t('timeChart.more', { count: restItems.length })}
             </div>
           </Popover.Target>
           <Popover.Dropdown p="xs">
@@ -676,6 +681,7 @@ export const MemoChart = memo(function MemoChart({
    **/
   fitYAxisToData?: boolean;
 }) {
+  const { t } = useTranslation('charts');
   const _id = useId();
   const id = _id.replace(/:/g, '');
 
@@ -1032,7 +1038,7 @@ export const MemoChart = memo(function MemoChart({
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       {onTimeRangeSelect != null && zoomOrigin != null ? (
-        <MantineTooltip label="Reset to the range before zooming in" withArrow>
+        <MantineTooltip label={t('timeChart.resetZoomTooltip')} withArrow>
           <Button
             variant="secondary"
             size="compact-xs"
@@ -1045,7 +1051,7 @@ export const MemoChart = memo(function MemoChart({
               zIndex: 2,
             }}
           >
-            Reset zoom
+            {t('timeChart.resetZoom')}
           </Button>
         </MantineTooltip>
       ) : null}
@@ -1327,7 +1333,7 @@ export const MemoChart = memo(function MemoChart({
               x={logReferenceTimestamp}
               stroke="#ff5d5b"
               strokeDasharray="3 3"
-              label="Event"
+              label={t('timeChart.eventLabel')}
             />
           ) : null}
         </ChartComponent>

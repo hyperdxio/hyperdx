@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Button,
@@ -28,6 +29,7 @@ export const Tags = React.memo(
     allowCreate?: boolean;
     children?: React.ReactNode;
   }) => {
+    const { t } = useTranslation('common');
     const {
       data: prefetchedOptionsData,
       isLoading,
@@ -106,11 +108,13 @@ export const Tags = React.memo(
           )}
         </Popover.Target>
         <Popover.Dropdown p={0}>
-          {isLoading && 'Loading'}
-          {isError && 'Error'}
+          {isLoading && t('states.loading')}
+          {isError && t('tags.error')}
           <Input
             size="xs"
-            placeholder={allowCreate ? 'Search or create tag' : 'Search tag'}
+            placeholder={
+              allowCreate ? t('tags.searchOrCreate') : t('tags.search')
+            }
             variant="filled"
             leftSection={<IconSearch size={16} />}
             autoFocus
@@ -131,11 +135,13 @@ export const Tags = React.memo(
             {filtered.length === 0 && (
               <div className="pt-3 px-4 fs-8 text-center">
                 {allowCreate ? (
-                  <>
-                    Type and press <span>Enter</span> to create new tag
-                  </>
+                  <Trans
+                    t={t}
+                    i18nKey="tags.createHint"
+                    components={{ key: <span /> }}
+                  />
                 ) : (
-                  'No tags found'
+                  t('tags.empty')
                 )}
               </div>
             )}
@@ -162,7 +168,7 @@ export const Tags = React.memo(
                           onChange([tag]);
                         }}
                       >
-                        Only
+                        {t('tags.only')}
                       </Button>
                     )}
                   </Group>
@@ -171,7 +177,9 @@ export const Tags = React.memo(
             </Checkbox.Group>
           </ScrollArea>
           <div className="p-2 border-top border-dark d-flex justify-content-between align-items-center">
-            <div className="ms-2 fs-8 ">{values.length || 'None'} selected</div>
+            <div className="ms-2 fs-8 ">
+              {t('tags.selected', { count: values.length })}
+            </div>
             {values.length >= 1 && (
               <Button
                 variant="secondary"
@@ -179,7 +187,7 @@ export const Tags = React.memo(
                 fw="normal"
                 onClick={handleClearAll}
               >
-                Clear all
+                {t('tags.clearAll')}
               </Button>
             )}
           </div>

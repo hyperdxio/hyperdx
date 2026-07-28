@@ -3,6 +3,7 @@ import produce from 'immer';
 import { arrayMove } from '@dnd-kit/sortable';
 
 import { Dashboard } from '@/dashboard';
+import i18n from '@/i18n';
 import { makeId } from '@/utils/tilePositioning';
 
 export type TabDeleteAction = 'delete' | 'move';
@@ -30,9 +31,9 @@ export default function useDashboardContainers({
         const tabId = makeId();
         draft.containers.push({
           id: containerId,
-          title: 'New Group',
+          title: i18n.t('dashboards:tabs.newGroup'),
           collapsed: false,
-          tabs: [{ id: tabId, title: 'New Group' }],
+          tabs: [{ id: tabId, title: i18n.t('dashboards:tabs.newGroup') }],
         });
       }),
     );
@@ -126,8 +127,14 @@ export default function useDashboardContainers({
             const tab1Id = makeId();
             const tab2Id = makeId();
             c.tabs = [
-              { id: tab1Id, title: 'Tab 1' },
-              { id: tab2Id, title: 'Tab 2' },
+              {
+                id: tab1Id,
+                title: i18n.t('dashboards:tabs.tabIndex', { index: 1 }),
+              },
+              {
+                id: tab2Id,
+                title: i18n.t('dashboards:tabs.tabIndex', { index: 2 }),
+              },
             ];
             for (const tile of draft.tiles) {
               if (tile.containerId === containerId) {
@@ -140,7 +147,9 @@ export default function useDashboardContainers({
             const newTabId = makeId();
             c.tabs.push({
               id: newTabId,
-              title: `Tab ${existingTabs.length + 1}`,
+              title: i18n.t('dashboards:tabs.tabIndex', {
+                index: existingTabs.length + 1,
+              }),
             });
             const firstTabId = existingTabs[0].id;
             for (const tile of draft.tiles) {

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Badge,
@@ -38,6 +39,8 @@ export function ListingCard({
   updatedAt?: string;
   updatedBy?: string;
 }) {
+  const { t } = useTranslation('dashboards');
+  const { t: tCommon } = useTranslation('common');
   return (
     <Card
       component={Link}
@@ -86,7 +89,7 @@ export function ListingCard({
                   onDelete();
                 }}
               >
-                Delete
+                {tCommon('actions.delete')}
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
@@ -98,13 +101,16 @@ export function ListingCard({
           label={
             <>
               <FormatTime value={updatedAt} format="short" />
-              {updatedBy ? ` by ${updatedBy}` : ''}
+              {updatedBy ? t('listing.updatedBy', { name: updatedBy }) : ''}
             </>
           }
         >
           <Text size="xs" c="dimmed" mt={2}>
-            Updated{' '}
-            {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
+            {t('listing.updated', {
+              time: formatDistanceToNow(new Date(updatedAt), {
+                addSuffix: true,
+              }),
+            })}
           </Text>
         </Tooltip>
       )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import dagre from '@dagrejs/dagre';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
@@ -112,6 +113,7 @@ function ServiceMapPresentation({
   focusedService,
   onFocusService,
 }: ServiceMapPresentationProps) {
+  const { t } = useTranslation('services');
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const { fitView } = useReactFlow();
@@ -241,8 +243,7 @@ function ServiceMapPresentation({
     return (
       <Center className="w-100 h-100">
         <Text size="sm" c="gray.5">
-          No services found. The Service Map shows links between services with
-          related Client- and Server-kind spans.
+          {t('map.noServices')}
         </Text>
       </Center>
     );
@@ -252,7 +253,7 @@ function ServiceMapPresentation({
     return (
       <Box>
         <Text my="sm" size="sm">
-          Error message:
+          {t('map.errorMessage')}
         </Text>
         <Code
           block
@@ -265,7 +266,7 @@ function ServiceMapPresentation({
         {error instanceof ClickHouseQueryError && (
           <Box mt="lg">
             <Text my="sm" size="sm">
-              Original query:
+              {t('map.originalQuery')}
             </Text>
             <Code
               block
@@ -352,6 +353,7 @@ export default function ServiceMap({
   serviceNames,
   onFocusService,
 }: ServiceMapProps) {
+  const { t } = useTranslation('services');
   const {
     isLoading,
     data: services,
@@ -369,12 +371,12 @@ export default function ServiceMap({
   useEffect(() => {
     if (error) {
       notifications.show({
-        title: 'Error loading service map',
+        title: t('map.loadError'),
         message: error.message,
         color: 'red',
       });
     }
-  }, [error]);
+  }, [error, t]);
 
   // A node's focus action scopes the filter to exactly one service, so the map
   // is "focused" on that service when it is the only one selected.

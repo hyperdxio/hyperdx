@@ -1,5 +1,6 @@
 // Easter egg: April Fools 2026 — shared presentational component for AI Summarize.
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Anchor,
   Button,
@@ -30,6 +31,7 @@ export default function AISummaryPanel({
   onDismiss: () => void;
   analyzingLabel?: string;
 }) {
+  const { t } = useTranslation('common');
   const [infoOpen, setInfoOpen] = useState(false);
 
   return (
@@ -42,7 +44,7 @@ export default function AISummaryPanel({
           onClick={onToggle}
           leftSection={<IconSparkles size={12} />}
         >
-          {isOpen ? 'Hide Summary' : 'Summarize'}
+          {isOpen ? t('aiSummary.hide') : t('aiSummary.summarize')}
         </Button>
         {result && isOpen && (
           <Button
@@ -51,7 +53,7 @@ export default function AISummaryPanel({
             color="gray"
             onClick={onRegenerate}
           >
-            Regenerate
+            {t('aiSummary.regenerate')}
           </Button>
         )}
       </Flex>
@@ -82,7 +84,7 @@ export default function AISummaryPanel({
                       marginRight: 4,
                     }}
                   />
-                  AI Summary
+                  {t('aiSummary.title')}
                   {result && (
                     <Text span c="dimmed" fw={400} ms={6}>
                       {THEME_LABELS[result.theme]}
@@ -110,9 +112,7 @@ export default function AISummaryPanel({
                   </Popover.Target>
                   <Popover.Dropdown>
                     <Text size="xs" mb={6}>
-                      Happy April Fools! No AI was used. This summary was
-                      generated locally from hand-written phrase templates. Your
-                      data never left the browser.
+                      {t('aiSummary.disclaimer')}
                     </Text>
                     <Anchor
                       size="xs"
@@ -123,7 +123,7 @@ export default function AISummaryPanel({
                       }}
                       style={{ cursor: 'pointer' }}
                     >
-                      Don&apos;t show again
+                      {t('aiSummary.dismiss')}
                     </Anchor>
                   </Popover.Dropdown>
                 </Popover>

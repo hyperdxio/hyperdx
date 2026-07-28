@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import {
   Field,
   TableConnectionChoice,
@@ -35,7 +36,7 @@ const luceneLanguageFormatter = new LuceneLanguageFormatter();
 export default function SearchInputV2({
   tableConnection,
   tableConnections,
-  placeholder = 'Search your events for anything...',
+  placeholder,
   size = 'sm',
   zIndex,
   language,
@@ -63,6 +64,7 @@ export default function SearchInputV2({
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {
+  const { t } = useTranslation('search');
   const {
     field: { onChange, value },
   } = useController(props);
@@ -132,19 +134,21 @@ export default function SearchInputV2({
       data-testid={dataTestId}
       aboveSuggestions={
         <>
-          <div className={styles.searchingHeader}>Searching for:</div>
+          <div className={styles.searchingHeader}>
+            {t('input.searchingFor')}
+          </div>
           <div className={styles.searchingDescription}>
             {parsedEnglishQuery === ''
-              ? 'Matching all events, enter a query to search.'
+              ? t('input.matchAll')
               : parsedEnglishQuery}
           </div>
         </>
       }
       belowSuggestions={
         <>
-          <div className={styles.examplesLabel}>Examples:</div>
+          <div className={styles.examplesLabel}>{t('input.examples')}</div>
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Full Text:</span>
+            <span className={styles.exampleLabel}>{t('input.fullText')}</span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -159,7 +163,7 @@ export default function SearchInputV2({
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Substring:</span>
+            <span className={styles.exampleLabel}>{t('input.substring')}</span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -174,7 +178,7 @@ export default function SearchInputV2({
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Exact:</span>
+            <span className={styles.exampleLabel}>{t('input.exact')}</span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -189,7 +193,7 @@ export default function SearchInputV2({
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Not:</span>
+            <span className={styles.exampleLabel}>{t('input.not')}</span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -204,7 +208,7 @@ export default function SearchInputV2({
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Existence:</span>
+            <span className={styles.exampleLabel}>{t('input.existence')}</span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -219,7 +223,7 @@ export default function SearchInputV2({
           </div>
 
           <div className={styles.exampleRow}>
-            <span className={styles.exampleLabel}>Boolean:</span>
+            <span className={styles.exampleLabel}>{t('input.boolean')}</span>
             <code
               className={styles.exampleCode}
               role="button"
@@ -241,7 +245,7 @@ export default function SearchInputV2({
           >
             <Group gap={5}>
               <IconBook size={14} />
-              <span>Docs</span>
+              <span>{t('input.docs')}</span>
             </Group>
           </a>
         </>

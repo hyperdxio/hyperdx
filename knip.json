@@ -4,7 +4,7 @@
     "packages/app": {
       "entry": ["pages/**/*.{ts,tsx}", "scripts/*.js", "tests/e2e/**/*.ts"],
       "project": ["src/**/*.{ts,tsx}", "pages/**/*.{ts,tsx}"],
-      "ignore": [".storybook/public/**"],
+      "ignore": [".storybook/public/**", "src/i18n/__type-tests__/**"],
       "ignoreDependencies": [
         "eslint-config-next",
         "@chromatic-com/storybook",

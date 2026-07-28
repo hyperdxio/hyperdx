@@ -6,6 +6,7 @@ import {
   Path,
   useController,
 } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
   type AlertChannelType,
@@ -30,6 +31,7 @@ const WebhookChannelForm = <T extends FieldValues>({
   control?: Control<T>;
   name?: string;
 }) => {
+  const { t } = useTranslation('alerts');
   const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
@@ -49,12 +51,12 @@ const WebhookChannelForm = <T extends FieldValues>({
     return [
       {
         value: '',
-        label: 'Select a Webhook',
+        label: t('webhooks.select'),
         disabled: true,
       },
       ...webhookOptions,
     ];
-  }, [webhooks]);
+  }, [t, webhooks]);
 
   const { field } = useController({
     control,
@@ -86,7 +88,7 @@ const WebhookChannelForm = <T extends FieldValues>({
               size="xs"
               flex={1}
               placeholder={
-                hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
+                hasWebhooks ? t('webhooks.select') : t('webhooks.none')
               }
               data={options}
               {...field}
@@ -101,7 +103,7 @@ const WebhookChannelForm = <T extends FieldValues>({
           color="gray"
           onClick={open}
         >
-          Add New Incoming Webhook
+          {t('webhooks.addIncoming')}
         </Button>
       </Group>
 
@@ -109,7 +111,7 @@ const WebhookChannelForm = <T extends FieldValues>({
         data-testid="alert-modal"
         opened={opened}
         onClose={close}
-        title="Add New Webhook"
+        title={t('webhooks.add')}
         centered
         zIndex={9999}
         size="lg"

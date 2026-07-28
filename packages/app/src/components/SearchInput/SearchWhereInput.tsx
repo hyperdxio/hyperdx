@@ -1,4 +1,5 @@
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import { ActionIcon, Box, Flex, Kbd, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -157,8 +158,8 @@ export default function SearchWhereInput({
   allowMultiline = true,
   sqlQueryHistoryType,
   luceneQueryHistoryType,
-  sqlPlaceholder = "SQL WHERE clause (ex. column = 'foo')",
-  lucenePlaceholder = 'Search your events w/ Lucene ex. column:foo',
+  sqlPlaceholder,
+  lucenePlaceholder,
   width = '100%',
   maxWidth = '100%',
   minWidth,
@@ -169,6 +170,10 @@ export default function SearchWhereInput({
   sourceId,
   parentRef,
 }: SearchWhereInputProps) {
+  const { t } = useTranslation('search');
+  const resolvedSqlPlaceholder = sqlPlaceholder ?? t('input.sqlPlaceholder');
+  const resolvedLucenePlaceholder =
+    lucenePlaceholder ?? t('input.lucenePlaceholder');
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
     useDisclosure(false);
 
@@ -214,11 +219,11 @@ export default function SearchWhereInput({
             language={language}
             onLanguageChange={handleLanguageChange}
           />
-          <Tooltip label="Syntax reference" withArrow position="top">
+          <Tooltip label={t('input.syntaxReference')} withArrow position="top">
             <ActionIcon
               variant="subtle"
               size="xs"
-              aria-label="Open syntax reference"
+              aria-label={t('input.openSyntaxReference')}
               onClick={openSyntaxRef}
               style={{ marginRight: 4 }}
             >
@@ -232,7 +237,7 @@ export default function SearchWhereInput({
               {...tc}
               control={control}
               name={name}
-              placeholder={sqlPlaceholder}
+              placeholder={resolvedSqlPlaceholder}
               onSubmit={onSubmit}
               label={showLabel ? labelText : undefined}
               queryHistoryType={sqlQueryHistoryType}
@@ -250,7 +255,7 @@ export default function SearchWhereInput({
               control={control}
               name={name}
               onSubmit={onSubmit}
-              placeholder={lucenePlaceholder}
+              placeholder={resolvedLucenePlaceholder}
               queryHistoryType={luceneQueryHistoryType}
               enableHotkey={enableHotkey}
               size={size}
@@ -263,7 +268,7 @@ export default function SearchWhereInput({
           {enableHotkey && (
             <Box
               className={styles.shortcutHint}
-              title="Press / or s to focus search"
+              title={t('input.focusHint')}
               aria-hidden
             >
               <Kbd size="xs">/</Kbd>

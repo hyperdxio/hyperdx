@@ -1,6 +1,7 @@
 import * as React from 'react';
 import cx from 'classnames';
 import { formatRelative } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import {
   AlertError,
   AlertErrorType,
@@ -44,6 +45,7 @@ function AlertHistoryCard({
   history: AlertHistory;
   alertUrl?: string;
 }) {
+  const { t } = useTranslation('alerts');
   const start = new Date(history.createdAt.toString());
 
   // eslint-disable-next-line no-restricted-syntax
@@ -76,10 +78,10 @@ function AlertHistoryCard({
   );
 
   const count = history.counts ?? 0;
-  const pending = history.state === AlertState.PENDING ? 'pending' : '';
-  const alert = `alert${count === 0 || count > 1 ? 's' : ''}`;
+  const pending =
+    history.state === AlertState.PENDING ? t('history.pending') : '';
   const time = formatRelative(start, today);
-  const label = `${count} ${pending} ${alert} ${time}`;
+  const label = t('history.tooltip', { count, pending, time });
 
   return (
     <Tooltip label={label} color="dark" withArrow>
@@ -94,14 +96,22 @@ function AlertHistoryCard({
   );
 }
 
-const ALERT_ERROR_TYPE_LABELS: Record<AlertErrorType, string> = {
-  [AlertErrorType.INVALID_ALERT]: 'Invalid Configuration',
-  [AlertErrorType.QUERY_ERROR]: 'Query Error',
-  [AlertErrorType.WEBHOOK_ERROR]: 'Webhook Error',
-  [AlertErrorType.UNKNOWN]: 'Unknown Error',
+const ALERT_ERROR_TYPE_KEYS = {
+  [AlertErrorType.INVALID_ALERT]: 'history.errorTypes.invalid',
+  [AlertErrorType.QUERY_ERROR]: 'history.errorTypes.query',
+  [AlertErrorType.WEBHOOK_ERROR]: 'history.errorTypes.webhook',
+  [AlertErrorType.UNKNOWN]: 'history.errorTypes.unknown',
+} as const;
+
+type AlertErrorTypeKey =
+  (typeof ALERT_ERROR_TYPE_KEYS)[keyof typeof ALERT_ERROR_TYPE_KEYS];
+
+const getAlertErrorTypeKey = (type: AlertErrorType): AlertErrorTypeKey => {
+  return ALERT_ERROR_TYPE_KEYS[type];
 };
 
 function AlertErrorsIndicator({ alert }: { alert: AlertsPageItem }) {
+  const { t } = useTranslation('alerts');
   const [opened, { open, close }] = useDisclosure(false);
 
   const { uniqueErrors, uniqueTypes } = React.useMemo(() => {
@@ -126,13 +136,13 @@ function AlertErrorsIndicator({ alert }: { alert: AlertsPageItem }) {
 
   const errorType =
     uniqueTypes.length === 1
-      ? ALERT_ERROR_TYPE_LABELS[uniqueTypes[0]]
-      : 'Multiple Errors';
+      ? t(getAlertErrorTypeKey(uniqueTypes[0]))
+      : t('history.errorTypes.multiple');
 
   return (
     <>
       <Tooltip
-        label={`${errorType} (Click for details)`}
+        label={t('history.details', { errorType })}
         multiline
         maw={400}
         withArrow
@@ -146,7 +156,7 @@ function AlertErrorsIndicator({ alert }: { alert: AlertsPageItem }) {
             color: 'var(--mantine-color-red-6)',
             cursor: 'pointer',
           }}
-          aria-label="View alert execution errors"
+          aria-label={t('history.viewErrors')}
         >
           <IconExclamationCircle size={18} />
         </UnstyledButton>
@@ -156,14 +166,16 @@ function AlertErrorsIndicator({ alert }: { alert: AlertsPageItem }) {
         opened={opened}
         onClose={close}
         size="lg"
-        title="Alert Execution Errors"
+        title={t('history.errorsTitle')}
         data-testid={`alert-error-modal-${alert._id}`}
       >
         <Stack gap="md">
           {uniqueErrors.map((error, idx) => (
             <Stack key={idx} gap={4}>
               <Text size="sm">
-                {ALERT_ERROR_TYPE_LABELS[error.type]} at{' '}
+                {t('history.errorAt', {
+                  errorType: t(getAlertErrorTypeKey(error.type)),
+                })}{' '}
                 <FormatTime value={error.timestamp} />
               </Text>
               <Code
@@ -190,6 +202,7 @@ export function AlertHistoryCardList({
   alert: AlertsPageItem;
   alertUrl?: string;
 }) {
+  const { t } = useTranslation('alerts');
   const { history } = alert;
   const items = React.useMemo(() => {
     if (history.length < HISTORY_ITEMS) {
@@ -211,7 +224,7 @@ export function AlertHistoryCardList({
       {items.length > 0 && (
         <div className={styles.historyCardWrapper}>
           {paddingItems.map((_, index) => (
-            <Tooltip label="No data" withArrow key={index}>
+            <Tooltip label={t('history.noData')} withArrow key={index}>
               <div className={styles.historyCard} />
             </Tooltip>
           ))}

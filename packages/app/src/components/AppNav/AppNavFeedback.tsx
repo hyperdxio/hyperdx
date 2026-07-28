@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useRouter } from 'next/router';
+import { useTranslation } from 'react-i18next';
 import HyperDX from '@hyperdx/browser';
 import { ActionIcon, Box, Button, Group, Text, Textarea } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
@@ -45,6 +46,7 @@ export const AppNavFeedback = () => (
 );
 
 const AppNavFeedbackInner = () => {
+  const { t } = useTranslation('navigation');
   const { isCollapsed } = React.useContext(AppNavContext);
   const [forceEnabled] = useLocalStorage<boolean>({
     key: FORCE_ENABLE_KEY,
@@ -121,7 +123,7 @@ const AppNavFeedbackInner = () => {
           px="lg"
           py={4}
         >
-          Thanks for your feedback!
+          {t('feedback.thanks')}
         </Text>
       ) : (
         <>
@@ -138,7 +140,7 @@ const AppNavFeedbackInner = () => {
                   variant={vote === 'up' ? 'secondary' : 'subtle'}
                   size="xs"
                   onClick={() => handleVote('up')}
-                  title="Thumbs up"
+                  title={t('feedback.thumbsUp')}
                 >
                   {vote === 'up' ? (
                     <IconThumbUpFilled size={14} />
@@ -152,7 +154,7 @@ const AppNavFeedbackInner = () => {
                 variant={vote === 'down' ? 'secondary' : 'subtle'}
                 size="xs"
                 onClick={() => handleVote('down')}
-                title="Thumbs down"
+                title={t('feedback.thumbsDown')}
                 mr={4}
               >
                 {vote === 'down' ? (
@@ -162,7 +164,7 @@ const AppNavFeedbackInner = () => {
                 )}
               </ActionIcon>
               <Text size="xs" c="dimmed" className={styles.feedbackLabel}>
-                Feedback?
+                {t('feedback.prompt')}
               </Text>
             </span>
             <Text
@@ -174,14 +176,14 @@ const AppNavFeedbackInner = () => {
               role="button"
               tabIndex={0}
             >
-              Hide
+              {t('feedback.hide')}
             </Text>
           </Group>
           {state === 'voted' && (
             <Box px="lg" pt={4} pb={2}>
               <Textarea
                 data-testid="feedback-comment"
-                placeholder="Tell us more (optional)"
+                placeholder={t('feedback.detailsPlaceholder')}
                 value={comment}
                 onChange={e => setComment(e.currentTarget.value)}
                 minRows={2}
@@ -198,7 +200,7 @@ const AppNavFeedbackInner = () => {
                 mt={6}
                 onClick={handleSubmit}
               >
-                Submit
+                {t('feedback.submit')}
               </Button>
             </Box>
           )}

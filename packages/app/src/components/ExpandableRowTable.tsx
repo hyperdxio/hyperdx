@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 
@@ -41,6 +42,7 @@ export const ExpandedLogRow = memo(
     measureElement?: (element: HTMLElement | null) => void;
     virtualIndex?: number;
   }) => {
+    const { t } = useTranslation('search');
     const openSidebar = useSidebarOpener();
 
     return (
@@ -63,8 +65,8 @@ export const ExpandedLogRow = memo(
                       styles.expandButton,
                     )}
                     onClick={() => openSidebar(rowId, source?.id)}
-                    title="Open in sidebar"
-                    aria-label="Open in sidebar"
+                    title={t('actions.openInSidebar')}
+                    aria-label={t('actions.openInSidebar')}
                     style={{
                       zIndex: 1,
                       fontSize: '12px',
@@ -133,6 +135,7 @@ const ExpandButton = memo(
     highlightedLineId?: string;
     toggleRowExpansion: (rowId: string) => void;
   }) => {
+    const { t } = useTranslation('search');
     return (
       <span className="d-flex align-items-center justify-content-center">
         <button
@@ -147,7 +150,11 @@ const ExpandButton = memo(
             toggleRowExpansion(rowId);
           }}
           aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
+          aria-label={
+            isExpanded
+              ? t('actions.collapseDetails')
+              : t('actions.expandDetails')
+          }
         >
           <IconChevronRight size={16} />
         </button>

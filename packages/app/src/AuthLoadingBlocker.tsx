@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 
 export default function AuthLoadingBlocker() {
+  const { t } = useTranslation('common');
   const brandName = useBrandDisplayName();
   const { data: meData } = api.useMe();
 
@@ -27,7 +29,7 @@ export default function AuthLoadingBlocker() {
           role="status"
           aria-live="polite"
         >
-          Loading {brandName}
+          {t('states.loading')} {brandName}
           <span style={{ width: 0 }} aria-hidden="true">
             {'.'.repeat(periods)}
           </span>

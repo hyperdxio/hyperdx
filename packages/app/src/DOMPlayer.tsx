@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import { Replayer } from 'rrweb';
 import { ActionIcon, CopyButton, Group, HoverCard } from '@mantine/core';
 import {
@@ -115,6 +116,7 @@ export default function DOMPlayer({
   playerFullWidth: boolean;
   getSessionSourceFieldExpression: FieldExpressionGenerator;
 }) {
+  const { t } = useTranslation('sessions');
   const debug = useDebugMode();
   const wrapper = useRef<HTMLDivElement>(null);
   const playerContainer = useRef<HTMLDivElement>(null);
@@ -494,7 +496,7 @@ export default function DOMPlayer({
               <URLHoverCard url={lastHref} />
               <ActionIcon
                 onClick={copy}
-                title="Copy URL"
+                title={t('player.copyUrl')}
                 variant="secondary"
                 size="sm"
               >
@@ -509,13 +511,10 @@ export default function DOMPlayer({
         {isLoading || isBuffering ? (
           <Group align="center" justify="center" gap="xs">
             <IconRefresh className="spin-animate" size={14} />
-            {isBuffering ? 'Buffering to time...' : 'Loading replay...'}
+            {isBuffering ? t('player.buffering') : t('player.loading')}
           </Group>
         ) : isReplayFullyLoaded && replayer.current == null ? (
-          <div className="text-center">
-            No replay available for this session, most likely due to this
-            session starting and ending in a background tab.
-          </div>
+          <div className="text-center">{t('player.unavailable')}</div>
         ) : null}
         <div
           ref={wrapper}

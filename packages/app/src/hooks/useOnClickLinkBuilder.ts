@@ -9,6 +9,7 @@ import { isSearchableSource, OnClick } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
 import { useDashboards } from '@/dashboard';
+import i18n from '@/i18n';
 import { useSources } from '@/source';
 
 /**
@@ -139,7 +140,7 @@ export function useOnClickLinkBuilder({
           notifications.show({
             id: errorMessage,
             color: 'red',
-            title: 'Link error',
+            title: i18n.t('charts:onClick.linkError'),
             message: errorMessage,
           });
         },

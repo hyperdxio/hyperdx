@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Anchor,
@@ -55,27 +56,28 @@ function getDashboardAlerts(tiles: Dashboard['tiles']) {
 
 const PRESET_DASHBOARDS = [
   {
-    name: 'Services',
+    nameKey: 'list.presets.services' as const,
     href: '/services',
-    description: 'Monitor HTTP endpoints, latency, and error rates',
+    descriptionKey: 'list.presets.servicesDescription' as const,
   },
   {
-    name: 'ClickHouse',
+    nameKey: 'list.presets.clickhouse' as const,
     href: '/clickhouse',
-    description: 'ClickHouse cluster health and query performance',
+    descriptionKey: 'list.presets.clickhouseDescription' as const,
   },
   ...(IS_K8S_DASHBOARD_ENABLED
     ? [
         {
-          name: 'Kubernetes',
+          nameKey: 'list.presets.kubernetes' as const,
           href: '/kubernetes',
-          description: 'Kubernetes cluster monitoring and pod health',
+          descriptionKey: 'list.presets.kubernetesDescription' as const,
         },
       ]
     : []),
 ];
 
 export default function DashboardsListPage() {
+  const { t } = useTranslation('dashboards');
   const brandName = useBrandDisplayName();
   const { data: dashboards, isLoading, isError } = useDashboards();
   const confirm = useConfirm();
@@ -134,45 +136,45 @@ export default function DashboardsListPage() {
 
   const handleCreate = useCallback(() => {
     createDashboard.mutate(
-      { name: 'My Dashboard', tiles: [], tags: [] },
+      { name: t('list.defaultName'), tiles: [], tags: [] },
       {
         onSuccess: data => {
           Router.push(`/dashboards/${data.id}`);
         },
         onError: () => {
           notifications.show({
-            message: 'Failed to create dashboard',
+            message: t('list.createFailed'),
             color: 'red',
           });
         },
       },
     );
-  }, [createDashboard]);
+  }, [createDashboard, t]);
 
   const handleDelete = useCallback(
     async (id: string) => {
       const confirmed = await confirm(
-        'Are you sure you want to delete this dashboard? This action cannot be undone.',
-        'Delete',
+        t('list.deleteConfirm'),
+        t('list.deleteAction'),
         { variant: 'danger' },
       );
       if (!confirmed) return;
       deleteDashboard.mutate(id, {
         onSuccess: () => {
           notifications.show({
-            message: 'Dashboard deleted',
+            message: t('list.deleted'),
             color: 'green',
           });
         },
         onError: () => {
           notifications.show({
-            message: 'Failed to delete dashboard',
+            message: t('list.deleteFailed'),
             color: 'red',
           });
         },
       });
     },
-    [confirm, deleteDashboard],
+    [confirm, deleteDashboard, t],
   );
 
   return (
@@ -181,9 +183,9 @@ export default function DashboardsListPage() {
       style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
     >
       <Head>
-        <title>Dashboards - {brandName}</title>
+        <title>{t('list.browserTitle', { brandName })}</title>
       </Head>
-      <PageHeader title="Dashboards" />
+      <PageHeader title={t('list.title')} />
       <Container
         maw={1200}
         py="lg"
@@ -192,23 +194,28 @@ export default function DashboardsListPage() {
         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
       >
         <Text fw={500} size="sm" c="dimmed" mb="sm">
-          Preset Dashboards
+          {t('list.preset')}
         </Text>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="sm">
           {PRESET_DASHBOARDS.map(p => (
-            <ListingCard key={p.href} {...p} />
+            <ListingCard
+              key={p.href}
+              name={t(p.nameKey)}
+              href={p.href}
+              description={t(p.descriptionKey)}
+            />
           ))}
         </SimpleGrid>
         <Text ta="right" mb="sm">
           <Anchor component={Link} href="/dashboards/templates" fz="sm">
-            Browse dashboard templates &rarr;
+            {t('list.browseTemplates')}
           </Anchor>
         </Text>
 
         {favoritedDashboards.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
-              Favorites
+              {t('list.favorites')}
             </Text>
             <SimpleGrid
               cols={{ base: 1, sm: 2, md: 3 }}
@@ -221,7 +228,7 @@ export default function DashboardsListPage() {
                   name={d.name}
                   href={`/dashboards/${d.id}`}
                   tags={d.tags}
-                  description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                  description={t('list.tileCount', { count: d.tiles.length })}
                   onDelete={() => handleDelete(d.id)}
                   statusIcon={
                     <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
@@ -237,13 +244,13 @@ export default function DashboardsListPage() {
         )}
 
         <Text fw={500} size="sm" c="dimmed" mb="sm">
-          Team Dashboards
+          {t('list.team')}
         </Text>
 
         <Flex justify="space-between" align="center" mb="lg" gap="sm">
           <Group gap="xs" style={{ flex: 1 }}>
             <TextInput
-              placeholder="Search by name"
+              placeholder={t('list.searchPlaceholder')}
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={e => setSearch(e.currentTarget.value)}
@@ -252,7 +259,7 @@ export default function DashboardsListPage() {
             />
             {allTags.length > 0 && (
               <Select
-                placeholder="Filter by tag"
+                placeholder={t('list.tagPlaceholder')}
                 data={allTags}
                 value={tagFilter}
                 onChange={v => setTagFilter(v)}
@@ -268,7 +275,7 @@ export default function DashboardsListPage() {
                 variant={viewMode === 'grid' ? 'primary' : 'secondary'}
                 size="input-sm"
                 onClick={() => setViewMode('grid')}
-                aria-label="Grid view"
+                aria-label={t('list.gridView')}
               >
                 <IconLayoutGrid size={16} />
               </ActionIcon>
@@ -276,7 +283,7 @@ export default function DashboardsListPage() {
                 variant={viewMode === 'list' ? 'primary' : 'secondary'}
                 size="input-sm"
                 onClick={() => setViewMode('list')}
-                aria-label="List view"
+                aria-label={t('list.listView')}
               >
                 <IconList size={16} />
               </ActionIcon>
@@ -288,7 +295,7 @@ export default function DashboardsListPage() {
               leftSection={<IconUpload size={16} />}
               data-testid="import-dashboard-button"
             >
-              Import
+              {t('list.import')}
             </Button>
             <Menu position="bottom-end" withinPortal>
               <Menu.Target>
@@ -299,7 +306,7 @@ export default function DashboardsListPage() {
                   loading={createDashboard.isPending}
                   data-testid="new-dashboard-button"
                 >
-                  New Dashboard
+                  {t('list.newDashboard')}
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
@@ -308,9 +315,9 @@ export default function DashboardsListPage() {
                   onClick={handleCreate}
                   data-testid="create-dashboard-button"
                 >
-                  Saved Dashboard
+                  {t('list.savedDashboard')}
                   <Text size="xs" c="dimmed">
-                    Persisted for your team
+                    {t('list.savedDashboardDescription')}
                   </Text>
                 </Menu.Item>
                 <Menu.Item
@@ -319,9 +326,9 @@ export default function DashboardsListPage() {
                   leftSection={<IconPlus size={14} />}
                   data-testid="temp-dashboard-button"
                 >
-                  Temporary Dashboard
+                  {t('list.temporaryDashboard')}
                   <Text size="xs" c="dimmed">
-                    Lives in your browser only
+                    {t('list.temporaryDashboardDescription')}
                   </Text>
                 </Menu.Item>
               </Menu.Dropdown>
@@ -331,11 +338,11 @@ export default function DashboardsListPage() {
 
         {isLoading ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
-            Loading dashboards...
+            {t('list.loading')}
           </Text>
         ) : isError ? (
           <Text size="sm" c="red" ta="center" py="xl">
-            Failed to load dashboards. Please try refreshing the page.
+            {t('list.loadFailed')}
           </Text>
         ) : filteredDashboards.length === 0 ? (
           <Flex
@@ -346,9 +353,7 @@ export default function DashboardsListPage() {
             <EmptyState
               icon={<IconLayoutGrid size={32} />}
               title={
-                search || tagFilter
-                  ? 'No matching dashboards yet'
-                  : 'No dashboards yet'
+                search || tagFilter ? t('list.emptyFiltered') : t('list.empty')
               }
             >
               <Group>
@@ -359,7 +364,7 @@ export default function DashboardsListPage() {
                   leftSection={<IconUpload size={16} />}
                   data-testid="empty-import-dashboard-button"
                 >
-                  Import
+                  {t('list.import')}
                 </Button>
                 <Button
                   variant="primary"
@@ -368,7 +373,7 @@ export default function DashboardsListPage() {
                   loading={createDashboard.isPending}
                   data-testid="empty-create-dashboard-button"
                 >
-                  New Dashboard
+                  {t('list.newDashboard')}
                 </Button>
               </Group>
             </EmptyState>
@@ -378,10 +383,10 @@ export default function DashboardsListPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={40} />
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th>Created By</Table.Th>
-                <Table.Th>Last Updated</Table.Th>
+                <Table.Th>{t('list.columns.name')}</Table.Th>
+                <Table.Th>{t('list.columns.tags')}</Table.Th>
+                <Table.Th>{t('list.columns.createdBy')}</Table.Th>
+                <Table.Th>{t('list.columns.lastUpdated')}</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>
@@ -425,7 +430,9 @@ export default function DashboardsListPage() {
                       name={d.name}
                       href={`/dashboards/${d.id}`}
                       tags={d.tags}
-                      description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                      description={t('list.tileCount', {
+                        count: d.tiles.length,
+                      })}
                       onDelete={() => handleDelete(d.id)}
                       statusIcon={
                         <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />

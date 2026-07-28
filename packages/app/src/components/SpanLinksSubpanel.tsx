@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useTranslation } from 'react-i18next';
 import { Anchor, Button, Flex, Stack, Tooltip } from '@mantine/core';
 import {
   IconArrowUpRight,
@@ -42,6 +43,7 @@ function SpanLinkRow({
   link: SpanLinkData;
   onOpenTrace?: (link: SpanLinkData) => void;
 }) {
+  const { t } = useTranslation('search');
   const attributeEntries = Object.entries(link.Attributes ?? {});
   const hasTraceState =
     typeof link.TraceState === 'string' && link.TraceState.length > 0;
@@ -56,8 +58,12 @@ function SpanLinkRow({
         multiline
         label={
           <div className="font-monospace" style={{ fontSize: 11 }}>
-            <div style={{ wordBreak: 'break-all' }}>Trace: {link.TraceId}</div>
-            <div style={{ wordBreak: 'break-all' }}>Span: {link.SpanId}</div>
+            <div style={{ wordBreak: 'break-all' }}>
+              {t('spanLinks.trace')} {link.TraceId}
+            </div>
+            <div style={{ wordBreak: 'break-all' }}>
+              {t('spanLinks.span')} {link.SpanId}
+            </div>
           </div>
         }
       >
@@ -71,7 +77,7 @@ function SpanLinkRow({
           className="d-inline-flex align-items-center"
         >
           <IconArrowUpRight size={14} className="me-1" />
-          Open trace
+          {t('spanLinks.openTrace')}
         </Anchor>
       </Tooltip>
 
@@ -109,6 +115,7 @@ export const SpanLinksSubpanel = ({
   spanLinks?: Record<string, unknown>[] | null;
   onOpenTrace?: (link: SpanLinkData) => void;
 }) => {
+  const { t } = useTranslation('search');
   const links = useMemo(() => getValidSpanLinks(spanLinks), [spanLinks]);
 
   const { handleToggleMoreRows, hiddenRowsCount, visibleRows, isExpanded } =
@@ -120,7 +127,7 @@ export const SpanLinksSubpanel = ({
   if (links.length === 0) {
     return (
       <div className="p-3 text-muted fs-7" data-testid="span-links-empty">
-        No span links available for this trace
+        {t('spanLinks.empty')}
       </div>
     );
   }
@@ -134,7 +141,7 @@ export const SpanLinksSubpanel = ({
           }}
           fallbackRender={() => (
             <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering span links
+              {t('spanLinks.renderError')}
             </div>
           )}
         >
@@ -163,12 +170,13 @@ export const SpanLinksSubpanel = ({
           >
             {isExpanded ? (
               <>
-                <IconChevronUp size={14} className="me-2" /> Hide links
+                <IconChevronUp size={14} className="me-2" />{' '}
+                {t('spanLinks.hide')}
               </>
             ) : (
               <>
                 <IconChevronDown size={14} className="me-2" />
-                Show {hiddenRowsCount} more links
+                {t('spanLinks.showMore', { count: hiddenRowsCount })}
               </>
             )}
           </Button>

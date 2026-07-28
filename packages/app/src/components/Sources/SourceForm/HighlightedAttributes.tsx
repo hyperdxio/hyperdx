@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFieldArray, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, Button, Flex, Grid, Text, Tooltip } from '@mantine/core';
 import {
   IconCheck,
@@ -39,6 +40,7 @@ function HighlightedAttributeRow({
   connectionId,
   removeHighlightedAttribute,
 }: HighlightedAttributeRowProps) {
+  const { t } = useTranslation('sources');
   const expressionInput = useWatch({
     control,
     name: `${name}.${index}.sqlExpression`,
@@ -88,10 +90,10 @@ function HighlightedAttributeRow({
           <SQLInlineEditorControlled
             control={control}
             name={`${name}.${index}.alias`}
-            placeholder="Optional Alias"
+            placeholder={t('fields.aliasPlaceholder')}
             disableKeywordAutocomplete
           />
-          <Tooltip label="Validate expression">
+          <Tooltip label={t('fields.validateExpression')}>
             <ActionIcon
               size="xs"
               variant="subtle"
@@ -118,12 +120,12 @@ function HighlightedAttributeRow({
         <Grid.Col span={5} pe={0} pt={0}>
           {isValid && (
             <Text c="green" size="xs">
-              Expression is valid.
+              {t('fields.expressionValid')}
             </Text>
           )}
           {isInvalid && (
             <ErrorCollapse
-              summary="Expression is invalid"
+              summary={t('fields.expressionInvalid')}
               details={error?.message}
             />
           )}
@@ -134,15 +136,13 @@ function HighlightedAttributeRow({
         <InputControlled
           control={control}
           name={`${name}.${index}.luceneExpression`}
-          placeholder="ResourceAttributes.http.host (Optional) "
+          placeholder={t('fields.lucenePlaceholder')}
         />
       </Grid.Col>
       <Grid.Col span={1} pe={0}>
         <Text me="sm" mt={6}>
           <Tooltip
-            label={
-              'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
-            }
+            label={t('fields.luceneHelp')}
             color="dark"
             c="white"
             multiline
@@ -168,6 +168,7 @@ export function HighlightedAttributeExpressionsFormRow({
   label: string;
   helpText?: string;
 }) {
+  const { t } = useTranslation('sources');
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -221,7 +222,7 @@ export function HighlightedAttributeExpressionsFormRow({
         }}
       >
         <IconCirclePlus size={14} className="me-2" />
-        Add expression
+        {t('fields.addExpression')}
       </Button>
     </FormRow>
   );

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { ComboboxChevron, Flex, Select } from '@mantine/core';
 import { IconTable } from '@tabler/icons-react';
 
@@ -29,6 +30,7 @@ function DBTableSelect({
   name?: string;
   size?: string;
 }) {
+  const { t } = useTranslation('charts');
   const { data: tables, isLoading: isTablesLoading } = useTablesDirect(
     { database: database ?? '', connectionId: connectionId ?? '' },
     {
@@ -54,7 +56,7 @@ function DBTableSelect({
     <Flex align="center" gap={4}>
       <Select
         searchable
-        placeholder="Table"
+        placeholder={t('tableSelect.placeholder')}
         leftSection={<IconTable size={16} />}
         rightSection={<ComboboxChevron />}
         maxDropdownHeight={280}

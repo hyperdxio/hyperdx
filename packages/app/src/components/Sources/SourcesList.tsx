@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { useTranslation } from 'react-i18next';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -59,6 +60,8 @@ export function SourcesList({
   variant = 'compact',
   showEmptyState = true,
 }: SourcesListProps) {
+  const { t } = useTranslation('sources');
+  const { t: tCommon } = useTranslation('common');
   const {
     data: connections,
     isLoading: isLoadingConnections,
@@ -140,7 +143,7 @@ export function SourcesList({
         <Flex justify="center" align="center" py="xl">
           <Loader size="sm" />
           <Text size="sm" c="dimmed" ml="sm">
-            Loading sources...
+            {t('list.loading')}
           </Text>
         </Flex>
       </Wrapper>
@@ -152,14 +155,12 @@ export function SourcesList({
       <Wrapper {...wrapperProps}>
         <Alert
           icon={<IconAlertCircle size={16} />}
-          title="Failed to load sources"
+          title={t('list.errorTitle')}
           color="red"
           variant="light"
         >
           <Text size="sm" mb="sm">
-            {error instanceof Error
-              ? error.message
-              : 'An error occurred while loading data sources.'}
+            {error instanceof Error ? error.message : t('list.errorMessage')}
           </Text>
           <Button
             size="xs"
@@ -167,7 +168,7 @@ export function SourcesList({
             leftSection={<IconRefresh size={14} />}
             onClick={handleRetry}
           >
-            Retry
+            {tCommon('actions.retry')}
           </Button>
         </Alert>
       </Wrapper>
@@ -183,10 +184,10 @@ export function SourcesList({
           <Flex direction="column" align="center" py="xl" gap="sm">
             <IconStack size={32} color="var(--color-text-muted)" />
             <Title size="sm" ta="center" c="var(--color-text-muted)">
-              No data sources configured yet.
+              {t('list.emptyTitle')}
             </Title>
             <Text size="xs" ta="center" c="var(--color-text-muted)">
-              Add a source to start querying your data.
+              {t('list.emptyDescription')}
             </Text>
           </Flex>
         )}
@@ -207,7 +208,7 @@ export function SourcesList({
                   </Text>
                   {s.disabled && (
                     <Badge size="xs" variant="light" color="gray">
-                      Disabled
+                      {t('list.disabled')}
                     </Badge>
                   )}
                 </Group>
@@ -288,7 +289,7 @@ export function SourcesList({
                 onAddSource?.();
               }}
             >
-              Add source
+              {t('list.add')}
             </Button>
           </Flex>
         )}

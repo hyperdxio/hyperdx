@@ -6,6 +6,7 @@ import {
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
+import i18n from '@/i18n';
 
 import useDashboardFilters from './useDashboardFilters';
 
@@ -35,14 +36,14 @@ export default function usePresetDashboardFilters({
   const onSuccess = useCallback(() => {
     refetch();
     notifications.show({
-      message: 'Filters updated',
+      message: i18n.t('dashboard:filters.updated'),
       color: 'green',
     });
   }, [refetch]);
 
   const onError = useCallback(() => {
     notifications.show({
-      message: 'Error updating filters',
+      message: i18n.t('dashboard:filters.updateError'),
       color: 'red',
     });
   }, []);

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   DisplayType,
   isLogSource,
@@ -24,6 +25,7 @@ function ErrorsTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
+  const { t } = useTranslation('services');
   const { data: source } = useSource({
     id: appliedConfig.source,
     kinds: [SourceKind.Trace],
@@ -36,7 +38,7 @@ function ErrorsTab({
         <ChartBox style={{ height: 350 }}>
           {source && expressions && (
             <DBTimeChart
-              title="Error Events per Service"
+              title={t('errors.eventsPerService')}
               sourceId={source.id}
               config={{
                 source: source.id,

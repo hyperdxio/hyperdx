@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Group,
@@ -111,6 +112,7 @@ export const TableSearchInput = ({
   onVisibilityChange,
   containerRef,
 }: TableSearchInputProps) => {
+  const { t } = useTranslation('search');
   const [internalIsVisible, setInternalIsVisible] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -197,18 +199,18 @@ export const TableSearchInput = ({
       miw={400}
       maw={500}
       role="search"
-      aria-label="Table search"
+      aria-label={t('table.search')}
     >
       <Group gap="xs" align="center" wrap="nowrap">
         <TextInput
           ref={searchInputRef}
-          placeholder="Find in table..."
+          placeholder={t('table.findPlaceholder')}
           value={searchQuery}
           onChange={e => onSearchChange(e.target.value)}
           onKeyDown={handleSearchKeyDown}
           size="xs"
           style={{ flex: 1, minWidth: 0 }}
-          aria-label="Search table contents"
+          aria-label={t('table.searchContents')}
           aria-describedby={
             matchIndices.length > 0 ? 'search-match-count' : undefined
           }
@@ -218,8 +220,8 @@ export const TableSearchInput = ({
                 onClick={() => onSearchChange('')}
                 display="flex"
                 style={{ alignItems: 'center' }}
-                title="Clear search"
-                aria-label="Clear search"
+                title={t('table.clearSearch')}
+                aria-label={t('table.clearSearch')}
               >
                 <IconX size={14} />
               </UnstyledButton>
@@ -235,15 +237,18 @@ export const TableSearchInput = ({
               style={{ whiteSpace: 'nowrap' }}
               aria-live="polite"
             >
-              {currentMatchIndex + 1} of {matchIndices.length}
+              {t('table.matchCount', {
+                current: currentMatchIndex + 1,
+                total: matchIndices.length,
+              })}
             </Text>
             <Group gap={4}>
               <UnstyledButton
                 onClick={onPreviousMatch}
                 display="flex"
                 style={{ alignItems: 'center' }}
-                title="Previous match (Shift+Enter)"
-                aria-label="Previous match"
+                title={t('table.previousMatchTitle')}
+                aria-label={t('table.previousMatch')}
               >
                 <IconArrowUp size={16} />
               </UnstyledButton>
@@ -251,8 +256,8 @@ export const TableSearchInput = ({
                 onClick={onNextMatch}
                 display="flex"
                 style={{ alignItems: 'center' }}
-                title="Next match (Enter)"
-                aria-label="Next match"
+                title={t('table.nextMatchTitle')}
+                aria-label={t('table.nextMatch')}
               >
                 <IconArrowDown size={16} />
               </UnstyledButton>
@@ -266,15 +271,15 @@ export const TableSearchInput = ({
             role="status"
             aria-live="polite"
           >
-            No matches
+            {t('table.noMatches')}
           </Text>
         ) : null}
         <UnstyledButton
           onClick={handleClose}
           display="flex"
           style={{ alignItems: 'center' }}
-          title="Close search (Esc)"
-          aria-label="Close search"
+          title={t('table.closeSearchTitle')}
+          aria-label={t('table.closeSearch')}
         >
           <IconX size={16} />
         </UnstyledButton>
@@ -306,6 +311,7 @@ export const TableSearchMatchIndicator = ({
   getRowId,
   onMatchClick,
 }: TableSearchMatchIndicatorProps) => {
+  const { t } = useTranslation('search');
   if (!searchQuery || matchIndices.length === 0 || tableRows.length === 0) {
     return null;
   }
@@ -355,7 +361,10 @@ export const TableSearchMatchIndicator = ({
               maxHeight: 4,
             }}
             onClick={() => onMatchClick(i)}
-            title={`Match ${i + 1} of ${matchIndices.length}`}
+            title={t('table.matchTitle', {
+              current: i + 1,
+              total: matchIndices.length,
+            })}
           />
         );
       })}

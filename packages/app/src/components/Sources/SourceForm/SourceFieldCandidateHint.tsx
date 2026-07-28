@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Anchor, Code, Group, Text } from '@mantine/core';
 import { IconBulb } from '@tabler/icons-react';
 
@@ -10,6 +11,8 @@ export function SourceFieldCandidateHint({
   candidates?: FieldCandidates;
   onApply: (value: string) => void;
 }) {
+  const { t } = useTranslation('sources');
+
   if (!candidates) {
     return null;
   }
@@ -26,22 +29,22 @@ export function SourceFieldCandidateHint({
       {canonical ? (
         <>
           <Text size="xs" c="dimmed">
-            Detected
+            {t('fields.detected')}
           </Text>
           <Anchor size="xs" onClick={() => onApply(canonical)}>
-            <Code>{canonical}</Code> — apply
+            <Code>{canonical}</Code> — {t('fields.apply')}
           </Anchor>
         </>
       ) : (
         <Text size="xs" c="dimmed">
-          Multiple candidates:
+          {t('fields.multipleCandidates')}
         </Text>
       )}
       {alternates.length > 0 && (
         <>
           {canonical && (
             <Text size="xs" c="dimmed">
-              Other candidates:
+              {t('fields.otherCandidates')}
             </Text>
           )}
           {alternates.map(name => (

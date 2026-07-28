@@ -1,4 +1,5 @@
 import { pick } from 'lodash';
+import { useTranslation } from 'react-i18next';
 import {
   type Filter,
   pickSampleWeightExpressionProps,
@@ -30,6 +31,7 @@ export default function SlowestEventsTile({
   enabled?: boolean;
   extraFilters?: Filter[];
 }) {
+  const { t } = useTranslation('services');
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -69,17 +71,19 @@ export default function SlowestEventsTile({
     <ChartBox style={{ height }}>
       <Group justify="space-between" align="center" mb="sm">
         <Text size="sm">{title}</Text>
-        <Text size="xs">(Slower than {roundedP95}ms)</Text>
+        <Text size="xs">
+          {t('slowestEvents.threshold', { threshold: roundedP95 })}
+        </Text>
       </Group>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {t('slowestEvents.loading')}
         </div>
       ) : isError ? (
         <ChartErrorState error={error} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {t('slowestEvents.empty')}
         </div>
       ) : (
         source &&

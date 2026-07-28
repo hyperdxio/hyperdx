@@ -7,6 +7,7 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isLogSource,
@@ -157,6 +158,7 @@ export const InfraPodsStatusTable = ({
   metricSource: TMetricSource;
   where: string;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const [phaseFilter, setPhaseFilter] = React.useState('running');
 
   // Auto-switch to "All" when search filters are applied
@@ -360,17 +362,20 @@ export const InfraPodsStatusTable = ({
     <Card p="md" data-testid="k8s-pods-table">
       <Card.Section p="md" py="xs">
         <Group align="center" justify="space-between">
-          Pods
+          {t('kubernetes.pods.title')}
           <SegmentedControl
             size="xs"
             value={phaseFilter}
             onChange={setPhaseFilter}
             data={[
-              { label: 'Running', value: 'running' },
-              { label: 'Succeeded', value: 'succeeded' },
-              { label: 'Pending', value: 'pending' },
-              { label: 'Failed', value: 'failed' },
-              { label: 'All', value: 'all' },
+              { label: t('kubernetes.pods.phaseRunning'), value: 'running' },
+              {
+                label: t('kubernetes.pods.phaseSucceeded'),
+                value: 'succeeded',
+              },
+              { label: t('kubernetes.pods.phasePending'), value: 'pending' },
+              { label: t('kubernetes.pods.phaseFailed'), value: 'failed' },
+              { label: t('kubernetes.pods.phaseAll'), value: 'all' },
             ]}
           />
         </Group>
@@ -378,8 +383,9 @@ export const InfraPodsStatusTable = ({
       {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
         <Card.Section px="md" py="xs">
           <Alert variant="light" color="blue">
-            Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
-            filters above to narrow your search.
+            {t('kubernetes.pods.fetchLimit', {
+              limit: TABLE_FETCH_LIMIT.toLocaleString(),
+            })}
           </Alert>
         </Card.Section>
       )}
@@ -395,31 +401,33 @@ export const InfraPodsStatusTable = ({
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
-              Unable to load pod metrics
+              {t('kubernetes.pods.loadError')}
             </div>
           ) : podsList.length === 0 ? (
-            <div className="p-4 text-center text-muted fs-8">No pods found</div>
+            <div className="p-4 text-center text-muted fs-8">
+              {t('kubernetes.pods.empty')}
+            </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
                 <Table.Tr>
-                  <Th>Name</Th>
-                  <Th>Namespace</Th>
-                  <Th>Node</Th>
+                  <Th>{t('kubernetes.pods.columnName')}</Th>
+                  <Th>{t('kubernetes.pods.columnNamespace')}</Th>
+                  <Th>{t('kubernetes.pods.columnNode')}</Th>
                   <Th {...getThSortProps('phase')} style={{ width: 130 }}>
-                    Status
+                    {t('kubernetes.pods.columnStatus')}
                   </Th>
                   <Th {...getThSortProps('cpuLimit')} style={{ width: 100 }}>
-                    CPU/Limit
+                    {t('kubernetes.pods.columnCpuLimit')}
                   </Th>
                   <Th {...getThSortProps('memLimit')} style={{ width: 100 }}>
-                    Mem/Limit
+                    {t('kubernetes.pods.columnMemLimit')}
                   </Th>
                   <Th {...getThSortProps('uptime')} style={{ width: 80 }}>
-                    Age
+                    {t('kubernetes.pods.columnAge')}
                   </Th>
                   <Th {...getThSortProps('restarts')} style={{ width: 100 }}>
-                    Restarts
+                    {t('kubernetes.pods.columnRestarts')}
                   </Th>
                 </Table.Tr>
               </Table.Thead>
@@ -458,12 +466,12 @@ export const InfraPodsStatusTable = ({
                         <Table.Td>
                           <Tooltip
                             color="gray"
-                            label={
-                              formatNumber(
+                            label={t('kubernetes.charts.averageValue', {
+                              value: formatNumber(
                                 pod.cpuAvg,
                                 K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              ) + ' avg'
-                            }
+                              ),
+                            })}
                           >
                             <Text
                               span
@@ -481,10 +489,12 @@ export const InfraPodsStatusTable = ({
                         <Table.Td>
                           <Tooltip
                             color="gray"
-                            label={
-                              formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
-                              ' avg'
-                            }
+                            label={t('kubernetes.charts.averageValue', {
+                              value: formatNumber(
+                                pod.memAvg,
+                                K8S_MEM_NUMBER_FORMAT,
+                              ),
+                            })}
                           >
                             <Text
                               span
@@ -547,6 +557,7 @@ const NodesTable = ({
   where: string;
   dateRange: [Date, Date];
 }) => {
+  const { t } = useTranslation('infrastructure');
   const groupBy = ['k8s.node.name'];
 
   const { data, isError, isLoading } = useQueriedChartConfig({
@@ -631,7 +642,7 @@ const NodesTable = ({
   return (
     <Card p="md" data-testid="k8s-nodes-table">
       <Card.Section p="md" py="xs">
-        Nodes
+        {t('kubernetes.nodes.title')}
       </Card.Section>
       <Card.Section>
         <div
@@ -645,21 +656,29 @@ const NodesTable = ({
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
-              Unable to load nodes
+              {t('kubernetes.nodes.loadError')}
             </div>
           ) : nodesList.length === 0 ? (
             <div className="p-4 text-center text-muted fs-8">
-              No nodes found
+              {t('kubernetes.nodes.empty')}
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
                 <Table.Tr>
-                  <Table.Th>Node</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Status</Table.Th>
-                  <Table.Th style={{ width: 130 }}>CPU</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Memory</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Uptime</Table.Th>
+                  <Table.Th>{t('kubernetes.nodes.columnNode')}</Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.nodes.columnStatus')}
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.nodes.columnCpu')}
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.nodes.columnMemory')}
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.nodes.columnUptime')}
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -694,7 +713,7 @@ const NodesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Ready
+                              {t('kubernetes.nodes.ready')}
                             </Badge>
                           ) : (
                             <Badge
@@ -704,7 +723,7 @@ const NodesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Not Ready
+                              {t('kubernetes.nodes.notReady')}
                             </Badge>
                           )}
                         </Table.Td>
@@ -750,6 +769,7 @@ const NamespacesTable = ({
   metricSource: TMetricSource;
   where: string;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const groupBy = ['k8s.namespace.name'];
 
   const { data, isError, isLoading } = useQueriedChartConfig({
@@ -830,7 +850,7 @@ const NamespacesTable = ({
   return (
     <Card p="md" data-testid="k8s-namespaces-table">
       <Card.Section p="md" py="xs">
-        Namespaces
+        {t('kubernetes.namespaces.title')}
       </Card.Section>
       <Card.Section>
         <div
@@ -844,20 +864,28 @@ const NamespacesTable = ({
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
-              Unable to load namespaces
+              {t('kubernetes.namespaces.loadError')}
             </div>
           ) : namespacesList.length === 0 ? (
             <div className="p-4 text-center text-muted fs-8">
-              No namespaces found
+              {t('kubernetes.namespaces.empty')}
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
                 <Table.Tr>
-                  <Table.Th>Namespace</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Phase</Table.Th>
-                  <Table.Th style={{ width: 130 }}>CPU</Table.Th>
-                  <Table.Th style={{ width: 130 }}>Memory</Table.Th>
+                  <Table.Th>
+                    {t('kubernetes.namespaces.columnNamespace')}
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.namespaces.columnPhase')}
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.namespaces.columnCpu')}
+                  </Table.Th>
+                  <Table.Th style={{ width: 130 }}>
+                    {t('kubernetes.namespaces.columnMemory')}
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -892,7 +920,7 @@ const NamespacesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Ready
+                              {t('kubernetes.namespaces.ready')}
                             </Badge>
                           ) : (
                             <Badge
@@ -902,7 +930,7 @@ const NamespacesTable = ({
                               tt="none"
                               size="md"
                             >
-                              Terminating
+                              {t('kubernetes.namespaces.terminating')}
                             </Badge>
                           )}
                         </Table.Td>
@@ -1047,6 +1075,8 @@ export const resolveSourceIds = (
 };
 
 function KubernetesDashboardPage() {
+  const { t } = useTranslation('infrastructure');
+  const { t: tDashboard } = useTranslation('dashboard');
   const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
 
@@ -1119,14 +1149,16 @@ function KubernetesDashboardPage() {
         setMetricSourceId(correlatedMetricSource.id);
         notifications.show({
           id: `${correlatedMetricSource.id}-auto-correlated-metric-source`,
-          title: 'Updated Metrics Source',
-          message: `Using correlated metrics source: ${correlatedMetricSource.name}`,
+          title: t('kubernetes.sourceCorrelation.metricsUpdatedTitle'),
+          message: t('kubernetes.sourceCorrelation.metricsUpdatedMessage', {
+            name: correlatedMetricSource.name,
+          }),
         });
       } else if (logSource && !correlatedMetricSource) {
         notifications.show({
           id: `${logSource.id}-not-correlated`,
-          title: 'Warning',
-          message: `The selected logs source is not correlated with a metrics source. Source correlations can be configured in Team Settings.`,
+          title: t('kubernetes.sourceCorrelation.warningTitle'),
+          message: t('kubernetes.sourceCorrelation.metricsMissingMessage'),
           color: 'yellow',
         });
       }
@@ -1137,6 +1169,7 @@ function KubernetesDashboardPage() {
     sources,
     setLogSourceId,
     setMetricSourceId,
+    t,
   ]);
 
   // Handle metric source changes
@@ -1165,14 +1198,16 @@ function KubernetesDashboardPage() {
         setLogSourceId(correlatedLogSource.id);
         notifications.show({
           id: `${correlatedLogSource.id}-auto-correlated-log-source`,
-          title: 'Updated Logs Source',
-          message: `Using correlated logs source: ${correlatedLogSource.name}`,
+          title: t('kubernetes.sourceCorrelation.logsUpdatedTitle'),
+          message: t('kubernetes.sourceCorrelation.logsUpdatedMessage', {
+            name: correlatedLogSource.name,
+          }),
         });
       } else if (metricSource && !correlatedLogSource) {
         notifications.show({
           id: `${metricSource.id}-not-correlated`,
-          title: 'Warning',
-          message: `The selected metrics source is not correlated with a logs source. Source correlations can be configured in Team Settings.`,
+          title: t('kubernetes.sourceCorrelation.warningTitle'),
+          message: t('kubernetes.sourceCorrelation.logsMissingMessage'),
           color: 'yellow',
         });
       }
@@ -1183,6 +1218,7 @@ function KubernetesDashboardPage() {
     sources,
     setMetricSourceId,
     setLogSourceId,
+    t,
   ]);
 
   const [activeTab, setActiveTab] = useQueryState('tab', {
@@ -1307,14 +1343,19 @@ function KubernetesDashboardPage() {
           onSearch={onSearch}
         />
       </form>
-      <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+      <Tooltip
+        withArrow
+        label={tDashboard('page.refresh')}
+        fz="xs"
+        color="gray"
+      >
         <ActionIcon
           onClick={refresh}
           loading={manualRefreshCooloff}
           disabled={manualRefreshCooloff}
           variant="secondary"
-          title="Refresh dashboard"
-          aria-label="Refresh dashboard"
+          title={tDashboard('page.refresh')}
+          aria-label={tDashboard('page.refresh')}
           size="lg"
         >
           <IconRefresh size={18} />
@@ -1326,10 +1367,10 @@ function KubernetesDashboardPage() {
   const pageBreadcrumbs = (
     <Breadcrumbs fz="sm">
       <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-        Dashboards
+        {tDashboard('page.dashboards')}
       </Anchor>
       <Text fz="sm" c="dimmed">
-        Kubernetes
+        {t('kubernetes.breadcrumb')}
       </Text>
     </Breadcrumbs>
   );
@@ -1342,7 +1383,7 @@ function KubernetesDashboardPage() {
   const dashboardBody = (
     <>
       <Head>
-        <title>Kubernetes Dashboard – {brandName}</title>
+        <title>{t('kubernetes.browserTitle', { brandName })}</title>
       </Head>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
@@ -1381,9 +1422,11 @@ function KubernetesDashboardPage() {
         value={activeTab}
       >
         <Tabs.List>
-          <Tabs.Tab value="pods">Pods</Tabs.Tab>
-          <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
-          <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
+          <Tabs.Tab value="pods">{t('kubernetes.tabs.pods')}</Tabs.Tab>
+          <Tabs.Tab value="nodes">{t('kubernetes.tabs.nodes')}</Tabs.Tab>
+          <Tabs.Tab value="namespaces">
+            {t('kubernetes.tabs.namespaces')}
+          </Tabs.Tab>
           {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
         </Tabs.List>
 
@@ -1395,7 +1438,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
-                        title="CPU Usage"
+                        title={t('kubernetes.charts.cpuUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1430,7 +1473,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
-                        title="Memory Usage"
+                        title={t('kubernetes.charts.memoryUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1473,7 +1516,7 @@ function KubernetesDashboardPage() {
                 <Card p="md" data-testid="k8s-warning-events-table">
                   <Card.Section p="md" py="xs">
                     <Flex justify="space-between">
-                      Latest Kubernetes Warning Events
+                      {t('kubernetes.events.warningTitle')}
                     </Flex>
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
@@ -1539,7 +1582,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
-                        title="CPU Usage"
+                        title={t('kubernetes.charts.cpuUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1574,7 +1617,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
-                        title="Memory Usage"
+                        title={t('kubernetes.charts.memoryUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1622,7 +1665,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
-                        title="CPU Usage"
+                        title={t('kubernetes.charts.cpuUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1657,7 +1700,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
-                        title="Memory Usage"
+                        title={t('kubernetes.charts.memoryUsage')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1698,7 +1741,9 @@ function KubernetesDashboardPage() {
               </Grid.Col>
             </Grid>
           </Tabs.Panel>
-          <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
+          <Tabs.Panel value="clusters">
+            {t('kubernetes.tabs.clusters')}
+          </Tabs.Panel>
         </div>
       </Tabs>
     </>

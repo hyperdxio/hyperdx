@@ -12,6 +12,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import i18n from '@/i18n';
 import { hashCode } from '@/utils';
 
 import { hdxServer } from './api';
@@ -246,7 +247,7 @@ export function useDashboard({
             setIsSettingDashboard(false);
             notifications.show({
               color: 'red',
-              title: 'Unable to save dashboard',
+              title: i18n.t('dashboard:saveError'),
               message: e.message.slice(0, 100),
               autoClose: 5000,
             });

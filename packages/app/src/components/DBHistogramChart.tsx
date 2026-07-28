@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import {
   Bar,
   BarChart,
@@ -147,6 +148,7 @@ function HistogramChart({
 }
 
 const HDXHistogramChartTooltip = (props: any) => {
+  const { t } = useTranslation('charts');
   const { active, payload, generateSearchUrl } = props;
   if (active && payload && payload.length > 0) {
     const bucket = props.payload[0].payload;
@@ -160,11 +162,11 @@ const HDXHistogramChartTooltip = (props: any) => {
         style={{ pointerEvents: 'auto' }}
       >
         <div className="mb-2">
-          Bucket: {lower} - {upper}
+          {t('histogram.bucket')} {lower} - {upper}
         </div>
         {payload.map((p: any) => (
           <div key={p.name} style={{ color: p.color }}>
-            Number of Events: {p.value}
+            {t('histogram.numberOfEvents')} {p.value}
           </div>
         ))}
         <div className="mt-2">
@@ -174,12 +176,12 @@ const HDXHistogramChartTooltip = (props: any) => {
               className="text-muted-hover cursor-pointer"
               onClick={e => e.stopPropagation()}
             >
-              View Events
+              {t('histogram.viewEvents')}
             </Link>
           )}
         </div>
         <div className="text-muted fs-9 mt-2">
-          Click to Pin Tooltip • Approx value via SPDT algorithm
+          {t('histogram.pinTooltipHint')}
         </div>
       </div>
     );
@@ -206,6 +208,7 @@ export default function DBHistogramChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
+  const { t } = useTranslation('charts');
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -269,13 +272,13 @@ export default function DBHistogramChart({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {t('common.loadingData')}
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {t('common.noData')}
         </div>
       ) : (
         <HistogramChart graphResults={buckets} />

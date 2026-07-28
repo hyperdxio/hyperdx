@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Controller, useFieldArray, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -23,12 +24,13 @@ import SelectControlled from '@/components/SelectControlled';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import {
-  inferMaterializedViewConfig,
-  MV_GRANULARITY_OPTIONS,
-} from '@/utils/materializedViews';
+import { inferMaterializedViewConfig } from '@/utils/materializedViews';
 
-import { DEFAULT_DATABASE, MV_AGGREGATE_FUNCTION_OPTIONS } from './constants';
+import {
+  DEFAULT_DATABASE,
+  MV_AGGREGATE_FUNCTION_OPTIONS,
+  useMVGranularityOptions,
+} from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
 
@@ -37,6 +39,7 @@ export function MaterializedViewsFormSection({
   control,
   setValue,
 }: TableModelProps) {
+  const { t } = useTranslation('sources');
   const databaseName = useWatch({
     control,
     name: `from.databaseName`,
@@ -55,8 +58,8 @@ export function MaterializedViewsFormSection({
   return (
     <Stack gap="md">
       <FormRow
-        label="Materialized Views"
-        helpText="Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries."
+        label={t('materializedViews.title')}
+        helpText={t('materializedViews.help')}
       >
         <Stack gap="md">
           {materializedViews.map((field, index) => (
@@ -85,7 +88,7 @@ export function MaterializedViewsFormSection({
           >
             <Group>
               <IconCirclePlus size={16} />
-              Add Materialized View
+              {t('materializedViews.add')}
             </Group>
           </Button>
         </Stack>
@@ -99,6 +102,8 @@ export function MetadataMaterializedViewsFormSection({
   control,
   setValue,
 }: TableModelProps) {
+  const { t } = useTranslation('sources');
+  const mvGranularityOptions = useMVGranularityOptions();
   const databaseName = useWatch({
     control,
     name: `from.databaseName`,
@@ -116,8 +121,8 @@ export function MetadataMaterializedViewsFormSection({
   return (
     <Stack gap="md">
       <FormRow
-        label="Metadata Materialized Views"
-        helpText="Configure materialized views for fast field discovery and value autocomplete. These pre-aggregated tables speed up filter loading and search suggestions."
+        label={t('materializedViews.metadataTitle')}
+        helpText={t('materializedViews.metadataHelp')}
       >
         {hasMetadataMVs ? (
           <Stack gap="sm">
@@ -133,7 +138,7 @@ export function MetadataMaterializedViewsFormSection({
             <Grid>
               <Grid.Col span={6}>
                 <Text size="xs" mb={4}>
-                  Key Rollup Table (optional, deprecated)
+                  {t('materializedViews.keyRollupTable')}
                 </Text>
                 <DBTableSelectControlled
                   name={'metadataMaterializedViews.keyRollupTable'}
@@ -144,7 +149,7 @@ export function MetadataMaterializedViewsFormSection({
               </Grid.Col>
               <Grid.Col span={6}>
                 <Text size="xs" mb={4}>
-                  KV Rollup Table
+                  {t('materializedViews.kvRollupTable')}
                 </Text>
                 <DBTableSelectControlled
                   name={'metadataMaterializedViews.kvRollupTable'}
@@ -157,9 +162,9 @@ export function MetadataMaterializedViewsFormSection({
             <SelectControlled
               name={'metadataMaterializedViews.granularity'}
               control={control}
-              label="Granularity"
-              data={MV_GRANULARITY_OPTIONS}
-              placeholder="Select rollup granularity"
+              label={t('materializedViews.granularity')}
+              data={mvGranularityOptions}
+              placeholder={t('materializedViews.rollupGranularityPlaceholder')}
             />
           </Stack>
         ) : (
@@ -175,7 +180,7 @@ export function MetadataMaterializedViewsFormSection({
           >
             <Group>
               <IconCirclePlus size={16} />
-              Add Metadata Materialized Views
+              {t('materializedViews.metadataAdd')}
             </Group>
           </Button>
         )}
@@ -191,6 +196,8 @@ function MaterializedViewFormSection({
   onRemove,
   setValue,
 }: { mvIndex: number; onRemove: () => void } & TableModelProps) {
+  const { t } = useTranslation('sources');
+  const mvGranularityOptions = useMVGranularityOptions();
   const brandName = useBrandDisplayName();
   const connection = useWatch({ control, name: `connection` });
   const sourceDatabaseName = useWatch({
@@ -237,7 +244,7 @@ function MaterializedViewFormSection({
 
         <Grid.Col span={2} data-testid="mv-timestamp-column">
           <Text size="xs" fw={500} mb={4}>
-            Timestamp Column
+            {t('fields.timestampColumn')}
           </Text>
           <SQLInlineEditorControlled
             tableConnection={{
@@ -254,9 +261,9 @@ function MaterializedViewFormSection({
 
         <Grid.Col span={1} data-testid="mv-granularity-select">
           <Text size="xs" fw={500} mb={4}>
-            Granularity
+            {t('materializedViews.granularity')}
             <Tooltip
-              label={'The granularity of the timestamp column'}
+              label={t('materializedViews.granularityHelp')}
               color="dark"
               c="white"
               multiline
@@ -271,8 +278,8 @@ function MaterializedViewFormSection({
             render={({ field }) => (
               <Select
                 {...field}
-                data={MV_GRANULARITY_OPTIONS}
-                placeholder="Granularity"
+                data={mvGranularityOptions}
+                placeholder={t('materializedViews.granularityPlaceholder')}
                 size="sm"
               />
             )}
@@ -281,9 +288,9 @@ function MaterializedViewFormSection({
 
         <Grid.Col span={1}>
           <Text size="xs" fw={500} mb={4}>
-            Minimum Date
+            {t('materializedViews.minimumDate')}
             <Tooltip
-              label={`(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then ${brandName} will assume that the materialized view contains data for all dates for which the source table contains data.`}
+              label={t('materializedViews.minimumDateHelp', { brandName })}
               color="dark"
               c="white"
               multiline
@@ -316,11 +323,9 @@ function MaterializedViewFormSection({
 
       <Box data-testid="mv-dimension-columns">
         <Text size="xs" fw={500} mb={4}>
-          Dimension Columns (comma-separated)
+          {t('materializedViews.dimensionColumns')}
           <Tooltip
-            label={
-              'Columns which are not pre-aggregated in the materialized view and can be used for filtering and grouping.'
-            }
+            label={t('materializedViews.dimensionColumnsHelp')}
             color="dark"
             c="white"
             multiline
@@ -358,6 +363,7 @@ function AggregatedColumnsFormSection({
   setValue,
   mvIndex,
 }: TableModelProps & { mvIndex: number }) {
+  const { t } = useTranslation('sources');
   const {
     fields: aggregates,
     append: appendAggregate,
@@ -422,14 +428,13 @@ function AggregatedColumnsFormSection({
               notifications.show({
                 color: 'green',
                 id: 'mv-infer-success',
-                message:
-                  'Partially inferred materialized view configuration from view schema.',
+                message: t('materializedViews.inferSuccess'),
               });
             } else {
               notifications.show({
                 color: 'yellow',
                 id: 'mv-infer-failure',
-                message: 'Unable to infer materialized view configuration.',
+                message: t('materializedViews.inferFailure'),
               });
             }
           }
@@ -449,14 +454,15 @@ function AggregatedColumnsFormSection({
     replaceAggregates,
     setValue,
     metadata,
+    t,
   ]);
 
   return (
     <Box>
       <Text size="xs" mb={4}>
-        Pre-aggregated Columns
+        {t('materializedViews.preAggregatedColumns')}
         <Tooltip
-          label={'Columns which are pre-aggregated by the materialized view'}
+          label={t('materializedViews.preAggregatedColumnsHelp')}
           color="dark"
           c="white"
           multiline
@@ -486,7 +492,7 @@ function AggregatedColumnsFormSection({
       >
         <Group>
           <IconCirclePlus size={16} />
-          Add Column
+          {t('materializedViews.addColumn')}
         </Group>
       </Button>
     </Box>
@@ -504,6 +510,7 @@ function AggregatedColumnRow({
   colIndex: number;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation('sources');
   const connectionId = useWatch({ control, name: `connection` });
   const sourceDatabaseName = useWatch({
     control,
@@ -550,7 +557,7 @@ function AggregatedColumnRow({
             }}
             control={control}
             name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.sourceColumn`}
-            placeholder="Source Column"
+            placeholder={t('materializedViews.sourceColumnPlaceholder')}
             disableKeywordAutocomplete
           />
         </Grid.Col>
@@ -566,7 +573,7 @@ function AggregatedColumnRow({
               }}
               control={control}
               name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.mvColumn`}
-              placeholder="View Column"
+              placeholder={t('materializedViews.viewColumnPlaceholder')}
               disableKeywordAutocomplete
             />
           </Box>

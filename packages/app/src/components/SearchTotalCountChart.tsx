@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -95,6 +96,7 @@ export default function SearchTotalCountChart({
   disableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
 }) {
+  const { t } = useTranslation('search');
   const { totalCount, isLoading, isError } = useSearchTotalCount(
     config,
     queryKeyPrefix,
@@ -107,11 +109,13 @@ export default function SearchTotalCountChart({
   return (
     <Text data-testid="search-total-count" size="xs" lh="normal">
       {isLoading ? (
-        <span className="effect-pulse">&middot;&middot;&middot; Results</span>
+        <span className="effect-pulse">{t('actions.resultsLoading')}</span>
       ) : totalCount !== null && !isError ? (
-        `${totalCount?.toLocaleString()} Results`
+        t('actions.resultsCount', {
+          total: totalCount?.toLocaleString() ?? '0',
+        })
       ) : (
-        '0 Results'
+        t('actions.resultsCount', { total: 0 })
       )}
     </Text>
   );

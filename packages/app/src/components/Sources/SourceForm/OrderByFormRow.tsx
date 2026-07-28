@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Control, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Box, Flex, Text, Tooltip } from '@mantine/core';
@@ -23,6 +24,7 @@ export function OrderByFormRow({
   tableName: string;
   connectionId: string;
 }) {
+  const { t } = useTranslation('sources');
   const orderByInput = useWatch({
     control,
     name: 'orderByExpression',
@@ -70,8 +72,8 @@ export function OrderByFormRow({
   return (
     <>
       <FormRow
-        label="Default Order By"
-        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default. (This can be customized per search later)"
+        label={t('fields.defaultOrderBy')}
+        helpText={t('fields.defaultOrderByHelp')}
       >
         <Flex align="center" gap="sm">
           <Box flex={1}>
@@ -83,11 +85,11 @@ export function OrderByFormRow({
               }}
               control={control}
               name="orderByExpression"
-              placeholder="e.g. Timestamp DESC"
+              placeholder={t('fields.defaultOrderByPlaceholder')}
               disableKeywordAutocomplete
             />
           </Box>
-          <Tooltip label="Validate expression">
+          <Tooltip label={t('fields.validateExpression')}>
             <ActionIcon
               size="xs"
               variant="subtle"
@@ -104,12 +106,12 @@ export function OrderByFormRow({
           <Box>
             {isExpressionValid && (
               <Text c="green" size="xs">
-                Expression is valid.
+                {t('fields.expressionValid')}
               </Text>
             )}
             {isExpressionInvalid && (
               <ErrorCollapse
-                summary="Expression is invalid"
+                summary={t('fields.expressionInvalid')}
                 details={explainError?.message}
               />
             )}

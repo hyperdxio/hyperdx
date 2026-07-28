@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { pickBy } from 'lodash';
 import CopyToClipboard from 'react-copy-to-clipboard';
+import { useTranslation } from 'react-i18next';
 import { JSONTree } from 'react-json-tree';
 import { Button } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -156,6 +157,7 @@ const NetworkBody = ({
 export function NetworkPropertySubpanel({
   eventAttributes,
 }: NetworkPropertyPanelProps) {
+  const { t } = useTranslation('search');
   const requestHeaders = useMemo(
     () => parseHeaders('http.request.header.', eventAttributes),
     [eventAttributes],
@@ -192,13 +194,13 @@ export function NetworkPropertySubpanel({
           onCopy={() => {
             notifications.show({
               color: 'green',
-              message: 'Curl command copied to clipboard',
+              message: t('network.copiedCurl'),
             });
           }}
         >
           <Button size="xs" variant="primary">
             <IconTerminal size={14} className="me-2" />
-            Copy Request as Curl
+            {t('network.copyAsCurl')}
           </Button>
         </CopyToClipboard>
         {/* <Link href={trendsDashboardUrl} passHref legacyBehavior>
@@ -220,14 +222,14 @@ export function NetworkPropertySubpanel({
           density="compact"
           columns={networkColumns}
           data={[
-            url && { label: 'URL', value: url },
-            method && { label: 'Method', value: method },
+            url && { label: t('network.url'), value: url },
+            method && { label: t('network.method'), value: method },
             remoteAddress && {
-              label: 'Remote Address',
+              label: t('network.remoteAddress'),
               value: remoteAddress,
             },
             statusCode && {
-              label: 'Status',
+              label: t('network.status'),
               value: `${statusCode} ${
                 eventAttributes['http.status_text'] ?? ''
               }`,
@@ -245,7 +247,7 @@ export function NetworkPropertySubpanel({
 
       {requestHeaders.length > 0 && (
         <CollapsibleSection
-          title={`Request Headers (${requestHeaders.length})`}
+          title={t('network.requestHeaders', { count: requestHeaders.length })}
           initiallyCollapsed
         >
           <SectionWrapper>
@@ -255,27 +257,29 @@ export function NetworkPropertySubpanel({
               density="compact"
               columns={headerColumns}
               data={requestHeaders}
-              emptyMessage="No request headers collected"
+              emptyMessage={t('network.noRequestHeaders')}
             />
           </SectionWrapper>
         </CollapsibleSection>
       )}
 
       {requestBody != null && (
-        <CollapsibleSection title="Request Body">
+        <CollapsibleSection title={t('network.requestBody')}>
           <SectionWrapper>
             <NetworkBody
               body={requestBody}
               theme={JSON_TREE_THEME}
-              emptyMessage="Empty request"
-              notCollectedMessage="No request body collected"
+              emptyMessage={t('network.emptyRequest')}
+              notCollectedMessage={t('network.noRequestBody')}
             />
           </SectionWrapper>
         </CollapsibleSection>
       )}
       {responseHeaders.length > 0 && (
         <CollapsibleSection
-          title={`Response Headers (${responseHeaders.length})`}
+          title={t('network.responseHeaders', {
+            count: responseHeaders.length,
+          })}
           initiallyCollapsed
         >
           <SectionWrapper>
@@ -285,19 +289,19 @@ export function NetworkPropertySubpanel({
               density="compact"
               columns={headerColumns}
               data={responseHeaders}
-              emptyMessage="No response headers collected"
+              emptyMessage={t('network.noResponseHeaders')}
             />
           </SectionWrapper>
         </CollapsibleSection>
       )}
       {responseBody != null && (
-        <CollapsibleSection title="Response Body">
+        <CollapsibleSection title={t('network.responseBody')}>
           <SectionWrapper>
             <NetworkBody
               body={responseBody}
               theme={JSON_TREE_THEME}
-              emptyMessage="Empty response"
-              notCollectedMessage="No response body collected"
+              emptyMessage={t('network.emptyResponse')}
+              notCollectedMessage={t('network.noResponseBody')}
             />
           </SectionWrapper>
         </CollapsibleSection>

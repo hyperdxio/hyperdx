@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
@@ -34,6 +35,7 @@ function DatabaseTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
+  const { t } = useTranslation('services');
   const { data: source } = useSource({
     id: appliedConfig.source,
     kinds: [SourceKind.Trace],
@@ -289,12 +291,12 @@ function DatabaseTab({
       onChange={setChartType}
       options={[
         {
-          label: 'Show as List',
+          label: t('database.showAsList'),
           icon: <IconFilter size={14} />,
           value: 'list',
         },
         {
-          label: 'Show as Table',
+          label: t('database.showAsTable'),
           icon: <IconTable size={14} />,
           value: 'table',
         },
@@ -308,7 +310,7 @@ function DatabaseTab({
         <ChartBox style={{ height: 350 }}>
           {source && totalTimePerQueryConfig && (
             <DBTimeChart
-              title="Total Time Consumed per Query"
+              title={t('database.totalTimePerQuery')}
               sourceId={source.id}
               config={totalTimePerQueryConfig}
               disableDrillDown
@@ -321,7 +323,7 @@ function DatabaseTab({
         <ChartBox style={{ height: 350 }}>
           {source && totalThroughputPerQueryConfig && (
             <DBTimeChart
-              title="Throughput per Query"
+              title={t('database.throughputPerQuery')}
               sourceId={source.id}
               config={totalThroughputPerQueryConfig}
               disableQueryChunking
@@ -336,7 +338,7 @@ function DatabaseTab({
             expressions &&
             (chartType === 'list' ? (
               <DBListBarChart
-                title="Top 20 Most Time Consuming Queries"
+                title={t('database.topQueries')}
                 toolbarItems={[displaySwitcher]}
                 groupColumn="Statement"
                 valueColumn="Total"
@@ -425,7 +427,7 @@ function DatabaseTab({
               />
             ) : (
               <DBTableChart
-                title="Top 20 Most Time Consuming Queries"
+                title={t('database.topQueries')}
                 toolbarSuffix={[displaySwitcher]}
                 getRowSearchLink={getRowSearchLink}
                 hiddenColumns={[

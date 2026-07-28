@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Button,
@@ -51,6 +52,8 @@ function TeamTabContent({ sections }: { sections: TeamTab['sections'] }) {
 }
 
 export default function TeamPage() {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const brandName = useBrandDisplayName();
   const router = useRouter();
   const { data: team, refetch: refetchTeam, isLoading } = api.useTeam();
@@ -72,13 +75,13 @@ export default function TeamPage() {
           onError: () => {
             notifications.show({
               color: 'red',
-              message: 'Failed to update team name',
+              message: t('team.nameUpdateFailed'),
             });
           },
           onSuccess: () => {
             notifications.show({
               color: 'green',
-              message: 'Updated team name',
+              message: t('team.nameUpdated'),
             });
             refetchTeam();
             setIsEditingTeamName(false);
@@ -86,13 +89,13 @@ export default function TeamPage() {
         },
       );
     },
-    [refetchTeam, setTeamName],
+    [refetchTeam, setTeamName, t],
   );
 
   const tabs: TeamTab[] = [
     {
       value: 'data',
-      label: 'Data',
+      label: t('team.tabs.data'),
       sections: [
         {
           id: 'team-data-sources',
@@ -106,7 +109,7 @@ export default function TeamPage() {
     },
     {
       value: 'team',
-      label: 'Members',
+      label: t('team.tabs.members'),
       sections: [
         {
           id: 'team-members',
@@ -118,7 +121,7 @@ export default function TeamPage() {
       ? [
           {
             value: 'access',
-            label: 'Access',
+            label: t('team.tabs.access'),
             sections: [
               {
                 id: 'team-access-security-policies',
@@ -134,7 +137,7 @@ export default function TeamPage() {
       : []),
     {
       value: 'api-agents',
-      label: 'API & Agents',
+      label: t('team.tabs.apiAgents'),
       sections: [
         {
           id: 'team-api-agents-api-keys',
@@ -148,7 +151,7 @@ export default function TeamPage() {
     },
     {
       value: 'integrations',
-      label: 'Integrations',
+      label: t('team.tabs.integrations'),
       sections: [
         {
           id: 'team-integrations-webhooks',
@@ -158,7 +161,7 @@ export default function TeamPage() {
     },
     {
       value: 'advanced',
-      label: 'Query Settings',
+      label: t('team.tabs.querySettings'),
       sections: [
         {
           id: 'team-advanced-query-settings',
@@ -231,7 +234,7 @@ export default function TeamPage() {
   return (
     <div className="TeamPage" data-testid="team-page">
       <Head>
-        <title>My Team - {brandName}</title>
+        <title>{t('team.pageTitle', { brandName })}</title>
       </Head>
       <PageHeader>
         <div data-testid="team-name-section">
@@ -241,7 +244,7 @@ export default function TeamPage() {
                 <TextInput
                   data-testid="team-name-input"
                   size="xs"
-                  placeholder="My Team"
+                  placeholder={t('team.namePlaceholder')}
                   required
                   error={form.formState.errors.name?.message}
                   {...form.register('name', { required: true })}
@@ -261,7 +264,7 @@ export default function TeamPage() {
                   variant="primary"
                   loading={setTeamName.isPending}
                 >
-                  Save
+                  {tCommon('actions.save')}
                 </Button>
                 <Button
                   data-testid="team-name-cancel-button"
@@ -271,14 +274,14 @@ export default function TeamPage() {
                   disabled={setTeamName.isPending}
                   onClick={() => setIsEditingTeamName(false)}
                 >
-                  Cancel
+                  {tCommon('actions.cancel')}
                 </Button>
               </Group>
             </form>
           ) : (
             <Group gap="sm">
               <span data-testid="team-name-display">
-                {team?.name || 'My team'}
+                {team?.name || t('team.nameFallback')}
               </span>
               {hasAdminAccess && (
                 <Button
@@ -286,7 +289,7 @@ export default function TeamPage() {
                   size="xs"
                   variant="subtle"
                   px={4}
-                  aria-label="Edit team name"
+                  aria-label={t('team.editName')}
                   onClick={() => {
                     form.reset({ name: team?.name });
                     setIsEditingTeamName(true);

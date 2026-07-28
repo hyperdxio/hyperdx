@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import { HTTPError } from 'ky';
+import { useTranslation } from 'react-i18next';
 import {
   WebhookApiData,
   WebhookService,
@@ -29,6 +30,8 @@ function DeleteWebhookButton({
   webhookName: string;
   onSuccess: VoidFunction;
 }) {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
   const deleteWebhook = api.useDeleteWebhook();
@@ -36,8 +39,8 @@ function DeleteWebhookButton({
   const handleDelete = async () => {
     if (
       await confirm(
-        `Are you sure you want to delete ${webhookName} webhook?`,
-        'Delete',
+        t('webhooks.deleteConfirm', { name: webhookName }),
+        tCommon('actions.delete'),
         { variant: 'danger' },
       )
     ) {
@@ -45,7 +48,7 @@ function DeleteWebhookButton({
         await deleteWebhook.mutateAsync({ id: webhookId });
         notifications.show({
           color: 'green',
-          message: 'Webhook deleted successfully',
+          message: t('webhooks.deleted'),
         });
         onSuccess();
       } catch (e) {
@@ -53,8 +56,7 @@ function DeleteWebhookButton({
         const message =
           (e instanceof HTTPError
             ? (await e.response.json())?.message
-            : null) ||
-          `Something went wrong. Please contact ${brandName} team.`;
+            : null) || tCommon('errors.contactTeam', { brandName });
         notifications.show({
           message,
           color: 'red',
@@ -71,12 +73,14 @@ function DeleteWebhookButton({
       onClick={handleDelete}
       loading={deleteWebhook.isPending}
     >
-      Delete
+      {tCommon('actions.delete')}
     </Button>
   );
 }
 
 export default function WebhooksSection() {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
@@ -100,7 +104,7 @@ export default function WebhooksSection() {
 
   return (
     <>
-      <Text mb="xs">Webhooks</Text>
+      <Text mb="xs">{t('webhooks.title')}</Text>
 
       <Stack>
         {groupedWebhooks.length === 0 ? (
@@ -111,7 +115,7 @@ export default function WebhooksSection() {
             ta="center"
             py="xl"
           >
-            No webhooks configured yet
+            {t('webhooks.empty')}
           </Text>
         ) : (
           groupedWebhooks.map(([serviceType, webhooks]) => {
@@ -155,7 +159,7 @@ export default function WebhooksSection() {
                                 size="compact-xs"
                                 leftSection={<IconPencil size={14} />}
                               >
-                                Edit
+                                {tCommon('actions.edit')}
                               </Button>
                               <DeleteWebhookButton
                                 webhookId={webhook._id}
@@ -170,7 +174,7 @@ export default function WebhooksSection() {
                               onClick={() => setEditedWebhookId(null)}
                               size="compact-xs"
                             >
-                              <IconX size={16} /> Cancel
+                              <IconX size={16} /> {tCommon('actions.cancel')}
                             </Button>
                           )}
                         </Group>
@@ -201,7 +205,7 @@ export default function WebhooksSection() {
           variant="secondary"
           onClick={openWebhookModal}
         >
-          Add Webhook
+          {t('webhooks.add')}
         </Button>
       ) : (
         <WebhookForm

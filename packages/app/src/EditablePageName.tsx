@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Box, Button, Input, Title } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { IconPencil } from '@tabler/icons-react';
@@ -10,6 +11,7 @@ export function EditablePageName({
   name: string;
   onSave: (name: string) => void;
 }) {
+  const { t } = useTranslation('dashboards');
   const [editing, setEditing] = useState(false);
   const [editedName, setEditedName] = useState(name);
 
@@ -26,7 +28,7 @@ export function EditablePageName({
       pe="md"
       onDoubleClick={() => setEditing(true)}
       className="cursor-pointer"
-      title="Double click to edit"
+      title={t('editableName.editHint')}
     >
       {editing ? (
         <form
@@ -54,11 +56,11 @@ export function EditablePageName({
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setEditedName(e.target.value)
             }
-            placeholder="Name"
+            placeholder={t('editableName.placeholder')}
             autoFocus
           />
           <Button ms="sm" variant="primary" type="submit">
-            Save Name
+            {t('editableName.save')}
           </Button>
         </form>
       ) : (

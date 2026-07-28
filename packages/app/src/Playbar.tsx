@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
+import { useTranslation } from 'react-i18next';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { keepPreviousData } from '@tanstack/react-query';
 
@@ -25,6 +26,7 @@ export default function Playbar({
   playbackRange: [Date, Date];
   queriedConfig: ChartConfigWithOptDateRange;
 }) {
+  const { t } = useTranslation('sessions');
   // might be outdated? state update or something? that's why the max slider val can be wrong?
   const minTs = playbackRange[0].getTime();
   const maxTs = playbackRange[1].getTime();
@@ -94,13 +96,13 @@ export default function Playbar({
               ((event.startOffset - minTs) / (maxTs - minTs)) * 100,
             ),
             description: isNavigation
-              ? `Navigated to ${shortLocationHref}`
+              ? t('player.navigatedTo', { href: shortLocationHref })
               : url.length > 0
                 ? `${statusCode} ${method}${url.length > 0 ? ` ${shortUrl}` : ''}`
                 : errorMessage != null && errorMessage.length > 0
                   ? errorMessage
                   : spanName === 'intercom.onShow'
-                    ? 'Intercom Chat Opened'
+                    ? t('player.intercomOpened')
                     : (event.body ?? ''),
             isError,
             isSuccess,
@@ -108,7 +110,7 @@ export default function Playbar({
         }) ?? [],
       'percentage',
     );
-  }, [events, maxTs, minTs]);
+  }, [events, maxTs, minTs, t]);
 
   return (
     <PlaybarSlider

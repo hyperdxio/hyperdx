@@ -22,6 +22,7 @@ import {
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
@@ -183,12 +184,14 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <React.Fragment>
       <AppThemeProvider>
-        <AppHeadContent />
-        <DynamicFavicon />
-        <QueryClientProvider client={queryClient}>
-          <AppContent Component={Component} pageProps={pageProps} />
-          <ReactQueryDevtools initialIsOpen={true} />
-        </QueryClientProvider>
+        <I18nProvider>
+          <AppHeadContent />
+          <DynamicFavicon />
+          <QueryClientProvider client={queryClient}>
+            <AppContent Component={Component} pageProps={pageProps} />
+            <ReactQueryDevtools initialIsOpen={true} />
+          </QueryClientProvider>
+        </I18nProvider>
       </AppThemeProvider>
     </React.Fragment>
   );

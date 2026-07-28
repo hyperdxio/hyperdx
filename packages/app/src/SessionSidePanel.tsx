@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import {
   DateRange,
@@ -96,6 +97,7 @@ export default function SessionSidePanel({
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
 }) {
+  const { t } = useTranslation('sessions');
   // A single in-place event view (session → event), persisted to the URL so it
   // survives reload and shared links. Deeper navigation (View Trace,
   // surrounding context) is handled by `DBRowSidePanelInner`, which persists
@@ -123,7 +125,8 @@ export default function SessionSidePanel({
     setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
   }, [isFullWidth, setSize]);
 
-  const sessionLabel = session?.userEmail || `Anonymous Session ${sessionId}`;
+  const sessionLabel =
+    session?.userEmail || t('panel.anonymous', { id: sessionId });
 
   const sidePanelStack = useSidePanelStack({
     initialRowId: selectedEvent?.rowId,
@@ -163,10 +166,10 @@ export default function SessionSidePanel({
     const ok = await copyTextToClipboard(window.location.href);
     notifications.show(
       ok
-        ? { color: 'green', message: 'Copied link to clipboard' }
+        ? { color: 'green', message: t('panel.copiedLink') }
         : { color: 'red', message: CLIPBOARD_ERROR_MESSAGE },
     );
-  }, []);
+  }, [t]);
 
   const breadcrumbs = useMemo(
     (): BreadcrumbItem[] => [
@@ -259,19 +262,19 @@ export default function SessionSidePanel({
                       style={{ fontSize: '12px' }}
                       onClick={shareSession}
                     >
-                      Share Session
+                      {t('panel.share')}
                     </Button>
                     <DrawerFullWidthToggle
                       isFullWidth={isFullWidth}
                       onToggle={toggleFullWidth}
                     />
-                    <Tooltip label="Close" position="bottom">
+                    <Tooltip label={t('panel.close')} position="bottom">
                       <ActionIcon
                         variant="subtle"
                         color="gray"
                         size="sm"
                         onClick={handleClose}
-                        aria-label="Close"
+                        aria-label={t('panel.close')}
                       >
                         <IconX size={16} />
                       </ActionIcon>
@@ -279,17 +282,21 @@ export default function SessionSidePanel({
                   </Group>
                 </Flex>
                 <Text size="xs" c="dimmed">
-                  Last active {timeAgo} ago
+                  {t('panel.lastActive', { time: timeAgo })}
                   {Number.parseInt(session?.errorCount ?? '0') > 0 && (
                     <>
                       {' · '}
                       <Text component="span" size="xs" c="red">
-                        {session?.errorCount} Errors
+                        {t('panel.errors', {
+                          displayCount: session?.errorCount,
+                        })}
                       </Text>
                     </>
                   )}
                   {' · '}
-                  {session?.sessionCount} Events
+                  {t('panel.eventCount', {
+                    displayCount: session?.sessionCount,
+                  })}
                 </Text>
               </Box>
               <div className="d-flex flex-column overflow-hidden flex-grow-1">

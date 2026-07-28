@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
@@ -40,6 +41,7 @@ export function DBSearchHeatmapChart({
   isReady: boolean;
   onAddFilter?: AddFilterFn;
 }) {
+  const { t } = useTranslation('search');
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
@@ -163,7 +165,7 @@ export function DBSearchHeatmapChart({
           }}
         />
         {/* Gear icon overlaid on chart top-right */}
-        <Tooltip label="Display settings">
+        <Tooltip label={t('heatmap.displaySettings')}>
           <ActionIcon
             variant="subtle"
             size="sm"

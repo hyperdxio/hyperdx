@@ -35,28 +35,51 @@ export const MV_AGGREGATE_FUNCTIONS = [
  * Further, these should match the granularities supported by charts, defined
  * in convertDateRangeToGranularityString().
  * */
-export const MV_GRANULARITY_OPTIONS = [
-  { value: '1 second', label: '1 second' },
-  { value: Granularity.FifteenSecond, label: '15 seconds' },
-  { value: Granularity.ThirtySecond, label: '30 seconds' },
-  { value: Granularity.OneMinute, label: '1 minute' },
-  { value: Granularity.FiveMinute, label: '5 minutes' },
-  { value: Granularity.FifteenMinute, label: '15 minutes' },
-  { value: Granularity.ThirtyMinute, label: '30 minutes' },
-  { value: Granularity.OneHour, label: '1 hour' },
-  { value: Granularity.TwoHour, label: '2 hours' },
-  { value: Granularity.SixHour, label: '6 hours' },
-  { value: Granularity.TwelveHour, label: '12 hours' },
-  { value: Granularity.OneDay, label: '1 day' },
-  { value: Granularity.TwoDay, label: '2 days' },
-  { value: Granularity.SevenDay, label: '7 days' },
-  { value: Granularity.ThirtyDay, label: '30 days' },
-];
+export const MV_GRANULARITY_VALUES = [
+  '1 second',
+  Granularity.FifteenSecond,
+  Granularity.ThirtySecond,
+  Granularity.OneMinute,
+  Granularity.FiveMinute,
+  Granularity.FifteenMinute,
+  Granularity.ThirtyMinute,
+  Granularity.OneHour,
+  Granularity.TwoHour,
+  Granularity.SixHour,
+  Granularity.TwelveHour,
+  Granularity.OneDay,
+  Granularity.TwoDay,
+  Granularity.SevenDay,
+  Granularity.ThirtyDay,
+] as const;
+
+export type MVGranularityValue = (typeof MV_GRANULARITY_VALUES)[number];
+
+/**
+ * Catalog key suffix (under `sources:materializedViews.granularityOptions`)
+ * for each granularity value. The values themselves are query syntax and stay
+ * language-neutral.
+ */
+export const MV_GRANULARITY_LABEL_KEYS = {
+  '1 second': 'oneSecond',
+  [Granularity.FifteenSecond]: 'fifteenSecond',
+  [Granularity.ThirtySecond]: 'thirtySecond',
+  [Granularity.OneMinute]: 'oneMinute',
+  [Granularity.FiveMinute]: 'fiveMinute',
+  [Granularity.FifteenMinute]: 'fifteenMinute',
+  [Granularity.ThirtyMinute]: 'thirtyMinute',
+  [Granularity.OneHour]: 'oneHour',
+  [Granularity.TwoHour]: 'twoHour',
+  [Granularity.SixHour]: 'sixHour',
+  [Granularity.TwelveHour]: 'twelveHour',
+  [Granularity.OneDay]: 'oneDay',
+  [Granularity.TwoDay]: 'twoDay',
+  [Granularity.SevenDay]: 'sevenDay',
+  [Granularity.ThirtyDay]: 'thirtyDay',
+} as const satisfies Record<MVGranularityValue, string>;
 
 const isGranularity = (value: string): value is Granularity => {
-  return MV_GRANULARITY_OPTIONS.map(option => option.value as string).includes(
-    value,
-  );
+  return (MV_GRANULARITY_VALUES as readonly string[]).includes(value);
 };
 
 const MV_DDL_PATTERN = /MATERIALIZED VIEW [^\s]+\.[^\s]+ TO ([^\s]+)\.([^\s]+)/;
@@ -234,7 +257,7 @@ export function inferTimestampColumnGranularity(
       if (
         granularity &&
         isGranularity(granularity) &&
-        MV_GRANULARITY_OPTIONS.map(option => option.value).includes(granularity)
+        (MV_GRANULARITY_VALUES as readonly string[]).includes(granularity)
       ) {
         return granularity;
       }

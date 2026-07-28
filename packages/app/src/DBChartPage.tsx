@@ -4,11 +4,13 @@ import Head from 'next/head';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { Trans, useTranslation } from 'react-i18next';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Box,
   Button,
+  Code,
   Collapse,
   Divider,
   Group,
@@ -56,6 +58,7 @@ function AIAssistant({
   aiAssistantEnabled: boolean;
 }) {
   const brandName = useBrandDisplayName();
+  const { t } = useTranslation('charts');
   const [opened, setOpened] = useState(false);
   const [alertDismissed, setAlertDismissed] = useLocalStorage(
     'ai-assistant-alert-dismissed',
@@ -96,14 +99,14 @@ function AIAssistant({
 
           notifications.show({
             color: 'green',
-            message: 'Chart generated successfully',
+            message: t('page.chartGenerated'),
             autoClose: 2000,
           });
         },
         onError(err) {
           notifications.show({
             color: 'red',
-            title: 'Error Generating Chart',
+            title: t('page.errorGenerating'),
             message: err.message,
             autoClose: 2000,
           });
@@ -134,9 +137,12 @@ function AIAssistant({
           p="xxs"
         >
           <Text size="xs" pt="2px">
-            New AI Assistant available, enable with configuring the{' '}
-            <code>ANTHROPIC_API_KEY</code> environment variable on the{' '}
-            {brandName} server.
+            <Trans
+              t={t}
+              i18nKey="page.aiAssistantNotice"
+              values={{ brandName }}
+              components={{ code: <Code /> }}
+            />
           </Text>
         </Alert>
         <Divider mt="sm" />
@@ -156,10 +162,10 @@ function AIAssistant({
             ) : (
               <IconChevronDown size={14} />
             )}
-            <Text size="xxs">AI Assistant [A]</Text>
+            <Text size="xxs">{t('page.aiAssistantWithShortcut')}</Text>
           </Group>
         </Button>
-        <Pill size="xs">Experimental</Pill>
+        <Pill size="xs">{t('page.experimental')}</Pill>
       </Group>
       <Collapse expanded={opened}>
         {opened && (
@@ -176,7 +182,7 @@ function AIAssistant({
               />
               <Box style={{ flexGrow: 1, minWidth: 100 }}>
                 <InputControlled
-                  placeholder="ex. Error counts by service over last 2 hours"
+                  placeholder={t('page.promptPlaceholder')}
                   data-testid="save-search-name-input"
                   control={control}
                   name="text"
@@ -188,7 +194,7 @@ function AIAssistant({
                 <Loader size="xs" type="dots" />
               ) : (
                 <Button type="submit" size="xs" variant="primary">
-                  Generate
+                  {t('page.generate')}
                 </Button>
               )}
             </Group>
@@ -202,6 +208,7 @@ function AIAssistant({
 
 function DBChartExplorerPage() {
   const brandName = useBrandDisplayName();
+  const { t } = useTranslation('charts');
   const {
     searchedTimeRange,
     displayedTimeInputValue,
@@ -230,7 +237,7 @@ function DBChartExplorerPage() {
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
-        <title>Chart Explorer - {brandName}</title>
+        <title>{t('page.browserTitle', { brandName })}</title>
       </Head>
       <OnboardingModal />
       <AIAssistant

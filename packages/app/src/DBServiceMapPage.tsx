@@ -10,6 +10,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import {
@@ -82,6 +83,7 @@ const searchQueryStateMap = {
 };
 
 function DBServiceMapPage() {
+  const { t } = useTranslation('services');
   const brandName = useBrandDisplayName();
 
   const { data: sources } = useSources();
@@ -211,12 +213,12 @@ function DBServiceMapPage() {
     () => (
       <>
         <Head>
-          <title>Service Map - {brandName}</title>
+          <title>{t('map.browserTitle', { brandName })}</title>
         </Head>
         <OnboardingModal />
       </>
     ),
-    [brandName],
+    [brandName, t],
   );
 
   const sourceSelect = source ? (
@@ -241,7 +243,7 @@ function DBServiceMapPage() {
   const headerActions = (
     <Group gap="sm" wrap="nowrap">
       <Text bg="inherit" size="sm">
-        Sampling {samplingLabel}
+        {t('map.sampling', { label: samplingLabel })}
       </Text>
       <div style={{ minWidth: '200px' }}>
         <Slider
@@ -277,7 +279,7 @@ function DBServiceMapPage() {
                   size="xl"
                   opened={isCreateSourceModalOpen}
                   onClose={() => setIsCreateSourceModalOpen(false)}
-                  title="Configure New Trace Source"
+                  title={t('map.createSourceTitle')}
                 >
                   <TableSourceForm
                     isNew
@@ -289,8 +291,8 @@ function DBServiceMapPage() {
               <EmptyState
                 style={{ flex: 1, margin: 'var(--mantine-spacing-sm)' }}
                 icon={<IconConnection size={32} />}
-                title="No trace sources configured"
-                description="The Service Map visualizes relationships between your services using trace data. Configure a trace source to get started."
+                title={t('map.emptyTitle')}
+                description={t('map.emptyDescription')}
                 maw={600}
               >
                 {IS_LOCAL_MODE ? (
@@ -300,7 +302,7 @@ function DBServiceMapPage() {
                     mt="sm"
                     onClick={() => setIsCreateSourceModalOpen(true)}
                   >
-                    Create Trace Source
+                    {t('map.createTraceSource')}
                   </Button>
                 ) : (
                   <Button
@@ -310,7 +312,7 @@ function DBServiceMapPage() {
                     size="sm"
                     mt="sm"
                   >
-                    Go to Team Settings
+                    {t('map.goToTeamSettings')}
                   </Button>
                 )}
               </EmptyState>
@@ -341,7 +343,9 @@ function DBServiceMapPage() {
             >
               <MultiSelect
                 placeholder={
-                  selectedServices.length === 0 ? 'All Services' : undefined
+                  selectedServices.length === 0
+                    ? t('map.allServices')
+                    : undefined
                 }
                 value={selectedServices}
                 data={serviceNameOptions}

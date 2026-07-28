@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { Trans, useTranslation } from 'react-i18next';
 import { Button, Center, Group, Text } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 
@@ -19,6 +20,7 @@ import { useLocalStorage } from './utils';
  * @example SearchPage.getLayout = withAppNav;
  */
 function PageWrapper({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation('onboarding');
   const [bannerState, setBannerState] = useLocalStorage(
     'clickstack-banner-state',
     'opened',
@@ -34,18 +36,21 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
         <Group bg="var(--color-text-primary)">
           <Center style={{ flexGrow: 1 }}>
             <Text py="xs" size="sm" c="var(--color-text-inverted)">
-              This is not recommended for production use and is lacking core
-              ClickStack features such as alerts and saved searches. For a
-              proper experience, visit the{' '}
-              <strong>
-                <Link
-                  href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  ClickStack Docs
-                </Link>
-              </strong>
+              <Trans
+                t={t}
+                i18nKey="banner.clickstackWarning"
+                components={{
+                  docs: (
+                    <strong>
+                      <Link
+                        href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    </strong>
+                  ),
+                }}
+              />
             </Text>
           </Center>
           <Button

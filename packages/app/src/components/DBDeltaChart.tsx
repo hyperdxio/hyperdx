@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
@@ -65,6 +66,7 @@ export default function DBDeltaChart({
   spanIdExpression?: string;
   legendPrefix?: React.ReactNode;
 }) {
+  const { t } = useTranslation('charts');
   // Derive whether a heatmap selection exists from nullable props
   const hasSelection =
     rawXMin != null && rawXMax != null && rawYMin != null && rawYMax != null;
@@ -402,7 +404,7 @@ export default function DBDeltaChart({
       <Container style={{ overflow: 'auto' }}>
         <Box mt="lg">
           <Text my="sm" size="sm">
-            Error Message:
+            {t('common.errorMessage')}
           </Text>
           <Code
             block
@@ -416,7 +418,7 @@ export default function DBDeltaChart({
         {error instanceof ClickHouseQueryError && (
           <Box mt="lg">
             <Text my="sm" size="sm">
-              Original Query:
+              {t('common.originalQuery')}
             </Text>
             <Code
               block
@@ -499,7 +501,7 @@ export default function DBDeltaChart({
                 }}
               />
               <Text size="xs" c="dimmed">
-                Selection
+                {t('delta.selection')}
               </Text>
             </Flex>
             <Flex align="center" gap={4}>
@@ -513,7 +515,7 @@ export default function DBDeltaChart({
                 }}
               />
               <Text size="xs" c="dimmed">
-                Background
+                {t('delta.background')}
               </Text>
             </Flex>
           </>
@@ -530,13 +532,11 @@ export default function DBDeltaChart({
                 }}
               />
               <Text size="xs" c="dimmed">
-                All spans
+                {t('delta.allSpans')}
               </Text>
             </Flex>
             <Text size="xs" c="dimmed" fs="italic">
-              {isLoading
-                ? 'Loading\u2026'
-                : 'Select an area on the chart above to enable comparisons'}
+              {isLoading ? t('delta.loading') : t('delta.selectArea')}
             </Text>
           </>
         )}
@@ -545,7 +545,7 @@ export default function DBDeltaChart({
       {isLoading && visibleOnPage.length === 0 && hiddenOnPage.length === 0 && (
         <Flex align="center" justify="center" style={{ flex: 1 }}>
           <Text size="sm" c="dimmed">
-            Loading attribute distributions\u2026
+            {t('delta.loadingAttributeDistributions')}
           </Text>
         </Flex>
       )}
@@ -581,7 +581,9 @@ export default function DBDeltaChart({
           mb="xs"
           label={
             <Text size="xs" c="dimmed">
-              Lower-priority fields ({hiddenProperties.length})
+              {t('delta.lowerPriorityFields', {
+                count: hiddenProperties.length,
+              })}
             </Text>
           }
           labelPosition="left"

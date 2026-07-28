@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Controller } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { OnClickTarget } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
@@ -21,13 +22,14 @@ export function OnClickTargetInputControlled({
   objectType: 'source' | 'dashboard';
   onTargetChange?: (target: OnClickTarget) => void;
 }) {
+  const { t } = useTranslation('charts');
   const optionsWithTemplate = useMemo(() => {
     return [
       {
         group: 'Template',
         items: [
           {
-            label: 'Template',
+            label: t('onClick.template'),
             value: TEMPLATE_SELECT_VALUE,
           },
         ],
@@ -37,7 +39,7 @@ export function OnClickTargetInputControlled({
         items: options ?? [],
       },
     ];
-  }, [options, objectType]);
+  }, [options, objectType, t]);
 
   const label = objectType === 'dashboard' ? 'Dashboard' : 'Source';
   const labelTooltip =

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import {
   ClickHouseQueryError,
   isMissingColumnError,
@@ -27,6 +28,7 @@ function KnownColumnsListHint({
   onEditClick?: () => void;
   source: TSource;
 }) {
+  const { t } = useTranslation('search');
   const hasKnownColumnsList =
     (isLogSource(source) || isTraceSource(source)) &&
     !!source.knownColumnsListExpression;
@@ -57,17 +59,17 @@ function KnownColumnsListHint({
     <Alert
       color="yellow"
       icon={<IconAlertTriangle size={16} />}
-      title="SELECT * failure on Distributed or Merge table"
+      title={t('sidePanel.selectFailureTitle')}
     >
       <Stack gap="xs" align="start">
         <Text size="sm">{message}</Text>
         {IS_LOCAL_MODE ? (
           <Button size="xs" variant="subtle" onClick={onEditClick}>
-            Edit source settings
+            {t('sidePanel.editSourceSettings')}
           </Button>
         ) : (
           <Anchor component={Link} href={`/team#source-${source.id}`} size="sm">
-            Edit source settings
+            {t('sidePanel.editSourceSettings')}
           </Anchor>
         )}
       </Stack>
@@ -82,6 +84,7 @@ export function DBRowSidePanelErrorState({
   error: Error | ClickHouseQueryError;
   source: TSource;
 }) {
+  const { t } = useTranslation('search');
   const [editOpened, editModal] = useDisclosure(false);
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
@@ -90,7 +93,7 @@ export function DBRowSidePanelErrorState({
 
   return (
     <Stack gap="sm">
-      <Text>Error loading row data</Text>
+      <Text>{t('sidePanel.rowLoadError')}</Text>
 
       {showHint && (
         <KnownColumnsListHint onEditClick={editModal.open} source={source} />
@@ -98,7 +101,7 @@ export function DBRowSidePanelErrorState({
 
       <Stack align="start">
         <Text size="sm" mt={10}>
-          Error Message:
+          {t('sidePanel.errorMessage')}
         </Text>
         <Code
           flex={1}
@@ -113,7 +116,7 @@ export function DBRowSidePanelErrorState({
         {error instanceof ClickHouseQueryError && (
           <>
             <Text size="sm" ta="center">
-              Sent Query:
+              {t('sidePanel.sentQuery')}
             </Text>
             <SQLPreview data={error?.query} enableLineWrapping enableCopy />
           </>
@@ -123,7 +126,7 @@ export function DBRowSidePanelErrorState({
         <Modal
           opened={editOpened}
           onClose={editModal.close}
-          title="Edit Source"
+          title={t('sidePanel.editSource')}
           size="xl"
         >
           <TableSourceForm sourceId={source.id} onSave={editModal.close} />

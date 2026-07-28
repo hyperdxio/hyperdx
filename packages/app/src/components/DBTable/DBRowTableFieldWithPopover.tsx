@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -32,6 +33,7 @@ const DBRowTableFieldWithPopover = ({
   columnName,
   isChart = false,
 }: DBRowTableFieldWithPopoverProps) => {
+  const { t } = useTranslation('search');
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
   const [hoverDisabled, setHoverDisabled] = useState(false);
@@ -188,7 +190,7 @@ const DBRowTableFieldWithPopover = ({
               onClick={copyFieldValue}
               variant="copy"
               isActive={isCopied}
-              title={isCopied ? 'Copied!' : 'Copy field value'}
+              title={isCopied ? t('row.copied') : t('row.copyField')}
             >
               <IconCopy size={14} />
             </DBRowTableIconButton>
@@ -197,14 +199,14 @@ const DBRowTableFieldWithPopover = ({
                 <DBRowTableIconButton
                   onClick={addFilter}
                   variant="copy"
-                  title="Toggle filter for this value"
+                  title={t('row.toggleFilter')}
                 >
                   <IconFilter size={14} />
                 </DBRowTableIconButton>
                 <DBRowTableIconButton
                   onClick={excludeFilter}
                   variant="copy"
-                  title="Exclude this value"
+                  title={t('row.excludeValue')}
                 >
                   <IconFilterX size={14} />
                 </DBRowTableIconButton>

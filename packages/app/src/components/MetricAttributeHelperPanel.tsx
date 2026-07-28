@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
@@ -184,6 +185,7 @@ function AttributeValueList({
   onBack,
   onAddToGroupBy,
 }: AttributeValueListProps) {
+  const { t } = useTranslation('charts');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch] = useDebouncedValue(searchTerm, 300);
 
@@ -241,14 +243,14 @@ function AttributeValueList({
             leftSection={<IconPlus size={14} />}
             onClick={handleAddToGroupBy}
           >
-            Group By
+            {t('metrics.groupBy')}
           </Button>
         )}
       </Group>
 
       <TextInput
         size="xs"
-        placeholder="Search values..."
+        placeholder={t('metrics.searchValues')}
         leftSection={<IconSearch size={14} />}
         value={searchTerm}
         onChange={e => setSearchTerm(e.currentTarget.value)}
@@ -282,7 +284,7 @@ function AttributeValueList({
                   leftSection={<IconFilter size={12} />}
                   onClick={() => handleAddValueToWhere(value)}
                 >
-                  Where
+                  {t('metrics.where')}
                 </Button>
               </Group>
             ))}
@@ -290,7 +292,7 @@ function AttributeValueList({
         </ScrollArea.Autosize>
       ) : (
         <Text size="xs" c="dimmed" ta="center" py="md">
-          {searchTerm ? 'No matching values found' : 'No values found'}
+          {searchTerm ? t('metrics.noMatchingValues') : t('metrics.noValues')}
         </Text>
       )}
     </Stack>
@@ -306,6 +308,7 @@ function AttributeList({
   attributeKeys,
   onSelectAttribute,
 }: AttributeListProps) {
+  const { t } = useTranslation('charts');
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredAttributes = useMemo(() => {
@@ -338,7 +341,7 @@ function AttributeList({
     <Stack gap="xs">
       <TextInput
         size="xs"
-        placeholder="Search attributes..."
+        placeholder={t('metrics.searchAttributes')}
         leftSection={<IconSearch size={14} />}
         value={searchTerm}
         onChange={e => setSearchTerm(e.currentTarget.value)}
@@ -402,6 +405,7 @@ export function MetricAttributeHelperPanel({
   onAddToWhere,
   onAddToGroupBy,
 }: MetricAttributeHelperPanelProps) {
+  const { t } = useTranslation('charts');
   const [opened, { toggle }] = useDisclosure(false);
   const [selectedAttribute, setSelectedAttribute] =
     useState<AttributeKey | null>(null);
@@ -435,7 +439,7 @@ export function MetricAttributeHelperPanel({
             {metricMetadata?.unit && (
               <Group gap={4} mt={2}>
                 <Text size="xs" c="dimmed">
-                  Unit:
+                  {t('metrics.unit')}
                 </Text>
                 <Badge size="xs" variant="light">
                   {formatUnitDisplay(metricMetadata.unit)}
@@ -446,7 +450,7 @@ export function MetricAttributeHelperPanel({
           <Group gap="xs" wrap="nowrap">
             {attributeKeys.length > 0 && (
               <Badge size="xs" variant="light">
-                {attributeKeys.length} attributes
+                {t('metrics.attributeCount', { count: attributeKeys.length })}
               </Badge>
             )}
             <IconChevronDown
@@ -468,7 +472,7 @@ export function MetricAttributeHelperPanel({
             </Flex>
           ) : attributeKeys.length === 0 ? (
             <Text size="xs" c="dimmed" ta="center" py="md">
-              No attributes found for this metric
+              {t('metrics.noAttributes')}
             </Text>
           ) : selectedAttribute ? (
             <AttributeValueList

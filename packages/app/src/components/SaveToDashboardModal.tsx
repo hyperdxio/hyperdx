@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -41,6 +42,7 @@ export default function SaveToDashboardModal({
   opened,
   onClose,
 }: SaveToDashboardModalProps) {
+  const { t } = useTranslation('dashboards');
   const queryClient = useQueryClient();
   const { data: dashboards, isLoading: isLoadingDashboards } = useDashboards();
   const createDashboard = useCreateDashboard();
@@ -70,7 +72,7 @@ export default function SaveToDashboardModal({
     ...(dashboards?.map(d => ({ value: d.id, label: d.name })) || []),
     {
       value: CREATE_NEW_DASHBOARD_VALUE,
-      label: 'Create New Dashboard',
+      label: t('saveChart.createNew'),
     },
   ];
 
@@ -95,8 +97,8 @@ export default function SaveToDashboardModal({
         if (!data.newDashboardName.trim()) {
           notifications.show({
             color: 'red',
-            title: 'Validation Error',
-            message: 'Dashboard name is required',
+            title: t('saveChart.validationError'),
+            message: t('saveChart.nameRequired'),
           });
           return;
         }
@@ -116,10 +118,10 @@ export default function SaveToDashboardModal({
 
         notifications.show({
           color: 'green',
-          title: 'Chart saved to dashboard',
+          title: t('saveChart.saved'),
           message: (
             <>
-              View on{' '}
+              {t('saveChart.viewOn')}{' '}
               <a
                 href={`/dashboards/${result.id}`}
                 style={{ color: 'inherit', textDecoration: 'underline' }}
@@ -137,8 +139,8 @@ export default function SaveToDashboardModal({
         if (!data.dashboardId) {
           notifications.show({
             color: 'red',
-            title: 'Validation Error',
-            message: 'Please select a dashboard',
+            title: t('saveChart.validationError'),
+            message: t('saveChart.selectRequired'),
           });
           return;
         }
@@ -154,8 +156,8 @@ export default function SaveToDashboardModal({
         if (!targetDashboard) {
           notifications.show({
             color: 'red',
-            title: 'Error',
-            message: 'Dashboard not found. Please refresh and try again.',
+            title: t('saveChart.error'),
+            message: t('saveChart.notFound'),
           });
           return;
         }
@@ -169,10 +171,10 @@ export default function SaveToDashboardModal({
 
         notifications.show({
           color: 'green',
-          title: 'Chart saved to dashboard',
+          title: t('saveChart.saved'),
           message: (
             <>
-              View on{' '}
+              {t('saveChart.viewOn')}{' '}
               <a
                 href={`/dashboards/${targetDashboard.id}`}
                 style={{ color: 'inherit', textDecoration: 'underline' }}
@@ -189,11 +191,9 @@ export default function SaveToDashboardModal({
     } catch (error) {
       notifications.show({
         color: 'red',
-        title: 'Error saving chart',
+        title: t('saveChart.saveError'),
         message:
-          error instanceof Error
-            ? error.message
-            : 'Failed to save chart to dashboard',
+          error instanceof Error ? error.message : t('saveChart.saveFailed'),
       });
     }
   });
@@ -204,7 +204,7 @@ export default function SaveToDashboardModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Save to Dashboard"
+      title={t('saveChart.title')}
       size="lg"
     >
       <form onSubmit={onSubmit}>
@@ -213,18 +213,20 @@ export default function SaveToDashboardModal({
           <Card withBorder padding="sm">
             <Stack gap="xs">
               <Text size="sm" fw={500}>
-                Chart Preview
+                {t('saveChart.preview')}
               </Text>
               <Group gap="xs">
                 <Text size="sm" c="dimmed">
-                  Name:
+                  {t('saveChart.name')}
                 </Text>
-                <Text size="sm">{chartConfig.name || 'Untitled Chart'}</Text>
+                <Text size="sm">
+                  {chartConfig.name || t('saveChart.untitled')}
+                </Text>
               </Group>
               {chartConfig.displayType && (
                 <Group gap="xs">
                   <Text size="sm" c="dimmed">
-                    Type:
+                    {t('saveChart.type')}
                   </Text>
                   <Text size="sm">{chartConfig.displayType}</Text>
                 </Group>
@@ -235,7 +237,7 @@ export default function SaveToDashboardModal({
           {/* Dashboard Selection */}
           <Box>
             <Text size="xs" mb="xs">
-              Dashboard *
+              {t('saveChart.dashboard')}
             </Text>
             <Controller
               name="dashboardId"
@@ -245,10 +247,10 @@ export default function SaveToDashboardModal({
                 <Select
                   {...field}
                   data={dashboardOptions}
-                  placeholder="Select a dashboard"
+                  placeholder={t('saveChart.selectPlaceholder')}
                   searchable
                   disabled={isLoadingDashboards || isLoading}
-                  nothingFoundMessage="No dashboards found"
+                  nothingFoundMessage={t('saveChart.noneFound')}
                 />
               )}
             />
@@ -258,7 +260,7 @@ export default function SaveToDashboardModal({
           {isCreatingNew && (
             <Box>
               <Text size="xs" mb="xs">
-                Dashboard Name *
+                {t('saveChart.dashboardName')}
               </Text>
               <Controller
                 name="newDashboardName"
@@ -267,7 +269,7 @@ export default function SaveToDashboardModal({
                 render={({ field }) => (
                   <TextInput
                     {...field}
-                    placeholder="Enter dashboard name"
+                    placeholder={t('saveChart.namePlaceholder')}
                     disabled={isLoading}
                   />
                 )}
@@ -278,10 +280,10 @@ export default function SaveToDashboardModal({
           {/* Actions */}
           <Group justify="flex-end" mt="md">
             <Button variant="subtle" onClick={onClose} disabled={isLoading}>
-              Cancel
+              {t('saveChart.cancel')}
             </Button>
             <Button type="submit" loading={isLoading}>
-              Save to Dashboard
+              {t('saveChart.save')}
             </Button>
           </Group>
         </Stack>

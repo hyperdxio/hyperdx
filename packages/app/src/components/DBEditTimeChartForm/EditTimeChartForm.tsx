@@ -6,6 +6,7 @@ import {
   type UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -148,6 +149,7 @@ export default function EditTimeChartForm({
   isDashboardForm = false,
   autoRun = false,
 }: EditTimeChartFormProps) {
+  const { t } = useTranslation('charts');
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
     [chartConfig],
@@ -426,7 +428,7 @@ export default function EditTimeChartForm({
           if (!suppressErrorNotification) {
             notifications.show({
               id: 'chart-error',
-              title: 'Invalid Chart',
+              title: t('form.invalidChart'),
               message: <ErrorNotificationMessage errors={errors} />,
               color: 'red',
             });
@@ -458,6 +460,7 @@ export default function EditTimeChartForm({
       setQueriedConfigAndSource,
       tableSource,
       dateRange,
+      t,
     ],
   );
 
@@ -481,7 +484,7 @@ export default function EditTimeChartForm({
       if (errors.length > 0) {
         notifications.show({
           id: 'chart-error',
-          title: 'Invalid Chart',
+          title: t('form.invalidChart'),
           message: <ErrorNotificationMessage errors={errors} />,
           color: 'red',
         });
@@ -492,7 +495,7 @@ export default function EditTimeChartForm({
         onSave?.(config);
       }
     },
-    [validateAndNormalize, onSave],
+    [validateAndNormalize, onSave, t],
   );
 
   // Track previous values for detecting changes
@@ -727,55 +730,55 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Time Series
+                  {t('form.types.line')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
                   leftSection={<IconTable size={16} />}
                 >
-                  Table
+                  {t('form.types.table')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Number}
                   leftSection={<IconNumbers size={16} />}
                 >
-                  Number
+                  {t('form.types.number')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Bar}
                   leftSection={<IconChartBar size={16} />}
                 >
-                  Bar
+                  {t('form.types.bar')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
                   leftSection={<IconChartPie size={16} />}
                 >
-                  Pie
+                  {t('form.types.pie')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Search}
                   leftSection={<IconList size={16} />}
                 >
-                  Search
+                  {t('form.types.search')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Heatmap}
                   leftSection={<IconGrid3x3 size={16} />}
                 >
-                  Heatmap
+                  {t('form.types.heatmap')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.EventPatterns}
                   leftSection={<IconBracketsContain size={16} />}
                 >
-                  Patterns
+                  {t('form.types.patterns')}
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
                   leftSection={<IconMarkdown size={16} />}
                 >
-                  Markdown
+                  {t('form.types.markdown')}
                 </Tabs.Tab>
               </Tabs.List>
             </Tabs>
@@ -783,14 +786,14 @@ export default function EditTimeChartForm({
         />
         <Flex align="center" gap="sm" mb="sm">
           <Text size="sm" className="text-nowrap">
-            Chart Name
+            {t('form.chartName')}
           </Text>
           <InputControlled
             name="name"
             control={control}
             flex={1}
             type="text"
-            placeholder="My Chart Name"
+            placeholder={t('form.chartNamePlaceholder')}
             data-testid="chart-name-input"
           />
           {isRawSqlDisplayType(displayType) && (
@@ -802,10 +805,15 @@ export default function EditTimeChartForm({
                   value={value ?? 'builder'}
                   onChange={onChange}
                   data={[
-                    { label: 'Builder', value: 'builder' },
-                    { label: 'SQL', value: 'sql' },
+                    { label: t('form.configType.builder'), value: 'builder' },
+                    { label: t('form.configType.sql'), value: 'sql' },
                     ...(IS_PROMQL_ENABLED
-                      ? [{ label: 'PromQL', value: 'promql' }]
+                      ? [
+                          {
+                            label: t('form.configType.promql'),
+                            value: 'promql',
+                          },
+                        ]
                       : []),
                   ]}
                 />
@@ -818,8 +826,8 @@ export default function EditTimeChartForm({
           <div>
             <Textarea
               {...register('markdown')}
-              label="Markdown content"
-              placeholder="Markdown"
+              label={t('form.markdownContentLabel')}
+              placeholder={t('form.markdownPlaceholder')}
               mb="md"
               styles={{
                 input: {

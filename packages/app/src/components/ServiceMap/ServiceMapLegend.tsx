@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text } from '@mantine/core';
 
@@ -61,6 +62,7 @@ export default function ServiceMapLegend({
   dateRange: [Date, Date];
   isSingleTrace?: boolean;
 }) {
+  const { t } = useTranslation('services');
   const max = metricMax[metric];
 
   // Latency is a p95 aggregate; spell that out in the legend (but not the
@@ -81,14 +83,14 @@ export default function ServiceMapLegend({
       />
       <Group justify="space-between" gap="xs" wrap="nowrap">
         <Text size="xxs" c="var(--color-text-muted)">
-          low
+          {t('map.legendLow')}
         </Text>
         <Text size="xxs" c="var(--color-text)">
           {formatMax(metric, max, source, dateRange, isSingleTrace)}
         </Text>
       </Group>
       <Text size="xxs" c="var(--color-text-muted)">
-        Node size = throughput
+        {t('map.legendNodeSize')}
       </Text>
     </Stack>
   );

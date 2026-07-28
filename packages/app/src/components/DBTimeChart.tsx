@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import {
   convertGranularityToSeconds,
   getAlignedDateRange,
@@ -309,6 +310,7 @@ function DBTimeChartComponent({
   errorVariant,
   onFocusSeries,
 }: DBTimeChartComponentProps) {
+  const { t } = useTranslation('charts');
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
   );
@@ -735,14 +737,14 @@ function DBTimeChartComponent({
           options={[
             {
               value: DisplayType.Line,
-              label: 'Display as Line Chart',
+              label: t('timeChart.displayAsLine'),
               icon: <IconChartLine />,
             },
             {
               value: DisplayType.StackedBar,
               label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
+                ? t('timeChart.barChartUnavailable')
+                : t('timeChart.displayAsBar'),
               icon: <IconChartBar />,
               disabled: config.compareToPreviousPeriod,
             },
@@ -757,6 +759,7 @@ function DBTimeChartComponent({
 
     return allToolbarItems;
   }, [
+    t,
     builderQueriedConfig,
     config,
     displayType,
@@ -775,7 +778,7 @@ function DBTimeChartComponent({
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {t('timeChart.loadingData')}
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
@@ -790,7 +793,7 @@ function DBTimeChartComponent({
         />
       ) : graphResults.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {t('timeChart.noData')}
         </div>
       ) : (
         <>

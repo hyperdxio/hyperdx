@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Box, Button, Card, Divider, Flex, Stack, Text } from '@mantine/core';
 import { IconPencil, IconX } from '@tabler/icons-react';
 
@@ -7,6 +8,8 @@ import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 import { useConnections } from '@/connection';
 
 export default function ConnectionsSection() {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const { data: connections } = useConnections();
   const [editedConnectionId, setEditedConnectionId] = useState<string | null>(
     null,
@@ -15,7 +18,7 @@ export default function ConnectionsSection() {
 
   return (
     <Box id="connections" data-testid="connections-section">
-      <Text size="md">Connections</Text>
+      <Text size="md">{t('sections.connections')}</Text>
       <Divider my="md" />
       <Card>
         <Stack mb="md">
@@ -27,13 +30,14 @@ export default function ConnectionsSection() {
                     {connection.name}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    <b>Host:</b> {connection.host}
+                    <b>{t('connections.host')}</b> {connection.host}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    <b>Username:</b> {connection.username}
+                    <b>{t('connections.username')}</b> {connection.username}
                   </Text>
                   <Text size="sm" c="dimmed">
-                    <b>Password:</b> [Configured]
+                    <b>{t('connections.password')}</b>{' '}
+                    {t('connections.passwordConfigured')}
                   </Text>
                 </Stack>
                 {editedConnectionId !== connection.id ? (
@@ -42,7 +46,8 @@ export default function ConnectionsSection() {
                     onClick={() => setEditedConnectionId(connection.id)}
                     size="sm"
                   >
-                    <IconPencil size={14} className="me-2" /> Edit
+                    <IconPencil size={14} className="me-2" />{' '}
+                    {tCommon('actions.edit')}
                   </Button>
                 ) : (
                   <Button
@@ -50,7 +55,8 @@ export default function ConnectionsSection() {
                     onClick={() => setEditedConnectionId(null)}
                     size="sm"
                   >
-                    <IconX size={14} className="me-2" /> Cancel
+                    <IconX size={14} className="me-2" />{' '}
+                    {tCommon('actions.cancel')}
                   </Button>
                 )}
               </Flex>
@@ -76,7 +82,7 @@ export default function ConnectionsSection() {
               variant="primary"
               onClick={() => setIsCreatingConnection(true)}
             >
-              Add Connection
+              {t('connections.add')}
             </Button>
           )}
         {isCreatingConnection && (
@@ -84,7 +90,7 @@ export default function ConnectionsSection() {
             <ConnectionForm
               connection={{
                 id: 'new',
-                name: 'My New Connection',
+                name: t('connections.defaultName'),
                 host: IS_CLICKHOUSE_BUILD
                   ? window.location.origin
                   : 'http://localhost:8123',

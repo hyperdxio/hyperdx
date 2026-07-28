@@ -1,4 +1,5 @@
 import { ReactNode, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Anchor, Button, Collapse, Group, Stack, Tooltip } from '@mantine/core';
 
 import { CopySnippet } from './CopySnippet';
@@ -26,14 +27,12 @@ export function DeeplinkInstall({
   fallbackSnippet,
   note,
 }: DeeplinkInstallProps) {
+  const { t } = useTranslation('onboarding');
   const [manualOpen, setManualOpen] = useState(false);
   return (
     <Stack gap="xs">
       <Group gap="sm" align="center">
-        <Tooltip
-          label="Opens the host with the server pre-configured"
-          withArrow
-        >
+        <Tooltip label={t('mcp.deeplinkTooltip')} withArrow>
           <Button component="a" href={deeplink} variant="primary">
             {buttonLabel}
           </Button>
@@ -43,7 +42,7 @@ export function DeeplinkInstall({
           size="sm"
           onClick={() => setManualOpen(v => !v)}
         >
-          {manualOpen ? 'Hide manual setup' : 'Manual setup'}
+          {manualOpen ? t('mcp.hideManualSetup') : t('mcp.manualSetup')}
         </Anchor>
       </Group>
       {note}

@@ -1,4 +1,5 @@
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import { Button, Group, Modal } from '@mantine/core';
 import { IconClipboard, IconClipboardCheck } from '@tabler/icons-react';
 
@@ -12,6 +13,8 @@ function CopyableValue({
   label?: React.ReactNode;
   value: string;
 }) {
+  const { t } = useTranslation('common');
+
   return (
     <Clipboard text={value} className="d-flex mx-auto p-0 w-100">
       {({ isCopied }) => {
@@ -36,7 +39,7 @@ function CopyableValue({
               ) : (
                 <IconClipboard size={14} />
               )}
-              {isCopied ? 'Copied!' : 'Copy'}
+              {isCopied ? t('actions.copied') : t('actions.copy')}
             </Group>
           </div>
         );
@@ -52,13 +55,14 @@ export default function InstallInstructionModal({
   show: boolean;
   onHide: () => void;
 }) {
+  const { t } = useTranslation('navigation');
   const { data: team } = api.useTeam();
 
   return (
     <Modal
       opened={show}
       onClose={onHide}
-      title="Start Sending Telemetry"
+      title={t('install.title')}
       size="lg"
       centered
     >
@@ -67,19 +71,14 @@ export default function InstallInstructionModal({
           <div className="mb-4">
             <CopyableValue
               label={
-                <span className="text-muted me-2">
-                  Your Ingestion API Key:{' '}
-                </span>
+                <span className="text-muted me-2">{t('install.apiKey')} </span>
               }
               value={team.apiKey}
             />
           </div>
         )}
-        <div className="fs-7 mb-4">
-          Click on a link below to view installation instructions for your
-          application.
-        </div>
-        <div className="fs-6 mb-2">Backend</div>
+        <div className="fs-7 mb-4">{t('install.instructions')}</div>
+        <div className="fs-6 mb-2">{t('install.backend')}</div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nodejs"
@@ -89,7 +88,7 @@ export default function InstallInstructionModal({
           >
             Node.js
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndTraces')}</span>
         </div>
         <div className="mb-2">
           <a
@@ -100,7 +99,7 @@ export default function InstallInstructionModal({
           >
             Go
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndTraces')}</span>
         </div>
         <div className="mb-2">
           <a
@@ -111,7 +110,7 @@ export default function InstallInstructionModal({
           >
             Python
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndTraces')}</span>
         </div>
         <div className="mb-2">
           <a
@@ -122,7 +121,7 @@ export default function InstallInstructionModal({
           >
             Java
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndTraces')}</span>
         </div>
         <div className="mb-2">
           <a
@@ -133,7 +132,7 @@ export default function InstallInstructionModal({
           >
             Elixir
           </a>
-          <span className="ms-2 text-muted">(Logs)</span>
+          <span className="ms-2 text-muted">{t('install.logs')}</span>
         </div>
         <div className="mb-2">
           <a
@@ -144,9 +143,9 @@ export default function InstallInstructionModal({
           >
             Ruby on Rails
           </a>
-          <span className="ms-2 text-muted">(Traces)</span>
+          <span className="ms-2 text-muted">{t('install.traces')}</span>
         </div>
-        <div className="fs-6 mb-2 mt-4">Platform</div>
+        <div className="fs-6 mb-2 mt-4">{t('install.platform')}</div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/kubernetes"
@@ -156,9 +155,9 @@ export default function InstallInstructionModal({
           >
             Kubernetes
           </a>
-          <span className="ms-2 text-muted">(Logs + Metrics)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndMetrics')}</span>
         </div>
-        <div className="fs-6 mb-2 mt-4">Browser</div>
+        <div className="fs-6 mb-2 mt-4">{t('install.browser')}</div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
@@ -168,9 +167,9 @@ export default function InstallInstructionModal({
           >
             JavaScript/TypeScript
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndTraces')}</span>
         </div>
-        <div className="fs-6 mb-2 mt-4">Data Collector</div>
+        <div className="fs-6 mb-2 mt-4">{t('install.dataCollector')}</div>
         <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/opentelemetry#sending-otel-data"
@@ -180,11 +179,11 @@ export default function InstallInstructionModal({
           >
             OpenTelemetry
           </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
+          <span className="ms-2 text-muted">{t('install.logsAndTraces')}</span>
         </div>
         <div className="mt-4">
           <Button variant="secondary" onClick={() => onHide()}>
-            Cancel
+            {t('actions.cancel', { ns: 'common' })}
           </Button>
         </div>
       </div>

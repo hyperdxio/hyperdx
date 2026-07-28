@@ -64,6 +64,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
+        locale: 'en',
       });
       // Verify theme property was removed during migration
       expect('theme' in (result || {})).toBe(false);
@@ -88,6 +89,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '24h',
         colorMode: 'light',
         font: 'Inter',
+        locale: 'en',
       });
       // Verify theme property was removed during migration
       expect('theme' in (result || {})).toBe(false);
@@ -142,6 +144,7 @@ describe('migrateUserPreferences', () => {
         colorMode: 'light',
         font: 'Roboto Mono',
         expandSidebarHeader: true,
+        locale: 'en',
       });
     });
 
@@ -158,6 +161,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '12h', // From DEFAULT_PREFERENCES
         colorMode: 'dark', // Migrated from theme
         font: 'IBM Plex Mono', // From DEFAULT_PREFERENCES
+        locale: 'en', // From DEFAULT_PREFERENCES
       });
     });
   });
@@ -225,6 +229,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '12h', // From DEFAULT_PREFERENCES
         colorMode: 'light', // Migrated from theme
         font: 'IBM Plex Mono', // From DEFAULT_PREFERENCES
+        locale: 'en', // From DEFAULT_PREFERENCES
       });
     });
 
@@ -247,17 +252,72 @@ describe('migrateUserPreferences', () => {
         font: 'IBM Plex Mono',
         unknownProperty: 'should be preserved',
         anotherUnknown: 123,
+        locale: 'en',
       });
     });
   });
 
   describe('Migration idempotency', () => {
+    it('adds English to an existing valid record without a locale', () => {
+      const existingData = JSON.stringify({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+      });
+
+      expect(migrateUserPreferences(existingData)).toEqual({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        locale: 'en',
+      });
+    });
+
+    it('preserves a supported stored locale', () => {
+      const existingData = JSON.stringify({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        locale: 'ko',
+      });
+
+      expect(migrateUserPreferences(existingData)).toEqual({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        locale: 'ko',
+      });
+    });
+
+    it('normalizes an unsupported stored locale to English', () => {
+      const existingData = JSON.stringify({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        locale: 'fr',
+      });
+
+      expect(migrateUserPreferences(existingData)).toEqual({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        locale: 'en',
+      });
+    });
+
     it('should return already migrated data unchanged', () => {
       const migratedData: UserPreferences = {
         isUTC: false,
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
+        locale: 'en',
       };
 
       const result = migrateUserPreferences(JSON.stringify(migratedData));
@@ -273,6 +333,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '12h',
         colorMode: 'system',
         font: 'IBM Plex Mono',
+        locale: 'en',
       };
 
       const result = migrateUserPreferences(JSON.stringify(dataWithSystem));
@@ -295,7 +356,11 @@ describe('migrateUserPreferences', () => {
 
       // Should use colorMode (already migrated, ignore theme)
       expect(result?.colorMode).toBe('dark');
-      expect(localStorageMock.setItem).not.toHaveBeenCalled();
+      expect(result?.locale).toBe('en');
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        STORAGE_KEY,
+        JSON.stringify(result),
+      );
     });
 
     it('should be safe to call multiple times on same legacy data', () => {
@@ -343,6 +408,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
+        locale: 'en',
       });
     });
   });
@@ -369,6 +435,7 @@ describe('migrateUserPreferences', () => {
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
+        locale: 'en',
       });
     });
   });

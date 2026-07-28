@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
@@ -101,6 +102,7 @@ const DashboardFilterEditForm = ({
   onClose,
   onCancel,
 }: DashboardFilterEditFormProps) => {
+  const { t } = useTranslation('dashboards');
   const { handleSubmit, register, formState, control, reset } =
     useForm<DashboardFilter>({
       defaultValues: {
@@ -148,7 +150,7 @@ const DashboardFilterEditForm = ({
 
   return (
     <Modal
-      title={isNew ? 'Add filter' : 'Edit filter'}
+      title={isNew ? t('filters.addTitle') : t('filters.editTitle')}
       opened
       onClose={onClose}
       size={MODAL_SIZE}
@@ -171,16 +173,19 @@ const DashboardFilterEditForm = ({
           })}
         >
           <Stack>
-            <CustomInputWrapper label="Name" error={formState.errors.name}>
+            <CustomInputWrapper
+              label={t('filters.name')}
+              error={formState.errors.name}
+            >
               <TextInput
-                placeholder="Name"
+                placeholder={t('filters.name')}
                 data-testid="filter-name-input"
                 {...register('name', { required: true, minLength: 1 })}
               />
             </CustomInputWrapper>
             <CustomInputWrapper
-              label="Data source"
-              tooltipText="The data source that the filter values are queried from"
+              label={t('filters.dataSource')}
+              tooltipText={t('filters.dataSourceHelp')}
               error={formState.errors.source}
             >
               <SourceSelectControlled
@@ -208,15 +213,15 @@ const DashboardFilterEditForm = ({
             </CustomInputWrapper>
             {!presetSource && (
               <CustomInputWrapper
-                label="Applies to sources"
-                tooltipText="Leave empty to apply to all tiles. Selecting one or more sources restricts the filter to only tiles using those sources."
+                label={t('filters.appliesTo')}
+                tooltipText={t('filters.appliesToHelp')}
               >
                 <SourceMultiSelectControlled
                   control={control}
                   name="appliesToSourceIds"
                   data-testid="applies-to-source-selector"
                   comboboxProps={{ withinPortal: true }}
-                  placeholder="All sources"
+                  placeholder={t('filters.allSources')}
                   allowedSourceKinds={[
                     SourceKind.Log,
                     SourceKind.Trace,
@@ -228,8 +233,8 @@ const DashboardFilterEditForm = ({
             )}
             {sourceIsMetric && (
               <CustomInputWrapper
-                label="Metric type"
-                tooltipText="The metric table that the filter values are queried from"
+                label={t('filters.metricType')}
+                tooltipText={t('filters.metricTypeHelp')}
                 error={formState.errors.sourceMetricType}
               >
                 <Controller
@@ -254,15 +259,15 @@ const DashboardFilterEditForm = ({
             )}
 
             <CustomInputWrapper
-              label="Filter expression"
-              tooltipText="The SQL column or expression to filter on"
+              label={t('filters.expression')}
+              tooltipText={t('filters.expressionHelp')}
               error={formState.errors.expression}
             >
               <SQLInlineEditorControlled
                 tableConnection={tableConnection}
                 control={control}
                 name="expression"
-                placeholder="SQL column or expression"
+                placeholder={t('filters.expressionPlaceholder')}
                 language="sql"
                 enableHotkey
                 rules={{ required: true }}
@@ -271,8 +276,8 @@ const DashboardFilterEditForm = ({
             </CustomInputWrapper>
 
             <CustomInputWrapper
-              label="Dropdown values filter"
-              tooltipText="Optional condition used to filter the rows from which available filter values are queried"
+              label={t('filters.dropdownFilter')}
+              tooltipText={t('filters.dropdownFilterHelp')}
             >
               <SearchWhereInput
                 tableConnection={tableConnection}
@@ -281,21 +286,21 @@ const DashboardFilterEditForm = ({
                 languageName="whereLanguage"
                 showLabel={false}
                 allowMultiline={true}
-                sqlPlaceholder="Filter for dropdown values"
-                lucenePlaceholder="Filter for dropdown values"
+                sqlPlaceholder={t('filters.dropdownFilterPlaceholder')}
+                lucenePlaceholder={t('filters.dropdownFilterPlaceholder')}
               />
             </CustomInputWrapper>
 
             <Group justify="space-between" my="xs">
               <Button variant="secondary" onClick={onCancel}>
-                Cancel
+                {t('filters.cancel')}
               </Button>
               <Button
                 type="submit"
                 variant="primary"
                 data-testid="save-filter-button"
               >
-                Save filter
+                {t('filters.save')}
               </Button>
             </Group>
           </Stack>
@@ -311,6 +316,8 @@ interface EmptyStateProps {
 }
 
 const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
+  const { t } = useTranslation('dashboards');
+
   return (
     <Modal opened onClose={onClose} size={MODAL_SIZE}>
       <Stack
@@ -321,17 +328,16 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
         data-testid="dashboard-filters-empty-state"
       >
         <IconFilter />
-        <Title order={4}>No filters yet.</Title>
+        <Title order={4}>{t('filters.empty')}</Title>
         <Text size="sm" ta="center" px="xl">
-          Add filters to let users quickly narrow data on key columns. Saved
-          filters will stay with this dashboard.
+          {t('filters.emptyDescription')}
         </Text>
         <Button
           variant="primary"
           onClick={onCreateFilter}
           data-testid="add-filter-button"
         >
-          Add new filter
+          {t('filters.add')}
         </Button>
       </Stack>
     </Modal>
@@ -357,13 +363,14 @@ const DashboardFiltersList = ({
   onClose,
   onAddNew,
 }: DashboardFiltersListProps) => {
+  const { t } = useTranslation('dashboards');
   const { data: sources } = useSources();
 
   return (
     <Modal
       opened
       onClose={onClose}
-      title="Filters"
+      title={t('filters.title')}
       size={MODAL_SIZE}
       className={styles.modal}
     >
@@ -383,7 +390,7 @@ const DashboardFiltersList = ({
             : undefined;
           const appliedDisplay = appliedSourceNames
             ? appliedSourceNames.join(', ')
-            : 'All sources';
+            : t('filters.allSources');
           return (
             <Paper
               key={filter.id}
@@ -413,10 +420,7 @@ const DashboardFiltersList = ({
                 </Group>
               </Group>
               <Group gap="xs" wrap="nowrap">
-                <Tooltip
-                  label="Source the dropdown values are queried from"
-                  withinPortal
-                >
+                <Tooltip label={t('filters.queriedSource')} withinPortal>
                   <IconSearch size={14} />
                 </Tooltip>
                 <Text size="xs" truncate="end">
@@ -430,7 +434,7 @@ const DashboardFiltersList = ({
                   data-testid={`dashboard-filter-applies-to-${filter.name}`}
                 >
                   <Tooltip
-                    label={'Sources this filter applies to'}
+                    label={t('filters.appliedSources')}
                     withinPortal
                     multiline
                     maw={400}
@@ -458,14 +462,14 @@ const DashboardFiltersList = ({
           onClick={onClose}
           data-testid="close-filters-button"
         >
-          Close
+          {t('filters.close')}
         </Button>
         <Button
           variant="primary"
           onClick={onAddNew}
           data-testid="add-filter-button"
         >
-          Add new filter
+          {t('filters.add')}
         </Button>
       </Group>
     </Modal>

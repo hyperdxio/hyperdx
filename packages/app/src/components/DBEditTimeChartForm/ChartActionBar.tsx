@@ -1,4 +1,5 @@
 import { Control, UseFormHandleSubmit } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Button, Flex, Menu } from '@mantine/core';
@@ -53,6 +54,7 @@ export function ChartActionBar({
   onTimeRangeSearch,
   setSaveToDashboardModalOpen,
 }: ChartActionBarProps) {
+  const { t } = useTranslation('charts');
   return (
     <Flex justify="space-between" mt="sm">
       <Flex gap="sm">
@@ -63,7 +65,7 @@ export function ChartActionBar({
             variant="primary"
             onClick={handleSubmit(handleSave)}
           >
-            Save
+            {t('common.save')}
           </Button>
         )}
         {onClose != null && (
@@ -73,7 +75,7 @@ export function ChartActionBar({
             onClick={onClose}
             disabled={isSaving}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
         )}
       </Flex>
@@ -92,7 +94,7 @@ export function ChartActionBar({
                 name={`orderBy`}
                 disableKeywordAutocomplete
                 onSubmit={onSubmit}
-                label="ORDER BY"
+                label={t('actionBar.orderBy')}
               />
             </div>
           )}
@@ -123,7 +125,7 @@ export function ChartActionBar({
             leftSection={<IconPlayerPlay size={16} />}
             style={{ flexShrink: 0 }}
           >
-            Run
+            {t('common.run')}
           </Button>
         )}
         {!IS_LOCAL_MODE && !dashboardId && (
@@ -138,7 +140,7 @@ export function ChartActionBar({
                 leftSection={<IconLayoutGrid size={16} />}
                 onClick={() => setSaveToDashboardModalOpen(true)}
               >
-                Save to Dashboard
+                {t('actionBar.saveToDashboard')}
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>

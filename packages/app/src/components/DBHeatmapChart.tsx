@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useTranslation } from 'react-i18next';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
@@ -324,7 +325,8 @@ const opt: uPlot.Options = {
   series: [
     {},
     {
-      label: 'Latency',
+      // The series label is set at render time from i18n in the Heatmap
+      // component's options useMemo (t('heatmap.latency')).
       // paths and fill colors are set dynamically per theme in the
       // Heatmap component's useMemo — see buildSeriesForPalette().
       facets: [
@@ -567,15 +569,16 @@ export function buildHeatmapBucketConfig({
 }
 
 export function ColorLegend({ colors }: { colors: string[] }) {
+  const { t } = useTranslation('charts');
   return (
     <Flex
       align="center"
       gap={4}
       role="img"
-      aria-label="Color scale: low to high count"
+      aria-label={t('heatmap.colorScaleAriaLabel')}
     >
       <Text size="10px" c="dimmed">
-        Low
+        {t('heatmap.low')}
       </Text>
       <div
         style={{
@@ -591,7 +594,7 @@ export function ColorLegend({ colors }: { colors: string[] }) {
         ))}
       </div>
       <Text size="10px" c="dimmed">
-        High
+        {t('heatmap.high')}
       </Text>
     </Flex>
   );
@@ -708,6 +711,7 @@ function HeatmapContainer({
   showLegend?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
+  const { t } = useTranslation('charts');
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
@@ -820,14 +824,13 @@ function HeatmapContainer({
     >
       {isLoading || isMinMaxLoading ? (
         <Text size="sm" ta="center" p="xl">
-          Loading...
+          {t('common.loading')}
         </Text>
       ) : _error ? (
         <ChartErrorState error={_error} variant={errorVariant} />
       ) : time.length < 2 || generatedTsBuckets?.length < 2 ? (
         <Text size="sm" ta="center" p="xl">
-          Not enough data points to render heatmap. Try expanding your search
-          criteria.
+          {t('heatmap.notEnoughData')}
         </Text>
       ) : (
         <Heatmap
@@ -975,6 +978,7 @@ function Heatmap({
   palette: string[];
   selectionBounds?: SelectionBounds | null;
 }) {
+  const { t } = useTranslation('charts');
   const [highlightedPoint, setHighlightedPoint] = useState<
     | {
         xVal: number;
@@ -1097,7 +1101,10 @@ function Heatmap({
     const themedSeries = buildSeriesForPalette(palette);
     return {
       ...opt,
-      series: [opt.series[0], { ...opt.series[1], ...themedSeries }],
+      series: [
+        opt.series[0],
+        { ...opt.series[1], ...themedSeries, label: t('heatmap.latency') },
+      ],
       ...(opt != null && opt.axes != null
         ? {
             axes: [
@@ -1256,7 +1263,7 @@ function Heatmap({
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType, palette, hasFilter]);
+  }, [width, height, tickFormatter, scaleType, palette, hasFilter, t]);
 
   return (
     <div
@@ -1339,7 +1346,7 @@ function Heatmap({
             {onFilter && (
               <>
                 <Text size="10px" pt="4px">
-                  Drag to Compare · Click to Clear
+                  {t('heatmap.dragToCompare')}
                 </Text>
                 <Divider my="xs" />
               </>
@@ -1348,10 +1355,11 @@ function Heatmap({
               <FormatTime value={highlightedPoint.xVal} />
             </div>
             <div>
-              <b>Y Value:</b> {tickFormatter(highlightedPoint.yVal)}
+              <b>{t('heatmap.yValue')}</b>{' '}
+              {tickFormatter(highlightedPoint.yVal)}
             </div>
             <div>
-              <b>Count Value:</b>{' '}
+              <b>{t('heatmap.countValue')}</b>{' '}
               {new Intl.NumberFormat('en-US', {
                 notation: 'standard',
                 compactDisplay: 'short',

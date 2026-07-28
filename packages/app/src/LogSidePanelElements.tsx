@@ -2,6 +2,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import { JSONTree } from 'react-json-tree';
 import {
   Alert,
@@ -93,6 +94,11 @@ const StacktraceValue = ({
       <div className="fs-7">{value}</div>
     </div>
   );
+};
+
+const EmptyValue = () => {
+  const { t } = useTranslation('search');
+  return <span className="text-muted">{t('logPanel.empty')}</span>;
 };
 
 const StacktraceRowExpandButton = ({
@@ -333,7 +339,7 @@ const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return <div className="text-truncate">{row.original.message}</div>;
       }
 
-      return <span className="text-muted">Empty</span>;
+      return <EmptyValue />;
     },
   },
   {
@@ -495,11 +501,11 @@ export const NetworkBody = ({
  * Keyboard shortcuts
  */
 const SHORTCUTS = [
-  { keys: ['esc'], label: 'Close panel' },
-  { keys: ['←', '→'], label: 'Navigate between events' },
-  { keys: ['↑', '↓'], label: 'Navigate between events' },
-  { keys: ['k', 'j'], label: 'Navigate between events' },
-  { keys: ['⌘/Ctrl', 'scroll'], label: 'Zoom trace timeline' },
+  { keys: ['esc'], labelKey: 'closePanel' },
+  { keys: ['←', '→'], labelKey: 'navigateEvents' },
+  { keys: ['↑', '↓'], labelKey: 'navigateEvents' },
+  { keys: ['k', 'j'], labelKey: 'navigateEvents' },
+  { keys: ['⌘/Ctrl', 'scroll'], labelKey: 'zoomTimeline' },
 ] as const;
 
 export const KeyboardShortcutsModal = ({
@@ -509,17 +515,18 @@ export const KeyboardShortcutsModal = ({
   opened: boolean;
   onClose: () => void;
 }) => {
+  const { t } = useTranslation('search');
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      title="Keyboard Shortcuts"
+      title={t('logPanel.keyboardShortcuts')}
       size="sm"
       centered
     >
       <Stack gap="sm">
-        {SHORTCUTS.map(({ keys, label }) => (
-          <Group key={label} justify="space-between">
+        {SHORTCUTS.map(({ keys, labelKey }) => (
+          <Group key={`${keys.join('-')}-${labelKey}`} justify="space-between">
             <Group gap={4}>
               {keys.map((key, i) => (
                 <React.Fragment key={key}>
@@ -532,7 +539,7 @@ export const KeyboardShortcutsModal = ({
                 </React.Fragment>
               ))}
             </Group>
-            <Text size="sm">{label}</Text>
+            <Text size="sm">{t(`logPanel.${labelKey}`)}</Text>
           </Group>
         ))}
       </Stack>
@@ -541,6 +548,7 @@ export const KeyboardShortcutsModal = ({
 };
 
 const SourceMapsFtux = () => {
+  const { t } = useTranslation('search');
   const [isDismissed, setIsDismissed] = useLocalStorage(
     'sourceMapsFtuxDismissed',
     false,
@@ -559,13 +567,11 @@ const SourceMapsFtux = () => {
       onClose={() => setIsDismissed(true)}
     >
       <Text size="xs">
-        <IconCode size={16} /> Some of the stack frames are pointing to minified
-        files. Use hyperdx-cli to upload your source maps and see the original
-        code.
+        <IconCode size={16} /> {t('logPanel.sourceMapsNotice')}
       </Text>
       <Link href="https://www.npmjs.com/package/@hyperdx/cli" target="_blank">
         <Button size="compact-xs" variant="primary" mt="xs">
-          See docs
+          {t('logPanel.seeDocs')}
         </Button>
       </Link>
     </Alert>

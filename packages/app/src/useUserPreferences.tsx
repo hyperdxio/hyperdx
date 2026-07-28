@@ -3,6 +3,8 @@ import produce from 'immer';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
+import { DEFAULT_LOCALE, isSupportedLocale, type Locale } from '@/i18n/config';
+
 type ColorModePreference = 'light' | 'dark' | 'system';
 
 export type UserPreferences = {
@@ -10,13 +12,15 @@ export type UserPreferences = {
   timeFormat: '12h' | '24h';
   /** Color mode preference (light/dark/system). Separate from brand theme (hyperdx/clickstack). */
   colorMode: ColorModePreference;
+  locale: Locale;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
 };
 
 // Legacy type for migration
-type LegacyUserPreferences = Omit<UserPreferences, 'colorMode'> & {
+type LegacyUserPreferences = Omit<UserPreferences, 'colorMode' | 'locale'> & {
   theme?: 'light' | 'dark';
+  locale?: unknown;
 };
 
 const STORAGE_KEY = 'hdx-user-preferences';
@@ -24,6 +28,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   isUTC: false,
   timeFormat: '12h',
   colorMode: 'system',
+  locale: DEFAULT_LOCALE,
   font: 'IBM Plex Mono',
 };
 
@@ -74,6 +79,28 @@ function isLegacyUserPreferences(obj: unknown): obj is LegacyUserPreferences {
   );
 }
 
+function normalizeLocale(preferences: UserPreferences): UserPreferences {
+  const locale = isSupportedLocale(preferences.locale)
+    ? preferences.locale
+    : DEFAULT_LOCALE;
+
+  return { ...preferences, locale };
+}
+
+function persistMigratedPreferences(migrated: UserPreferences): void {
+  try {
+    if (typeof window !== 'undefined') {
+      const migratedJson = JSON.stringify(migrated);
+      const currentStored = localStorage.getItem(STORAGE_KEY);
+      if (currentStored !== migratedJson) {
+        localStorage.setItem(STORAGE_KEY, migratedJson);
+      }
+    }
+  } catch {
+    // Ignore localStorage errors (private browsing, etc.)
+  }
+}
+
 /**
  * Migrates old localStorage data from `theme` to `colorMode`.
  * This ensures existing users don't lose their light/dark mode preference.
@@ -102,7 +129,7 @@ export function migrateUserPreferences(
     // Check if migration is needed (old format has `theme` instead of `colorMode`)
     if (isLegacyUserPreferences(parsed)) {
       // Use destructuring to exclude `theme` property for better type safety
-      const { theme, ...rest } = parsed;
+      const { theme, locale, ...rest } = parsed;
       // Ensure theme is valid before using it (legacy only had light/dark)
       const validTheme: 'light' | 'dark' =
         theme === 'light' || theme === 'dark' ? theme : 'dark';
@@ -110,22 +137,10 @@ export function migrateUserPreferences(
         ...DEFAULT_PREFERENCES,
         ...rest,
         colorMode: validTheme,
+        locale: isSupportedLocale(locale) ? locale : DEFAULT_LOCALE,
       };
 
-      // Only write to localStorage if the migrated data differs from what's stored
-      // This prevents unnecessary writes on every render and avoids race conditions
-      try {
-        if (typeof window !== 'undefined') {
-          const migratedJson = JSON.stringify(migrated);
-          // Compare with current stored value to avoid unnecessary write
-          const currentStored = localStorage.getItem(STORAGE_KEY);
-          if (currentStored !== migratedJson) {
-            localStorage.setItem(STORAGE_KEY, migratedJson);
-          }
-        }
-      } catch {
-        // Ignore localStorage errors (private browsing, etc.)
-      }
+      persistMigratedPreferences(migrated);
 
       // Cache the result to avoid re-processing on subsequent calls
       migrationCache = {
@@ -138,12 +153,17 @@ export function migrateUserPreferences(
 
     // Already migrated or new format - validate it's a proper UserPreferences
     if (isUserPreferences(parsed)) {
+      const migrated = normalizeLocale(parsed);
+      if (JSON.stringify(migrated) !== stored) {
+        persistMigratedPreferences(migrated);
+      }
+
       // Cache the result to avoid re-processing on subsequent calls
       migrationCache = {
         storedValue: stored,
-        result: parsed,
+        result: migrated,
       };
-      return parsed;
+      return migrated;
     }
 
     // Invalid format, return null to use defaults

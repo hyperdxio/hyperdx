@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box } from '@mantine/core';
 
@@ -30,14 +31,17 @@ export function PatternColumnSelector({
   dateRange?: [Date, Date];
   bodyValueExpression?: string;
 }) {
+  const { t } = useTranslation('search');
   const { data: source } = useSource({ id: sourceId });
   const tableConnection = tcFromSource(source);
 
   if (!onChange) return null;
 
   const placeholder = bodyValueExpression
-    ? `Default (${bodyValueExpression}) — column name or expression`
-    : 'Default — column name or expression';
+    ? t('patterns.defaultExpressionWithValue', {
+        expression: bodyValueExpression,
+      })
+    : t('patterns.defaultExpression');
 
   return (
     <Box py="xs" maw={600}>
@@ -47,7 +51,7 @@ export function PatternColumnSelector({
         onChange={onChange}
         onSubmit={onSubmit}
         enableHotkey
-        label="Pattern Expression"
+        label={t('patterns.expression')}
         placeholder={placeholder}
         size="xs"
         allowMultiline={false}

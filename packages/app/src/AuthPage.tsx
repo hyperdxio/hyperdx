@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import { HTTPError } from 'ky';
 import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Button,
   Notification,
@@ -27,6 +28,7 @@ type FormData = {
 };
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
+  const { t } = useTranslation('auth');
   const brandName = useBrandDisplayName();
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
   const router = useRouter();
@@ -57,7 +59,9 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
 
   const verificationSent = msg === 'verify';
 
-  const title = `${brandName} - ${isRegister ? 'Sign up' : 'Login'}`;
+  const title = t(isRegister ? 'register.browserTitle' : 'login.browserTitle', {
+    brandName,
+  });
 
   useEffect(() => {
     // If an OSS user accidentally lands on /register after already creating a team
@@ -106,7 +110,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
           }
           setError('root', {
             type: 'manual',
-            message: 'An unexpected error occurred, please try again later.',
+            message: t('errors.unexpected'),
           });
         },
       },
@@ -135,19 +139,27 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       <div className="d-flex justify-content-center align-items-center vh-100">
         <div style={{ width: '26rem' }}>
           <div className="text-center mb-2 fs-5 " style={{ marginTop: -30 }}>
-            {config.IS_OSS && isRegister
-              ? 'Setup '
-              : isRegister
-                ? 'Register for '
-                : 'Login to '}
-            <span className="text-brand fw-bold">{brandName}</span>
+            <Trans
+              t={t}
+              i18nKey={
+                config.IS_OSS && isRegister
+                  ? 'register.setupHeading'
+                  : isRegister
+                    ? 'register.heading'
+                    : 'login.heading'
+              }
+              values={{ brandName }}
+              components={{
+                brand: <span className="text-brand fw-bold" />,
+              }}
+            />
           </div>
           {action === 'login' && (
-            <div className="text-center mb-2 ">Welcome back!</div>
+            <div className="text-center mb-2 ">{t('login.title')}</div>
           )}
           {isRegister && config.IS_OSS === true && (
             <div className="text-center mb-2 text-muted">
-              Let{"'"}s create your user account.
+              {t('register.intro')}
             </div>
           )}
           <form className="text-start mt-4" {...form.controller}>
@@ -155,10 +167,10 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
               <Paper p={34} shadow="md" radius="md">
                 <Stack gap="lg">
                   <TextInput
-                    label="Email"
+                    label={t('common.email')}
                     size="md"
                     withAsterisk={false}
-                    placeholder="you@company.com"
+                    placeholder={t('common.emailPlaceholder')}
                     type="email"
                     leftSection={<IconAt size={18} />}
                     error={errors.email?.message}
@@ -167,12 +179,12 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   />
                   <PasswordInput
                     size="md"
-                    label="Password"
+                    label={t('common.password')}
                     withAsterisk={false}
                     leftSection={<IconLock size={16} />}
                     error={errors.password?.message}
                     required
-                    placeholder="Password"
+                    placeholder={t('common.password')}
                     {...form.password}
                   />
                   {isRegister && (
@@ -183,7 +195,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                             handler={confirmPass}
                             password={currentPassword}
                           >
-                            Confirm Password
+                            {t('common.confirmPassword')}
                           </CheckOrX>
                         }
                         size="md"
@@ -191,7 +203,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                         withAsterisk={false}
                         leftSection={<IconLock size={16} />}
                         error={errors.confirmPassword?.message}
-                        placeholder="Confirm Password"
+                        placeholder={t('common.confirmPassword')}
                         {...form.confirmPassword}
                       />
                       <Notification withCloseButton={false}>
@@ -209,10 +221,10 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                     data-test-id="submit"
                   >
                     {config.IS_OSS && isRegister
-                      ? 'Create'
+                      ? t('register.create')
                       : isRegister
-                        ? 'Register'
-                        : 'Login'}
+                        ? t('register.submit')
+                        : t('login.submit')}
                   </Button>
                 </Stack>
               </Paper>
@@ -225,16 +237,16 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   data-test-id="auth-error-msg"
                 >
                   {err === 'missing'
-                    ? 'Please provide a valid email and password'
+                    ? t('errors.validCredentials')
                     : err === 'invalid'
-                      ? 'Email or password is invalid'
+                      ? t('errors.invalidCredentials')
                       : err === 'authFail'
-                        ? 'Failed to login with email and password, please try again.'
+                        ? t('errors.loginFailed')
                         : err === 'passwordAuthNotAllowed'
-                          ? 'Password authentication is not allowed by your team admin.'
+                          ? t('errors.passwordNotAllowed')
                           : err === 'teamAlreadyExists'
-                            ? 'Team already exists, please login instead.'
-                            : 'Unknown error occurred, please try again later.'}
+                            ? t('errors.teamExists')
+                            : t('errors.unknown')}
                 </Notification>
               )}
 
@@ -245,20 +257,26 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   color="green"
                   data-test-id="auth-msg"
                 >
-                  Sent verification email! Please check your email inbox
+                  {t('register.verificationSent')}
                 </Notification>
               )}
 
               {isRegister && config.IS_OSS === false && (
                 <div data-test-id="login-link" className="text-center fs-8 ">
-                  Already have an account? <Link href="/login">Log in</Link>{' '}
-                  instead.
+                  <Trans
+                    t={t}
+                    i18nKey="register.loginPrompt"
+                    components={{ login: <Link href="/login" /> }}
+                  />
                 </div>
               )}
               {action === 'login' && config.IS_OSS === false && (
                 <div data-test-id="register-link" className="text-center fs-8 ">
-                  Don{"'"}t have an account yet?{' '}
-                  <Link href="/register">Register</Link> instead.
+                  <Trans
+                    t={t}
+                    i18nKey="login.registrationPrompt"
+                    components={{ register: <Link href="/register" /> }}
+                  />
                 </div>
               )}
             </Stack>

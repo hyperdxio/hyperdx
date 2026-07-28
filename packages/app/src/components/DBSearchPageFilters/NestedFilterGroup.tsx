@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -73,6 +74,7 @@ export const NestedFilterGroup = ({
   chartConfig,
   isLive,
 }: NestedFilterGroupProps) => {
+  const { t } = useTranslation('search');
   const selectedValues: FilterState = useMemo(
     () => _selectedValues ?? {},
     [_selectedValues],
@@ -157,7 +159,7 @@ export const NestedFilterGroup = ({
               {childFilters.length === 0 ? (
                 <Group m={6} gap="xs">
                   <Text c="dimmed" size="xs">
-                    No properties found
+                    {t('filters.noProperties')}
                   </Text>
                 </Group>
               ) : (

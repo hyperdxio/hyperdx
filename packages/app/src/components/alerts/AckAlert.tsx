@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { Duration } from 'date-fns';
 import { add } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { Button, Menu } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconBell } from '@tabler/icons-react';
@@ -13,6 +14,7 @@ import { FormatTime } from '@/useFormatTime';
 import { isAlertSilenceExpired } from '@/utils/alerts';
 
 export function AckAlert({ alert }: { alert: AlertsPageItem }) {
+  const { t } = useTranslation('alerts');
   const queryClient = useQueryClient();
   const silenceAlert = api.useSilenceAlert();
   const unsilenceAlert = api.useUnsilenceAlert();
@@ -83,28 +85,29 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
               }
               leftSection={<IconBell size={16} />}
             >
-              Ack&apos;d
+              {t('acknowledgment.short')}
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label py={6}>
-              Acknowledged{' '}
+              {t('acknowledgment.acknowledged')}{' '}
               {alert.silenced?.by ? (
                 <>
-                  by <strong>{alert.silenced?.by}</strong>
+                  {t('acknowledgment.by')} <strong>{alert.silenced?.by}</strong>
                 </>
               ) : null}{' '}
-              on <br />
+              {t('acknowledgment.on')} <br />
               <FormatTime value={alert.silenced?.at} />
               .<br />
             </Menu.Label>
 
             <Menu.Label py={6}>
               {isNoLongerMuted ? (
-                'Alert resumed.'
+                t('acknowledgment.resumed')
               ) : (
                 <>
-                  Resumes <FormatTime value={alert.silenced.until} />.
+                  {t('acknowledgment.resumes')}{' '}
+                  <FormatTime value={alert.silenced.until} />.
                 </>
               )}
             </Menu.Label>
@@ -115,7 +118,9 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
               onClick={handleUnsilenceAlert}
               disabled={unsilenceAlert.isPending}
             >
-              {isNoLongerMuted ? 'Unacknowledge' : 'Resume alert'}
+              {isNoLongerMuted
+                ? t('acknowledgment.unacknowledge')
+                : t('acknowledgment.resume')}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
@@ -129,12 +134,12 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
         <Menu disabled={silenceAlert.isPending}>
           <Menu.Target>
             <Button size="compact-sm" variant="secondary">
-              Ack
+              {t('acknowledgment.ack')}
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label lh="1" py={6}>
-              Acknowledge and silence for
+              {t('acknowledgment.silenceFor')}
             </Menu.Label>
             <Menu.Item
               lh="1"
@@ -145,7 +150,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              30 minutes
+              {t('acknowledgment.thirtyMinutes')}
             </Menu.Item>
             <Menu.Item
               lh="1"
@@ -156,7 +161,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              1 hour
+              {t('acknowledgment.oneHour')}
             </Menu.Item>
             <Menu.Item
               lh="1"
@@ -167,7 +172,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              6 hours
+              {t('acknowledgment.sixHours')}
             </Menu.Item>
             <Menu.Item
               lh="1"
@@ -178,7 +183,7 @@ export function AckAlert({ alert }: { alert: AlertsPageItem }) {
                 })
               }
             >
-              24 hours
+              {t('acknowledgment.twentyFourHours')}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>

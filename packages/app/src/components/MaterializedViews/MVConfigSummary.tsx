@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
 import { Grid, Group, Pill, Stack, Table, Text, Tooltip } from '@mantine/core';
@@ -11,6 +12,7 @@ export default function MVConfigSummary({
 }: {
   config: MaterializedViewConfiguration;
 }) {
+  const { t } = useTranslation('sources');
   const dimensionColumnsSplit = useMemo(
     () => splitAndTrimWithBracket(config.dimensionColumns),
     [config.dimensionColumns],
@@ -36,16 +38,12 @@ export default function MVConfigSummary({
         <Grid.Col span={1}>
           <Group align="center" mb="xs" gap="xs">
             <Text size="sm" fw={500}>
-              Granularity
+              {t('optimization.summaryGranularity')}
             </Text>
             <Tooltip
               multiline
               maw={400}
-              label={`
-              The size of the time buckets into which data is pre-aggregated. 
-              Aggregate values can vary slightly between materialized views and the base source 
-              table when the selected time range does not align with the view's granularity.
-            `}
+              label={t('optimization.summaryGranularityHelp')}
             >
               <IconInfoCircle size={16} />
             </Tooltip>
@@ -56,7 +54,7 @@ export default function MVConfigSummary({
         {config.minDate && (
           <Grid.Col span={1}>
             <Text size="sm" fw={500} mb="xs">
-              Minimum Date
+              {t('optimization.summaryMinimumDate')}
             </Text>
             <Pill>
               <FormatTime value={config.minDate} format="withYear" />
@@ -67,7 +65,7 @@ export default function MVConfigSummary({
 
       <div>
         <Text size="sm" fw={500} mb="xs">
-          Available Group and Filter Columns
+          {t('optimization.summaryDimensionColumns')}
         </Text>
         <Group gap="xs">
           {dimensionColumnsSplit.map(col => (
@@ -78,13 +76,13 @@ export default function MVConfigSummary({
 
       <div>
         <Text size="sm" fw={500} mb="sm">
-          Available Aggregated Columns
+          {t('optimization.summaryAggregatedColumns')}
         </Text>
         <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Column</Table.Th>
-              <Table.Th>Aggregation</Table.Th>
+              <Table.Th>{t('optimization.summaryColumn')}</Table.Th>
+              <Table.Th>{t('optimization.summaryAggregation')}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>

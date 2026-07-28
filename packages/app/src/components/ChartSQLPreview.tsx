@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
+import { useTranslation } from 'react-i18next';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { Button, Paper, Text, useMantineColorScheme } from '@mantine/core';
@@ -28,6 +29,7 @@ function CopyButton({
   text?: string;
   size?: 'xs' | 'md';
 }) {
+  const { t } = useTranslation('charts');
   const [copied, setCopied] = useState(false);
 
   const iconSize = size === 'xs' ? 14 : 16;
@@ -45,7 +47,7 @@ function CopyButton({
         ) : (
           <IconCopy size={iconSize} className="me-2" />
         )}
-        {copied ? 'Copied!' : 'Copy'}
+        {copied ? t('common.copied') : t('common.copy')}
       </Button>
     </CopyToClipboard>
   );
@@ -98,6 +100,7 @@ export default function ChartSQLPreview({
   config: ChartConfigWithOptDateRange;
   enableCopy?: boolean;
 }) {
+  const { t } = useTranslation('charts');
   const { data, error, isLoading } = useRenderedSqlChartConfig(config, {
     // Keep the previously rendered SQL visible while a new one is generated so
     // the preview doesn't flicker when the config changes (e.g. live tail
@@ -121,11 +124,11 @@ export default function ChartSQLPreview({
         <SQLPreview data={data} formatData={false} enableCopy={enableCopy} />
       ) : isLoading ? (
         <Text className="text-muted" size="xs">
-          Loading query preview...
+          {t('sqlPreview.loadingPreview')}
         </Text>
       ) : error ? (
         <Text className="text-danger" size="xs">
-          Unable to format query. {error.message}
+          {t('sqlPreview.unableToFormat')} {error.message}
         </Text>
       ) : (
         <SQLPreview data={data} formatData={false} enableCopy={enableCopy} />

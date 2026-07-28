@@ -3,6 +3,7 @@ import produce from 'immer';
 import { useHotkeys } from '@mantine/hooks';
 
 import { Dashboard } from '@/dashboard';
+import i18n from '@/i18n';
 import { makeId } from '@/utils/tilePositioning';
 
 export default function useTileSelection({
@@ -40,9 +41,9 @@ export default function useTileSelection({
         if (!draft.containers) draft.containers = [];
         draft.containers.push({
           id: groupId,
-          title: 'New Group',
+          title: i18n.t('dashboards:tabs.newGroup'),
           collapsed: false,
-          tabs: [{ id: tabId, title: 'New Group' }],
+          tabs: [{ id: tabId, title: i18n.t('dashboards:tabs.newGroup') }],
         });
         for (const tile of draft.tiles) {
           if (selectedTileIds.has(tile.id)) {

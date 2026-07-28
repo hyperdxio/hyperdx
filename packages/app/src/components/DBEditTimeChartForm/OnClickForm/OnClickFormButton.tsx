@@ -1,4 +1,5 @@
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -17,6 +18,7 @@ export function OnClickFormButton({
   setValue,
   onSubmit,
 }: OnClickFormButtonProps) {
+  const { t } = useTranslation('charts');
   const [
     onClickDrawerOpened,
     { open: openOnClickDrawer, close: closeOnClickDrawer },
@@ -40,7 +42,7 @@ export function OnClickFormButton({
         variant="secondary"
         data-testid="onclick-drawer-trigger"
       >
-        Row Click Action: {onClickTypeLabel}
+        {t('onClick.rowClickAction')} {onClickTypeLabel}
       </Button>
       <OnClickDrawer
         opened={onClickDrawerOpened}

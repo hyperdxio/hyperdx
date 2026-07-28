@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -122,6 +123,7 @@ function FilterPill({
   onTogglePolarity: () => void;
   onReplaceValue: (value: string) => void;
 }) {
+  const { t } = useTranslation('search');
   const isExcluded = pill.type === 'excluded';
   const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
 
@@ -129,7 +131,9 @@ function FilterPill({
   // (column missing on the active source) can only be removed. Both keep the
   // plain remove-only pill; only included/excluded pills open the action menu.
   const isEditable = pill.type !== 'range' && !isInvalid;
-  const polarityLabel = isExcluded ? 'Include' : 'Exclude';
+  const polarityLabel = isExcluded
+    ? t('filters.include')
+    : t('filters.exclude');
 
   const [opened, setOpened] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -179,8 +183,7 @@ function FilterPill({
 
   const label = pill.displayValue ?? pill.value;
   const tooltipLabel = isInvalid
-    ? (invalidReason ??
-      `Filter not applied: "${pill.field}" isn't a column on the current source. It will reapply if you switch back.`)
+    ? (invalidReason ?? t('filters.invalid', { field: pill.field }))
     : `${pill.field}${operator}${label}`;
 
   const showDangerAccent = isExcluded && !isInvalid;
@@ -284,7 +287,7 @@ function FilterPill({
               ? 'var(--mantine-color-red-light-color)'
               : undefined,
           }}
-          aria-label="Remove filter"
+          aria-label={t('filters.remove')}
         >
           <IconX size={9} />
         </ActionIcon>
@@ -339,17 +342,21 @@ function FilterPill({
             }
           }}
           comboboxProps={{ withinPortal: false }}
-          placeholder={isFetchingValues ? 'Loading values...' : pill.value}
-          aria-label="Change filter value"
+          placeholder={
+            isFetchingValues ? t('filters.loadingValues') : pill.value
+          }
+          aria-label={t('filters.changeValue')}
         />
         <Flex gap={4} align="center">
-          <Tooltip label={copied ? 'Copied' : 'Copy value'}>
+          <Tooltip
+            label={copied ? t('filters.copied') : t('filters.copyValue')}
+          >
             <ActionIcon
               size="sm"
               variant="subtle"
               color="gray"
               onClick={handleCopy}
-              aria-label="Copy value"
+              aria-label={t('filters.copyValue')}
             >
               {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
             </ActionIcon>
@@ -411,6 +418,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
    */
   chartConfig: BuilderChartConfigWithDateRange;
 } & FlexProps) {
+  const { t } = useTranslation('search');
   const {
     filters,
     setFilterValue,
@@ -527,7 +535,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
           td="underline"
           onClick={() => setExpanded(true)}
         >
-          +{hiddenCount} more
+          {t('filters.more', { count: hiddenCount })}
         </Text>
       )}
       {expanded && hiddenCount > 0 && (
@@ -538,7 +546,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
           td="underline"
           onClick={() => setExpanded(false)}
         >
-          Show less
+          {t('filters.showLess')}
         </Text>
       )}
       {pills.length >= 2 && (
@@ -550,7 +558,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
           onClick={handleClearAll}
           onMouseLeave={() => setConfirmClear(false)}
         >
-          {confirmClear ? 'Confirm clear all?' : 'Clear all'}
+          {confirmClear ? t('filters.confirmClear') : t('filters.clearAll')}
         </Text>
       )}
     </Flex>

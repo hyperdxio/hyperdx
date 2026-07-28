@@ -6,12 +6,12 @@ import {
 describe('getActiveInfraCorrelations', () => {
   it('returns the Pod group when only k8s.pod.uid is present', () => {
     const active = getActiveInfraCorrelations({ 'k8s.pod.uid': 'pod-abc' });
-    expect(active.map(c => c.title)).toEqual(['Pod']);
+    expect(active.map(c => c.titleKey)).toEqual(['pod']);
   });
 
   it('returns the Node group when only k8s.node.name is present', () => {
     const active = getActiveInfraCorrelations({ 'k8s.node.name': 'node-1' });
-    expect(active.map(c => c.title)).toEqual(['Node']);
+    expect(active.map(c => c.titleKey)).toEqual(['node']);
   });
 
   it('returns both groups in render order when both attributes are present', () => {
@@ -19,7 +19,7 @@ describe('getActiveInfraCorrelations', () => {
       'k8s.pod.uid': 'pod-abc',
       'k8s.node.name': 'node-1',
     });
-    expect(active.map(c => c.title)).toEqual(['Pod', 'Node']);
+    expect(active.map(c => c.titleKey)).toEqual(['pod', 'node']);
   });
 
   it('returns no groups when no detect attribute is present', () => {
@@ -50,14 +50,14 @@ describe('INFRA_CORRELATIONS built-ins', () => {
   it('preserves the Kubernetes Pod and Node correlation identity', () => {
     expect(INFRA_CORRELATIONS).toMatchObject([
       {
-        title: 'Pod',
+        titleKey: 'pod',
         detectAttribute: 'k8s.pod.uid',
         correlateAttribute: 'k8s.pod.uid',
         fieldPrefix: 'k8s.pod.',
         timeline: { queryAttribute: 'k8s.pod.uid' },
       },
       {
-        title: 'Node',
+        titleKey: 'node',
         detectAttribute: 'k8s.node.name',
         correlateAttribute: 'k8s.node.name',
         fieldPrefix: 'k8s.node.',
@@ -66,7 +66,7 @@ describe('INFRA_CORRELATIONS built-ins', () => {
   });
 
   it('keeps the Pod Timeline only on the Pod group', () => {
-    const node = INFRA_CORRELATIONS.find(c => c.title === 'Node');
+    const node = INFRA_CORRELATIONS.find(c => c.titleKey === 'node');
     expect(node?.timeline).toBeUndefined();
   });
 

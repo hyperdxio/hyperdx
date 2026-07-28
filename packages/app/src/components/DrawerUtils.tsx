@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Box,
@@ -43,6 +44,7 @@ export const DrawerHeader = React.memo<{
   onClose?: () => void;
   closeEsc?: boolean;
 }>(({ header, onClose, closeEsc = true }) => {
+  const { t } = useTranslation('common');
   useHotkeys(['esc'], () => onClose?.(), { enabled: closeEsc });
 
   return (
@@ -51,7 +53,7 @@ export const DrawerHeader = React.memo<{
         <Text size="md">{header}</Text>
         <CloseButton
           onClick={onClose}
-          aria-label="Close modal"
+          aria-label={t('actions.closeModal')}
           variant="subtle"
           size="md"
         />

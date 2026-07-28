@@ -1,4 +1,5 @@
 import { memo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Collapse,
@@ -40,6 +41,7 @@ function SharedFiltersSectionComponent({
   onClearSelections,
   children,
 }: SharedFiltersSectionProps) {
+  const { t } = useTranslation('search');
   if (!hasSharedFacets) {
     return null;
   }
@@ -58,14 +60,14 @@ function SharedFiltersSectionComponent({
               style={{ color: 'var(--mantine-color-gray-6)' }}
             />
             <Text size="xxs" c="dimmed" fw="bold">
-              Shared Filters
+              {t('filters.sharedFilters')}
             </Text>
           </Group>
         </UnstyledButton>
         <Group gap={0} wrap="nowrap">
           {showClearButton && (
             <Tooltip
-              label="Clear Shared Filters"
+              label={t('filters.clearSharedFilters')}
               position="top"
               withArrow
               fz="xxs"
@@ -76,7 +78,7 @@ function SharedFiltersSectionComponent({
                 color="gray"
                 size="xs"
                 onClick={onClearSelections}
-                aria-label="Clear Shared Filters"
+                aria-label={t('filters.clearSharedFilters')}
               >
                 <IconFilterOff size={14} />
               </ActionIcon>

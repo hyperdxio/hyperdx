@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Autocomplete,
   Badge,
@@ -13,16 +14,12 @@ import {
 } from '@mantine/core';
 import { IconFlask } from '@tabler/icons-react';
 
+import { isSupportedLocale, type Locale } from '@/i18n/config';
+
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
-
-const OPTIONS_COLOR_MODE = [
-  { label: 'System', value: 'system' },
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
-];
 
 // Brand theme options (generated from theme registry)
 const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
@@ -61,16 +58,26 @@ export const UserPreferencesModal = ({
   opened: boolean;
   onClose: () => void;
 }) => {
+  const { t } = useTranslation('settings');
   const { userPreferences, setUserPreference } = useUserPreferences();
   const { themeName, setTheme, isDev } = useAppTheme();
+  const colorModeOptions = [
+    { label: t('preferences.system'), value: 'system' },
+    { label: t('preferences.light'), value: 'light' },
+    { label: t('preferences.dark'), value: 'dark' },
+  ];
+  const localeOptions = [
+    { label: t('preferences.english'), value: 'en' },
+    { label: t('preferences.korean'), value: 'ko' },
+  ] satisfies { label: string; value: Locale }[];
 
   return (
     <Modal
       title={
         <>
-          <span>Preferences</span>
+          <span>{t('preferences.title')}</span>
           <Text size="xs" mt={6}>
-            Customize your experience
+            {t('preferences.description')}
           </Text>
         </>
       }
@@ -81,8 +88,22 @@ export const UserPreferencesModal = ({
       onClose={onClose}
     >
       <Stack gap="lg">
-        <Divider label="Date and Time" labelPosition="left" />
-        <SettingContainer label="Time format">
+        <SettingContainer label={t('preferences.language')}>
+          <Select
+            value={userPreferences.locale}
+            aria-label={t('preferences.language')}
+            onChange={value => {
+              if (isSupportedLocale(value)) {
+                setUserPreference({ locale: value });
+              }
+            }}
+            data={localeOptions}
+            allowDeselect={false}
+          />
+        </SettingContainer>
+
+        <Divider label={t('preferences.dateTime')} labelPosition="left" />
+        <SettingContainer label={t('preferences.timeFormat')}>
           <Select
             value={userPreferences.timeFormat}
             onChange={value =>
@@ -95,7 +116,7 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-        <SettingContainer label="Use UTC time">
+        <SettingContainer label={t('preferences.useUtc')}>
           <Switch
             size="md"
             onLabel="UTC"
@@ -111,9 +132,9 @@ export const UserPreferencesModal = ({
         <Divider
           label={
             <Group align="center" gap="xs">
-              Appearance
+              {t('preferences.appearance')}
               <Badge variant="light" fw="normal" size="xs">
-                Experimental
+                {t('preferences.experimental')}
               </Badge>
             </Group>
           }
@@ -121,8 +142,8 @@ export const UserPreferencesModal = ({
           mt="sm"
         />
         <SettingContainer
-          label="Color Mode"
-          description="Use system setting, or choose light or dark"
+          label={t('preferences.colorMode')}
+          description={t('preferences.colorModeDescription')}
         >
           <Select
             value={userPreferences.colorMode}
@@ -132,7 +153,7 @@ export const UserPreferencesModal = ({
                 colorMode: value as UserPreferences['colorMode'],
               })
             }
-            data={OPTIONS_COLOR_MODE}
+            data={colorModeOptions}
             allowDeselect={false}
           />
         </SettingContainer>
@@ -150,9 +171,9 @@ export const UserPreferencesModal = ({
           <SettingContainer
             label={
               <Group gap="xs">
-                Brand Theme
+                {t('preferences.brandTheme')}
                 <Tooltip
-                  label="Only available in local/dev mode. Changes logo, colors, and branding."
+                  label={t('preferences.brandThemeTooltip')}
                   multiline
                   w={220}
                 >
@@ -163,12 +184,12 @@ export const UserPreferencesModal = ({
                     size="xs"
                     leftSection={<IconFlask size={10} />}
                   >
-                    Dev Only
+                    {t('preferences.devOnly')}
                   </Badge>
                 </Tooltip>
               </Group>
             }
-            description="Switch between HyperDX and ClickStack branding"
+            description={t('preferences.brandThemeDescription')}
           >
             <Select
               value={themeName}
@@ -187,8 +208,8 @@ export const UserPreferencesModal = ({
         {/* ClickStack theme always uses Inter font and doesn't show this setting */}
         {themeName !== 'clickstack' && (
           <SettingContainer
-            label="Font"
-            description="If using custom font, make sure it's installed on your system"
+            label={t('preferences.font')}
+            description={t('preferences.fontDescription')}
           >
             <Autocomplete
               value={userPreferences.font}

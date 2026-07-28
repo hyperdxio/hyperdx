@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { IconZoomReset } from '@tabler/icons-react';
 
@@ -54,6 +55,7 @@ export const TimelineMinimap = memo(function ({
   rows,
   controller,
 }: TimelineMinimapProps) {
+  const { t } = useTranslation('search');
   const containerRef = useRef<HTMLDivElement>(null);
   const dragModeRef = useRef<DragMode>(null);
   const dragStartXRef = useRef(0);
@@ -349,12 +351,12 @@ export const TimelineMinimap = memo(function ({
       )}
 
       {isZoomed && (
-        <Tooltip label="Reset zoom" position="left" withArrow>
+        <Tooltip label={t('timeline.resetZoom')} position="left" withArrow>
           <ActionIcon
             className={styles.resetButton}
             size="xs"
             variant="default"
-            aria-label="Reset minimap zoom"
+            aria-label={t('timeline.resetMinimapZoom')}
             onClick={handleReset}
             onPointerDown={e => e.stopPropagation()}
             onDoubleClick={e => e.stopPropagation()}

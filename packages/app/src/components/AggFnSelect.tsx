@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
@@ -23,6 +24,7 @@ function AggFnSelect({
   hideCustom?: boolean;
   metricType?: MetricsDataType;
 }) {
+  const { t } = useTranslation('charts');
   const _onChange = useCallback(
     (value: string | null) => {
       if (value == null) {
@@ -46,8 +48,8 @@ function AggFnSelect({
     if (metricType !== MetricsDataType.Sum) {
       opts = opts.filter(fn => fn.value !== 'increase');
     }
-    return opts;
-  }, [hideCustom, metricType]);
+    return opts.map(fn => ({ ...fn, label: t(`aggFn.${fn.value}`) }));
+  }, [hideCustom, metricType, t]);
 
   return (
     <Select

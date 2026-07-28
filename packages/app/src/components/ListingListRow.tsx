@@ -1,5 +1,6 @@
 import Router from 'next/router';
 import { formatDistanceToNow } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Badge,
@@ -34,6 +35,8 @@ export function ListingRow({
   updatedBy?: string;
   createdBy?: string;
 }) {
+  const { t } = useTranslation('dashboards');
+  const { t: tCommon } = useTranslation('common');
   return (
     <Table.Tr
       style={{ cursor: 'pointer' }}
@@ -78,7 +81,7 @@ export function ListingRow({
             label={
               <>
                 <FormatTime value={updatedAt} format="short" />
-                {updatedBy ? ` by ${updatedBy}` : ''}
+                {updatedBy ? t('listing.updatedBy', { name: updatedBy }) : ''}
               </>
             }
           >
@@ -111,7 +114,7 @@ export function ListingRow({
                   onDelete(id);
                 }}
               >
-                Delete
+                {tCommon('actions.delete')}
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>

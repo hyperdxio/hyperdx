@@ -2,6 +2,7 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
+import { Trans, useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import {
   AlertSource,
@@ -51,10 +52,10 @@ import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
 
-function getAlertDisplayName(alert: AlertsPageItem): string {
+function getAlertDisplayName(alert: AlertsPageItem, tileLabel: string): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
     const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
-    const tileName = tile?.config.name || 'Tile';
+    const tileName = tile?.config.name || tileLabel;
     return `${alert.dashboard.name} ${tileName}`;
   }
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
@@ -73,6 +74,7 @@ function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
 }
 
 function AlertNote({ note }: { note: string }) {
+  const { t } = useTranslation('alerts');
   const [opened, { toggle }] = useDisclosure(false);
 
   return (
@@ -88,7 +90,7 @@ function AlertNote({ note }: { note: string }) {
           />
           <IconNote size={14} opacity={0.5} />
           <span className="fs-8" style={{ opacity: 0.6 }}>
-            Note
+            {t('page.note')}
           </span>
         </Group>
       </UnstyledButton>
@@ -123,12 +125,13 @@ function AlertNote({ note }: { note: string }) {
 }
 
 function AlertDetails({ alert }: { alert: AlertsPageItem }) {
+  const { t } = useTranslation('alerts');
   const alertName = React.useMemo(() => {
     if (alert.source === AlertSource.TILE && alert.dashboard) {
       const tile = alert.dashboard?.tiles.find(
         tile => tile.id === alert.tileId,
       );
-      const tileName = tile?.config.name || 'Tile';
+      const tileName = tile?.config.name || t('page.tile');
       return (
         <>
           {alert.dashboard?.name}
@@ -145,7 +148,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       return alert.savedSearch?.name;
     }
     return '–';
-  }, [alert]);
+  }, [alert, t]);
 
   const alertUrl = React.useMemo(() => {
     if (alert.source === AlertSource.TILE && alert.dashboard) {
@@ -174,55 +177,59 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       alert.thresholdType;
     return (
       <>
-        If value {thresholdLabel}{' '}
+        {t('page.ifValue')} {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
         {isRangeThresholdType(alert.thresholdType) && (
           <>
             {' '}
-            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
+            {t('page.and')}{' '}
+            <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
           </>
         )}
         <span>&middot;</span>
       </>
     );
-  }, [alert]);
+  }, [alert, t]);
 
   const notificationMethod = React.useMemo(() => {
     return (
       <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
+        {t('page.notifyVia')} {getWebhookChannelIcon(alert.channel.type)}{' '}
+        {t('page.webhook')}
       </Group>
     );
-  }, [alert]);
+  }, [alert, t]);
 
   const linkTitle = React.useMemo(() => {
     switch (alert.source) {
       case AlertSource.TILE:
-        return 'Dashboard tile';
+        return t('page.sourceTypes.dashboardTile');
       case AlertSource.SAVED_SEARCH:
-        return 'Saved search';
+        return t('page.sourceTypes.savedSearch');
       default:
         return '';
     }
-  }, [alert]);
+  }, [alert, t]);
 
   return (
     <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
           <Badge variant="light" color="red">
-            Alert
+            {t('page.states.alert')}
           </Badge>
         )}
         {alert.state === AlertState.PENDING && (
           <Badge variant="light" color="orange">
-            Pending
+            {t('page.states.pending')}
           </Badge>
         )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
+        {alert.state === AlertState.OK && (
+          <Badge variant="light">{t('page.states.ok')}</Badge>
+        )}
         {alert.state === AlertState.DISABLED && (
           <Badge variant="light" color="gray">
-            Disabled
+            {t('page.states.disabled')}
           </Badge>
         )}
 
@@ -247,7 +254,8 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               <>
                 <span>&middot;</span>
                 <span>
-                  Created by {alert.createdBy.name || alert.createdBy.email}
+                  {t('page.createdBy')}{' '}
+                  {alert.createdBy.name || alert.createdBy.email}
                 </span>
               </>
             )}
@@ -274,6 +282,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
 }
 
 function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
+  const { t } = useTranslation('alerts');
   const alarmAlerts = alerts.filter(alert => alert.state === AlertState.ALERT);
   const pendingAlerts = alerts.filter(
     alert => alert.state === AlertState.PENDING,
@@ -285,7 +294,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       {alarmAlerts.length > 0 && (
         <div>
           <Group className={styles.sectionHeader}>
-            <IconAlertTriangle size={14} /> Triggered
+            <IconAlertTriangle size={14} /> {t('page.states.triggered')}
           </Group>
           {alarmAlerts.map(alert => (
             <AlertDetails key={alert._id} alert={alert} />
@@ -295,7 +304,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       {pendingAlerts.length > 0 && (
         <div>
           <Group className={styles.sectionHeader}>
-            <IconHourglass size={14} /> Pending
+            <IconHourglass size={14} /> {t('page.states.pending')}
           </Group>
           {pendingAlerts.map(alert => (
             <AlertDetails key={alert._id} alert={alert} />
@@ -304,14 +313,14 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       )}
       <div>
         <Group className={styles.sectionHeader}>
-          <IconCheck size={14} /> OK
+          <IconCheck size={14} /> {t('page.states.okSection')}
         </Group>
         {okData.length === 0 && (
           <EmptyState
             variant="card"
             icon={<IconBell size={32} />}
-            title="No alerts"
-            description="All alerts in OK state will appear here."
+            title={t('page.noAlerts')}
+            description={t('page.okEmpty')}
           />
         )}
         {okData.map(alert => (
@@ -323,6 +332,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
 }
 
 export default function AlertsPage() {
+  const { t } = useTranslation('alerts');
   const brandName = useBrandDisplayName();
   const { data, isError, isLoading } = api.useAlerts();
 
@@ -359,12 +369,12 @@ export default function AlertsPage() {
       const q = search.toLowerCase();
       result = result.filter(
         a =>
-          getAlertDisplayName(a).toLowerCase().includes(q) ||
+          getAlertDisplayName(a, t('page.tile')).toLowerCase().includes(q) ||
           getAlertTags(a).some(t => t.toLowerCase().includes(q)),
       );
     }
     return result;
-  }, [alerts, search, tagFilter, creatorFilter]);
+  }, [alerts, creatorFilter, search, t, tagFilter]);
 
   const hasFilters = !!(search?.trim() || tagFilter || creatorFilter);
 
@@ -375,14 +385,14 @@ export default function AlertsPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>Alerts - {brandName}</title>
+        <title>{t('page.browserTitle', { brandName })}</title>
       </Head>
-      <PageHeader title="Alerts" />
+      <PageHeader title={t('page.title')} />
       <div className="my-4" style={{ flex: 1 }}>
         {isLoading ? (
-          <div className="text-center my-4 fs-8">Loading...</div>
+          <div className="text-center my-4 fs-8">{t('page.loading')}</div>
         ) : isError ? (
-          <div className="text-center my-4 fs-8">Error</div>
+          <div className="text-center my-4 fs-8">{t('page.error')}</div>
         ) : alerts?.length ? (
           <Container maw={1500}>
             <Alert
@@ -391,19 +401,23 @@ export default function AlertsPage() {
               py="xs"
               mt="md"
             >
-              Alerts can be{' '}
-              <a
-                href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                created
-              </a>{' '}
-              from dashboard charts and saved searches.
+              <Trans
+                t={t}
+                i18nKey="page.creationHelp"
+                components={{
+                  created: (
+                    <a
+                      href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  ),
+                }}
+              />
             </Alert>
             <Flex align="center" mt="md" gap="sm" data-testid="alerts-filters">
               <TextInput
-                placeholder="Search by name"
+                placeholder={t('page.searchPlaceholder')}
                 leftSection={<IconSearch size={16} />}
                 value={search ?? ''}
                 onChange={e => setSearch(e.currentTarget.value || null)}
@@ -413,7 +427,7 @@ export default function AlertsPage() {
               />
               {allTags.length > 0 && (
                 <Select
-                  placeholder="Filter by tag"
+                  placeholder={t('page.tagPlaceholder')}
                   data={allTags}
                   value={tagFilter}
                   onChange={v => setTagFilter(v)}
@@ -425,7 +439,7 @@ export default function AlertsPage() {
               )}
               {allCreators.length > 0 && (
                 <Select
-                  placeholder="Filter by creator"
+                  placeholder={t('page.creatorPlaceholder')}
                   data={allCreators}
                   value={creatorFilter}
                   onChange={v => setCreatorFilter(v)}
@@ -442,11 +456,9 @@ export default function AlertsPage() {
               <EmptyState
                 variant="card"
                 icon={<IconBell size={32} />}
-                title={hasFilters ? 'No matching alerts' : 'No alerts'}
+                title={hasFilters ? t('page.noMatching') : t('page.noAlerts')}
                 description={
-                  hasFilters
-                    ? 'Try adjusting your search or filters.'
-                    : 'All alerts in OK state will appear here.'
+                  hasFilters ? t('page.adjustFilters') : t('page.okEmpty')
                 }
               />
             )}
@@ -455,19 +467,16 @@ export default function AlertsPage() {
           <EmptyState
             h="100%"
             icon={<IconBell size={32} />}
-            title="No alerts created yet"
+            title={t('page.empty')}
             description={
-              <>
-                Alerts can be created from{' '}
-                <Anchor component={Link} href="/dashboards">
-                  dashboard charts
-                </Anchor>{' '}
-                and{' '}
-                <Anchor component={Link} href="/search">
-                  saved searches
-                </Anchor>
-                .
-              </>
+              <Trans
+                t={t}
+                i18nKey="page.emptyDescription"
+                components={{
+                  dashboards: <Anchor component={Link} href="/dashboards" />,
+                  searches: <Anchor component={Link} href="/search" />,
+                }}
+              />
             }
           />
         )}

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { IconCheck, IconX } from '@tabler/icons-react';
 
 const checkLength = (password: string) => password.length >= 12;
@@ -8,32 +9,33 @@ const checkOneNumber = (password: string) => /\d+/.test(password);
 const checkOneSpecial = (password: string) => /\W+/.test(password);
 
 export const PasswordCheck = (opts: { password: string }) => {
+  const { t } = useTranslation('auth');
   const password = opts.password;
   return (
     <div>
       <div>
         <CheckOrX handler={checkLength} password={password}>
-          minimum 12 characters
+          {t('passwordCheck.minLength')}
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneUpper} password={password}>
-          at least 1 uppercase
+          {t('passwordCheck.uppercase')}
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneLower} password={password}>
-          at least 1 lowercase
+          {t('passwordCheck.lowercase')}
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneNumber} password={password}>
-          at least 1 number
+          {t('passwordCheck.number')}
         </CheckOrX>
       </div>
       <div>
         <CheckOrX handler={checkOneSpecial} password={password}>
-          at least 1 special character
+          {t('passwordCheck.special')}
         </CheckOrX>
       </div>
     </div>

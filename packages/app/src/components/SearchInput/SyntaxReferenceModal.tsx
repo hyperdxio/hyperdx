@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { type TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Code,
@@ -21,157 +23,169 @@ type Language = 'sql' | 'lucene';
 type Row = { expr: string; desc: string };
 type Section = { title: string; rows: Row[] };
 
-const SQL_SECTIONS: Section[] = [
+const getSqlSections = (t: TFunction<'search'>): Section[] => [
   {
-    title: 'String matching',
+    title: t('syntax.stringMatching'),
     rows: [
-      { expr: "ServiceName = 'api'", desc: 'Exact match' },
-      { expr: "Body = 'connection refused'", desc: 'Exact phrase match' },
+      { expr: "ServiceName = 'api'", desc: t('syntax.exactMatch') },
+      {
+        expr: "Body = 'connection refused'",
+        desc: t('syntax.exactPhraseMatch'),
+      },
       {
         expr: "Body ILIKE '%timeout%'",
-        desc: 'Substring search (case-insensitive)',
+        desc: t('syntax.substringCaseInsensitive'),
       },
       {
         expr: "Body LIKE '%timeout%'",
-        desc: 'Substring match (case-sensitive)',
+        desc: t('syntax.substringCaseSensitive'),
       },
       {
         expr: "hasAllTokens(Body, 'connection timeout')",
-        desc: 'Full-text search (requires text index)',
+        desc: t('syntax.fullTextIndex'),
       },
       {
         expr: "ServiceName LIKE 'auth-%'",
-        desc: 'Prefix wildcard (case-sensitive)',
+        desc: t('syntax.prefixCaseSensitive'),
       },
       {
         expr: "match(SpanName, '^/api/(checkout|payment)/.*')",
-        desc: 'Regular expression',
+        desc: t('syntax.regularExpression'),
       },
     ],
   },
   {
-    title: 'Boolean operators',
+    title: t('syntax.booleanOperators'),
     rows: [
       {
         expr: "ServiceName = 'api' AND SpanName = 'checkout'",
-        desc: 'Both must match',
+        desc: t('syntax.bothMustMatch'),
       },
       {
         expr: "ServiceName = 'api' OR ServiceName = 'worker'",
-        desc: 'Either matches',
+        desc: t('syntax.eitherMatches'),
       },
       {
         expr: "ServiceName IN ('api', 'worker')",
-        desc: 'Match one of multiple values',
+        desc: t('syntax.oneOfMultiple'),
       },
-      { expr: "ServiceName != 'healthcheck'", desc: 'Exclude a value' },
+      {
+        expr: "ServiceName != 'healthcheck'",
+        desc: t('syntax.excludeValue'),
+      },
       {
         expr: "(StatusCode = 500 OR StatusCode = 503) AND ServiceName = 'api'",
-        desc: 'Nested boolean logic',
+        desc: t('syntax.nestedBoolean'),
       },
-      { expr: 'Duration > 1000000', desc: 'Numeric comparison' },
-      { expr: 'Duration BETWEEN 100 AND 1000', desc: 'Range (inclusive)' },
-      { expr: 'Duration / 1e6 > 100', desc: 'Math expression' },
+      { expr: 'Duration > 1000000', desc: t('syntax.numericComparison') },
+      {
+        expr: 'Duration BETWEEN 100 AND 1000',
+        desc: t('syntax.inclusiveRange'),
+      },
+      { expr: 'Duration / 1e6 > 100', desc: t('syntax.mathExpression') },
     ],
   },
   {
-    title: 'Existence & absence',
+    title: t('syntax.existenceAbsence'),
     rows: [
-      { expr: 'notEmpty(StatusCode)', desc: 'Field exists / is not null' },
-      { expr: 'empty(Body)', desc: 'Field is absent / null' },
+      { expr: 'notEmpty(StatusCode)', desc: t('syntax.fieldExists') },
+      { expr: 'empty(Body)', desc: t('syntax.fieldAbsent') },
     ],
   },
   {
-    title: 'Map',
+    title: t('syntax.map'),
     rows: [
       {
         expr: "LogAttributes['http.method'] = 'POST'",
-        desc: 'Map attribute access',
+        desc: t('syntax.mapAccess'),
       },
       {
         expr: "LogAttributes.http.method = 'POST'",
-        desc: 'JSON attribute access',
+        desc: t('syntax.jsonAccess'),
       },
     ],
   },
   {
-    title: 'Arrays',
+    title: t('syntax.arrays'),
     rows: [
       {
         expr: "has(Events.Name, 'exception')",
-        desc: 'Array column contains value',
+        desc: t('syntax.arrayContains'),
       },
     ],
   },
 ];
 
-const LUCENE_SECTIONS: Section[] = [
+const getLuceneSections = (t: TFunction<'search'>): Section[] => [
   {
-    title: 'String matching',
+    title: t('syntax.stringMatching'),
     rows: [
-      { expr: 'ServiceName:"api"', desc: 'Field exact match' },
-      { expr: 'ServiceName:api', desc: 'Field substring match' },
+      { expr: 'ServiceName:"api"', desc: t('syntax.fieldExactMatch') },
+      { expr: 'ServiceName:api', desc: t('syntax.fieldSubstringMatch') },
       {
         expr: '"connection refused"',
-        desc: 'Phrase match against implicit column',
+        desc: t('syntax.implicitPhraseMatch'),
       },
-      { expr: 'timeout', desc: 'Token match against implicit column' },
-      { expr: 'auth-*', desc: 'Prefix match against implicit column' },
-      { expr: '*-auth', desc: 'Suffix match against implicit column' },
-      { expr: '*checkout*', desc: 'Substring match against implicit column' },
-      { expr: 'Duration:[100 TO 500]', desc: 'Numeric range (inclusive)' },
-      { expr: 'Duration:>1000000', desc: 'Greater-than comparison' },
+      { expr: 'timeout', desc: t('syntax.implicitTokenMatch') },
+      { expr: 'auth-*', desc: t('syntax.implicitPrefixMatch') },
+      { expr: '*-auth', desc: t('syntax.implicitSuffixMatch') },
+      { expr: '*checkout*', desc: t('syntax.implicitSubstringMatch') },
+      {
+        expr: 'Duration:[100 TO 500]',
+        desc: t('syntax.numericInclusiveRange'),
+      },
+      { expr: 'Duration:>1000000', desc: t('syntax.greaterThan') },
     ],
   },
   {
-    title: 'Boolean operators',
+    title: t('syntax.booleanOperators'),
     rows: [
       {
         expr: 'ServiceName:api AND SpanName:checkout',
-        desc: 'Both conditions must match',
+        desc: t('syntax.bothConditions'),
       },
       {
         expr: 'ServiceName:api OR ServiceName:worker',
-        desc: 'Either condition matches',
+        desc: t('syntax.eitherCondition'),
       },
       {
         expr: 'ServiceName:(api OR worker)',
-        desc: 'Match multiple values for one field',
+        desc: t('syntax.multipleForField'),
       },
-      { expr: 'NOT ServiceName:healthcheck', desc: 'Exclude matches' },
-      { expr: '-ServiceName:healthcheck', desc: 'Shorthand for NOT' },
+      { expr: 'NOT ServiceName:healthcheck', desc: t('syntax.excludeMatches') },
+      { expr: '-ServiceName:healthcheck', desc: t('syntax.shorthandNot') },
       {
         expr: '(ServiceName:api OR ServiceName:worker) AND StatusCode:500',
-        desc: 'Nested boolean logic',
+        desc: t('syntax.nestedBoolean'),
       },
     ],
   },
   {
-    title: 'Existence & absence',
+    title: t('syntax.existenceAbsence'),
     rows: [
-      { expr: 'StatusCode:*', desc: 'Field exists (not null nor empty)' },
-      { expr: '-Body:*', desc: 'Field is absent / null / empty' },
+      { expr: 'StatusCode:*', desc: t('syntax.existsNonEmpty') },
+      { expr: '-Body:*', desc: t('syntax.absentOrEmpty') },
     ],
   },
   {
-    title: 'Map',
+    title: t('syntax.map'),
     rows: [
       {
         expr: 'LogAttributes.http.method:POST',
-        desc: 'Access map/attribute column by key',
+        desc: t('syntax.mapByKey'),
       },
       {
         expr: 'ResourceAttributes.service.env:prod',
-        desc: 'Map / JSON attribute filter',
+        desc: t('syntax.mapJsonFilter'),
       },
     ],
   },
   {
-    title: 'Arrays',
+    title: t('syntax.arrays'),
     rows: [
       {
         expr: 'Events.Name:"exception"',
-        desc: 'Array column contains value',
+        desc: t('syntax.arrayContains'),
       },
     ],
   },
@@ -221,6 +235,7 @@ function SyntaxTable({
   sections: Section[];
   query: string;
 }) {
+  const { t } = useTranslation('search');
   const filtered = useMemo(
     () => filterSections(sections, query),
     [sections, query],
@@ -229,7 +244,7 @@ function SyntaxTable({
   if (filtered.length === 0) {
     return (
       <Text size="sm" style={{ color: 'var(--color-text-muted)' }} mt="sm">
-        No results for &ldquo;{query}&rdquo;
+        {t('syntax.noResults', { query })}
       </Text>
     );
   }
@@ -285,6 +300,7 @@ export default function SyntaxReferenceModal({
   onClose: () => void;
   language: Language;
 }) {
+  const { t } = useTranslation('search');
   const [language, setLanguage] = useState<Language>(initialLanguage);
   const [query, setQuery] = useState('');
 
@@ -293,7 +309,10 @@ export default function SyntaxReferenceModal({
     if (opened) setLanguage(initialLanguage);
   }, [opened, initialLanguage]);
 
-  const sections = language === 'sql' ? SQL_SECTIONS : LUCENE_SECTIONS;
+  const sections = useMemo(
+    () => (language === 'sql' ? getSqlSections(t) : getLuceneSections(t)),
+    [language, t],
+  );
 
   return (
     <Modal
@@ -302,7 +321,7 @@ export default function SyntaxReferenceModal({
         setQuery('');
         onClose();
       }}
-      title={<Text fw={600}>Search Syntax Reference</Text>}
+      title={<Text fw={600}>{t('syntax.title')}</Text>}
       size="xl"
       scrollAreaComponent={ScrollArea.Autosize}
     >
@@ -321,7 +340,7 @@ export default function SyntaxReferenceModal({
             ]}
           />
           <TextInput
-            placeholder="Filter examples…"
+            placeholder={t('syntax.filterPlaceholder')}
             leftSection={<IconSearch size={14} />}
             value={query}
             onChange={e => setQuery(e.currentTarget.value)}
@@ -329,7 +348,7 @@ export default function SyntaxReferenceModal({
             size="xs"
             style={{ flex: 1 }}
           />
-          <Tooltip label="ClickStack search documentation" withArrow>
+          <Tooltip label={t('syntax.documentation')} withArrow>
             <Text
               size="xs"
               c="dimmed"

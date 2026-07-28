@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Router from 'next/router';
 import { useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Button,
@@ -38,6 +39,7 @@ import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 
 export default function SavedSearchesListPage() {
+  const { t } = useTranslation('dashboards');
   const brandName = useBrandDisplayName();
   const { data: savedSearches, isLoading, isError } = useSavedSearches();
   const confirm = useConfirm();
@@ -97,27 +99,27 @@ export default function SavedSearchesListPage() {
   const handleDelete = useCallback(
     async (id: string) => {
       const confirmed = await confirm(
-        'Are you sure you want to delete this saved search? This action cannot be undone.',
-        'Delete',
+        t('savedSearches.deleteConfirm'),
+        t('list.deleteAction'),
         { variant: 'danger' },
       );
       if (!confirmed) return;
       deleteSavedSearch.mutate(id, {
         onSuccess: () => {
           notifications.show({
-            message: 'Saved search deleted',
+            message: t('savedSearches.deleted'),
             color: 'green',
           });
         },
         onError: () => {
           notifications.show({
-            message: 'Failed to delete saved search',
+            message: t('savedSearches.deleteFailed'),
             color: 'red',
           });
         },
       });
     },
-    [confirm, deleteSavedSearch],
+    [confirm, deleteSavedSearch, t],
   );
 
   return (
@@ -126,9 +128,9 @@ export default function SavedSearchesListPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>Saved Searches - {brandName}</title>
+        <title>{t('savedSearches.browserTitle', { brandName })}</title>
       </Head>
-      <PageHeader title="Saved Searches" />
+      <PageHeader title={t('savedSearches.title')} />
       <Container
         maw={1200}
         py="lg"
@@ -139,7 +141,7 @@ export default function SavedSearchesListPage() {
         {favoritedSavedSearches.length > 0 && (
           <>
             <Text fw={500} size="sm" c="dimmed" mb="sm">
-              Favorites
+              {t('savedSearches.favorites')}
             </Text>
             <SimpleGrid
               cols={{ base: 1, sm: 2, md: 3 }}
@@ -165,13 +167,13 @@ export default function SavedSearchesListPage() {
         )}
 
         <Text fw={500} size="sm" c="dimmed" mb="sm">
-          All Saved Searches
+          {t('savedSearches.all')}
         </Text>
 
         <Flex justify="space-between" align="center" mb="lg" gap="sm">
           <Group gap="xs" style={{ flex: 1 }}>
             <TextInput
-              placeholder="Search by name"
+              placeholder={t('savedSearches.searchPlaceholder')}
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={e => setSearch(e.currentTarget.value)}
@@ -180,7 +182,7 @@ export default function SavedSearchesListPage() {
             />
             {allTags.length > 0 && (
               <Select
-                placeholder="Filter by tag"
+                placeholder={t('savedSearches.tagPlaceholder')}
                 data={allTags}
                 value={tagFilter}
                 onChange={v => setTagFilter(v)}
@@ -196,7 +198,7 @@ export default function SavedSearchesListPage() {
                 variant={viewMode === 'grid' ? 'primary' : 'secondary'}
                 size="input-sm"
                 onClick={() => setViewMode('grid')}
-                aria-label="Grid view"
+                aria-label={t('savedSearches.gridView')}
               >
                 <IconLayoutGrid size={16} />
               </ActionIcon>
@@ -204,7 +206,7 @@ export default function SavedSearchesListPage() {
                 variant={viewMode === 'list' ? 'primary' : 'secondary'}
                 size="input-sm"
                 onClick={() => setViewMode('list')}
-                aria-label="List view"
+                aria-label={t('savedSearches.listView')}
               >
                 <IconList size={16} />
               </ActionIcon>
@@ -215,18 +217,18 @@ export default function SavedSearchesListPage() {
               onClick={() => Router.push('/search')}
               data-testid="new-search-button"
             >
-              New Search
+              {t('savedSearches.new')}
             </Button>
           </Group>
         </Flex>
 
         {isLoading ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
-            Loading saved searches...
+            {t('savedSearches.loading')}
           </Text>
         ) : isError ? (
           <Text size="sm" c="red" ta="center" py="xl">
-            Failed to load saved searches. Please try refreshing the page.
+            {t('savedSearches.loadFailed')}
           </Text>
         ) : filteredSavedSearches.length === 0 ? (
           <Flex
@@ -238,8 +240,8 @@ export default function SavedSearchesListPage() {
               icon={<IconTable size={32} />}
               title={
                 search || tagFilter
-                  ? 'No matching saved searches yet'
-                  : 'No saved searches yet'
+                  ? t('savedSearches.emptyFiltered')
+                  : t('savedSearches.empty')
               }
             >
               <Button
@@ -248,7 +250,7 @@ export default function SavedSearchesListPage() {
                 onClick={() => Router.push('/search')}
                 data-testid="empty-new-search-button"
               >
-                New Search
+                {t('savedSearches.new')}
               </Button>
             </EmptyState>
           </Flex>
@@ -257,10 +259,10 @@ export default function SavedSearchesListPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th w={40} />
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th>Created By</Table.Th>
-                <Table.Th>Last Updated</Table.Th>
+                <Table.Th>{t('list.columns.name')}</Table.Th>
+                <Table.Th>{t('list.columns.tags')}</Table.Th>
+                <Table.Th>{t('list.columns.createdBy')}</Table.Th>
+                <Table.Th>{t('list.columns.lastUpdated')}</Table.Th>
                 <Table.Th w={50} />
               </Table.Tr>
             </Table.Thead>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { NumberFormat } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -28,6 +29,7 @@ export default function SeriesNumberFormatDrawer({
   onChange,
   onClose,
 }: SeriesNumberFormatDrawerProps) {
+  const { t } = useTranslation('charts');
   const { control, handleSubmit, reset, setValue } = useForm<FormState>({
     defaultValues: undefined,
   });
@@ -55,7 +57,7 @@ export default function SeriesNumberFormatDrawer({
 
   return (
     <Drawer
-      title="Series Display Settings"
+      title={t('seriesFormat.title')}
       opened={opened}
       onClose={handleClose}
       position="right"
@@ -74,8 +76,8 @@ export default function SeriesNumberFormatDrawer({
             }
           }}
           data={[
-            { label: 'Inherit', value: 'inherit' },
-            { label: 'Custom', value: 'format' },
+            { label: t('seriesFormat.inherit'), value: 'inherit' },
+            { label: t('seriesFormat.custom'), value: 'format' },
           ]}
         />
         {isUsingCustomFormat ? (
@@ -84,20 +86,18 @@ export default function SeriesNumberFormatDrawer({
             <Divider />
           </>
         ) : (
-          <Text size="xs">
-            Inherit display settings from chart's display settings.
-          </Text>
+          <Text size="xs">{t('seriesFormat.inheritDescription')}</Text>
         )}
         <Group gap="xs" mt="xs" justify="space-between">
           {isUsingCustomFormat ? (
             <Button type="submit" variant="secondary" onClick={resetToDefaults}>
-              Reset
+              {t('common.reset')}
             </Button>
           ) : (
             <span />
           )}
           <Button type="submit" variant="primary" onClick={applyChanges}>
-            Apply
+            {t('common.apply')}
           </Button>
         </Group>
       </Stack>

@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Code, List, Text } from '@mantine/core';
 
@@ -52,125 +53,126 @@ WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   [DisplayType.EventPatterns]: '',
 };
 
-const TIMESERIES_INSTRUCTIONS = (
-  <>
-    <Text size="xs" fw="bold">
-      Result columns are plotted as follows:
-    </Text>
-    <List size="xs" withPadding spacing={3} mb="xs">
-      <List.Item>
-        <Text span size="xs" fw={600}>
-          Timestamp
-        </Text>
-        <Text span size="xs">
-          {' '}
-          — The first <Code fz="xs">Date</Code> or <Code fz="xs">DateTime</Code>{' '}
-          column.
-        </Text>
-      </List.Item>
-      <List.Item>
-        <Text span size="xs" fw={600}>
-          Series Value
-        </Text>
-        <Text span size="xs">
-          {' '}
-          — Each numeric column will be plotted as a separate series. These
-          columns are generally aggregate function values.
-        </Text>
-      </List.Item>
-      <List.Item>
-        <Text span size="xs" fw={600}>
-          Group Names
-        </Text>
-        <Text span size="xs">
-          {' '}
-          (optional) — Any string, map, or array type result column will be
-          treated as a group column. Result rows with different group column
-          values will be plotted as separate series.
-        </Text>
-      </List.Item>
-    </List>
-  </>
-);
-
-export const DISPLAY_TYPE_INSTRUCTIONS: Partial<
+export function useDisplayTypeInstructions(): Partial<
   Record<DisplayType, ReactNode>
-> = {
-  [DisplayType.Line]: TIMESERIES_INSTRUCTIONS,
-  [DisplayType.StackedBar]: TIMESERIES_INSTRUCTIONS,
-  [DisplayType.Pie]: (
+> {
+  const { t } = useTranslation('charts');
+
+  const timeseriesInstructions = (
     <>
       <Text size="xs" fw="bold">
-        Result columns are plotted as follows:
+        {t('resultColumns.plottedAs')}
       </Text>
       <List size="xs" withPadding spacing={3} mb="xs">
         <List.Item>
           <Text span size="xs" fw={600}>
-            Slice Value
+            {t('resultColumns.timestampLabel')}
           </Text>
           <Text span size="xs">
             {' '}
-            — The first numeric column determines each slice&apos;s size.
+            <Trans
+              t={t}
+              i18nKey="resultColumns.timestampDesc"
+              components={{ code: <Code fz="xs" /> }}
+            />
           </Text>
         </List.Item>
         <List.Item>
           <Text span size="xs" fw={600}>
-            Slice Label
+            {t('resultColumns.seriesValueLabel')}
           </Text>
           <Text span size="xs">
             {' '}
-            (optional) — Each unique value of each string, map, and array type
-            columns will be used as a slice label.
+            {t('resultColumns.seriesValueDesc')}
+          </Text>
+        </List.Item>
+        <List.Item>
+          <Text span size="xs" fw={600}>
+            {t('resultColumns.groupNamesLabel')}
+          </Text>
+          <Text span size="xs">
+            {' '}
+            {t('resultColumns.groupNamesDesc')}
           </Text>
         </List.Item>
       </List>
     </>
-  ),
-  [DisplayType.Bar]: (
-    <>
-      <Text size="xs" fw="bold">
-        Result columns are plotted as follows:
-      </Text>
-      <List size="xs" withPadding spacing={3} mb="xs">
-        <List.Item>
-          <Text span size="xs" fw={600}>
-            Bar Value
-          </Text>
-          <Text span size="xs">
-            {' '}
-            — The first numeric column determines each bar&apos;s height.
-          </Text>
-        </List.Item>
-        <List.Item>
-          <Text span size="xs" fw={600}>
-            Bar Label
-          </Text>
-          <Text span size="xs">
-            {' '}
-            (optional) — Each unique value of each string, map, and array type
-            columns will be used as a bar label.
-          </Text>
-        </List.Item>
-      </List>
-    </>
-  ),
-  [DisplayType.Number]: (
-    <>
-      <Text size="xs" fw="bold">
-        Result columns are displayed as follows:
-      </Text>
-      <List size="xs" withPadding spacing={3} mb="xs">
-        <List.Item>
-          <Text span size="xs" fw={600}>
-            Number
-          </Text>
-          <Text span size="xs">
-            {' '}
-            — The value of the first numeric column in the first result row is
-            displayed as the number.
-          </Text>
-        </List.Item>
-      </List>
-    </>
-  ),
-};
+  );
+
+  return {
+    [DisplayType.Line]: timeseriesInstructions,
+    [DisplayType.StackedBar]: timeseriesInstructions,
+    [DisplayType.Pie]: (
+      <>
+        <Text size="xs" fw="bold">
+          {t('resultColumns.plottedAs')}
+        </Text>
+        <List size="xs" withPadding spacing={3} mb="xs">
+          <List.Item>
+            <Text span size="xs" fw={600}>
+              {t('resultColumns.sliceValueLabel')}
+            </Text>
+            <Text span size="xs">
+              {' '}
+              {t('resultColumns.sliceValueDesc')}
+            </Text>
+          </List.Item>
+          <List.Item>
+            <Text span size="xs" fw={600}>
+              {t('resultColumns.sliceLabelLabel')}
+            </Text>
+            <Text span size="xs">
+              {' '}
+              {t('resultColumns.sliceLabelDesc')}
+            </Text>
+          </List.Item>
+        </List>
+      </>
+    ),
+    [DisplayType.Bar]: (
+      <>
+        <Text size="xs" fw="bold">
+          {t('resultColumns.plottedAs')}
+        </Text>
+        <List size="xs" withPadding spacing={3} mb="xs">
+          <List.Item>
+            <Text span size="xs" fw={600}>
+              {t('resultColumns.barValueLabel')}
+            </Text>
+            <Text span size="xs">
+              {' '}
+              {t('resultColumns.barValueDesc')}
+            </Text>
+          </List.Item>
+          <List.Item>
+            <Text span size="xs" fw={600}>
+              {t('resultColumns.barLabelLabel')}
+            </Text>
+            <Text span size="xs">
+              {' '}
+              {t('resultColumns.barLabelDesc')}
+            </Text>
+          </List.Item>
+        </List>
+      </>
+    ),
+    [DisplayType.Number]: (
+      <>
+        <Text size="xs" fw="bold">
+          {t('resultColumns.displayedAs')}
+        </Text>
+        <List size="xs" withPadding spacing={3} mb="xs">
+          <List.Item>
+            <Text span size="xs" fw={600}>
+              {t('resultColumns.numberLabel')}
+            </Text>
+            <Text span size="xs">
+              {' '}
+              {t('resultColumns.numberDesc')}
+            </Text>
+          </List.Item>
+        </List>
+      </>
+    ),
+  };
+}

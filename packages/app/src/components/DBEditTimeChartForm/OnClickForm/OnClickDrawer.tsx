@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
 import {
@@ -45,6 +46,7 @@ import {
 const TEMPLATE_HELP_TEXT = `Templates can reference column values from the clicked row using {{columnName}}.`;
 
 function SearchOnClickFields({ control }: { control: DrawerControl }) {
+  const { t } = useTranslation('charts');
   const { data: sources } = useSources();
 
   const sourceOptions = useMemo(() => {
@@ -70,8 +72,8 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
 
       <Box>
         <InputLabelWithTooltip
-          label="WHERE"
-          tooltip="Handlebars template that determines the WHERE condition passed to the search page"
+          label={t('onClick.where')}
+          tooltip={t('onClick.searchWhereTooltip')}
         />
         <SearchWhereInput
           control={control}
@@ -96,6 +98,7 @@ function DashboardOnClickFields({
   setValue: UseFormSetValue<DrawerFormValues>;
   getValues: UseFormGetValues<DrawerFormValues>;
 }) {
+  const { t } = useTranslation('charts');
   const { data: dashboards } = useDashboards();
   const dashboardOptions = useMemo(() => {
     return dashboards?.map(dashboard => ({
@@ -146,8 +149,8 @@ function DashboardOnClickFields({
 
       <Box>
         <InputLabelWithTooltip
-          label="WHERE"
-          tooltip="Handlebars template that determines the global WHERE condition passed to the dashboard"
+          label={t('onClick.where')}
+          tooltip={t('onClick.dashboardWhereTooltip')}
         />
         <SearchWhereInput
           control={control}
@@ -164,21 +167,24 @@ function DashboardOnClickFields({
 }
 
 function ExternalOnClickFields({ control }: { control: DrawerControl }) {
+  const { t } = useTranslation('charts');
   return (
     <Stack gap="xs">
       <Text size="xs" c="dimmed">
-        {TEMPLATE_HELP_TEXT} The rendered value must be an absolute http(s) URL.
+        {TEMPLATE_HELP_TEXT} {t('onClick.externalUrlNote')}
         <br />
         <br />
-        <b>Caution:</b> this may navigate to an external site and include
-        information from your data. Make sure the template does not contain any
-        sensitive information, and that the external site is trusted.
+        <Trans
+          t={t}
+          i18nKey="onClick.externalCaution"
+          components={{ b: <b /> }}
+        />
       </Text>
 
       <Box>
         <InputLabelWithTooltip
-          label="URL"
-          tooltip="Handlebars template that resolves to an external URL. It is opened in a new tab when a row is clicked."
+          label={t('onClick.url')}
+          tooltip={t('onClick.externalUrlTooltip')}
         />
         <TextInputControlled
           control={control}
@@ -200,6 +206,7 @@ function ModeFields({
   setValue: UseFormSetValue<DrawerFormValues>;
   getValues: UseFormGetValues<DrawerFormValues>;
 }) {
+  const { t } = useTranslation('charts');
   const onClick = useWatch({ control, name: 'onClick' });
 
   if (onClick?.type === 'search') {
@@ -218,8 +225,7 @@ function ModeFields({
 
   return (
     <Text size="sm" c="dimmed">
-      Clicking a row opens the search page, filtered by the row&apos;s group-by
-      column values and selected time range.
+      {t('onClick.defaultDescription')}
     </Text>
   );
 }
@@ -237,6 +243,7 @@ export default function OnClickDrawer({
   onChange,
   onClose,
 }: OnClickDrawerProps) {
+  const { t } = useTranslation('charts');
   const appliedDefaults: DrawerFormValues = useMemo(
     () => ({ onClick: value }),
     [value],
@@ -285,8 +292,9 @@ export default function OnClickDrawer({
         }
       } catch (err) {
         notifications.show({
-          title: 'Invalid template',
-          message: err instanceof Error ? err.message : 'Unknown error',
+          title: t('onClick.invalidTemplate'),
+          message:
+            err instanceof Error ? err.message : t('onClick.unknownError'),
           color: 'red',
         });
         return;
@@ -295,7 +303,7 @@ export default function OnClickDrawer({
       onChange(values.onClick ?? undefined);
       onClose();
     })();
-  }, [handleSubmit, onChange, onClose]);
+  }, [handleSubmit, onChange, onClose, t]);
 
   const handleClose = useCallback(() => {
     reset(appliedDefaults);
@@ -304,7 +312,7 @@ export default function OnClickDrawer({
 
   return (
     <Drawer
-      title="Row Click Action"
+      title={t('onClick.rowClickTitle')}
       opened={opened}
       onClose={handleClose}
       position="right"
@@ -312,7 +320,7 @@ export default function OnClickDrawer({
     >
       <Stack data-testid="onclick-drawer">
         <Text size="xs" c="dimmed">
-          Configure the action taken when clicking on a table row.
+          {t('onClick.configureHelp')}
         </Text>
 
         <Controller
@@ -322,10 +330,10 @@ export default function OnClickDrawer({
             <SegmentedControl
               data-testid="onclick-mode-segmented"
               data={[
-                { label: 'Default', value: 'default' },
-                { label: 'Search', value: 'search' },
-                { label: 'Dashboard', value: 'dashboard' },
-                { label: 'External', value: 'external' },
+                { label: t('onClick.modeDefault'), value: 'default' },
+                { label: t('onClick.modeSearch'), value: 'search' },
+                { label: t('onClick.modeDashboard'), value: 'dashboard' },
+                { label: t('onClick.modeExternal'), value: 'external' },
               ]}
               value={onClickValue?.type ?? 'default'}
               onChange={value => {
@@ -353,7 +361,7 @@ export default function OnClickDrawer({
         <Divider />
         <Group justify="space-between">
           <Button variant="subtle" onClick={handleClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -361,7 +369,7 @@ export default function OnClickDrawer({
             disabled={isTargetMissing}
             data-testid="onclick-apply-button"
           >
-            Apply
+            {t('common.apply')}
           </Button>
         </Group>
       </Stack>

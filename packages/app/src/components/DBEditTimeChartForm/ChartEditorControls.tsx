@@ -7,6 +7,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   HEATMAP_ALLOWED_SOURCE_KINDS,
@@ -101,6 +102,7 @@ export function ChartEditorControls({
   openDisplaySettings,
   openHeatmapSettings,
 }: ChartEditorControlsProps) {
+  const { t } = useTranslation('charts');
   const canAddSeries =
     displayType !== DisplayType.Pie &&
     displayType !== DisplayType.Bar &&
@@ -130,7 +132,7 @@ export function ChartEditorControls({
       <Flex mb="md" align="center" justify="space-between">
         <Group>
           <Text pe="md" size="sm">
-            Data Source
+            {t('editorControls.dataSource')}
           </Text>
           <SourceSelectControlled
             size="xs"
@@ -182,19 +184,19 @@ export function ChartEditorControls({
             name="select"
             placeholder={
               tableSource
-                ? `Default (${getEventBody(tableSource) ?? 'Body'}) — column name or expression`
-                : 'Default — column name or expression'
+                ? t('editorControls.patternExprPlaceholder', {
+                    expression: getEventBody(tableSource) ?? 'Body',
+                  })
+                : t('editorControls.patternExprPlaceholderDefault')
             }
             onSubmit={onSubmit}
-            label="Pattern Expression"
+            label={t('editorControls.patternExpressionLabel')}
           />
           {typeof select === 'string' &&
             select.length > 0 &&
             !isSingleExpression(select) && (
               <Text size="xs" c="red">
-                Pattern expression must be a single column or expression —
-                multi-column lists are not supported. The source default will be
-                used instead.
+                {t('editorControls.patternExpressionError')}
               </Text>
             )}
           <SearchWhereInput
@@ -262,7 +264,7 @@ export function ChartEditorControls({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Group By
+                    {t('editorControls.groupBy')}
                   </Text>
                 </div>
                 <div>
@@ -270,7 +272,7 @@ export function ChartEditorControls({
                     {...groupByConnectionProps}
                     control={control}
                     name={`groupBy`}
-                    placeholder="SQL Columns"
+                    placeholder={t('editorControls.sqlColumnsPlaceholder')}
                     onSubmit={onSubmit}
                     disableKeywordAutocomplete
                   />
@@ -285,7 +287,7 @@ export function ChartEditorControls({
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        Having
+                        {t('editorControls.having')}
                       </Text>
                     </div>
                     <div>
@@ -293,7 +295,7 @@ export function ChartEditorControls({
                         tableConnection={tableConnection}
                         control={control}
                         name="having"
-                        placeholder="SQL HAVING clause (ex. count() > 100)"
+                        placeholder={t('editorControls.havingPlaceholder')}
                         onSubmit={onSubmit}
                       />
                     </div>
@@ -320,7 +322,7 @@ export function ChartEditorControls({
                   }}
                 >
                   <IconCirclePlus size={14} className="me-2" />
-                  Add Series
+                  {t('editorControls.addSeries')}
                 </Button>
               )}
               {/* Ratio merges exactly two series via divide(); only
@@ -328,7 +330,7 @@ export function ChartEditorControls({
                   on the count alone covers them all (Number included). */}
               {fields.length === 2 && (
                 <Switch
-                  label="As Ratio"
+                  label={t('editorControls.asRatio')}
                   size="sm"
                   color="gray"
                   variant="subtle"
@@ -355,7 +357,7 @@ export function ChartEditorControls({
                 tableSource?.kind === SourceKind.Metric &&
                 hasGroupBy && (
                   <Switch
-                    label="Share of total"
+                    label={t('editorControls.shareOfTotal')}
                     size="sm"
                     color="gray"
                     variant="subtle"
@@ -384,7 +386,7 @@ export function ChartEditorControls({
                     onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
                   >
                     <IconBell size={14} className="me-2" />
-                    Add Alert
+                    {t('editorControls.addAlert')}
                   </Button>
                 )}
             </Group>
@@ -402,7 +404,7 @@ export function ChartEditorControls({
                 variant="secondary"
                 data-testid="display-settings-button"
               >
-                Display Settings
+                {t('common.displaySettings')}
               </Button>
             </Group>
           </Flex>
@@ -426,7 +428,7 @@ export function ChartEditorControls({
                 : undefined
             }
             onSubmit={onSubmit}
-            label="SELECT"
+            label={t('editorControls.select')}
           />
           <SearchWhereInput
             tableConnection={tableConnection}

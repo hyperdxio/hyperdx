@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
@@ -16,12 +17,6 @@ interface DashboardFilterSelectProps {
   isError?: boolean;
 }
 
-const getAppliesToTooltip = (filter: DashboardFilter) => {
-  const count = filter.appliesToSourceIds?.length ?? 0;
-  if (count === 0) return 'Applies to all sources';
-  return `Applies to ${count} source${count === 1 ? '' : 's'}`;
-};
-
 const DashboardFilterSelect = ({
   filter,
   onChange,
@@ -30,8 +25,12 @@ const DashboardFilterSelect = ({
   isLoading,
   isError,
 }: DashboardFilterSelectProps) => {
+  const { t } = useTranslation('dashboards');
   const valuesOrEmptyMemo = useMemo(() => values ?? [], [values]);
-  const tooltipText = getAppliesToTooltip(filter);
+  const sourceCount = filter.appliesToSourceIds?.length ?? 0;
+  const tooltipText = sourceCount
+    ? t('filterBar.sourceCount', { count: sourceCount })
+    : t('filterBar.allSources');
 
   return (
     <Stack gap={2}>
@@ -47,10 +46,7 @@ const DashboardFilterSelect = ({
           />
         </Tooltip>
         {isError && (
-          <Tooltip
-            label="Filter values query failed. The filter's query may be invalid."
-            withinPortal
-          >
+          <Tooltip label={t('filterBar.queryFailed')} withinPortal>
             <IconAlertTriangle
               size={12}
               color="var(--color-text-danger)"

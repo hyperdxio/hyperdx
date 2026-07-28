@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Text, Tooltip } from '@mantine/core';
 
 import { useFormatTime } from '@/useFormatTime';
@@ -20,6 +21,7 @@ export const TimelineSpanEventMarker = memo(function ({
   eventEnd: number;
   height: number;
 }) {
+  const { t } = useTranslation('search');
   const formatTime = useFormatTime();
   const spanDuration = eventEnd - eventStart;
   const markerOffsetFromStart = marker.timestamp - eventStart;
@@ -45,7 +47,9 @@ export const TimelineSpanEventMarker = memo(function ({
           ))}
           {attributeEntries.length > 5 && (
             <div style={{ fontStyle: 'italic' }}>
-              ...and {attributeEntries.length - 5} more
+              {t('timeline.moreAttributes', {
+                count: attributeEntries.length - 5,
+              })}
             </div>
           )}
         </div>

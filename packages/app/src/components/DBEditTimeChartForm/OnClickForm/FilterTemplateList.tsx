@@ -1,4 +1,5 @@
 import { useFieldArray } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   ActionIcon,
   Box,
@@ -15,6 +16,7 @@ import { TextInputControlled } from '@/components/InputControlled';
 import { DrawerControl } from './utils';
 
 export function FilterTemplateList({ control }: { control: DrawerControl }) {
+  const { t } = useTranslation('charts');
   const {
     fields: filters,
     append,
@@ -26,9 +28,9 @@ export function FilterTemplateList({ control }: { control: DrawerControl }) {
 
   return (
     <Box>
-      <InputLabel>Filters</InputLabel>
+      <InputLabel>{t('onClick.filters')}</InputLabel>
       <Text size="xs" c="dimmed" mb="xs">
-        Enter an expression (e.g. a column name) and a template for its value.
+        {t('onClick.filtersHelp')}
       </Text>
       <Stack gap="xs">
         {filters.map((filter, i) => (
@@ -36,7 +38,7 @@ export function FilterTemplateList({ control }: { control: DrawerControl }) {
             <TextInputControlled
               control={control}
               name={`onClick.filters.${i}.expression` as const}
-              placeholder="Expression"
+              placeholder={t('onClick.expressionPlaceholder')}
               style={{ flex: 1 }}
               data-testid="onclick-filter-expression-input"
             />
@@ -50,7 +52,7 @@ export function FilterTemplateList({ control }: { control: DrawerControl }) {
             <ActionIcon
               variant="subtle"
               color="gray"
-              aria-label="Remove filter"
+              aria-label={t('onClick.removeFilter')}
               onClick={() => remove(i)}
               mt={3}
               data-testid="onclick-filter-remove-button"
@@ -72,7 +74,7 @@ export function FilterTemplateList({ control }: { control: DrawerControl }) {
           }
           style={{ alignSelf: 'flex-start' }}
         >
-          Add filter
+          {t('onClick.addFilter')}
         </Button>
       </Stack>
     </Box>

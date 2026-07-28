@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Group, Loader } from '@mantine/core';
 
 export const StacktraceFrame = ({
@@ -13,6 +14,7 @@ export const StacktraceFrame = ({
   colno: number;
   isLoading?: boolean;
 }) => {
+  const { t } = useTranslation('search');
   return (
     <Group gap="xs" display="inline-flex">
       <div
@@ -26,7 +28,7 @@ export const StacktraceFrame = ({
         <span>
           :{lineno}:{colno}
         </span>
-        <span>{' in '}</span>
+        <span>{` ${t('actions.stackFrameIn')} `}</span>
         {functionName && (
           <span
             style={{

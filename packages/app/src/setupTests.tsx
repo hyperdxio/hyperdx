@@ -6,6 +6,7 @@ import { Notifications } from '@mantine/notifications';
 import { render } from '@testing-library/react';
 import structuredClone from '@ungap/structured-clone';
 
+import './i18n';
 import '@testing-library/jest-dom';
 global.TextEncoder = TextEncoder as any;
 global.TextDecoder = TextDecoder as any;

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Badge, Group, Stack, Text } from '@mantine/core';
 
@@ -16,16 +17,17 @@ export default function ServiceMapSidePanel({
   dateRange,
   traceTableSourceId,
 }: ServiceMapSidePanelProps) {
+  const { t } = useTranslation('services');
   const { data: traceTableSource } = useSource({ id: traceTableSourceId });
 
   return (
     <Stack w="100%">
       <Group gap={0}>
         <Text size="sm" ps="sm">
-          Service Map
+          {t('map.title')}
         </Text>
         <Badge size="xs" ms="xs" color="gray" autoContrast radius="sm">
-          Beta
+          {t('map.beta')}
         </Badge>
       </Group>
       {traceTableSource && traceTableSource.kind === SourceKind.Trace ? (

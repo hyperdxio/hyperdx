@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
@@ -36,6 +37,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   chartConfig,
   dataTestId,
 }) => {
+  const { t } = useTranslation('infrastructure');
   const { data, isLoading } = useGetKeyValues({
     chartConfig,
     keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
@@ -53,7 +55,9 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
 
   return (
     <Select
-      placeholder={placeholder + (isLoading ? ' (loading...)' : '')}
+      placeholder={
+        placeholder + (isLoading ? ` ${t('kubernetes.filters.loading')}` : '')
+      }
       data={options}
       value={value}
       onChange={onChange}
@@ -77,6 +81,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   searchQuery,
   setSearchQuery,
 }) => {
+  const { t } = useTranslation('infrastructure');
   // State for each filter
   const [podName, setPodName] = useState<string | null>(null);
   const [deploymentName, setDeploymentName] = useState<string | null>(null);
@@ -198,7 +203,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     <Group mt="md" mb="xs" wrap="wrap" gap="xxs">
       <FilterSelect
         metricSource={metricSource}
-        placeholder="Pod"
+        placeholder={t('kubernetes.filters.pod')}
         fieldName="k8s.pod.name"
         value={podName}
         onChange={value => updateSearchQuery('k8s.pod.name', value, setPodName)}
@@ -208,7 +213,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
 
       <FilterSelect
         metricSource={metricSource}
-        placeholder="Deployment"
+        placeholder={t('kubernetes.filters.deployment')}
         fieldName="k8s.deployment.name"
         value={deploymentName}
         onChange={value =>
@@ -220,7 +225,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
 
       <FilterSelect
         metricSource={metricSource}
-        placeholder="Node"
+        placeholder={t('kubernetes.filters.node')}
         fieldName="k8s.node.name"
         value={nodeName}
         onChange={value =>
@@ -232,7 +237,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
 
       <FilterSelect
         metricSource={metricSource}
-        placeholder="Namespace"
+        placeholder={t('kubernetes.filters.namespace')}
         fieldName="k8s.namespace.name"
         value={namespaceName}
         onChange={value =>
@@ -244,7 +249,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
 
       <FilterSelect
         metricSource={metricSource}
-        placeholder="Cluster"
+        placeholder={t('kubernetes.filters.cluster')}
         fieldName="k8s.cluster.name"
         value={clusterName}
         onChange={value =>
@@ -256,7 +261,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
       <Box style={{ flex: 1, minWidth: 200 }}>
         <SearchInputV2
           tableConnection={tcFromSource(metricSource)}
-          placeholder="Search your events w/ Lucene ex. column:foo"
+          placeholder={t('kubernetes.filters.search')}
           language="lucene"
           name="searchQuery"
           control={control}

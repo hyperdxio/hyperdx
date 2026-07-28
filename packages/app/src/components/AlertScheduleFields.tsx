@@ -8,6 +8,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Collapse,
@@ -51,6 +52,7 @@ export function AlertScheduleFields<T extends FieldValues>({
   numConsecutiveWindowsName,
   numConsecutiveWindows,
 }: AlertScheduleFieldsProps<T>) {
+  const { t } = useTranslation('alerts');
   const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
   const scheduleStartAtValue = useWatch({
     control,
@@ -98,23 +100,23 @@ export function AlertScheduleFields<T extends FieldValues>({
             <IconChevronRight size={14} opacity={0.5} />
           )}
           <Text size="xs" c="dimmed">
-            Advanced Settings
+            {t('schedule.advanced')}
           </Text>
         </Group>
       </UnstyledButton>
       <Collapse expanded={opened}>
         <Box data-testid="alert-advanced-settings-panel">
           <Text size="xs" c="dimmed" mt="xs">
-            Optional schedule controls for aligning alert windows.
+            {t('schedule.description')}
           </Text>
           {numConsecutiveWindowsName && (
             <Group gap="xs" mt="xs">
               <Group gap={4}>
                 <Text size="sm" opacity={0.7}>
-                  Consecutive windows
+                  {t('schedule.consecutive')}
                 </Text>
                 <Tooltip
-                  label="Number of consecutive evaluation windows that must breach the threshold before an alert fires. Useful for reducing noise from transient spikes."
+                  label={t('schedule.consecutiveHelp')}
                   multiline
                   w={260}
                   withArrow
@@ -143,9 +145,9 @@ export function AlertScheduleFields<T extends FieldValues>({
                 )}
               />
               <Text size="sm" opacity={0.7}>
-                {(numConsecutiveWindows ?? 1) === 1
-                  ? 'window'
-                  : 'consecutive windows'}
+                {t('schedule.window', {
+                  count: numConsecutiveWindows ?? 1,
+                })}
               </Text>
             </Group>
           )}
@@ -154,10 +156,10 @@ export function AlertScheduleFields<T extends FieldValues>({
               <Group gap="xs" mt="xs">
                 <Group gap={4}>
                   <Text size="sm" opacity={0.7}>
-                    Start offset (min)
+                    {t('schedule.offset')}
                   </Text>
                   <Tooltip
-                    label="Delays the start of each evaluation window by this many minutes. Useful when data is ingested with a lag."
+                    label={t('schedule.offsetHelp')}
                     multiline
                     w={260}
                     withArrow
@@ -189,7 +191,7 @@ export function AlertScheduleFields<T extends FieldValues>({
               </Group>
               {hasScheduleStartAtAnchor && (
                 <Text size="xs" opacity={0.6} mt={4}>
-                  Start offset is ignored while an anchor start time is set.
+                  {t('schedule.offsetIgnored')}
                 </Text>
               )}
             </>
@@ -197,10 +199,10 @@ export function AlertScheduleFields<T extends FieldValues>({
           <Group gap="xs" mt="xs" align="start">
             <Group gap={4} mt={6}>
               <Text size="sm" opacity={0.7}>
-                Anchor start time
+                {t('schedule.anchor')}
               </Text>
               <Tooltip
-                label="Pins alert windows to a fixed starting point instead of the default rolling schedule. Windows repeat at the configured interval from this time."
+                label={t('schedule.anchorHelp')}
                 multiline
                 w={260}
                 withArrow
@@ -234,7 +236,7 @@ export function AlertScheduleFields<T extends FieldValues>({
               )}
             />
             <Text size="xs" opacity={0.6} mt={6}>
-              Displayed in local time, stored as UTC
+              {t('schedule.localTime')}
             </Text>
           </Group>
         </Box>

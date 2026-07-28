@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
@@ -88,6 +89,7 @@ const PieChartLegend = memo(
 );
 
 export const DBPieChart = (props: CategoricalChartProps) => {
+  const { t: tCharts } = useTranslation('charts');
   const { title, errorVariant } = props;
   const {
     resolvedNumberFormat,
@@ -104,7 +106,7 @@ export const DBPieChart = (props: CategoricalChartProps) => {
     <ChartContainer title={title} toolbarItems={toolbarItems}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
+          {tCharts('common.loadingData')}
         </div>
       ) : isError && error ? (
         <ChartErrorState error={error} variant={errorVariant} />
@@ -112,7 +114,7 @@ export const DBPieChart = (props: CategoricalChartProps) => {
         <ChartErrorState error={responseFormatError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
+          {tCharts('common.noData')}
         </div>
       ) : (
         <Flex

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import cx from 'classnames';
+import { useTranslation } from 'react-i18next';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -16,13 +17,14 @@ export default function ChartErrorState({
   error: Error | ClickHouseQueryError;
   variant?: ChartErrorStateVariant;
 }) {
+  const { t } = useTranslation('charts');
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
 
   const details = useMemo(() => {
     return (
       <Stack align="start">
         <Text size="sm" mt={10}>
-          Error Message:
+          {t('common.errorMessage')}
         </Text>
         <Code
           flex={1}
@@ -36,14 +38,14 @@ export default function ChartErrorState({
         {error instanceof ClickHouseQueryError && (
           <>
             <Text size="sm" ta="center">
-              Sent Query:
+              {t('common.sentQuery')}
             </Text>
             <SQLPreview data={error?.query} enableLineWrapping />
           </>
         )}
       </Stack>
     );
-  }, [error]);
+  }, [error, t]);
 
   return (
     <div
@@ -55,7 +57,7 @@ export default function ChartErrorState({
       )}
     >
       <Text ta="center" size="sm" my="sm">
-        Error loading chart, please check your query or try again later.
+        {t('errorState.errorLoading')}
       </Text>
 
       {variant === 'collapsible' ? (
@@ -67,13 +69,13 @@ export default function ChartErrorState({
           >
             <Group gap="xxs">
               <IconArrowsDiagonal size={16} />
-              See Error Details
+              {t('errorState.seeErrorDetails')}
             </Group>
           </Button>
           <Modal
             opened={isErrorExpanded}
             onClose={() => errorExpansion.close()}
-            title="Error Details"
+            title={t('errorState.errorDetails')}
             size="lg"
           >
             {details}

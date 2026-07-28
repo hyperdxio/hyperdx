@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Select } from '@mantine/core';
 import { IconChevronDown } from '@tabler/icons-react';
 
@@ -15,6 +16,8 @@ export default function InputLanguageSwitch({
   language: Language;
   onLanguageChange: (language: Language) => void;
 }) {
+  const { t } = useTranslation('search');
+
   return (
     <Select
       size="xs"
@@ -38,7 +41,7 @@ export default function InputLanguageSwitch({
           minWidth: 96,
         },
       }}
-      aria-label="Query language"
+      aria-label={t('input.queryLanguage')}
     />
   );
 }

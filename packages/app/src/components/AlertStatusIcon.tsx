@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import { Tooltip } from '@mantine/core';
 import { IconBell, IconBellFilled } from '@tabler/icons-react';
@@ -7,6 +8,7 @@ export function AlertStatusIcon({
 }: {
   alerts?: { state?: AlertState }[];
 }) {
+  const { t } = useTranslation('alerts');
   if (!Array.isArray(alerts) || alerts.length === 0) return null;
   const alertingCount = alerts.filter(a => a.state === AlertState.ALERT).length;
   const pendingCount = alerts.filter(
@@ -16,10 +18,10 @@ export function AlertStatusIcon({
     <Tooltip
       label={
         alertingCount > 0
-          ? `${alertingCount} alert${alertingCount > 1 ? 's' : ''} triggered`
+          ? t('status.triggered', { count: alertingCount })
           : pendingCount > 0
-            ? `${pendingCount} alert${pendingCount > 1 ? 's' : ''} pending`
-            : 'Alerts configured'
+            ? t('status.pending', { count: pendingCount })
+            : t('status.configured')
       }
     >
       {alertingCount > 0 ? (

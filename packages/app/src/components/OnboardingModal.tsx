@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
   isLogSource,
@@ -216,6 +217,7 @@ function OnboardingModalComponent({
 }: {
   requireSource?: boolean;
 }) {
+  const { t } = useTranslation('onboarding');
   const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
@@ -545,17 +547,18 @@ function OnboardingModalComponent({
 
         setAutoDetectedSources(createdSources);
         notifications.show({
-          title: 'Success',
-          message: `Automatically detected and created ${createdSources.length} source${createdSources.length > 1 ? 's' : ''}.`,
+          title: t('modal.successTitle'),
+          message: t('modal.autoDetectSuccess', {
+            count: createdSources.length,
+          }),
         });
         setStep('closed');
       } catch (err) {
         console.error('Error auto-detecting sources:', err);
         notifications.show({
           color: 'red',
-          title: 'Error',
-          message:
-            'Failed to auto-detect telemetry sources. Please set up manually.',
+          title: t('modal.errorTitle'),
+          message: t('modal.autoDetectError'),
         });
         // Fall back to manual source setup
         setStep('source');
@@ -569,6 +572,7 @@ function OnboardingModalComponent({
       updateSourceMutation,
       setStep,
       setAutoDetectedSources,
+      t,
     ],
   );
 
@@ -731,16 +735,16 @@ function OnboardingModalComponent({
       });
 
       notifications.show({
-        title: 'Success',
-        message: `Connected to ${brandName} demo server.`,
+        title: t('modal.successTitle'),
+        message: t('modal.demoConnected', { brandName }),
       });
       setStep('closed');
     } catch (err) {
       console.error(err);
       notifications.show({
         color: 'red',
-        title: 'Error',
-        message: `Could not connect to the ${brandName} demo server, please try again later.`,
+        title: t('modal.errorTitle'),
+        message: t('modal.demoFailed', { brandName }),
       });
     }
   }, [
@@ -751,6 +755,7 @@ function OnboardingModalComponent({
     updateSourceMutation,
     deleteSourceMutation,
     sources,
+    t,
   ]);
 
   return (
@@ -758,14 +763,14 @@ function OnboardingModalComponent({
       data-testid="onboarding-modal"
       opened={step != null && step !== 'closed'}
       onClose={() => {}}
-      title={`Welcome to ${brandName}`}
+      title={t('modal.title', { brandName })}
       size="xl"
       withCloseButton={false}
     >
       {step === 'connection' && connections != null && (
         <>
           <Text size="sm" mb="md">
-            Lets set up your connection to ClickHouse
+            {t('modal.connectionIntro')}
           </Text>
           {connections.length === 0 ? (
             <ConnectionForm
@@ -805,19 +810,19 @@ function OnboardingModalComponent({
           )}
           {!IS_LOCAL_MODE && (
             <Text size="xs" mt="md">
-              You can always add and edit connections later.
+              {t('modal.connectionHint')}
             </Text>
           )}
           {!IS_CLICKHOUSE_BUILD && (
             <>
-              <Divider label="OR" my="md" />
+              <Divider label={t('modal.or')} my="md" />
               <Button
                 data-testid="demo-server-button"
                 variant="secondary"
                 w="100%"
                 onClick={handleDemoServerClick}
               >
-                Connect to Demo Server
+                {t('modal.demoServer')}
               </Button>
             </>
           )}
@@ -830,7 +835,7 @@ function OnboardingModalComponent({
               <Flex justify="center" align="center" direction="column" py="xl">
                 <Loader size="md" mb="md" />
                 <Text size="sm" c="dimmed" mb="md">
-                  Detecting available tables...
+                  {t('modal.detecting')}
                 </Text>
                 <Button
                   variant="subtle"
@@ -840,7 +845,7 @@ function OnboardingModalComponent({
                     setStep('source');
                   }}
                 >
-                  Skip and setup manually
+                  {t('modal.skipToManual')}
                 </Button>
               </Flex>
             </>
@@ -852,13 +857,12 @@ function OnboardingModalComponent({
                 p="xs"
                 mb="md"
               >
-                <IconArrowLeft size={14} className="me-2" /> Back
+                <IconArrowLeft size={14} className="me-2" /> {t('modal.back')}
               </Button>
               <Text size="sm" mb="md">
-                We automatically detected and created{' '}
-                {autoDetectedSources.length} source
-                {autoDetectedSources.length > 1 ? 's' : ''} from your
-                connection. You can review, edit, or continue.
+                {t('modal.autoDetected', {
+                  count: autoDetectedSources.length,
+                })}
               </Text>
               <SourcesList
                 withCard={false}
@@ -872,7 +876,7 @@ function OnboardingModalComponent({
                     setStep('source');
                   }}
                 >
-                  Add more sources
+                  {t('modal.addMoreSources')}
                 </Button>
                 <Button
                   variant="primary"
@@ -880,7 +884,7 @@ function OnboardingModalComponent({
                     setStep('closed');
                   }}
                 >
-                  Continue
+                  {t('modal.continue')}
                 </Button>
               </Flex>
             </>
@@ -888,8 +892,7 @@ function OnboardingModalComponent({
             <Flex justify="center" align="center" direction="column" py="xl">
               {/* We don't expect users to hit this - but this allows them to get unstuck if they do */}
               <Text size="sm" c="dimmed" mb="md">
-                No OTel tables detected automatically, please setup sources
-                manually.
+                {t('modal.noTablesDetected')}
               </Text>
               <Button
                 variant="primary"
@@ -897,7 +900,7 @@ function OnboardingModalComponent({
                   setStep('source');
                 }}
               >
-                Continue
+                {t('modal.continue')}
               </Button>
             </Flex>
           )}
@@ -911,10 +914,10 @@ function OnboardingModalComponent({
             p="xs"
             mb="md"
           >
-            <IconArrowLeft size={14} className="me-2" /> Back
+            <IconArrowLeft size={14} className="me-2" /> {t('modal.back')}
           </Button>
           <Text size="sm" mb="md">
-            Lets set up a source table to query telemetry from.
+            {t('modal.sourceIntro')}
           </Text>
           <TableSourceForm
             isNew
@@ -924,7 +927,7 @@ function OnboardingModalComponent({
             }}
           />
           <Text size="xs" mt="lg">
-            You can always add and edit sources later.
+            {t('modal.sourceHint')}
           </Text>
         </>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   TableConnection,
   tcFromSource,
@@ -115,6 +116,7 @@ export default function RawSqlChartEditor({
   alert: ChartEditorFormState['alert'];
   dashboardId?: string;
 }) {
+  const { t } = useTranslation('charts');
   const { size, startResize } = useResizable(20, 'bottom');
 
   const { data: sources } = useSources();
@@ -230,7 +232,7 @@ export default function RawSqlChartEditor({
       <Group align="center" gap={0} justify="space-between">
         <Group align="center" gap={0}>
           <Text pe="md" size="sm">
-            Connection
+            {t('editor.connection')}
           </Text>
           <ConnectionSelectControlled
             control={control}
@@ -239,13 +241,10 @@ export default function RawSqlChartEditor({
           />
           <Group align="center" gap={8} mx="md">
             <Text size="sm" ps="md">
-              Source
+              {t('editor.source')}
             </Text>
             {isDashboardForm && (
-              <Tooltip
-                label="Optional. Required to apply dashboard filters to this chart."
-                pe="md"
-              >
+              <Tooltip label={t('editor.sourceFilterHelp')} pe="md">
                 <IconHelpCircle size={14} className="cursor-pointer" />
               </Tooltip>
             )}
@@ -256,7 +255,7 @@ export default function RawSqlChartEditor({
             connectionId={connection}
             size="xs"
             clearable
-            placeholder="None"
+            placeholder={t('editor.sourceNone')}
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(sourceObject)}
           />
@@ -280,7 +279,7 @@ export default function RawSqlChartEditor({
                 onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
               >
                 <IconBell size={14} className="me-2" />
-                Add Alert
+                {t('editor.addAlert')}
               </Button>
             )}
 
@@ -297,7 +296,7 @@ export default function RawSqlChartEditor({
               size="compact-sm"
               variant="secondary"
             >
-              Display Settings
+              {t('common.displaySettings')}
             </Button>
           </Group>
         </Group>

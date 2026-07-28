@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import {
   DisplayType,
   type Filter,
@@ -31,6 +32,7 @@ export default function ServiceDashboardDbQuerySidePanel({
   service?: string;
   searchedTimeRange: [Date, Date];
 }) {
+  const { t } = useTranslation('services');
   const { data: source } = useSource({
     id: sourceId,
     kinds: [SourceKind.Trace],
@@ -85,7 +87,7 @@ export default function ServiceDashboardDbQuerySidePanel({
             <DrawerHeader
               header={
                 <>
-                  Details for {dbQuery}
+                  {t('sidePanel.detailsFor', { name: dbQuery })}
                   {service && (
                     <Text component="span" c="gray" fz="xs">
                       <IconServer size={14} className="ms-3 me-1" />
@@ -102,7 +104,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                   <ChartBox style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
-                        title="Total Query Time"
+                        title={t('sidePanel.totalQueryTime')}
                         sourceId={sourceId}
                         hiddenSeries={['total_duration_ns']}
                         config={{
@@ -141,7 +143,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                   <ChartBox style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
-                        title="Query Throughput"
+                        title={t('sidePanel.queryThroughput')}
                         sourceId={sourceId}
                         config={{
                           source: source.id,
@@ -177,7 +179,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                 <Grid.Col span={12}>
                   {source && (
                     <SlowestEventsTile
-                      title="Slowest 5% of Queries"
+                      title={t('sidePanel.slowestQueries')}
                       source={source}
                       dateRange={searchedTimeRange}
                       extraFilters={dbQueryFilters}

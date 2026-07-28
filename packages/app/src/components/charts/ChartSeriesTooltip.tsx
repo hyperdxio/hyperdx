@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import { ActionIcon, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import {
@@ -47,6 +48,7 @@ function SeriesRow({
     onFocus: () => void;
   };
 }) {
+  const { t } = useTranslation('charts');
   const clipboard = useClipboard({ timeout: 1500 });
 
   const item = (
@@ -70,7 +72,7 @@ function SeriesRow({
       <Group gap={2} wrap="nowrap" justify="flex-end" style={{ flexShrink: 0 }}>
         {actions.drillInUrl != null && (
           <Tooltip
-            label="Search (Opens in New Tab)"
+            label={t('timeChart.searchNewTab')}
             withArrow
             withinPortal
             color="gray"
@@ -85,7 +87,7 @@ function SeriesRow({
               variant="subtle"
               size="xs"
               data-testid={`chart-view-events-link-${dataKey}`}
-              aria-label="Search (Opens in New Tab)"
+              aria-label={t('timeChart.searchNewTab')}
               onClick={actions.onDrillIn}
             >
               <IconSearch size={13} />
@@ -93,7 +95,9 @@ function SeriesRow({
           </Tooltip>
         )}
         <Tooltip
-          label={clipboard.copied ? 'Copied!' : 'Copy Label'}
+          label={
+            clipboard.copied ? t('common.copied') : t('timeChart.copyLabel')
+          }
           withArrow
           withinPortal
           color="gray"
@@ -102,7 +106,7 @@ function SeriesRow({
           <ActionIcon
             variant="subtle"
             size="xs"
-            aria-label="Copy Label"
+            aria-label={t('timeChart.copyLabel')}
             data-testid={`chart-copy-name-${dataKey}`}
             onClick={() => clipboard.copy(name)}
           >
@@ -114,7 +118,7 @@ function SeriesRow({
           </ActionIcon>
         </Tooltip>
         <Tooltip
-          label="Focus"
+          label={t('timeChart.focus')}
           withArrow
           withinPortal
           color="gray"
@@ -123,7 +127,7 @@ function SeriesRow({
           <ActionIcon
             variant="subtle"
             size="xs"
-            aria-label="Focus"
+            aria-label={t('timeChart.focus')}
             data-testid={`chart-focus-series-${dataKey}`}
             onClick={actions.onFocus}
           >
@@ -168,6 +172,7 @@ export function ChartSeriesTooltip({
   onDismiss,
   onFocusSeries,
 }: ChartSeriesTooltipProps) {
+  const { t } = useTranslation('charts');
   // Exclude previous-period series from the row list; their comparison is
   // folded into the matching current-period row as a percent-change chip.
   const rows = activePayload
@@ -211,7 +216,7 @@ export function ChartSeriesTooltip({
     >
       <Group gap={8} py={2}>
         <IconSearch size={14} />
-        <Text size="xs">View All Events</Text>
+        <Text size="xs">{t('timeChart.viewAllEvents')}</Text>
       </Group>
     </Link>
   ) : undefined;

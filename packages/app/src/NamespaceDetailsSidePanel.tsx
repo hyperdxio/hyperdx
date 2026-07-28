@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
+import { useTranslation } from 'react-i18next';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
@@ -58,6 +59,7 @@ const NamespaceDetails = ({
   dateRange: [Date, Date];
   metricSource?: TMetricSource;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const where = `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${name}"`;
   const groupBy = ['k8s.namespace.name'];
 
@@ -99,10 +101,13 @@ const NamespaceDetails = ({
         className="p-2 gap-2 d-flex flex-wrap"
         data-testid="k8s-namespace-details-panel"
       >
-        <PodDetailsProperty label="Namespace" value={name} />
+        <PodDetailsProperty
+          label={t('kubernetes.details.namespace')}
+          value={name}
+        />
         {properties.ready !== undefined && (
           <PodDetailsProperty
-            label="Status"
+            label={t('kubernetes.details.status')}
             value={
               properties.ready === 1 ? (
                 <Badge
@@ -112,7 +117,7 @@ const NamespaceDetails = ({
                   tt="none"
                   size="md"
                 >
-                  Ready
+                  {t('kubernetes.namespaces.ready')}
                 </Badge>
               ) : (
                 <Badge
@@ -122,7 +127,7 @@ const NamespaceDetails = ({
                   tt="none"
                   size="md"
                 >
-                  Not Ready
+                  {t('kubernetes.nodes.notReady')}
                 </Badge>
               )
             }
@@ -142,6 +147,7 @@ function NamespaceLogs({
   logSource: TLogSource;
   where: string;
 }) {
+  const { t } = useTranslation('infrastructure');
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
   const _where = where + (resultType === 'error' ? ' Severity:err' : '');
@@ -150,7 +156,7 @@ function NamespaceLogs({
     <Card p="md">
       <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
-          Latest Namespace Logs & Spans
+          {t('kubernetes.details.namespaceLogs')}
           <Flex gap="xs" align="center">
             <SegmentedControl
               size="xs"
@@ -161,8 +167,11 @@ function NamespaceLogs({
                 }
               }}
               data={[
-                { label: 'All', value: 'all' },
-                { label: 'Errors', value: 'error' },
+                { label: t('kubernetes.details.resultsAll'), value: 'all' },
+                {
+                  label: t('kubernetes.details.resultsErrors'),
+                  value: 'error',
+                },
               ]}
             />
             {/* 
@@ -228,6 +237,7 @@ export default function NamespaceDetailsSidePanel({
   metricSource: TMetricSource;
   logSource: TLogSource;
 }) {
+  const { t } = useTranslation('infrastructure');
   const [namespaceName, setNamespaceName] = useQueryState(
     'namespaceName',
     parseAsString.withDefault(''),
@@ -355,7 +365,7 @@ export default function NamespaceDetailsSidePanel({
                   <Card p="md" data-testid="namespace-details-cpu-usage-chart">
                     <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                       <DBTimeChart
-                        title="CPU Usage by Pod"
+                        title={t('kubernetes.charts.cpuUsageByPod')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -389,7 +399,7 @@ export default function NamespaceDetailsSidePanel({
                   >
                     <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                       <DBTimeChart
-                        title="Memory Usage by Pod"
+                        title={t('kubernetes.charts.memoryUsageByPod')}
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,

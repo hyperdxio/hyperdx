@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useRouter } from 'next/router';
+import { useTranslation } from 'react-i18next';
 import { Button, Group, Modal, Text } from '@mantine/core';
 
 type ConfirmOptions = {
@@ -23,6 +24,7 @@ type ConfirmFn = (
 const ConfirmContext = React.createContext<ConfirmFn | null>(null);
 
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation('common');
   const [state, setState] = React.useState<ConfirmState>(null);
   const router = useRouter();
 
@@ -82,7 +84,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             variant="secondary"
             onClick={state?.onClose}
           >
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button
             data-testid="confirm-confirm-button"

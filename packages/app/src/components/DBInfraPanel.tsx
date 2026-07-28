@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { add, min, sub } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import {
   convertDateRangeToGranularityString,
   Granularity,
@@ -54,6 +55,7 @@ const InfraSubpanelGroup = ({
   title: string;
   where: string;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const [range, setRange] = useState<'30m' | '1h' | '1d'>('30m');
   const [size, setSize] = useState<'sm' | 'md' | 'lg'>('sm');
 
@@ -93,9 +95,9 @@ const InfraSubpanelGroup = ({
           <SegmentedControl
             size="xs"
             data={[
-              { label: '30m', value: '30m' },
-              { label: '1h', value: '1h' },
-              { label: '1d', value: '1d' },
+              { label: t('panel.range30m'), value: '30m' },
+              { label: t('panel.range1h'), value: '1h' },
+              { label: t('panel.range1d'), value: '1d' },
             ]}
             value={range}
             onChange={value => setRange(value as any)}
@@ -105,9 +107,9 @@ const InfraSubpanelGroup = ({
           <SegmentedControl
             size="xs"
             data={[
-              { label: 'SM', value: 'sm' },
-              { label: 'MD', value: 'md' },
-              { label: 'LG', value: 'lg' },
+              { label: t('panel.sizeSm'), value: 'sm' },
+              { label: t('panel.sizeMd'), value: 'md' },
+              { label: t('panel.sizeLg'), value: 'lg' },
             ]}
             value={size}
             onChange={value => setSize(value as any)}
@@ -119,7 +121,7 @@ const InfraSubpanelGroup = ({
           <Card key={chart.cardTestId} data-testid={chart.cardTestId}>
             <Card.Section py={8} px={8} h={height}>
               <DBTimeChart
-                title={chart.title}
+                title={t(`panel.charts.${chart.titleKey}`)}
                 config={convertV1ChartConfigToV2(
                   {
                     dateRange,
@@ -159,6 +161,7 @@ export default ({
   rowData?: Record<string, any>;
   source: TSource;
 }) => {
+  const { t } = useTranslation('infrastructure');
   const [editModalOpened, { open: openEditModal, close: closeEditModal }] =
     useDisclosure(false);
 
@@ -183,20 +186,19 @@ export default ({
     <Stack my="md" gap={40}>
       {!metricSource && !isLoadingMetricSource && (
         <>
-          <Alert color="yellow" title="No correlated metric source">
+          <Alert color="yellow" title={t('panel.noMetricSourceTitle')}>
             <Text size="sm">
               {metricSourceId
-                ? `The correlated metric source for "${source.name}" could not be found.`
-                : `Source "${source.name}" does not have a correlated metric source.`}{' '}
-              Infrastructure metrics can be displayed when a metric source is
-              configured in{' '}
+                ? t('panel.correlatedSourceMissing', { name: source.name })
+                : t('panel.noCorrelatedSource', { name: source.name })}{' '}
+              {t('panel.configureHint')}{' '}
               {IS_LOCAL_MODE ? (
                 <Anchor component="button" onClick={openEditModal}>
-                  Source Settings
+                  {t('panel.sourceSettings')}
                 </Anchor>
               ) : (
                 <Anchor component={Link} href="/team">
-                  Team Settings
+                  {t('panel.teamSettings')}
                 </Anchor>
               )}
               .
@@ -207,7 +209,7 @@ export default ({
               size="xl"
               opened={editModalOpened}
               onClose={closeEditModal}
-              title="Edit Source"
+              title={t('panel.editSource')}
             >
               <TableSourceForm sourceId={source.id} />
             </Modal>
@@ -234,10 +236,10 @@ export default ({
           return null;
         }
         return (
-          <div key={correlation.title}>
+          <div key={correlation.titleKey}>
             {metricSource && (
               <InfraSubpanelGroup
-                title={correlation.title}
+                title={t(`panel.correlations.${correlation.titleKey}`)}
                 where={`${metricSource.resourceAttributesExpression}.${correlation.correlateAttribute}:"${value}"`}
                 fieldPrefix={correlation.fieldPrefix}
                 charts={correlation.charts}
@@ -248,7 +250,9 @@ export default ({
             {correlation.timeline && source.kind === SourceKind.Log && (
               <Card p="md" mt="xl">
                 <Card.Section p="md" py="xs">
-                  {correlation.title} Timeline
+                  {t('panel.timeline', {
+                    title: t(`panel.correlations.${correlation.titleKey}`),
+                  })}
                 </Card.Section>
                 <Card.Section>
                   <ScrollArea
@@ -265,7 +269,11 @@ export default ({
                           add(new Date(timestamp), { days: 1 }),
                         ]}
                         anchorEvent={{
-                          label: <div className="text-brand">This Event</div>,
+                          label: (
+                            <div className="text-brand">
+                              {t('panel.thisEvent')}
+                            </div>
+                          ),
                           timestamp: new Date(timestamp).toISOString(),
                         }}
                       />

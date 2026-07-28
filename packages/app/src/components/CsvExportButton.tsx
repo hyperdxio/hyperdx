@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import Papa from 'papaparse';
+import { useTranslation } from 'react-i18next';
 
 interface CsvExportButtonProps {
   data: Record<string, any>[];
@@ -24,6 +25,7 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
   onExportComplete,
   onExportError,
 }) => {
+  const { t } = useTranslation('common');
   const handleClick = useCallback(() => {
     try {
       if (data.length === 0) {
@@ -65,7 +67,7 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
     return (
       <div
         className={className}
-        title={disabled ? 'Export disabled' : 'No data to export'}
+        title={disabled ? t('export.disabled') : t('export.noData')}
         style={{ opacity: 0.5, cursor: 'not-allowed', display: 'flex' }}
       >
         {children}

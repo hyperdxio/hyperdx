@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   BuilderChartConfigWithOptDateRange,
   SourceKind,
@@ -21,11 +22,13 @@ function MVOptimizationIcon({
   isInWarningState: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation('sources');
+
   return isInWarningState ? (
-    <Tooltip label="Not Accelerated">
+    <Tooltip label={t('optimization.notAccelerated')}>
       <ActionIcon
         onClick={onClick}
-        aria-label="Not Accelerated"
+        aria-label={t('optimization.notAccelerated')}
         data-testid="mv-optimization-indicator"
         data-mv-accelerated="false"
       >
@@ -33,10 +36,10 @@ function MVOptimizationIcon({
       </ActionIcon>
     </Tooltip>
   ) : (
-    <Tooltip label="Accelerated">
+    <Tooltip label={t('optimization.accelerated')}>
       <ActionIcon
         onClick={onClick}
-        aria-label="Accelerated"
+        aria-label={t('optimization.accelerated')}
         data-testid="mv-optimization-indicator"
         data-mv-accelerated="true"
       >
@@ -53,6 +56,8 @@ function MVOptimizationBadge({
   isInWarningState: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation('sources');
+
   return (
     <Badge
       color={isInWarningState ? WARNING_COLOR : SUCCESS_COLOR}
@@ -61,7 +66,9 @@ function MVOptimizationBadge({
       data-testid="mv-optimization-indicator"
       data-mv-accelerated={isInWarningState ? 'false' : 'true'}
     >
-      {isInWarningState ? 'Not Accelerated' : 'Accelerated'}
+      {isInWarningState
+        ? t('optimization.notAccelerated')
+        : t('optimization.accelerated')}
     </Badge>
   );
 }

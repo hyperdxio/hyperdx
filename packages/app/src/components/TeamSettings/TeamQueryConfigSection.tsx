@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
 import { type TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
 import {
@@ -62,6 +63,8 @@ function ClickhouseSettingForm({
   displayValue,
   description,
 }: ClickhouseSettingFormProps) {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const { data: me, refetch: refetchMe } = api.useMe();
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
   const hasAdminAccess = true;
@@ -91,13 +94,13 @@ function ClickhouseSettingForm({
             onError: _e => {
               notifications.show({
                 color: 'red',
-                message: `Failed to update ${label}`,
+                message: t('queryConfig.updateFailed', { label }),
               });
             },
             onSuccess: () => {
               notifications.show({
                 color: 'green',
-                message: `Updated ${label}`,
+                message: t('queryConfig.updated', { label }),
               });
               refetchMe();
               setIsEditing(false);
@@ -107,7 +110,10 @@ function ClickhouseSettingForm({
       } catch (e) {
         notifications.show({
           color: 'red',
-          message: e instanceof Error ? e.message : `Failed to update ${label}`,
+          message:
+            e instanceof Error
+              ? e.message
+              : t('queryConfig.updateFailed', { label }),
         });
       }
     },
@@ -118,6 +124,7 @@ function ClickhouseSettingForm({
       label,
       type,
       displayValue,
+      t,
     ],
   );
 
@@ -129,13 +136,13 @@ function ClickhouseSettingForm({
         onError: () => {
           notifications.show({
             color: 'red',
-            message: `Failed to reset ${label}`,
+            message: t('queryConfig.resetFailed', { label }),
           });
         },
         onSuccess: () => {
           notifications.show({
             color: 'green',
-            message: `Reset ${label} to default`,
+            message: t('queryConfig.reset', { label }),
           });
           form.reset({ value: defaultValue });
           refetchMe();
@@ -150,6 +157,7 @@ function ClickhouseSettingForm({
     label,
     defaultValue,
     form,
+    t,
   ]);
 
   const isCustomValue = currentValue !== undefined;
@@ -180,7 +188,7 @@ function ClickhouseSettingForm({
                 name="value"
                 data={[displayValue(true), displayValue(false)]}
                 size="xs"
-                placeholder="Please select"
+                placeholder={t('queryConfig.selectPlaceholder')}
                 withAsterisk
                 miw={300}
                 readOnly={!isEditing}
@@ -196,7 +204,9 @@ function ClickhouseSettingForm({
                 size="xs"
                 type="number"
                 placeholder={
-                  placeholder || currentValue?.toString() || `Enter value`
+                  placeholder ||
+                  currentValue?.toString() ||
+                  t('queryConfig.valuePlaceholder')
                 }
                 required
                 readOnly={!isEditing}
@@ -221,7 +231,7 @@ function ClickhouseSettingForm({
               variant="primary"
               loading={updateClickhouseSettings.isPending}
             >
-              Save
+              {tCommon('actions.save')}
             </Button>
             <Button
               type="button"
@@ -232,7 +242,7 @@ function ClickhouseSettingForm({
                 setIsEditing(false);
               }}
             >
-              Cancel
+              {tCommon('actions.cancel')}
             </Button>
           </Group>
         </form>
@@ -241,7 +251,7 @@ function ClickhouseSettingForm({
           <Text className="text-white">
             {displayValue
               ? displayValue(currentValue, defaultValue)
-              : currentValue?.toString() || 'Not set'}
+              : currentValue?.toString() || t('queryConfig.notSet')}
           </Text>
           {hasAdminAccess && (
             <Button
@@ -250,7 +260,7 @@ function ClickhouseSettingForm({
               leftSection={<IconPencil size={16} />}
               onClick={() => setIsEditing(true)}
             >
-              Change
+              {t('queryConfig.change')}
             </Button>
           )}
           {hasAdminAccess && isCustomValue && defaultValue != null && (
@@ -260,7 +270,7 @@ function ClickhouseSettingForm({
               loading={updateClickhouseSettings.isPending}
               onClick={handleReset}
             >
-              Reset to default
+              {t('queryConfig.resetToDefault')}
             </Button>
           )}
         </Group>
@@ -270,77 +280,98 @@ function ClickhouseSettingForm({
 }
 
 export default function TeamQueryConfigSection() {
+  const { t } = useTranslation('settings');
   const brandName = useBrandDisplayName();
   const displayValueWithUnit =
     (unit: string) => (value: any, defaultValue?: any) =>
       value === undefined || value === defaultValue
-        ? `${defaultValue.toLocaleString()} ${unit}`
+        ? t('queryConfig.valueWithUnit', {
+            value: defaultValue.toLocaleString(),
+            unit,
+          })
         : value === 0
-          ? 'Unlimited'
-          : `${value.toLocaleString()} ${unit}`;
+          ? t('queryConfig.unlimited')
+          : t('queryConfig.valueWithUnit', {
+              value: value.toLocaleString(),
+              unit,
+            });
 
   return (
     <Box id="team_query_config">
-      <Text size="md">ClickHouse Client Settings</Text>
+      <Text size="md">{t('sections.queryConfig')}</Text>
       <Divider my="md" />
       <Card>
         <Stack>
           <ClickhouseSettingForm
             settingKey="searchRowLimit"
-            label="Search Row Limit"
-            tooltip="The number of rows per query for the Search page or search dashboard tiles"
+            label={t('queryConfig.searchRowLimit')}
+            tooltip={t('queryConfig.searchRowLimitTooltip')}
             type="number"
             defaultValue={DEFAULT_SEARCH_ROW_LIMIT}
-            placeholder={`default = ${DEFAULT_SEARCH_ROW_LIMIT}, 0 = unlimited`}
+            placeholder={t('queryConfig.searchRowLimitPlaceholder', {
+              defaultValue: DEFAULT_SEARCH_ROW_LIMIT,
+            })}
             min={1}
             max={100000}
-            displayValue={displayValueWithUnit('rows')}
+            displayValue={displayValueWithUnit(t('queryConfig.unitRows'))}
           />
           <ClickhouseSettingForm
             settingKey="queryTimeout"
-            label="Query Timeout (seconds)"
-            tooltip="Sets the max execution time of a query in seconds."
+            label={t('queryConfig.queryTimeout')}
+            tooltip={t('queryConfig.queryTimeoutTooltip')}
             type="number"
             defaultValue={DEFAULT_QUERY_TIMEOUT}
-            placeholder={`default = ${DEFAULT_QUERY_TIMEOUT}, 0 = unlimited`}
+            placeholder={t('queryConfig.searchRowLimitPlaceholder', {
+              defaultValue: DEFAULT_QUERY_TIMEOUT,
+            })}
             min={0}
-            displayValue={displayValueWithUnit('seconds')}
+            displayValue={displayValueWithUnit(t('queryConfig.unitSeconds'))}
           />
           <ClickhouseSettingForm
             settingKey="metadataMaxRowsToRead"
-            label="Max Rows to Read (METADATA ONLY)"
-            tooltip="The maximum number of rows that can be read from a table when running a query"
+            label={t('queryConfig.metadataMaxRowsToRead')}
+            tooltip={t('queryConfig.metadataMaxRowsToReadTooltip')}
             type="number"
             defaultValue={DEFAULT_METADATA_MAX_ROWS_TO_READ}
-            placeholder={`default = ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited`}
+            placeholder={t('queryConfig.searchRowLimitPlaceholder', {
+              defaultValue: DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString(),
+            })}
             min={0}
-            displayValue={displayValueWithUnit('rows')}
+            displayValue={displayValueWithUnit(t('queryConfig.unitRows'))}
           />
           <ClickhouseSettingForm
             settingKey="filterKeysFetchLimit"
-            label="Filter Keys Fetch Limit"
-            tooltip="The number of filter keys to fetch when clicking 'More filters' on the search page"
+            label={t('queryConfig.filterKeysFetchLimit')}
+            tooltip={t('queryConfig.filterKeysFetchLimitTooltip')}
             type="number"
             defaultValue={DEFAULT_FILTER_KEYS_FETCH_LIMIT}
-            placeholder={`default = ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
+            placeholder={t('queryConfig.filterKeysFetchLimitPlaceholder', {
+              defaultValue: DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+            })}
             min={1}
             max={1000}
-            displayValue={displayValueWithUnit('keys')}
-            description={`Default is ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
+            displayValue={displayValueWithUnit(t('queryConfig.unitKeys'))}
+            description={t('queryConfig.filterKeysFetchLimitDescription', {
+              defaultValue: DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+            })}
           />
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"
-            label="Field Metadata Queries"
-            tooltip="Enable to fetch field metadata from ClickHouse"
+            label={t('queryConfig.fieldMetadata')}
+            tooltip={t('queryConfig.fieldMetadataTooltip')}
             type="boolean"
-            displayValue={value => (value ? 'Disabled' : 'Enabled')}
+            displayValue={value =>
+              value ? t('queryConfig.disabled') : t('queryConfig.enabled')
+            }
           />
           <ClickhouseSettingForm
             settingKey="parallelizeWhenPossible"
-            label="Parallelize Queries When Possible"
-            tooltip={`${brandName} sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse`}
+            label={t('queryConfig.parallelize')}
+            tooltip={t('queryConfig.parallelizeTooltip', { brandName })}
             type="boolean"
-            displayValue={value => (value ? 'Enabled' : 'Disabled')}
+            displayValue={value =>
+              value ? t('queryConfig.enabled') : t('queryConfig.disabled')
+            }
           />
         </Stack>
       </Card>

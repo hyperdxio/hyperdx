@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
 import {
@@ -31,7 +32,8 @@ export default function MVOptimizationModal({
   opened: boolean;
   onClose: () => void;
 }) {
-  const hasMultipleMVs = mvConfigs.length > 1;
+  const { t } = useTranslation('sources');
+  const mvCount = mvConfigs.length;
 
   const explanationsByKey = useMemo(
     () => new Map(explanations.map(e => [mvConfigToKey(e.mvConfig), e])),
@@ -42,16 +44,14 @@ export default function MVOptimizationModal({
 
   return (
     <Modal
-      title={hasMultipleMVs ? 'Materialized Views' : 'Materialized View'}
+      title={t('optimization.modalTitle', { count: mvCount })}
       opened={opened}
       onClose={onClose}
       size="lg"
     >
       <div data-testid="mv-optimization-modal">
         <Text size="sm" mb="sm">
-          This source is configured with{' '}
-          {hasMultipleMVs ? 'materialized views' : 'a materialized view'} for
-          accelerating some aggregations.
+          {t('optimization.description', { count: mvCount })}
         </Text>
 
         <Accordion defaultValue={firstUsedMv && mvConfigToKey(firstUsedMv)}>
@@ -61,7 +61,8 @@ export default function MVOptimizationModal({
             const hasErrors = !!explanation?.errors.length;
             const isBeingUsedByOptimizedConfig = explanation?.success;
             const rowEstimate =
-              explanation?.rowEstimate?.toLocaleString() ?? 'N/A';
+              explanation?.rowEstimate?.toLocaleString() ??
+              t('optimization.rowEstimateUnknown');
 
             return (
               <Accordion.Item value={key} key={key}>
@@ -73,36 +74,40 @@ export default function MVOptimizationModal({
                   <Group justify="space-between">
                     <Text>{config.tableName}</Text>
                     {isBeingUsedByOptimizedConfig ? (
-                      <Tooltip label={`Estimated rows scanned: ${rowEstimate}`}>
+                      <Tooltip
+                        label={t('optimization.rowEstimate', { rowEstimate })}
+                      >
                         <Badge
                           me="md"
                           color={SUCCESS_COLOR}
                           data-testid="mv-optimization-modal-status"
                           data-mv-status="active"
                         >
-                          Active
+                          {t('optimization.statusActive')}
                         </Badge>
                       </Tooltip>
                     ) : hasErrors ? (
-                      <Tooltip label="This materialized view is not compatible with the selected query.">
+                      <Tooltip label={t('optimization.incompatibleTooltip')}>
                         <Badge
                           me="md"
                           color={WARNING_COLOR}
                           data-testid="mv-optimization-modal-status"
                           data-mv-status="incompatible"
                         >
-                          Incompatible
+                          {t('optimization.statusIncompatible')}
                         </Badge>
                       </Tooltip>
                     ) : explanation ? (
-                      <Tooltip label={`Estimated rows scanned: ${rowEstimate}`}>
+                      <Tooltip
+                        label={t('optimization.rowEstimate', { rowEstimate })}
+                      >
                         <Badge
                           me="md"
                           color="gray"
                           data-testid="mv-optimization-modal-status"
                           data-mv-status="skipped"
                         >
-                          Skipped
+                          {t('optimization.statusSkipped')}
                         </Badge>
                       </Tooltip>
                     ) : null}
@@ -114,8 +119,7 @@ export default function MVOptimizationModal({
                     {hasErrors && (
                       <Alert color="red" mt="xs">
                         <Text size="sm" fw={500} mb="xs">
-                          The query cannot be accelerated using this
-                          materialized view for the following reason(s):
+                          {t('optimization.errorsTitle')}
                         </Text>
                         {explanation.errors.map((error, idx) => (
                           <Text size="sm" key={idx} mt="xs">

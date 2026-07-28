@@ -1,4 +1,5 @@
 import { Control, useController, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Stack, Text } from '@mantine/core';
 
@@ -18,6 +19,7 @@ export default function PromqlChartEditor({
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
 }) {
+  const { t } = useTranslation('charts');
   const { field: expressionField } = useController({
     control,
     name: 'promqlExpression',
@@ -36,7 +38,7 @@ export default function PromqlChartEditor({
     <Stack gap="sm">
       <Box>
         <Text size="sm" mb={4}>
-          Data Source
+          {t('editor.dataSource')}
         </Text>
         <SourceSelectControlled
           size="xs"
@@ -47,7 +49,7 @@ export default function PromqlChartEditor({
       </Box>
       <Box>
         <Text size="sm" mb={4}>
-          PromQL Expression
+          {t('editor.promqlExpression')}
         </Text>
         <PromQLEditor
           value={expressionField.value ?? ''}
@@ -63,7 +65,7 @@ export default function PromqlChartEditor({
           size="compact-sm"
           variant="secondary"
         >
-          Display Settings
+          {t('common.displaySettings')}
         </Button>
       </Flex>
     </Stack>

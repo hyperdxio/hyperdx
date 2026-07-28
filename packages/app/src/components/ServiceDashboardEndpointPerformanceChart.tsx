@@ -1,4 +1,5 @@
 import { pick } from 'lodash';
+import { useTranslation } from 'react-i18next';
 import {
   pickSampleWeightExpressionProps,
   TTraceSource,
@@ -26,6 +27,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
   service?: string;
   endpoint?: string;
 }) {
+  const { t } = useTranslation('services');
   const { data: jsonColumns = [] } = useJsonColumns({
     databaseName: source?.from?.databaseName || '',
     tableName: source?.from?.tableName || '',
@@ -92,7 +94,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
     <ChartBox style={{ height: 350, overflow: 'auto' }}>
       {source && (
         <DBListBarChart
-          title="20 Top Most Time Consuming Operations"
+          title={t('sidePanel.topOperations')}
           groupColumn="group"
           valueColumn="Total Time Spent"
           config={{

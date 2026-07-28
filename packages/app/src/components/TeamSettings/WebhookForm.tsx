@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { HTTPError } from 'ky';
 import { Controller, SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
@@ -66,6 +67,8 @@ export function WebhookForm({
   onClose: VoidFunction;
   onSuccess: (webhookId?: string) => void;
 }) {
+  const { t } = useTranslation('settings');
+  const { t: tCommon } = useTranslation('common');
   const brandName = useBrandDisplayName();
   const saveWebhook = api.useSaveWebhook();
   const updateWebhook = api.useUpdateWebhook();
@@ -113,9 +116,9 @@ export function WebhookForm({
         const errorMessage =
           parseError instanceof Error
             ? parseError.message
-            : 'Invalid JSON format';
+            : t('webhooks.invalidJsonFormat');
         notifications.show({
-          message: `Invalid JSON in headers: ${errorMessage}`,
+          message: t('webhooks.invalidHeadersJson', { error: errorMessage }),
           color: 'red',
           autoClose: 5000,
         });
@@ -148,12 +151,11 @@ export function WebhookForm({
       });
       notifications.show({
         color: 'green',
-        message: 'Test webhook sent successfully',
+        message: t('webhooks.testSent'),
       });
     } catch (e) {
       console.error(e);
-      let message =
-        'Failed to send test webhook. Please check your webhook configuration.';
+      let message: string = t('webhooks.testFailed');
 
       if (e instanceof HTTPError) {
         try {
@@ -187,9 +189,9 @@ export function WebhookForm({
           const errorMessage =
             parseError instanceof Error
               ? parseError.message
-              : 'Invalid JSON format';
+              : t('webhooks.invalidJsonFormat');
           notifications.show({
-            message: `Invalid JSON in headers: ${errorMessage}`,
+            message: t('webhooks.invalidHeadersJson', { error: errorMessage }),
             color: 'red',
             autoClose: 5000,
           });
@@ -230,13 +232,13 @@ export function WebhookForm({
 
       notifications.show({
         color: 'green',
-        message: `Webhook ${isEditing ? 'updated' : 'created'} successfully`,
+        message: isEditing ? t('webhooks.updated') : t('webhooks.created'),
       });
       onSuccess(response.data?._id);
       onClose();
     } catch (e) {
       console.error(e);
-      let message = `Something went wrong. Please contact ${brandName} team.`;
+      let message: string = tCommon('errors.contactTeam', { brandName });
 
       if (e instanceof HTTPError) {
         try {
@@ -255,7 +257,9 @@ export function WebhookForm({
                 return `${path}: ${issue.message}`;
               })
               .join(', ');
-            message = `Validation error: ${validationErrors}`;
+            message = t('webhooks.validationError', {
+              errors: validationErrors,
+            });
           } else if (errorData.message) {
             message = errorData.message;
           } else {
@@ -283,36 +287,45 @@ export function WebhookForm({
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <Stack mt="sm">
-        <Text>{isEditing ? 'Edit Webhook' : 'Create Webhook'}</Text>
+        <Text>
+          {isEditing ? t('webhooks.editTitle') : t('webhooks.createTitle')}
+        </Text>
         <Radio.Group
           data-testid="service-type-radio-group"
-          label="Service Type"
+          label={t('webhooks.serviceType')}
           required
           value={service}
           onChange={value => form.setValue('service', value as WebhookService)}
         >
           <Group mt="xs">
-            <Radio value={WebhookService.Slack} label="Slack" />
-            <Radio value={WebhookService.IncidentIO} label="incident.io" />
-            <Radio value={WebhookService.Generic} label="Generic" />
+            <Radio
+              value={WebhookService.Slack}
+              label={t('webhooks.serviceSlack')}
+            />
+            <Radio
+              value={WebhookService.IncidentIO}
+              label={t('webhooks.serviceIncidentIo')}
+            />
+            <Radio
+              value={WebhookService.Generic}
+              label={t('webhooks.serviceGeneric')}
+            />
           </Group>
         </Radio.Group>
         <TextInput
-          label="Webhook Name"
+          label={t('webhooks.name')}
           data-testid="webhook-name-input"
-          placeholder="Post to #dev-alerts"
+          placeholder={t('webhooks.namePlaceholder')}
           required
           error={form.formState.errors.name?.message}
           {...form.register('name', { required: true })}
         />
 
         <TextInput
-          label="Webhook URL"
+          label={t('webhooks.url')}
           data-testid="webhook-url-input"
           description={
-            isEditing
-              ? 'URL is masked for security. Enter a new URL to update.'
-              : undefined
+            isEditing ? t('webhooks.urlMaskedDescription') : undefined
           }
           placeholder={
             service === WebhookService.Slack
@@ -328,26 +341,24 @@ export function WebhookForm({
             required: true,
             validate: (value, formValues) =>
               formValues.service === WebhookService.Slack
-                ? isValidSlackUrl(value) ||
-                  'URL must be valid and have a slack.com domain'
-                : isValidUrl(value) || 'URL must be valid',
+                ? isValidSlackUrl(value) || t('webhooks.urlInvalidSlack')
+                : isValidUrl(value) || t('webhooks.urlInvalid'),
           })}
         />
 
         <TextInput
-          label="Webhook Description (optional)"
-          placeholder="To be used for dev alerts"
+          label={t('webhooks.description')}
+          placeholder={t('webhooks.descriptionPlaceholder')}
           error={form.formState.errors.description?.message}
           {...form.register('description')}
         />
         {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
-            Webhook Headers (optional)
+            {t('webhooks.headers')}
           </label>,
           hasMaskedHeaders && (
             <Text key="1a" size="xs" c="dimmed" mt={-4}>
-              Header values are masked. Enter new values to update or remove
-              keys to delete them.
+              {t('webhooks.headersMasked')}
             </Text>
           ),
           <div className="mb-2" key="2">
@@ -372,7 +383,7 @@ export function WebhookForm({
             />
           </div>,
           <label className=".mantine-TextInput-label" key="3">
-            Webhook Body (optional)
+            {t('webhooks.body')}
           </label>,
           <div className="mb-2" key="4">
             <Controller
@@ -401,10 +412,7 @@ export function WebhookForm({
             className="mb-4"
             color="gray"
           >
-            <span>
-              Currently the body supports the following message template
-              variables:
-            </span>
+            <span>{t('webhooks.templateVariables')}</span>
             <br />
             <span>
               {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
@@ -424,7 +432,7 @@ export function WebhookForm({
               data-testid="add-webhook-button"
               loading={saveWebhook.isPending || updateWebhook.isPending}
             >
-              {isEditing ? 'Update Webhook' : 'Add Webhook'}
+              {isEditing ? t('webhooks.update') : t('webhooks.add')}
             </Button>
             <Button
               variant="secondary"
@@ -432,11 +440,11 @@ export function WebhookForm({
               loading={testWebhook.isPending}
               type="button"
             >
-              Test Webhook
+              {t('webhooks.test')}
             </Button>
           </Group>
           <Button variant="secondary" onClick={onClose} type="reset">
-            Cancel
+            {tCommon('actions.cancel')}
           </Button>
         </Group>
       </Stack>

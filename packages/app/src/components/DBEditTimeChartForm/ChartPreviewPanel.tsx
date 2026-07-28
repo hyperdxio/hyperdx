@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -75,6 +76,7 @@ function HeatmapSQLPreview({
   config: BuilderChartConfigWithOptTimestamp;
   dateRange: [Date, Date];
 }) {
+  const { t } = useTranslation('charts');
   if (!config.timestampValueExpression) {
     return null;
   }
@@ -101,14 +103,18 @@ function HeatmapSQLPreview({
     <Stack gap="md">
       <div>
         <Text size="xs" c="dimmed" mb={4}>
-          1. Bounds query — resolves min/max for bucket boundaries
+          {t('previewPanel.boundsQuery')}
         </Text>
         <ChartSQLPreview config={boundsConfig} enableCopy />
       </div>
       <div>
         <Text size="xs" c="dimmed" mb={4}>
-          2. Heatmap query — runs after bounds resolve; <code>{'{min}'}</code>/
-          <code>{'{max}'}</code> are filled in at runtime
+          <Trans
+            t={t}
+            i18nKey="previewPanel.heatmapQuery"
+            components={{ code: <code /> }}
+            values={{ min: '{min}', max: '{max}' }}
+          />
         </Text>
         <ChartSQLPreview config={bucketConfig} enableCopy />
       </div>
@@ -147,6 +153,7 @@ export function ChartPreviewPanel({
   setValue,
   onSubmit,
 }: ChartPreviewPanelProps) {
+  const { t } = useTranslation('charts');
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
   const queryReady = !!isQueryReady(queriedConfig);
@@ -185,7 +192,7 @@ export function ChartPreviewPanel({
     <>
       {!queryReady && activeTab !== 'markdown' ? (
         <EmptyState
-          description="Please start by defining your chart above and then click the play button to query data."
+          description={t('previewPanel.emptyStateDescription')}
           variant="card"
           fullWidth
         />
@@ -377,7 +384,7 @@ export function ChartPreviewPanel({
               <Accordion.Item value="sample">
                 <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
-                    Sample Matched Events
+                    {t('previewPanel.sampleMatchedEvents')}
                   </Text>
                 </Accordion.Control>
                 <Accordion.Panel>
@@ -403,7 +410,7 @@ export function ChartPreviewPanel({
             <Accordion.Item value={'SQL'}>
               <Accordion.Control icon={<IconCode size={16} />}>
                 <Text size="sm" style={{ alignSelf: 'center' }}>
-                  Generated SQL
+                  {t('previewPanel.generatedSql')}
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>

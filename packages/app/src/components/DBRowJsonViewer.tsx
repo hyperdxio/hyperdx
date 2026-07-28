@@ -3,6 +3,7 @@ import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import get from 'lodash/get';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Button,
@@ -228,6 +229,7 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
 );
 
 function HyperJsonMenu({ rowData }: { rowData: any }) {
+  const { t } = useTranslation('search');
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
 
@@ -250,11 +252,11 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
             }
             notifications.show({
               color: 'green',
-              message: `Value copied to clipboard`,
+              message: t('jsonViewer.valueCopied'),
             });
           }}
           variant="copy"
-          title={'Copy row as JSON'}
+          title={t('jsonViewer.copyRow')}
         >
           <IconCopy size={14} />
         </UnstyledButton>
@@ -282,7 +284,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label lh={1} py={6}>
-            Properties view options
+            {t('jsonViewer.options')}
           </Menu.Label>
           <Menu.Item
             onClick={() =>
@@ -299,7 +301,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
               ) : null
             }
           >
-            Expand all properties
+            {t('jsonViewer.expandAll')}
           </Menu.Item>
           <Menu.Item
             lh="1"
@@ -316,7 +318,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
               })
             }
           >
-            Tabulate
+            {t('jsonViewer.tabulate')}
           </Menu.Item>
           <Menu.Item
             lh="1"
@@ -333,7 +335,7 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
               })
             }
           >
-            Hide blank values
+            {t('jsonViewer.hideBlankValues')}
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
@@ -353,6 +355,7 @@ export function DBRowJsonViewer({
   // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
   mapColumns?: string[];
 }) {
+  const { t } = useTranslation('search');
   const formatTime = useFormatTime();
   const {
     onPropertyAddClick,
@@ -429,7 +432,7 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'add-to-search',
           label: <IconFilter size={14} />,
-          title: 'Add to Filters',
+          title: t('jsonViewer.addToFilters'),
           onClick: () => {
             let filterFieldPath = fieldPath;
 
@@ -474,7 +477,9 @@ export function DBRowJsonViewer({
             );
             notifications.show({
               color: 'green',
-              message: `Added "${fieldPath} = ${String(value)}" to filters`,
+              message: t('jsonViewer.addedToFilters', {
+                expression: `${fieldPath} = ${String(value)}`,
+              }),
             });
           },
         });
@@ -484,7 +489,7 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'search',
           label: <IconSearch size={14} />,
-          title: 'Search for this value only',
+          title: t('jsonViewer.searchValueOnly'),
           onClick: () => {
             let searchFieldPath = fieldPath;
 
@@ -537,7 +542,7 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'chart',
           label: <IconChartLine size={14} />,
-          title: 'Chart',
+          title: t('jsonViewer.chart'),
           onClick: () => {
             let chartFieldPath = fieldPath;
 
@@ -589,15 +594,15 @@ export function DBRowJsonViewer({
           key: 'toggle-column',
           label: isIncluded ? <IconMinus size={14} /> : <IconPlus size={14} />,
           title: isIncluded
-            ? `Remove ${fieldPath} column from results table`
-            : `Add ${fieldPath} column to results table`,
+            ? t('jsonViewer.removeColumn', { field: fieldPath })
+            : t('jsonViewer.addColumn', { field: fieldPath }),
           onClick: () => {
             toggleColumn(columnFieldPath);
             notifications.show({
               color: 'green',
-              message: `Column "${fieldPath}" ${
-                isIncluded ? 'removed from' : 'added to'
-              } results table`,
+              message: isIncluded
+                ? t('jsonViewer.columnRemoved', { field: fieldPath })
+                : t('jsonViewer.columnAdded', { field: fieldPath }),
             });
           },
         });
@@ -627,7 +632,7 @@ export function DBRowJsonViewer({
         }
         notifications.show({
           color: 'green',
-          message: `Copied object to clipboard`,
+          message: t('jsonViewer.objectCopied'),
         });
       };
 
@@ -635,14 +640,14 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'copy-object',
           label: <IconCopy size={14} />,
-          title: 'Copy object',
+          title: t('jsonViewer.copyObject'),
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
           label: <IconCopy size={14} />,
-          title: 'Copy value',
+          title: t('jsonViewer.copyValue'),
           onClick: async () => {
             const copied = await copyTextToClipboard(
               typeof value === 'string'
@@ -658,7 +663,7 @@ export function DBRowJsonViewer({
             }
             notifications.show({
               color: 'green',
-              message: `Value copied to clipboard`,
+              message: t('jsonViewer.valueCopied'),
             });
           },
         });
@@ -675,6 +680,7 @@ export function DBRowJsonViewer({
       toggleColumn,
       jsonColumns,
       mapColumns,
+      t,
     ],
   );
 
@@ -686,7 +692,7 @@ export function DBRowJsonViewer({
             size="xs"
             w="100%"
             maw="400px"
-            placeholder="Search properties by key or value"
+            placeholder={t('jsonViewer.searchPlaceholder')}
             value={filter}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setFilter(e.currentTarget.value)
@@ -695,7 +701,7 @@ export function DBRowJsonViewer({
           />
           {filter && (
             <Button variant="secondary" size="xs" onClick={() => setFilter('')}>
-              Clear
+              {t('jsonViewer.clear')}
             </Button>
           )}
           <div className="flex-grow-1" />
@@ -711,7 +717,7 @@ export function DBRowJsonViewer({
             {...jsonOptions}
           />
         ) : (
-          <Text>No data</Text>
+          <Text>{t('jsonViewer.noData')}</Text>
         )}
       </Paper>
     </div>
