@@ -169,14 +169,10 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-          # Content-address the set of changesets on main. If this hash is
-          # unchanged since the last generation, the previous section (and any
-          # human edits to it) is reused instead of regenerated. Anchored to the
-          # exact README path so a hand-named changeset such as
-          # `fix-README-links.md` is not silently excluded.
-          INPUTS="$(git ls-tree -r origin/main -- .changeset \
-            | awk '$4 ~ /\.md$/ && $4 != ".changeset/README.md" {print $3, $4}' \
-            | sort -k2 | sha256sum | cut -c1-12)"
+          # If this hash is unchanged since the last generation, the previous
+          # section (and any human edits to it) is reused instead of
+          # regenerated. Shared with the publish job's staleness guard.
+          INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "inputs=${INPUTS}" >> "$GITHUB_OUTPUT"
 
@@ -313,9 +309,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./packages/app/package.json').version")"
-          INPUTS="$(git ls-tree -r origin/main -- .changeset \
-            | awk '$4 ~ /\.md$/ && $4 != ".changeset/README.md" {print $3, $4}' \
-            | sort -k2 | sha256sum | cut -c1-12)"
+          INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
           if [ "$VERSION" != "$DRAFT_VERSION" ] || [ "$INPUTS" != "$DRAFT_INPUTS" ]; then
             echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}); skipping publish, the newer run will regenerate"
             echo "stale=true" >> "$GITHUB_OUTPUT"
@@ -348,22 +342,32 @@ jobs:
           # Untrusted content reaches this file. Images are a tracking beacon
           # and foreign links a phishing surface once rendered in the in-app
           # "What's new" modal, so allow links only to this repo's host.
-          if grep -qE '!\[[^]]*\]\(' /tmp/release-notes-body.md; then
+          # Inline `![x](…)` and reference-style `![x][ref]` both rejected.
+          if grep -qE '!\[[^]]*\](\(|\[)' /tmp/release-notes-body.md; then
             echo "::error::Generated body contains an image; not permitted in release notes."
             exit 1
           fi
-          # Captured rather than piped into `grep -qv`: on empty input (a body
-          # with no links at all) BSD grep exits 0 and GNU exits 1, so the
-          # pipeline form means something different depending on where it runs.
-          OFFSITE="$(grep -oE '\]\(https?://[^)]*\)' /tmp/release-notes-body.md \
-            | grep -vE '^\]\(https://(github\.com|docs\.hyperdx\.io)/' || true)"
+          # Reference-style link definitions bypass the inline check below, so
+          # reject the definition syntax outright.
+          if grep -qiE '^[[:space:]]*\[[^]]+\]:[[:space:]]*[^[:space:]]' /tmp/release-notes-body.md; then
+            echo "::error::Generated body uses reference-style links; use inline links only."
+            exit 1
+          fi
+          # Allowlist every inline link target rather than pattern-matching the
+          # bad ones: `-i` because `HTTPS://` parses the same in a browser, and
+          # the target is matched as a whole so protocol-relative `//evil.com`
+          # and relative targets are rejected too, not silently unmatched.
+          # Captured rather than piped into `grep -qv`: on empty input BSD grep
+          # exits 0 and GNU exits 1, so the pipeline form is platform-dependent.
+          OFFSITE="$(grep -oiE '\]\([^)[:space:]]*' /tmp/release-notes-body.md \
+            | grep -viE '^\]\(https://(github\.com|docs\.hyperdx\.io)/' || true)"
           if [ -n "$OFFSITE" ]; then
-            echo "::error::Generated body links off-site; only github.com and docs.hyperdx.io are allowed:"
+            echo "::error::Generated body has disallowed link target(s); only https://github.com/ and https://docs.hyperdx.io/ are permitted:"
             echo "$OFFSITE"
             exit 1
           fi
 
-      - name: Append package changelog table
+      - name: Append package changelog list
         if: steps.guard.outputs.stale == 'false'
         env:
           # Absolute URLs: this markdown is also rendered inside the in-app
@@ -372,12 +376,20 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
+          # A reuse hit hands back the previously published body, which already
+          # carries a package list; without stripping it first, every republish
+          # would stack another copy.
+          node .github/scripts/release-notes.mjs strip-package-list \
+            --body /tmp/release-notes-body.md
+          # A bullet list, not a GFM pipe table: the in-app modal renders this
+          # with react-markdown and no remark-gfm, where a table degrades to
+          # literal `| --- |` text. Plain CommonMark renders correctly in both
+          # the modal and on GitHub. (remark-gfm would also autolink bare URLs,
+          # creating links the validation step above never inspects.)
           {
             echo ""
             echo "### 📦 Package changelogs"
             echo ""
-            echo "| Package | Version | Details |"
-            echo "| --- | --- | --- |"
             for pkg in packages/*/package.json; do
               dir="$(dirname "$pkg")"
               name="$(node -p "require('./${pkg}').name")"
@@ -387,7 +399,7 @@ jobs:
                 || echo '')"
               if [ "$version" != "$old" ]; then
                 anchor="${version//./}"
-                echo "| \`${name}\` | ${old:-new} → ${version} | [${dir}/CHANGELOG.md](${REPO_URL}/blob/main/${dir}/CHANGELOG.md#${anchor}) |"
+                echo "- \`${name}\` ${old:-new} → ${version} — [changelog](${REPO_URL}/blob/main/${dir}/CHANGELOG.md#${anchor})"
               fi
             done
           } >> /tmp/release-notes-body.md

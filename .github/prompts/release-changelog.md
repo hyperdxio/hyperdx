@@ -92,6 +92,10 @@ Rules:
 - Australian English spelling throughout.
 - Use `###` for section headings only. Never emit a `##` heading — the workflow
   owns those, and a stray one truncates the notes. The build rejects it.
+- Plain CommonMark only. The in-app "What's new" modal renders this without
+  GitHub-flavoured extensions, so a pipe table degrades to literal `| --- |`
+  text. Use bullet lists instead of tables, and inline `[text](url)` links
+  rather than reference-style ones.
 - No images, ever. Links only to `github.com` or `docs.hyperdx.io` — this
   markdown renders in the in-app "What's new" modal for every deployment, so an
   off-site image is a tracking beacon and an off-site link a phishing surface.

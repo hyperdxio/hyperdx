@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { extractSection, insertSection, parseArgs } from '../release-notes.mjs';
+import {
+  extractSection,
+  insertSection,
+  PACKAGE_LIST_HEADING,
+  parseArgs,
+  stripPackageList,
+} from '../release-notes.mjs';
 
 const SCRIPT = fileURLToPath(new URL('../release-notes.mjs', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -313,4 +319,100 @@ test('CLI extract exits 2 on a miss, a missing file, and an emptied body', () =>
 
 test('CLI exits 1 on an unknown command', () => {
   assert.equal(runCli(['bogus', '--changelog', 'x.md']).code, 1);
+});
+
+test('stripPackageList removes an existing list so republishing cannot stack copies', () => {
+  const withList = `Summary.
+
+### ✨ New Features
+
+- **thing**: yes (#1)
+
+${PACKAGE_LIST_HEADING}
+
+- \`@hyperdx/app\` 2.32.0 → 2.33.0 — [changelog](https://github.com/x)
+`;
+  const stripped = stripPackageList(withList);
+
+  assert.doesNotMatch(stripped, /Package changelogs/);
+  assert.match(stripped, /\*\*thing\*\*: yes/);
+  // Idempotent, and a no-op on a body that never had one.
+  assert.equal(stripPackageList(stripped), stripped);
+  assert.equal(stripPackageList('Just a body.\n'), 'Just a body.\n');
+});
+
+test('a reuse round-trip does not accumulate package lists', () => {
+  // extract returns the published body including its list; the workflow strips
+  // before appending a fresh one. Simulate two republish cycles.
+  const append = b =>
+    `${b.trimEnd()}\n\n${PACKAGE_LIST_HEADING}\n\n- \`@hyperdx/app\` 1 → 2\n`;
+  let body = 'Summary.\n';
+  let file = null;
+  for (let i = 0; i < 3; i++) {
+    file = insertSection(file, {
+      ...OPTS,
+      body: append(stripPackageList(body)),
+    });
+    body = extractSection(file, OPTS);
+  }
+  assert.equal(body.match(/Package changelogs/g).length, 1);
+});
+
+test('the app-side marker regex matches the marker this script emits', () => {
+  // ChangelogModal.tsx strips markers with its own regex literal. Pin the two
+  // together: a marker-format change here must not silently leave the modal
+  // rendering raw HTML comments.
+  const modal = readFileSync(
+    join(REPO_ROOT, 'packages/app/src/components/AppNav/ChangelogModal.tsx'),
+    'utf-8',
+  );
+  const literal = modal.match(/\.replace\(\s*(\/.+?\/[gimsuy]*)\s*,/)?.[1];
+  assert.ok(
+    literal,
+    'could not find the marker-stripping regex in ChangelogModal.tsx',
+  );
+
+  const [, pattern, flags] = literal.match(/^\/(.*)\/([gimsuy]*)$/);
+  const appRe = new RegExp(pattern, flags);
+  const emitted = insertSection(null, OPTS);
+  const markerLine = emitted
+    .split('\n')
+    .find(l => l.startsWith('<!-- hyperdx-release-notes'));
+
+  assert.ok(markerLine, 'insertSection emitted no marker');
+  assert.equal(markerLine.replace(appRe, '').trim(), '');
+});
+
+test('CLI insert refuses to write "undefined" into a heading when --date is missing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
+  const changelog = join(dir, 'CHANGELOG.md');
+  const bodyFile = join(dir, 'body.md');
+  writeFileSync(bodyFile, 'Body line.\n');
+
+  const res = runCli([
+    'insert',
+    '--changelog',
+    changelog,
+    '--body',
+    bodyFile,
+    '--version',
+    '1.0.0',
+    '--inputs',
+    'aaa111',
+  ]);
+  assert.equal(res.code, 1);
+  assert.equal(existsSync(changelog), false);
+});
+
+test('CLI strip-package-list rewrites the body in place', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
+  const bodyFile = join(dir, 'body.md');
+  writeFileSync(
+    bodyFile,
+    `Summary.\n\n${PACKAGE_LIST_HEADING}\n\n- \`x\` 1 → 2\n`,
+  );
+
+  assert.equal(runCli(['strip-package-list', '--body', bodyFile]).code, 0);
+  assert.equal(readFileSync(bodyFile, 'utf-8'), 'Summary.\n');
+  assert.equal(runCli(['strip-package-list']).code, 1);
 });

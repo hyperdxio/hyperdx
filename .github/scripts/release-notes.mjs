@@ -99,6 +99,16 @@ export function extractSection(content, { version, inputs, latest }) {
   return body + '\n';
 }
 
+// The heading the workflow appends the per-package list under. Stripped before
+// a fresh list is appended, because the reuse path hands back a previously
+// published body that already carries one.
+export const PACKAGE_LIST_HEADING = '### 📦 Package changelogs';
+
+export function stripPackageList(body) {
+  const idx = body.indexOf(PACKAGE_LIST_HEADING);
+  return (idx === -1 ? body : body.slice(0, idx)).trimEnd() + '\n';
+}
+
 const BOOLEAN_FLAGS = new Set(['latest']);
 
 export function parseArgs(argv) {
@@ -117,13 +127,34 @@ export function parseArgs(argv) {
   return args;
 }
 
+function requireArgs(args, names) {
+  const missing = names.filter(n => !args[n]);
+  if (missing.length) {
+    throw new Error(
+      `Missing required flag(s): ${missing.map(n => `--${n}`).join(', ')}`,
+    );
+  }
+}
+
 function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
+  // strip-package-list rewrites --body in place and needs no changelog.
+  if (cmd === 'strip-package-list') {
+    requireArgs(args, ['body']);
+    writeFileSync(
+      args.body,
+      stripPackageList(readFileSync(args.body, 'utf-8')),
+    );
+    return;
+  }
   const content = existsSync(args.changelog)
     ? readFileSync(args.changelog, 'utf-8')
     : null;
   if (cmd === 'insert') {
+    // Without this an omitted --date silently writes "## v1.0.0 — undefined"
+    // into the committed changelog.
+    requireArgs(args, ['changelog', 'body', 'version', 'inputs', 'date']);
     const body = readFileSync(args.body, 'utf-8');
     writeFileSync(args.changelog, insertSection(content, { ...args, body }));
   } else if (cmd === 'extract') {
@@ -135,7 +166,7 @@ function main() {
     process.stdout.write(body);
   } else {
     console.error(
-      'Usage: release-notes.mjs insert|extract --changelog <path> [--body <path>] --version <v> --inputs <hash> [--date <YYYY-MM-DD>]',
+      'Usage: release-notes.mjs insert|extract|strip-package-list --changelog <path> [--body <path>] --version <v> --inputs <hash> [--date <YYYY-MM-DD>] [--latest]',
     );
     process.exit(1);
   }
@@ -146,5 +177,10 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main();
+  try {
+    main();
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
 }

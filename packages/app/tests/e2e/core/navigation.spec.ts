@@ -239,4 +239,33 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       { timeout: 10_000 },
     );
   });
+
+  test('should show an empty state before any release section exists', async ({
+    page,
+  }) => {
+    // The seed changelog carries only the H1 and a maintainer-facing preamble.
+    // That preamble must never be shown to users as if it were release notes.
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({
+        status: 200,
+        body: '# HyperDX Changelog\n\nKeep the `hyperdx-release-notes` marker intact when editing.\n',
+      }),
+    );
+
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+
+    const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+    await helpMenuTrigger.click({ timeout: 10000 });
+
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
+
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('No releases yet.')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(dialog.getByText('marker intact')).toHaveCount(0);
+  });
 });
