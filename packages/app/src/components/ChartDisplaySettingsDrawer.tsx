@@ -45,6 +45,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'backgroundChart'
 > & {
   groupByColumnsOnLeft?: boolean;
+  alternateRowBackground?: boolean;
   // Per-tile cap on the number of series fetched. On group-by time charts it
   // drives the __hdx_series_limit CTE; on pie/bar builder charts it becomes a
   // plain SQL LIMIT.
@@ -92,6 +93,7 @@ function applyDefaultSettings(
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
+    alternateRowBackground: settings.alternateRowBackground ?? false,
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
@@ -191,10 +193,12 @@ export default function ChartDisplaySettingsDrawer({
   const showCategoricalLimit =
     isCategoricalChart && configType !== 'sql' && configType !== 'promql';
 
-  // Group By column ordering only applies to builder table charts; raw SQL
-  // configs let the user author whatever column order they want directly.
-  const showGroupByColumnsOnLeft =
-    displayType === DisplayType.Table && configType !== 'sql';
+  // Table display options. Alternate Row Background is purely presentational
+  // (it stripes rendered rows), so it applies to any table tile. Group By
+  // column ordering needs the builder `select` structure to know which columns
+  // are group-by keys, so it stays builder-only.
+  const showTableOptions = displayType === DisplayType.Table;
+  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
@@ -310,13 +314,21 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        {showGroupByColumnsOnLeft && (
+        {showTableOptions && (
           <>
+            {showGroupByColumnsOnLeft && (
+              <CheckBoxControlled
+                control={control}
+                name="groupByColumnsOnLeft"
+                size="xs"
+                label="Display Group By Columns on Left"
+              />
+            )}
             <CheckBoxControlled
               control={control}
-              name="groupByColumnsOnLeft"
+              name="alternateRowBackground"
               size="xs"
-              label="Display Group By Columns on Left"
+              label="Alternate Row Background"
             />
             <Divider />
           </>

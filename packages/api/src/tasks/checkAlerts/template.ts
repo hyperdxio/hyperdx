@@ -1,11 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import {
-  _useTry,
-  formatDate,
-  objectHash,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
   AlertThresholdType,
@@ -17,7 +13,6 @@ import {
   WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
-import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
 import { performance } from 'perf_hooks';
@@ -25,7 +20,6 @@ import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 
-import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { AlertSource, AlertState } from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
@@ -47,7 +41,10 @@ import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
-import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
+import {
+  validateWebhookUrl,
+  WebhookUrlValidationError,
+} from '@/utils/validators';
 
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
 // happens in the background task, so failures only show up in logs today.
@@ -64,6 +61,21 @@ const webhookDeliveryDuration = getHistogram(
     unit: 'ms',
   },
 );
+
+const logBlockedWebhookDelivery = (error: unknown, webhook: IWebhook) => {
+  if (error instanceof WebhookUrlValidationError) {
+    logger.warn(
+      {
+        error: serializeError(error),
+        webhook: {
+          id: webhook._id.toString(),
+          team: webhook.team.toString(),
+        },
+      },
+      'Blocked alert webhook delivery',
+    );
+  }
+};
 
 const describeThresholdViolation = (
   thresholdType: AlertThresholdType,
@@ -221,81 +233,6 @@ const notifyChannel = async ({
   }
 };
 
-const blacklistedWebhookHosts = (() => {
-  const map = new Map<string, string>();
-  const configKeys = ['CLICKHOUSE_HOST', 'MONGO_URI'];
-  for (const configKey of configKeys) {
-    // ignore errors
-    const [_, e] = _useTry(() =>
-      map.set(new URL(config[configKey]).host, configKey),
-    );
-  }
-  return map;
-})();
-
-function validateWebhookUrl(
-  webhook: IWebhook,
-): asserts webhook is IWebhook & { url: string } {
-  if (!webhook.url) {
-    throw new Error('Webhook URL is not set');
-  }
-
-  if (webhook.service === WebhookService.Slack) {
-    // check that hostname ends in "slack.com"
-    if (!isValidSlackUrl(webhook.url)) {
-      const message = `Slack Webhook URL ${webhook.url} does not have hostname that ends in 'slack.com'`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-            body: webhook.body,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-  } else {
-    // check webhookurl host is not blacklisted and not a private IP
-    const url = new URL(webhook.url);
-    if (blacklistedWebhookHosts.has(url.host)) {
-      const message = `Webhook attempting to query blacklisted route ${blacklistedWebhookHosts.get(
-        url.host,
-      )}`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-            body: webhook.body,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-    // Block direct private/reserved IP literals to prevent SSRF
-    const hostname = url.hostname.replace(IPV6_BRACKET_RE, ''); // strip IPv6 brackets
-    if (isPrivateIp(hostname)) {
-      const message = `Webhook URL resolves to a private or reserved address: ${hostname}`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-  }
-}
-
 export const handleSendSlackWebhook = async (
   webhook: IWebhook,
   message: Message,
@@ -321,6 +258,7 @@ export const handleSendSlackWebhook = async (
       outcome: 'success',
     });
   } catch (e) {
+    logBlockedWebhookDelivery(e, webhook);
     webhookDeliveryCounter.add(1, {
       service: WebhookService.Slack,
       outcome: 'error',
@@ -344,6 +282,7 @@ export const handleSendGenericWebhook = async (
     await sendGenericWebhook(webhook, message);
     webhookDeliveryCounter.add(1, { service, outcome: 'success' });
   } catch (e) {
+    logBlockedWebhookDelivery(e, webhook);
     webhookDeliveryCounter.add(1, { service, outcome: 'error' });
     throw e;
   } finally {

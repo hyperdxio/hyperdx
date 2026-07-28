@@ -95,6 +95,10 @@ export type PostRunInspectionContext = {
 
 export type Scenario = {
   name: string;
+  /** Optional per-scenario override.
+   The CLI --max-turns option still overrides this.
+   */
+  maxTurns?: number;
   agentPrompt: string;
   description: string;
   /**

@@ -8,9 +8,18 @@ const SYSTEM_PREAMBLE = `You are evaluating an SRE investigation. You will recei
 
 For each rubric criterion, output an integer score from 0 to 5 plus a one-sentence rationale. Do not consider tool choice, query syntax, or implementation details — score only the quality of the candidate's final answer relative to the ground truth.
 
-Return STRICT JSON of shape:
+Use this SCORING SCALE consistently for every criterion (calibrate to these anchors, not your own stricter or looser bar):
+- 5 — Fully correct/complete for this criterion; matches the ground truth with no material error or omission.
+- 4 — Substantially correct; minor gaps or imprecision that do not change the conclusion.
+- 3 — Partially correct; the core idea is present but with a notable error, omission, or unsupported claim.
+- 2 — Mostly incorrect or incomplete; a few relevant elements but the criterion is largely unmet.
+- 1 — Almost entirely wrong/missing; only a trace of relevance.
+- 0 — Wrong, absent, or contradicts the ground truth for this criterion.
+Award partial credit at the matching anchor rather than defaulting to the extremes. Judge each criterion independently — do not let a wrong root cause drag down an otherwise well-scoped conciseness score, and do not inflate correctness because the writing is clear.
+
+Return STRICT JSON with a single top-level "scores" object whose keys are the criterion ids (do NOT nest another "scores" key inside it):
 { "scores": { "<criterion_id>": { "score": N, "rationale": "..." } } }
-No prose outside the JSON. Include every criterion id from the rubric.`;
+Include every criterion id from the rubric exactly once, and output no prose outside the JSON.`;
 
 export function buildJudgeSystem(
   scenarioName: string,

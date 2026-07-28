@@ -231,6 +231,12 @@ type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 const QUERY_KEY_PREFIX = 'search';
 
+// Clicks inside the results panel keep the row side panel open (so users can
+// scroll the table or select a different row); clicks anywhere else on the page
+// dismiss it.
+const SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR =
+  '[data-testid="search-results-panel"]';
+
 // Helper function to get the default source id
 export function getDefaultSourceId(
   sources: { id: string; disabled?: boolean }[] | undefined,
@@ -2514,6 +2520,7 @@ export function DBSearchPage() {
         focusDate={directTraceFocusDate}
         onClose={closeDirectTraceSidePanel}
         onSourceChange={onDirectTraceSourceChange}
+        keepOpenSelector={SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR}
       />
       <Flex
         direction="column"
@@ -2957,7 +2964,12 @@ export function DBSearchPage() {
                       )}
                     </Box>
                   ) : (
-                    <Box flex="1" mih="0" px="sm">
+                    <Box
+                      flex="1"
+                      mih="0"
+                      px="sm"
+                      data-testid="search-results-panel"
+                    >
                       {chartConfig &&
                         searchedConfig.source &&
                         dbSqlRowTableConfig && (
@@ -2966,6 +2978,9 @@ export function DBSearchPage() {
                             config={dbSqlRowTableConfig}
                             sourceId={searchedConfig.source}
                             tableId={columnSizeTableId}
+                            keepOpenSelector={
+                              SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
+                            }
                             onSidebarOpen={onSidebarOpen}
                             onExpandedRowsChange={onExpandedRowsChange}
                             enabled={isReady}

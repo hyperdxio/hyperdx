@@ -86,6 +86,9 @@ COPY --from=app ./pages ./packages/app/pages
 COPY --from=app ./public ./packages/app/public
 COPY --from=app ./styles ./packages/app/styles
 COPY --from=app ./types ./packages/app/types
+# next.config.mjs copies this into public/ so the in-app changelog viewer can
+# fetch it; the build fails loudly if it is missing (see next.config.mjs).
+COPY --from=app ./CHANGELOG.md ./packages/app/CHANGELOG.md
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_STANDALONE=true

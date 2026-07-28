@@ -392,6 +392,7 @@ export function useMultipleGetKeyValues(
           databaseName,
           tableName,
           keyExpressions: keys.slice(0, maxKeys),
+          maxValuesPerKey: 20,
           connectionId,
           metadataMVs,
           dateRange,
@@ -495,75 +496,6 @@ export function useGetKeyValues(
     },
     options,
   );
-}
-
-/**
- * Combined key + value discovery in a single rollup query.
- * Returns all fields and their top N values without needing a separate
- * useAllFields + useGetKeyValues chain.
- */
-export function useAllFieldsAndValues(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-    metadataMVs,
-    dateRange,
-    maxValuesPerKey,
-    maxKeys,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange?: [Date, Date];
-    maxValuesPerKey?: number;
-    maxKeys?: number;
-  },
-  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
-) {
-  const metadata = useMetadataWithSettings();
-  const { data: me } = api.useMe();
-  const { enabled = true } = options || {};
-  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
-
-  return useQuery<Facet[]>({
-    queryKey: [
-      'useMetadata.useAllFieldsAndValues',
-      databaseName,
-      tableName,
-      connectionId,
-      metadataMVs,
-      dateRange?.[0]?.getTime(),
-      dateRange?.[1]?.getTime(),
-      maxValuesPerKey,
-      maxKeys,
-    ],
-    queryFn: async ({ signal }) => {
-      if (fieldMetadataDisabled) {
-        return [];
-      }
-      return metadata.getAllFieldsAndValues({
-        databaseName,
-        tableName,
-        connectionId,
-        metadataMVs,
-        dateRange,
-        maxValuesPerKey,
-        maxKeys,
-        signal,
-      });
-    },
-    staleTime: 1000 * 60 * 5,
-    placeholderData: keepPreviousData,
-    ...options,
-    enabled:
-      !!enabled &&
-      !fieldMetadataDisabled &&
-      !!databaseName &&
-      !!tableName &&
-      !!connectionId,
-  });
 }
 
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {

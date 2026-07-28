@@ -20,9 +20,9 @@ describe('sanitizeMetricTables', () => {
     });
   });
 
-  it('preserves non-queryable kinds the schema still declares', () => {
-    // summary and "exponential histogram" are valid MetricsDataType
-    // members even though the query renderer cannot translate them.
+  it('preserves every kind the schema declares', () => {
+    // Summary remains non-queryable, while exponential histogram is
+    // queryable. Both are valid MetricsDataType members.
     expect(
       sanitizeMetricTables({
         gauge: 'otel_metrics_gauge',

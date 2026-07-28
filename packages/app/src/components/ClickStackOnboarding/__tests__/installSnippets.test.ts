@@ -1,5 +1,6 @@
 import {
   buildAllSnippets,
+  CODEX_TOKEN_ENV_VAR,
   type DeploymentShape,
   SERVER_NAME,
 } from '@/components/ClickStackOnboarding/installSnippets';
@@ -20,12 +21,20 @@ describe('buildAllSnippets > Claude Code', () => {
 });
 
 describe('buildAllSnippets > Codex CLI', () => {
-  it('emits the OpenAI Codex CLI mcp add command', () => {
+  it('emits the current OpenAI Codex CLI mcp add command with a bearer-token env var', () => {
     const { codexCli } = buildAllSnippets(DEPLOYMENT);
 
     expect(codexCli).toBe(
-      `codex mcp add ${SERVER_NAME} --transport http https://hyperdx.example.com/api/mcp --header "Authorization: Bearer k_abcdef123456"`,
+      `export ${CODEX_TOKEN_ENV_VAR}="k_abcdef123456"\n` +
+        `codex mcp add ${SERVER_NAME} --url https://hyperdx.example.com/api/mcp --bearer-token-env-var ${CODEX_TOKEN_ENV_VAR}`,
     );
+  });
+
+  it('does NOT use the deprecated --transport or --header flags', () => {
+    const { codexCli } = buildAllSnippets(DEPLOYMENT);
+
+    expect(codexCli).not.toContain('--transport');
+    expect(codexCli).not.toContain('--header');
   });
 });
 
@@ -156,6 +165,12 @@ describe('buildAllSnippets > placeholder fallbacks', () => {
     expect(claudeCode).toContain('Bearer <accessKey>');
   });
 
+  it('falls back to <accessKey> in the Codex export when the key is empty', () => {
+    const { codexCli } = buildAllSnippets({ ...DEPLOYMENT, accessKey: '' });
+
+    expect(codexCli).toContain(`export ${CODEX_TOKEN_ENV_VAR}="<accessKey>"`);
+  });
+
   it('escapes shell metacharacters in header values', () => {
     // Today's access keys are UUIDv4 with no metacharacters; the
     // escape is defensive against future formats that allow `"`,
@@ -167,6 +182,20 @@ describe('buildAllSnippets > placeholder fallbacks', () => {
     });
 
     expect(claudeCode).toContain('Bearer k\\"\\$\\`\\\\suffix"');
+  });
+
+  it('escapes shell metacharacters in the Codex export value', () => {
+    // The bearer token lands on the right-hand side of an `export`,
+    // so the same shell-injection defense applies to the Codex
+    // snippet's quoted value.
+    const { codexCli } = buildAllSnippets({
+      ...DEPLOYMENT,
+      accessKey: 'k"$`\\suffix',
+    });
+
+    expect(codexCli).toContain(
+      'export ' + CODEX_TOKEN_ENV_VAR + '="k\\"\\$\\`\\\\suffix"',
+    );
   });
 });
 

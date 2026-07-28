@@ -29,6 +29,18 @@ describe('buildJudgeSystem', () => {
     const sys = buildJudgeSystem('noisy-signals', rubric);
     expect(sys.toLowerCase()).toContain('tool choice');
   });
+
+  it('defines explicit 0-5 scoring anchors so scores are calibrated across models', () => {
+    const rubric = loadScenarioRubric('latency-spike');
+    const sys = buildJudgeSystem('latency-spike', rubric);
+    expect(sys).toMatch(/SCORING SCALE/i);
+    // Every integer anchor 0..5 must be documented.
+    for (const n of [0, 1, 2, 3, 4, 5]) {
+      expect(sys).toMatch(new RegExp(`^- ${n} —`, 'm'));
+    }
+    // And it must instruct independent per-criterion scoring.
+    expect(sys.toLowerCase()).toContain('independently');
+  });
 });
 
 describe('buildJudgeUser', () => {
