@@ -4,6 +4,7 @@ import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
 import {
+  GROUP_ALIAS,
   translateExponentialHistogram,
   translateHistogram,
 } from '@/core/histogram';
@@ -2034,7 +2035,6 @@ async function translateMetricChartConfig(
     // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
     // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
     // a reasonable value on the ends of the series.
-
     const cteChartConfig = {
       ...chartConfig,
       from: {
@@ -2056,14 +2056,15 @@ async function translateMetricChartConfig(
           : chartConfig.granularity,
     } satisfies BuilderChartConfigWithOptDateRangeEx;
 
-    const timeBucketSelect = isUsingGranularity(cteChartConfig)
+    const hasGranularity = isUsingGranularity(cteChartConfig);
+    const timeBucketSelect = hasGranularity
       ? timeBucketExpr({
           interval: cteChartConfig.granularity,
           timestampValueExpression: cteChartConfig.timestampValueExpression,
           dateRange: cteChartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
         })
-      : chSql``;
+      : undefined;
     const where = await renderWhere(cteChartConfig, metadata);
 
     // Time bucket grouping is being handled separately, so make sure to ignore the granularity
@@ -2078,9 +2079,7 @@ async function translateMetricChartConfig(
 
     const translationInput = {
       select: _select,
-      timeBucketSelect: timeBucketSelect.sql
-        ? chSql`${timeBucketSelect}`
-        : 'TimeUnix AS `__hdx_time_bucket`',
+      timeBucketSelect,
       groupBy,
       from: renderFrom({
         from: {
@@ -2100,15 +2099,24 @@ async function translateMetricChartConfig(
       with: isExponentialHistogram
         ? translateExponentialHistogram(translationInput)
         : translateHistogram(translationInput),
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
+      select: [
+        ...(hasGranularity ? [`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``] : []),
+        ...(groupBy ? [GROUP_ALIAS] : []),
+        `"${valueAlias}"`,
+      ].join(', '),
       from: {
         databaseName: '',
         tableName: 'metrics',
       },
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      // Timeseries queries discard padded buckets here. Non-timeseries queries
+      // scan only the visible range and have no time dimension to filter.
+      dateRange: hasGranularity ? restChartConfig.dateRange : undefined,
       groupBy: undefined,
       granularity: undefined, // time bucketing and granularity is applied at the source CTE
-      timestampValueExpression: '`__hdx_time_bucket`',
+      timestampValueExpression: hasGranularity
+        ? `\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
+        : restChartConfig.timestampValueExpression,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
   }

@@ -83,6 +83,9 @@ function collectRuns(cellDir) {
       idx: i,
       combinedScore: grade?.combinedScore ?? null,
       programmaticScore: grade?.programmatic?.score ?? null,
+      // Transcript-aware tool-adoption score (null when the scenario rubric
+      // has no `transcript` block, so the grade has no `adoption`).
+      adoptionScore: grade?.adoption?.score ?? null,
       judgeScore: grade?.judge?.weightedScore ?? null,
       termination: traj?.termination ?? null,
       durationMs: traj?.durationMs ?? null,
