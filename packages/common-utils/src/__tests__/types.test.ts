@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   BackgroundChartSchema,
   ColorConditionSchema,
+  DerivedColumnSchema,
   SavedChartConfigSchema,
 } from '@/types';
 
@@ -322,6 +323,104 @@ describe('BackgroundChartSchema', () => {
     expect(
       BackgroundChartSchema.safeParse({ type: 'line', color: 'not-a-token' })
         .success,
+    ).toBe(false);
+  });
+});
+
+describe('DerivedColumnSchema color fields', () => {
+  // A minimal valid select item (count aggregation) the table builder emits.
+  const baseColumn = {
+    aggFn: 'count' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'sql' as const,
+    valueExpression: '',
+  };
+
+  // ─── Positive cases ─────────────────────────────────────────────────────────
+
+  it('parses a column with no color fields (backward compatible)', () => {
+    expect(DerivedColumnSchema.safeParse(baseColumn).success).toBe(true);
+  });
+
+  it('round-trips a static palette-token color', () => {
+    const result = DerivedColumnSchema.safeParse({
+      ...baseColumn,
+      color: 'chart-error',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.color).toBe('chart-error');
+    }
+  });
+
+  it.each(['gt', 'gte', 'lt', 'lte'] as const)(
+    'round-trips a %s colorRule',
+    operator => {
+      const result = DerivedColumnSchema.safeParse({
+        ...baseColumn,
+        colorRules: [{ operator, value: 500, color: 'chart-warning' }],
+      });
+      expect(result.success).toBe(true);
+    },
+  );
+
+  it('round-trips a between colorRule', () => {
+    const result = DerivedColumnSchema.safeParse({
+      ...baseColumn,
+      colorRules: [
+        { operator: 'between', value: [10, 100], color: 'chart-blue' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each(['eq', 'neq'] as const)('round-trips a %s colorRule', operator => {
+    const result = DerivedColumnSchema.safeParse({
+      ...baseColumn,
+      colorRules: [{ operator, value: 'OK', color: 'chart-success' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips a static color and rules together', () => {
+    const result = DerivedColumnSchema.safeParse({
+      ...baseColumn,
+      color: 'chart-blue',
+      colorRules: [{ operator: 'gt', value: 500, color: 'chart-error' }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.color).toBe('chart-blue');
+      expect(result.data.colorRules).toHaveLength(1);
+    }
+  });
+
+  // ─── Negative cases ──────────────────────────────────────────────────────────
+
+  it('rejects an unknown static color token', () => {
+    expect(
+      DerivedColumnSchema.safeParse({ ...baseColumn, color: 'not-a-token' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects a colorRule with an unknown color token', () => {
+    expect(
+      DerivedColumnSchema.safeParse({
+        ...baseColumn,
+        colorRules: [{ operator: 'gt', value: 1, color: 'puce' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects more than 10 colorRules', () => {
+    const colorRules = Array.from({ length: 11 }, (_, i) => ({
+      operator: 'gte' as const,
+      value: i * 10,
+      color: 'chart-blue' as const,
+    }));
+    expect(
+      DerivedColumnSchema.safeParse({ ...baseColumn, colorRules }).success,
     ).toBe(false);
   });
 });
