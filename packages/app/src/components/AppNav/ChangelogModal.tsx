@@ -28,6 +28,34 @@ export function toChangelogBody(text: string): string {
     .trim();
 }
 
+const ALLOWED_LINK_HOSTS = new Set(['github.com', 'docs.hyperdx.io']);
+
+/**
+ * Allowlist link targets in the changelog.
+ *
+ * The changelog body is AI-generated from changeset bodies, commit messages and
+ * PR titles — all of which anyone opening a PR can influence — so an off-site
+ * link is a phishing surface in every deployment's "What's new" modal. The
+ * release workflow greps for disallowed links before publishing, but grep
+ * cannot be complete over CommonMark (a bare autolink `<https://host/x>`
+ * carries no `](`), so the enforceable check belongs here, where react-markdown
+ * hands us the parsed target whatever syntax produced it.
+ *
+ * Returning '' is react-markdown's own convention for a rejected URL — it is
+ * what the library's `defaultUrlTransform` returns for unsafe protocols.
+ */
+export function allowChangelogUrl(url: string): string {
+  try {
+    // The base makes a relative target resolve to a host that is never allowed,
+    // rather than throwing.
+    const parsed = new URL(url, 'https://disallowed.invalid');
+    if (parsed.protocol !== 'https:') return '';
+    return ALLOWED_LINK_HOSTS.has(parsed.hostname) ? url : '';
+  } catch {
+    return '';
+  }
+}
+
 export const ChangelogModal = ({
   opened,
   onClose,
@@ -75,7 +103,15 @@ export const ChangelogModal = ({
             <Loader size="sm" />
           </Center>
         ) : (
-          <ReactMarkdown>{markdown}</ReactMarkdown>
+          // Images are dropped outright and link targets allowlisted at the
+          // AST level, so no markdown syntax — inline, reference-style or
+          // autolink — can smuggle an off-site image or link into the modal.
+          <ReactMarkdown
+            disallowedElements={['img']}
+            urlTransform={allowChangelogUrl}
+          >
+            {markdown}
+          </ReactMarkdown>
         )}
       </div>
     </Modal>

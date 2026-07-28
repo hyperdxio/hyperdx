@@ -1,4 +1,7 @@
-import { toChangelogBody } from '@/components/AppNav/ChangelogModal';
+import {
+  allowChangelogUrl,
+  toChangelogBody,
+} from '@/components/AppNav/ChangelogModal';
 
 // Mirrors the shape .github/scripts/release-notes.mjs writes into the root
 // CHANGELOG.md during a release.
@@ -48,5 +51,41 @@ describe('toChangelogBody', () => {
     const seedOnly =
       '# HyperDX Changelog\n\nKeep the `hyperdx-release-notes` marker intact.\n';
     expect(toChangelogBody(seedOnly)).toBe('');
+  });
+});
+
+describe('allowChangelogUrl', () => {
+  it('permits https links to the allowed hosts', () => {
+    const pr = 'https://github.com/hyperdxio/hyperdx/pull/1';
+    expect(allowChangelogUrl(pr)).toBe(pr);
+    expect(allowChangelogUrl('https://docs.hyperdx.io/x')).toBe(
+      'https://docs.hyperdx.io/x',
+    );
+  });
+
+  it('rejects every other target', () => {
+    // The changelog body is model-authored from attacker-influenceable text, so
+    // anything not explicitly allowed has to be dropped.
+    for (const url of [
+      'https://evil.example/phish',
+      'http://github.com/x', // downgraded protocol
+      'javascript:alert(1)',
+      'data:text/html;base64,PHNjcmlwdD4=',
+      '//evil.example/x', // protocol-relative
+      '/local/path', // relative
+      'https://github.com.evil.example/x', // suffix confusion
+      'https://notgithub.com/x',
+      '',
+      'not a url at all',
+    ]) {
+      expect(allowChangelogUrl(url)).toBe('');
+    }
+  });
+
+  it('is not fooled by host casing', () => {
+    // Hostnames are case-insensitive; URL normalises them to lower case.
+    expect(allowChangelogUrl('https://GitHub.com/x')).toBe(
+      'https://GitHub.com/x',
+    );
   });
 });

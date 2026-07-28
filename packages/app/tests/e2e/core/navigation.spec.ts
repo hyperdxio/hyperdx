@@ -240,6 +240,64 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     );
   });
 
+  test('should not render off-site images or links from the changelog', async ({
+    page,
+  }) => {
+    // The changelog body is model-authored from changeset bodies, commit
+    // messages and PR titles, so it is untrusted. The release workflow greps
+    // for disallowed markdown before publishing, but grep cannot be complete
+    // over CommonMark — every construct below passes those greps. The
+    // enforceable check is react-markdown's urlTransform/disallowedElements,
+    // which this test exercises for real (Jest stubs react-markdown out).
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({
+        status: 200,
+        body: [
+          '# HyperDX Changelog',
+          '',
+          'Preamble.',
+          '',
+          '## v9.9.9 — 2026-07-28',
+          '',
+          'Bare autolink: <https://evil.example/beacon>',
+          '',
+          'Inline off-site link: [click](https://evil.example/phish)',
+          '',
+          'Shortcut image reference: ![banner]',
+          '',
+          'Inline image: ![x](https://evil.example/beacon.png)',
+          '',
+          'Allowed: [PR](https://github.com/hyperdxio/hyperdx/pull/1)',
+          '',
+          '[banner]:',
+          '  https://evil.example/split-definition.png',
+        ].join('\n'),
+      }),
+    );
+
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+    await page.getByTestId('help-menu-trigger').click({ timeout: 10000 });
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
+
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    const modal = dialog.getByTestId('changelog-modal');
+    await expect(modal.locator('h2')).toContainText('9.9.9');
+
+    // No image reaches the DOM, by any syntax.
+    await expect(modal.locator('img')).toHaveCount(0);
+
+    // The allowed link survives intact.
+    await expect(
+      modal.locator('a[href="https://github.com/hyperdxio/hyperdx/pull/1"]'),
+    ).toHaveCount(1);
+
+    // Nothing anywhere in the modal points at the off-site host.
+    await expect(modal.locator('a[href*="evil.example"]')).toHaveCount(0);
+  });
+
   test('should show an empty state before any release section exists', async ({
     page,
   }) => {

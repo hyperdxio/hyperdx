@@ -328,8 +328,29 @@ jobs:
         if: steps.guard.outputs.stale == 'false'
         run: |
           set -euo pipefail
-          test -s /tmp/release-notes-body.md
-          # Body only: this script owns headings, markers, and tables.
+          # Non-blank, not merely non-empty: a body of "\n" would otherwise
+          # publish a section containing nothing but the package list, which the
+          # next run's extract would then treat as a cache hit and republish.
+          if ! grep -q '[^[:space:]]' /tmp/release-notes-body.md; then
+            echo "::error::Generated body is blank."
+            exit 1
+          fi
+          # Size cap. The model runs with ANTHROPIC_API_KEY in its process and
+          # this file is the one thing it hands across the job boundary, so bound
+          # how much can cross at all.
+          if [ "$(wc -c < /tmp/release-notes-body.md)" -gt 65536 ]; then
+            echo "::error::Generated body exceeds 64KB."
+            exit 1
+          fi
+          # Secret-shaped content. The job split confines the push token, but the
+          # API key lives in the drafting process alongside attacker-influenceable
+          # changeset and PR text, and this body is committed to a public branch.
+          # Checked here, where the model has no influence over what runs.
+          if grep -qE 'sk-ant-|gh[psoru]_[A-Za-z0-9]{16,}|github_pat_' /tmp/release-notes-body.md; then
+            echo "::error::Generated body contains something shaped like a credential."
+            exit 1
+          fi
+          # Body only: this script owns headings, markers, and lists.
           # Spelled out rather than `! grep -q …`: `set -e` is ignored for a
           # command whose status is inverted with `!`, so that form never fails.
           # Rejects any `^## `, not just `^## v`: parseChangelog treats every
@@ -339,18 +360,30 @@ jobs:
             echo "::error::Generated body contains a heading or marker; the splice script owns those."
             exit 1
           fi
-          # Untrusted content reaches this file. Images are a tracking beacon
-          # and foreign links a phishing surface once rendered in the in-app
-          # "What's new" modal, so allow links only to this repo's host.
-          # Inline `![x](…)` and reference-style `![x][ref]` both rejected.
-          if grep -qE '!\[[^]]*\](\(|\[)' /tmp/release-notes-body.md; then
+          # Untrusted content reaches this file. These greps are fail-fast
+          # feedback, NOT the security boundary: grep cannot be complete over
+          # CommonMark. The enforceable check is in ChangelogModal.tsx, which
+          # drops every image node and allowlists link targets on the parsed
+          # AST, so no syntax can smuggle either into the modal.
+          # Inline `![x](…)`, reference `![x][ref]`, and shortcut `![x]`.
+          if grep -qE '!\[[^]]*\]' /tmp/release-notes-body.md; then
             echo "::error::Generated body contains an image; not permitted in release notes."
             exit 1
           fi
-          # Reference-style link definitions bypass the inline check below, so
-          # reject the definition syntax outright.
-          if grep -qiE '^[[:space:]]*\[[^]]+\]:[[:space:]]*[^[:space:]]' /tmp/release-notes-body.md; then
+          # Reference-style link definitions bypass the inline check below.
+          # No trailing-content requirement: the target may sit on the next line.
+          if grep -qiE '^[[:space:]]*\[[^]]+\]:' /tmp/release-notes-body.md; then
             echo "::error::Generated body uses reference-style links; use inline links only."
+            exit 1
+          fi
+          # Bare autolinks `<https://host/x>` are CommonMark and carry no `](`.
+          if grep -qiE '<[a-z][a-z0-9+.-]*:' /tmp/release-notes-body.md; then
+            echo "::error::Generated body contains an autolink; use inline [text](url) links."
+            exit 1
+          fi
+          # Setext underlines forge an <h2> without a leading `## `.
+          if grep -qE '^[[:space:]]*(=+|-{2,})[[:space:]]*$' /tmp/release-notes-body.md; then
+            echo "::error::Generated body contains a setext heading underline."
             exit 1
           fi
           # Allowlist every inline link target rather than pattern-matching the
