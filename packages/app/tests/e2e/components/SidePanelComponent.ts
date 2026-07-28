@@ -4,6 +4,8 @@
  */
 import { Locator, Page } from '@playwright/test';
 
+import { readCopiedLink } from '../utils/clipboard';
+
 export class SidePanelComponent {
   readonly page: Page;
   private readonly panelContainer: Locator;
@@ -160,5 +162,19 @@ export class SidePanelComponent {
    */
   get content() {
     return this.panelContainer.getByTestId('side-panel-content');
+  }
+
+  /**
+   * The "Share link" action in the panel header (copies a shareable link).
+   */
+  get shareButton() {
+    return this.page.getByTestId('side-panel-share-button');
+  }
+
+  /**
+   * Click the panel's Share action and return the URL copied to the clipboard.
+   */
+  async shareAndReadLink(): Promise<string> {
+    return readCopiedLink(this.page, () => this.shareButton.click());
   }
 }

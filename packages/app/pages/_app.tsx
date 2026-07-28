@@ -22,6 +22,7 @@ import {
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { useExpandShareLink } from '@/hooks/useExpandShareLink';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
@@ -93,6 +94,9 @@ function AppContent({
   const { userPreferences } = useUserPreferences();
   const resolvedColorScheme = useResolvedColorScheme();
   const { themeName } = useAppTheme();
+
+  // Expand a `?share=` link (if present) into normal query params on any page.
+  useExpandShareLink();
 
   // ClickStack theme always uses Inter font - user preference is ignored
   // HyperDX theme allows user to select font preference

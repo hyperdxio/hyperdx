@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { parseAsJson, useQueryState } from 'nuqs';
@@ -27,6 +27,7 @@ import api from '@/api';
 import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
+import ShareLinkButton from '@/components/ShareLinkButton';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useChartAssistant } from '@/hooks/ai';
 import { withAppNav } from '@/layout';
@@ -34,6 +35,7 @@ import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
+import { freezeTimeRange } from '@/utils/shareLink';
 
 import OnboardingModal from './components/OnboardingModal';
 
@@ -227,11 +229,22 @@ function DBChartExplorerPage() {
     }),
   );
 
+  // Build the query string for the Share button, freezing the time range to an
+  // absolute window so recipients see the same data. Chart Explorer state is a
+  // large `config` JSON blob, so buildShareUrl compresses it.
+  const getShareSearch = useCallback(
+    () => freezeTimeRange(window.location.search, searchedTimeRange),
+    [searchedTimeRange],
+  );
+
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
         <title>Chart Explorer - {brandName}</title>
       </Head>
+      <Group justify="flex-end" mb="sm">
+        <ShareLinkButton getShareSearch={getShareSearch} />
+      </Group>
       <OnboardingModal />
       <AIAssistant
         setConfig={setChartConfig}

@@ -5,15 +5,18 @@
 import { Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
+import { ShareButtonComponent } from '../components/ShareButtonComponent';
 
 export class ChartExplorerPage {
   readonly page: Page;
   readonly chartEditor: ChartEditorComponent;
+  readonly share: ShareButtonComponent;
   private readonly chartForm: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.chartEditor = new ChartEditorComponent(page);
+    this.share = new ShareButtonComponent(page);
     this.chartForm = page.locator('[data-testid="chart-explorer-form"]');
   }
 

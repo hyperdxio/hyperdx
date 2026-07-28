@@ -1,5 +1,6 @@
 import React from 'react';
 /* Polyfills for browser APIs in Node.js test environment */
+import { CompressionStream, DecompressionStream } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'util';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
@@ -9,6 +10,12 @@ import structuredClone from '@ungap/structured-clone';
 import '@testing-library/jest-dom';
 global.TextEncoder = TextEncoder as any;
 global.TextDecoder = TextDecoder as any;
+if (typeof globalThis.CompressionStream === 'undefined') {
+  global.CompressionStream = CompressionStream as any;
+}
+if (typeof globalThis.DecompressionStream === 'undefined') {
+  global.DecompressionStream = DecompressionStream as any;
+}
 
 /* Mocks for mantine */
 class ResizeObserver {
