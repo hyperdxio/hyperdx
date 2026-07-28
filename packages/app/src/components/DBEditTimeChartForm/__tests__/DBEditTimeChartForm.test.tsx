@@ -682,7 +682,16 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
     expect(onSettingsPanelOpenChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('ignores Escape originating inside an open combobox/listbox', async () => {
+  // A Mantine Select renders role="combobox" on its input (see the sibling
+  // ChartDisplaySettingsDrawer suite) and flips aria-expanded to "true" while
+  // its dropdown is open. Esc from such an open combobox must be consumed by the
+  // dropdown, not close the panel. Assert against both combobox-like shapes the
+  // handler keys on, since Mantine's open state does not flip synchronously
+  // under jsdom (so driving the real Select's attribute here is unreliable).
+  it.each([
+    { role: 'combobox', 'aria-expanded': 'true' },
+    { 'aria-haspopup': 'listbox', 'aria-expanded': 'true' },
+  ])('keeps the panel open on Escape from an open %o', async attrs => {
     renderDashboardForm();
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
@@ -690,15 +699,36 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
       await screen.findByTestId('display-settings-panel'),
     ).toBeInTheDocument();
 
-    // Simulate Esc dispatched while a Mantine Select dropdown is open: the
-    // target sits inside an [aria-expanded="true"] combobox, so the dropdown
-    // consumes that Esc and the panel must stay open.
     const openCombobox = document.createElement('div');
-    openCombobox.setAttribute('aria-expanded', 'true');
+    Object.entries(attrs).forEach(([k, v]) => openCombobox.setAttribute(k, v));
     document.body.appendChild(openCombobox);
     fireEvent.keyDown(openCombobox, { key: 'Escape' });
 
     expect(screen.getByTestId('display-settings-panel')).toBeInTheDocument();
     openCombobox.remove();
+  });
+
+  it('closes the panel on Escape from a non-combobox expanded control', async () => {
+    renderDashboardForm();
+
+    await userEvent.click(screen.getByTestId('display-settings-button'));
+    expect(
+      await screen.findByTestId('display-settings-panel'),
+    ).toBeInTheDocument();
+
+    // A focusable disclosure such as an Accordion.Control carries
+    // aria-expanded but is not a combobox; the narrowed exemption must let Esc
+    // through so the panel closes instead of the UI reading as frozen.
+    const accordionControl = document.createElement('button');
+    accordionControl.setAttribute('aria-expanded', 'true');
+    document.body.appendChild(accordionControl);
+    fireEvent.keyDown(accordionControl, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('display-settings-panel'),
+      ).not.toBeInTheDocument();
+    });
+    accordionControl.remove();
   });
 });

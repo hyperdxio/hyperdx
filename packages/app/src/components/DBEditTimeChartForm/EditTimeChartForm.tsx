@@ -381,20 +381,28 @@ export default function EditTimeChartForm({
   // before the panel is ever visible to press Esc against.
   useIsomorphicEffect(() => {
     onSettingsPanelOpenChange?.(showSettingsPanel);
+    // Reset the parent's flag if the form unmounts while a panel is open (e.g.
+    // the drawer closes with settings still docked). Otherwise the drawer keeps
+    // `settingsPanelOpen === true` and its Esc-to-close stays disabled for the
+    // next tile it hosts.
+    return () => onSettingsPanelOpenChange?.(false);
   }, [showSettingsPanel, onSettingsPanelOpenChange]);
 
   // The panel owns Esc: while it's docked, Esc closes the panel. The drawer's
   // own Esc is disabled above, so there's no double-close and no need to stop
   // propagation. Bail out when Esc originated inside a nested overlay that
-  // consumes it: a popover dropdown, a select listbox, or an expanded combobox
-  // (a Mantine Select keeps DOM focus on its input via aria-activedescendant,
-  // so match the input itself). Every dismissible control inside the panel is a
-  // JS combobox (Mantine Select) rather than a native <select>, so its open
-  // state is visible here via aria-expanded/role="listbox"; a closed control
-  // exposes neither and correctly lets Esc fall through to close the panel. A
-  // focused CodeMirror editor is intentionally NOT exempt here — it calls
-  // preventDefault only when it actually consumes Esc (e.g. closing an open
-  // autocomplete), which the defaultPrevented guard above already covers;
+  // consumes it: a popover dropdown, a select listbox, or an OPEN combobox (a
+  // Mantine Select keeps DOM focus on its input via aria-activedescendant, so
+  // match the input itself). The combobox arms are scoped to combobox-like
+  // roles — `[role="combobox"]` / `[aria-haspopup="listbox"]` with
+  // `aria-expanded="true"` — rather than a bare `[aria-expanded="true"]`: other
+  // expandable widgets (e.g. an `Accordion.Control` in the preview column) also
+  // carry `aria-expanded`, and matching those would swallow Esc and leave the
+  // panel stuck open with the UI reading as frozen. A closed combobox exposes
+  // `aria-expanded="false"` and correctly lets Esc fall through to close the
+  // panel. A focused CodeMirror editor is intentionally NOT exempt here — it
+  // calls preventDefault only when it actually consumes Esc (e.g. closing an
+  // open autocomplete), which the defaultPrevented guard above already covers;
   // exempting it wholesale would swallow Esc and leave the panel open when no
   // completion is showing.
   // Attach as a layout effect (pre-paint) for the same reason as the notifier
@@ -409,7 +417,7 @@ export default function EditTimeChartForm({
       if (
         target instanceof HTMLElement &&
         target.closest(
-          '.mantine-Popover-dropdown, [role="listbox"], [aria-expanded="true"]',
+          '.mantine-Popover-dropdown, [role="listbox"], [role="combobox"][aria-expanded="true"], [aria-haspopup="listbox"][aria-expanded="true"]',
         )
       ) {
         return;

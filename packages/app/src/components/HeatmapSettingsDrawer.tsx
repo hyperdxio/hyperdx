@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,14 +54,21 @@ export default function HeatmapSettingsDrawer({
     defaultValues,
   });
 
-  // Reset on the closed→open transition (and whenever the applied config
-  // changes while open) so every dismiss path — Apply, Cancel, Esc, or a tab
-  // change that closes the panel via the bare disclosure — behaves like cancel:
-  // abandoned edits never linger in the sub-form to be written by the next Apply.
+  // Reset only on the closed→open transition so every dismiss path — Apply,
+  // Cancel, Esc, or a tab change that closes the panel via the bare disclosure —
+  // behaves like cancel: abandoned edits never linger in the sub-form to be
+  // written by the next Apply. This is edge-triggered on `opened` (via a ref)
+  // rather than level-triggered on `defaultValues`: `defaultValues` is a
+  // useMemo over watched value/count/scale in the parent, so a level-triggered
+  // reset would re-run whenever the source (or any watched field) changes while
+  // the panel is open, silently discarding unapplied panel edits. Kept in
+  // lockstep with ChartDisplaySettingsDrawer's edge-triggered reset.
+  const wasOpenedRef = useRef(false);
   useEffect(() => {
-    if (opened) {
+    if (opened && !wasOpenedRef.current) {
       form.reset(defaultValues);
     }
+    wasOpenedRef.current = opened;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- form object is stable from useForm
   }, [opened, defaultValues]);
 

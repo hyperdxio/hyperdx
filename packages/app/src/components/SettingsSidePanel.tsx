@@ -7,6 +7,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { useId } from '@mantine/hooks';
 import { IconX } from '@tabler/icons-react';
 
 /**
@@ -26,9 +27,15 @@ export default function SettingsSidePanel({
   children: ReactNode;
   'data-testid'?: string;
 }) {
+  // The docked panel replaces a Mantine Drawer, which exposed role="dialog"
+  // with an accessible name. Preserve an accessible landmark: a labelled
+  // region whose name comes from the heading title.
+  const titleId = useId();
   return (
     <Box
       data-testid={dataTestId}
+      role="region"
+      aria-labelledby={titleId}
       style={{
         flexShrink: 0,
         // Cap at 340px but yield to the editor column on narrow viewports (the
@@ -47,7 +54,7 @@ export default function SettingsSidePanel({
         py="sm"
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
-        <Text size="sm" fw={600}>
+        <Text id={titleId} component="h2" size="sm" fw={600} m={0}>
           {title}
         </Text>
         <Tooltip label="Close" position="bottom">

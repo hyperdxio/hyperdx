@@ -585,6 +585,10 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(screen.getByTestId('display-settings-panel')).toBeInTheDocument();
       // The panel is a plain Box, so it must not expose the Drawer's dialog role.
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      // ...but it must still be a labelled landmark for assistive tech.
+      expect(
+        screen.getByRole('region', { name: 'Display Settings' }),
+      ).toBeInTheDocument();
     });
 
     it('renders nothing when asPanel and not opened', () => {
