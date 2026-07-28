@@ -210,6 +210,15 @@ efficient and accurate:
    pushing the branch. Skip only for changes that don't warrant a release (docs,
    internal tooling, tests, CI).
 
+6. **The root `CHANGELOG.md` is generated at release time.** During each
+   release, CI writes an AI-generated cross-package summary section into the
+   root `CHANGELOG.md` on the "Release HyperDX" PR. Review and edit it there
+   like any other file — but keep the `<!-- hyperdx-release-notes … -->` comment
+   marker intact; it is how your edits survive when the release branch is
+   rebuilt. Edits are only discarded when new changesets land on `main` (the
+   summary is regenerated to include them). Never edit the root `CHANGELOG.md`
+   in feature PRs.
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:

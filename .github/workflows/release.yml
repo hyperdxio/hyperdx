@@ -62,6 +62,26 @@ jobs:
       # while the GitHub release/tag still succeeds. See HDX-4075.
       - name: Build common-utils
         run: make ci-build
+      # The changesets action force-rebuilds changeset-release/main from main
+      # on every run, destroying any commits on it — including human edits to
+      # the AI-generated root CHANGELOG.md. Capture the branch's current
+      # CHANGELOG.md first so the release_changelog job can reuse an existing
+      # (possibly human-edited) section when the changeset set is unchanged.
+      - name: Capture release-notes state before branch rebuild
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/prev-release-notes
+          if git fetch origin changeset-release/main; then
+            git show FETCH_HEAD:CHANGELOG.md \
+              > /tmp/prev-release-notes/CHANGELOG.md || true
+          fi
+      - name: Upload previous release notes
+        uses: actions/upload-artifact@v7
+        with:
+          name: prev-release-notes
+          path: /tmp/prev-release-notes/
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Create Release Pull Request or Publish to npm
         if: always()
         id: changesets
@@ -75,6 +95,208 @@ jobs:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+
+  # ---------------------------------------------------------------------------
+  # Root changelog – write an AI-generated cross-package summary into the
+  # "Release HyperDX" PR. Fail-soft by design: nothing else `needs` this job,
+  # so a failure here never blocks a release.
+  # ---------------------------------------------------------------------------
+  release_changelog:
+    name: Generate Root Changelog
+    runs-on: ubuntu-24.04
+    needs: [check_changesets]
+    if: needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'true'
+    concurrency:
+      group: release-changelog
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v6
+        with:
+          ref: changeset-release/main
+          fetch-depth: 0
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          # Only releases that bump the fixed group (app/api/otel-collector —
+          # mirrored into the root package.json by version.sh) get a root
+          # changelog section. A CLI-only or common-utils-only release leaves
+          # the root version unchanged, and generating for it would overwrite
+          # the already-published section for that version. Those packages
+          # have their own changelogs (and the CLI a GitHub Release).
+          PREV_VERSION="$(git show origin/main:package.json \
+            | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")"
+          if [ "$VERSION" = "$PREV_VERSION" ]; then
+            echo "Root version unchanged (${VERSION}); skipping root changelog"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Content-address the set of changesets on main. If this hash is
+          # unchanged since the last generation, the previous section (and any
+          # human edits to it) is reused instead of regenerated.
+          INPUTS="$(git ls-tree -r origin/main -- .changeset \
+            | awk '$4 ~ /\.md$/ && $4 !~ /README/ {print $3, $4}' \
+            | sort -k2 | sha256sum | cut -c1-12)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "inputs=${INPUTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Download previous release notes
+        if: steps.meta.outputs.skip == 'false'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: prev-release-notes
+          path: /tmp/prev-release-notes
+
+      - name: Reuse existing section if inputs unchanged
+        if: steps.meta.outputs.skip == 'false'
+        id: reuse
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          INPUTS: ${{ steps.meta.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          if node .github/scripts/release-notes.mjs extract \
+              --changelog /tmp/prev-release-notes/CHANGELOG.md \
+              --version "$VERSION" \
+              --inputs "$INPUTS" \
+              > /tmp/release-notes-body.md; then
+            echo "Reusing previous section (changeset set unchanged)"
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract previous section as generator context
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The changeset set changed, so the section must be regenerated —
+          # but a maintainer may have edited the previous one. Hand it to the
+          # generator (version-only match, no --inputs) so their phrasing is
+          # preserved for changes it already covers.
+          node .github/scripts/release-notes.mjs extract \
+            --changelog /tmp/prev-release-notes/CHANGELOG.md \
+            --version "$VERSION" \
+            > /tmp/previous-section.md \
+            || rm -f /tmp/previous-section.md
+
+      - name: Export changesets for the generator
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/changesets
+          git ls-tree -r --name-only origin/main -- .changeset \
+            | grep '\.md$' | grep -v README \
+            | while read -r f; do
+                git show "origin/main:${f}" > "/tmp/changesets/$(basename "$f")"
+              done
+          ls /tmp/changesets
+
+      - name: Generate release notes with Claude
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args:
+            --allowedTools "Read,Write,Bash(git log:*),Bash(git diff:*),Bash(git
+            show:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+          prompt: |
+            VERSION: ${{ steps.meta.outputs.version }}
+            REPO: ${{ github.repository }}
+
+            Read the instructions in `.github/prompts/release-changelog.md`
+            (in the current checkout) and follow them exactly to write
+            /tmp/release-notes-body.md for this release.
+
+      - name: Validate generated notes
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        run: |
+          set -euo pipefail
+          test -s /tmp/release-notes-body.md
+          # Body only: the splice script owns headings, markers, and tables.
+          # Spelled out rather than `! grep -q …`: `set -e` is ignored for a
+          # command whose status is inverted with `!`, so that form never fails.
+          if grep -qE 'hyperdx-release-notes|^## v' /tmp/release-notes-body.md; then
+            echo "::error::Generated body contains a release heading or marker; the splice script owns those."
+            exit 1
+          fi
+
+      - name: Append package changelog table
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        env:
+          # Absolute URLs: this markdown is also rendered inside the in-app
+          # "What's new" modal, where relative links would resolve against the
+          # app origin and break.
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          {
+            echo ""
+            echo "### 📦 Package changelogs"
+            echo ""
+            echo "| Package | Version | Details |"
+            echo "| --- | --- | --- |"
+            for pkg in packages/*/package.json; do
+              dir="$(dirname "$pkg")"
+              name="$(node -p "require('./${pkg}').name")"
+              version="$(node -p "require('./${pkg}').version")"
+              old="$(git show "origin/main:${pkg}" 2>/dev/null \
+                | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" \
+                || echo '')"
+              if [ "$version" != "$old" ]; then
+                anchor="${version//./}"
+                echo "| \`${name}\` | ${old:-new} → ${version} | [${dir}/CHANGELOG.md](${REPO_URL}/blob/main/${dir}/CHANGELOG.md#${anchor}) |"
+              fi
+            done
+          } >> /tmp/release-notes-body.md
+
+      - name: Splice into CHANGELOG.md and push
+        if: steps.meta.outputs.skip == 'false'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          INPUTS: ${{ steps.meta.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/release-notes.mjs insert \
+            --changelog CHANGELOG.md \
+            --body /tmp/release-notes-body.md \
+            --version "$VERSION" \
+            --inputs "$INPUTS" \
+            --date "$(date -u +%F)"
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(release): update root CHANGELOG.md"
+          # A push to main during generation force-rebuilds the branch and this
+          # push is rejected. That's fine: the newer run regenerates on top of
+          # the rebuilt branch, so losing this race is self-healing.
+          git push origin HEAD:changeset-release/main \
+            || echo "::warning::changeset-release/main moved during generation; the next run will regenerate"
 
   # ---------------------------------------------------------------------------
   # Check if version already published (skip-if-exists)
