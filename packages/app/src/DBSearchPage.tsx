@@ -108,6 +108,7 @@ import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -967,7 +968,21 @@ export function DBSearchPage() {
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
-  const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+
+  // `?source=` accepts a source name as well as a source ID. Resolve it to an ID
+  // here. The param is not changed until the user changes the source in the UI.
+  const { source: searchedSource } = useResolvedSourceParam(
+    rawSearchedConfig.source,
+    {
+      kinds: [SourceKind.Log, SourceKind.Trace],
+    },
+  );
+
+  const searchedConfig = useMemo(
+    () => ({ ...rawSearchedConfig, source: searchedSource?.id }),
+    [rawSearchedConfig, searchedSource?.id],
+  );
   const [directTraceId, setDirectTraceId] = useQueryState(
     'traceId',
     parseAsStringEncoded,
@@ -985,10 +1000,6 @@ export function DBSearchPage() {
     'hdx-last-selected-source-id',
     '',
   );
-  const { data: searchedSource } = useSource({
-    id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
-  });
   const directTraceSource =
     directTraceId != null && searchedSource?.kind === SourceKind.Trace
       ? searchedSource
@@ -1057,9 +1068,13 @@ export function DBSearchPage() {
         where: searchedConfig.where || '',
         whereLanguage:
           searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+        // When source is provided in the URL or in the saved search, don't
+        // fallback to the default source.
         source:
           searchedConfig.source ||
-          (savedSearchId || directTraceId ? '' : defaultSourceId),
+          (savedSearchId || directTraceId || rawSearchedConfig.source
+            ? ''
+            : defaultSourceId),
         filters: searchedConfig.filters ?? [],
         orderBy: searchedConfig.orderBy ?? '',
       },
@@ -1138,8 +1153,14 @@ export function DBSearchPage() {
   // been wiped (ex. clicking on the same saved search again)
   useEffect(() => {
     const { source, where, select, whereLanguage, filters } = searchedConfig;
+    // Source is "empty" when it's not present in the URL, not when it cannot be resolved
+    // to an existing source.
     const isSearchConfigEmpty =
-      !source && !where && !select && !whereLanguage && !filters?.length;
+      !rawSearchedConfig.source &&
+      !where &&
+      !select &&
+      !whereLanguage &&
+      !filters?.length;
 
     // Landed on saved search (if we just landed on a searchId route)
     if (
@@ -1177,6 +1198,7 @@ export function DBSearchPage() {
   }, [
     savedSearch,
     searchedConfig,
+    rawSearchedConfig.source,
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
@@ -1296,6 +1318,26 @@ export function DBSearchPage() {
     // If the user changes the source dropdown, reset the select and orderby fields
     // to match the new source selected
     if (watchedSource !== prevSourceRef.current) {
+      // If the form is just catching up to the source that the search config
+      // already points at, don't reset the select/orderBy/filters - this is just
+      // a resolution from a source name to its ID, not a user-initiated change.
+      // Saved searches are excluded: on `/search/<savedSearchId>` the source is
+      // written to the URL by the saved-search effect, so the form converging on
+      // it is the normal load path, and the body below is what re-applies the
+      // saved search's own select/orderBy.
+      if (
+        savedSearchId == null &&
+        watchedSource &&
+        watchedSource === searchedSource?.id
+      ) {
+        prevSourceRef.current = watchedSource;
+        if (rawSearchedConfig.source !== watchedSource) {
+          // Partial update — the other search params are left as they are.
+          setSearchedConfig({ source: watchedSource });
+        }
+        return;
+      }
+
       prevSourceRef.current = watchedSource;
       const newInputSourceObj = inputSourceObjs?.find(
         s => s.id === watchedSource,
@@ -1331,6 +1373,9 @@ export function DBSearchPage() {
     inputSourceObjs,
     setLastSelectedSourceId,
     debouncedSubmit,
+    searchedSource?.id,
+    rawSearchedConfig.source,
+    setSearchedConfig,
   ]);
 
   const retainCompatibleFilters = useStableCallback((columns: ColumnMeta[]) => {
