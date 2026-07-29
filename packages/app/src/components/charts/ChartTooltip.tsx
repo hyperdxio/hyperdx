@@ -16,11 +16,13 @@ import styles from '@styles/HDXLineChart.module.scss';
 /**
  * z-index for a body-portaled chart tooltip: above any modal/drawer the chart
  * is in (via ZIndexContext), but never below the default popover layer. Shared
- * so hover and pinned tooltips stack the same way.
+ * so hover and pinned tooltips stack the same way. `pinned` bumps the pin one
+ * layer above the hover tooltip so a hover tooltip never covers it.
  */
-export function useChartTooltipZIndex() {
+export function useChartTooltipZIndex({ pinned = false } = {}) {
   const contextZIndex = useZIndex();
-  return Math.max(getDefaultZIndex('popover'), contextZIndex + 1);
+  const base = Math.max(getDefaultZIndex('popover'), contextZIndex + 1);
+  return pinned ? base + 1 : base;
 }
 
 /**
