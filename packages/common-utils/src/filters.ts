@@ -100,6 +100,63 @@ export const filtersToQuery = (
     });
 };
 
+/**
+ * Render a FilterState as a single AND-joined SQL predicate, remapping every
+ * key through `renderKey` first.
+ *
+ * Callers that also emit the same keys elsewhere in the query (e.g. inside a
+ * SELECT aggregate) must render both halves the same way, or the predicate
+ * silently addresses a different expression than the one being aggregated.
+ * `stringifyKeys` is deliberately false: a rendered JSON path already carries
+ * the `.:String` type suffix, so it needs no `toString()` wrapper.
+ *
+ * Returns undefined when nothing is selected, so callers can branch on
+ * "constrained vs unconstrained" without inspecting the string.
+ */
+export const filterStateToPredicate = (
+  state: FilterState,
+  renderKey: (rawKey: string) => string,
+): string | undefined => {
+  const rendered: FilterState = {};
+  for (const [rawKey, selection] of Object.entries(state)) {
+    rendered[renderKey(rawKey)] = selection;
+  }
+  const conditions = filtersToQuery(rendered).flatMap(f =>
+    // filtersToQuery only emits `sql` filters (which carry `condition`); the
+    // `in` guard narrows away the `sql_ast` member of the Filter union.
+    'condition' in f ? [f.condition] : [],
+  );
+  return conditions.length
+    ? conditions.map(c => `(${c})`).join(' AND ')
+    : undefined;
+};
+
+/**
+ * Stable, JSON-safe projection of a FilterState, for use in react-query keys.
+ *
+ * A raw FilterState cannot be used as a query key: its selections are `Set`s,
+ * and TanStack Query hashes keys with JSON.stringify, which serializes any Set
+ * to `{}` — so every distinct selection would collide on one cache entry.
+ * Keys and members are sorted so that insertion order alone never produces a
+ * spurious cache miss.
+ */
+export const serializeFilterState = (state: FilterState): string =>
+  JSON.stringify(
+    Object.keys(state)
+      .sort()
+      .map(key => {
+        const { included, excluded, range } = state[key];
+        const sortMembers = (values: Set<string | boolean>) =>
+          Array.from(values).map(String).sort();
+        return [
+          key,
+          sortMembers(included),
+          sortMembers(excluded),
+          range ?? null,
+        ];
+      }),
+  );
+
 // Helper function to parse a string value as boolean if possible, or otherwise
 // return as string with surrounding quotes removed and SQL-escaped quotes unescaped.
 const getBooleanOrUnquotedString = (value: string): string | boolean => {

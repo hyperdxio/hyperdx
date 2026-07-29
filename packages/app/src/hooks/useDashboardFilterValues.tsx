@@ -7,7 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   FilterState,
-  filtersToQuery,
+  serializeFilterState,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
@@ -45,8 +45,8 @@ const filterToKey = (filter: DashboardFilter): string =>
 type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
   /** filterIds[i] = array of filter IDs whose values come from keys[i] */
   filterIds: string[][];
-  /** Per-key SQL predicate for faceted lookups, aligned with `keys`. */
-  keyConditions?: (string | undefined)[];
+  /** Per-key constraint for faceted lookups, aligned with `keys`. */
+  keyConditions?: (FilterState | undefined)[];
 };
 
 function useOptimizedKeyValuesCalls({
@@ -63,17 +63,22 @@ function useOptimizedKeyValuesCalls({
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
   // Faceted filtering: each filter's selectable values are narrowed by the
-  // CURRENT selections of its sibling filters. For every filter, build a SQL
-  // predicate from the selections of the OTHER filters that target the same
-  // source + metric type (so the constrained columns exist in the queried
-  // table), EXCLUDING the filter's own expression (otherwise a multi-select
-  // would collapse to only its already-selected values). Expressing it as a
-  // per-key predicate lets all of a source's filters resolve in one
-  // `groupUniqArrayIf` scan instead of one query per filter.
-  const conditionByFilterId = useMemo(() => {
-    const byId = new Map<string, string | undefined>();
+  // CURRENT selections of its sibling filters. For every filter, collect the
+  // selections of the OTHER filters that target the same source + metric type
+  // (so the constrained columns exist in the queried table), EXCLUDING the
+  // filter's own expression (otherwise a multi-select would collapse to only
+  // its already-selected values). Passing this down as a per-key constraint
+  // lets all of a source's filters resolve in one `groupUniqArrayIf` scan
+  // instead of one query per filter.
+  //
+  // The constraint stays a FilterState rather than SQL: getKeyValues renders
+  // it against the same key expressions it puts in the SELECT, which raw SQL
+  // built here could not line up with on JSON columns.
+  const constraintByFilterId = useMemo(() => {
+    const byId = new Map<string, FilterState | undefined>();
     for (const filter of filters) {
       const prunedState: FilterState = {};
+      let hasSelection = false;
       for (const sibling of filters) {
         if (
           sibling.source !== filter.source ||
@@ -92,19 +97,10 @@ function useOptimizedKeyValuesCalls({
             selection.range != null)
         ) {
           prunedState[sibling.expression] = selection;
+          hasSelection = true;
         }
       }
-      const predicates = filtersToQuery(prunedState, {
-        stringifyKeys: false,
-        // filtersToQuery only emits `sql` filters (which carry `condition`); the
-        // `in` guard narrows away the `sql_ast` member of the Filter union.
-      }).flatMap(f => ('condition' in f ? [f.condition] : []));
-      byId.set(
-        filter.id,
-        predicates.length
-          ? predicates.map(c => `(${c})`).join(' AND ')
-          : undefined,
-      );
+      byId.set(filter.id, hasSelection ? prunedState : undefined);
     }
     return byId;
   }, [filters, filterValues]);
@@ -141,9 +137,14 @@ function useOptimizedKeyValuesCalls({
         const source = sources!.find(s => s.id === sourceId)!;
         const keyExpressions = filtersInGroup.map(f => f.expression);
         const keyConditions = filtersInGroup.map(f =>
-          conditionByFilterId.get(f.id),
+          constraintByFilterId.get(f.id),
         );
         const isFaceted = keyConditions.some(c => c != null);
+        // Sets don't survive react-query's JSON.stringify key hashing, so the
+        // key carries a serialized projection instead of the raw state.
+        const keyConditionsSignature = keyConditions.map(
+          c => c && serializeFilterState(c),
+        );
         const tableName = getMetricTableName(source, metricType) ?? '';
 
         const chartConfig: BuilderChartConfigWithDateRange = {
@@ -187,7 +188,7 @@ function useOptimizedKeyValuesCalls({
             keyExpressions,
             where,
             whereLanguage,
-            keyConditions,
+            keyConditionsSignature,
           ],
           enabled: !isLoadingSources,
           staleTime: 1000 * 60 * 5, // Cache every 5 min
@@ -278,7 +279,13 @@ export function useDashboardFilterValues({
       const source = sourcesLookup.get(chartConfig.source);
 
       return {
-        queryKey: [...queryKeyPrefix, chartConfig, keyConditions],
+        queryKey: [
+          ...queryKeyPrefix,
+          chartConfig,
+          // Serialized: react-query hashes keys with JSON.stringify, which
+          // would flatten every distinct Set selection to `{}`.
+          keyConditions?.map(c => c && serializeFilterState(c)),
+        ],
         placeholderData: () => {
           // Use placeholder data from the most recently cached query with the same key prefix
           const cached = queryClient

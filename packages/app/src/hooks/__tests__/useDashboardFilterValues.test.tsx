@@ -1109,6 +1109,16 @@ describe('useDashboardFilterValues', () => {
         .mockImplementation(async ({ chartConfig }) => chartConfig);
     });
 
+    // What a filter narrowed by an `environment: production` selection should
+    // receive. The hook passes the selection down as state, not as SQL, so
+    // getKeyValues can render its keys the same way it renders the SELECT.
+    const envProductionConstraint = {
+      environment: {
+        included: new Set<string>(['production']),
+        excluded: new Set<string>(),
+      },
+    };
+
     it('resolves every key in one faceted scan, constraining each by the others (exclude-self)', async () => {
       const { result } = renderHook(
         () =>
@@ -1133,7 +1143,7 @@ describe('useDashboardFilterValues', () => {
       // NOT constrained by its own selection (exclude-self → undefined).
       expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
         undefined,
-        "(environment IN ('production'))",
+        envProductionConstraint,
       ]);
     });
 
@@ -1190,11 +1200,7 @@ describe('useDashboardFilterValues', () => {
       expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
       expect(
         callForKeys(['environment', 'status', 'log_level'])?.keyConditions,
-      ).toEqual([
-        undefined,
-        "(environment IN ('production'))",
-        "(environment IN ('production'))",
-      ]);
+      ).toEqual([undefined, envProductionConstraint, envProductionConstraint]);
     });
 
     it('does not apply a selection from one source to filters on another source', async () => {
@@ -1229,10 +1235,53 @@ describe('useDashboardFilterValues', () => {
       // The logs group is faceted (status narrowed by env)...
       expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
         undefined,
-        "(environment IN ('production'))",
+        envProductionConstraint,
       ]);
       // ...but the traces filter is never constrained by the logs selection.
       expect(callForKeys(['service.name'])?.keyConditions).toBeUndefined();
+    });
+
+    it('does not apply a selection across metric types of the same source', async () => {
+      // Same source, different metric type → different physical table, so the
+      // constrained column need not exist there.
+      const filters: DashboardFilter[] = [
+        {
+          id: 'gauge-filter',
+          type: 'QUERY_EXPRESSION',
+          name: 'Gauge Metric',
+          expression: 'MetricName',
+          source: 'metric-source',
+          sourceMetricType: MetricsDataType.Gauge,
+        },
+        {
+          id: 'sum-filter',
+          type: 'QUERY_EXPRESSION',
+          name: 'Sum Metric',
+          expression: 'SumMetricName',
+          source: 'metric-source',
+          sourceMetricType: MetricsDataType.Sum,
+        },
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            filterValues: {
+              MetricName: {
+                included: new Set<string>(['CPU_Usage']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(callForKeys(['MetricName'])?.keyConditions).toBeUndefined();
+      expect(callForKeys(['SumMetricName'])?.keyConditions).toBeUndefined();
     });
 
     it('refetches with updated conditions when a selection changes', async () => {
@@ -1267,7 +1316,7 @@ describe('useDashboardFilterValues', () => {
 
       expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
         undefined,
-        "(environment IN ('production'))",
+        envProductionConstraint,
       ]);
     });
 
@@ -1305,10 +1354,7 @@ describe('useDashboardFilterValues', () => {
         databaseName: 'telemetry',
         tableName: 'logs_rollup_1m',
       });
-      expect(call?.keyConditions).toEqual([
-        undefined,
-        "(environment IN ('production'))",
-      ]);
+      expect(call?.keyConditions).toEqual([undefined, envProductionConstraint]);
     });
   });
 });

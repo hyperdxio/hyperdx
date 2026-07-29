@@ -42,6 +42,12 @@ describe('materializedViews', () => {
       };
       return columns[column];
     }),
+    // These fixtures use plain identifiers, which render to themselves.
+    renderKeyExpressions: jest
+      .fn()
+      .mockImplementation(({ keys }: { keys: string[] }) =>
+        Promise.resolve(keys),
+      ),
   } as unknown as Metadata;
 
   const MV_CONFIG_METRIC_ROLLUP_1M: MaterializedViewConfiguration = {
@@ -2577,7 +2583,10 @@ describe('materializedViews', () => {
       const result = await optimizeFacetedKeyValuesConfig({
         chartConfig: facetedChartConfig,
         keys: ['ServiceName', 'StatusCode'],
-        keyConditions: [undefined, "(ServiceName IN ('x'))"],
+        keyConditions: [
+          undefined,
+          { ServiceName: { included: new Set(['x']), excluded: new Set() } },
+        ],
         source: facetedSource,
         clickhouseClient: mockClickHouseClient,
         metadata,
@@ -2605,7 +2614,10 @@ describe('materializedViews', () => {
       const result = await optimizeFacetedKeyValuesConfig({
         chartConfig: facetedChartConfig,
         keys: ['ServiceName', 'NotADimension'],
-        keyConditions: [undefined, "(ServiceName IN ('x'))"],
+        keyConditions: [
+          undefined,
+          { ServiceName: { included: new Set(['x']), excluded: new Set() } },
+        ],
         source: facetedSource,
         clickhouseClient: mockClickHouseClient,
         metadata,
@@ -2626,7 +2638,10 @@ describe('materializedViews', () => {
       const result = await optimizeFacetedKeyValuesConfig({
         chartConfig: facetedChartConfig,
         keys: ['ServiceName', 'StatusCode'],
-        keyConditions: [undefined, "(ServiceName IN ('x'))"],
+        keyConditions: [
+          undefined,
+          { ServiceName: { included: new Set(['x']), excluded: new Set() } },
+        ],
         source: facetedSource,
         clickhouseClient: mockClickHouseClient,
         metadata,

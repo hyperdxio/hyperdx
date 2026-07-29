@@ -2,10 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { escapeRegExp } from 'lodash';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  FilterState,
-  filtersToQuery,
-} from '@hyperdx/common-utils/dist/filters';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   TMetricSource,
@@ -205,15 +202,19 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     [resourceAttr],
   );
 
-  // Faceted (linked) lookups: build a per-field SQL predicate from the OTHER
+  // Faceted (linked) lookups: build a per-field constraint from the OTHER
   // selected fields (exclude-self) so all five value lists are computed in a
   // single `groupUniqArrayIf` scan. The free-text search is applied as a shared
   // WHERE. When unlinked there are no constraints and every dropdown lists all
   // values (still a single batched query).
+  //
+  // Kept as FilterState rather than SQL so getKeyValues can render the keys the
+  // same way it renders them in the SELECT.
   const keyConditions = useMemo(() => {
     if (!linked) return undefined;
     return K8S_FILTER_FIELDS.map(({ field }) => {
       const others: FilterState = {};
+      let hasSelection = false;
       for (const { field: otherField } of K8S_FILTER_FIELDS) {
         const value = valueByField[otherField];
         if (otherField !== field && value) {
@@ -221,16 +222,10 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
             included: new Set([value]),
             excluded: new Set(),
           };
+          hasSelection = true;
         }
       }
-      // filtersToQuery only emits `sql` filters (which carry `condition`); the
-      // `in` guard narrows away the `sql_ast` member of the Filter union.
-      const predicates = filtersToQuery(others, {
-        stringifyKeys: false,
-      }).flatMap(f => ('condition' in f ? [f.condition] : []));
-      return predicates.length
-        ? predicates.map(c => `(${c})`).join(' AND ')
-        : undefined;
+      return hasSelection ? others : undefined;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

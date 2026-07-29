@@ -15,6 +15,11 @@ import {
 } from '@/clickhouse';
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
 import {
+  FilterState,
+  filterStateToPredicate,
+  serializeFilterState,
+} from '@/filters';
+import {
   buildTextIndexInfoLookup,
   skipIndexMatches,
   TextIndexInfo,
@@ -333,6 +338,37 @@ export class Metadata {
     }
 
     return keyExpression;
+  }
+
+  /**
+   * Batch-render key expressions to their physical SQL form.
+   *
+   * Public so that callers building SQL which must line up with what
+   * `getKeyValues` emits — e.g. the materialized-view EXPLAIN probe in
+   * `optimizeFacetedKeyValuesConfig` — can render the same way rather than
+   * interpolating the raw expressions and diverging on JSON columns.
+   */
+  async renderKeyExpressions({
+    databaseName,
+    tableName,
+    connectionId,
+    keys,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    keys: string[];
+  }): Promise<string[]> {
+    return Promise.all(
+      keys.map(key =>
+        this.renderMetadataKeyExpression({
+          databaseName,
+          tableName,
+          connectionId,
+          keyExpression: key,
+        }),
+      ),
+    );
   }
 
   private async queryTableMetadata({
@@ -2398,13 +2434,18 @@ export class Metadata {
     chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
     /**
-     * Optional per-key SQL predicate, aligned with `keys`. When provided for a
-     * key, its values are gathered with `groupUniqArrayIf(key, condition)` so
-     * several "faceted" value lists (each constrained by a different condition)
-     * can be computed in a single table scan. Only applied when
-     * `disableRowLimit` is true (the path used by filter dropdowns).
+     * Optional per-key constraint, aligned with `keys`: the selections that
+     * should narrow this key's values. When provided for a key, its values are
+     * gathered with `groupUniqArrayIf(key, <predicate>)` so several "faceted"
+     * value lists (each constrained differently) resolve in a single table
+     * scan. Only applied when `disableRowLimit` is true (the path used by
+     * filter dropdowns).
+     *
+     * Keys inside the state are RAW expressions; they are rendered here the
+     * same way as `keys`, so the predicate addresses the same physical column
+     * as the aggregate wrapping it.
      */
-    keyConditions?: (string | undefined)[];
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
@@ -2422,7 +2463,8 @@ export class Metadata {
         'filters',
       ]),
       keys,
-      keyConditions,
+      // Serialize rather than hashing the raw state: the selections are Sets.
+      keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
       disableRowLimit,
     };
     return this.cache.getOrFetch(
@@ -2430,15 +2472,24 @@ export class Metadata {
       async () => {
         if (keys.length === 0) return [];
 
-        const renderedKeys = await Promise.all(
-          keys.map(key =>
-            this.renderMetadataKeyExpression({
-              databaseName: chartConfig.from.databaseName,
-              tableName: chartConfig.from.tableName,
-              connectionId: chartConfig.connection,
-              keyExpression: key,
-            }),
-          ),
+        const renderedKeys = await this.renderKeyExpressions({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+          keys,
+        });
+
+        // Render each constraint against the same expressions used in the
+        // SELECT below. A constraint only ever references sibling keys from
+        // this same call, so the map always covers it; `?? rawKey` is a
+        // defensive fallback rather than an expected path.
+        const rawToRendered = new Map(
+          keys.map((key, i) => [key, renderedKeys[i]]),
+        );
+        const renderedConditions = keyConditions?.map(
+          state =>
+            state &&
+            filterStateToPredicate(state, key => rawToRendered.get(key) ?? key),
         );
 
         // When disableRowLimit is true, query directly without CTE
@@ -2448,7 +2499,7 @@ export class Metadata {
               ...chartConfig,
               select: renderedKeys
                 .map((k, i) => {
-                  const condition = keyConditions?.[i];
+                  const condition = renderedConditions?.[i];
                   // `groupUniqArrayIf` lets each key be constrained by its own
                   // predicate, so multiple faceted value lists are computed in a
                   // single scan instead of one query per key.
@@ -2546,8 +2597,8 @@ export class Metadata {
   }: {
     chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
-    /** Per-key SQL predicates for faceted value lookups; see getKeyValues. */
-    keyConditions?: (string | undefined)[];
+    /** Per-key constraints for faceted value lookups; see getKeyValues. */
+    keyConditions?: (FilterState | undefined)[];
     source: TSource | undefined;
     limit?: number;
     disableRowLimit?: boolean;
@@ -2563,7 +2614,8 @@ export class Metadata {
         'filters',
       ]),
       keys,
-      keyConditions,
+      // Serialize rather than hashing the raw state: the selections are Sets.
+      keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
       disableRowLimit,
     };
     return this.cache.getOrFetch(

@@ -1,6 +1,7 @@
 import { differenceInSeconds } from 'date-fns';
 
 import { BaseClickhouseClient, ChSql, chSql } from '@/clickhouse';
+import { FilterState, filterStateToPredicate } from '@/filters';
 import {
   BuilderChartConfigWithOptDateRange,
   CteChartConfig,
@@ -921,8 +922,8 @@ export async function optimizeFacetedKeyValuesConfig<
 }: {
   chartConfig: C;
   keys: string[];
-  /** Per-key SQL predicate aligned with `keys` (undefined = unconstrained). */
-  keyConditions: (string | undefined)[];
+  /** Per-key constraint aligned with `keys` (undefined = unconstrained). */
+  keyConditions: (FilterState | undefined)[];
   source: TSource | undefined;
   clickhouseClient: BaseClickhouseClient;
   metadata: Metadata;
@@ -937,6 +938,10 @@ export async function optimizeFacetedKeyValuesConfig<
   // A covering MV must expose every filter column as a dimension. The per-key
   // conditions only reference other keys, so requiring all `keys` covers them
   // too; anything else (e.g. the static `where`) is caught by the EXPLAIN below.
+  //
+  // Matched against the RAW keys on purpose: `dimensionColumns` is configured
+  // by hand in the source form using the same expressions the filters use, not
+  // the rendered physical form. Only the generated SQL below is rendered.
   const coveringMvs = mvs.filter(mv => {
     const intervalsInDateRange = chartConfig.dateRange
       ? countIntervalsInDateRange(chartConfig.dateRange, mv.minGranularity)
@@ -956,13 +961,31 @@ export async function optimizeFacetedKeyValuesConfig<
   // EXPLAIN only needs the same columns, so the limit is irrelevant here.
   const explainResults = await Promise.all(
     coveringMvs.map(async mv => {
+      // Render against the MV, since that is the table getKeyValues will
+      // render against once this config is returned. An EXPLAIN built from raw
+      // expressions would validate different SQL than the one we end up running.
+      const renderedKeys = await metadata.renderKeyExpressions({
+        databaseName: mv.databaseName,
+        tableName: mv.tableName,
+        connectionId: chartConfig.connection,
+        keys,
+      });
+      const rawToRendered = new Map(
+        keys.map((key, i) => [key, renderedKeys[i]]),
+      );
       const config = {
         ...structuredClone(chartConfig),
         timestampValueExpression: mv.timestampColumn,
         from: { databaseName: mv.databaseName, tableName: mv.tableName },
-        select: keys
+        select: renderedKeys
           .map((k, i) => {
-            const condition = keyConditions[i];
+            const state = keyConditions[i];
+            const condition =
+              state &&
+              filterStateToPredicate(
+                state,
+                key => rawToRendered.get(key) ?? key,
+              );
             return condition
               ? `groupUniqArrayIf(1)(${k}, ${condition}) AS param${i}`
               : `groupUniqArray(1)(${k}) AS param${i}`;
