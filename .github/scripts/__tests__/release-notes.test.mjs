@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 import {
   extractSection,
   insertSection,
+  PACKAGE_LIST_END,
   PACKAGE_LIST_HEADING,
+  PACKAGE_LIST_START,
   parseArgs,
   stripPackageList,
   validateBody,
@@ -322,21 +324,29 @@ test('CLI exits 1 on an unknown command', () => {
   assert.equal(runCli(['bogus', '--changelog', 'x.md']).code, 1);
 });
 
-test('stripPackageList removes an existing list so republishing cannot stack copies', () => {
+test('stripPackageList removes the generated list and keeps text around it', () => {
   const withList = `Summary.
 
 ### ✨ New Features
 
 - **thing**: yes (#1)
 
+${PACKAGE_LIST_START}
+
 ${PACKAGE_LIST_HEADING}
 
 - \`@hyperdx/app\` 2.32.0 → 2.33.0 — [changelog](https://github.com/x)
+
+${PACKAGE_LIST_END}
+
+A maintainer note written below the generated list.
 `;
   const stripped = stripPackageList(withList);
 
   assert.doesNotMatch(stripped, /Package changelogs/);
   assert.match(stripped, /\*\*thing\*\*: yes/);
+  // Slicing to end-of-body would have deleted this.
+  assert.match(stripped, /A maintainer note written below/);
   // Idempotent, and a no-op on a body that never had one.
   assert.equal(stripPackageList(stripped), stripped);
   assert.equal(stripPackageList('Just a body.\n'), 'Just a body.\n');
@@ -344,9 +354,9 @@ ${PACKAGE_LIST_HEADING}
 
 test('a reuse round-trip does not accumulate package lists', () => {
   // extract returns the published body including its list; the workflow strips
-  // before appending a fresh one. Simulate two republish cycles.
+  // before appending a fresh one. Simulate three republish cycles.
   const append = b =>
-    `${b.trimEnd()}\n\n${PACKAGE_LIST_HEADING}\n\n- \`@hyperdx/app\` 1 → 2\n`;
+    `${b.trimEnd()}\n\n${PACKAGE_LIST_START}\n\n${PACKAGE_LIST_HEADING}\n\n- \`@hyperdx/app\` 1 → 2\n\n${PACKAGE_LIST_END}\n`;
   let body = 'Summary.\n';
   let file = null;
   for (let i = 0; i < 3; i++) {
@@ -410,18 +420,13 @@ test('CLI strip-package-list rewrites the body in place', () => {
   const bodyFile = join(dir, 'body.md');
   writeFileSync(
     bodyFile,
-    `Summary.\n\n${PACKAGE_LIST_HEADING}\n\n- \`x\` 1 → 2\n`,
+    `Summary.\n\n${PACKAGE_LIST_START}\n\n${PACKAGE_LIST_HEADING}\n\n- \`x\` 1 → 2\n\n${PACKAGE_LIST_END}\n`,
   );
 
   assert.equal(runCli(['strip-package-list', '--body', bodyFile]).code, 0);
   assert.equal(readFileSync(bodyFile, 'utf-8'), 'Summary.\n');
   assert.equal(runCli(['strip-package-list']).code, 1);
 });
-
-// --- validateBody corpus ------------------------------------------------------
-// These are fail-fast CI checks, not the security boundary (that is
-// ChangelogModal.tsx, on the parsed AST). The corpus exists because every
-// bypass found in review was in untested inline shell.
 
 test('validateBody accepts realistic release bodies', () => {
   const good = [
@@ -512,11 +517,10 @@ test('validateBody accepts a bare-host link, matching the render-time allowlist'
   assert.ok(validateBody('See [x](https://github.com.evil.tld).\n').length > 0);
 });
 
-test('validateBody ignores structure inside code blocks', () => {
+test('validateBody ignores setext and definitions inside code blocks', () => {
+  // A fenced YAML example opening `---` renders fine and must not fail the job.
   const fenced = [
     'Summary.',
-    '',
-    'Example config:',
     '',
     '```yaml',
     '---',
@@ -524,18 +528,19 @@ test('validateBody ignores structure inside code blocks', () => {
     '  clickhouse: {}',
     '```',
     '',
-    'And a snippet:',
-    '',
-    '```markdown',
-    '## Not a real heading',
-    '```',
-    '',
     'Indented block:',
     '',
-    '    ## also not a heading',
+    '    ---',
     '',
   ].join('\n');
   assert.deepEqual(validateBody(fenced), []);
+});
+
+test('validateBody rejects a fenced ## because parseChangelog is not fence-aware', () => {
+  // The splice would treat it as a section boundary and cut the section in two,
+  // so validate has to agree with the parser rather than with CommonMark here.
+  const fenced = 'Summary.\n\n```markdown\n## Not a real heading\n```\n';
+  assert.ok(validateBody(fenced).length > 0);
 });
 
 test('validateBody rejects CommonMark heading forms that a bare ^## misses', () => {
@@ -562,4 +567,82 @@ test('insertSection drops a hand-added non-release section instead of orphaning 
   // Real release sections are still preserved.
   assert.match(out, /## v2\.33\.0/);
   assert.match(out, /## v2\.34\.0/);
+});
+
+test('validateBody rejects raw HTML that GitHub would render', () => {
+  // react-markdown ignores raw HTML, but the committed CHANGELOG.md is rendered
+  // by GitHub with these allowed, and <img src> carries no `](`.
+  for (const body of [
+    'Look <img src="https://evil.example/beacon.png">\n',
+    'Click <a href="https://evil.example/phish">here</a>\n',
+    'Summary <script>alert(1)</script>\n',
+    'Summary <iframe src="https://evil.example"></iframe>\n',
+  ]) {
+    assert.ok(validateBody(body).length > 0, `should reject: ${body}`);
+  }
+  // Prose using angle brackets is not HTML and must still pass.
+  assert.deepEqual(
+    validateBody('Latency is <2ms and `Map<string, string>` works.\n'),
+    [],
+  );
+});
+
+test('any body validateBody accepts survives a splice round-trip byte-for-byte', () => {
+  // The invariant that ties the two halves together: if validate says yes, the
+  // splice must not reshape it. This is what the fenced-`##` case violated.
+  const accepted = [
+    'Summary line.\n\n### 🐛 Bug Fixes\n\n- **fix**: yes (#1).\n',
+    'Summary.\n\n```yaml\n---\nkey: value\n```\n\n### ✨ New Features\n\n- **x**: y\n',
+    'Summary with [a link](https://github.com/hyperdxio/hyperdx/pull/1).\n',
+    'Summary.\n\n### 🔧 Improvements\n\n- **a**: one\n- **b**: two\n',
+  ];
+  for (const body of accepted) {
+    assert.deepEqual(validateBody(body), [], `precondition: ${body}`);
+    const file = insertSection(null, { ...OPTS, body });
+    assert.equal(
+      extractSection(file, OPTS).trim(),
+      body.trim(),
+      `round-trip changed the body: ${body}`,
+    );
+  }
+});
+
+test('CLI latest-version reports the newest section, or exits 2', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
+  const changelog = join(dir, 'CHANGELOG.md');
+  const bodyFile = join(dir, 'body.md');
+  writeFileSync(bodyFile, 'Body.\n');
+
+  assert.equal(runCli(['latest-version', '--changelog', changelog]).code, 2);
+  runCli([
+    'insert',
+    '--changelog',
+    changelog,
+    '--body',
+    bodyFile,
+    '--version',
+    '2.33.0',
+    '--inputs',
+    'a',
+    '--date',
+    '2026-07-01',
+  ]);
+  runCli([
+    'insert',
+    '--changelog',
+    changelog,
+    '--body',
+    bodyFile,
+    '--version',
+    '2.34.0',
+    '--inputs',
+    'b',
+    '--date',
+    '2026-07-29',
+  ]);
+
+  assert.equal(
+    runCli(['latest-version', '--changelog', changelog]).stdout,
+    '2.34.0',
+  );
 });

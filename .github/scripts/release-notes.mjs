@@ -177,10 +177,17 @@ export function validateBody(body) {
   if (/hyperdx-release-notes/.test(body)) {
     fail('Body contains a release-notes marker; the splice owns those.');
   }
+  // Checked against the RAW body, not `prose`. parseChangelog splits sections on
+  // any line starting with `## ` with no fence awareness, so a `## ` inside a
+  // code fence would be accepted here and then split the section in two on
+  // splice. The two must agree, and making parseChangelog fence-aware is the
+  // worse option: an unclosed fence would blank the rest of the file and drop
+  // real sections. So no `##` anywhere, fenced or not.
+  //
   // CommonMark allows an ATX heading indented up to three spaces and delimited
   // by a tab, so `   ## v9.9.9` renders as a real <h2> while `^## ` misses it.
-  if (/^[ \t]{0,3}#{1,2}[ \t]/m.test(prose)) {
-    fail('Body contains an H1/H2 heading; the splice owns those. Use ###.');
+  if (/^[ \t]{0,3}#{1,2}[ \t]/m.test(body)) {
+    fail('Body contains an H1/H2 heading (even inside a code fence); use ###.');
   }
   // Setext underlines forge an H2 without any leading `#`.
   if (/^[ \t]{0,3}(=+|-{2,})[ \t]*$/m.test(prose)) {
@@ -193,6 +200,17 @@ export function validateBody(body) {
   // Reference definitions, whose target may sit on the following line.
   if (/^[ \t]{0,3}\[[^\]]+\]:/m.test(prose)) {
     fail('Body uses reference-style links; use inline links only.');
+  }
+  // Raw HTML. react-markdown ignores it (no rehype-raw), but GitHub renders the
+  // committed CHANGELOG.md with these allowed, and `<img src>` carries no `](`
+  // so every link and image rule above misses it. Named rather than a blanket
+  // `<[a-z]`, which would trip on prose like `Map<string, string>`.
+  if (
+    /<\/?(a|img|script|iframe|svg|object|embed|style|form|input|link|meta|video|audio|source|base)\b/i.test(
+      body,
+    )
+  ) {
+    fail('Body contains raw HTML; use markdown.');
   }
   // Bare autolinks are CommonMark and carry no `](`.
   if (/<[a-z][a-z0-9+.-]*:/i.test(body)) {
@@ -210,10 +228,20 @@ export function validateBody(body) {
 // a fresh list is appended, because the reuse path hands back a previously
 // published body that already carries one.
 export const PACKAGE_LIST_HEADING = '### 📦 Package changelogs';
+export const PACKAGE_LIST_START = '<!-- hyperdx-package-list -->';
+export const PACKAGE_LIST_END = '<!-- /hyperdx-package-list -->';
 
+// Strip only between the markers. Slicing from the heading to end-of-body would
+// silently delete anything a maintainer wrote below the generated list.
 export function stripPackageList(body) {
-  const idx = body.indexOf(PACKAGE_LIST_HEADING);
-  return (idx === -1 ? body : body.slice(0, idx)).trimEnd() + '\n';
+  const start = body.indexOf(PACKAGE_LIST_START);
+  if (start === -1) return body.trimEnd() + '\n';
+  const endIdx = body.indexOf(PACKAGE_LIST_END, start);
+  const after =
+    endIdx === -1 ? '' : body.slice(endIdx + PACKAGE_LIST_END.length);
+  return (
+    (body.slice(0, start).trimEnd() + '\n' + after.trim()).trimEnd() + '\n'
+  );
 }
 
 const BOOLEAN_FLAGS = new Set(['latest']);
@@ -255,6 +283,16 @@ function main() {
     );
     return;
   }
+  if (cmd === 'latest-version') {
+    requireArgs(args, ['changelog']);
+    const c = existsSync(args.changelog)
+      ? readFileSync(args.changelog, 'utf-8')
+      : null;
+    const version = c === null ? null : parseChangelog(c).sections[0]?.version;
+    if (!version) process.exit(2);
+    process.stdout.write(version);
+    return;
+  }
   if (cmd === 'validate') {
     requireArgs(args, ['body']);
     const errors = validateBody(readFileSync(args.body, 'utf-8'));
@@ -285,7 +323,7 @@ function main() {
     process.stdout.write(body);
   } else {
     console.error(
-      'Usage: release-notes.mjs insert|extract|validate|strip-package-list --changelog <path> [--body <path>] --version <v> --inputs <hash> [--date <YYYY-MM-DD>] [--latest]',
+      'Usage: release-notes.mjs insert|extract|validate|latest-version|strip-package-list --changelog <path> [--body <path>] --version <v> --inputs <hash> [--date <YYYY-MM-DD>] [--latest]',
     );
     process.exit(1);
   }

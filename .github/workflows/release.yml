@@ -68,6 +68,11 @@ jobs:
       # CHANGELOG.md first so the release_changelog job can reuse an existing
       # (possibly human-edited) section when the changeset set is unchanged.
       - name: Capture release-notes state before branch rebuild
+        # always(), matching the changesets/action step below: that step force-
+        # rebuilds changeset-release/main even when an earlier step in this job
+        # failed, so without this the only copy of a maintainer's edit would be
+        # skipped and then destroyed.
+        if: always()
         continue-on-error: true
         run: |
           mkdir -p /tmp/prev-release-notes
@@ -76,6 +81,7 @@ jobs:
               > /tmp/prev-release-notes/CHANGELOG.md || true
           fi
       - name: Upload previous release notes
+        if: always()
         # continue-on-error, like the capture step above: this artifact is only
         # an optimisation for the changelog jobs. Without it a transient
         # artifact-service failure (or an upload conflict when this job is
@@ -123,8 +129,12 @@ jobs:
   # (`git log --output=<path> --format=format:<content>` writes any file), which
   # is why the boundary is the job, not the tool list.
   #
-  # Fail-soft by design: nothing else `needs` either job, so a failure here
-  # never blocks a release.
+  # Fail-soft by design: no job that builds, publishes or notifies downstream
+  # depends on either of these, so a failure here cannot block a release. They
+  # are listed in slack-notify-failure's `needs` so genuine breakage is visible
+  # rather than silent — routine conditions (a merged release PR, a lost branch
+  # race, a superseded draft) are signalled as skips and warnings, not
+  # failures, precisely so that alert stays meaningful.
   # ---------------------------------------------------------------------------
   release_changelog_draft:
     name: Draft Root Changelog
@@ -146,6 +156,8 @@ jobs:
       skip: ${{ steps.meta.outputs.skip }}
       version: ${{ steps.meta.outputs.version }}
       inputs: ${{ steps.meta.outputs.inputs }}
+      empty: ${{ steps.changesets_export.outputs.empty }}
+      changelog_sha: ${{ steps.meta.outputs.changelog_sha }}
     steps:
       - name: Checkout release branch
         uses: actions/checkout@v6
@@ -185,6 +197,12 @@ jobs:
           INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "prev_version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
+          # Blob SHA of the branch's CHANGELOG.md. Neither the app version nor
+          # the changeset hash changes when someone edits the changelog itself,
+          # so without this an older overlapping run would fast-forward its
+          # stale body straight over a newer maintainer edit.
+          echo "changelog_sha=$(git rev-parse "HEAD:CHANGELOG.md" 2>/dev/null || echo none)" \
+            >> "$GITHUB_OUTPUT"
           echo "inputs=${INPUTS}" >> "$GITHUB_OUTPUT"
 
       - name: Download previous release notes
@@ -210,8 +228,26 @@ jobs:
               --version "$VERSION" \
               --inputs "$INPUTS" \
               > /tmp/release-notes-body.md; then
-            echo "Reusing previous section (changeset set unchanged)"
-            echo "hit=true" >> "$GITHUB_OUTPUT"
+            # The reused body is a maintainer's edit, not model output, so it
+            # can legitimately contain things the validator rejects (a `---`
+            # thematic break, a link to some other host). Check it HERE and
+            # treat a failure as a cache miss, so the release regenerates with
+            # their text as context instead of the publish job going red with
+            # the edit recoverable only from an expiring artifact.
+            #
+            # Strip the generated package list first: it carries HTML comment
+            # markers that the validator would otherwise flag.
+            node .github/scripts/release-notes.mjs strip-package-list \
+              --body /tmp/release-notes-body.md
+            if node .github/scripts/release-notes.mjs validate \
+                --body /tmp/release-notes-body.md; then
+              echo "Reusing previous section (changeset set unchanged)"
+              echo "hit=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::warning::Previous section failed validation; regenerating with it as context"
+              cp /tmp/release-notes-body.md /tmp/previous-section.md
+              echo "hit=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "hit=false" >> "$GITHUB_OUTPUT"
           fi
@@ -225,6 +261,12 @@ jobs:
           PREV_VERSION: ${{ steps.meta.outputs.prev_version }}
         run: |
           set -euo pipefail
+          # The reuse step writes this file when a maintainer's edit failed
+          # validation; that is better context than anything below, so keep it.
+          if [ -f /tmp/previous-section.md ]; then
+            echo "Using the section the reuse step set aside"
+            exit 0
+          fi
           # The changeset set changed, so the section must be regenerated — but
           # a maintainer may have edited the previous one. Hand it to the
           # generator so their phrasing is preserved for changes it covers.
@@ -241,11 +283,15 @@ jobs:
           # generation of this very section" and asks for its phrasing to be
           # preserved, which would carry last release's bullets into the new
           # notes — so keep it only when it really is this version's section.
-          if [ -f /tmp/previous-section.md ] \
-             && ! node .github/scripts/release-notes.mjs extract \
-                    --changelog /tmp/prev-release-notes/CHANGELOG.md \
-                    --version "$VERSION" > /dev/null 2>&1; then
-            echo "Captured section is from ${PREV_VERSION}, not ${VERSION}; generating from scratch"
+          # Compare against PREV_VERSION, not VERSION. A new changeset that
+          # raises the bump level changes VERSION mid-cycle, and that is exactly
+          # the case --latest exists to cover — the newest section is still this
+          # cycle's work, just filed under a version we have since superseded.
+          # Only a section matching the last RELEASED version is stale context.
+          LATEST="$(node .github/scripts/release-notes.mjs latest-version \
+            --changelog /tmp/prev-release-notes/CHANGELOG.md || true)"
+          if [ -f /tmp/previous-section.md ] && [ "$LATEST" = "$PREV_VERSION" ]; then
+            echo "Newest captured section is the released ${PREV_VERSION}; generating from scratch"
             rm -f /tmp/previous-section.md
           fi
 
@@ -353,7 +399,12 @@ jobs:
     name: Publish Root Changelog
     runs-on: ubuntu-24.04
     needs: [release_changelog_draft]
-    if: needs.release_changelog_draft.outputs.skip == 'false'
+    # `empty` guards the routine merged-mid-run case: the draft uploads no
+    # artifact there, and download-artifact has no missing-artifact escape
+    # hatch, so without this the job fails on the path the draft calls routine.
+    if:
+      needs.release_changelog_draft.outputs.skip == 'false' &&
+      needs.release_changelog_draft.outputs.empty != 'true'
     timeout-minutes: 10
     permissions:
       contents: write
@@ -379,12 +430,17 @@ jobs:
         env:
           DRAFT_VERSION: ${{ needs.release_changelog_draft.outputs.version }}
           DRAFT_INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
+          DRAFT_CHANGELOG_SHA:
+            ${{ needs.release_changelog_draft.outputs.changelog_sha }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./packages/app/package.json').version")"
           INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
-          if [ "$VERSION" != "$DRAFT_VERSION" ] || [ "$INPUTS" != "$DRAFT_INPUTS" ]; then
-            echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}); skipping publish, the newer run will regenerate"
+          CHANGELOG_SHA="$(git rev-parse "HEAD:CHANGELOG.md" 2>/dev/null || echo none)"
+          if [ "$VERSION" != "$DRAFT_VERSION" ] \
+             || [ "$INPUTS" != "$DRAFT_INPUTS" ] \
+             || [ "$CHANGELOG_SHA" != "$DRAFT_CHANGELOG_SHA" ]; then
+            echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}, changelog ${DRAFT_CHANGELOG_SHA}->${CHANGELOG_SHA}); skipping publish, the newer run will regenerate"
             echo "stale=true" >> "$GITHUB_OUTPUT"
           else
             echo "stale=false" >> "$GITHUB_OUTPUT"
@@ -431,6 +487,10 @@ jobs:
           # creating links the validation step above never inspects.)
           {
             echo ""
+            # Markers, so a later strip removes only the generated list and not
+            # anything a maintainer wrote after it.
+            echo "<!-- hyperdx-package-list -->"
+            echo ""
             echo "### 📦 Package changelogs"
             echo ""
             for pkg in packages/*/package.json; do
@@ -445,6 +505,8 @@ jobs:
                 echo "- \`${name}\` ${old:-new} → ${version} — [changelog](${REPO_URL}/blob/main/${dir}/CHANGELOG.md#${anchor})"
               fi
             done
+            echo ""
+            echo "<!-- /hyperdx-package-list -->"
           } >> /tmp/release-notes-body.md
 
       - name: Splice into CHANGELOG.md and push
