@@ -921,11 +921,13 @@ describe('Metadata', () => {
 
       expect(lastQuery().clickhouse_settings).toMatchObject({
         max_rows_to_read: '0',
-        max_execution_time: 15,
+        timeout_overflow_mode: 'throw',
       });
-      expect(lastQuery().clickhouse_settings.timeout_overflow_mode).toBe(
-        'throw',
-      );
+      // Left to the client so the deployment's configured query timeout applies,
+      // matching the bound this path had before.
+      expect(
+        lastQuery().clickhouse_settings.max_execution_time,
+      ).toBeUndefined();
     });
 
     it('rejects a non-positive limit', async () => {

@@ -73,7 +73,6 @@ export type MetricNames = {
 
 // Metric-name listing. See `getMetricNames`.
 export const DEFAULT_METRIC_NAMES_LIMIT = 500;
-const METRIC_NAMES_MAX_EXECUTION_SECONDS = 15;
 
 // `%` and `_` are ILIKE wildcards, so a metric name containing them (or a
 // literal backslash) has to be escaped before being wrapped in `%...%`.
@@ -2625,16 +2624,19 @@ export class Metadata {
         connectionId,
         clickhouse_settings: {
           ...this.getClickHouseSettings(),
-          // `MetricName` is part of the sorting key on the OTel metrics tables,
-          // but the aggregate still has to scan the time range, so a row cap
-          // would error instead of returning the page — bound by time instead.
+          // Bounded by wall clock, not rows: a row cap under `ORDER BY ... LIMIT`
+          // is what made the old result an arbitrary subset, so capping rows here
+          // would reintroduce the bug this method removes. `max_execution_time`
+          // is deliberately left unset so the client applies the deployment's
+          // configured query timeout — the same effective bound this path had
+          // before. Superseded searches abort through `signal`, so only the
+          // latest pattern is ever in flight.
           max_rows_to_read: '0',
-          max_execution_time: METRIC_NAMES_MAX_EXECUTION_SECONDS,
           // Pinned, not merely left unset: `break` returns a partial aggregate
           // as HTTP 200, i.e. a short list reporting `truncated: false`, which
           // is the silent incompleteness this method exists to remove. The
           // spread above is a mutable process-wide bag, so relying on absence
-          // would let a server profile reintroduce it.
+          // would let a deployment profile reintroduce it.
           timeout_overflow_mode: 'throw',
         },
         abort_signal: signal,
