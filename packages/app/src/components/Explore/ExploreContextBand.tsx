@@ -155,6 +155,8 @@ export function ExploreContextBand({
   onSaveAsNew,
   onOpenAlert,
   onDelete,
+  saveDisabled = false,
+  saveDisabledTooltip,
 }: {
   /** Rendered source selector (kept in the page so it stays form-controlled). */
   sourceSelect: React.ReactNode;
@@ -173,6 +175,9 @@ export function ExploreContextBand({
   onSaveAsNew: () => void;
   onOpenAlert: () => void;
   onDelete: () => void;
+  /** Disable saving (e.g. SQL mode isn't persistable to saved searches yet). */
+  saveDisabled?: boolean;
+  saveDisabledTooltip?: string;
 }) {
   return (
     <Flex
@@ -211,6 +216,8 @@ export function ExploreContextBand({
             variant="primary"
             size="xs"
             onClick={onSaveView}
+            disabled={saveDisabled}
+            title={saveDisabled ? saveDisabledTooltip : undefined}
             style={{ flexShrink: 0 }}
             leftSection={<IconDeviceFloppy size={14} />}
           >
@@ -223,6 +230,8 @@ export function ExploreContextBand({
               variant="primary"
               size="xs"
               onClick={onUpdate}
+              disabled={saveDisabled}
+              title={saveDisabled ? saveDisabledTooltip : undefined}
               style={{ flexShrink: 0 }}
             >
               Save
@@ -232,6 +241,8 @@ export function ExploreContextBand({
               variant="secondary"
               size="xs"
               onClick={onSaveAsNew}
+              disabled={saveDisabled}
+              title={saveDisabled ? saveDisabledTooltip : undefined}
               style={{ flexShrink: 0 }}
             >
               Save as&hellip;

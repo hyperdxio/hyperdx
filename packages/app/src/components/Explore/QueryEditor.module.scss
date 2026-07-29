@@ -20,6 +20,11 @@
   padding: 2px 6px;
 }
 
+/* Raw-SQL body: full statement editor with a help/instructions row above it. */
+.sqlBody {
+  padding: 6px;
+}
+
 /* Blend the line-number gutter into the card. */
 .body :global(.cm-gutters) {
   background: transparent !important;
@@ -28,4 +33,16 @@
 
 .body :global(.cm-editor) {
   background: transparent !important;
+}
+
+/* Active filter chips live inside the card, below the input. Collapse the
+   strip entirely when there are no chips (ActiveFilterPills renders null). */
+.filters {
+  padding: 6px 0;
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-bg-surface);
+
+  &:empty {
+    display: none;
+  }
 }

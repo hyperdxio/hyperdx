@@ -44,6 +44,9 @@ import styles from './QueryEditor.module.scss';
 
 export type QueryLanguage = 'sql' | 'lucene';
 
+/** Query authoring mode: builder edits WHERE only, sql is a full statement. */
+export type QueryConfigMode = 'builder' | 'sql';
+
 const DEFAULT_LANGUAGES: QueryLanguage[] = ['sql', 'lucene'];
 const EMPTY_FIELDS: string[] = [];
 
@@ -56,6 +59,16 @@ export interface QueryEditorProps {
   onLanguageChange: (language: QueryLanguage) => void;
   /** Which languages appear in the toggle (also controls order). */
   languages?: QueryLanguage[];
+  /**
+   * Query authoring mode. When provided, a `Builder | SQL` toggle is shown at
+   * the far left of the header. In `'sql'` mode the CodeMirror WHERE editor is
+   * replaced by `children` (a raw-SQL editor) and the language toggle, expand
+   * toggle, and `leftSection` are hidden.
+   */
+  queryMode?: QueryConfigMode;
+  onQueryModeChange?: (mode: QueryConfigMode) => void;
+  /** Body override rendered instead of the WHERE editor when in SQL mode. */
+  children?: React.ReactNode;
   /** Expanded (controlled) — multiline vs single line. */
   expanded: boolean;
   onToggleExpanded: () => void;
@@ -63,6 +76,8 @@ export interface QueryEditorProps {
   rightSection?: React.ReactNode;
   /** Extra node next to the language tabs (e.g. a syntax-help button). */
   leftSection?: React.ReactNode;
+  /** Active filter chips rendered inside the card, below the input. */
+  filtersSlot?: React.ReactNode;
   /** Field names offered by autocomplete (both languages). */
   fields?: string[];
   placeholder?: string;
@@ -195,10 +210,14 @@ export function QueryEditor({
   language,
   onLanguageChange,
   languages = DEFAULT_LANGUAGES,
+  queryMode,
+  onQueryModeChange,
+  children,
   expanded,
   onToggleExpanded,
   rightSection,
   leftSection,
+  filtersSlot,
   fields = EMPTY_FIELDS,
   placeholder = 'Search your events…',
   onSubmit,
@@ -262,13 +281,27 @@ export function QueryEditor({
     if (view) startCompletion(view);
   }, []);
 
-  const showToggle = languages.length > 1;
+  const isSqlMode = queryMode === 'sql';
+  const showToggle = languages.length > 1 && !isSqlMode;
   const collapsedHeight = '30px';
 
   return (
     <Box className={styles.card} data-testid="explore-query-editor">
       <Flex align="center" gap="sm" className={styles.header}>
         <Flex align="center" gap="xs" wrap="nowrap">
+          {onQueryModeChange != null && (
+            <SegmentedControl
+              size="xs"
+              value={queryMode}
+              onChange={v => onQueryModeChange(v as QueryConfigMode)}
+              data={[
+                { value: 'builder', label: 'Builder' },
+                { value: 'sql', label: 'SQL' },
+              ]}
+              aria-label="Query mode"
+              data-testid="query-mode-toggle"
+            />
+          )}
           {showToggle && (
             <SegmentedControl
               size="xs"
@@ -281,7 +314,7 @@ export function QueryEditor({
               aria-label="Query language"
             />
           )}
-          {leftSection}
+          {!isSqlMode && leftSection}
         </Flex>
         <Flex
           align="center"
@@ -291,52 +324,61 @@ export function QueryEditor({
           className={styles.controls}
         >
           {rightSection}
-          <Tooltip
-            label={expanded ? 'Collapse editor' : 'Expand editor'}
-            position="bottom"
-          >
-            <ActionIcon
-              variant="subtle"
-              size="input-xs"
-              color="gray"
-              onClick={onToggleExpanded}
-              aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
-              data-testid="query-expand-toggle"
-              style={{ flexShrink: 0 }}
+          {!isSqlMode && (
+            <Tooltip
+              label={expanded ? 'Collapse editor' : 'Expand editor'}
+              position="bottom"
             >
-              {expanded ? (
-                <IconArrowsDiagonalMinimize2 size={16} />
-              ) : (
-                <IconArrowsDiagonal size={16} />
-              )}
-            </ActionIcon>
-          </Tooltip>
+              <ActionIcon
+                variant="subtle"
+                size="input-xs"
+                color="gray"
+                onClick={onToggleExpanded}
+                aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
+                data-testid="query-expand-toggle"
+                style={{ flexShrink: 0 }}
+              >
+                {expanded ? (
+                  <IconArrowsDiagonalMinimize2 size={16} />
+                ) : (
+                  <IconArrowsDiagonal size={16} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Flex>
       </Flex>
-      <Box className={styles.body} data-testid={dataTestId}>
-        <CodeMirror
-          ref={ref}
-          value={value}
-          onChange={onChange}
-          onFocus={handleFocus}
-          placeholder={placeholder}
-          theme={colorScheme === 'dark' ? 'dark' : 'light'}
-          extensions={extensions}
-          height={expanded ? 'auto' : collapsedHeight}
-          minHeight={expanded ? '96px' : collapsedHeight}
-          maxHeight={expanded ? `${maxExpandedHeight}px` : collapsedHeight}
-          basicSetup={{
-            lineNumbers: true,
-            foldGutter: false,
-            highlightActiveLine: false,
-            highlightActiveLineGutter: false,
-            autocompletion: false,
-            bracketMatching: true,
-            closeBrackets: true,
-            searchKeymap: false,
-          }}
-        />
-      </Box>
+      {isSqlMode ? (
+        <Box data-testid={dataTestId}>{children}</Box>
+      ) : (
+        <Box className={styles.body} data-testid={dataTestId}>
+          <CodeMirror
+            ref={ref}
+            value={value}
+            onChange={onChange}
+            onFocus={handleFocus}
+            placeholder={placeholder}
+            theme={colorScheme === 'dark' ? 'dark' : 'light'}
+            extensions={extensions}
+            height={expanded ? 'auto' : collapsedHeight}
+            minHeight={expanded ? '96px' : collapsedHeight}
+            maxHeight={expanded ? `${maxExpandedHeight}px` : collapsedHeight}
+            basicSetup={{
+              lineNumbers: true,
+              foldGutter: false,
+              highlightActiveLine: false,
+              highlightActiveLineGutter: false,
+              autocompletion: false,
+              bracketMatching: true,
+              closeBrackets: true,
+              searchKeymap: false,
+            }}
+          />
+        </Box>
+      )}
+      {filtersSlot != null && (
+        <Box className={styles.filters}>{filtersSlot}</Box>
+      )}
     </Box>
   );
 }

@@ -163,10 +163,17 @@ export function SearchViewSwitcher({
   value,
   onChange,
   sourceKind,
+  chartTypesOnly = false,
 }: {
   value: SearchView;
   onChange: (view: SearchView) => void;
   sourceKind?: SourceKind;
+  /**
+   * When true, only the aggregated chart views are shown. Used by SQL mode,
+   * where the switcher picks a raw-SQL display type (the aggregated views map
+   * 1:1 to the raw-SQL display types) rather than a builder view.
+   */
+  chartTypesOnly?: boolean;
 }) {
   const options = useMemo(
     () =>
@@ -181,9 +188,12 @@ export function SearchViewSwitcher({
         // (time series / number / table / bar / pie / treemap) make sense —
         // the List, Event deltas, and Event patterns views are hidden.
         if (sourceKind === SourceKind.Metric && !v.aggregated) return false;
+        // SQL mode renders a single raw-SQL statement as a chart display type,
+        // so only the aggregated (chart) views apply.
+        if (chartTypesOnly && !v.aggregated) return false;
         return true;
       }),
-    [sourceKind],
+    [sourceKind, chartTypesOnly],
   );
 
   return (

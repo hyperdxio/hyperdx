@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
@@ -10,7 +11,8 @@ import SyntaxReferenceModal from '@/components/SearchInput/SyntaxReferenceModal'
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 
-import { QueryEditor, QueryLanguage } from './QueryEditor';
+import { ExploreRawSqlEditor } from './ExploreRawSqlEditor';
+import { QueryConfigMode, QueryEditor, QueryLanguage } from './QueryEditor';
 
 const STORAGE_KEY = 'hdx-search-where-language';
 
@@ -37,6 +39,19 @@ export type ExploreQueryEditorProps = {
   onToggleExpand: () => void;
   /** Right-aligned header controls (time picker, Live, Run, ...). */
   controls?: React.ReactNode;
+  /** Active filter chips rendered inside the card, below the input. */
+  filtersSlot?: React.ReactNode;
+  /**
+   * Query authoring mode. When provided, a `Builder | SQL` toggle is shown; in
+   * `'sql'` mode the WHERE editor is swapped for a raw-SQL editor bound to
+   * `sqlTemplateName`.
+   */
+  queryMode?: QueryConfigMode;
+  onQueryModeChange?: (mode: QueryConfigMode) => void;
+  /** Form field name for the raw-SQL template (SQL mode). */
+  sqlTemplateName?: string;
+  /** Display type the raw-SQL query targets (drives macros/placeholder/help). */
+  rawSqlDisplayType?: DisplayType;
   'data-testid'?: string;
 } & TableConnectionChoice &
   UseControllerProps<any>;
@@ -61,6 +76,11 @@ export function ExploreQueryEditor({
   isExpanded,
   onToggleExpand,
   controls,
+  filtersSlot,
+  queryMode,
+  onQueryModeChange,
+  sqlTemplateName = 'sqlTemplate',
+  rawSqlDisplayType = DisplayType.Table,
   'data-testid': dataTestId,
 }: ExploreQueryEditorProps) {
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
@@ -117,9 +137,12 @@ export function ExploreQueryEditor({
         language={language}
         onLanguageChange={handleLanguageChange}
         languages={['sql', 'lucene']}
+        queryMode={queryMode}
+        onQueryModeChange={onQueryModeChange}
         expanded={isExpanded}
         onToggleExpanded={onToggleExpand}
         rightSection={controls}
+        filtersSlot={filtersSlot}
         leftSection={
           <Tooltip label="Syntax reference" withArrow position="top">
             <ActionIcon
@@ -142,7 +165,19 @@ export function ExploreQueryEditor({
         onSubmit={onSubmit}
         enableHotkey={enableHotkey}
         data-testid={dataTestId}
-      />
+      >
+        {queryMode === 'sql' ? (
+          <ExploreRawSqlEditor
+            control={control}
+            name={sqlTemplateName as FieldPath<any>}
+            tableConnections={_tableConnections ?? []}
+            displayType={rawSqlDisplayType}
+            dateRange={dateRange}
+            timestampValueExpression={source?.timestampValueExpression}
+            onSubmit={onSubmit}
+          />
+        ) : null}
+      </QueryEditor>
     </>
   );
 }

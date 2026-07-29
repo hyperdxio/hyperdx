@@ -28,6 +28,7 @@ import {
   ClickHouseQueryError,
   ColumnMeta,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { renderBuilderConfigAsSqlTemplate } from '@hyperdx/common-utils/dist/core/builderToRawSql';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
@@ -40,8 +41,12 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  isLogSource,
+  isMetricSource as isMetricSourceGuard,
   isTraceSource,
   MetricsDataType,
+  RawSqlChartConfig,
+  RawSqlSavedChartConfig,
   SavedChartConfig,
   SourceKind,
   TMetricSource,
@@ -138,6 +143,7 @@ import { DBTreemapChart } from './components/DBTreemapChart';
 import { ExploreContextBand } from './components/Explore/ExploreContextBand';
 import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
+import { type QueryConfigMode } from './components/Explore/QueryEditor';
 import { SeveritySummary } from './components/Explore/SeveritySummary';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
@@ -166,6 +172,7 @@ import {
 } from './components/TimePicker/utils';
 import {
   useColumns,
+  useMetadataWithSettings,
   useResolvedDateTimeColumns,
   useTableMetadata,
 } from './hooks/useMetadata';
@@ -205,6 +212,10 @@ const SearchConfigSchema = z.object({
   source: z.string(),
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']),
+  // Query mode: 'builder' edits only the WHERE predicate (SQL/Lucene) and lets
+  // the page assemble the rest; 'sql' is a full raw-SQL statement (sqlTemplate).
+  configType: z.enum(['builder', 'sql']),
+  sqlTemplate: z.string(),
   orderBy: z.string(),
   filters: z.array(
     z.union([
@@ -1041,6 +1052,8 @@ const queryStateMap = {
   where: parseAsStringEncoded,
   select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
+  configType: parseAsStringEnum<'builder' | 'sql'>(['builder', 'sql']),
+  sqlTemplate: parseAsStringEncoded,
   filters: parseAsJsonEncoded<Filter[]>(),
   orderBy: parseAsStringEncoded,
 };
@@ -1166,6 +1179,12 @@ function DBExplorePage() {
   const [view, setView] = useSearchView();
   const [aggConfig, setAggConfig] = useSearchAggConfig();
 
+  // Submitted query mode (drives results rendering + control gating). The live
+  // form value (`inputConfigType`) drives the query-editor toggle instead.
+  const searchedConfigType: QueryConfigMode =
+    searchedConfig.configType ?? 'builder';
+  const isSqlMode = searchedConfigType === 'sql';
+
   // Legacy 3-mode value still consumed by the filters sidebar (denoise gating)
   // and a few source-capability checks below. New view types collapse onto
   // 'results' for those purposes.
@@ -1203,6 +1222,15 @@ function DBExplorePage() {
     }
   }, [isMetricSource, view, setView]);
 
+  useEffect(() => {
+    // SQL mode renders a single raw-SQL statement as a chart display type, so
+    // the raw List / heatmap / patterns views don't apply — default to the
+    // Grouped table view when one of those is active.
+    if (isSqlMode && !isAggregatedSearchView(view)) {
+      setView('table');
+    }
+  }, [isSqlMode, view, setView]);
+
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
     useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
 
@@ -1224,13 +1252,15 @@ function DBExplorePage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, getValues, reset, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
         where: searchedConfig.where || '',
         whereLanguage:
           searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
+        configType: searchedConfig.configType ?? 'builder',
+        sqlTemplate: searchedConfig.sqlTemplate ?? '',
         source:
           searchedConfig.source ||
           (savedSearchId || directTraceId ? '' : defaultSourceId),
@@ -1301,6 +1331,8 @@ function DBExplorePage() {
         where: searchedConfig?.where ?? '',
         whereLanguage:
           searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'sql',
+        configType: searchedConfig?.configType ?? 'builder',
+        sqlTemplate: searchedConfig?.sqlTemplate ?? '',
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
@@ -1379,11 +1411,22 @@ function DBExplorePage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
+      ({
+        select,
+        where,
+        whereLanguage,
+        configType,
+        sqlTemplate,
+        source,
+        filters,
+        orderBy,
+      }) => {
         setSearchedConfig({
           select,
           where,
           whereLanguage,
+          configType,
+          sqlTemplate,
           source,
           filters,
           orderBy,
@@ -1588,6 +1631,8 @@ function DBExplorePage() {
   }, [_queryErrors]);
   const inputWhere = useWatch({ name: 'where', control });
   const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
+  const inputConfigType: QueryConfigMode =
+    useWatch({ name: 'configType', control }) ?? 'builder';
   // query suggestion for 'where' if error
   const whereSuggestions = useSqlSuggestions({
     input: inputWhere,
@@ -2109,6 +2154,132 @@ function DBExplorePage() {
     } as SavedChartConfig;
   }, [aggViewChartConfig, savedSearch?.name, searchedConfig]);
 
+  // Raw-SQL config for SQL mode. Bypasses buildSearchChartConfig entirely: the
+  // user-authored sqlTemplate owns the whole statement, and the source metadata
+  // is carried over so macros ($__sourceTable, $__filters) resolve. The display
+  // type is picked from the current chart view (aggregated views map 1:1 to raw
+  // SQL display types).
+  const rawSqlChartConfig = useMemo<
+    (RawSqlChartConfig & { dateRange: [Date, Date] }) | undefined
+  >(() => {
+    if (!isSqlMode || !searchedSource || !searchedConfig.source) {
+      return undefined;
+    }
+    const displayType = isAggregatedSearchView(view)
+      ? searchViewToDisplayType(view)
+      : DisplayType.Table;
+    return {
+      configType: 'sql',
+      sqlTemplate: searchedConfig.sqlTemplate ?? '',
+      connection: searchedSource.connection,
+      source: searchedConfig.source,
+      from: searchedSource.from,
+      displayType,
+      granularity: view === 'timeseries' ? 'auto' : undefined,
+      dateRange: searchedTimeRange,
+      filters: searchedConfig.filters ?? [],
+      implicitColumnExpression:
+        isLogSource(searchedSource) || isTraceSource(searchedSource)
+          ? searchedSource.implicitColumnExpression
+          : undefined,
+      bodyExpression: isLogSource(searchedSource)
+        ? searchedSource.bodyExpression
+        : undefined,
+      useTextIndexForImplicitColumn:
+        isLogSource(searchedSource) || isTraceSource(searchedSource)
+          ? searchedSource.useTextIndexForImplicitColumn
+          : undefined,
+      metricTables: isMetricSourceGuard(searchedSource)
+        ? searchedSource.metricTables
+        : undefined,
+    };
+  }, [
+    isSqlMode,
+    searchedSource,
+    searchedConfig.source,
+    searchedConfig.sqlTemplate,
+    searchedConfig.filters,
+    view,
+    searchedTimeRange,
+  ]);
+
+  // Dashboard-tile config for the "Add to dashboard" action in SQL mode: a raw
+  // SQL SavedChartConfig (dashboards already support configType 'sql').
+  const rawSqlAddToDashboardConfig = useMemo<
+    RawSqlSavedChartConfig | undefined
+  >(() => {
+    if (!rawSqlChartConfig) return undefined;
+    return {
+      name: savedSearch?.name || 'Explore SQL chart',
+      configType: 'sql',
+      sqlTemplate: rawSqlChartConfig.sqlTemplate,
+      connection: rawSqlChartConfig.connection,
+      source: searchedConfig.source ?? undefined,
+      displayType: rawSqlChartConfig.displayType ?? DisplayType.Table,
+      granularity: rawSqlChartConfig.granularity,
+    };
+  }, [rawSqlChartConfig, savedSearch?.name, searchedConfig.source]);
+
+  const metadata = useMetadataWithSettings();
+
+  // Builder -> SQL prefill: on first switch to SQL mode, seed the empty SQL
+  // editor with a macro-based template generated from the current builder
+  // config so the user starts from a working statement.
+  const handleQueryModeChange = useCallback(
+    (mode: QueryConfigMode) => {
+      setValue('configType', mode, { shouldDirty: true });
+      if (mode !== 'sql') return;
+      const current = getValues('sqlTemplate');
+      if (current && current.trim()) return;
+
+      // aggViewChartConfig already has a raw-SQL-compatible display type and an
+      // array select; for non-aggregated views synthesize a simple count().
+      const base =
+        aggViewChartConfig ??
+        (chartConfig
+          ? {
+              ...chartConfig,
+              displayType: DisplayType.Table,
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              groupBy: undefined,
+              orderBy: undefined,
+              granularity: undefined,
+              dateRange: searchedTimeRange,
+            }
+          : undefined);
+      if (!base) return;
+
+      renderBuilderConfigAsSqlTemplate(
+        base as BuilderChartConfigWithDateRange,
+        metadata,
+      )
+        .then(result => {
+          if (result.isError) return;
+          // Don't clobber a hand-edit made while generation was in flight, and
+          // only write while still in SQL mode.
+          if (
+            getValues('configType') === 'sql' &&
+            !getValues('sqlTemplate')?.trim()
+          ) {
+            setValue('sqlTemplate', result.sql, { shouldDirty: true });
+          }
+        })
+        .catch(() => {
+          // Leave the editor empty (with its placeholder) if conversion fails.
+        });
+    },
+    [
+      setValue,
+      getValues,
+      aggViewChartConfig,
+      chartConfig,
+      searchedTimeRange,
+      metadata,
+    ],
+  );
+
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
       e.preventDefault();
@@ -2230,6 +2401,8 @@ function DBExplorePage() {
     } satisfies BuilderChartConfigWithDateRange;
   }, [chartConfig, severityExpression, searchedTimeRange, aliasWith]);
 
+  // Severity pills reflect the structured filter for the severity column, so
+  // they render as filter chips in the query bar alongside sidebar filters.
   const activeSeverityValues = useMemo<string[]>(() => {
     if (!severityProperty) return [];
     const included = searchFilters.filters[severityProperty]?.included;
@@ -2239,7 +2412,18 @@ function DBExplorePage() {
   const handleSeverityToggle = useCallback(
     (values: string[], isActive: boolean) => {
       if (!severityProperty) return;
-      searchFilters.setIncludedValues(severityProperty, isActive ? [] : values);
+      // Merge with any severity values already selected so error + warning can
+      // be active at once (adding one bucket doesn't drop the other).
+      const next = new Set(
+        Array.from(searchFilters.filters[severityProperty]?.included ?? []).map(
+          String,
+        ),
+      );
+      for (const v of values) {
+        if (isActive) next.delete(v);
+        else next.add(v);
+      }
+      searchFilters.setIncludedValues(severityProperty, Array.from(next));
     },
     [searchFilters, severityProperty],
   );
@@ -2493,6 +2677,8 @@ function DBExplorePage() {
           onSaveView={onSaveSearch}
           onUpdate={() => setSaveSearchModalState('update')}
           onSaveAsNew={() => setSaveSearchModalState('create')}
+          saveDisabled={inputConfigType === 'sql'}
+          saveDisabledTooltip="SQL searches aren't savable yet"
           onOpenAlert={openAlertModal}
           onDelete={() =>
             deleteSavedSearch.mutate(savedSearch?.id ?? '', {
@@ -2525,6 +2711,21 @@ function DBExplorePage() {
             sourceId={inputSource}
             isExpanded={isQueryExpanded}
             onToggleExpand={toggleQueryExpanded}
+            queryMode={inputConfigType}
+            onQueryModeChange={handleQueryModeChange}
+            sqlTemplateName="sqlTemplate"
+            rawSqlDisplayType={
+              isAggregatedSearchView(view)
+                ? searchViewToDisplayType(view)
+                : DisplayType.Table
+            }
+            filtersSlot={
+              <ActiveFilterPills
+                searchFilters={searchFilters}
+                chartConfig={filtersChartConfig}
+                dateTimeColumns={dateTimeColumns}
+              />
+            }
             controls={
               <>
                 <TimePicker
@@ -2562,12 +2763,6 @@ function DBExplorePage() {
             }
           />
         </Box>
-        <ActiveFilterPills
-          searchFilters={searchFilters}
-          chartConfig={filtersChartConfig}
-          dateTimeColumns={dateTimeColumns}
-          mt={6}
-        />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
@@ -2642,6 +2837,7 @@ function DBExplorePage() {
                     <ExploreResultsToolbar
                       resultsCount={
                         !isMetricSource &&
+                        !isSqlMode &&
                         histogramTimeChartConfig && (
                           <ResultsStats
                             countConfig={histogramTimeChartConfig}
@@ -2658,6 +2854,7 @@ function DBExplorePage() {
                       }
                       stats={
                         !isMetricSource &&
+                        !isSqlMode &&
                         severitySummaryConfig && (
                           <SeveritySummary
                             config={severitySummaryConfig}
@@ -2680,79 +2877,91 @@ function DBExplorePage() {
                           value={view}
                           onChange={setView}
                           sourceKind={searchedSource?.kind}
+                          chartTypesOnly={isSqlMode}
                         />
                       }
                       addToDashboard={
-                        isAggregatedSearchView(view) &&
-                        addToDashboardConfig && (
-                          <AddToDashboardButton config={addToDashboardConfig} />
-                        )
+                        isSqlMode
+                          ? rawSqlAddToDashboardConfig && (
+                              <AddToDashboardButton
+                                config={rawSqlAddToDashboardConfig}
+                              />
+                            )
+                          : isAggregatedSearchView(view) &&
+                            addToDashboardConfig && (
+                              <AddToDashboardButton
+                                config={addToDashboardConfig}
+                              />
+                            )
                       }
                       sortControl={
-                        <>
-                          {view === 'list' && (
-                            <SearchSortMenu
-                              groupLabel="Sort by"
-                              options={displayedColumns.map(column => ({
-                                value: column,
-                                label: column,
-                              }))}
-                              activeField={listSort.field}
-                              direction={listSort.direction}
-                              onChange={applyListSort}
-                              onRevert={revertListSort}
-                              canRevert={!!searchedConfig.orderBy}
-                              sqlSlot={
-                                <SQLInlineEditorControlled
-                                  tableConnection={inputSourceTableConnection}
-                                  control={control}
-                                  name="orderBy"
-                                  defaultValue={defaultSearchConfig.orderBy}
-                                  onSubmit={onSubmit}
-                                  label="ORDER BY"
-                                  size="xs"
-                                  dateRange={searchedTimeRange}
-                                  sourceId={inputSource}
-                                />
-                              }
-                            />
-                          )}
-                          {(view === 'table' ||
-                            view === 'bar' ||
-                            view === 'pie' ||
-                            view === 'treemap') && (
-                            <SearchSortMenu
-                              groupLabel="Sort groups by"
-                              options={[
-                                { value: 'value', label: 'Value' },
-                                { value: 'name', label: 'Name' },
-                              ]}
-                              activeField={aggConfig.sort}
-                              direction={aggConfig.sortDir}
-                              onChange={(field, dir) => {
-                                setAggConfig({
-                                  sort: field as AggSortField,
-                                  sortDir: dir,
-                                });
-                                onSubmit();
-                              }}
-                              onRevert={() => {
-                                setAggConfig({
-                                  sort: 'value',
-                                  sortDir: 'desc',
-                                });
-                                onSubmit();
-                              }}
-                              canRevert={
-                                aggConfig.sort !== 'value' ||
-                                aggConfig.sortDir !== 'desc'
-                              }
-                            />
-                          )}
-                        </>
+                        !isSqlMode && (
+                          <>
+                            {view === 'list' && (
+                              <SearchSortMenu
+                                groupLabel="Sort by"
+                                options={displayedColumns.map(column => ({
+                                  value: column,
+                                  label: column,
+                                }))}
+                                activeField={listSort.field}
+                                direction={listSort.direction}
+                                onChange={applyListSort}
+                                onRevert={revertListSort}
+                                canRevert={!!searchedConfig.orderBy}
+                                sqlSlot={
+                                  <SQLInlineEditorControlled
+                                    tableConnection={inputSourceTableConnection}
+                                    control={control}
+                                    name="orderBy"
+                                    defaultValue={defaultSearchConfig.orderBy}
+                                    onSubmit={onSubmit}
+                                    label="ORDER BY"
+                                    size="xs"
+                                    dateRange={searchedTimeRange}
+                                    sourceId={inputSource}
+                                  />
+                                }
+                              />
+                            )}
+                            {(view === 'table' ||
+                              view === 'bar' ||
+                              view === 'pie' ||
+                              view === 'treemap') && (
+                              <SearchSortMenu
+                                groupLabel="Sort groups by"
+                                options={[
+                                  { value: 'value', label: 'Value' },
+                                  { value: 'name', label: 'Name' },
+                                ]}
+                                activeField={aggConfig.sort}
+                                direction={aggConfig.sortDir}
+                                onChange={(field, dir) => {
+                                  setAggConfig({
+                                    sort: field as AggSortField,
+                                    sortDir: dir,
+                                  });
+                                  onSubmit();
+                                }}
+                                onRevert={() => {
+                                  setAggConfig({
+                                    sort: 'value',
+                                    sortDir: 'desc',
+                                  });
+                                  onSubmit();
+                                }}
+                                canRevert={
+                                  aggConfig.sort !== 'value' ||
+                                  aggConfig.sortDir !== 'desc'
+                                }
+                              />
+                            )}
+                          </>
+                        )
                       }
                       columnsControl={
-                        view === 'list' && (
+                        view === 'list' &&
+                        !isSqlMode && (
                           <SearchColumnPicker
                             availableColumns={availableColumns}
                             selectedColumns={displayedColumns}
@@ -2779,17 +2988,25 @@ function DBExplorePage() {
                       }
                       overflowMenu={
                         <ResultsOverflowMenu
-                          config={{
-                            ...chartConfig,
-                            dateRange: searchedTimeRange,
-                          }}
-                          sqlConfig={histogramTimeChartConfig ?? undefined}
+                          config={
+                            isSqlMode && rawSqlChartConfig
+                              ? rawSqlChartConfig
+                              : {
+                                  ...chartConfig,
+                                  dateRange: searchedTimeRange,
+                                }
+                          }
+                          sqlConfig={
+                            isSqlMode
+                              ? undefined
+                              : (histogramTimeChartConfig ?? undefined)
+                          }
                           showGeneratedSql={!isMetricSource}
                         />
                       }
                     />
                   </Box>
-                  {isAggregatedSearchView(view) && (
+                  {isAggregatedSearchView(view) && !isSqlMode && (
                     <SearchAggControls
                       view={view}
                       config={aggConfig}
@@ -2799,7 +3016,7 @@ function DBExplorePage() {
                       metricSource={searchedMetricSource}
                     />
                   )}
-                  {viewShowsHistogram(view) && !hasQueryError && (
+                  {viewShowsHistogram(view) && !hasQueryError && !isSqlMode && (
                     <Box
                       className={searchPageStyles.timeChartContainer}
                       mih="0"
@@ -2939,6 +3156,59 @@ function DBExplorePage() {
                         )}
                       </div>
                     </>
+                  ) : isSqlMode ? (
+                    <Box flex="1" mih="0" px="sm" py="xs">
+                      {rawSqlChartConfig &&
+                        (view === 'timeseries' ? (
+                          <DBTimeChart
+                            sourceId={searchedConfig.source ?? undefined}
+                            config={rawSqlChartConfig}
+                            enabled={isReady}
+                            showMVOptimizationIndicator={false}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          />
+                        ) : view === 'number' ? (
+                          <DBNumberChart
+                            config={rawSqlChartConfig}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            showMVOptimizationIndicator={false}
+                            errorVariant="inline"
+                          />
+                        ) : view === 'bar' ? (
+                          <DBBarChart
+                            config={rawSqlChartConfig}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            showMVOptimizationIndicator={false}
+                            errorVariant="inline"
+                          />
+                        ) : view === 'pie' ? (
+                          <DBPieChart
+                            config={rawSqlChartConfig}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            showMVOptimizationIndicator={false}
+                            errorVariant="inline"
+                          />
+                        ) : view === 'treemap' ? (
+                          <DBTreemapChart
+                            config={rawSqlChartConfig}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            showMVOptimizationIndicator={false}
+                            errorVariant="inline"
+                          />
+                        ) : (
+                          <DBTableChart
+                            config={rawSqlChartConfig}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            showMVOptimizationIndicator={false}
+                            errorVariant="inline"
+                          />
+                        ))}
+                    </Box>
                   ) : view === 'patterns' ? (
                     <Box flex="1" mih="0" px="sm">
                       <PatternTable
