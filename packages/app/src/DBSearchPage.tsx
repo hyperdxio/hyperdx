@@ -549,8 +549,18 @@ function SaveSearchModalComponent({
             tags: tags,
           });
 
-          router.push(`/search/${savedSearch.id}${window.location.search}`);
-          onClose();
+          // useQueryStates can restore the previous search URL during a
+          // client-side transition. Reload the saved-search route instead so
+          // the newly created search hydrates from its stored configuration,
+          // rather than stale query state from the previous search. Preserve
+          // only the independent time range, which is not saved-search config.
+          window.location.assign(
+            buildSavedSearchNavigationUrl(
+              router.basePath,
+              savedSearch.id,
+              window.location.search,
+            ),
+          );
         } catch (error) {
           console.error('Error creating saved search:', error);
           notifications.show({
@@ -886,6 +896,33 @@ const queryStateMap = {
   filters: parseAsJsonEncoded<Filter[]>(),
   orderBy: parseAsStringEncoded,
 };
+
+export function buildSavedSearchNavigationUrl(
+  basePath: string,
+  savedSearchId: string,
+  currentSearch: string,
+) {
+  const currentParams = new URLSearchParams(currentSearch);
+  const timeRangeParams = new URLSearchParams();
+  const from = currentParams.get('from');
+  const to = currentParams.get('to');
+
+  if (from != null && to != null) {
+    timeRangeParams.set('from', from);
+    timeRangeParams.set('to', to);
+
+    // An explicit absolute range must remain in range mode after the saved
+    // search reload; otherwise the default live-tail mode can take over.
+    if (currentParams.get('isLive') === 'false') {
+      timeRangeParams.set('isLive', 'false');
+    }
+  }
+
+  const timeRangeSearch = timeRangeParams.toString();
+  return `${basePath}/search/${savedSearchId}${
+    timeRangeSearch ? `?${timeRangeSearch}` : ''
+  }`;
+}
 
 export function useSearchTelemetry({
   isAnyQueryFetching,
