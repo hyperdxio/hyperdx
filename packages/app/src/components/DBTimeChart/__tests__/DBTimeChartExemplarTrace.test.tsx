@@ -70,10 +70,10 @@ jest.mock('next/router', () => ({
   default: { push: (...args: unknown[]) => mockRouterPush(...args) },
 }));
 
-jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
+jest.mock('@/components/MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );
-jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
+jest.mock('@/components/charts/DateRangeIndicator', () => jest.fn(() => null));
 
 const exemplar: Exemplar = {
   timestamp: 1704067200000,

@@ -7,15 +7,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import cx from 'classnames';
-import { add, isSameSecond, sub } from 'date-fns';
-import { withErrorBoundary } from 'react-error-boundary';
 import {
   Area,
   AreaChart,
   Bar,
   BarChart,
-  BarProps,
   CartesianGrid,
   Legend,
   ReferenceArea,
@@ -26,585 +22,47 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AxisDomain } from 'recharts/types/util/types';
-import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType, Exemplar } from '@hyperdx/common-utils/dist/types';
-import { Button, Popover, Tooltip as MantineTooltip } from '@mantine/core';
+import { Button, Tooltip as MantineTooltip } from '@mantine/core';
 import { IconZoomReset } from '@tabler/icons-react';
 
-import type { NumberFormat } from '@/types';
-import { COLORS, formatNumber, truncateMiddle } from '@/utils';
-
-import {
-  ChartAnnotation,
-  getAnnotationElements,
-} from './components/charts/chartAnnotations';
-import {
-  ChartTooltipContainer,
-  ChartTooltipHeader,
-  ChartTooltipItem,
-  toViewportPoint,
-  useChartTooltipZIndex,
-} from './components/charts/ChartTooltip';
+import { useChartSyncId } from '@/chartSync';
+import { findNearestSeriesKey, LineData } from '@/ChartUtils';
+import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { toViewportPoint } from '@/components/charts/ChartTooltip';
 import {
   clampExemplarX,
   clampExemplarY,
-  computeExemplarPoints,
-  computeExemplarYBounds,
   ExemplarDot,
-} from './components/Exemplars';
-import { useChartSyncId } from './chartSync';
+} from '@/components/Exemplars';
+import type { NumberFormat } from '@/types';
+import { useFormatTime } from '@/useFormatTime';
+import { COLORS, formatNumber } from '@/utils';
+
 import {
-  findNearestSeriesKey,
-  LineData,
-  MAX_TIME_CHART_SERIES,
-  toStartOfInterval,
-} from './ChartUtils';
-import { useFormatTime } from './useFormatTime';
+  type ActiveClickPayload,
+  buildActiveClickSeries,
+  getActiveLabel,
+  getSeriesDisplayName,
+  getVisibleLineData,
+} from './chartData';
+import { LegendRenderer } from './ChartLegend';
+import { CaptureActiveDot, StackedBarWithOverlap } from './chartPrimitives';
+import { HDXLineChartTooltip } from './ChartTooltipContent';
+import {
+  ANNOTATION_LABEL_HEADROOM,
+  NEAREST_SERIES_MAX_DISTANCE_PX,
+  SINGLE_POINT_BAR_RIGHT_PADDING,
+  SINGLE_POINT_BAR_WIDTH_RATIO,
+  Y_AXIS_WIDTH,
+} from './constants';
+import { useChartScales } from './useChartScales';
+import { useExemplarMarkers } from './useExemplarMarkers';
 
-import styles from '@styles/HDXLineChart.module.scss';
-
-const MAX_LEGEND_ITEMS = 4;
-
-// Vertical pixel distance within which a series' line counts as "near" the
-// cursor for tooltip highlighting. Beyond this, no row is emphasized so the
-// tooltip is not misleading when the pointer is in empty space.
-const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
-
-// Gap below the data point for the hover tooltip. Kept equal to the pinned
-// tooltip's Popover `offset` so both land in the same spot.
-const TOOLTIP_POINT_OFFSET_PX = 12;
-
-const Y_AXIS_WIDTH = 40;
-const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
-const SINGLE_POINT_BAR_WIDTH_RATIO = 0.8;
-// Top margin (px) reserved above the plot for annotation labels ("Alert"/"OK"),
-// added only when a chart is showing annotations so other charts keep their
-// tighter default headroom.
-const ANNOTATION_LABEL_HEADROOM = 18;
-
-type TooltipPayload = {
-  dataKey: string;
-  name: string;
-  value: number;
-  color?: string;
-  stroke?: string;
-  strokeWidth?: number;
-  strokeDasharray?: string;
-  opacity?: number;
-};
-
-export const TooltipItem = memo(
-  ({
-    p,
-    previous,
-    numberFormat,
-    highlighted,
-    dimmed,
-  }: {
-    p: TooltipPayload;
-    previous?: TooltipPayload;
-    numberFormat?: NumberFormat;
-    highlighted?: boolean;
-    dimmed?: boolean;
-  }) => {
-    return (
-      <ChartTooltipItem
-        color={p.color ?? ''}
-        name={p.name ?? p.dataKey}
-        value={p.value}
-        numberFormat={numberFormat}
-        indicator="line"
-        strokeDasharray={p.strokeDasharray}
-        opacity={p.opacity}
-        previous={previous?.value}
-        highlighted={highlighted}
-        dimmed={dimmed}
-      />
-    );
-  },
-);
-
-type HDXLineChartTooltipProps = {
-  lineDataMap: { [keyName: string]: LineData };
-  previousPeriodOffsetSeconds?: number;
-  numberFormat?: NumberFormat;
-  numberFormatByKey: Map<string, NumberFormat>;
-  /** Per-series active-point pixel Y, captured by the Area active dots. */
-  activePointYByKeyRef: React.MutableRefObject<Map<string, number>>;
-  /** The chart's outer container; its viewport rect anchors this tooltip. */
-  containerRef: React.MutableRefObject<HTMLDivElement | null>;
-} & Record<string, any>;
-
-/**
- * The recharts `<Tooltip>` content used for the HOVER tooltip (on the hovered
- * chart and its synced followers). Clicking pins ChartSeriesTooltip instead.
- *
- * Because it's given `portal={document.body}`, recharts skips its own transform
- * positioning, so this content self-anchors at the active point with
- * `position: fixed` (container rect + `coordinate`) — matching the pinned
- * tooltip's anchor, and escaping the chart's bounds so edges aren't clipped.
- */
-const HDXLineChartTooltip = withErrorBoundary(
-  memo((props: HDXLineChartTooltipProps) => {
-    const {
-      active,
-      payload,
-      label,
-      numberFormat,
-      numberFormatByKey,
-      lineDataMap,
-      previousPeriodOffsetSeconds,
-      activePointYByKeyRef,
-      containerRef,
-    } = props;
-    const typedPayload = payload as TooltipPayload[];
-
-    const tooltipZIndex = useChartTooltipZIndex();
-
-    const payloadByKey = useMemo(
-      () => new Map(typedPayload.map(p => [p.dataKey, p])),
-      [typedPayload],
-    );
-
-    if (active && payload && payload.length) {
-      // No onClose: hover renders the X hidden (kept for layout parity).
-      const header = (
-        <ChartTooltipHeader
-          labelSeconds={label}
-          previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-        />
-      );
-
-      // Bold the line nearest the cursor by comparing pointer Y to each series'
-      // active-dot Y. The dots write their positions earlier in this same render
-      // (Recharts draws graphical items before the tooltip), so it's current.
-      const pointerY: number | undefined = props.coordinate?.y;
-      // eslint-disable-next-line react-hooks/refs
-      const activePointYByKey = activePointYByKeyRef?.current ?? undefined;
-      const nearestSeriesKey =
-        typedPayload.length > 1
-          ? findNearestSeriesKey(
-              activePointYByKey,
-              typedPayload.map(p => p.dataKey),
-              pointerY,
-              NEAREST_SERIES_MAX_DISTANCE_PX,
-            )
-          : undefined;
-
-      // Anchor at the active point (see the component docblock for why fixed).
-      const pointX = props.coordinate?.x;
-      const pointY = props.coordinate?.y;
-      // eslint-disable-next-line react-hooks/refs
-      const containerRect = containerRef?.current?.getBoundingClientRect();
-      const anchor =
-        typeof pointX === 'number' &&
-        typeof pointY === 'number' &&
-        containerRect != null
-          ? toViewportPoint(containerRect, { x: pointX, y: pointY })
-          : undefined;
-      const anchorStyle: React.CSSProperties =
-        anchor != null
-          ? {
-              position: 'fixed',
-              left: anchor.x,
-              top: anchor.y + TOOLTIP_POINT_OFFSET_PX,
-              transform: 'translateX(-50%)',
-              pointerEvents: 'none',
-              // z-index must live here: recharts leaves the portaled wrapper
-              // `position: static`, where z-index has no effect.
-              zIndex: tooltipZIndex,
-            }
-          : {};
-
-      return (
-        <div style={anchorStyle}>
-          <ChartTooltipContainer header={header}>
-            {/* Copy before sorting: Recharts 3 freezes the payload, so an
-                in-place sort throws "this object has been frozen". */}
-            {[...payload]
-              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
-              .map((p: TooltipPayload) => {
-                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
-                const isPreviousPeriod = previousKey === p.dataKey;
-                const previousPayload =
-                  !isPreviousPeriod && previousKey
-                    ? payloadByKey.get(previousKey)
-                    : undefined;
-                const valueColumnName =
-                  lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
-                const numberFormatForKey =
-                  numberFormatByKey.get(valueColumnName) ?? numberFormat;
-
-                return (
-                  <TooltipItem
-                    key={p.dataKey}
-                    p={p}
-                    numberFormat={numberFormatForKey}
-                    previous={previousPayload}
-                    highlighted={p.dataKey === nearestSeriesKey}
-                    dimmed={
-                      nearestSeriesKey != null && p.dataKey !== nearestSeriesKey
-                    }
-                  />
-                );
-              })}
-          </ChartTooltipContainer>
-        </div>
-      );
-    }
-    return null;
-  }),
-  {
-    onError: console.error,
-    fallback: (
-      <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
-        An error occurred while rendering the tooltip.
-      </div>
-    ),
-  },
-);
-
-function ExpandableLegendItem({
-  entry,
-  expanded,
-  isSelected,
-  isDisabled,
-  onToggle,
-}: {
-  entry: any;
-  expanded?: boolean;
-  isSelected?: boolean;
-  isDisabled?: boolean;
-  onToggle?: (isShiftKey: boolean) => void;
-}) {
-  const [_expanded, setExpanded] = useState(false);
-  const isExpanded = _expanded || expanded;
-
-  return (
-    <span
-      className={`d-flex gap-1 items-center justify-center ${styles.legendItem}`}
-      style={{
-        color: entry.color,
-        opacity: isDisabled ? 0.3 : 1,
-        fontWeight: isSelected ? 600 : 400,
-        cursor: 'pointer',
-      }}
-      role="button"
-      onClick={e => {
-        if (onToggle) {
-          onToggle(e.shiftKey);
-        } else {
-          setExpanded(v => !v);
-        }
-      }}
-      title={
-        isSelected
-          ? 'Click to show all (Shift+click to deselect)'
-          : 'Click to show only this (Shift+click for multi-select)'
-      }
-    >
-      <div>
-        <svg width="12" height="4">
-          <line
-            x1="0"
-            y1="2"
-            x2="12"
-            y2="2"
-            stroke={entry.color}
-            opacity={isDisabled ? 0.3 : 1}
-            strokeDasharray={entry.payload?.strokeDasharray}
-            strokeWidth={isSelected ? 2.5 : 1.5}
-          />
-        </svg>
-      </div>
-      {isExpanded || isSelected
-        ? entry.value
-        : truncateMiddle(`${entry.value}`, 35)}
-    </span>
-  );
-}
-
-const LegendRenderer = memo<{
-  payload?: {
-    dataKey: string;
-    value: string;
-    color: string;
-  }[];
-  lineDataMap: { [key: string]: LineData };
-  allLineData?: LineData[];
-  selectedSeries?: Set<string>;
-  onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
-}>(props => {
-  const { payload, lineDataMap, allLineData, selectedSeries, onToggleSeries } =
-    props;
-
-  const hasSelection = !!selectedSeries && selectedSeries.size > 0;
-
-  // Use allLineData to ensure all series are always shown in legend
-  const allSeriesPayload = useMemo(() => {
-    if (allLineData?.length) {
-      return allLineData.map(ld => ({
-        dataKey: ld.dataKey,
-        value: ld.displayName || ld.dataKey,
-        color: ld.color,
-        payload: { strokeDasharray: ld.isDashed ? '4 3' : '0' },
-      }));
-    }
-    return payload ?? [];
-  }, [allLineData, payload]);
-
-  const sortedLegendItems = useMemo(() => {
-    // Order items such that current and previous period lines are consecutive
-    const currentPeriodKeyIndex = new Map<string, number>();
-    allSeriesPayload.forEach((line, index) => {
-      const currentPeriodKey =
-        lineDataMap[line.dataKey]?.currentPeriodKey || '';
-      if (!currentPeriodKeyIndex.has(currentPeriodKey)) {
-        currentPeriodKeyIndex.set(currentPeriodKey, index);
-      }
-    });
-
-    // Copy before sorting: when this comes from Recharts' legend payload it is
-    // kept in the Immer-backed store and frozen, so an in-place sort throws.
-    return [...allSeriesPayload].sort((a, b) => {
-      const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
-      const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
-
-      const indexA = currentPeriodKeyIndex.get(keyA) ?? 0;
-      const indexB = currentPeriodKeyIndex.get(keyB) ?? 0;
-
-      return indexB - indexA || a.dataKey.localeCompare(b.dataKey);
-    });
-  }, [allSeriesPayload, lineDataMap]);
-
-  const shownItems = sortedLegendItems.slice(0, MAX_LEGEND_ITEMS);
-  const restItems = sortedLegendItems.slice(MAX_LEGEND_ITEMS);
-
-  return (
-    <div className={styles.legend}>
-      {shownItems.map((entry, index) => {
-        const isSelected = !!selectedSeries?.has(entry.value);
-        const isDisabled = hasSelection && !isSelected;
-        return (
-          <ExpandableLegendItem
-            key={`item-${index}`}
-            entry={entry}
-            isSelected={isSelected}
-            isDisabled={isDisabled}
-            onToggle={isShiftKey => onToggleSeries?.(entry.value, isShiftKey)}
-          />
-        );
-      })}
-      {restItems.length ? (
-        <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
-          <Popover.Target>
-            <div className={cx(styles.legendItem, styles.legendMoreLink)}>
-              +{restItems.length} more
-            </div>
-          </Popover.Target>
-          <Popover.Dropdown p="xs">
-            <div className={styles.legendTooltipContent}>
-              {restItems.map((entry, index) => {
-                const isSelected = !!selectedSeries?.has(entry.value);
-                const isDisabled = hasSelection && !isSelected;
-                return (
-                  <ExpandableLegendItem
-                    key={`item-${index}`}
-                    entry={entry}
-                    isSelected={isSelected}
-                    isDisabled={isDisabled}
-                    onToggle={isShiftKey =>
-                      onToggleSeries?.(entry.value, isShiftKey)
-                    }
-                  />
-                );
-              })}
-            </div>
-          </Popover.Dropdown>
-        </Popover>
-      ) : null}
-    </div>
-  );
-});
-
-export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
-
-// Debounce (ms) for the chart's ResponsiveContainer resize observer. Without
 // it the observer fires on every frame, and a resize → re-render → resize
 // cycle can keep the chart (and the form controls around it in the tile
 // editor) from ever settling.
 const RESPONSIVE_CONTAINER_DEBOUNCE_MS = 50;
-
-/** One series entry in a tooltip's per-bucket payload (hover or click-frozen). */
-export type ActiveClickSeries = {
-  value?: number;
-  dataKey?: string;
-  name?: string;
-  /** Series color, matching the legend swatch. */
-  color?: string;
-  /** Previous-period value at the same bucket, for the percent-change chip. */
-  previousValue?: number;
-  /** Whether this series is a dashed previous-period line. */
-  isPreviousPeriod?: boolean;
-  /** Result column the values came from, for per-column number formatting. */
-  valueColumnName?: string;
-};
-
-/**
- * State for the pinned (click-locked) tooltip. Produced by MemoChart's onClick
- * and rendered by DBTimeChart via ChartSeriesTooltip. (Hover uses recharts' own
- * <Tooltip>; recharts' <Tooltip> is also kept for its synced cursor.)
- */
-export type ActiveClickPayload = {
-  /** Active point in viewport coords; the Popover anchor. */
-  viewportX: number;
-  viewportY: number;
-  activeLabel: string;
-  activePayload?: ActiveClickSeries[];
-};
-
-/** Series label shown in the legend, tooltip, and line `name`. */
-const getSeriesDisplayName = (ld: LineData) => ld.displayName || ld.dataKey;
-
-/** Normalize a chart event's active label (number | string) to a string. */
-const getActiveLabel = (state?: {
-  activeLabel?: string | number;
-}): string | undefined =>
-  state?.activeLabel != null ? String(state.activeLabel) : undefined;
-
-/**
- * Build the per-series payload for a click-frozen tooltip from the data row at
- * the clicked bucket. Only the visible series (legend selection +
- * HARD_LINES_LIMIT) with a numeric value at that bucket are included, so the
- * drill-down popover mirrors exactly what is drawn. Exported for unit testing.
- */
-export function buildActiveClickSeries(
-  visibleLineData: LineData[],
-  activeRow: Record<string, unknown> | undefined,
-): ActiveClickSeries[] {
-  if (activeRow == null) return [];
-  return visibleLineData.flatMap(ld => {
-    const value = activeRow[ld.dataKey];
-    if (typeof value !== 'number') return [];
-    const isPreviousPeriod = ld.previousPeriodKey === ld.dataKey;
-    // Pair each current-period series with its previous-period value for the
-    // percent-change chip. Only current-period rows carry a comparison.
-    const previousRaw =
-      !isPreviousPeriod && ld.previousPeriodKey
-        ? activeRow[ld.previousPeriodKey]
-        : undefined;
-    return [
-      {
-        dataKey: ld.dataKey,
-        name: getSeriesDisplayName(ld),
-        value,
-        color: ld.color,
-        isPreviousPeriod,
-        valueColumnName: ld.valueColumnName,
-        previousValue:
-          typeof previousRaw === 'number' ? previousRaw : undefined,
-      },
-    ];
-  });
-}
-
-/**
- * The series actually drawn on the chart. Without a selection, the first
- * HARD_LINES_LIMIT of lineData. With a selection (legend isolate, checkbox
- * filter, or table search), the selection is applied FIRST and then capped, so
- * an explicitly chosen series always draws even if it ranks beyond the limit.
- * Applying the cap first would slice out a chosen low-ranked series, leaving an
- * empty chart while its stats still show in the legend table. The rendered
- * lines and the drill-down click payload both derive from this same set so they
- * never diverge. Exported for unit testing.
- */
-export function getVisibleLineData(
-  lineData: LineData[],
-  selectedSeriesNames: Set<string> | undefined,
-): LineData[] {
-  const hasSelection = !!selectedSeriesNames && selectedSeriesNames.size > 0;
-  if (hasSelection) {
-    return lineData
-      .filter(ld => selectedSeriesNames.has(getSeriesDisplayName(ld)))
-      .slice(0, HARD_LINES_LIMIT);
-  }
-  return lineData.slice(0, HARD_LINES_LIMIT);
-}
-
-const StackedBarWithOverlap = (props: BarProps) => {
-  const { x, y, width, fill } = props;
-  // `height` may arrive as a string, so coerce it to a number before the
-  // arithmetic below.
-  const height =
-    typeof props.height === 'number' ? props.height : Number(props.height ?? 0);
-  // Add a tiny bit to the height to create overlap. Otherwise there's a gap
-  return (
-    <rect
-      x={x}
-      y={y}
-      width={width}
-      height={height > 0 ? height + 0.5 : 0}
-      fill={fill}
-    />
-  );
-};
-
-type CaptureActiveDotProps = {
-  /**
-   * Called with each series' active-point pixel Y. This is a stable callback
-   * (not the ref itself) so Recharts, which stores this element's props in its
-   * Immer-backed store and freezes them, never freezes the underlying Map —
-   * the write happens on the ref captured in the callback's closure instead.
-   */
-  onCapture: (dataKey: string, cy: number) => void;
-  cx?: number;
-  cy?: number;
-  dataKey?: string | number;
-  r?: number;
-  fill?: string;
-  stroke?: string;
-  strokeWidth?: number;
-};
-
-/**
- * Active dot for an Area series. Records the active point's pixel Y (`cy`)
- * via `onCapture`, keyed by dataKey, then draws the same dot Recharts
- * renders by default. Recharts clones this element with the active-point
- * props (cx, cy, dataKey, r, fill, stroke, strokeWidth) during the render
- * that precedes the tooltip, so the capture is current when the tooltip reads
- * it to find the series nearest the cursor.
- */
-function CaptureActiveDot({
-  onCapture,
-  cx,
-  cy,
-  dataKey,
-  r,
-  fill,
-  stroke,
-  strokeWidth,
-}: CaptureActiveDotProps) {
-  if (dataKey != null && typeof cy === 'number' && Number.isFinite(cy)) {
-    // Written synchronously during render so the tooltip, which Recharts
-    // renders after the graphical items in the same commit, reads the
-    // current frame's positions rather than the previous frame's.
-    onCapture(String(dataKey), cy);
-  }
-  if (typeof cx !== 'number' || typeof cy !== 'number') {
-    return null;
-  }
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={r}
-      fill={fill}
-      stroke={stroke}
-      strokeWidth={strokeWidth}
-    />
-  );
-}
 
 /**
  * Compute the unique set of hexes referenced by `<linearGradient>` defs
@@ -816,94 +274,20 @@ export const MemoChart = memo(function MemoChart({
     captureActivePointY,
   ]);
 
-  // Max value across the visible series. Used as the exemplar clamp's upper
-  // bound when the y-axis domain is 'auto', so a single slow-trace outlier (which
-  // can be 100x the p99 line) can't stretch the axis and crush the series flat —
-  // the marker pins to the top of the series range while its hover card still
-  // shows the true duration. See computeExemplarYBounds.
-  const visibleSeriesMax = useMemo(() => {
-    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
-    let max = -Infinity;
-    graphResults.forEach(dataPoint => {
-      lineData.forEach(ld => {
-        const seriesName = ld.displayName || ld.dataKey;
-        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            max = Math.max(max, value);
-          }
-        }
-      });
+  // Axis domains, the exemplar clamp range, and annotation elements — see
+  // useChartScales.
+  const { yAxisDomain, exemplarYBounds, xAxisDomain, annotationElements } =
+    useChartScales({
+      annotations,
+      dateRange,
+      granularity,
+      dateRangeEndInclusive,
+      displayType,
+      fitYAxisToData,
+      graphResults,
+      lineData,
+      selectedSeriesNames,
     });
-    return max;
-  }, [graphResults, lineData, selectedSeriesNames]);
-
-  const yAxisDomain: AxisDomain = useMemo(() => {
-    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
-
-    // Fitting the y-axis lower bound to the data only applies to line charts.
-    // Bar charts are always anchored at zero so the bar lengths stay
-    // proportional to their values.
-    const shouldFitYAxis =
-      fitYAxisToData && displayType !== DisplayType.StackedBar;
-
-    // The domain follows the visible series only — exemplar markers are clamped
-    // to the series max at render, so they never need to widen the axis. When
-    // there's no selection or fit, let Recharts auto-scale (lower pinned to 0).
-    if (!hasSelection && !shouldFitYAxis) {
-      return [0, 'auto'];
-    }
-
-    // Calculate domain based on visible series (all series when there's no
-    // explicit selection).
-    let minValue = Infinity;
-    let maxValue = -Infinity;
-
-    graphResults.forEach(dataPoint => {
-      lineData.forEach(ld => {
-        const seriesName = ld.displayName || ld.dataKey;
-        // Only consider visible series
-        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            minValue = Math.min(minValue, value);
-            maxValue = Math.max(maxValue, value);
-          }
-        }
-      });
-    });
-
-    // If we found valid values, return them with some padding
-    if (minValue !== Infinity && maxValue !== -Infinity) {
-      const padding = (maxValue - minValue) * 0.05; // 5% padding
-      // When fitting to data, allow the lower bound to follow the data
-      // minimum; otherwise keep it pinned at zero. The 5% padding must not
-      // drag the axis below zero unless the data itself is negative, so
-      // clamp at zero whenever the minimum is non-negative.
-      const lowerBound =
-        shouldFitYAxis && minValue < 0
-          ? minValue - padding
-          : Math.max(0, minValue - padding);
-      const upperBound = maxValue + padding;
-      return [lowerBound, upperBound];
-    }
-
-    return ['auto', 'auto'];
-  }, [
-    graphResults,
-    lineData,
-    selectedSeriesNames,
-    fitYAxisToData,
-    displayType,
-  ]);
-
-  // Bounds an exemplar marker is clamped into before rendering, derived from the
-  // domain the y-axis actually renders — see computeExemplarYBounds for why an
-  // unclamped marker can silently vanish.
-  const exemplarYBounds = useMemo(
-    () => computeExemplarYBounds(yAxisDomain, visibleSeriesMax),
-    [yAxisDomain, visibleSeriesMax],
-  );
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -1000,31 +384,6 @@ export const MemoChart = memo(function MemoChart({
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
   const mouseDownPosRef = useRef<number | null>(null);
 
-  // While the cursor is over an exemplar marker, the exemplar hover card owns
-  // the tooltip real estate — suppress the series hover tooltip so the two don't
-  // overlap. Wraps the parent's exemplar-hover callbacks to also track it here.
-  // Track the hovered marker by key (not just a boolean) so we can detect when a
-  // refetch/re-thinning unmounts it — React fires no mouseleave in that case, so
-  // the boolean would otherwise stick `true` and permanently suppress the series
-  // tooltip. The reset effect lives after `exemplarPoints` is computed.
-  const [hoveredExemplarKey, setHoveredExemplarKey] = useState<string | null>(
-    null,
-  );
-  const isExemplarHovered = hoveredExemplarKey != null;
-  const handleExemplarHoverStart = useCallback(
-    (exemplar: Exemplar, cx: number, cy: number) => {
-      setHoveredExemplarKey(
-        `exemplar-${exemplar.traceId}-${exemplar.timestamp}`,
-      );
-      onExemplarHover?.(exemplar, cx, cy);
-    },
-    [onExemplarHover],
-  );
-  const handleExemplarHoverEnd = useCallback(() => {
-    setHoveredExemplarKey(null);
-    onExemplarHoverEnd?.();
-  }, [onExemplarHoverEnd]);
-
   // Tracks the time range that was displayed before the user brushed to zoom
   // in, so a "Reset zoom" control can restore it (mirrors Highcharts). It holds
   // the earliest pre-zoom range across consecutive zoom-ins so resetting jumps
@@ -1039,22 +398,6 @@ export const MemoChart = memo(function MemoChart({
   // dateRange effect may never run when the post-zoom range is value-equal.
   const suppressNextClickRef = useRef(false);
   const prevDateRangeRef = useRef<[number, number] | null>(null);
-
-  // A brush-to-zoom ends in a synthetic click. When that click lands on a
-  // marker's hit circle, ExemplarDot stops propagation and the chart's own
-  // onClick — the only other consumer of this flag — never runs, so the flag
-  // stays set and silently swallows the *next* real click. Consume it here and
-  // ignore the click: it belongs to the drag, not to the marker.
-  const handleExemplarSelect = useCallback(
-    (exemplar: Exemplar, cx: number, cy: number) => {
-      if (suppressNextClickRef.current) {
-        suppressNextClickRef.current = false;
-        return;
-      }
-      onExemplarSelect?.(exemplar, cx, cy);
-    },
-    [onExemplarSelect],
-  );
 
   // Clear the reset-zoom affordance whenever the time range changes for a
   // reason other than our own brush-zoom (e.g. the time picker or live tail),
@@ -1100,78 +443,24 @@ export const MemoChart = memo(function MemoChart({
     return map;
   }, [lineData]);
 
-  // Place each exemplar at its own value (the trace/span's actual measurement),
-  // never remapped onto the series line — the marker's height must match what
-  // the linked trace reports. Thinned to at most `maxExemplars` markers, spread
-  // evenly across the range and bucketed at the chart's own granularity so each
-  // marker sits in the bucket of the point it explains — see
-  // computeExemplarPoints. maxExemplars <= 0 means "unlimited" (deduped only).
-  const exemplarPoints = useMemo(
-    () => computeExemplarPoints(exemplars, { maxExemplars, granularity }),
-    [exemplars, maxExemplars, granularity],
-  );
-
-  // If a refetch/re-thinning drops the hovered marker from the rendered set, its
-  // <g> unmounts without a mouseleave. Reset the hover here (against the actual
-  // rendered points) so the series tooltip un-suppresses and the parent's hover
-  // card closes via onExemplarHoverEnd.
-  useEffect(() => {
-    if (
-      hoveredExemplarKey != null &&
-      !exemplarPoints.some(p => p.key === hoveredExemplarKey)
-    ) {
-      setHoveredExemplarKey(null);
-      onExemplarHoverEnd?.();
-    }
-  }, [exemplarPoints, hoveredExemplarKey, onExemplarHoverEnd]);
-
-  // Same guard for the pinned marker. Without it a refetch, live tail, or
-  // brush-zoom leaves the card floating at pre-refetch coordinates over a marker
-  // that no longer exists — and because a pin suppresses the series tooltip
-  // chart-wide, hover stays dead until the user finds the close button.
-  useEffect(() => {
-    if (
-      pinnedExemplarKey != null &&
-      !exemplarPoints.some(p => p.key === pinnedExemplarKey)
-    ) {
-      onExemplarPinEnd?.();
-    }
-  }, [exemplarPoints, pinnedExemplarKey, onExemplarPinEnd]);
-
-  // Typed as the tuple it actually returns rather than the wider AxisDomain, so
-  // the consumers below (annotation + exemplar clamping) can read [min, max]
-  // without asserting. Still assignable to XAxis's `domain`.
-  const xAxisDomain: [number, number] = useMemo(() => {
-    let startTime = toStartOfInterval(dateRange[0], granularity);
-    let endTime = toStartOfInterval(dateRange[1], granularity);
-    const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
-    if (endTimeIsBoundaryAligned && !dateRangeEndInclusive) {
-      endTime = sub(endTime, {
-        seconds: convertGranularityToSeconds(granularity),
-      });
-    }
-
-    // For bar charts, extend the domain in both directions by half a granularity unit
-    // so that the full bar width is within the bounds of the chart
-    if (displayType === DisplayType.StackedBar) {
-      const halfGranularitySeconds =
-        convertGranularityToSeconds(granularity) / 2;
-      startTime = sub(startTime, { seconds: halfGranularitySeconds });
-      endTime = add(endTime, { seconds: halfGranularitySeconds });
-    }
-
-    return [startTime.getTime() / 1000, endTime.getTime() / 1000];
-  }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
-
-  // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
-  // an edge marker (e.g. an alert already firing at window open) stays visible
-  // instead of being dropped. Labels float in the reserved top headroom.
-  const annotationElements = useMemo(() => {
-    if (!annotations?.length) {
-      return null;
-    }
-    return getAnnotationElements(annotations, { domain: xAxisDomain });
-  }, [annotations, xAxisDomain]);
+  // Exemplar marker layer — see useExemplarMarkers.
+  const {
+    exemplarPoints,
+    isExemplarHovered,
+    handleExemplarHoverStart,
+    handleExemplarHoverEnd,
+    handleExemplarSelect,
+  } = useExemplarMarkers({
+    exemplars,
+    maxExemplars,
+    granularity,
+    pinnedExemplarKey,
+    onExemplarHover,
+    onExemplarHoverEnd,
+    onExemplarSelect,
+    onExemplarPinEnd,
+    suppressNextClickRef,
+  });
 
   return (
     <div

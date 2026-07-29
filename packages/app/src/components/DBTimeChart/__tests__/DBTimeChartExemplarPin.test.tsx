@@ -76,10 +76,10 @@ jest.mock('@/hooks/useExemplars', () => ({
     .mockReturnValue({ data: null, isLoading: false }),
 }));
 
-jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
+jest.mock('@/components/MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );
-jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
+jest.mock('@/components/charts/DateRangeIndicator', () => jest.fn(() => null));
 
 /** Latest props the stubbed chart / card were rendered with. */
 function lastProps<P>(calls: [P][], what: string): P {
