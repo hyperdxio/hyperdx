@@ -1,11 +1,15 @@
+import { useMemo } from 'react';
+import { isEqual } from 'lodash';
 import {
   EXEMPLAR_QUERY_LIMIT,
+  isPromqlExemplarEligible,
   renderMetricExemplarsChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { isPromqlChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptDateRange,
   Exemplar,
+  ExemplarSchema,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -13,6 +17,11 @@ import { useQuery } from '@tanstack/react-query';
 
 import { prometheusApi, type PrometheusExemplarsResult } from '@/api';
 import { useClickhouseClient } from '@/clickhouse';
+import {
+  labelDistinguishesSeries,
+  promqlSeriesLabelRule,
+  type SeriesLabelRule,
+} from '@/components/Exemplars/promqlSeriesLabels';
 import { IS_EXEMPLARS_ENABLED } from '@/config';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { getDurationMsExpression } from '@/source';
@@ -51,14 +60,23 @@ function pick(labels: Record<string, string>, keys: string[]) {
  * deliberately excluded from the *label* key and counted separately by the
  * caller — two different metrics with no other labels would otherwise both
  * produce an empty key and merge into one overlay.
+ *
+ * `rule` restricts the key to the labels the query's aggregation actually keeps
+ * — see promqlSeriesLabelRule.
  */
 function seriesGroupKey(
   labels: Record<string, string>,
   ignoreLe: boolean,
+  rule: SeriesLabelRule,
 ): string | undefined {
   return (
     Object.entries(labels)
-      .filter(([k]) => k !== '__name__' && !(ignoreLe && k === 'le'))
+      .filter(
+        ([k]) =>
+          k !== '__name__' &&
+          !(ignoreLe && k === 'le') &&
+          labelDistinguishesSeries(rule, k),
+      )
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}="${v}"`)
       .join(', ') || undefined
@@ -66,39 +84,60 @@ function seriesGroupKey(
 }
 
 /**
+ * Why an otherwise-populated exemplar overlay was suppressed, for the UI.
+ * Deliberately not exported: consumers reach it via NormalizedExemplars.dropped
+ * and compare against the literal, so exporting the alias only adds dead surface.
+ */
+type ExemplarDropReason = 'multiple-series';
+
+export type NormalizedExemplars = {
+  exemplars: Exemplar[];
+  /** Set when exemplars existed but the overlay was deliberately suppressed. */
+  dropped?: ExemplarDropReason;
+};
+
+/**
  * Normalize a native Prometheus /query_exemplars response into the shared
  * Exemplar shape. Exported for testing — label naming varies by exporter.
  *
  * Prometheus returns one entry per *underlying* series, so a
  * `histogram_quantile(...)` query — a single plotted line — comes back split
- * across its `le` buckets. Those entries are merged into one set; a genuine
- * fan-out across different label values, or across different metrics, is
- * dropped rather than rendered as unattributable markers.
+ * across its `le` buckets and across every scrape target. Entries that the
+ * query's aggregation collapses into one line are merged; a genuine fan-out
+ * across *plotted* series, or across different metrics, is dropped rather than
+ * rendered as unattributable markers.
+ *
+ * Every candidate is parsed through ExemplarSchema rather than coerced: the body
+ * is an untrusted upstream response that `prometheusFetch` only type-asserts, and
+ * a `Number()` of a malformed value yields NaN coordinates downstream.
  */
 export function normalizePrometheusExemplars(
   data: PrometheusExemplarsResult[] | undefined,
   expression?: string,
-): Exemplar[] {
-  if (!data) return [];
+): NormalizedExemplars {
+  if (!data) return { exemplars: [] };
   const ignoreLe = collapsesHistogramBuckets(expression);
+  const rule = promqlSeriesLabelRule(expression);
   const out: Exemplar[] = [];
   const seenSeries = new Set<string>();
   const seenMetrics = new Set<string>();
   for (const series of data) {
     const labels = series.seriesLabels ?? {};
-    const groupKey = seriesGroupKey(labels, ignoreLe);
+    const groupKey = seriesGroupKey(labels, ignoreLe, rule);
     for (const ex of series.exemplars ?? []) {
       const traceId = pick(ex.labels ?? {}, TRACE_ID_LABELS);
       if (!traceId) continue;
-      seenSeries.add(groupKey ?? '');
-      seenMetrics.add(labels.__name__ ?? '');
-      out.push({
+      const parsed = ExemplarSchema.safeParse({
         timestamp: ex.timestamp * 1000, // prometheus exemplar ts is unix seconds
         value: Number(ex.value),
         traceId,
         spanId: pick(ex.labels ?? {}, SPAN_ID_LABELS),
         groupKey,
       });
+      if (!parsed.success) continue;
+      seenSeries.add(groupKey ?? '');
+      seenMetrics.add(labels.__name__ ?? '');
+      out.push(parsed.data);
     }
   }
   // Exemplars are a single-series feature today: their y-position is the trace's
@@ -107,8 +146,10 @@ export function normalizePrometheusExemplars(
   // markers. Metric name is checked separately from the label key because it is
   // excluded from that key — two different metrics carrying no other labels
   // would both produce an empty key and merge.
-  if (seenSeries.size > 1 || seenMetrics.size > 1) return [];
-  return out;
+  if (seenSeries.size > 1 || seenMetrics.size > 1) {
+    return { exemplars: [], dropped: 'multiple-series' };
+  }
+  return { exemplars: out };
 }
 
 /**
@@ -158,17 +199,45 @@ export function capExemplarsPerBucket(
     .slice(0, EXEMPLAR_QUERY_LIMIT);
 }
 
-/** Map raw ClickHouse exemplar rows (renderMetricExemplarsChartConfig) → Exemplar[]. */
+/**
+ * Map raw ClickHouse exemplar rows (renderMetricExemplarsChartConfig) →
+ * Exemplar[]. Parsed rather than coerced for the same reason as the Prometheus
+ * normalizer: a row that can't produce a finite timestamp/value is dropped
+ * instead of reaching recharts as a NaN coordinate.
+ */
 function mapClickhouseExemplars(rows: Record<string, any>[]): Exemplar[] {
-  return rows
-    .filter(r => r.traceId)
-    .map(r => ({
+  const out: Exemplar[] = [];
+  for (const r of rows) {
+    if (!r.traceId) continue;
+    const parsed = ExemplarSchema.safeParse({
       timestamp: Number(r.timestamp),
       value: Number(r.value),
       traceId: String(r.traceId),
       spanId: r.spanId ? String(r.spanId) : undefined,
-    }));
+    });
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
 }
+
+// Stable identity for "no exemplars". DBTimeChart forwards this straight into
+// memo(MemoChart)'s props, so a fresh [] on every render would fail the shallow
+// compare and re-render recharts for every time chart in the app on any parent
+// state change — including with the feature flag off.
+const NO_EXEMPLARS: Exemplar[] = [];
+
+// The exemplar overlay is a coarse annotation layer, not the series itself, so it
+// tolerates being a little stale in exchange for not refiring on every mount.
+const EXEMPLAR_STALE_TIME_MS = 60_000;
+
+// Live-tail charts advance `dateRange` continuously. Rounding the range in the
+// query key to this bucket keeps sub-minute ticks on one cache entry — without
+// it every tick mints a new key, empties the overlay, and force-closes the hover
+// card the user is reaching for.
+const EXEMPLAR_KEY_QUANTUM_MS = 30_000;
+
+const quantize = (d: Date) =>
+  Math.round(d.getTime() / EXEMPLAR_KEY_QUANTUM_MS) * EXEMPLAR_KEY_QUANTUM_MS;
 
 /**
  * Fetches exemplars for a chart in parallel with the main series query. A no-op
@@ -182,37 +251,65 @@ export function useExemplars(
   const clickhouseClient = useClickhouseClient();
   const metadata = useMetadataWithSettings();
 
+  const isPromql = isPromqlChartConfig(config);
   const supported = !!source && EXEMPLAR_SUPPORTED_KINDS.includes(source.kind);
+  // A PromQL expression only carries exemplars when it plots a duration — see
+  // isPromqlExemplarEligible. Same rule the PromQL editor gates its toggle on, so
+  // a config saved before the rule tightened (or written via the API) doesn't
+  // plot duration markers on a requests/sec axis.
+  const promqlEligible =
+    !isPromql || isPromqlExemplarEligible(config.promqlExpression);
   // Global feature gate: even a config with enableExemplars set fetches nothing
   // while the feature is disabled for the deployment.
   const enabled =
-    IS_EXEMPLARS_ENABLED && config.enableExemplars === true && supported;
+    IS_EXEMPLARS_ENABLED &&
+    config.enableExemplars === true &&
+    supported &&
+    promqlEligible;
 
-  const query = useQuery<Exemplar[]>({
-    queryKey: ['exemplars', config],
+  // `config` minus the raw dateRange. This identifies the *chart* — the metric or
+  // PromQL expression, filters, connection — independently of the window being
+  // viewed, which is what makes it safe to carry a placeholder across a range
+  // change but not across a chart change (see placeholderData below).
+  const keyConfig = useMemo(
+    () => ({ ...config, dateRange: undefined }),
+    [config],
+  );
+
+  const query = useQuery<NormalizedExemplars>({
+    // The raw dateRange is replaced by its quantized form so a live-tail tick
+    // doesn't invalidate the overlay every second.
+    queryKey: ['exemplars', keyConfig, config.dateRange?.map(quantize)],
     queryFn: async context => {
       // PromQL → native Prometheus exemplars via the API proxy.
       if (isPromqlChartConfig(config) && config.dateRange) {
         const [startDate, endDate] = config.dateRange;
-        const resp = await prometheusApi.queryExemplars({
-          query: config.promqlExpression,
-          start: startDate.getTime() / 1000,
-          end: endDate.getTime() / 1000,
-          connectionId: config.connection,
-          database: config.from?.databaseName,
-          table: config.from?.tableName,
-        });
+        const resp = await prometheusApi.queryExemplars(
+          {
+            query: config.promqlExpression,
+            start: startDate.getTime() / 1000,
+            end: endDate.getTime() / 1000,
+            connectionId: config.connection,
+            database: config.from?.databaseName,
+            table: config.from?.tableName,
+          },
+          context.signal,
+        );
         if (resp.status !== 'success') {
           throw new Error(resp.error ?? 'query_exemplars failed');
         }
+        const { exemplars, dropped } = normalizePrometheusExemplars(
+          resp.data,
+          config.promqlExpression,
+        );
         // Native Prometheus /query_exemplars has no result-limit parameter, so
         // bound the set client-side to keep an unbounded upstream response from
         // ballooning downstream thinning/render work.
-        const all = normalizePrometheusExemplars(
-          resp.data,
-          config.promqlExpression,
-        ).sort((a, b) => a.timestamp - b.timestamp);
-        return capExemplarsPerBucket(all, startDate, endDate);
+        const all = [...exemplars].sort((a, b) => a.timestamp - b.timestamp);
+        return {
+          exemplars: capExemplarsPerBucket(all, startDate, endDate),
+          dropped,
+        };
       }
 
       // Structured metric source → exemplars stored on the OTel metric table.
@@ -220,7 +317,7 @@ export function useExemplars(
         config,
         metadata,
       );
-      if (!exemplarSql) return [];
+      if (!exemplarSql) return { exemplars: [] };
 
       const resp = await clickhouseClient.query({
         query: exemplarSql.sql,
@@ -230,17 +327,41 @@ export function useExemplars(
         connectionId: config.connection,
       });
       const json = await resp.json<Record<string, any>>();
-      return mapClickhouseExemplars(json.data ?? []);
+      return { exemplars: mapClickhouseExemplars(json.data ?? []) };
     },
     enabled,
     retry: 1,
     refetchOnWindowFocus: false,
+    staleTime: EXEMPLAR_STALE_TIME_MS,
+    // Keep the previous overlay visible across a *time-range* key change (a
+    // live-tail tick or a range nudge) instead of blanking it — the main series
+    // query does the same, and blanking here would also force-close an open hover
+    // card.
+    //
+    // Scoped to the same chart on purpose. TanStack keeps its last-defined-data on
+    // the observer instance, which outlives a key change, so an unscoped
+    // `prev => prev` hands the PREVIOUS metric's exemplars to the new chart: real,
+    // clickable trace ids, clamped onto the new axes, while isLoading/isError both
+    // report settled. The user clicks a marker and lands on an unrelated trace.
+    // Comparing the chart identity means a genuine chart switch blanks the overlay
+    // (correct) while a range tick keeps it (the point of the placeholder).
+    placeholderData: (prev, prevQuery) =>
+      isEqual(prevQuery?.queryKey?.[1], keyConfig) ? prev : undefined,
   });
 
   return {
-    exemplars: enabled ? (query.data ?? []) : [],
+    exemplars: enabled ? (query.data?.exemplars ?? NO_EXEMPLARS) : NO_EXEMPLARS,
+    /** Exemplars were found but suppressed — see ExemplarDropReason. */
+    dropped: enabled ? query.data?.dropped : undefined,
     isLoading: query.isLoading,
     isError: query.isError,
+    /**
+     * The upstream failure message, when there is one. Surfaced verbatim because
+     * the API phrases these actionably (e.g. the /query_exemplars window bound
+     * tells the user to narrow the chart's range), and a generic "could not load"
+     * would throw that guidance away.
+     */
+    error: query.error instanceof Error ? query.error.message : undefined,
   };
 }
 

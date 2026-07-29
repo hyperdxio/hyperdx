@@ -59,12 +59,12 @@ jest.mock('@/source', () => ({
 
 describe('normalizePrometheusExemplars', () => {
   it('returns [] for undefined/empty input', () => {
-    expect(normalizePrometheusExemplars(undefined)).toEqual([]);
-    expect(normalizePrometheusExemplars([])).toEqual([]);
+    expect(normalizePrometheusExemplars(undefined).exemplars).toEqual([]);
+    expect(normalizePrometheusExemplars([]).exemplars).toEqual([]);
   });
 
   it('maps trace/span ids, value, and seconds→ms timestamp', () => {
-    const result = normalizePrometheusExemplars([
+    const { exemplars: result } = normalizePrometheusExemplars([
       {
         seriesLabels: { __name__: 'http_latency', service: 'api' },
         exemplars: [
@@ -88,7 +88,9 @@ describe('normalizePrometheusExemplars', () => {
   });
 
   it('accepts alternate label spellings (traceID/spanID)', () => {
-    const [ex] = normalizePrometheusExemplars([
+    const {
+      exemplars: [ex],
+    } = normalizePrometheusExemplars([
       {
         seriesLabels: {},
         exemplars: [
@@ -123,7 +125,7 @@ describe('normalizePrometheusExemplars', () => {
         ],
       },
     ];
-    const result = normalizePrometheusExemplars(
+    const { exemplars: result } = normalizePrometheusExemplars(
       histogramBuckets,
       'histogram_quantile(0.99, rate(http_latency_bucket[5m]))',
     );
@@ -153,7 +155,7 @@ describe('normalizePrometheusExemplars', () => {
         perBucketLines,
         'rate(http_latency_bucket[5m])',
       ),
-    ).toEqual([]);
+    ).toEqual({ exemplars: [], dropped: 'multiple-series' });
   });
 
   it('drops the overlay when entries span different metrics', () => {
@@ -174,7 +176,10 @@ describe('normalizePrometheusExemplars', () => {
         ],
       },
     ];
-    expect(normalizePrometheusExemplars(twoMetrics)).toEqual([]);
+    expect(normalizePrometheusExemplars(twoMetrics)).toEqual({
+      exemplars: [],
+      dropped: 'multiple-series',
+    });
   });
 
   it('drops the overlay entirely when the query returns multiple series', () => {
@@ -194,7 +199,10 @@ describe('normalizePrometheusExemplars', () => {
         ],
       },
     ];
-    expect(normalizePrometheusExemplars(multiSeries)).toEqual([]);
+    expect(normalizePrometheusExemplars(multiSeries)).toEqual({
+      exemplars: [],
+      dropped: 'multiple-series',
+    });
   });
 
   it('skips exemplars without a trace id', () => {
@@ -204,8 +212,140 @@ describe('normalizePrometheusExemplars', () => {
           seriesLabels: {},
           exemplars: [{ labels: { foo: 'bar' }, value: '1', timestamp: 1 }],
         },
-      ]),
+      ]).exemplars,
     ).toEqual([]);
+  });
+
+  // The canonical latency query. /query_exemplars resolves the raw selector, so
+  // it returns one entry per scrape target *and* per `le` bucket, while the chart
+  // draws a single aggregated line. Keying the single-series guard on the full
+  // selector label set therefore emptied the overlay on any metric scraped from
+  // more than one instance — i.e. essentially always.
+  it('merges entries that differ only by labels the aggregation drops', () => {
+    const acrossInstances = [
+      {
+        seriesLabels: {
+          __name__: 'http_latency_bucket',
+          le: '0.1',
+          instance: 'pod-a',
+        },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '0.09', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: {
+          __name__: 'http_latency_bucket',
+          le: '0.5',
+          instance: 'pod-b',
+        },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '0.4', timestamp: 1700000001 },
+        ],
+      },
+    ];
+    const { exemplars, dropped } = normalizePrometheusExemplars(
+      acrossInstances,
+      'histogram_quantile(0.95, sum(rate(http_latency_bucket[5m])) by (le))',
+    );
+    expect(dropped).toBeUndefined();
+    expect(exemplars.map(e => e.traceId)).toEqual(['a', 'b']);
+    // `le` is collapsed by histogram_quantile and `instance` by the `by (le)`,
+    // so nothing distinguishes the plotted line.
+    expect(exemplars.every(e => e.groupKey === undefined)).toBe(true);
+  });
+
+  it('still drops the overlay for labels the aggregation keeps', () => {
+    // `by (le, service)` draws one line per service, so these are genuinely two
+    // plotted series and their markers can't be attributed.
+    const twoServices = [
+      {
+        seriesLabels: {
+          __name__: 'http_latency_bucket',
+          le: '0.1',
+          service: 'api',
+          instance: 'pod-a',
+        },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '0.09', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: {
+          __name__: 'http_latency_bucket',
+          le: '0.1',
+          service: 'web',
+          instance: 'pod-b',
+        },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '0.4', timestamp: 1700000001 },
+        ],
+      },
+    ];
+    expect(
+      normalizePrometheusExemplars(
+        twoServices,
+        'histogram_quantile(0.95, sum(rate(http_latency_bucket[5m])) by (le, service))',
+      ),
+    ).toEqual({ exemplars: [], dropped: 'multiple-series' });
+  });
+
+  it('merges entries under a `without` aggregation too', () => {
+    // The `without` spelling of the same canonical query. This previously fell
+    // through to "every label distinguishes a line" and dropped the whole overlay
+    // — the exact bug the `by (...)` handling was written to fix.
+    const acrossInstances = [
+      {
+        seriesLabels: {
+          __name__: 'http_latency_bucket',
+          le: '0.1',
+          instance: 'pod-a',
+        },
+        exemplars: [
+          { labels: { trace_id: 'a' }, value: '0.09', timestamp: 1700000000 },
+        ],
+      },
+      {
+        seriesLabels: {
+          __name__: 'http_latency_bucket',
+          le: '0.5',
+          instance: 'pod-b',
+        },
+        exemplars: [
+          { labels: { trace_id: 'b' }, value: '0.4', timestamp: 1700000001 },
+        ],
+      },
+    ];
+    const { exemplars, dropped } = normalizePrometheusExemplars(
+      acrossInstances,
+      'histogram_quantile(0.95, sum(rate(http_latency_bucket[5m])) without (instance))',
+    );
+    expect(dropped).toBeUndefined();
+    expect(exemplars.map(e => e.traceId)).toEqual(['a', 'b']);
+  });
+
+  it('rejects exemplars whose value or timestamp is not finite', () => {
+    // ExemplarSchema is `.finite()` on both: a NaN timestamp collapses every
+    // affected exemplar into one bucket and emits a NaN SVG coordinate.
+    const { exemplars } = normalizePrometheusExemplars([
+      {
+        seriesLabels: { __name__: 'http_latency' },
+        exemplars: [
+          { labels: { trace_id: 'ok' }, value: '1', timestamp: 1700000000 },
+          {
+            labels: { trace_id: 'bad-value' },
+            value: 'not-a-number',
+            timestamp: 1700000000,
+          },
+          {
+            labels: { trace_id: 'bad-ts' },
+            value: '1',
+            timestamp: Number.POSITIVE_INFINITY,
+          },
+        ],
+      },
+    ]);
+    expect(exemplars.map(e => e.traceId)).toEqual(['ok']);
   });
 });
 

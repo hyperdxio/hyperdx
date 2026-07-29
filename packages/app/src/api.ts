@@ -554,9 +554,10 @@ type PrometheusQueryExemplarsResponse = {
 async function prometheusFetch<T>(
   path: string,
   searchParams: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<T> {
   try {
-    return await server.post(path, { searchParams }).json();
+    return await server.post(path, { searchParams, signal }).json();
   } catch (e: any) {
     // ky throws HTTPError on non-2xx — read the response body for the real error
     if (e?.response) {
@@ -595,22 +596,33 @@ export const prometheusApi = {
       ...(params.table ? { table: params.table } : {}),
     }),
 
-  queryExemplars: (params: {
-    query: string;
-    start: number;
-    end: number;
-    connectionId: string;
-    database?: string;
-    table?: string;
-  }): Promise<PrometheusQueryExemplarsResponse> =>
-    prometheusFetch('v1/prometheus/query_exemplars', {
-      query: params.query,
-      start: String(params.start),
-      end: String(params.end),
-      connectionId: params.connectionId,
-      ...(params.database ? { database: params.database } : {}),
-      ...(params.table ? { table: params.table } : {}),
-    }),
+  // `signal` is forwarded so a superseded or unmounted chart's exemplar request
+  // is cancelled rather than left running against the API's 90s Prometheus proxy
+  // timeout. The exemplar query key includes the chart's dateRange, so live-tail
+  // charts supersede this request on every tick.
+  queryExemplars: (
+    params: {
+      query: string;
+      start: number;
+      end: number;
+      connectionId: string;
+      database?: string;
+      table?: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<PrometheusQueryExemplarsResponse> =>
+    prometheusFetch(
+      'v1/prometheus/query_exemplars',
+      {
+        query: params.query,
+        start: String(params.start),
+        end: String(params.end),
+        connectionId: params.connectionId,
+        ...(params.database ? { database: params.database } : {}),
+        ...(params.table ? { table: params.table } : {}),
+      },
+      signal,
+    ),
 
   labelValues: (params: {
     label: string;

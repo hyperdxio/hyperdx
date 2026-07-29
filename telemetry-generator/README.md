@@ -39,7 +39,7 @@ metric dimensions (`http.route`, `http.method`, `host.region`, `app.tenant_id`,
 
 Chart the **`traces.span.metrics.duration`** metric (histogram) on a Metric
 source and the exemplar overlay resolves against the trace source — coherent by
-construction because the metric *is* derived from the traces. (`span_metrics`
+construction because the metric *is* derived from the traces. (`spanmetrics`
 also emits `traces.span.metrics.calls`, a request-count sum.)
 
 ## Config (env)

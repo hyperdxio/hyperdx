@@ -47,6 +47,7 @@ import {
   useChartTooltipZIndex,
 } from './components/charts/ChartTooltip';
 import {
+  clampExemplarX,
   clampExemplarY,
   computeExemplarPoints,
   computeExemplarYBounds,
@@ -1137,7 +1138,10 @@ export const MemoChart = memo(function MemoChart({
     }
   }, [exemplarPoints, pinnedExemplarKey, onExemplarPinEnd]);
 
-  const xAxisDomain: AxisDomain = useMemo(() => {
+  // Typed as the tuple it actually returns rather than the wider AxisDomain, so
+  // the consumers below (annotation + exemplar clamping) can read [min, max]
+  // without asserting. Still assignable to XAxis's `domain`.
+  const xAxisDomain: [number, number] = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
     let endTime = toStartOfInterval(dateRange[1], granularity);
     const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
@@ -1166,10 +1170,7 @@ export const MemoChart = memo(function MemoChart({
     if (!annotations?.length) {
       return null;
     }
-    // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
-    return getAnnotationElements(annotations, {
-      domain: xAxisDomain as [number, number],
-    });
+    return getAnnotationElements(annotations, { domain: xAxisDomain });
   }, [annotations, xAxisDomain]);
 
   return (
@@ -1439,7 +1440,8 @@ export const MemoChart = memo(function MemoChart({
           {exemplarPoints.map(p => (
             <ReferenceDot
               key={p.key}
-              x={p.x}
+              // Pinned into the rendered x-domain — see clampExemplarX.
+              x={clampExemplarX(p.x, xAxisDomain)}
               // Pinned into the rendered y-domain — see exemplarYBounds.
               y={clampExemplarY(p.y, exemplarYBounds)}
               shape={

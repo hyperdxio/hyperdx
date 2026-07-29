@@ -1380,9 +1380,15 @@ export type ChartConfig = z.infer<typeof ChartConfigSchema>;
  * links back to a trace. Shared shape for both backends — metric/PromQL
  * sources surface native exemplars, trace sources generate them per bucket.
  */
+// Both numbers are `.finite()` because both reach the renderer as SVG
+// coordinates: a non-finite timestamp collapses every affected exemplar into one
+// `@NaN` bucket and emits a NaN x-coordinate, and a single Infinity value makes
+// the 2σ spread NaN, silently switching the thinning rule off chart-wide. The
+// normalizers parse untrusted upstream bodies through this schema, so rejecting
+// here keeps both out of the render path.
 export const ExemplarSchema = z.object({
-  timestamp: z.number(), // epoch ms, x-position on the chart
-  value: z.number(), // exemplar's own value (metric Value / trace Duration in ms)
+  timestamp: z.number().finite(), // epoch ms, x-position on the chart
+  value: z.number().finite(), // exemplar's own value (metric Value / trace Duration in ms)
   traceId: z.string(),
   spanId: z.string().optional(),
   // Matches the series the exemplar belongs to (LineData.displayName) so the

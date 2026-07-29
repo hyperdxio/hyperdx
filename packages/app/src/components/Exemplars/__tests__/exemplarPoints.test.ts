@@ -1,6 +1,7 @@
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
 
 import {
+  clampExemplarX,
   clampExemplarY,
   computeExemplarPoints,
   computeExemplarYBounds,
@@ -51,6 +52,23 @@ describe('computeExemplarPoints', () => {
     );
     expect(points).toHaveLength(1);
     expect(points[0].y).toBe(3);
+  });
+
+  it('skips exemplars with a non-finite timestamp', () => {
+    // timestamp feeds both the bucket key and the x coordinate, so a non-finite
+    // one collapses every affected exemplar into a single "@NaN" bucket and
+    // reaches recharts as a NaN x, rendering an invalid SVG path.
+    const points = computeExemplarPoints(
+      [
+        ex({ timestamp: NaN, value: 5 }),
+        ex({ timestamp: Infinity, value: 6 }),
+        ex({ timestamp: 2000, value: 3 }),
+      ],
+      { ...opts, maxExemplars: 0 },
+    );
+    expect(points).toHaveLength(1);
+    expect(points[0].x).toBe(2);
+    expect(Number.isFinite(points[0].x)).toBe(true);
   });
 
   it('keeps the highest-value exemplar of a bucket', () => {
@@ -274,5 +292,37 @@ describe('clampExemplarY', () => {
 
   it('leaves the value alone for inverted bounds', () => {
     expect(clampExemplarY(200, { min: 480, max: 120 })).toBe(200);
+  });
+});
+
+describe('clampExemplarX', () => {
+  // The domain's upper bound is the last *bucket start* when
+  // dateRangeEndInclusive is false, so an exemplar inside that final bucket sits
+  // past it and recharts' ifOverflow="discard" drops it — losing the newest
+  // window, which is the one a live investigation is watching.
+  it('pins a marker past the domain end onto the last bucket', () => {
+    expect(clampExemplarX(1_700_000_120, [1_700_000_000, 1_700_000_060])).toBe(
+      1_700_000_060,
+    );
+  });
+
+  it('pins a marker before the domain start onto the first bucket', () => {
+    expect(clampExemplarX(1_699_999_900, [1_700_000_000, 1_700_000_060])).toBe(
+      1_700_000_000,
+    );
+  });
+
+  it('leaves an in-domain marker exactly where it is', () => {
+    expect(clampExemplarX(1_700_000_030, [1_700_000_000, 1_700_000_060])).toBe(
+      1_700_000_030,
+    );
+  });
+
+  it('leaves x untouched for a degenerate or inverted domain', () => {
+    // Better an occasionally-discarded marker than one pinned to a meaningless
+    // position — same rule as clampExemplarY.
+    expect(clampExemplarX(42, [NaN, 100])).toBe(42);
+    expect(clampExemplarX(42, [100, NaN])).toBe(42);
+    expect(clampExemplarX(42, [100, 0])).toBe(42);
   });
 });

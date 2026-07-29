@@ -300,6 +300,8 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
+        enableExemplars: config.enableExemplars,
+        exemplarTraceSourceId: config.exemplarTraceSourceId,
       };
     case DisplayType.StackedBar:
       return {
@@ -316,6 +318,8 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        enableExemplars: config.enableExemplars,
+        exemplarTraceSourceId: config.exemplarTraceSourceId,
       };
     case DisplayType.Number:
       return {
@@ -693,6 +697,8 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            'enableExemplars',
+            'exemplarTraceSourceId',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'

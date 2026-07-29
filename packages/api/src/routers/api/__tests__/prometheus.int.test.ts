@@ -9,7 +9,9 @@ const mockFetch = global.fetch as jest.Mock;
 // The proxy now streams the upstream response straight through (no
 // `await resp.json()`), so test mocks must expose the fields the pipeline
 // actually reads: `status`, `headers.get()`, and a web `ReadableStream` body.
-function fakeUpstreamResponse(payload: unknown, status = 200) {
+// Returned as `Response` so callers can hand it straight to `mockResolvedValue`
+// without an `as any` at every site — the proxy only touches the fields below.
+function fakeUpstreamResponse(payload: unknown, status = 200): Response {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));
@@ -23,7 +25,7 @@ function fakeUpstreamResponse(payload: unknown, status = 200) {
     body,
     text: jest.fn().mockResolvedValue(JSON.stringify(payload)),
     json: jest.fn().mockResolvedValue(payload),
-  };
+  } as unknown as Response;
 }
 
 describe('prometheus router', () => {
@@ -36,7 +38,7 @@ describe('prometheus router', () => {
   afterEach(async () => {
     await server.clearDBs();
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue(fakeUpstreamResponse({}) as any);
+    mockFetch.mockResolvedValue(fakeUpstreamResponse({}));
   });
 
   afterAll(async () => {
@@ -119,9 +121,7 @@ describe('prometheus router', () => {
         status: 'success',
         data: { resultType: 'matrix', result: [] },
       };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/query_range')
@@ -220,9 +220,7 @@ describe('prometheus router', () => {
         status: 'success',
         data: { resultType: 'vector', result: [] },
       };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/query')
@@ -256,9 +254,7 @@ describe('prometheus router', () => {
       const conn = await seedPrometheusConnection(team._id);
 
       const promResponse = { status: 'success', data: ['up', 'requests'] };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/label/__name__/values')
@@ -323,9 +319,7 @@ describe('prometheus router', () => {
       const conn = await seedPrometheusConnection(team._id);
 
       const promResponse = { status: 'success', data: [] };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/query_exemplars')

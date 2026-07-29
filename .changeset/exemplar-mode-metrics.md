@@ -27,3 +27,7 @@ real Prometheus endpoint, the new `/v1/prometheus/query_exemplars` route proxies
 to Prometheus's native `/api/v1/query_exemplars`. The overlay is opt-in and runs
 its query in parallel only when enabled, so charts that don't use it are
 unaffected. Trace-source exemplar generation lands in a follow-up.
+
+The overlay is off by default for the whole deployment and is enabled with
+`NEXT_PUBLIC_ENABLE_EXEMPLARS=true`; with it unset, the chart-editor toggle is
+hidden and no exemplar query runs even for charts that have the flag saved.

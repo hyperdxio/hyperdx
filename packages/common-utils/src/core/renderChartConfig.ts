@@ -2393,6 +2393,67 @@ export function isExemplarEligible({
 }
 
 /**
+ * PromQL functions whose result shares the y-axis unit with an exemplar's value
+ * (a duration). A marker's height is the linked trace's own measurement, so it
+ * is only honest on an axis measured in the same unit.
+ *
+ * Notably absent: `rate(..._bucket[5m])` and friends. A `_bucket` series holds
+ * observation *counts*, so plotting duration-valued markers on it puts, say, a
+ * 250ms trace at "250 requests/sec" — clampExemplarY would then pin it inside
+ * the axis and it would read as a real point on that scale.
+ */
+const PROMQL_DURATION_VALUED_CALL =
+  /^\s*(histogram_quantile|histogram_avg)\s*\(/;
+
+/**
+ * The PromQL counterpart to isExemplarEligible: whether the expression plots a
+ * duration, and so can carry exemplar markers on its axis. The PromQL editor's
+ * toggle and the exemplar fetch both delegate here so they can't drift apart.
+ *
+ * Deliberately narrow rather than a full parse, and deliberately erring towards
+ * `false`: a false negative hides the toggle on a chart that could have shown
+ * markers, while a false positive plots duration markers on an axis measured in
+ * something else and clamps them into it, which reads as real data. Other
+ * duration-valued shapes (`avg_over_time(latency_seconds[5m])`, a
+ * `_sum / _count` ratio) are not recognised yet — extend this pattern when one
+ * is wanted rather than loosening it to a substring test.
+ */
+export function isPromqlExemplarEligible(
+  expression: string | undefined,
+): boolean {
+  if (!expression) return false;
+  const opening = PROMQL_DURATION_VALUED_CALL.exec(expression);
+  if (!opening) return false;
+
+  // The call must span the WHOLE expression, not merely start it. Walking to the
+  // matching close paren is what distinguishes `histogram_quantile(...)` from
+  // `histogram_quantile(...) * 1000`: the latter's axis is milliseconds while its
+  // exemplars are still seconds, so the markers would plot 1000x low and clamp to
+  // the axis floor as though they were real values. Quotes are skipped so a paren
+  // inside a label matcher doesn't unbalance the count.
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = opening[0].length - 1; i < expression.length; i++) {
+    const c = expression[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      // Closed the outermost call: eligible only if nothing but whitespace is
+      // left, i.e. its value is what the axis renders.
+      if (depth === 0) return expression.slice(i + 1).trim() === '';
+    }
+  }
+  // Unbalanced parens — a half-typed expression. Not eligible.
+  return false;
+}
+
+/**
  * Builds a ClickHouse query that surfaces native exemplars stored on an OTel
  * metric table (`Exemplars.TraceId/SpanId/Value/TimeUnix`). Returns null when
  * the config is not a single-metric chart we can resolve a table for.

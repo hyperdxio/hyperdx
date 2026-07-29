@@ -105,7 +105,7 @@ type CollectorConfig = {
         pipelines: string[];
       }>;
     };
-    span_metrics?: {
+    spanmetrics?: {
       histogram: { unit: string; exponential: { max_size: number } };
       dimensions: Array<{ name: string }>;
       exemplars: { enabled: boolean };
@@ -370,7 +370,19 @@ export const buildOtelCollectorConfig = (
       // consumes the traces pipeline and feeds a dedicated metrics pipeline, so
       // the resulting `traces.span.metrics.*` land in ClickHouse with
       // `Exemplars.*` pointing back at the spans they were measured from.
-      otelCollectorConfig.connectors.span_metrics = {
+      //
+      // The key MUST be `spanmetrics` — that is the component type
+      // spanmetricsconnector registers, and a config naming an unregistered type
+      // fails to decode wholesale. Because docker/otel-collector/config.yaml
+      // supplies no pipelines of its own, a rejected remote config leaves the
+      // collector with nothing to run, so a typo here takes ingestion down
+      // rather than just disabling this feature.
+      //
+      // Requires a collector built from the current builder-config.yaml (which
+      // added spanmetricsconnector). Enabling this flag against collectors built
+      // before that will have them reject the config for the same reason, so
+      // roll the collector image out first.
+      otelCollectorConfig.connectors.spanmetrics = {
         histogram: {
           unit: 'ms',
           // Exponential (OTLP) / native (Prometheus) buckets rather than a fixed
@@ -392,7 +404,7 @@ export const buildOtelCollectorConfig = (
         metrics_flush_interval: '15s',
       };
       otelCollectorConfig.service.pipelines.traces.exporters.push(
-        'span_metrics',
+        'spanmetrics',
       );
 
       const spanMetricsExporters = ['clickhouse'];
@@ -409,7 +421,7 @@ export const buildOtelCollectorConfig = (
         spanMetricsExporters.push('prometheusremotewrite/spanmetrics');
       }
       otelCollectorConfig.service.pipelines['metrics/spanmetrics'] = {
-        receivers: ['span_metrics'],
+        receivers: ['spanmetrics'],
         processors: ['memory_limiter', 'batch'],
         exporters: spanMetricsExporters,
       };

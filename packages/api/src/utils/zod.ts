@@ -261,6 +261,11 @@ const externalDashboardTimeChartConfigSchema = z.object({
   alignDateRangeToGranularity: z.boolean().optional(),
   fillNulls: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  // Exemplar overlay (trace-linked markers). Rendering additionally requires an
+  // exemplar-eligible shape — single non-ratio histogram series, no group by —
+  // so setting this on an ineligible tile is inert rather than an error.
+  enableExemplars: z.boolean().optional(),
+  exemplarTraceSourceId: objectIdSchema.optional(),
 });
 
 const externalDashboardLineChartConfigSchema =

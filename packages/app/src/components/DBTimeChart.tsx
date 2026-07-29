@@ -24,8 +24,12 @@ import {
   DisplayType,
   Exemplar,
 } from '@hyperdx/common-utils/dist/types';
-import { Popover, Portal } from '@mantine/core';
-import { IconChartBar, IconChartLine } from '@tabler/icons-react';
+import { Popover, Portal, Text, Tooltip } from '@mantine/core';
+import {
+  IconAlertTriangle,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -442,7 +446,24 @@ function DBTimeChartComponent({
   // Exemplar overlay is configured per-chart via `enableExemplars` (set in the
   // chart editor next to "As Ratio"), not a runtime toolbar toggle. The hook is
   // a no-op unless the flag is set and the source kind supports exemplars.
-  const { exemplars } = useExemplars(queriedConfig, source);
+  const {
+    exemplars,
+    isError: isExemplarsError,
+    error: exemplarsError,
+    dropped: exemplarsDropped,
+  } = useExemplars(queriedConfig, source);
+
+  // A failed or suppressed exemplar scan otherwise looks exactly like "no
+  // exemplars in this range". Both are non-fatal — the chart itself is fine — so
+  // they surface as a toolbar indicator rather than replacing the chart. The
+  // upstream message is preferred over the generic fallback because the API
+  // phrases these actionably (e.g. "narrow the chart's time range").
+  const exemplarNotice = isExemplarsError
+    ? (exemplarsError ??
+      'Exemplars could not be loaded for this chart. The metric table may not carry Exemplars.* columns, or the Prometheus endpoint rejected the query.')
+    : exemplarsDropped === 'multiple-series'
+      ? 'Exemplars are hidden because this query returns more than one series. A marker sits at one trace’s own value, so it can’t be attributed across series yet — aggregate to a single line to see them.'
+      : null;
 
   // Trace source an exemplar resolves against: the chart's explicit
   // `exemplarTraceSourceId`, else the chart source's linked trace source.
@@ -875,12 +896,29 @@ function DBTimeChartComponent({
       );
     }
 
+    if (exemplarNotice) {
+      allToolbarItems.push(
+        <Tooltip
+          key="db-time-chart-exemplar-notice"
+          label={exemplarNotice}
+          withArrow
+          multiline
+          w={280}
+        >
+          <Text component="span" c="dimmed" data-testid="exemplar-notice">
+            <IconAlertTriangle size={14} />
+          </Text>
+        </Tooltip>,
+      );
+    }
+
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
 
     return allToolbarItems;
   }, [
+    exemplarNotice,
     builderQueriedConfig,
     config,
     displayType,

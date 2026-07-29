@@ -80,7 +80,14 @@ export function computeExemplarPoints(
   const points: ExemplarPoint[] = [];
   for (const exemplar of exemplars) {
     const value = finiteOrNull(exemplar.value);
-    if (value != null) points.push(toPoint(exemplar, value));
+    // `timestamp` needs the same guard as `value`: it feeds both the bucket key
+    // and the x coordinate, so a non-finite one collapses every affected exemplar
+    // into a single `@NaN` bucket and reaches recharts as a NaN x. The normalizers
+    // parse through ExemplarSchema (`.finite()`) so this shouldn't fire in the
+    // app, but this function is the pure, independently-tested boundary.
+    if (value != null && finiteOrNull(exemplar.timestamp) != null) {
+      points.push(toPoint(exemplar, value));
+    }
   }
   if (!points.length) return [];
 
@@ -203,4 +210,26 @@ export function clampExemplarY(y: number, bounds: ExemplarYBounds): number {
   const { min, max } = bounds;
   if (!Number.isFinite(max) || !Number.isFinite(min) || min > max) return y;
   return Math.min(Math.max(y, min), max);
+}
+
+/**
+ * Pin an exemplar's x (chart time units) inside the rendered x-domain, for the
+ * same reason as the y clamp: `ReferenceDot` defaults to `ifOverflow="discard"`,
+ * so a marker outside the domain silently vanishes.
+ *
+ * This matters at the right-hand edge. When `dateRangeEndInclusive` is false the
+ * domain's upper bound is the *last bucket start*, so an exemplar occurring
+ * inside that final bucket sits past the bound and disappears — losing the newest
+ * window, which is the one a live investigation is watching. Clamping puts the
+ * marker on the boundary of the bucket whose series point it explains.
+ *
+ * The tradeoff, deliberately taken: a clamped marker's rendered x no longer
+ * states exactly when the trace occurred. The hover card reports the true
+ * timestamp, and a marker pinned at the edge beats one that isn't drawn at all.
+ * Degenerate or inverted domains leave x untouched.
+ */
+export function clampExemplarX(x: number, domain: [number, number]): number {
+  const [min, max] = domain;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return x;
+  return Math.min(Math.max(x, min), max);
 }

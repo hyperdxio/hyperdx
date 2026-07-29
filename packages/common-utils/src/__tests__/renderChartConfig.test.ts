@@ -5,6 +5,7 @@ import {
   EXEMPLAR_QUERY_LIMIT,
   exemplarScanBucketing,
   isExemplarEligible,
+  isPromqlExemplarEligible,
   renderChartConfig,
   renderMetricExemplarsChartConfig,
   timeFilterExpr,
@@ -3564,6 +3565,66 @@ describe('isExemplarEligible', () => {
     expect(isExemplarEligible({ ...eligible, metricType: 'Histogram' })).toBe(
       false,
     );
+  });
+});
+
+describe('isPromqlExemplarEligible', () => {
+  // The PromQL counterpart: an exemplar's value is a duration, so it may only be
+  // plotted on an axis that is also a duration.
+  it('accepts expressions that plot a duration', () => {
+    expect(
+      isPromqlExemplarEligible(
+        'histogram_quantile(0.95, sum(rate(http_latency_bucket[5m])) by (le))',
+      ),
+    ).toBe(true);
+    expect(isPromqlExemplarEligible('histogram_avg(rate(latency[5m]))')).toBe(
+      true,
+    );
+  });
+
+  it('rejects a count-valued expression', () => {
+    // The regression this guards: markers valued in milliseconds clamped into a
+    // requests/sec axis, reading as real points on that scale.
+    expect(isPromqlExemplarEligible('rate(http_requests_total[5m])')).toBe(
+      false,
+    );
+    // A raw `_bucket` series is observation *counts*, not durations.
+    expect(isPromqlExemplarEligible('rate(http_latency_bucket[5m])')).toBe(
+      false,
+    );
+    expect(isPromqlExemplarEligible('sum(up)')).toBe(false);
+  });
+
+  it('rejects an empty or missing expression', () => {
+    expect(isPromqlExemplarEligible(undefined)).toBe(false);
+    expect(isPromqlExemplarEligible('')).toBe(false);
+  });
+
+  it('rejects a duration expression wrapped in arithmetic', () => {
+    // The axis is then milliseconds while the exemplars are still seconds, so the
+    // markers would plot 1000x low and clamp to the axis floor as if real.
+    expect(
+      isPromqlExemplarEligible(
+        'histogram_quantile(0.95, sum(rate(a[5m])) by (le)) * 1000',
+      ),
+    ).toBe(false);
+    expect(
+      isPromqlExemplarEligible(
+        '1000 * histogram_quantile(0.95, sum(rate(a[5m])) by (le))',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects the function name appearing inside a label matcher', () => {
+    expect(
+      isPromqlExemplarEligible('rate(x{note="histogram_quantile("}[5m])'),
+    ).toBe(false);
+  });
+
+  it('accepts leading whitespace before the outermost call', () => {
+    expect(
+      isPromqlExemplarEligible('  histogram_quantile(0.95, rate(a[5m]))'),
+    ).toBe(true);
   });
 });
 

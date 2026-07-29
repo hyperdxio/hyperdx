@@ -1642,6 +1642,16 @@
             "type": "boolean",
             "description": "Overlay the equivalent previous time period for comparison.",
             "default": false
+          },
+          "enableExemplars": {
+            "type": "boolean",
+            "description": "Overlay exemplars: markers for individual trace-linked data points. Only renders when the tile is exemplar-eligible — a single non-ratio histogram metric series with no groupBy — and is accepted but inert otherwise.\n",
+            "default": false
+          },
+          "exemplarTraceSourceId": {
+            "type": "string",
+            "description": "ID of the Trace source an exemplar marker links to. Defaults to the chart source's linked trace source when omitted.\n",
+            "example": "65f5e4a3b9e77c001a222222"
           }
         }
       },
@@ -1700,6 +1710,16 @@
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."
+          },
+          "enableExemplars": {
+            "type": "boolean",
+            "description": "Overlay exemplars: markers for individual trace-linked data points. Only renders when the tile is exemplar-eligible — a single non-ratio histogram metric series with no groupBy — and is accepted but inert otherwise.\n",
+            "default": false
+          },
+          "exemplarTraceSourceId": {
+            "type": "string",
+            "description": "ID of the Trace source an exemplar marker links to. Defaults to the chart source's linked trace source when omitted.\n",
+            "example": "65f5e4a3b9e77c001a222222"
           }
         }
       },
