@@ -1179,8 +1179,9 @@ function DBExplorePage() {
   const [view, setView] = useSearchView();
   const [aggConfig, setAggConfig] = useSearchAggConfig();
 
-  // Submitted query mode (drives results rendering + control gating). The live
-  // form value (`inputConfigType`) drives the query-editor toggle instead.
+  // Submitted query mode: drives query *execution* (the raw-SQL chart config)
+  // so results only change on Run. The live form value (`isSqlUiMode`, defined
+  // once the form exists) gates the SQL-mode UI/chrome instead.
   const searchedConfigType: QueryConfigMode =
     searchedConfig.configType ?? 'builder';
   const isSqlMode = searchedConfigType === 'sql';
@@ -1596,8 +1597,6 @@ function DBExplorePage() {
     savedSearchesFlyoutOpened,
     { open: openSavedSearchesFlyout, close: closeSavedSearchesFlyout },
   ] = useDisclosure(false);
-  const [isQueryExpanded, { toggle: toggleQueryExpanded }] =
-    useDisclosure(false);
   const chartSearchConfig = useMemo(
     () => ({
       select: searchedConfig.select ?? '',
@@ -1633,6 +1632,11 @@ function DBExplorePage() {
   const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
   const inputConfigType: QueryConfigMode =
     useWatch({ name: 'configType', control }) ?? 'builder';
+  // Live SQL-mode flag: driven by the editor toggle (not the last-run config)
+  // so builder-only chrome (histogram, severity, sort/columns, agg controls,
+  // view switcher) hides the instant you switch to SQL. Query *execution* still
+  // keys off `isSqlMode` (submitted) so nothing re-runs until Run.
+  const isSqlUiMode = inputConfigType === 'sql';
   // query suggestion for 'where' if error
   const whereSuggestions = useSqlSuggestions({
     input: inputWhere,
@@ -2709,8 +2713,6 @@ function DBExplorePage() {
             data-testid="search-input"
             dateRange={searchedTimeRange}
             sourceId={inputSource}
-            isExpanded={isQueryExpanded}
-            onToggleExpand={toggleQueryExpanded}
             queryMode={inputConfigType}
             onQueryModeChange={handleQueryModeChange}
             sqlTemplateName="sqlTemplate"
@@ -2837,7 +2839,7 @@ function DBExplorePage() {
                     <ExploreResultsToolbar
                       resultsCount={
                         !isMetricSource &&
-                        !isSqlMode &&
+                        !isSqlUiMode &&
                         histogramTimeChartConfig && (
                           <ResultsStats
                             countConfig={histogramTimeChartConfig}
@@ -2854,7 +2856,7 @@ function DBExplorePage() {
                       }
                       stats={
                         !isMetricSource &&
-                        !isSqlMode &&
+                        !isSqlUiMode &&
                         severitySummaryConfig && (
                           <SeveritySummary
                             config={severitySummaryConfig}
@@ -2877,11 +2879,11 @@ function DBExplorePage() {
                           value={view}
                           onChange={setView}
                           sourceKind={searchedSource?.kind}
-                          chartTypesOnly={isSqlMode}
+                          chartTypesOnly={isSqlUiMode}
                         />
                       }
                       addToDashboard={
-                        isSqlMode
+                        isSqlUiMode
                           ? rawSqlAddToDashboardConfig && (
                               <AddToDashboardButton
                                 config={rawSqlAddToDashboardConfig}
@@ -2895,7 +2897,7 @@ function DBExplorePage() {
                             )
                       }
                       sortControl={
-                        !isSqlMode && (
+                        !isSqlUiMode && (
                           <>
                             {view === 'list' && (
                               <SearchSortMenu
@@ -2961,7 +2963,7 @@ function DBExplorePage() {
                       }
                       columnsControl={
                         view === 'list' &&
-                        !isSqlMode && (
+                        !isSqlUiMode && (
                           <SearchColumnPicker
                             availableColumns={availableColumns}
                             selectedColumns={displayedColumns}
@@ -2989,7 +2991,7 @@ function DBExplorePage() {
                       overflowMenu={
                         <ResultsOverflowMenu
                           config={
-                            isSqlMode && rawSqlChartConfig
+                            isSqlUiMode && rawSqlChartConfig
                               ? rawSqlChartConfig
                               : {
                                   ...chartConfig,
@@ -2997,7 +2999,7 @@ function DBExplorePage() {
                                 }
                           }
                           sqlConfig={
-                            isSqlMode
+                            isSqlUiMode
                               ? undefined
                               : (histogramTimeChartConfig ?? undefined)
                           }
@@ -3006,7 +3008,7 @@ function DBExplorePage() {
                       }
                     />
                   </Box>
-                  {isAggregatedSearchView(view) && !isSqlMode && (
+                  {isAggregatedSearchView(view) && !isSqlUiMode && (
                     <SearchAggControls
                       view={view}
                       config={aggConfig}
@@ -3016,26 +3018,28 @@ function DBExplorePage() {
                       metricSource={searchedMetricSource}
                     />
                   )}
-                  {viewShowsHistogram(view) && !hasQueryError && !isSqlMode && (
-                    <Box
-                      className={searchPageStyles.timeChartContainer}
-                      mih="0"
-                    >
-                      <DBTimeChart
-                        sourceId={searchedConfig.source ?? undefined}
-                        showLegend={false}
-                        config={histogramTimeChartConfig}
-                        enabled={isReady}
-                        showDisplaySwitcher={false}
-                        showMVOptimizationIndicator={false}
-                        showDateRangeIndicator={false}
-                        queryKeyPrefix={QUERY_KEY_PREFIX}
-                        onTimeRangeSelect={handleTimeRangeSelect}
-                        onFocusSeries={handleFocusSeries}
-                        enableParallelQueries
-                      />
-                    </Box>
-                  )}
+                  {viewShowsHistogram(view) &&
+                    !hasQueryError &&
+                    !isSqlUiMode && (
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
+                        <DBTimeChart
+                          sourceId={searchedConfig.source ?? undefined}
+                          showLegend={false}
+                          config={histogramTimeChartConfig}
+                          enabled={isReady}
+                          showDisplaySwitcher={false}
+                          showMVOptimizationIndicator={false}
+                          showDateRangeIndicator={false}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          onTimeRangeSelect={handleTimeRangeSelect}
+                          onFocusSeries={handleFocusSeries}
+                          enableParallelQueries
+                        />
+                      </Box>
+                    )}
                   {hasQueryError && queryError ? (
                     <>
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
@@ -3156,10 +3160,10 @@ function DBExplorePage() {
                         )}
                       </div>
                     </>
-                  ) : isSqlMode ? (
+                  ) : isSqlUiMode ? (
                     <Box flex="1" mih="0" px="sm" py="xs">
-                      {rawSqlChartConfig &&
-                        (view === 'timeseries' ? (
+                      {rawSqlChartConfig ? (
+                        view === 'timeseries' ? (
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             config={rawSqlChartConfig}
@@ -3207,7 +3211,20 @@ function DBExplorePage() {
                             showMVOptimizationIndicator={false}
                             errorVariant="inline"
                           />
-                        ))}
+                        )
+                      ) : (
+                        <Flex
+                          h="100%"
+                          align="center"
+                          justify="center"
+                          direction="column"
+                          gap="xs"
+                        >
+                          <Text size="sm" c="dimmed">
+                            Press Run to execute your SQL query.
+                          </Text>
+                        </Flex>
+                      )}
                     </Box>
                   ) : view === 'patterns' ? (
                     <Box flex="1" mih="0" px="sm">

@@ -34,9 +34,6 @@ export type ExploreQueryEditorProps = {
   additionalSuggestions?: string[];
   /** Form field name for the language value; defaults to `${name}Language`. */
   languageName?: string;
-  /** Whether the editor body is expanded (multiline). */
-  isExpanded: boolean;
-  onToggleExpand: () => void;
   /** Right-aligned header controls (time picker, Live, Run, ...). */
   controls?: React.ReactNode;
   /** Active filter chips rendered inside the card, below the input. */
@@ -73,8 +70,6 @@ export function ExploreQueryEditor({
   sourceId,
   additionalSuggestions,
   languageName = `${name}Language`,
-  isExpanded,
-  onToggleExpand,
   controls,
   filtersSlot,
   queryMode,
@@ -139,8 +134,6 @@ export function ExploreQueryEditor({
         languages={['sql', 'lucene']}
         queryMode={queryMode}
         onQueryModeChange={onQueryModeChange}
-        expanded={isExpanded}
-        onToggleExpanded={onToggleExpand}
         rightSection={controls}
         filtersSlot={filtersSlot}
         leftSection={

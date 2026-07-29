@@ -13,20 +13,14 @@ import {
   type StreamParser,
   syntaxHighlighting,
 } from '@codemirror/language';
-import { EditorState, type Extension } from '@codemirror/state';
+import { type Extension } from '@codemirror/state';
 import { tags as t } from '@lezer/highlight';
 import {
-  ActionIcon,
   Box,
   Flex,
   SegmentedControl,
-  Tooltip,
   useMantineColorScheme,
 } from '@mantine/core';
-import {
-  IconArrowsDiagonal,
-  IconArrowsDiagonalMinimize2,
-} from '@tabler/icons-react';
 import CodeMirror, {
   EditorView,
   keymap,
@@ -62,16 +56,13 @@ export interface QueryEditorProps {
   /**
    * Query authoring mode. When provided, a `Builder | SQL` toggle is shown at
    * the far left of the header. In `'sql'` mode the CodeMirror WHERE editor is
-   * replaced by `children` (a raw-SQL editor) and the language toggle, expand
-   * toggle, and `leftSection` are hidden.
+   * replaced by `children` (a raw-SQL editor) and the language toggle and
+   * `leftSection` are hidden.
    */
   queryMode?: QueryConfigMode;
   onQueryModeChange?: (mode: QueryConfigMode) => void;
   /** Body override rendered instead of the WHERE editor when in SQL mode. */
   children?: React.ReactNode;
-  /** Expanded (controlled) — multiline vs single line. */
-  expanded: boolean;
-  onToggleExpanded: () => void;
   /** Right-aligned header controls (date picker, Live, Run, ...). */
   rightSection?: React.ReactNode;
   /** Extra node next to the language tabs (e.g. a syntax-help button). */
@@ -81,11 +72,12 @@ export interface QueryEditorProps {
   /** Field names offered by autocomplete (both languages). */
   fields?: string[];
   placeholder?: string;
-  /** Fired on Enter (Shift+Enter inserts a newline when expanded). */
+  /** Fired on Enter (Shift+Enter inserts a newline). */
   onSubmit?: () => void;
   /** Focus the editor on "/" or "s" when true. */
   enableHotkey?: boolean;
-  maxExpandedHeight?: number;
+  /** Max body height (px) before the editor scrolls. Defaults to 200. */
+  maxHeight?: number;
   'data-testid'?: string;
 }
 
@@ -124,20 +116,6 @@ const queryHighlightStyle = HighlightStyle.define([
     fontStyle: 'italic',
   },
 ]);
-
-/* Block newline insertion while collapsed so a single line stays single. */
-const singleLine = EditorState.transactionFilter.of(tr => {
-  if (!tr.docChanged) return tr;
-  let insertsNewline = false;
-  tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
-    if (inserted.lines > 1) insertsNewline = true;
-  });
-  return insertsNewline ? [] : tr;
-});
-
-const clipScroller = EditorView.theme({
-  '.cm-scroller': { overflow: 'hidden' },
-});
 
 /**
  * Minimal Lucene highlighter. `@codemirror/legacy-modes` has no Lucene mode, so
@@ -200,9 +178,10 @@ function languageExtensions(
 
 /**
  * Presentational query editor: a bordered card with language tabs and header
- * controls on top of a CodeMirror body that renders SQL or Lucene with line
- * numbers and syntax highlighting. Fully controlled — value, language, and
- * expanded state are owned by the caller.
+ * controls on top of a CodeMirror body that renders SQL or Lucene with syntax
+ * highlighting. The body auto-grows with its content (wrapping long lines) up
+ * to `maxHeight` before scrolling. Fully controlled — value and language are
+ * owned by the caller.
  */
 export function QueryEditor({
   value,
@@ -213,8 +192,6 @@ export function QueryEditor({
   queryMode,
   onQueryModeChange,
   children,
-  expanded,
-  onToggleExpanded,
   rightSection,
   leftSection,
   filtersSlot,
@@ -222,7 +199,7 @@ export function QueryEditor({
   placeholder = 'Search your events…',
   onSubmit,
   enableHotkey,
-  maxExpandedHeight = 320,
+  maxHeight = 200,
   'data-testid': dataTestId,
 }: QueryEditorProps) {
   const { colorScheme } = useMantineColorScheme();
@@ -248,6 +225,10 @@ export function QueryEditor({
 
   const extensions = useMemo<Extension[]>(() => {
     const submitKeymap = Prec.highest(
+      // The Enter handler reads `onSubmitRef.current`, but only when the key is
+      // pressed (an event), never during render — the compiler can't tell the
+      // CodeMirror `run` callback isn't a render-time ref read, so disable here.
+      // eslint-disable-next-line react-hooks/refs
       keymap.of([
         {
           key: 'Enter',
@@ -260,7 +241,8 @@ export function QueryEditor({
             return true;
           },
         },
-        ...(expanded ? [{ key: 'Shift-Enter', run: () => false }] : []),
+        // Shift+Enter inserts a newline (the editor auto-grows to fit).
+        { key: 'Shift-Enter', run: () => false },
       ]),
     );
     return [
@@ -270,9 +252,9 @@ export function QueryEditor({
       submitKeymap,
       keymap.of([{ key: 'Tab', run: acceptCompletion }]),
       ...languageExtensions(language, fields),
-      ...(expanded ? [EditorView.lineWrapping] : [singleLine, clipScroller]),
+      EditorView.lineWrapping,
     ];
-  }, [language, expanded, fields]);
+  }, [language, fields]);
 
   // Surface field/variable suggestions as soon as the editor is focused, so
   // people can discover available fields without knowing exact names.
@@ -283,36 +265,52 @@ export function QueryEditor({
 
   const isSqlMode = queryMode === 'sql';
   const showToggle = languages.length > 1 && !isSqlMode;
-  const collapsedHeight = '30px';
+
+  // Combined authoring control: builder WHERE languages plus an "Advanced"
+  // option that maps to raw-SQL mode, so the value spans both `queryMode` and
+  // `language` and "SQL" isn't repeated across two adjacent controls.
+  const modeValue = isSqlMode ? 'advanced' : language;
+  const handleModeChange = (v: string) => {
+    if (v === 'advanced') {
+      onQueryModeChange?.('sql');
+      return;
+    }
+    if (isSqlMode) onQueryModeChange?.('builder');
+    onLanguageChange(v as QueryLanguage);
+  };
 
   return (
     <Box className={styles.card} data-testid="explore-query-editor">
       <Flex align="center" gap="sm" className={styles.header}>
         <Flex align="center" gap="xs" wrap="nowrap">
-          {onQueryModeChange != null && (
+          {onQueryModeChange != null ? (
             <SegmentedControl
               size="xs"
-              value={queryMode}
-              onChange={v => onQueryModeChange(v as QueryConfigMode)}
+              value={modeValue}
+              onChange={handleModeChange}
               data={[
-                { value: 'builder', label: 'Builder' },
-                { value: 'sql', label: 'SQL' },
+                ...languages.map(l => ({
+                  value: l,
+                  label: l === 'sql' ? 'SQL' : 'Lucene',
+                })),
+                { value: 'advanced', label: 'Advanced' },
               ]}
               aria-label="Query mode"
               data-testid="query-mode-toggle"
             />
-          )}
-          {showToggle && (
-            <SegmentedControl
-              size="xs"
-              value={language}
-              onChange={v => onLanguageChange(v as QueryLanguage)}
-              data={languages.map(l => ({
-                value: l,
-                label: l === 'sql' ? 'SQL' : 'Lucene',
-              }))}
-              aria-label="Query language"
-            />
+          ) : (
+            showToggle && (
+              <SegmentedControl
+                size="xs"
+                value={language}
+                onChange={v => onLanguageChange(v as QueryLanguage)}
+                data={languages.map(l => ({
+                  value: l,
+                  label: l === 'sql' ? 'SQL' : 'Lucene',
+                }))}
+                aria-label="Query language"
+              />
+            )
           )}
           {!isSqlMode && leftSection}
         </Flex>
@@ -324,28 +322,6 @@ export function QueryEditor({
           className={styles.controls}
         >
           {rightSection}
-          {!isSqlMode && (
-            <Tooltip
-              label={expanded ? 'Collapse editor' : 'Expand editor'}
-              position="bottom"
-            >
-              <ActionIcon
-                variant="subtle"
-                size="input-xs"
-                color="gray"
-                onClick={onToggleExpanded}
-                aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
-                data-testid="query-expand-toggle"
-                style={{ flexShrink: 0 }}
-              >
-                {expanded ? (
-                  <IconArrowsDiagonalMinimize2 size={16} />
-                ) : (
-                  <IconArrowsDiagonal size={16} />
-                )}
-              </ActionIcon>
-            </Tooltip>
-          )}
         </Flex>
       </Flex>
       {isSqlMode ? (
@@ -360,11 +336,11 @@ export function QueryEditor({
             placeholder={placeholder}
             theme={colorScheme === 'dark' ? 'dark' : 'light'}
             extensions={extensions}
-            height={expanded ? 'auto' : collapsedHeight}
-            minHeight={expanded ? '96px' : collapsedHeight}
-            maxHeight={expanded ? `${maxExpandedHeight}px` : collapsedHeight}
+            height="auto"
+            minHeight="24px"
+            maxHeight={`${maxHeight}px`}
             basicSetup={{
-              lineNumbers: true,
+              lineNumbers: false,
               foldGutter: false,
               highlightActiveLine: false,
               highlightActiveLineGutter: false,
