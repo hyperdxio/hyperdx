@@ -19,6 +19,7 @@ import {
   IconArrowBarToLeft,
   IconBell,
   IconChartDots,
+  IconCompass,
   IconDeviceFloppy,
   IconDeviceLaptop,
   IconLayoutGrid,
@@ -397,6 +398,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               isActive={isSavedSearchActive}
               isExpanded={isSavedSearchExpanded}
               onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
+            />
+
+            {/* Explore (experimental) */}
+            <AppNavLink
+              label="Explore"
+              icon={<IconCompass size={16} />}
+              href="/explore"
+              badgeLabel="Experimental"
             />
 
             {!isCollapsed && (
