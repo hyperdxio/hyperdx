@@ -449,6 +449,81 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
   );
 });
 
+test.describe(
+  'Alert Lifecycle (create/update/delete)',
+  { tag: ['@alerts', '@full-stack'] },
+  () => {
+    let searchPage: SearchPage;
+    let alertsPage: AlertsPage;
+
+    test.beforeEach(async ({ page }) => {
+      searchPage = new SearchPage(page);
+      alertsPage = new AlertsPage(page);
+    });
+
+    test(
+      'should create, then update the interval of, then delete a saved-search alert',
+      { tag: '@full-stack' },
+      async () => {
+        const ts = Date.now();
+        const savedSearchName = `E2E Lifecycle Alert ${ts}`;
+        const webhookName = `E2E Webhook Lifecycle ${ts}`;
+        const webhookUrl = `https://example.com/lifecycle-${ts}`;
+
+        await test.step('Create a saved search', async () => {
+          await searchPage.goto();
+          await searchPage.openSaveSearchModal();
+          await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+            savedSearchName,
+          );
+        });
+
+        await test.step('Create an alert with a 1 minute interval', async () => {
+          await searchPage.openAlertsModal();
+          await searchPage.alertModal.addWebhookAndWait(
+            'Generic',
+            webhookName,
+            webhookUrl,
+          );
+          await searchPage.alertModal.selectWebhook(webhookName);
+          // Start on a 1-minute cadence so the update below is observable.
+          await searchPage.alertModal.selectInterval('1m');
+          await searchPage.alertModal.createAlert();
+        });
+
+        await test.step('Reopen the alert and confirm the 1 minute interval persisted', async () => {
+          await searchPage.openAlertsModal();
+          await searchPage.alertModal.selectExistingAlertTab(0);
+          expect(await searchPage.alertModal.getSelectedInterval()).toBe('1m');
+        });
+
+        await test.step('Change the interval to 5 minute and Save Alert (dispatches PUT)', async () => {
+          await searchPage.alertModal.selectInterval('5m');
+          await searchPage.alertModal.saveAlert();
+        });
+
+        await test.step('Reopen the alert and confirm the interval update was persisted', async () => {
+          await searchPage.openAlertsModal();
+          await searchPage.alertModal.selectExistingAlertTab(0);
+          expect(await searchPage.alertModal.getSelectedInterval()).toBe('5m');
+        });
+
+        await test.step('Delete the alert', async () => {
+          await searchPage.alertModal.deleteAlert();
+        });
+
+        await test.step('Verify the alert no longer appears on the alerts page', async () => {
+          await alertsPage.goto();
+          await expect(alertsPage.pageContainer).toBeVisible();
+          await expect(
+            alertsPage.getAlertCardByName(savedSearchName),
+          ).toBeHidden({ timeout: 10000 });
+        });
+      },
+    );
+  },
+);
+
 test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
   let searchPage: SearchPage;
   let dashboardPage: DashboardPage;

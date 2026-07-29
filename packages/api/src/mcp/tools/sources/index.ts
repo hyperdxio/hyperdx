@@ -1,15 +1,19 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ToolDefinition, ToolRegistrar } from '@/mcp/tools/types';
 
-import type { McpContext, ToolDefinition } from '../types';
+import { registerDeleteSource } from './deleteSource';
+import { registerDescribeMetric } from './describeMetric';
 import { registerDescribeSource } from './describeSource';
+import { registerListMetrics } from './listMetrics';
 import { registerListSources } from './listSources';
+import { registerSaveSource } from './saveSource';
 
-const sourcesTools: ToolDefinition = (
-  server: McpServer,
-  context: McpContext,
-) => {
-  registerListSources(server, context);
-  registerDescribeSource(server, context);
+const sourcesTools: ToolDefinition = (registrar: ToolRegistrar) => {
+  registerListSources(registrar);
+  registerDescribeSource(registrar);
+  registerSaveSource(registrar);
+  registerDeleteSource(registrar);
+  registerListMetrics(registrar);
+  registerDescribeMetric(registrar);
 };
 
 export default sourcesTools;

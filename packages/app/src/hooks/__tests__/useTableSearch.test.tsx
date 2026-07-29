@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { useTableSearch } from '../useTableSearch';
+import { useTableSearch } from '@/hooks/useTableSearch';
 
 describe('useTableSearch', () => {
   // Realistic test data based on HyperDX logs

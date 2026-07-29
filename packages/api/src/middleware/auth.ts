@@ -1,11 +1,14 @@
 import { Connection } from '@hyperdx/common-utils/dist/types';
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
+import {
+  getStaticFeatureFlags,
+  setBusinessContext,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 declare global {
@@ -95,6 +98,15 @@ export async function validateUserAccessKey(
 
   req.user = user;
 
+  // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
+  // with team/user context so their traces are searchable during incidents.
+  setBusinessContext({
+    teamId: user.team?.toString(),
+    userId: user._id?.toString(),
+    email: user.email,
+    ...getStaticFeatureFlags(),
+  });
+
   next();
 }
 
@@ -113,14 +125,22 @@ export function isUserAuthenticated(
       // @ts-ignore
       team: '_local_team_',
     };
+    setBusinessContext({
+      teamId: '_local_team_',
+      userId: '_local_user_',
+      'hyperdx.local_mode': true,
+      ...getStaticFeatureFlags(),
+    });
     return next();
   }
 
   if (req.isAuthenticated()) {
-    // set user id as trace attribute
-    setTraceAttributes({
-      userId: req.user?._id.toString(),
-      userEmail: req.user?.email,
+    // Attach incident-remediation context to the trace and active span.
+    setBusinessContext({
+      teamId: req.user?.team?.toString(),
+      userId: req.user?._id?.toString(),
+      email: req.user?.email,
+      ...getStaticFeatureFlags(),
     });
 
     return next();

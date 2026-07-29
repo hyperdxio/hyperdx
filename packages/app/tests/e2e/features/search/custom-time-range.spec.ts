@@ -18,6 +18,18 @@ test.describe('Custom Time Range', { tag: '@custom-time-range' }, () => {
 
   test.beforeEach(async ({ page }) => {
     searchPage = new SearchPage(page);
+    // The picker mode is persisted in localStorage via an atomWithStorage
+    // ('hdx-time-picker-mode'), so a prior test that switched to "Around a
+    // time" can leak into this one and leave the picker mounted with a single
+    // date input. Reset the key before any page script runs so the picker
+    // always mounts in the default Range mode.
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('hdx-time-picker-mode');
+      } catch {
+        // localStorage may be unavailable in some contexts; ignore.
+      }
+    });
     await searchPage.goto();
     await expect(searchPage.form).toBeVisible();
     await searchPage.timePicker.open();
@@ -73,6 +85,10 @@ test.describe('Custom Time Range', { tag: '@custom-time-range' }, () => {
 
     await test.step('Reopen picker and verify inputs still show typed times', async () => {
       await searchPage.timePicker.open();
+      // Range mode (two date inputs) is guaranteed because the beforeEach
+      // resets the persisted 'hdx-time-picker-mode' atom and selects Range
+      // mode, and applying an absolute range leaves isLive=false (absolute
+      // mode). Both Start and End inputs are therefore present here.
       await expect(searchPage.timePicker.startDateInput).toHaveValue(start);
       await expect(searchPage.timePicker.endDateInput).toHaveValue(end);
     });

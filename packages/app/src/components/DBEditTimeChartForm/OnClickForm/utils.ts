@@ -21,3 +21,10 @@ export function emptyDashboardOnClick(): OnClick {
     whereLanguage: 'sql',
   };
 }
+
+export function emptyExternalOnClick(): OnClick {
+  return {
+    type: 'external',
+    urlTemplate: '',
+  };
+}

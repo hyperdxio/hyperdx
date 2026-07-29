@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import {
   describeOnClick,
   renderOnClickDashboard,
+  renderOnClickExternal,
   renderOnClickSearch,
 } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
 import { isSearchableSource, OnClick } from '@hyperdx/common-utils/dist/types';
@@ -25,6 +26,8 @@ import { useSources } from '@/source';
 export type RowAction = {
   url: string | null;
   description: string;
+  /** True when `url` points to an arbitrary external destination (the `external` onClick variant) */
+  external?: boolean;
   onClickError?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 };
 
@@ -97,6 +100,8 @@ export function useOnClickLinkBuilder({
     // memo (different onClick / sources / dashboards) starts fresh.
     const cache = new WeakMap<Record<string, unknown>, RowAction>();
 
+    const isExternal = onClick.type === 'external';
+
     const compute = (row: Record<string, unknown>): RowAction => {
       const renderResult =
         onClick.type === 'search'
@@ -107,16 +112,22 @@ export function useOnClickLinkBuilder({
               sourceIdsByName,
               dateRange,
             })
-          : renderOnClickDashboard({
-              onClick,
-              row,
-              dashboardIds,
-              dashboardIdsByName,
-              dateRange,
-            });
+          : onClick.type === 'dashboard'
+            ? renderOnClickDashboard({
+                onClick,
+                row,
+                dashboardIds,
+                dashboardIdsByName,
+                dateRange,
+              })
+            : renderOnClickExternal({ onClick, row });
 
       if (renderResult.ok) {
-        return { url: renderResult.url, description };
+        return {
+          url: renderResult.url,
+          description: isExternal ? renderResult.url : description,
+          external: isExternal,
+        };
       }
 
       const errorMessage = renderResult.error;

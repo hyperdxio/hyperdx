@@ -16,13 +16,14 @@ export const config = {
 // we proxy `/api/*` to a separately-deployed API service as before.
 const isInlineApi = process.env.HDX_PREVIEW_INLINE_API === 'true';
 
-export default (req: NextApiRequest, res: NextApiResponse) => {
+export default async (req: NextApiRequest, res: NextApiResponse) => {
   if (isInlineApi) {
-    // Lazy require so non-preview production builds — where the webpack
-    // externals hook in next.config.mjs marks @hyperdx/api as external —
-    // never attempt to resolve a module that isn't bundled.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const inlineApi = require('@hyperdx/api/build/serverless');
+    // Lazy require so non-preview production builds
+    const inlineApi = await import(
+      /* webpackIgnore: true */
+      /* turbopackIgnore: true */
+      '@hyperdx/api/build/serverless'
+    );
     const handler = inlineApi.default ?? inlineApi;
     return handler(req, res);
   }

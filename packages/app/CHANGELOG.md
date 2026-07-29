@@ -1,5 +1,655 @@
 # @hyperdx/app
 
+## 2.32.0
+
+### Minor Changes
+
+- f5dafcc2: feat: add a "What's new" item to the Help menu that opens the app's changelog rendered as Markdown
+- 7a4ad986: feat: upgrade filters and autocomplete to intelligently route queries through the best rollup
+- 7d806fb8: Add per-column color to dashboard table tiles. On builder table tiles you can
+  now set a static color on a column and layer ordered conditional rules (for
+  example `> 500` turns the cell red), the table-cell counterpart of the
+  number-tile color. Rules are authored from the column editor and applied per
+  cell at render, reusing the existing palette tokens so colors reflow across
+  light and dark themes.
+
+### Patch Changes
+
+- de2c8a0c: feat: Show exponential histogram metrics in the metric name drop-down, gated behind `NEXT_PUBLIC_ENABLE_EXPONENTIAL_HISTOGRAMS`.
+- fcdcd781: feat(dashboards): expand the out-of-the-box Browser RUM dashboard with two new
+  sections.
+
+  **Sessions**: a **Recent Sessions** table lists client-side sessions (page
+  views, errors, distinct traces, user, service, last-active time) ordered by
+  recency; clicking a row drills into the Traces search view filtered to that
+  session, surfacing its client-side spans (the client-side trace).
+
+  **Memory**: per-page JS heap tiles (median and p90 used heap, plus a "Memory by
+  Page" table) sourced from `performance.memory.*` attributes on `documentLoad`
+  spans. These reflect Chromium visitors only (Firefox/Safari don't expose
+  per-page memory) and require a Browser SDK build that emits the heap attributes.
+
+  Implemented entirely via existing tile mechanisms (table `onClick`
+  drill-through, Markdown tiles, byte number-format) — no renderer changes.
+
+- dbe14965: fix: clear the VirtualMultiSelect search input after selecting a value
+- e6e0907f: Detail drawers now close when you click outside of them. On Search and Sessions,
+  clicking outside the results table / session list dismisses the open drawer;
+  clicks inside the drawer, its nested popups/modals, or the results table keep it
+  open. This is on by default for row-table side panels (opt out with
+  `closeOnClickOutside={false}`).
+- 4372c78c: fix(mcp): update the Codex CLI install snippet to the current `codex mcp add --url ... --bearer-token-env-var ...` syntax
+- cad749f0: feat: Show a snap grid while dragging or resizing a dashboard tile
+
+  While a dashboard tile is dragged or resized, the grid it snaps to is drawn behind the tiles and the cells where the tile will land are highlighted, so the drop target is clear. The highlight follows where the tile actually settles, including when the grid compacts it away from the cursor, rather than the raw cursor position. The overlay uses the same geometry as react-grid-layout, appears once the tile starts moving, and clears on release.
+
+- ce8fb022: feat: Add semantic component variants wired to the design tokens. `Text` gains `warning`/`success` variants and `Alert` gains `info`/`success`/`warning`/`danger` variants (alongside the existing `danger` for `Button`/`ActionIcon`). Alerts and soft controls use new scheme-aware `--color-bg-*-subtle` (+ `-subtle-hover`) background tokens — lighter tints in light mode, deeper tints in dark mode — with the title, icon, and body text rendered in the semantic color token. Text colors are tuned to meet WCAG AA (4.5:1) on those tints in both schemes. Applies to both the HyperDX and ClickStack themes (ClickStack's `warning` is orange-based since it remaps `yellow` to the brand gold), with new Storybook stories (Components/Alert, Design Tokens/Semantic Variants).
+- eadea332: feat: surface OpenTelemetry span links in the trace view. Trace sources gain an
+  optional `spanLinksValueExpression` field (auto-detected from the OTel `Links`
+  column), and the span detail panel shows a new "Span Links" section. Each link
+  has an "Open trace" action that opens the linked trace in place in the same
+  panel, with a breadcrumb trail you can step back through, and shows the link's
+  trace state and attributes as chips.
+- 9cb69915: feat(dashboard): table tile header separator and optional alternate row background
+
+  Add an always-on separator between a table tile's sticky header and its rows so the boundary stays clear as rows scroll underneath. Add a new **Alternate Row Background** display setting (off by default) that zebra-stripes table tiles for easier scanning on wide tables. Both work in light and dark color modes.
+
+- 7a47664e: fix: Improve the trace/span detail UI (HDX-4853)
+
+  - Long span attribute values with no break points (e.g. `url.path`) now wrap
+    fully when wrap mode is on instead of being clipped.
+  - Long attribute keys (e.g. `longtask.attribution.entry_type`) now wrap and
+    are capped at half the row width so they can't squeeze the value column to
+    nothing.
+  - Add a toggle to move the selected span's detail panel between the right side
+    (default) and the bottom of the waterfall, restoring the older top/bottom
+    layout.
+  - The span detail panel's Overview/Column Values content now aligns flush
+    with the tab bar instead of being inset by extra padding.
+
+- ce8fb022: feat: Add `--color-text-warning` semantic color token based on Mantine's yellow for HyperDX and ClickStack themes, and register it in the Semantic Colors Storybook story. Dark mode uses `yellow-3`; light mode darkens `yellow-9` via `color-mix` so warning text meets WCAG AA (~4.7:1) on light backgrounds (plain yellow-9 is only ~3:1). ClickStack pins the default Mantine yellow as hex because its `yellow` palette is remapped to the brand gold, keeping the warning color consistent across both themes.
+- Updated dependencies [01508d1d]
+- Updated dependencies [ad27a513]
+- Updated dependencies [00eef721]
+- Updated dependencies [641175d8]
+- Updated dependencies [00eef721]
+- Updated dependencies [7a4ad986]
+- Updated dependencies [eadea332]
+- Updated dependencies [9cb69915]
+- Updated dependencies [7d806fb8]
+- Updated dependencies [f5f9cd19]
+- Updated dependencies [5dd6facb]
+  - @hyperdx/api@2.32.0
+  - @hyperdx/common-utils@0.24.0
+
+## 2.31.0
+
+### Minor Changes
+
+- ff05b3df: feat: Convert current builder config to SQL during editor switch
+- d137eaab: chore(charts): upgrade Recharts from 2.13 to 3.x. Reworks chart event handlers
+  to the Recharts 3 event API (zoom-brush selection, click drill-down), replaces
+  the histogram's imperative `chart.setState` tooltip-pin hack with the controlled
+  `active`/`defaultIndex` Tooltip props, updates custom tooltip/shape typings
+  (`TooltipContentProps`, `BarProps`), and suppresses the browser focus ring that
+  Recharts 3's default `accessibilityLayer` shows when a chart is clicked.
+
+### Patch Changes
+
+- 697006ba: feat(dashboards): add background area sparklines to the Browser RUM dashboard
+  number tiles. Each of the ten single-value tiles (LCP / INP / CLS p75, Median
+  and p90 Page Load, Page Views, Active Sessions, Sessions w/ Errors, JS Errors,
+  AJAX Errors) now renders a faint trend line behind its value so the metric's
+  movement over the selected range is visible at a glance. Implemented entirely
+  via the existing number-tile `backgroundChart` field — no renderer changes.
+- dc8705ba: feat(dashboards): revamp the out-of-the-box Browser RUM dashboard. Reorganize it
+  into four focused sections — Core Web Vitals, Load Time, Traffic & Page Views,
+  and Errors — so each metric lives with its peers instead of a single catch-all
+  "Performance Overview". Tiles are now color-coded by value: the Core Web Vitals
+  tiles (LCP, INP, CLS) render green / amber / red using Google's official good /
+  needs-improvement / poor thresholds, the Median and p90 Page Load tiles use
+  opinionated latency bands, and the error-count tiles (Sessions w/ Errors, JS
+  Errors, AJAX Errors) turn amber when any errors are present. A Markdown legend
+  tile in the Core Web Vitals section documents the thresholds (with a link to
+  web.dev) so viewers understand the standard behind the colors. Implemented
+  entirely via the existing number-tile `colorRules` and Markdown-tile mechanisms
+  — no renderer changes.
+- 7099e287: feat(charts): add per-series actions to the chart drill-down menu. Each series in the "Filter by group" list now shows its legend color swatch and offers icon actions with tooltips: Drill in (opens the underlying events in a new tab), Copy name (copies the series name to the clipboard), and Focus (narrows the view to that series). "View All Events" and "Drill in" now open in a new tab so the current view is preserved. On the search page, Focus applies the series as a real search filter so both the chart and the results list narrow together (previously it only isolated the line on the chart, leaving the results unchanged); standalone charts fall back to the prior chart-only visual focus.
+- 18268f7e: feat(charts): clicking a time-chart point now locks the tooltip in place instead of opening a separate drill-down menu. Hovering shows a passive tooltip (timestamp header, series swatches, values, previous-period percent change, nearest-series emphasis) and clicking locks a matching tooltip in place that reveals the drill-down actions inline ("View All Events" plus a per-series Search/Copy/Focus cluster) and a close (X) button in the header. The hover and pinned tooltips share the same building blocks (header, series rows, container) so they stay visually aligned. recharts' own tooltip is kept only for its synced cursor. Dismiss the pinned tooltip via the X, clicking anywhere else, or pressing Escape. The tooltip renders in a portal so it is never clipped by surrounding layout.
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+- 2f769200: fix: render side panel controls in error state
+- d96af848: fix(charts): Keep selected source when switching from builder to SQL mode
+- 7accfd2e: fix: support Group By on ratio charts
+
+  A ratio chart (`seriesReturnType: 'ratio'`) with a Group By previously collapsed
+  to a single line. Two issues in the multi-series merge: (1) rows were keyed by
+  time bucket only, so groups at the same bucket overwrote each other, and (2) the
+  ratio computation dropped every non-value column, discarding the group
+  dimension. The merge now keys by (time bucket + group dimensions) and the ratio
+  result carries the group columns through, so a grouped ratio renders one series
+  per group.
+
+  Grouped ratios use share-of-total semantics: each group's denominator is the
+  total of the denominator column across all groups in the same time bucket, so
+  the grouped lines are each group's contribution to the overall ratio and sum to
+  the ungrouped value (e.g. each tenant's share of the overall error rate), rather
+  than each group's in-group rate. Ungrouped ratios are unchanged (one row per
+  bucket → the bucket total is that row's denominator). A group absent from the
+  filtered numerator (e.g. a tenant with zero errors) contributes 0%, not N/A.
+
+  Also fixed alongside grouped ratios:
+
+  - A ratio whose two series resolve to the same value-column alias (e.g.
+    `count(request)` filtered / unfiltered for an error rate) previously collapsed
+    to one column and threw "Unable to compute ratio". The two operands are now
+    kept distinct through the merge.
+  - The chart-level Group By for metric sources offered the union of every
+    series' fields, which could suggest a native column that exists in one metric
+    table (e.g. gauge) but not another (e.g. sum), making that series' query fail.
+    It now offers only fields valid for every series (the intersection).
+
+- c86ed556: feat(app): make the selected source clearer in the source picker. The dropdown now marks the current source with a trailing check and a persistent highlight background, adds a small gap between options for readability, and documents the component in Storybook. Introduces a reusable `--color-bg-option-active` theme token (HyperDX + ClickStack, light + dark) for highlighting hovered/selected rows in floating surfaces.
+- ae5daba7: fix(traces): Prevent duplicate ticks in waterfall/minimap
+- Updated dependencies [ff05b3df]
+- Updated dependencies [1705b37a]
+- Updated dependencies [3d02a56a]
+- Updated dependencies [758ab638]
+- Updated dependencies [73819932]
+- Updated dependencies [7accfd2e]
+  - @hyperdx/common-utils@0.23.0
+  - @hyperdx/api@2.31.0
+
+## 2.30.1
+
+### Patch Changes
+
+- 0dd23e86d: Copy `css.d.ts` into the Docker build stage so the app image compiles. The
+  TypeScript 6 upgrade added ambient `declare module '*.css'` declarations in
+  `css.d.ts` to satisfy TS2882 for side-effect stylesheet imports, but the
+  Dockerfiles only copied `mdx.d.ts`, so `next build` failed inside the
+  container.
+- e8825763b: Fix "Save Alert" doing nothing when editing an existing saved-search alert. The
+  alert form schema now accepts the persisted `numConsecutiveWindows: null` value
+  (so form validation no longer silently blocks submission), and the update
+  request resolves the alert id from the selected tab instead of an unregistered
+  form field.
+- f865d887d: feat: Allow freeform text in VirtualMultiSelect
+  - @hyperdx/api@2.30.1
+
+## 2.30.0
+
+### Minor Changes
+
+- c29d0df23: feat: Add categorical bar chart display type
+- 880fb668c: feat: add event patterns as a first-class dashboard tile type
+
+  Event patterns can now be created, edited, and saved as dashboard tiles with a dedicated "Pattern Expression" editor. Supported across the UI, MCP server, and External API v2.
+
+- 232e87139: feat(dashboards): overlay alert firing/recovery markers on tile charts
+
+  Adds an optional "alert annotations" overlay to dashboard timeseries tiles.
+  When enabled via the dashboard menu ("Show alert annotations"), tiles that have
+  an alert draw a red vertical marker at the moment the alert fired and a green
+  marker when it recovered, so alert events can be correlated with the chart in
+  one view. The overlay is off by default and its state lives in the URL
+  (`?alertAnnotations=true`), not on the saved dashboard. Backed by a new
+  team-scoped `GET /api/alerts/:id/history` endpoint that returns only alert state
+  transitions within the requested time range, so annotations honor the
+  dashboard's selected window.
+
+- ba598baba: feat: Add a custom ORDER BY input for Bar and Pie charts
+- c29d0df23: feat: Allow specifying a limit on pie and bar chart series
+- 0c7254360: Adding consecutive-window configuration to alerts, so that you can specify a condition like "only fire this alert after some condition is met for N consecutive windows." This helps prevent flaky alerts (and pages), and cut down on alert noise in many cases.
+
+  Also adds a `PENDING` alert state for alarms that _will_ fire if current trends continue.
+
+- f6dbdd149: Redesign the event side panel into a single right-hand drawer with breadcrumb-stack navigation. Logs, traces, and sessions now navigate in-place (surrounding-context drilldowns, log → trace via a new "View Trace" action, and session → event) instead of stacking layered drawers.
+
+### Patch Changes
+
+- 707e64666: fix(table-chart): wrap mode now breaks long URLs/IDs instead of overflowing into adjacent columns
+- 36c34a0af: fix(dashboards): make alert annotations easier to read and keep the "already firing" marker on-screen at sub-minute granularity
+
+  Alert firing/recovery annotations on dashboard tiles now float their "Alert" /
+  "OK" labels in reserved headroom above the marker line — added only on tiles
+  that are showing annotations — so the labels stay clear of dense series and
+  stacked bars. Also fixes a case where the marker for an alert that was already
+  firing when the window opened could be dropped on tiles using a sub-minute
+  granularity (non-minute-aligned start): the marker now snaps to the chart's
+  visible left edge instead of falling outside the plot.
+
+- b53c03723: Polish dashboard tiles: white (surface) card backgrounds with a border, a subtle
+  muted page background, a modern dotted resize handle, and a compact, consistent
+  tile header. Tile actions are consolidated into a right-aligned kebab menu (with
+  the alert bell) that sits after each chart's own controls, and a full-bleed
+  separator gives every tile a consistent header strip.
+- ec3fd686f: Allow typing an arbitrary value when editing an active filter pill. The pill's value picker now accepts free text (committed on Enter or blur) in addition to selecting from the suggested values, so you can filter on values that aren't present in the sampled data.
+- ea9b8895: Fix "Accordion.Item component was rendered with invalid value or without
+  value" error when expanding a map attribute group (e.g. LogAttributes) in the
+  search filters sidebar. Telemetry containing an empty attribute key produced a
+  filter group with an empty name, which Mantine rejects; such groups now render
+  with an `(empty)` placeholder name instead of crashing the panel.
+- 555d88a9: Fix "Add to Filters" on a value inside parsed JSON from a String column (for example `Body`) building invalid SQL. The `JSONExtractString(...)` expression the JSON viewer produces is now passed through unchanged instead of being mis-parsed as a dot-form Map sub-key and mangled into a query ClickHouse rejects.
+- 81e2b3022: Fix primary button hover text color by using Mantine's `--button-hover-color`
+  variable (the theme previously set the non-existent `--button-color-hover`, so
+  the hover text color was never applied and could fall through to an inherited
+  page color).
+- ea27c1241: Fix trace waterfall span bars losing their duration proportions when zoomed
+  in. The span-bar minimum width was applied as a percentage of the events area,
+  which the zoom model widens via `width`, so the floor scaled with the zoom
+  factor and very short spans grew as wide as multi-second ones. The floor is now
+  a fixed pixel `minWidth`, so bar widths stay proportional to duration at every
+  zoom level while sub-pixel spans remain clickable.
+- 392a7749: Hide the left nav feedback control entirely when the nav is collapsed, since the thumbs up/down icons were not usable in that state.
+- 1838a58e: fix: brings back sessions source validation that was mysteriously deleted
+- d12fd914e: fix(charts): add a "Reset zoom" button to time-series charts so a brush-zoom can be undone back to the pre-zoom time range
+- 5a4621104: fix: Skip duplicate groups in heatmap query result
+- 617355378: Move the pinned-filter query parser (`parseQuery`) into `@hyperdx/common-utils`
+  as the inverse of `filtersToQuery`, and add an `isRenderablePinnedFilter`
+  helper. The app re-exports `parseQuery` from its previous location, so there is
+  no behavior change in the UI. The helper lets the external saved-search API
+  validate that a pinned filter will actually render as a sidebar facet (a
+  `type: 'sql'` `<column> IN (...)` / `NOT IN` / `BETWEEN` predicate) and reject
+  shapes that would be stored but never shown.
+- 33dd048e4: fix: Scroll deep-linked source into view on team settings page
+- a01717e47: Bumped node version in .nvmrc to 22.23.1
+- e2f750e36: Service map: add a metric-mode toggle (Latency / Error rate / Throughput) that
+  recolors the graph by the selected dimension, with a legend explaining the color
+  scale and that node size encodes throughput. The canvas and its controls now
+  follow the app's light/dark color scheme instead of being locked to dark. Node
+  colors use a sequential light-to-dark ramp per metric, and the node popover is
+  now a raised surface with a service-name header, grouped sections, and
+  severity-aware error coloring.
+- 39e062f0: storybook: Updates the sample rows data in TimelineChart.stories
+- 7019ab501: Side panel E2E tests
+- 36de29f1: chore: refactor facet filter fetching logic into a custom hook
+- a34b7fb39: Fix dashboard tile titles getting clipped unpredictably when tiles are resized small by applying multi-line ellipsis truncation.
+- 2b209d3ad: fix(TimePicker): keep relative/absolute toggle in sync with URL state
+
+  The time picker's relative-time toggle was only seeded from
+  `defaultRelativeTimeMode` at mount and never re-synced when the prop changed
+  (e.g. after switching live intervals via the URL). This left the picker
+  rendering in a mode that no longer matched the URL, causing nondeterministic
+  behavior. The toggle now follows `defaultRelativeTimeMode` whenever it changes.
+
+- 906edeb91: fix: display/heatmap settings changes now trigger the unsaved changes modal when closing the tile editor
+- d1802e1c: feat(trace): add a trace minimap above the waterfall
+- 6e25c1d5b: feat: redesign the trace waterfall — per-service span colors, vertical service color bar, child counts, duration outside the bar with the span body on hover, expand/collapse depth controls.
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+- Updated dependencies [c29d0df23]
+- Updated dependencies [727d3274]
+- Updated dependencies [880fb668c]
+- Updated dependencies [232e87139]
+- Updated dependencies [73e6e876e]
+- Updated dependencies [617355378]
+- Updated dependencies [617355378]
+- Updated dependencies [617355378]
+- Updated dependencies [1aaa9388a]
+- Updated dependencies [ec11fae92]
+- Updated dependencies [328e7b437]
+- Updated dependencies [abf5b537]
+- Updated dependencies [60cf52842]
+- Updated dependencies [bfc6fb5c]
+- Updated dependencies [d16db2557]
+- Updated dependencies [5081c8cbb]
+- Updated dependencies [476add172]
+- Updated dependencies [ba598baba]
+- Updated dependencies [c29d0df23]
+- Updated dependencies [3f1e1fe4]
+- Updated dependencies [0c7254360]
+- Updated dependencies [617355378]
+- Updated dependencies [e2145678d]
+- Updated dependencies [a01717e47]
+- Updated dependencies [bdf9352a2]
+- Updated dependencies [bb7ae21e8]
+- Updated dependencies [27e80e965]
+  - @hyperdx/common-utils@0.22.0
+  - @hyperdx/api@2.30.0
+
+## 2.29.0
+
+### Minor Changes
+
+- 9af8cbab: feat: add Browser RUM dashboard template
+
+  - New "Browser RUM" template in the dashboards gallery for browser sessions instrumented with the HyperDX Browser SDK (or any OTel browser instrumentation emitting a `rum.sessionId` resource attribute)
+  - Performance Overview section: page-view/session/error KPIs, Core Web Vitals (LCP/INP/CLS) p75, median/p75/p90 page-load percentiles, and long-task health
+  - Page Views Breakdown section: traffic grouped by URL, browser (parsed from the `http.user_agent` the document-load instrumentation emits), country, and device size (derived from `screen.xy`)
+  - Errors section with tabs for an overview, JS exceptions (by message and by page), and failing API calls
+  - Five dashboard-level filters: Service, Environment, Service Version, Page URL, and Country
+  - Top Countries tile and the Country filter populate when the OTel collector's `geoip` processor is enabled (geo can't be derived in the browser)
+
+- 5cd709020: Add UI support for configuring an external Prometheus-compatible endpoint on a
+  connection. Modify Connections model to now have a boolean
+  `isPrometheusEndpoint` field and use host for storing the host.
+- b6a4b3b3: feat: lazy-load dashboard tiles based on viewport visibility
+
+  Dashboard tiles now only run their ClickHouse queries once they scroll into the browser viewport, instead of every tile querying on page load. A tile loads the first time it becomes visible and keeps its data afterward. This significantly reduces the number of queries fired when opening dashboards with many tiles.
+
+- f40cf686b: feat(dashboards): add a background trend sparkline to number tiles
+
+  Number tiles can now render a faint line or area sparkline behind the value,
+  derived from a time-bucketed version of the same query, so the value's trend
+  over the selected range is visible at a glance. This is handy for SLO /
+  error-budget tiles where the burn over time matters as much as the current
+  number. The sparkline inherits the tile's color by default and can be
+  overridden to any palette token. Configure it under Display Settings >
+  Background chart on a number tile. Available on builder number tiles (raw SQL
+  number tiles return a single value with no time dimension to bucket).
+
+- 17e1eb19d: feat: Add an "external link" row-click action for dashboard table tiles
+- c1403a7a7: Number chart tiles now support a second series with the "As Ratio" toggle (`series[0] / series[1]`), matching line and bar charts. Combined with a `percent` number format, this renders a percentage (e.g. success/error rate) as a single big number with the trend sparkline behind it.
+- e03971b0: refactor(theme): rename chart palette tokens from chart-1..10 to hue-named
+  (chart-blue, chart-orange, ...) and unify the categorical palette across HyperDX
+  and ClickStack
+
+  Stored configs from the initial color picker (#2265) keep working.
+  `ChartPaletteTokenSchema` stays strict (a plain `z.enum`, so its `z.input`
+  matches `z.output` — wrapping it in `z.preprocess` would poison
+  `validateRequest`'s `req.body` inference all the way up to
+  `Dashboard.tiles[i].config.color`). Migration of legacy `chart-1` .. `chart-10`
+  happens at five complementary points so no entry or wire-format path can slip
+  through, all composing over a single shared walker
+  (`walkRawDashboardTileColors` in `common-utils`) so the per-tile traversal
+  stays in lockstep:
+
+  - **Fetch-time / write-time (React)**: `normalizeDashboardTileColors` in
+    `packages/app/src/dashboard.ts` heals dashboards on read
+    (`useDashboards` / `fetchLocalDashboards` / `fetchDashboards`) and on write
+    (`useUpdateDashboard` / `useCreateDashboard`). Unresolvable color strings
+    (stale hexes, hand-edited values, forward-rolled future tokens) are
+    preserved so the user's chosen value survives a render pass — the strict
+    server-side schema surfaces a clear error on next save instead of the
+    normalizer quietly dropping the field.
+  - **JSON import**: `DBDashboardImportPage` runs
+    `normalizeRawDashboardTileColors` on the parsed JSON _before_ the strict
+    `DashboardTemplateSchema.safeParse`, so templates exported from a
+    pre-rename deploy import cleanly.
+  - **Server-side GET response healing**: `getDashboards` / `getDashboard` in
+    `packages/api/src/controllers/dashboard.ts` rewrite legacy tile colors on
+    the way out. Pre-rename Mongo docs are served on the wire as
+    hue-named tokens so non-React HTTP clients (CI scripts, stale bundle
+    tabs during a rolling deploy, the external API) can round-trip
+    GET → PATCH without ever resurrecting `chart-N` through the strict
+    schema.
+  - **Server-side write shim**: the dashboards POST / PATCH routes mount
+    a request-body preprocessor that rewrites legacy tile colors before
+    `validateRequest` runs `ChartPaletteTokenSchema`. Catches non-React
+    HTTP callers (stale-bundle tabs during a rolling deploy, CI scripts,
+    MCP, the upcoming external-API parity work) for a one-release
+    deprecation window without weakening the schema's input/output equality.
+    The dashboard provisioner task applies the same shim before parsing
+    on-disk template files.
+  - **Render-time (belt-and-suspenders)**: `DBNumberChart` and
+    `ColorSwatchInput` also call `resolveChartPaletteToken` for tiles
+    constructed in memory between fetch and save (`ChartEditor` form
+    state, unit-test fixtures, hand-rolled `Tile` literals).
+
+  The migration preserves the HyperDX slot ordering from #2265 (slot 1 = brand
+  green, slot 2 = blue, etc.).
+
+  **ClickStack legacy color caveat:** Pre-rename ClickStack used a different slot
+  ordering than HyperDX (`--color-chart-1` was brand blue `#437eef`, not brand
+  green). The migration map uses HyperDX slot ordering, so any ClickStack
+  dashboard saved via #2265 with `color: 'chart-1'` will flip from blue to
+  Observable green after migration. We chose this trade-off deliberately over
+  branching the legacy map by active theme: `LEGACY_CHART_PALETTE_TOKEN_MAP` lives
+  in `common-utils` (shared with the API), and migration is one-shot persisted on
+  next save — theme-branching would couple common-utils to browser DOM state and
+  still produce wrong results for users whose active theme changed since the
+  original pick. Affected users can manually re-pick the desired hue via the (now
+  hue-labeled) color picker.
+
+  The categorical palette is based on Observable 10, with `chart-blue` swapped to
+  `#437eef` to match the brand link color
+  (`--click-global-color-text-link-default`); all other hues are straight from
+  Observable 10. The palette resolves identically on both themes — picking
+  `chart-blue` always renders the brand blue. Brand identity for charts moves
+  entirely into the semantic layer: `--color-chart-success` and `--color-chart-info`
+  resolve to categorical `chart-green` (`#3ca951`) and `chart-blue` (`#437eef`) on
+  both HyperDX and ClickStack, so success fills, info-level logs, and the
+  matching multi-series slots all read consistently across brands.
+
+  Internally, JS (`CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`) is
+  the source of truth for categorical hues — `getColorFromCSSVariable` and
+  `getColorFromCSSToken` skip `getComputedStyle` for categorical tokens since the
+  palette is unified across themes. The matching `--color-chart-{hue}` CSS vars in
+  `_tokens.scss` remain as a stylesheet-author affordance (inline `var()` use,
+  devtools inspection) and a hook for any future per-brand override. Semantic
+  tokens still resolve through `getComputedStyle` because they genuinely vary per
+  theme.
+
+- 418567ff: feat: trace panel inline split detail
+
+### Patch Changes
+
+- 56c58663: fix(search-filters): prevent nested filter dropdowns from disappearing on reopen
+- 998ea5d0: feat: Add option to fit time chart y-axis lower bound
+- 0497ca5dd: Bump http-proxy-middleware to v4, replacing http-proxy with httpxy
+- 20fabc65: feat: add a "Connect your AI assistant" section to Team Settings
+
+  A new section on the Team Settings page (Integrations tab, above the API Keys
+  card) lets a user install the HyperDX MCP server in Claude Code, Cursor,
+  VS Code + Copilot, Codex CLI, or any MCP-compatible host without hand-rolling
+  JSON. Per-host snippets carry the user's personal access key so the install
+  works against the existing `/api/mcp` route without extra setup.
+
+- 8e52cef4: feat(dashboard): auto-resize font in number tiles to fit container
+
+  Number tiles now automatically scale their font size to fit the available
+  width, preventing text overflow on narrow tiles and making better use of
+  space on wide ones. Includes an error boundary so a single broken tile
+  does not crash the entire dashboard.
+
+- 5a1dde4d3: fix(search): wrap date column values in a type-matching parse/convert expression when building IN/NOT IN filters, so including/excluding a timestamp value no longer fails with "Cannot convert string ... to type DateTime64" or "Type mismatch in IN ... Expected: DateTime. Got: Decimal64". Date column types are now resolved from the query result set, so aliased (`TimestampTime AS time`) and computed (`toDate(TimestampTime)`) DateTime/Date columns are also wrapped correctly when added to filters.
+- 31b87816: feat(chart-explorer): duplicate a series in the chart builder
+
+  Add a Duplicate button to each series row in the chart builder that inserts a
+  copy of that series directly below it, so building a near-identical variant
+  (for example avg and p95 of the same column) no longer requires re-entering
+  every field by hand. "Add Series" still creates a blank series. The copy
+  starts with an empty alias so it does not collide with the original's alias in
+  the generated SQL.
+
+- 5e19a2b42: Show elapsed time and Generated SQL for search timeline view
+- 65931e37: feat(search): make active filter pills editable in place
+
+  Clicking an active filter pill under the search bar now opens a small menu to copy the value, flip the filter polarity (include vs exclude), or switch to a different value of the same field, without removing and re-adding the filter. The polarity is preserved when changing the value, and the one-click remove on each pill is unchanged. Range and not-applied pills keep their remove-only behavior.
+
+- 7152d2b6: feat: Use optimistic updates for favorites
+- 497d50b4: feat: Allow selecting the column or SQL expression used for event pattern grouping (with shareable URL state)
+- ae39bc436: fix: Correct filter handling for filter keys with special characters
+- bd31ea982: fix: handle boolean values in JSON viewer filter actions
+- 052315b1: fix: improve contrast of excluded search filter pills
+
+  Excluded ("!=") filter pills above the search results used a saturated red background with red text and a red remove button, which made them hard to read in the light theme. They now use a soft red tint with a readable accent, legible in both light and dark themes.
+
+- 7b6db8d91: fix(app): format log detail Timestamp in local timezone
+
+  The log detail JSON viewer rendered Timestamp and TimestampTime as raw UTC ISO strings while the results table used the shared FormatTime helper.
+
+- bcec17635: fix: allow saving edits to markdown dashboard tiles that have a minimal config shape (no resolved source)
+- 8261b461: fix: inline parametric aggregate function arguments instead of passing as query parameters
+- bf6e1f29: feat(charts): the time-chart series limit is now configured per chart in the Display Settings drawer instead of as a workspace-wide team setting (the team "Time Chart Series Limit" setting is removed). It is disabled by default — charts fetch every series and no `__hdx_series_limit` CTE is emitted — and is cleared back to disabled by emptying the field. The control only appears for builder line/bar charts; the limit and its Generated SQL preview now come from the chart's own config. When a limit is set, chunked time-chart queries keep a consistent top-N series set: previously each time-window chunk ranked its own top-N, so charts could render more series than the limit and adjacent windows disagreed; the ranking is now pinned to the newest chunk window for every chunk so the union across chunks equals the limit.
+- f9fab8ed6: fix: Prevent table content from overlapping table headers
+- 973d1201b: fix: polish promql experience across the app
+- 712ba11c: fix: Navigate to the dashboard listing page after deleting a dashboard
+- 21307756: fix(row-panel): mergePath now emits string-key subscripts for Map columns,
+  preventing a crash when expanding rows with numeric-looking attribute keys
+
+  `mergePath` converted numeric path segments to 1-based array subscripts
+  (`[N+1]`) regardless of whether the parent column was a Map or an Array.
+  On a `Map(String, String)` column this produced SQL like `LogAttributes[2]`,
+  which ClickHouse rejects with `Illegal types of arguments:
+Map(String, String), UInt8 for function arrayElement`. The grid row
+  "expand" view failed for any row whose attribute path included a
+  numeric-looking key under a Map column.
+
+  `mergePath` now accepts a `mapColumns` argument alongside `jsonColumns`.
+  For Map-typed parents, sub-keys always render as string subscripts
+  (`Map['1']`) regardless of whether the key looks numeric. The three
+  callers (`useAutoCompleteOptions`, `DBRowJsonViewer` via the row panels,
+  `DBSearchPageFilters`) now thread Map-column names from the source
+  schema. A new `useMapColumns` hook mirrors `useJsonColumns`.
+
+  Fixes HDX-4369.
+
+- 2cecc9f4: Dashboard table tiles configured with a row-click action now show a trailing arrow-up-right icon at the right edge of each row, revealed on hover, with a small tooltip that names the destination. Actionable rows get a stronger background highlight on hover to reinforce interactivity before the user sees the arrow fade in. The icon click navigates to the same URL as a row click, with all the standard native browser behaviors (cmd-click new tab, middle-click new tab, right-click context menu).
+- d985895fa: Fix: Resolved an issue with markdown tiles breaking dashboard imports.
+- 750b8afe: feat(mcp): add denoise option to clickstack_search tool
+
+  Add a `denoise` boolean parameter to the MCP `clickstack_search` tool that
+  automatically filters out high-frequency repetitive event patterns from
+  search results, mirroring the web app's "Denoise Results" feature.
+
+  When enabled, the tool samples 10k random events, mines patterns using
+  the Drain algorithm, identifies noisy patterns (>10% of sample), and
+  filters them out of result rows. Returns filtered rows plus metadata
+  listing removed patterns with estimated counts.
+
+  Extracts shared denoise constants (`DENOISE_SAMPLE_SIZE`,
+  `DENOISE_NOISE_THRESHOLD`) into `@hyperdx/common-utils` so the web app
+  and MCP server use the same values.
+
+- cd6a17daf: feat: auto-fill metric table dropdowns when creating a Metrics source
+
+  The 5 metric-table dropdowns (Gauge, Histogram, Sum, Summary, Exponential
+  Histogram) now auto-populate by matching table names in the selected database
+  to their metric type via suffix patterns. Prefers `otel_metrics_` prefixed
+  names, never overwrites user selections, and shows a green notification on
+  successful autofill.
+
+- 6747cf963: fix(dashboards): keep the auto-detected number format when applying display settings
+
+  Opening Display Settings on a number tile that auto-detects its format from the
+  datasource (for example p95 of a trace Duration column) and clicking Apply no
+  longer rewrites the format to Number. The drawer now reflects the
+  datasource-derived format, and Apply persists `numberFormat` only when the user
+  explicitly changes it; otherwise it stays unset so render-time auto-detection
+  keeps driving the format.
+
+- a258fcfe8: fix(dashboards): match the number-tile background sparkline to the displayed value
+
+  The big number on a number tile is a single aggregate (its query drops `groupBy`), but the background sparkline kept any `groupBy` the tile carried over from a prior Line display type. It then plotted only the first group's trend behind a value that aggregates every group. The sparkline now drops `groupBy` as well, so its trend reflects the same single series as the value it sits behind.
+
+- 9d713999: fix(z-index): keep sticky header below drawers and drawers above the fullscreen tile modal
+
+  Two related z-index regressions:
+
+  - `PageHeader` was pinned at `z-index: 100`, but app drawers opt into a
+    much lower stack via `ZIndexContext` (`contextZIndex + 10`, so a
+    top-level drawer renders at `z-index: 10`). The sticky header therefore
+    floated above the drawer overlay. The header now sits at `z-index: 2` so
+    drawer overlays reliably cover the page chrome while the header still
+    wins against normal scrolling content.
+  - `FullscreenPanelModal` used Mantine's default modal z-index (`200`) and
+    didn't propagate it through `ZIndexContext`. Clicking a row in a
+    fullscreen search tile opened a `DBRowSidePanel` drawer at `z-index: 10`
+    that was hidden behind the modal. The modal now follows the existing
+    `contextZIndex + 10` pattern and wraps its children in a
+    `ZIndexContext.Provider`, so child drawers stack on top of it.
+
+- 538a1c4e: chore: migrate the custom Dashboard page to shared `PageLayout` / `PageHeader`. Breadcrumbs, the editable dashboard name, dashboard actions (Favorite, Tags, Menu), and the "Created by … Updated …" meta now live in a single page header, while the query toolbar (SQL/Lucene WHERE, time range, granularity, Live, refresh, edit filters, Run) is pinned to the top of the scroll container as a dedicated sticky row — the chrome above scrolls away and only the toolbar follows the user. The "Updated …" meta moves to the right side of the breadcrumbs row instead of sitting as a separate body line.
+
+  `PageHeader` gains a `stickyRow` slot that any page can use to declare a single row that should be the only pinned element, with the rest of the header treated as scrolling chrome. Other pages are unaffected — a `PageHeader` without `stickyRow` keeps the existing fully-sticky behavior.
+
+- 5e3e541bb: fix(search): keep select-alias filters working in Event Patterns
+
+  Filtering on a column the source exposes only under an alias (for example a
+  default select of `ServiceName as service`) failed in the Event Patterns view
+  with `Unknown expression or table expression identifier 'service'`. The
+  results table works because its own SELECT defines the alias, but Event
+  Patterns rebuilds the SELECT and did not carry the alias definitions. The
+  pattern query now receives the same alias `WITH` clauses already threaded into
+  the results, histogram, and heatmap queries, so the filter resolves.
+
+- e4922804: feat: add source field suggestions
+- defbe1f9: Add Cmd/Ctrl+Enter support for running raw SQL chart queries from the SQL editor.
+- 1a64796c1: Removing relative imports and using path aliases
+- c74744a5: fix: fallback to body or implicit column expression when other empty
+- d1d91d74: feat(service-map): server-side filtering, latency percentiles, throughput & focus
+
+  The Service Map gains server-side filtering (Lucene/SQL `where` plus a
+  service-name multi-select with inbound/outbound neighbor expansion), latency
+  percentiles (p50/p95/p99) and request throughput (req/s) in node and edge
+  tooltips, a "Focus" action to scope the map to a service and its immediate
+  dependencies, and node sizing by total throughput (incoming + outgoing).
+  Percentiles are computed server-side via a single GROUPING SETS query.
+
+- b763ba64: fix: next-runtime-env runtime env var injection fixed for images
+- 53e8bd17: fix: Fix height of source select RHS menu
+- 5e8af09be: Transition the local development server from Webpack to Turbopack to
+  significantly improve build performance and hot-reloading speed.
+- 2a681456: feat(source-picker): chip + kebab menu UX
+- f95687b0: Fix the database, table, and connection dropdowns being clipped inside the source setup modal. The dropdowns now render in a portal, so the full list is visible and scrollable when configuring or editing a source.
+- 48e19e8b: Suggest existing section names in the source form's **Section** field. The field is now an autocomplete fed by the sections already in use, so a new source can reuse an existing section instead of retyping it (which is how a section ends up split into near-duplicates like "Billing" and "billing"). The field stays free-text, so any new section name is still accepted.
+- 03f9dd70: feat: add an optional Section field to data sources
+
+  Sources can now carry an optional free-text Section label, set from the source
+  settings form. The value is persisted and returned by GET /api/v2/sources, so
+  external API consumers can read it. This lays the groundwork for grouping and
+  searching sources by section in the source selector.
+
+- fdb18f26: Group the data source selector by section and add tag-style search. When sources have a Section assigned, the selector lists them under section headers; search matches on both the source name and its section, so a section name acts as a tag (typing "billing" returns every source in the Billing section, including ones whose name does not contain "billing"). The selector stays flat until at least one source has a section, so deployments that have not adopted sections see no change. The grouped dropdown is also widened and pinned to the picker's left edge so section headers and source names are not cramped.
+- 34aa906f0: Show each source's **Section** on the Manage Sources list. A sectioned source now displays its section, with a folder icon, in the dimmed metadata row alongside its connection and table, so the list mirrors the grouped selector. Sources without a section are unchanged.
+- 6e0880a75: feat: Add Known Columns List setting for distributed tables
+- 81e524c2: feat(charts): cap group-by time charts to a top-N series limit to prevent browser memory exhaustion on high-cardinality group-bys. The cap defaults to 100 (the number of series rendered) and is configurable per team via a new "Time Chart Series Limit" setting; series beyond the cap remain available in the series selector.
+- bc5cd0021: feat: emphasize the series nearest the cursor in multi-series time charts. The nearest line is thickened and the others fade back, and its tooltip row is bolded while the rest dim, so a value is easy to trace back to its line.
+- a6e7dcde: chore: Make error states consistent across chart types
+- 9bbf68079: fix: bug preventing deletion of nested subdocuments like metadataMVs
+- Updated dependencies [9119de5f]
+- Updated dependencies [1d44098e5]
+- Updated dependencies [9f23b7e58]
+- Updated dependencies [998ea5d0]
+- Updated dependencies [0497ca5dd]
+- Updated dependencies [ee907386]
+- Updated dependencies [5c46215f8]
+- Updated dependencies [45954c318]
+- Updated dependencies [5cd709020]
+- Updated dependencies [9a7e392a]
+- Updated dependencies [5a1dde4d3]
+- Updated dependencies [b798f91f]
+- Updated dependencies [ae39bc436]
+- Updated dependencies [cdd7ca07]
+- Updated dependencies [d11991b0c]
+- Updated dependencies [8261b461]
+- Updated dependencies [bf6e1f29]
+- Updated dependencies [973d1201b]
+- Updated dependencies [677e3f71]
+- Updated dependencies [89949b1b]
+- Updated dependencies [747352f3]
+- Updated dependencies [8164492f]
+- Updated dependencies [a19ba549]
+- Updated dependencies [7e7159a5]
+- Updated dependencies [63469fe0e]
+- Updated dependencies [f34a31fdc]
+- Updated dependencies [f6bda8c5]
+- Updated dependencies [f326ccf8]
+- Updated dependencies [750b8afe]
+- Updated dependencies [caba7c255]
+- Updated dependencies [f113ea36]
+- Updated dependencies [634101c33]
+- Updated dependencies [ba626ef96]
+- Updated dependencies [f40cf686b]
+- Updated dependencies [f126d5b1]
+- Updated dependencies [ebfc2e80a]
+- Updated dependencies [bbc29859d]
+- Updated dependencies [17e1eb19d]
+- Updated dependencies [60a91e43]
+- Updated dependencies [e03971b0]
+- Updated dependencies [adac913d]
+- Updated dependencies [1a64796c1]
+- Updated dependencies [c74744a5]
+- Updated dependencies [03f9dd70]
+- Updated dependencies [6e0880a75]
+- Updated dependencies [fc3ef2dc]
+- Updated dependencies [81e524c2]
+- Updated dependencies [da3caab43]
+- Updated dependencies [55a255a0a]
+- Updated dependencies [9bbf68079]
+  - @hyperdx/api@2.29.0
+  - @hyperdx/common-utils@0.21.0
+
 ## 2.28.0
 
 ### Minor Changes

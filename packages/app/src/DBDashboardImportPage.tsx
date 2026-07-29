@@ -406,7 +406,7 @@ const MappingFormStateSchema = z.object({
 
 type MappingFormState = z.infer<typeof MappingFormStateSchema>;
 
-function Mapping({ input }: { input: DashboardTemplate }) {
+export function Mapping({ input }: { input: DashboardTemplate }) {
   const router = useRouter();
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
@@ -759,7 +759,14 @@ function Mapping({ input }: { input: DashboardTemplate }) {
 
         const inputOnClick = tile.config.onClick;
         const applyOnClick = (config: SavedChartConfig): SavedChartConfig => {
-          if (!inputOnClick || inputOnClick.target.mode !== 'id') return config;
+          // The external variant references no source/dashboard, so there is no mapping to apply.
+          if (
+            !inputOnClick ||
+            inputOnClick.type === 'external' ||
+            inputOnClick.target.mode !== 'id'
+          ) {
+            return config;
+          }
           const mappedId =
             inputOnClick.type === 'search'
               ? data.onClickSourceMappings?.[idx]
@@ -792,7 +799,12 @@ function Mapping({ input }: { input: DashboardTemplate }) {
           ...tile,
           config: applyOnClick({
             ...tile.config,
-            source: source!.id,
+            // Markdown (and other source-less) tiles carry an empty source in
+            // the template and get no mapping row, so `source` is undefined
+            // here. Only force a mapped id for tiles that declared a source —
+            // otherwise `source!.id` throws and the import dies with a generic
+            // "Something went wrong" toast.
+            ...(source ? { source: source.id } : {}),
           }),
         };
       });

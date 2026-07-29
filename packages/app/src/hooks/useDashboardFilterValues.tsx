@@ -31,7 +31,7 @@ type FilterSourceKey = {
   sourceId: string;
   metricType?: string;
   where: string;
-  whereLanguage: 'sql' | 'lucene' | 'promql';
+  whereLanguage: 'sql' | 'lucene';
 };
 
 const filterToKey = (filter: DashboardFilter): string =>

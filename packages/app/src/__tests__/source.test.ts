@@ -16,7 +16,7 @@ import {
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
   useSources,
-} from '../source';
+} from '@/source';
 
 jest.mock('../api', () => ({ hdxServer: jest.fn() }));
 jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
@@ -31,7 +31,7 @@ jest.mock('@tanstack/react-query', () => ({
 
 import { useQuery } from '@tanstack/react-query';
 
-import { hdxServer } from '../api';
+import { hdxServer } from '@/api';
 
 const TRACE_SOURCE: TTraceSource = {
   kind: SourceKind.Trace,

@@ -1,7 +1,7 @@
 import {
   flattenedKeyToFilterKey,
   flattenedKeyToSqlExpression,
-} from '../deltaChartUtils';
+} from '@/components/deltaChartUtils';
 
 const traceColumnMeta = [
   { name: 'Timestamp', type: 'DateTime64(9)' },

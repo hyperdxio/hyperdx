@@ -162,7 +162,7 @@ export const MACRO_SUGGESTIONS = [
 ];
 
 /**
- * Macro tokens (in `$__name` form) whose expansion depends on the chart's
+ * Macros whose expansion depends on the chart's
  * source being configured. With no source:
  *  - `$__filters` cannot resolve dashboard filters against the source's
  *    columns and falls back to `(1=1)`, so the filters are silently dropped.
@@ -172,9 +172,34 @@ export const MACRO_SUGGESTIONS = [
  * Every other macro only needs the dashboard time range / interval and takes
  * its column as an argument, so it does not require a source.
  */
-export const SOURCE_DEPENDENT_MACROS = [
-  '$__filters',
-  '$__sourceTable',
+export const SOURCE_DEPENDENT_MACROS = ['filters', 'sourceTable'] as const;
+
+/**
+ * Time-range macros. Any single one binds a raw
+ * SQL query to the dashboard/query time range, so the presence of *any* of
+ * these satisfies a time-range check — callers should test them as a set
+ * rather than requiring a specific one.
+ */
+export const TIME_RANGE_MACROS = [
+  'timeFilter',
+  'timeFilter_ms',
+  'dateFilter',
+  'dateTimeFilter',
+  'dt',
+  'fromTime',
+  'toTime',
+  'fromTime_ms',
+  'toTime_ms',
+] as const;
+
+/**
+ * Time-bucketing macros. Only relevant to time-series
+ * (line/bar) charts, where they align buckets to the requested granularity.
+ */
+export const INTERVAL_MACROS = [
+  'timeInterval',
+  'timeInterval_ms',
+  'interval_s',
 ] as const;
 
 type MacroMatch = {
@@ -210,6 +235,13 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
   const inner = argString.slice(1, closeParenIndex);
   const args = splitAndTrimWithBracket(inner);
   return { args, length: closeParenIndex + 1 };
+}
+
+/**
+ * True if the SQL contains at least one occurrence of the `$__<name>` macro.
+ */
+export function hasMacro(sql: string, name: string): boolean {
+  return findMacros(sql, name).length > 0;
 }
 
 function findMacros(input: string, name: string): MacroMatch[] {

@@ -2,9 +2,19 @@ import {
   convertDateRangeToGranularityString,
   timeBucketByGranularity,
   toStartOfInterval,
-} from '../core/utils';
+} from '@/core/utils';
+
 import { TemplateMinerConfig } from './config';
 import { TemplateMiner } from './template-miner';
+
+// ─── Denoise constants ───────────────────────────────────────────────────────
+// Shared between the web app and MCP server denoise paths.
+
+/** Number of random rows to sample for pattern learning. */
+export const DENOISE_SAMPLE_SIZE = 10_000;
+
+/** Patterns matching more than this fraction of sampled events are "noisy". */
+export const DENOISE_NOISE_THRESHOLD = 0.1;
 
 // ─── Body normalization ──────────────────────────────────────────────────────
 

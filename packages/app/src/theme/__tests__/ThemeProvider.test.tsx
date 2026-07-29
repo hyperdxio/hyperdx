@@ -12,14 +12,14 @@
 import React from 'react';
 import { renderHook } from '@testing-library/react';
 
-import { DEFAULT_THEME, themes } from '../index';
+import { DEFAULT_THEME, themes } from '@/theme/index';
 import {
   AppThemeProvider,
   useAppTheme,
   useLogomark,
   useThemeName,
   useWordmark,
-} from '../ThemeProvider';
+} from '@/theme/ThemeProvider';
 
 // Mock localStorage
 let localStorageMock: jest.Mocked<Storage>;

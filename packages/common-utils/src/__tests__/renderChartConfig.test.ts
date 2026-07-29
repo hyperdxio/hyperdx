@@ -1,17 +1,17 @@
 import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
+  ChartConfigWithOptDateRangeEx,
+  renderChartConfig,
+  timeFilterExpr,
+} from '@/core/renderChartConfig';
+import {
+  BuilderChartConfig,
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
   QuerySettings,
 } from '@/types';
-
-import {
-  ChartConfigWithOptDateRangeEx,
-  renderChartConfig,
-  timeFilterExpr,
-} from '../core/renderChartConfig';
 
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
@@ -48,6 +48,7 @@ describe('renderChartConfig', () => {
         .mockResolvedValue({ primary_key: 'timestamp' }),
       getSkipIndices: jest.fn().mockResolvedValue([]),
       getSetting: jest.fn().mockResolvedValue(undefined),
+      isClickHouseCloud: jest.fn().mockResolvedValue(false),
     } as unknown as jest.Mocked<Metadata>;
   });
 
@@ -469,6 +470,262 @@ describe('renderChartConfig', () => {
     expect(actual).not.toContain('TopGroups');
   });
 
+  it('renders bound values (not template macros) when generateSqlTemplate is unset', async () => {
+    // Regression guard for the generateSqlTemplate flag threaded through
+    // timeFilterExpr / timeBucketExpr / renderFrom / renderWhere: real query
+    // paths never set it, so the output must keep bound params and literals.
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+    const sql = parameterizedQueryToSql(
+      await renderChartConfig(config, mockMetadata, querySettings),
+    );
+    expect(sql).not.toContain('$__');
+    expect(sql).toContain('fromUnixTimestamp64Milli(');
+    expect(sql).toContain('INTERVAL 5 minute');
+    // parameterizedQueryToSql inlines Identifier params without backticks
+    expect(sql).toContain('FROM default.logs');
+  });
+
+  describe('seriesLimit (group-by series cap)', () => {
+    const baseLogsConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+
+    it('restricts to the top N group-by series via a CTE when seriesLimit is set', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      // A ranking CTE keeps the top N groups by max value in any bucket.
+      expect(sql).toContain('__hdx_series_limit');
+      expect(sql).toMatch(/ORDER\s+BY\s+max\(`__hdx_series_rank`\)\s+DESC/);
+      expect(sql).toContain('LIMIT 60');
+      // The outer query is restricted to those groups via an IN subquery.
+      expect(sql).toMatch(
+        /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+      // Groups with a NULL component are excluded; empty-string groups are kept
+      // (no `!= ''` check).
+      expect(sql).toMatch(/ServiceName\s+IS\s+NOT\s+NULL/);
+      expect(sql).not.toMatch(/toString\(ServiceName\)\s*!=\s*''/);
+    });
+
+    it('does not emit a series-limit CTE when seriesLimit is unset (e.g. alert evaluation)', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(baseLogsConfig, mockMetadata, querySettings),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+
+      // seriesLimitDateRange alone (no seriesLimit) must not emit a CTE either.
+      const sqlWithRangeOnly = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            seriesLimitDateRange: baseLogsConfig.dateRange,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sqlWithRangeOnly).not.toContain('__hdx_series_limit');
+    });
+
+    it('pins the series-limit CTE to seriesLimitDateRange while the outer query stays windowed', async () => {
+      // The chunking caller pins all chunks to one shared ranking range
+      // (the newest window); the render layer is agnostic to which range.
+      const rankingRange: [Date, Date] = [
+        new Date('2025-02-12T00:00:00Z'),
+        new Date('2025-02-13T00:00:00Z'),
+      ];
+      const renderWindow = async (
+        dateRange: [Date, Date],
+        dateRangeEndInclusive: boolean,
+      ) =>
+        parameterizedQueryToSql(
+          await renderChartConfig(
+            {
+              ...baseLogsConfig,
+              seriesLimit: 60,
+              dateRange,
+              dateRangeEndInclusive,
+              seriesLimitDateRange: rankingRange,
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        );
+
+      // Two chunked windows of the same chart (most recent window first,
+      // older windows are end-exclusive, mirroring fetchDataInChunks).
+      const recentChunk = await renderWindow(
+        [new Date('2025-02-12T18:00:00Z'), rankingRange[1]],
+        true,
+      );
+      const olderChunk = await renderWindow(
+        [rankingRange[0], new Date('2025-02-12T18:00:00Z')],
+        false,
+      );
+
+      // The CTE end is the first `) SELECT`; the outer query starts there.
+      const cteOf = (sql: string) => {
+        const start = sql.indexOf('`__hdx_series_limit` AS (');
+        const end = sql.indexOf(') SELECT ');
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        return sql.slice(start, end);
+      };
+
+      // Both chunks rank over the identical pinned range, so they keep the
+      // same top-N set; the windowed range only applies to the outer query.
+      expect(cteOf(recentChunk)).toBe(cteOf(olderChunk));
+      expect(cteOf(recentChunk)).toContain(String(rankingRange[0].getTime()));
+      expect(cteOf(recentChunk)).toContain(String(rankingRange[1].getTime()));
+      const outerOf = (sql: string) => sql.slice(sql.indexOf(') SELECT '));
+      expect(outerOf(olderChunk)).toContain(
+        String(new Date('2025-02-12T18:00:00Z').getTime()),
+      );
+      expect(outerOf(olderChunk)).not.toContain(
+        String(rankingRange[1].getTime()),
+      );
+    });
+
+    it('does not emit a series-limit CTE without a group-by', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, groupBy: undefined, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('does not emit a series-limit CTE without granularity', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, granularity: undefined, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('packs a multi-column group-by into a tuple for the series-limit CTE', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: [
+              { aggCondition: '', valueExpression: 'ServiceName' },
+              { aggCondition: '', valueExpression: 'TraceId' },
+            ],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      expect(sql).toMatch(/tuple\(\s*ServiceName\s*,\s*TraceId\s*\)/);
+    });
+
+    it('strips group-by aliases inside the series-limit CTE tuple and null filter', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: 'ServiceName',
+                alias: 'svc',
+              },
+            ],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      // tuple() and `IS NOT NULL` must use the bare expression, not `ServiceName
+      // AS "svc"` (which would be invalid SQL there).
+      expect(sql).toMatch(
+        /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+      expect(sql).not.toContain('tuple(ServiceName AS');
+      expect(sql).not.toMatch(/ServiceName\s+AS\s+"svc"\s+IS\s+NOT\s+NULL/);
+    });
+
+    it('splits a comma-separated string group-by into per-column null checks', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: "LogAttributes['agentToServer.capabilities'],ServiceName",
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      // Each column gets its own NULL check, split on the top-level comma, not
+      // the comma inside Map['...'].
+      expect(sql).toMatch(
+        /LogAttributes\[['"]agentToServer\.capabilities['"]\]\s+IS\s+NOT\s+NULL/,
+      );
+      expect(sql).toMatch(/ServiceName\s+IS\s+NOT\s+NULL/);
+      // Regression: must NOT emit a two-argument toString of both columns (the
+      // original bug that prompted the split).
+      expect(sql).not.toMatch(/toString\([^)]*,/);
+      // Both columns are packed into the tuple for the IN predicate.
+      expect(sql).toMatch(
+        /tuple\(\s*LogAttributes\[['"]agentToServer\.capabilities['"]\]\s*,\s*ServiceName\s*\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+    });
+
+    it('does not emit a series-limit CTE for a metric source', async () => {
+      // Metric configs are rewritten to query a Bucketed CTE (no real source
+      // table to re-scan), so the cap is gated off even with seriesLimit set.
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...gaugeConfiguration,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+  });
+
   it('should throw when aggFn=increase is used on a non-Sum metric', async () => {
     const config: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Line,
@@ -511,9 +768,9 @@ describe('renderChartConfig', () => {
 
   describe('histogram metric queries', () => {
     describe('quantile', () => {
-      it('should generate a query without grouping or time bucketing', async () => {
+      it('should generate a whole-range query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -548,6 +805,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -621,7 +886,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'TimeUnix',
           dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
           granularity: '2 minute',
-          groupBy: `ResourceAttributes['host']`,
+          groupBy: 'ServiceName',
           limit: { limit: 10 },
         };
 
@@ -636,9 +901,9 @@ describe('renderChartConfig', () => {
     });
 
     describe('count', () => {
-      it('should generate a count query without grouping or time bucketing', async () => {
+      it('should generate a whole-range count query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -672,6 +937,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -984,6 +1257,61 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('Event Patterns query with select-alias filter (HDX-1879)', () => {
+    // The Event Patterns view rebuilds the SELECT (sampled body + timestamp,
+    // ORDER BY rand() LIMIT) instead of reusing the results-table SELECT. When
+    // the user filters on a column the source exposes only under an alias
+    // (e.g. `ServiceName as service`), that alias is out of scope in the
+    // rebuilt query unless its definition is carried through `with`. Threading
+    // the source's alias map into the pattern config defines the alias in a
+    // WITH clause so the filter resolves.
+    const patternConfig = (
+      withClauses: BuilderChartConfig['with'],
+    ): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      with: withClauses,
+      select: 'Body as __hdx_pattern_field, Timestamp as __hdx_timestamp',
+      where: "service = 'api'",
+      whereLanguage: 'sql',
+      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+      limit: { limit: 10000 },
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+    });
+
+    it('defines the select alias in a WITH clause so the filter resolves', async () => {
+      const generatedSql = await renderChartConfig(
+        patternConfig([
+          { name: 'service', sql: chSql`ServiceName`, isSubquery: false },
+        ]),
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      // Alias is defined in the rebuilt pattern query...
+      expect(sql).toContain('(ServiceName) AS service');
+      // ...and the filter still references it.
+      expect(sql).toContain("service = 'api'");
+    });
+
+    it('omits the alias definition when no alias map is threaded (the bug)', async () => {
+      const generatedSql = await renderChartConfig(
+        patternConfig(undefined),
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      // Without the threaded WITH clauses the alias is undefined, so the
+      // filter references a `service` column that does not exist in the
+      // rebuilt SELECT (ClickHouse rejects this with "Unknown identifier").
+      expect(sql).not.toContain('AS service');
+      expect(sql).toContain("service = 'api'");
+    });
+  });
+
   describe('SQL filter KV items direct_read optimization', () => {
     const stubKvItemsMetadata = () => {
       mockMetadata.getColumns = jest.fn().mockResolvedValue([
@@ -1059,7 +1387,7 @@ describe('renderChartConfig', () => {
       );
     });
 
-    it('rewrites `Map[key] IN (many)` to hasAny(... array(...))', async () => {
+    it('rewrites `Map[key] IN (many)` to hasAny(... array(...)) on ClickHouse >= 26.5', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1071,6 +1399,25 @@ describe('renderChartConfig', () => {
       expect(sql).toContain(
         "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
       );
+    });
+
+    it('rewrites `Map[key] IN (many)` to a chain of has() ORs on older ClickHouse (< 26.5)', async () => {
+      stubKvItemsMetadata();
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 4, 3, 37]);
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] IN ('a', 'b', 'c')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'b'))");
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'c'))");
+      expect(sql).not.toContain('hasAny(');
+      expect(sql).not.toContain('array(concat(');
     });
 
     it('leaves the condition unchanged when no KV items column exists', async () => {
@@ -1098,7 +1445,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = 'v'");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
     });
 
     it('does not rewrite when value is empty (Map[k]= preserves missing-key semantics)', async () => {
@@ -1111,7 +1458,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = ''");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
     });
 
     it('rewrites only the matching Map subscript in a compound AND condition', async () => {
@@ -1808,6 +2155,17 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         dateRangeEndInclusive: false,
         expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description:
+          'wraps includedDataInterval-expanded bound in toStartOf when PK has toStartOfHour(col) — prevents dropping rows whose hour is before the raw expanded start',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 04:00:00Z'),
+          new Date('2025-02-12 04:20:00Z'),
+        ],
+        includedDataInterval: '5 minute',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute)AND(toStartOfHour(timestamp) >= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute) AND toStartOfHour(timestamp) <= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute))`,
       },
     ];
 
@@ -2995,7 +3353,7 @@ describe('renderChartConfig', () => {
         undefined,
       );
 
-      // PromQL configs return empty SQL — queries go through the Prometheus API route
+      // PromQL configs return empty SQL; queries go through the Prometheus API route
       expect(generatedSql.sql).toBe('');
       expect(generatedSql.params).toEqual({});
     });
@@ -3142,210 +3500,11 @@ describe('renderChartConfig', () => {
     });
   });
 
-  describe('JSON schema (BETA_CH_OTEL_JSON_SCHEMA_ENABLED)', () => {
-    // When the ClickHouse exporter uses json: true, attribute columns are JSON
-    // type instead of Map(String, String). mapConcat() fails on JSON columns, so
-    // cityHash64 receives the JSON columns directly as variadic arguments.
-
-    let jsonSchemaMockMetadata: jest.Mocked<Metadata>;
-
-    beforeEach(() => {
-      const jsonSchemaColumns = [
-        { name: 'TimeUnix', type: 'DateTime64(9)' },
-        { name: 'MetricName', type: 'LowCardinality(String)' },
-        { name: 'Attributes', type: 'JSON' },
-        { name: 'ScopeAttributes', type: 'JSON' },
-        { name: 'ResourceAttributes', type: 'JSON' },
-        { name: 'Value', type: 'Float64' },
-        { name: 'AggregationTemporality', type: 'Int32' },
-      ];
-      jsonSchemaMockMetadata = {
-        getColumns: jest.fn().mockResolvedValue(jsonSchemaColumns),
-        getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
-        getColumn: jest
-          .fn()
-          .mockImplementation(async ({ column }: { column: string }) =>
-            jsonSchemaColumns.find(col => col.name === column),
-          ),
-        getTableMetadata: jest
-          .fn()
-          .mockResolvedValue({ primary_key: 'TimeUnix' }),
-        getSkipIndices: jest.fn().mockResolvedValue([]),
-        getSetting: jest.fn().mockResolvedValue(undefined),
-      } as unknown as jest.Mocked<Metadata>;
-    });
-
-    const baseMetricConfig = {
-      displayType: DisplayType.Line,
-      connection: 'test-connection',
-      metricTables: {
-        gauge: 'otel_metrics_gauge',
-        histogram: 'otel_metrics_histogram',
-        sum: 'otel_metrics_sum',
-        summary: 'otel_metrics_summary',
-        'exponential histogram': 'otel_metrics_exponential_histogram',
-      },
-      from: {
-        databaseName: 'default',
-        tableName: '',
-      },
-      where: '',
-      whereLanguage: 'sql' as const,
-      timestampValueExpression: 'TimeUnix',
-      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')] as [
-        Date,
-        Date,
-      ],
-      granularity: '1 minute' as const,
-      limit: { limit: 10 },
-    };
-
-    it('should use direct cityHash64 for gauge metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: 'Value',
-            metricName: 'system.cpu.utilization',
-            metricType: MetricsDataType.Gauge,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should use direct cityHash64 for sum metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        granularity: '5 minute',
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: 'Value',
-            metricName: 'db.client.connections.usage',
-            metricType: MetricsDataType.Sum,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should use direct cityHash64 for histogram (quantile) metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        granularity: '2 minute',
-        select: [
-          {
-            aggFn: 'quantile',
-            level: 0.95,
-            valueExpression: 'Value',
-            metricName: 'http.server.duration',
-            metricType: MetricsDataType.Histogram,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should use direct cityHash64 for histogram (count) metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        granularity: '2 minute',
-        select: [
-          {
-            aggFn: 'count',
-            valueExpression: 'Value',
-            metricName: 'http.server.request.count',
-            metricType: MetricsDataType.Histogram,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should still use mapConcat when Attributes column is Map type (non-JSON schema)', async () => {
-      // Verify existing Map-schema behaviour is unchanged
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: 'Value',
-            metricName: 'system.cpu.utilization',
-            metricType: MetricsDataType.Gauge,
-          },
-        ],
-      };
-
-      // mockMetadata returns Map-typed columns (default setup from beforeEach)
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain('mapConcat');
-      expect(actual).not.toContain('toJSONString');
-    });
-  });
+  // The Map-schema vs JSON-schema attrHashExpr distinction was collapsed in
+  // HDX-4466. Both schemas now render the same variadic
+  // cityHash64(ScopeAttributes, ResourceAttributes, Attributes) expression,
+  // which works for both Map(LowCardinality(String), String) and JSON
+  // attribute columns. Coverage of the variadic form lives in the regenerated
+  // gauge / sum / histogram snapshots earlier in this file plus the
+  // cross-scope integration test in packages/api/src/clickhouse/__tests__.
 });

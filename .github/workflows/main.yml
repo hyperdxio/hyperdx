@@ -41,14 +41,19 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Build dependencies
         run: make ci-build
       - name: Run unit tests
         run: make ci-unit
-  integration:
+  integration-shards:
+    name: Integration - Shard ${{ matrix.shard }}
     timeout-minutes: 16
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -59,17 +64,46 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v4
       - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
-          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
+          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha,mode=max,scope=ci-integration" --set *.cache-from="type=gha,scope=ci-integration" --load
       - name: Build dependencies
         run: make ci-build
+      # Integration tests boot a MockServer on fixed ports and share a single
+      # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
+      # within a runner. We shard ACROSS runners instead: each shard is its own
+      # VM with its own Docker stack, and jest's --shard splits the test files
+      # so the shards run in parallel. --shard is forwarded through nx (args
+      # after `--` reach the underlying jest invocations).
+      #
+      # Runs inline (not `make ci-int`) so the compose project stays `hdx-ci`
+      # (matching the bake step above); make ci-int's `-p int-<slot>` is local
+      # multi-worktree isolation that CI doesn't need, and routing through it
+      # would reintroduce a project-name mismatch against bake. Teardown and
+      # log-archival are omitted intentionally — the runner is ephemeral and
+      # Actions streams stdout.
       - name: Run integration tests
-        run: make ci-int
+        run: |
+          docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
+          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+  # Stable aggregator context: `integration` is green only when all four shards
+  # pass. Merge-queue / required-status checks target this single context, since
+  # the per-shard contexts (Integration - Shard N) are not stable check names.
+  integration:
+    needs: [integration-shards]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify all integration shards passed
+        if: needs.integration-shards.result != 'success'
+        run: |
+          echo "::error::One or more integration shards failed"
+          exit 1
   otel-unit-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
@@ -264,7 +298,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install
+        run: yarn install --immutable
 
       - name: Build App
         run: yarn build:clickhouse

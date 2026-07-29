@@ -8,6 +8,7 @@ import {
 } from 'react-hook-form';
 import {
   DateRange,
+  isChartPaletteToken,
   MetricsDataType,
   SourceKind,
   TSource,
@@ -22,7 +23,13 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconCopy,
+  IconPalette,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AggFnSelectControlled } from '@/components/AggFnSelect';
@@ -36,17 +43,17 @@ import {
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
+import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SeriesColorDrawer from '@/components/SeriesColorDrawer';
+import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { getMetricTableName } from '@/utils';
-
-import { FORMAT_ICONS } from '../NumberFormat';
-import SeriesNumberFormatDrawer from '../SeriesNumberFormatDrawer';
+import { getColorFromCSSToken, getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -62,10 +69,13 @@ type ChartSeriesEditorProps = {
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSwapSeries: (from: number, to: number) => void;
+  onDuplicateSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
   showHaving: boolean;
+  showDuplicate: boolean;
+  showColor: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -81,10 +91,13 @@ export function ChartSeriesEditor({
   namePrefix,
   onRemoveSeries,
   onSwapSeries,
+  onDuplicateSeries,
   onSubmit,
   setValue,
   showGroupBy,
   showHaving,
+  showDuplicate,
+  showColor,
   tableName: _tableName,
   parentRef,
   length,
@@ -206,6 +219,17 @@ export function ChartSeriesEditor({
     { open: openSeriesNumberFormat, close: closeSeriesNumberFormat },
   ] = useDisclosure(false);
 
+  const seriesColor = useWatch({ control, name: `${namePrefix}color` });
+  const seriesColorRules = useWatch({
+    control,
+    name: `${namePrefix}colorRules`,
+  });
+
+  const [
+    isSeriesColorOpen,
+    { open: openSeriesColor, close: closeSeriesColor },
+  ] = useDisclosure(false);
+
   return (
     <>
       <Divider
@@ -245,6 +269,18 @@ export function ChartSeriesEditor({
                 <IconArrowDown size={14} />
               </Button>
             )}
+            {showDuplicate && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onDuplicateSeries(index)}
+                title="Duplicate series"
+                data-testid="series-duplicate-button"
+              >
+                <IconCopy size={14} />
+              </Button>
+            )}
             {((index ?? -1) > 0 || length > 1) && (
               <Button
                 variant="subtle"
@@ -267,6 +303,27 @@ export function ChartSeriesEditor({
                 {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
               </ActionIcon>
             </Tooltip>
+            {showColor && (
+              <Tooltip label="Edit column color">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="xs"
+                  onClick={openSeriesColor}
+                  aria-label="Edit column color"
+                  data-testid="series-color-button"
+                >
+                  <IconPalette
+                    size={16}
+                    color={
+                      seriesColor && isChartPaletteToken(seriesColor)
+                        ? getColorFromCSSToken(seriesColor)
+                        : undefined
+                    }
+                  />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         }
         labelPosition="right"
@@ -434,6 +491,19 @@ export function ChartSeriesEditor({
           closeSeriesNumberFormat();
         }}
       />
+      {showColor && (
+        <SeriesColorDrawer
+          opened={isSeriesColorOpen}
+          color={seriesColor}
+          colorRules={seriesColorRules}
+          onChange={next => {
+            setValue(`${namePrefix}color`, next.color);
+            setValue(`${namePrefix}colorRules`, next.colorRules);
+            onSubmit();
+          }}
+          onClose={closeSeriesColor}
+        />
+      )}
     </>
   );
 }

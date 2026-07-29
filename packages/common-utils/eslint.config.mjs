@@ -17,6 +17,7 @@ export default [
       'coverage/**',
       '**/*.config.js',
       '**/*.config.mjs',
+      '**/*.config.ts',
       'jest.config.js',
       'jest.setup.ts',
     ],
@@ -59,6 +60,18 @@ export default [
       'prettier/prettier': 'error',
       'simple-import-sort/imports': 'error',
       'simple-import-sort/exports': 'error',
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^\\.\\.(/|$)',
+              message:
+                'Use the @/ path alias instead of parent-relative imports (../).',
+            },
+          ],
+        },
+      ],
     },
     languageOptions: {
       parser: tseslint.parser,

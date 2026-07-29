@@ -3,11 +3,10 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useDatabasesDirect, useTablesDirect } from '@/clickhouse';
+import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
+import { DBTableSelectControlled } from '@/components/DBTableSelect';
 import { useConnections } from '@/connection';
-
-import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { DatabaseSelectControlled } from '../DatabaseSelect';
-import { DBTableSelectControlled } from '../DBTableSelect';
 
 jest.mock('@/clickhouse', () => ({
   useDatabasesDirect: jest.fn(),

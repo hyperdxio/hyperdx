@@ -190,6 +190,7 @@ export const HelpScreen = React.memo(function HelpScreen() {
     ['o', 'Open trace in browser'],
     ['w', 'Toggle line wrap'],
     ['A (Shift+A)', 'Open alerts page'],
+    ['d', 'Open dashboards page'],
     ['?', 'Toggle this help'],
     ['q', 'Quit'],
   ];

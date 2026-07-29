@@ -44,7 +44,7 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { useSource, useSources } from './source';
 import { getMetricTableName } from './utils';
 
-import styles from '../styles/DashboardFiltersModal.module.scss';
+import styles from '@styles/DashboardFiltersModal.module.scss';
 
 const MODAL_SIZE = 'md';
 
@@ -121,7 +121,9 @@ const DashboardFilterEditForm = ({
   }, [filter, reset]);
 
   const sourceId = useWatch({ control, name: 'source' });
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({
+    id: sourceId,
+  });
 
   const metricType = useWatch({ control, name: 'sourceMetricType' });
   const tableName = source && getMetricTableName(source, metricType);
@@ -190,6 +192,12 @@ const DashboardFilterEditForm = ({
                 onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
                 isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
                 disabled={!!presetSource}
+                allowedSourceKinds={[
+                  SourceKind.Log,
+                  SourceKind.Trace,
+                  SourceKind.Session,
+                  SourceKind.Metric,
+                ]}
               />
               <SourceSchemaPreview
                 source={source}
@@ -209,6 +217,12 @@ const DashboardFilterEditForm = ({
                   data-testid="applies-to-source-selector"
                   comboboxProps={{ withinPortal: true }}
                   placeholder="All sources"
+                  allowedSourceKinds={[
+                    SourceKind.Log,
+                    SourceKind.Trace,
+                    SourceKind.Session,
+                    SourceKind.Metric,
+                  ]}
                 />
               </CustomInputWrapper>
             )}

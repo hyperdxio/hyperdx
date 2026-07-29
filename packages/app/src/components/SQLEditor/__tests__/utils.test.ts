@@ -1,7 +1,7 @@
 import { Completion, CompletionContext } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
 
-import { createIdentifierCompletionSource } from '../utils';
+import { createIdentifierCompletionSource } from '@/components/SQLEditor/utils';
 
 const TEST_COMPLETIONS: Completion[] = [
   { label: 'column1', type: 'variable' },

@@ -11,7 +11,7 @@ schema-agnostic design, and correlation across all telemetry types in one place.
 
 ## Architecture (WHAT)
 
-This is a **monorepo** with five packages:
+This is a **monorepo** with six packages:
 
 - `packages/app` - Next.js frontend (TypeScript, Mantine UI, TanStack Query)
 - `packages/api` - Express backend (Node.js 22+, MongoDB for metadata,
@@ -26,6 +26,12 @@ This is a **monorepo** with five packages:
 - `packages/otel-collector` - Custom-built OpenTelemetry Collector (Go, OCB).
   See its [`README.md`](packages/otel-collector/README.md) for architecture,
   included components, and upgrade procedures.
+- `packages/hdx-eval` - AI eval framework for benchmarking MCP servers against
+  observability scenarios. Generates deterministic synthetic telemetry, spawns
+  agents, and grades with programmatic checks + LLM-as-judge. See its
+  [`README.md`](packages/hdx-eval/README.md) for setup and usage, and
+  [`agent_docs/evals.md`](agent_docs/evals.md) for the dual-slot A/B
+  comparison workflow.
 
 **Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
 MongoDB (configuration/metadata)
@@ -57,6 +63,8 @@ directory:
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
+- `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
+  context) and the shared helpers (read when adding or changing a feature)
 
 **Package-specific guides** (read when working on that package):
 
@@ -82,6 +90,16 @@ before stopping.
    `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
 6. **Testing**: Tests live in `__tests__/` directories; use Jest for
    unit/integration tests
+7. **Observability**: This is an observability product - instrument new code as
+   you write it. Every team-scoped operation must carry team/user context
+   (`setBusinessContext`), and countable log events should also emit a metric.
+   For our own instrumentation we favor wide events — enrich the unit-of-work
+   span with rich, high-cardinality attributes and keep only span _names_ and
+   _metric_ attributes low-cardinality — while metrics stay first-class
+   (counters/histograms feed alerts and SLOs, and many deployments rely on
+   them). Use the shared helpers in
+   `packages/api/src/utils/instrumentation.ts`. See
+   [`agent_docs/observability.md`](agent_docs/observability.md).
 
 ## Running Tests
 
@@ -95,11 +113,14 @@ yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
 ```
 
-**packages/api** (integration tests only):
+**packages/api** (unit and integration tests):
 
 ```bash
-make dev-int-build                  # Build dependencies (run once before tests)
-make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
+cd packages/api
+yarn ci:unit                        # Run unit tests (no services needed)
+
+make dev-int-build                  # Build dependencies (run once before integration tests)
+make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs integration tests.
                                     # Ctrl-C to stop and wait for all services to tear down.
 ```
 
@@ -180,6 +201,14 @@ efficient and accurate:
 4. **Write or update tests alongside the implementation**, not after. Configure
    your agent to produce tests before writing implementation code. See the
    Testing section below for the commands to use.
+
+5. **Ensure a changeset exists before pushing a PR.** Any change to a published
+   package (`@hyperdx/app`, `@hyperdx/api`, `@hyperdx/otel-collector`, etc.) that
+   is user-facing or affects behavior must include a changeset in `.changeset/`.
+   Add one with `yarn changeset` (or create the markdown file by hand following
+   the format of existing entries), choosing the appropriate semver bump, before
+   pushing the branch. Skip only for changes that don't warrant a release (docs,
+   internal tooling, tests, CI).
 
 ## GitHub Action Workflow (when invoked via @claude)
 

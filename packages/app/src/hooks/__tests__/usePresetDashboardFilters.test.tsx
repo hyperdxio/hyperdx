@@ -8,9 +8,8 @@ import {
 import { act, renderHook } from '@testing-library/react';
 
 import api from '@/api';
-
-import useDashboardFilters from '../useDashboardFilters';
-import usePresetDashboardFilters from '../usePresetDashboardFilters';
+import useDashboardFilters from '@/hooks/useDashboardFilters';
+import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
 
 // Mock the api module
 jest.mock('@/api', () => ({

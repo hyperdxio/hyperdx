@@ -1,6 +1,6 @@
 // Easter egg: April Fools 2026 — shared helpers and types for AI Summarize.
 
-import { renderMs } from '../TimelineChart/utils';
+import { renderMs } from '@/components/TimelineChart/utils';
 
 // ---------------------------------------------------------------------------
 // Visibility gate

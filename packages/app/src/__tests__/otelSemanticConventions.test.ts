@@ -1,4 +1,4 @@
-import { getMetricNameSql } from '../otelSemanticConventions';
+import { getMetricNameSql } from '@/otelSemanticConventions';
 
 describe('otelSemanticConventions', () => {
   describe('getMetricNameSql', () => {

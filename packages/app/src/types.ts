@@ -38,7 +38,7 @@ export type StacktraceFrame = {
   post_context?: string[];
 };
 
-export type StacktraceBreadcrumbCategory =
+type StacktraceBreadcrumbCategory =
   | 'ui.click'
   | 'fetch'
   | 'xhr'
@@ -80,7 +80,7 @@ export type AggFn =
   | 'sum_rate'
   | 'sum';
 
-export type SourceTable = 'logs' | 'rrweb' | 'metrics';
+type SourceTable = 'logs' | 'rrweb' | 'metrics';
 
 export enum MetricsDataType {
   Gauge = 'Gauge',

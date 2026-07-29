@@ -5,8 +5,8 @@ import {
   CallToolResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { createServer } from '../mcpServer';
-import { McpContext } from '../tools/types';
+import { createServer } from '@/mcp/mcpServer';
+import { McpContext } from '@/mcp/tools/types';
 
 /**
  * Connect an MCP server to an in-process Client via InMemoryTransport and

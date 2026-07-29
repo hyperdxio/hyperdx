@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import {
+  IconCheck,
   IconCode,
   IconDotsVertical,
   IconPencil,
@@ -22,12 +23,13 @@ import {
 import SelectControlled from '@/components/SelectControlled';
 import {
   SOURCE_KIND_ICONS,
+  sourceSelectFilter,
   useFilteredSortedSourceItems,
   useSourceKindMap,
 } from '@/components/sourceSelectUtils';
 import { useSources } from '@/source';
 
-import styles from '../../styles/SourceSelectControlled.module.scss';
+import styles from '@styles/SourceSelectControlled.module.scss';
 
 interface SourceManagementMenuProps {
   hasSelection: boolean;
@@ -188,14 +190,19 @@ function SourceSelectControlledComponent({
 
   const sourceKindMap = useSourceKindMap(data);
 
+  // Mantine passes `checked` to renderOption for the currently selected
+  // option; render a trailing check so the active source is obvious in the
+  // dropdown (the closed input only shows the kind icon + label).
   const renderOption = useCallback(
-    ({ option }: { option: ComboboxItem }) => {
+    ({ option, checked }: { option: ComboboxItem; checked?: boolean }) => {
       const icon = SOURCE_KIND_ICONS[sourceKindMap.get(option.value) ?? ''];
-      if (!icon) return option.label;
       return (
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" w="100%">
           {icon}
-          {option.label}
+          <span style={{ flex: 1 }}>{option.label}</span>
+          {checked && (
+            <IconCheck size={14} color="var(--color-text-brand)" stroke={2.5} />
+          )}
         </Group>
       );
     },
@@ -206,6 +213,7 @@ function SourceSelectControlledComponent({
     sources: data,
     allowedSourceKinds,
     connectionId,
+    groupBySection: true,
   });
 
   const hasSelection = !!selectedSourceId;
@@ -222,12 +230,20 @@ function SourceSelectControlledComponent({
       <SelectControlled
         {...props}
         data={sourceItems}
-        comboboxProps={{ withinPortal: false, ...comboboxProps }}
+        comboboxProps={{
+          withinPortal: false,
+          width: 'max-content',
+          position: 'bottom-start',
+          ...comboboxProps,
+        }}
         classNames={{
           input: styles.sourceSelectInput,
           groupLabel: styles.groupLabel,
+          dropdown: styles.sourceSelectDropdown,
+          option: styles.sourceSelectOption,
         }}
         renderOption={renderOption}
+        filter={sourceSelectFilter}
         searchable
         placeholder="Data Source"
         leftSection={leftIcon}

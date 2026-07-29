@@ -787,6 +787,72 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   );
 
   test(
+    'should preserve an external onClick through import with no source mapping',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import OnClick External ${ts}`;
+      const tileName = `External Link Tile ${ts}`;
+      const urlTemplate =
+        'https://grafana.example.com/d/abc?var-service={{ServiceName}}';
+
+      const templatePath = writeTempTemplate(
+        makeTemplateWithOnClick({
+          dashboardName,
+          tileName,
+          // Use the workspace logs source name so the tile source mapping
+          // auto-resolves and the import can finish without manual mapping.
+          tileSourceName: DEFAULT_LOGS_SOURCE_NAME,
+          onClick: {
+            type: 'external',
+            urlTemplate,
+          },
+        }),
+      );
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Verify no onClick mapping rows are rendered (external has none)', async () => {
+        await expect(
+          dashboardImportPage.getMappingRow(
+            tileName,
+            'On Click - Search Source',
+          ),
+        ).toBeHidden();
+        await expect(
+          dashboardImportPage.getMappingRow(tileName, 'On Click - Dashboard'),
+        ).toBeHidden();
+      });
+
+      await test.step('Finish import (tile source auto-resolves)', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the external onClick survived import unchanged', async () => {
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.name).toBe(dashboardName);
+        expect(dashboard.tiles).toHaveLength(1);
+        expect(dashboard.tiles[0].config.onClick).toEqual({
+          type: 'external',
+          urlTemplate,
+        });
+      });
+    },
+  );
+
+  test(
     'should drop an unmapped onClick from the imported tile',
     { tag: '@full-stack' },
     async ({ page }) => {

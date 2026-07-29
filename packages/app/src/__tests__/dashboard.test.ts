@@ -16,7 +16,7 @@ jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
 import { LEGACY_CHART_PALETTE_TOKEN_MAP } from '@hyperdx/common-utils/dist/types';
 
-import { fetchLocalDashboards, getLocalDashboardTags } from '../dashboard';
+import { fetchLocalDashboards, getLocalDashboardTags } from '@/dashboard';
 
 const STORAGE_KEY = 'hdx-local-dashboards';
 

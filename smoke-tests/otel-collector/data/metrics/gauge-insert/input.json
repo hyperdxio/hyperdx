@@ -1,0 +1,67 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "metrics"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "gauge-insert"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "metric-test-service"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": {},
+          "metrics": [
+            {
+              "name": "smoke.gauge.temperature",
+              "unit": "Cel",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1901999590000000000",
+                    "asDouble": 21.5,
+                    "attributes": [
+                      {
+                        "key": "room",
+                        "value": {
+                          "stringValue": "kitchen"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "1901999590000000001",
+                    "asDouble": 19.25,
+                    "attributes": [
+                      {
+                        "key": "room",
+                        "value": {
+                          "stringValue": "bedroom"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

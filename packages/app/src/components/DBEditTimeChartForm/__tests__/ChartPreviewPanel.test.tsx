@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import { ChartPreviewPanel } from '../ChartPreviewPanel';
+import { ChartPreviewPanel } from '@/components/DBEditTimeChartForm/ChartPreviewPanel';
 
 jest.mock('@/components/ChartSQLPreview', () => ({
   __esModule: true,
@@ -25,6 +25,10 @@ jest.mock('@/components/DBNumberChart', () => ({
 
 jest.mock('@/components/DBPieChart', () => ({
   DBPieChart: () => <div data-testid="db-pie-chart">Pie Chart</div>,
+}));
+
+jest.mock('@/components/DBBarChart', () => ({
+  DBBarChart: () => <div data-testid="db-bar-chart">Bar Chart</div>,
 }));
 
 jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
@@ -150,6 +154,15 @@ describe('ChartPreviewPanel', () => {
       });
 
       expect(screen.getByTestId('db-pie-chart')).toBeInTheDocument();
+    });
+
+    it('should render bar chart for bar tab', () => {
+      renderPanel({
+        queriedConfig: baseBuilderConfig,
+        activeTab: 'bar',
+      });
+
+      expect(screen.getByTestId('db-bar-chart')).toBeInTheDocument();
     });
 
     it('should not render time chart when dbTimeChartConfig is missing', () => {

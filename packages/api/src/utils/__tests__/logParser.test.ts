@@ -1,4 +1,4 @@
-import { mapObjectToKeyValuePairs, traverseJson } from '../logParser';
+import { mapObjectToKeyValuePairs, traverseJson } from '@/utils/logParser';
 
 describe('logParser', () => {
   it('traverseJson', () => {

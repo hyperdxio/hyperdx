@@ -39,6 +39,10 @@
     background-color: var(--color-bg-danger);
   }
 
+  &.pending {
+    background-color: var(--color-bg-warning);
+  }
+
   &.clickable {
     cursor: pointer;
   }

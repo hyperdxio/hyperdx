@@ -32,6 +32,8 @@ import {
 import { useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconBracketsContain,
+  IconChartBar,
   IconChartLine,
   IconChartPie,
   IconGrid3x3,
@@ -55,7 +57,9 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  isPromqlDisplayType,
   isRawSqlDisplayType,
+  isStringSelectDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
@@ -79,6 +83,7 @@ import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
+import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
@@ -151,6 +156,11 @@ export default function EditTimeChartForm({
   const {
     control,
     setValue,
+    getValues,
+    // The callback form of `watch` is used to subscribe to field changes
+    // (without re-rendering) in useBuilderToSqlConversion; useWatch can't do this.
+    // eslint-disable-next-line react-hook-form/no-use-watch
+    watch,
     handleSubmit,
     register,
     setError,
@@ -165,6 +175,7 @@ export default function EditTimeChartForm({
   const {
     fields,
     append,
+    insert: insertSeries,
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
@@ -172,14 +183,40 @@ export default function EditTimeChartForm({
     name: 'series',
   });
 
+  // Insert a copy of an existing series directly below it so a near-identical
+  // variant (e.g. avg + p95 of the same column) does not have to be re-entered.
+  // structuredClone keeps the copy independent of the source row. The alias is
+  // cleared on the copy: a non-empty alias renders as `AS "<alias>"`, so two
+  // rows sharing one alias produce duplicate column names and ClickHouse rejects
+  // the query. An empty alias renders without `AS`, giving each row a distinct
+  // auto-generated name.
+  const duplicateSeries = useCallback(
+    (index: number) => {
+      insertSeries(index + 1, {
+        ...structuredClone(getValues(`series.${index}`)),
+        alias: '',
+      });
+    },
+    [insertSeries, getValues],
+  );
+
+  // Track whether sub-form changes (display settings, heatmap settings) have
+  // been applied. These bypass RHF's dirty tracking, so we latch here: once
+  // set, only a parent reset (new tile opened) clears it via onDirtyChange.
+  const subFormDirty = useRef(false);
+
   useEffect(() => {
-    onDirtyChange?.(isDirty);
+    // Don't let RHF's isDirty=false clear the flag after sub-form changes
+    // were applied (RHF resets isDirty when its `values` prop re-syncs).
+    onDirtyChange?.(isDirty || subFormDirty.current);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
+  const series = useWatch({ control, name: 'series' });
   const sourceId = useWatch({ control, name: 'source' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
+  const ratioMode = useWatch({ control, name: 'ratioMode' });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -190,11 +227,21 @@ export default function EditTimeChartForm({
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
-  const isPromqlInput = configType === 'promql';
+  const isPromqlInput =
+    configType === 'promql' && isPromqlDisplayType(displayType);
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
+
+  // Carry the builder config over as a SQL template when switching to SQL mode
+  useBuilderToSqlConversion({
+    control,
+    getValues,
+    setValue,
+    watch,
+    tableSource,
+  });
 
   const activeTab = displayTypeToActiveTab(displayType);
 
@@ -224,7 +271,11 @@ export default function EditTimeChartForm({
     fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    alternateRowBackground,
+    seriesLimit,
     color,
+    colorRules,
+    backgroundChart,
   ] = useWatch({
     control,
     name: [
@@ -234,17 +285,26 @@ export default function EditTimeChartForm({
       'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'alternateRowBackground',
+      'seriesLimit',
       'color',
+      'colorRules',
+      'backgroundChart',
     ],
   });
 
+  // Format auto-detected purely from the datasource (e.g. duration for a trace
+  // Duration column), used as the drawer's fallback when no explicit
+  // numberFormat is set. Reads the live `series`, the field the builder edits;
+  // `select` is only synced from `series` on submit and on display-type / source
+  // resets, so it goes stale after an aggregation edit and resolves undefined.
+  // The drawer prioritizes an explicit `numberFormat` over this fallback.
   const autoDetectedNumberFormat = useMemo(
     () =>
-      numberFormat ??
-      (Array.isArray(select)
-        ? getFirstSeriesNumberFormat(select, tableSource)
-        : undefined),
-    [numberFormat, select, tableSource],
+      Array.isArray(series)
+        ? getFirstSeriesNumberFormat(series, tableSource)
+        : undefined,
+    [series, tableSource],
   );
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
@@ -255,7 +315,11 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      alternateRowBackground,
+      seriesLimit,
       color,
+      colorRules,
+      backgroundChart,
     }),
     [
       alignDateRangeToGranularity,
@@ -264,7 +328,11 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      alternateRowBackground,
+      seriesLimit,
       color,
+      colorRules,
+      backgroundChart,
     ],
   );
 
@@ -310,7 +378,18 @@ export default function EditTimeChartForm({
       if (errors.length > 0) return { errors, config: null };
 
       const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
-      if (!savedConfig) return { errors: [], config: null };
+      if (!savedConfig) {
+        console.error(
+          'convertFormStateToSavedChartConfig returned undefined after validation passed. ' +
+            'This likely means a new displayType or configType combination is not handled.',
+          {
+            displayType: form.displayType,
+            configType: form.configType,
+            source: form.source,
+          },
+        );
+        return { errors: [], config: null };
+      }
 
       const config = isRawSqlSavedChartConfig(savedConfig)
         ? savedConfig
@@ -438,7 +517,10 @@ export default function EditTimeChartForm({
       prevDisplayTypeRef.current = displayType;
       prevConfigTypeRef.current = configType;
 
-      if (displayType === DisplayType.Search && typeof select !== 'string') {
+      if (
+        isStringSelectDisplayType(displayType) &&
+        typeof select !== 'string'
+      ) {
         setValue('select', '');
         setValue('series', []);
       } else if (displayType === DisplayType.Heatmap) {
@@ -538,25 +620,50 @@ export default function EditTimeChartForm({
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
   const handleUpdateDisplaySettings = useCallback(
-    ({
-      numberFormat,
-      alignDateRangeToGranularity,
-      fillNulls,
-      compareToPreviousPeriod,
-      fitYAxisToData,
-      groupByColumnsOnLeft,
-      color,
-    }: ChartConfigDisplaySettings) => {
-      setValue('numberFormat', numberFormat);
+    (
+      {
+        numberFormat,
+        alignDateRangeToGranularity,
+        fillNulls,
+        compareToPreviousPeriod,
+        fitYAxisToData,
+        groupByColumnsOnLeft,
+        alternateRowBackground,
+        seriesLimit,
+        color,
+        colorRules,
+        backgroundChart,
+      }: ChartConfigDisplaySettings,
+      isDirty: boolean,
+    ) => {
+      // Only persist an explicit numberFormat. When the drawer emits undefined
+      // (the user never chose a format), leave it unset so render-time
+      // auto-detection keeps driving the format from the datasource.
+      if (numberFormat !== undefined) {
+        setValue('numberFormat', numberFormat);
+      }
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('alternateRowBackground', alternateRowBackground);
+      // Persist `null` (not undefined) when cleared so the disabled state
+      // survives JSON round-tripping through the URL query state; otherwise
+      // the dropped key lets RHF's `values` sync restore the stale value.
+      setValue('seriesLimit', seriesLimit ?? null);
       setValue('color', color);
+      setValue('colorRules', colorRules);
+      setValue('backgroundChart', backgroundChart);
+      // Display settings live in a separate drawer form, so RHF can't track
+      // them. Latch dirty state only when the drawer reports actual changes.
+      if (isDirty) {
+        subFormDirty.current = true;
+        onDirtyChange?.(true);
+      }
       onSubmit();
     },
-    [setValue, onSubmit],
+    [setValue, onDirtyChange, onSubmit],
   );
 
   const handleUpdateHeatmapSettings = useCallback(
@@ -564,10 +671,13 @@ export default function EditTimeChartForm({
       setValue('series.0.valueExpression', data.value);
       setValue('series.0.countExpression', data.count || 'count()');
       setValue('series.0.heatmapScaleType', data.scaleType);
+      // Heatmap settings are applied outside RHF's change tracking.
+      subFormDirty.current = true;
+      onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
     },
-    [setValue, onSubmit, closeHeatmapSettings],
+    [setValue, onDirtyChange, onSubmit, closeHeatmapSettings],
   );
 
   const heatmapValueExpression = useWatch({
@@ -617,7 +727,7 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Line/Bar
+                  Time Series
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
@@ -630,6 +740,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconNumbers size={16} />}
                 >
                   Number
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Bar}
+                  leftSection={<IconChartBar size={16} />}
+                >
+                  Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
@@ -648,6 +764,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconGrid3x3 size={16} />}
                 >
                   Heatmap
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.EventPatterns}
+                  leftSection={<IconBracketsContain size={16} />}
+                >
+                  Patterns
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
@@ -739,6 +861,7 @@ export default function EditTimeChartForm({
             append={append}
             removeSeries={removeSeries}
             swapSeries={swapSeries}
+            duplicateSeries={duplicateSeries}
             tableSource={tableSource}
             tableConnection={tableConnection}
             databaseName={databaseName}
@@ -748,6 +871,7 @@ export default function EditTimeChartForm({
             displayType={displayType}
             activeTab={activeTab}
             seriesReturnType={seriesReturnType}
+            ratioMode={ratioMode}
             alert={alert}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}

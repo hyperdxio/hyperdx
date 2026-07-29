@@ -4,7 +4,7 @@
  * - localStorage migration logic
  */
 
-import { mergePinnedData } from '../searchFilters';
+import { mergePinnedData } from '@/searchFilters';
 
 describe('mergePinnedData', () => {
   it('returns empty fields and filters when both are null', () => {

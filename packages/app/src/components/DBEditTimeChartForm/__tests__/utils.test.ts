@@ -7,16 +7,16 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-
 import {
   buildChartConfigForExplanations,
+  buildGroupByConnectionProps,
   buildSampleEventsConfig,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
   isQueryReady,
   seriesToFilters,
   TABS_WITH_GENERATED_SQL,
-} from '../utils';
+} from '@/components/DBEditTimeChartForm/utils';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -217,6 +217,7 @@ describe('displayTypeToActiveTab', () => {
     [DisplayType.Markdown, 'markdown'],
     [DisplayType.Table, 'table'],
     [DisplayType.Pie, 'pie'],
+    [DisplayType.Bar, 'bar'],
     [DisplayType.Number, 'number'],
     [DisplayType.Line, 'time'],
   ])('maps %s to %s', (displayType, expected) => {
@@ -229,11 +230,12 @@ describe('displayTypeToActiveTab', () => {
 // ---------------------------------------------------------------------------
 
 describe('TABS_WITH_GENERATED_SQL', () => {
-  it('includes table, time, number, pie, heatmap', () => {
+  it('includes table, time, number, pie, bar, heatmap', () => {
     expect(TABS_WITH_GENERATED_SQL.has('table')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('time')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('number')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('pie')).toBe(true);
+    expect(TABS_WITH_GENERATED_SQL.has('bar')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('heatmap')).toBe(true);
   });
 
@@ -411,7 +413,40 @@ describe('buildChartConfigForExplanations', () => {
     expect(result).toBeDefined();
   });
 
-  it.each(['table', 'number', 'pie'] as const)(
+  it("applies the tile's series limit so the SQL preview matches the chart query", () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: logSource.id,
+      tableSource: logSource,
+      activeTab: 'time',
+      dbTimeChartConfig: {
+        ...builderConfig,
+        seriesLimit: 3,
+      } as ChartConfigWithDateRange,
+    });
+
+    expect(result).toBeDefined();
+    // @ts-expect-error union types..
+    expect(result!.seriesLimit).toBe(3);
+  });
+
+  it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: logSource.id,
+      tableSource: logSource,
+      activeTab: 'time',
+      dbTimeChartConfig: builderConfig,
+    });
+
+    expect(result).toBeDefined();
+    // @ts-expect-error union types..
+    expect(result!.seriesLimit).toBeUndefined();
+  });
+
+  it.each(['table', 'number', 'pie', 'bar'] as const)(
     'uses queriedConfig for activeTab=%s and applies tab transform',
     activeTab => {
       const result = buildChartConfigForExplanations({
@@ -467,5 +502,69 @@ describe('buildChartConfigForExplanations', () => {
     // Raw SQL saved config is handled early, returns with dateRange
     expect(result).toBeDefined();
     expect(result!.dateRange).toBe(dateRange);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGroupByConnectionProps
+// ---------------------------------------------------------------------------
+
+describe('buildGroupByConnectionProps', () => {
+  const tableConnection = {
+    databaseName: 'default',
+    tableName: 'logs',
+    connectionId: 'clickhouse',
+  };
+
+  it('falls back to the source tableConnection for non-metric sources', () => {
+    const result = buildGroupByConnectionProps({
+      tableSource: logSource,
+      series: [{ metricType: 'gauge', metricName: 'cpu' }],
+      tableConnection,
+    });
+
+    expect(result).toEqual({ tableConnection });
+  });
+
+  it('builds one intersected connection per distinct metric table + name for mixed-type series', () => {
+    const result = buildGroupByConnectionProps({
+      tableSource: metricSource,
+      series: [
+        { metricType: 'gauge', metricName: 'cpu' },
+        { metricType: 'sum', metricName: 'requests' },
+        // duplicate of the first series — must be deduped
+        { metricType: 'gauge', metricName: 'cpu' },
+        // incomplete series — skipped
+        { metricType: 'gauge' },
+      ],
+      tableConnection,
+    });
+
+    expect(result.tableConnection).toBeUndefined();
+    expect(result.intersectFields).toBe(true);
+    expect(result.tableConnections).toEqual([
+      {
+        databaseName: 'default',
+        tableName: 'metrics.gauge',
+        connectionId: 'clickhouse',
+        metricName: 'cpu',
+      },
+      {
+        databaseName: 'default',
+        tableName: 'metrics.sum',
+        connectionId: 'clickhouse',
+        metricName: 'requests',
+      },
+    ]);
+  });
+
+  it('falls back to the tableConnection when a metric source has no resolvable series', () => {
+    const result = buildGroupByConnectionProps({
+      tableSource: metricSource,
+      series: [{ metricName: 'cpu' }], // no metricType
+      tableConnection,
+    });
+
+    expect(result).toEqual({ tableConnection });
   });
 });

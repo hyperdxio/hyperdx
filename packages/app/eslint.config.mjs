@@ -179,6 +179,18 @@ export default [
         ...DATE_SYNTAX_RESTRICTIONS,
       ],
       'no-console': ['error', { allow: ['warn', 'error'] }],
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^\\.\\.(/|$)',
+              message:
+                'Use the @/ path alias instead of parent-relative imports (../).',
+            },
+          ],
+        },
+      ],
     },
     languageOptions: {
       parser: tseslint.parser,
@@ -241,6 +253,8 @@ export default [
       'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
       // Drop date rules — Date.now() is fine in e2e tests for unique IDs/timestamps
       'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
+      // e2e tests live outside src/, so no @/ alias reaches sibling test files
+      'no-restricted-imports': 'off',
     },
   },
   ...storybook.configs['flat/recommended'],

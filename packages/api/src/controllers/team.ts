@@ -8,6 +8,10 @@ import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import Team, { type ITeam, type TeamDocument } from '@/models/team';
 
+export function getTeamInviteUrl(token: string) {
+  return `${config.FRONTEND_URL}/join-team?token=${token}`;
+}
+
 const LOCAL_APP_TEAM_ID = '_local_team_';
 export const LOCAL_APP_TEAM = {
   _id: new mongoose.Types.ObjectId(LOCAL_APP_TEAM_ID),

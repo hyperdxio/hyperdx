@@ -1,10 +1,9 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
+import { getDefaultSourceId, useDefaultOrderBy } from '@/DBSearchPage';
+import * as metadataModule from '@/hooks/useMetadata';
 import * as sourceModule from '@/source';
-
-import { getDefaultSourceId, useDefaultOrderBy } from '../DBSearchPage';
-import * as metadataModule from '../hooks/useMetadata';
 
 // Mock the dependencies
 jest.mock('@/layout', () => ({

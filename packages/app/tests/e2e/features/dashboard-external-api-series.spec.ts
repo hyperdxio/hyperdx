@@ -188,15 +188,8 @@ test.describe(
           const tileData = tilesData[i];
           const series = tileData.series;
 
-          // Hover over tile to reveal edit button
-          await tiles.nth(i).hover();
-
-          // Click edit button for this tile
-          const editButton = page
-            .locator(`[data-testid^="tile-edit-button-"]`)
-            .nth(i);
-          await expect(editButton).toBeVisible();
-          await editButton.click();
+          // Open the tile's actions menu and click Edit
+          await dashboardPage.editTile(i);
 
           // Wait for chart editor modal to open
           const chartNameInput = page.getByTestId('chart-name-input');

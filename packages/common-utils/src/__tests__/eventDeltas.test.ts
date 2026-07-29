@@ -6,7 +6,7 @@ import {
   isHighCardinality,
   rankProperties,
   semanticBoost,
-} from '../core/eventDeltas';
+} from '@/core/eventDeltas';
 
 describe('eventDeltas', () => {
   describe('flattenData', () => {

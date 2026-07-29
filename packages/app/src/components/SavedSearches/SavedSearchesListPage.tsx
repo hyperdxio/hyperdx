@@ -31,12 +31,11 @@ import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
 import { useFavorites } from '@/favorites';
+import { withAppNav } from '@/layout';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
-
-import { withAppNav } from '../../layout';
 
 export default function SavedSearchesListPage() {
   const brandName = useBrandDisplayName();

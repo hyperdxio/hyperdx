@@ -28,7 +28,9 @@ export function OnClickFormButton({
       ? 'Search'
       : onClickValue?.type === 'dashboard'
         ? 'Dashboard'
-        : 'Default';
+        : onClickValue?.type === 'external'
+          ? 'External'
+          : 'Default';
 
   return (
     <>

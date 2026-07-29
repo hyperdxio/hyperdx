@@ -7,7 +7,7 @@ import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 import { INTERNAL_ROW_FIELDS } from '@/hooks/useRowWhere';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
-import styles from '../../styles/LogTable.module.scss';
+import styles from '@styles/LogTable.module.scss';
 
 // Hook that provides a function to open the sidebar with specific row details
 const useSidebarOpener = () => {

@@ -1,24 +1,21 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
 import { getDashboards } from '@/controllers/dashboard';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 
-import { validateObjectId } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
-
-export function registerGetDashboard(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerGetDashboard({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_get_dashboard',
     {
       title: 'Get Dashboard(s)',
@@ -34,7 +31,7 @@ export function registerGetDashboard(
           ),
       }),
     },
-    withToolTracing('clickstack_get_dashboard', context, async ({ id }) => {
+    async ({ id }) => {
       if (!id) {
         const dashboards = await getDashboards(
           new mongoose.Types.ObjectId(teamId),
@@ -57,10 +54,7 @@ export function registerGetDashboard(
 
       const dashboard = await Dashboard.findOne({ _id: id, team: teamId });
       if (!dashboard) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-        };
+        return mcpUserError('Dashboard not found');
       }
       return {
         content: [
@@ -79,6 +73,6 @@ export function registerGetDashboard(
           },
         ],
       };
-    }),
+    },
   );
 }

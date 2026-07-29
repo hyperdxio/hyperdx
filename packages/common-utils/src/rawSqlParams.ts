@@ -84,6 +84,10 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
   ],
+  [DisplayType.Bar]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
   [DisplayType.Number]: [
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
@@ -91,6 +95,7 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
   [DisplayType.Search]: [],
   [DisplayType.Heatmap]: [],
   [DisplayType.Markdown]: [],
+  [DisplayType.EventPatterns]: [],
 };
 
 const TIME_CHART_EXAMPLE_SQL = `SELECT
@@ -112,10 +117,12 @@ export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.StackedBar]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.Table]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Pie]: DATE_RANGE_WHERE_EXAMPLE_SQL,
+  [DisplayType.Bar]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Number]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
+  [DisplayType.EventPatterns]: '',
 };
 
 export function renderQueryParam(name: keyof typeof QUERY_PARAMS): string {

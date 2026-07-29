@@ -1,4 +1,4 @@
-import { parseAsJsonEncoded, parseAsStringEncoded } from '../queryParsers';
+import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 
 // Helper: extract the parse/serialize functions from the parser object
 const stringParser = parseAsStringEncoded;
@@ -100,6 +100,45 @@ describe('parseAsJsonEncoded', () => {
       expect(jsonParser.parse(jsonParser.serialize(original))).toEqual(
         original,
       );
+    });
+  });
+
+  describe('with a validator', () => {
+    // Accepts only an array of numbers; throws otherwise (mirrors zod.parse).
+    const numberArrayParser = parseAsJsonEncoded<number[]>(value => {
+      if (!Array.isArray(value) || !value.every(n => typeof n === 'number')) {
+        throw new Error('expected number[]');
+      }
+      return value;
+    });
+
+    it('returns a value that satisfies the validator', () => {
+      expect(
+        numberArrayParser.parse(numberArrayParser.serialize([1, 2, 3])),
+      ).toEqual([1, 2, 3]);
+    });
+
+    it.each([
+      ['an object', {}],
+      ['a bare number', 5],
+      ['a bare string', 'x'],
+      ['a null literal', null],
+      ['an array of the wrong element type', ['a', 'b']],
+    ])('returns null for %s (valid JSON, wrong shape)', (_label, input) => {
+      const serialized = encodeURIComponent(JSON.stringify(input));
+      expect(numberArrayParser.parse(serialized)).toBeNull();
+    });
+
+    it('returns null when the validator returns null instead of throwing', () => {
+      const nullingParser = parseAsJsonEncoded<number[]>(() => null as never);
+      expect(nullingParser.parse(encodeURIComponent('[1,2,3]'))).toBeNull();
+    });
+
+    it('still returns null for non-JSON input before validation runs', () => {
+      const validate = jest.fn();
+      const parser = parseAsJsonEncoded<unknown>(validate);
+      expect(parser.parse('not-json')).toBeNull();
+      expect(validate).not.toHaveBeenCalled();
     });
   });
 });

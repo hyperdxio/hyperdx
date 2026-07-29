@@ -25,6 +25,7 @@ import {
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import HyperDX from '@hyperdx/browser';
 import {
   ClickHouseQueryError,
   ColumnMeta,
@@ -72,13 +73,14 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
   IconBolt,
+  IconCode,
   IconPlayerPlay,
   IconPlus,
   IconStack2,
   IconTags,
   IconX,
 } from '@tabler/icons-react';
-import { useIsFetching } from '@tanstack/react-query';
+import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
@@ -86,7 +88,8 @@ import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
-import { DBTimeChart } from '@/components/DBTimeChart';
+import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
+import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -120,9 +123,14 @@ import {
   parseTimeQuery,
   useNewTimeQuery,
 } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
+import {
+  formatDurationMs,
+  QUERY_LOCAL_STORAGE,
+  useLocalStorage,
+  usePrevious,
+} from '@/utils';
 
-import { SQLPreview } from './components/ChartSQLPreview';
+import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
@@ -134,7 +142,11 @@ import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
-import { useColumns, useTableMetadata } from './hooks/useMetadata';
+import {
+  useColumns,
+  useResolvedDateTimeColumns,
+  useTableMetadata,
+} from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { useStableCallback } from './hooks/useStableCallback';
 import {
@@ -152,7 +164,7 @@ import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 import { FormatTime } from './useFormatTime';
 
-import searchPageStyles from '../styles/SearchPage.module.scss';
+import searchPageStyles from '@styles/SearchPage.module.scss';
 
 const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '1000', label: '1s' },
@@ -189,6 +201,12 @@ const SearchConfigSchema = z.object({
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 const QUERY_KEY_PREFIX = 'search';
+
+// Clicks inside the results panel keep the row side panel open (so users can
+// scroll the table or select a different row); clicks anywhere else on the page
+// dismiss it.
+const SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR =
+  '[data-testid="search-results-panel"]';
 
 // Helper function to get the default source id
 export function getDefaultSourceId(
@@ -326,30 +344,93 @@ function SearchResultsCountGroup({
   );
 }
 
-function SearchNumRows({
+export function SearchNumRows({
   config,
+  sqlConfig,
   enabled,
+  searchElapsedMs,
+  isSearching,
+  isLiveTail = false,
 }: {
   config: ChartConfigWithDateRange;
+  sqlConfig?: ChartConfigWithDateRange;
   enabled: boolean;
+  searchElapsedMs: number | null;
+  isSearching: boolean;
+  isLiveTail?: boolean;
 }) {
+  const [statsOpened, { open: openStats, close: closeStats }] =
+    useDisclosure(false);
   const { data, isLoading, error } = useExplainQuery(config, {
     enabled,
+    // Keep the previous row count on screen while a new EXPLAIN runs so the
+    // "Scanned Rows" value doesn't flash a loading state on every live-tail
+    // poll (each poll changes the dateRange, and thus the query key).
+    placeholderData: keepPreviousData,
   });
 
   if (!enabled) {
     return null;
   }
 
-  const numRows = data?.[0]?.rows;
+  const explainRow = data?.[0];
+  const numRows = explainRow?.rows;
+  const hasData = !isLoading && !error && numRows != null;
+
+  // During live tail we keep showing the last measured elapsed time and never
+  // flash the "..." loading state, so the value doesn't flicker between polls.
+  const showElapsedLoading = isSearching && !isLiveTail;
+  const showElapsed = showElapsedLoading || searchElapsedMs != null;
+
   return (
-    <Text size="xs">
-      {isLoading
-        ? 'Scanned Rows ...'
-        : error || !numRows
-          ? ''
-          : `Scanned Rows: ${Number.parseInt(numRows)?.toLocaleString()}`}
-    </Text>
+    <>
+      <Modal
+        opened={statsOpened}
+        onClose={closeStats}
+        title={sqlConfig != null ? 'Generated SQL (Timeline)' : 'Generated SQL'}
+        size="xl"
+      >
+        <ChartSQLPreview config={sqlConfig ?? config} enableCopy />
+      </Modal>
+      <Group gap={4} align="center">
+        <Text size="xs">
+          {isLoading
+            ? 'Scanned Rows ...'
+            : error || numRows == null
+              ? ''
+              : `Scanned Rows: ${Number(numRows).toLocaleString()}`}
+        </Text>
+        {showElapsed && (
+          <>
+            {(hasData || isLoading) && (
+              <Text size="xs" c="dimmed">
+                |
+              </Text>
+            )}
+            <Text size="xs">
+              {showElapsedLoading
+                ? 'Elapsed Time: ...'
+                : `Elapsed Time: ${formatDurationMs(searchElapsedMs!)}`}
+            </Text>
+          </>
+        )}
+        {/* The generated-SQL preview is derived purely from config, not the
+            explain query, so it renders unconditionally. Gating it on explain
+            loading/data would make it flicker on every live-tail poll, since
+            each poll changes the dateRange (and thus the explain queryKey). */}
+        <Tooltip label="Show Generated SQL" position="top">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            color="gray"
+            onClick={openStats}
+            aria-label="Show Generated SQL"
+          >
+            <IconCode size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+    </>
   );
 }
 
@@ -806,6 +887,79 @@ const queryStateMap = {
   orderBy: parseAsStringEncoded,
 };
 
+export function useSearchTelemetry({
+  isAnyQueryFetching,
+  isLive,
+  sourceId,
+}: {
+  isAnyQueryFetching: boolean;
+  /** When true the hook suppresses recording and emission so live-tail
+   * background refetches do not flood the metric. */
+  isLive: boolean;
+  sourceId: string | null;
+}) {
+  const searchStartTimeRef = useRef<number | null>(null);
+  const wasFetchingRef = useRef(false);
+  // Whether the in-flight cycle began as a live-tail refresh, captured on the
+  // rising edge so a mid-cycle isLive flip can't change how it's treated.
+  const cycleIsLiveRef = useRef(false);
+
+  // Snapshot latency_ms and source_id together so a later sourceId change does
+  // not cause the emission effect to re-fire with stale latency data. `emit`
+  // records whether this cycle should be reported to telemetry (user-initiated
+  // searches only); latency is still surfaced for display in every case.
+  const [completedSearch, setCompletedSearch] = useState<{
+    latency_ms: number;
+    source_id: string;
+    emit: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isAnyQueryFetching) {
+      // Start the timer once per fetch cycle (for live tail too — we display
+      // its elapsed time, we just don't emit telemetry for it).
+      if (!wasFetchingRef.current) {
+        searchStartTimeRef.current = performance.now();
+        cycleIsLiveRef.current = isLive;
+        // Only blank the displayed timer for user-initiated searches. During
+        // live tail we keep the previous value so it doesn't flicker between
+        // background refreshes.
+        if (!isLive) {
+          setCompletedSearch(null);
+        }
+      }
+      wasFetchingRef.current = true;
+    } else {
+      if (searchStartTimeRef.current != null) {
+        setCompletedSearch({
+          latency_ms: Math.round(
+            performance.now() - searchStartTimeRef.current,
+          ),
+          source_id: sourceId ?? '',
+          emit: !cycleIsLiveRef.current,
+        });
+        searchStartTimeRef.current = null;
+      }
+      wasFetchingRef.current = false;
+    }
+  }, [isAnyQueryFetching, isLive, sourceId]);
+
+  // completedSearch is the only dep here — sourceId was snapshotted at
+  // completion time so changing source after a finished search does not
+  // re-emit the previous run's latency against the new source. Live-tail
+  // cycles are recorded for display but flagged emit=false so they never flood
+  // telemetry.
+  useEffect(() => {
+    if (completedSearch == null || !completedSearch.emit) return;
+    HyperDX.addAction('search executed', {
+      latency_ms: completedSearch.latency_ms,
+      source_id: completedSearch.source_id,
+    });
+  }, [completedSearch]);
+
+  return { searchElapsedMs: completedSearch?.latency_ms ?? null };
+}
+
 export function DBSearchPage() {
   const brandName = useBrandDisplayName();
   // Next router is laggy behind window.location, which causes race
@@ -852,6 +1006,17 @@ export function DBSearchPage() {
       'pattern',
     ]).withDefault('results'),
   );
+
+  const [patternColumn, setPatternColumn] = useQueryState(
+    'patternColumn',
+    parseAsString,
+  );
+  const [draftPatternColumn, setDraftPatternColumn] = useState(
+    patternColumn ?? '',
+  );
+  useEffect(() => {
+    setDraftPatternColumn(patternColumn ?? '');
+  }, [patternColumn]);
 
   const [isLive, setIsLive] = useQueryState(
     'isLive',
@@ -1051,6 +1216,7 @@ export function DBSearchPage() {
         });
       },
     )();
+    setPatternColumn(draftPatternColumn || null);
     // clear query errors
     setQueryErrors({});
   }, [
@@ -1059,6 +1225,8 @@ export function DBSearchPage() {
     displayedTimeInputValue,
     onSearch,
     setQueryErrors,
+    draftPatternColumn,
+    setPatternColumn,
   ]);
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
@@ -1070,11 +1238,23 @@ export function DBSearchPage() {
     [debouncedSubmit, setValue],
   );
 
-  const filters = useWatch({ name: 'filters', control });
-  const searchFilters = useSearchPageFilterState({
-    searchQuery: filters ?? undefined,
-    onFilterChange: handleSetFilters,
-  });
+  // Top-level column names for the active source, used to quote
+  // filter keys that contain special characters.
+  const { data: inputSourceColumns } = useColumns(
+    {
+      databaseName: inputSourceObj?.from?.databaseName ?? '',
+      tableName: inputSourceObj?.from?.tableName ?? '',
+      connectionId: inputSourceObj?.connection ?? '',
+    },
+    { enabled: !!inputSourceObj },
+  );
+  const knownColumns = useMemo(
+    () =>
+      inputSourceColumns
+        ? new Set(inputSourceColumns.map(c => c.name))
+        : new Set<string>(),
+    [inputSourceColumns],
+  );
 
   const watchedSource = useWatch({
     control,
@@ -1100,6 +1280,17 @@ export function DBSearchPage() {
     },
     { enabled: !!watchedSourceObj },
   );
+
+  const { dateTimeColumns, onResolvedColumnsChange } =
+    useResolvedDateTimeColumns(inputSourceColumns);
+
+  const filters = useWatch({ name: 'filters', control });
+  const searchFilters = useSearchPageFilterState({
+    searchQuery: filters ?? undefined,
+    onFilterChange: handleSetFilters,
+    dateTimeColumns,
+    knownColumns,
+  });
 
   useEffect(() => {
     // If the user changes the source dropdown, reset the select and orderby fields
@@ -1297,6 +1488,12 @@ export function DBSearchPage() {
     useIsFetching({
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
+
+  const { searchElapsedMs } = useSearchTelemetry({
+    isAnyQueryFetching,
+    isLive: isLive ?? false,
+    sourceId: chartConfig?.source ?? null,
+  });
 
   const isTabVisible = useDocumentVisibility();
 
@@ -1610,6 +1807,25 @@ export function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
+  // Focus a chart series into the actual search. The histogram is grouped by
+  // severity/status, so a focused series maps to a real column value; applying
+  // it as an "only" filter re-queries both the chart and the results table so
+  // they stay in sync (the chart-only visual focus wouldn't touch the table).
+  const handleFocusSeries = useCallback(
+    (groupFilters: SeriesGroupFilter[]) => {
+      // Apply all group filters in one update so a multi-group series focus
+      // re-queries once, not once per column. setOnlyFilters keys on the clean
+      // (unquoted) column expression; the chart hands us the raw groupBy one.
+      searchFilters.setOnlyFilters(
+        groupFilters.map(({ column, value }) => ({
+          property: cleanClickHouseExpression(column),
+          value,
+        })),
+      );
+    },
+    [searchFilters],
+  );
+
   const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
@@ -1755,7 +1971,7 @@ export function DBSearchPage() {
       return;
     }
     if (inputSource) {
-      window.location.assign(`${router.basePath}/team?source=${inputSource}`);
+      window.location.assign(`${router.basePath}/team#source-${inputSource}`);
     } else {
       window.location.assign(`${router.basePath}/team`);
     }
@@ -2063,7 +2279,12 @@ export function DBSearchPage() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
-        <ActiveFilterPills searchFilters={searchFilters} mt={6} />
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          chartConfig={filtersChartConfig}
+          dateTimeColumns={dateTimeColumns}
+          mt={6}
+        />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
@@ -2082,6 +2303,7 @@ export function DBSearchPage() {
         focusDate={directTraceFocusDate}
         onClose={closeDirectTraceSidePanel}
         onSourceChange={onDirectTraceSourceChange}
+        keepOpenSelector={SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR}
       />
       <Flex
         direction="column"
@@ -2147,7 +2369,11 @@ export function DBSearchPage() {
                             ...chartConfig,
                             dateRange: searchedTimeRange,
                           }}
+                          sqlConfig={histogramTimeChartConfig ?? undefined}
                           enabled={isReady}
+                          searchElapsedMs={searchElapsedMs}
+                          isSearching={isAnyQueryFetching}
+                          isLiveTail={isLive ?? false}
                         />
                       </Group>
                     </Box>
@@ -2166,6 +2392,7 @@ export function DBSearchPage() {
                           showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
+                          onFocusSeries={handleFocusSeries}
                         />
                       </Box>
                     )}
@@ -2175,12 +2402,22 @@ export function DBSearchPage() {
                         config={{
                           ...chartConfig,
                           dateRange: searchedTimeRange,
+                          // Carry the source's select-alias definitions so the
+                          // rebuilt pattern query can filter on aliased columns
+                          // (e.g. `ServiceName as service`) without hitting
+                          // "Unknown identifier". Mirrors the results,
+                          // histogram, and heatmap configs.
+                          with: aliasWith,
                         }}
                         bodyValueExpression={
                           searchedSource
                             ? (getEventBody(searchedSource) ?? '')
                             : (chartConfig.implicitColumnExpression ?? '')
                         }
+                        patternColumn={patternColumn}
+                        draftPatternColumn={draftPatternColumn}
+                        onDraftPatternColumnChange={setDraftPatternColumn}
+                        onSubmit={onSubmit}
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />
@@ -2231,7 +2468,11 @@ export function DBSearchPage() {
                                 ...chartConfig,
                                 dateRange: searchedTimeRange,
                               }}
+                              sqlConfig={histogramTimeChartConfig ?? undefined}
                               enabled={isReady}
+                              searchElapsedMs={searchElapsedMs}
+                              isSearching={isAnyQueryFetching}
+                              isLiveTail={isLive ?? false}
                             />
                           </Group>
                         </Group>
@@ -2251,6 +2492,7 @@ export function DBSearchPage() {
                             showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
+                            onFocusSeries={handleFocusSeries}
                             enableParallelQueries
                           />
                         </Box>
@@ -2378,7 +2620,12 @@ export function DBSearchPage() {
                       </div>
                     </>
                   ) : (
-                    <Box flex="1" mih="0" px="sm">
+                    <Box
+                      flex="1"
+                      mih="0"
+                      px="sm"
+                      data-testid="search-results-panel"
+                    >
                       {chartConfig &&
                         searchedConfig.source &&
                         dbSqlRowTableConfig && (
@@ -2387,6 +2634,9 @@ export function DBSearchPage() {
                             config={dbSqlRowTableConfig}
                             sourceId={searchedConfig.source}
                             tableId={columnSizeTableId}
+                            keepOpenSelector={
+                              SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
+                            }
                             onSidebarOpen={onSidebarOpen}
                             onExpandedRowsChange={onExpandedRowsChange}
                             enabled={isReady}
@@ -2399,6 +2649,7 @@ export function DBSearchPage() {
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
                             enableSmallFirstWindow
+                            onResolvedColumnsChange={onResolvedColumnsChange}
                           />
                         )}
                     </Box>

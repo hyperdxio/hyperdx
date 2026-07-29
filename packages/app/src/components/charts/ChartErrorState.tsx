@@ -5,7 +5,7 @@ import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
-import { SQLPreview } from '../ChartSQLPreview';
+import { SQLPreview } from '@/components/ChartSQLPreview';
 
 export type ChartErrorStateVariant = 'collapsible' | 'inline';
 

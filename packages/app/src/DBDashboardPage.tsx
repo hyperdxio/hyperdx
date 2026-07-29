@@ -14,14 +14,20 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNow, formatRelative } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
-import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
+import {
+  parseAsArrayOf,
+  parseAsBoolean,
+  parseAsString,
+  useQueryState,
+} from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
-import RGL, { WidthProvider } from 'react-grid-layout';
+import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsPromQLAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -69,12 +75,13 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
+import { useDebouncedValue, useHotkeys, useInViewport } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
+  IconBellPlus,
   IconChartBar,
   IconChevronsDown,
   IconChevronsUp,
@@ -89,17 +96,21 @@ import {
   IconPencil,
   IconPlayerPlay,
   IconPlus,
+  IconPresentation,
   IconRefresh,
   IconSearch,
   IconSquaresDiagonal,
   IconTags,
+  IconTimelineEvent,
   IconTrash,
   IconUpload,
   IconX,
   IconZoomExclamation,
 } from '@tabler/icons-react';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import { ContactSupportText } from '@/components/ContactSupportText';
+import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
 import {
   EmptyContainerPlaceholder,
@@ -109,6 +120,7 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
+import { DashboardKioskHeader } from '@/components/DashboardKioskHeader';
 import DashboardTableOfContents from '@/components/DashboardTableOfContents';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
@@ -127,18 +139,26 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
+import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
-import ChartContainer from './components/charts/ChartContainer';
+import ChartContainer, {
+  ChartContainerCardHeaderProvider,
+  CollapsedToolbarProvider,
+  DASHBOARD_TILE_PADDING_INLINE,
+} from './components/charts/ChartContainer';
+import { DBBarChart } from './components/DBBarChart';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
 } from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
+import PatternTable from './components/PatternTable';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
@@ -165,7 +185,9 @@ import {
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import {
+  getEventBody,
   getFirstTimestampValueExpression,
+  isSingleExpression,
   useSource,
   useSources,
 } from './source';
@@ -187,18 +209,22 @@ function HeatmapTile({
   keyPrefix,
   chartId,
   title,
-  toolbar,
+  toolbarPrefix,
+  toolbarSuffix,
   queriedConfig,
   source,
   dateRange,
+  enabled = true,
 }: {
   keyPrefix: string;
   chartId: string;
   title: React.ReactNode;
-  toolbar: React.ReactNode[];
+  toolbarPrefix: React.ReactNode[];
+  toolbarSuffix: React.ReactNode[];
   queriedConfig: BuilderChartConfigWithDateRange;
   source: TSource | undefined;
   dateRange: [Date, Date];
+  enabled?: boolean;
 }) {
   const { heatmapConfig, scaleType } = toHeatmapChartConfig(queriedConfig);
 
@@ -240,9 +266,11 @@ function HeatmapTile({
       <DBHeatmapChart
         key={`${keyPrefix}-${chartId}`}
         title={title}
-        toolbarPrefix={toolbar}
+        toolbarPrefix={toolbarPrefix}
+        toolbarSuffix={toolbarSuffix}
         config={heatmapConfig}
         scaleType={scaleType}
+        enabled={enabled}
         showLegend
       />
       {clickPos != null && eventDeltasUrl != null && (
@@ -312,8 +340,6 @@ function HeatmapTile({
   );
 }
 
-const ReactGridLayout = WidthProvider(RGL);
-
 type MoveTarget = {
   containerId: string;
   tabId?: string;
@@ -353,6 +379,9 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      showAlertAnnotations,
+      isLive,
+      readOnly,
 
       // Properties forwarded by grid layout
       className,
@@ -378,6 +407,10 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      // When true, draw alert firing/recovery annotations on this tile's chart.
+      showAlertAnnotations?: boolean;
+      isLive?: boolean;
+      readOnly?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -394,6 +427,26 @@ const Tile = forwardRef(
   ) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
+
+    // Lazy loading: only fetch a tile's data once it has scrolled into the
+    // browser viewport. React Grid Layout mounts every tile up front, so
+    // without this gating each tile would issue its ClickHouse query
+    // immediately, regardless of whether it is visible. We debounce the
+    // viewport signal (RGL briefly renders all tiles before the layout
+    // settles) and make visibility "sticky" so that a tile keeps its data
+    // once loaded instead of refetching every time it scrolls back into view.
+    const { ref: inViewportRef, inViewport } = useInViewport();
+    const [debouncedInViewport] = useDebouncedValue(inViewport, 200);
+    // Latch to true the first time the tile becomes visible and never flip
+    // back, so a loaded tile keeps its data instead of refetching every time
+    // it scrolls out of and back into view. Adjusting state during render (the
+    // React-recommended pattern for deriving state from changing inputs) is
+    // cheaper than an effect and only fires once, since the condition is false
+    // after the first visible render.
+    const [hasBeenVisible, setHasBeenVisible] = useState(false);
+    if (debouncedInViewport && !hasBeenVisible) {
+      setHasBeenVisible(true);
+    }
 
     const {
       userPreferences: { isUTC },
@@ -569,6 +622,9 @@ const Tile = forwardRef(
       if (alert.silenced?.at) {
         return 'yellow';
       }
+      if (alert.state === AlertState.PENDING) {
+        return 'orange';
+      }
       return 'red';
     }, [alert]);
 
@@ -584,6 +640,15 @@ const Tile = forwardRef(
       }
       return tooltip;
     }, [alert]);
+
+    // Firing/recovery markers for this tile's alert, scoped to the *visible*
+    // window — the fullscreen range while the fullscreen view is open, else the
+    // dashboard range (off unless the dashboard toggle is on).
+    const alertAnnotations = useAlertAnnotations(
+      alert?.id,
+      isFullscreen ? fullscreenDateRange : dateRange,
+      showAlertAnnotations,
+    );
 
     const filterWarning = useMemo(() => {
       const doFiltersExist = !!filters?.filter(
@@ -627,147 +692,174 @@ const Tile = forwardRef(
     }, [filters, queriedConfig, source]);
 
     const hoverToolbar = useMemo(() => {
+      if (readOnly) return null;
+
       const isRawSql = isRawSqlSavedChartConfig(chart.config);
+      const isPromQL = isPromqlSavedChartConfig(chart.config);
       const displayTypeSupportsAlerts = isRawSql
         ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
-        : displayTypeSupportsBuilderAlerts(chart.config.displayType);
+        : isPromQL
+          ? displayTypeSupportsPromQLAlerts(chart.config.displayType)
+          : displayTypeSupportsBuilderAlerts(chart.config.displayType);
+      const canMoveToGroup =
+        onMoveToGroup && moveTargets && moveTargets.length > 0;
       return (
         <Flex
           gap="0px"
+          align="center"
           onMouseDown={e => e.stopPropagation()}
           key="hover-toolbar"
-          my={4} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
-          style={{ visibility: hovered ? 'visible' : 'hidden' }}
+          my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
-          {displayTypeSupportsAlerts && (
-            <Indicator
-              size={alert?.state === AlertState.OK ? 6 : 8}
-              zIndex={1}
-              color={alertIndicatorColor}
-              processing={alert?.state === AlertState.ALERT}
-              label={!alert && <span className="fs-8">+</span>}
-              mr={4}
-            >
+          {displayTypeSupportsAlerts &&
+            (alert ? (
+              // Existing alert: bell with a colored status dot indicator.
+              <Indicator
+                size={alert.state === AlertState.OK ? 6 : 8}
+                zIndex={1}
+                color={alertIndicatorColor}
+                processing={alert.state === AlertState.ALERT}
+                mr={4}
+              >
+                <Tooltip label={alertTooltip} withArrow>
+                  <ActionIcon
+                    data-testid={`tile-alerts-button-${chart.id}`}
+                    variant="subtle"
+                    size="sm"
+                    onClick={onEditClick}
+                  >
+                    <IconBell size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Indicator>
+            ) : (
+              // No alert yet: a dedicated "bell +" icon reads clearly on any
+              // background, unlike an overlaid indicator badge.
               <Tooltip label={alertTooltip} withArrow>
                 <ActionIcon
                   data-testid={`tile-alerts-button-${chart.id}`}
                   variant="subtle"
                   size="sm"
                   onClick={onEditClick}
+                  mr={4}
                 >
-                  <IconBell size={16} />
+                  <IconBellPlus size={16} />
                 </ActionIcon>
               </Tooltip>
-            </Indicator>
-          )}
+            ))}
 
-          <ActionIcon
-            data-testid={`tile-duplicate-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onDuplicateClick}
-            title="Duplicate"
-          >
-            <IconCopy size={14} />
-          </ActionIcon>
-          <ActionIcon
-            data-testid={`tile-fullscreen-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={e => {
-              e.stopPropagation();
-              openFullscreen();
-            }}
-            title="View Fullscreen (f)"
-          >
-            <IconArrowsMaximize size={14} />
-          </ActionIcon>
-          <ActionIcon
-            data-testid={`tile-edit-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onEditClick}
-            title="Edit"
-          >
-            <IconPencil size={14} />
-          </ActionIcon>
-          {onMoveToGroup && moveTargets && moveTargets.length > 0 && (
-            <Menu width={200} position="bottom-end">
-              <Menu.Target>
-                <Tooltip label="Move to Group" position="top" withArrow>
-                  <ActionIcon
-                    data-testid={`tile-move-group-button-${chart.id}`}
-                    variant="subtle"
-                    size="sm"
-                  >
-                    <IconCornerDownRight size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>Move to Group</Menu.Label>
-                {chart.containerId && (
-                  <Menu.Item onClick={() => onMoveToGroup(undefined)}>
-                    (Ungrouped)
-                  </Menu.Item>
-                )}
-                {moveTargets
-                  .filter(
-                    t =>
-                      !(
-                        t.containerId === chart.containerId &&
-                        t.tabId === chart.tabId
-                      ),
-                  )
-                  .map(t => (
+          {/* Fullscreen is a primary action, so it lives directly in the
+              toolbar rather than buried in the "More actions" menu. */}
+          <Tooltip label="View fullscreen (f)" position="top" withArrow>
+            <ActionIcon
+              data-testid={`tile-fullscreen-button-${chart.id}`}
+              variant="subtle"
+              size="sm"
+              onClick={() => openFullscreen()}
+              mr={4}
+            >
+              <IconArrowsMaximize size={16} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Menu width={220} position="bottom-end">
+            <Menu.Target>
+              <Tooltip label="More actions" position="top" withArrow>
+                <ActionIcon
+                  data-testid={`tile-actions-button-${chart.id}`}
+                  variant="subtle"
+                  size="sm"
+                >
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Menu.Target>
+            <Menu.Dropdown onMouseDown={e => e.stopPropagation()}>
+              <Menu.Item
+                data-testid={`tile-duplicate-button-${chart.id}`}
+                leftSection={<IconCopy size={14} />}
+                onClick={onDuplicateClick}
+              >
+                Duplicate
+              </Menu.Item>
+              <Menu.Item
+                data-testid={`tile-edit-button-${chart.id}`}
+                leftSection={<IconPencil size={14} />}
+                onClick={onEditClick}
+              >
+                Edit
+              </Menu.Item>
+              {canMoveToGroup && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Label>Move to Group</Menu.Label>
+                  {chart.containerId && (
                     <Menu.Item
-                      key={`${t.containerId}-${t.tabId ?? ''}`}
-                      onClick={() => onMoveToGroup(t.containerId, t.tabId)}
+                      leftSection={<IconCornerDownRight size={14} />}
+                      onClick={() => onMoveToGroup(undefined)}
                     >
-                      {t.allTabs ? (
-                        <span>
-                          {t.allTabs.map((tab, i) => (
-                            <span key={tab.id}>
-                              {i > 0 && (
-                                <span
-                                  style={{
-                                    color: 'var(--mantine-color-dimmed)',
-                                  }}
-                                >
-                                  {' | '}
-                                </span>
-                              )}
-                              <span
-                                style={
-                                  tab.id !== t.tabId
-                                    ? {
-                                        color: 'var(--mantine-color-dimmed)',
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {tab.title}
-                              </span>
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        t.label
-                      )}
+                      (Ungrouped)
                     </Menu.Item>
-                  ))}
-              </Menu.Dropdown>
-            </Menu>
-          )}
-          <ActionIcon
-            data-testid={`tile-delete-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onDeleteClick}
-            title="Delete"
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
+                  )}
+                  {moveTargets
+                    .filter(
+                      t =>
+                        !(
+                          t.containerId === chart.containerId &&
+                          t.tabId === chart.tabId
+                        ),
+                    )
+                    .map(t => (
+                      <Menu.Item
+                        key={`${t.containerId}-${t.tabId ?? ''}`}
+                        leftSection={<IconCornerDownRight size={14} />}
+                        onClick={() => onMoveToGroup(t.containerId, t.tabId)}
+                      >
+                        {t.allTabs ? (
+                          <span>
+                            {t.allTabs.map((tab, i) => (
+                              <span key={tab.id}>
+                                {i > 0 && (
+                                  <span
+                                    style={{
+                                      color: 'var(--mantine-color-dimmed)',
+                                    }}
+                                  >
+                                    {' | '}
+                                  </span>
+                                )}
+                                <span
+                                  style={
+                                    tab.id !== t.tabId
+                                      ? {
+                                          color: 'var(--mantine-color-dimmed)',
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {tab.title}
+                                </span>
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          t.label
+                        )}
+                      </Menu.Item>
+                    ))}
+                </>
+              )}
+              <Menu.Divider />
+              <Menu.Item
+                data-testid={`tile-delete-button-${chart.id}`}
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={onDeleteClick}
+              >
+                Delete
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Flex>
       );
     }, [
@@ -779,30 +871,171 @@ const Tile = forwardRef(
       chart.id,
       chart.containerId,
       chart.tabId,
-      hovered,
       onDeleteClick,
       onDuplicateClick,
       onEditClick,
       onMoveToGroup,
       openFullscreen,
+      readOnly,
+    ]);
+
+    // Flat Menu.Item list for the collapsed (narrow-tile) toolbar.
+    // Merges the alert action + all kebab items into a single flat list
+    // so ChartContainer can render them without nested menus.
+    const collapsedMenuItems = useMemo(() => {
+      if (readOnly) return null;
+
+      const isRawSql = isRawSqlSavedChartConfig(chart.config);
+      const isPromQL = isPromqlSavedChartConfig(chart.config);
+      const showAlerts = isRawSql
+        ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
+        : isPromQL
+          ? displayTypeSupportsPromQLAlerts(chart.config.displayType)
+          : displayTypeSupportsBuilderAlerts(chart.config.displayType);
+      const canMoveToGroup =
+        onMoveToGroup && moveTargets && moveTargets.length > 0;
+      return (
+        <>
+          {showAlerts && (
+            <>
+              <Menu.Item
+                leftSection={
+                  alert ? <IconBell size={14} /> : <IconBellPlus size={14} />
+                }
+                onClick={onEditClick}
+              >
+                {alertTooltip}
+              </Menu.Item>
+              <Menu.Divider />
+            </>
+          )}
+          <Menu.Item
+            leftSection={<IconCopy size={14} />}
+            onClick={onDuplicateClick}
+          >
+            Duplicate
+          </Menu.Item>
+          <Menu.Item
+            leftSection={<IconArrowsMaximize size={14} />}
+            onClick={() => openFullscreen()}
+          >
+            View fullscreen
+          </Menu.Item>
+          <Menu.Item
+            leftSection={<IconPencil size={14} />}
+            onClick={onEditClick}
+          >
+            Edit
+          </Menu.Item>
+          {canMoveToGroup && (
+            <>
+              <Menu.Divider />
+              <Menu.Label>Move to Group</Menu.Label>
+              {chart.containerId && (
+                <Menu.Item
+                  leftSection={<IconCornerDownRight size={14} />}
+                  onClick={() => onMoveToGroup(undefined)}
+                >
+                  (Ungrouped)
+                </Menu.Item>
+              )}
+              {moveTargets
+                .filter(
+                  t =>
+                    !(
+                      t.containerId === chart.containerId &&
+                      t.tabId === chart.tabId
+                    ),
+                )
+                .map(t => (
+                  <Menu.Item
+                    key={`collapsed-${t.containerId}-${t.tabId ?? ''}`}
+                    leftSection={<IconCornerDownRight size={14} />}
+                    onClick={() => onMoveToGroup(t.containerId, t.tabId)}
+                  >
+                    {t.allTabs ? (
+                      <span>
+                        {t.allTabs.map((tab, i) => (
+                          <span key={tab.id}>
+                            {i > 0 && (
+                              <span
+                                style={{
+                                  color: 'var(--mantine-color-dimmed)',
+                                }}
+                              >
+                                {' | '}
+                              </span>
+                            )}
+                            <span
+                              style={
+                                tab.id !== t.tabId
+                                  ? {
+                                      color: 'var(--mantine-color-dimmed)',
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {tab.title}
+                            </span>
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      t.label
+                    )}
+                  </Menu.Item>
+                ))}
+            </>
+          )}
+          <Menu.Divider />
+          <Menu.Item
+            color="red"
+            leftSection={<IconTrash size={14} />}
+            onClick={onDeleteClick}
+          >
+            Delete
+          </Menu.Item>
+        </>
+      );
+    }, [
+      alert,
+      alertTooltip,
+      moveTargets,
+      chart.config,
+      chart.containerId,
+      chart.tabId,
+      onDeleteClick,
+      onDuplicateClick,
+      onEditClick,
+      onMoveToGroup,
+      openFullscreen,
+      readOnly,
     ]);
 
     const title = useMemo(
-      () => (
-        <Text size="sm" ms="xs">
-          {chart.config.name}
-        </Text>
-      ),
+      () =>
+        chart.config.name ? (
+          <Text size="sm">{chart.config.name}</Text>
+        ) : undefined,
       [chart.config.name],
     );
 
     // Render chart content (used in both tile and fullscreen views)
     const renderChartContent = useCallback(
       (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
-        const toolbar = hideToolbar
-          ? [filterWarning]
-          : [hoverToolbar, filterWarning];
+        // Tile-level actions (alert bell + kebab) render as a suffix so they
+        // sit to the right of each chart's own controls (display switcher,
+        // granularity, etc.), keeping the kebab at the far right edge.
+        const toolbarPrefixItems = [filterWarning];
+        const toolbarSuffixItems = hideToolbar ? [] : [hoverToolbar];
+        // Combined + ordered for containers that only accept `toolbarItems`
+        // (they have no chart-specific controls to interleave).
+        const toolbar = [...toolbarPrefixItems, ...toolbarSuffixItems];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
+
+        // The fullscreen view is always visible, so it should always load.
+        // In the tile (grid) view, gate data fetching on viewport visibility.
+        const chartEnabled = isFullscreenView ? true : hasBeenVisible;
 
         // Use the fullscreen-local date range and granularity when rendering
         // inside the fullscreen modal so that changing them does not affect
@@ -859,34 +1092,45 @@ const Tile = forwardRef(
                   <DBTimeChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
-                    toolbarPrefix={toolbar}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
                     sourceId={chart.config.source}
-                    showDisplaySwitcher={true}
+                    showDisplaySwitcher={!readOnly}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
+                    annotations={alertAnnotations}
                     onTimeRangeSelect={
-                      isFullscreenView
-                        ? (start, end) => setFullscreenDateRange([start, end])
-                        : onTimeRangeSelect
+                      readOnly
+                        ? undefined
+                        : isFullscreenView
+                          ? (start, end) => setFullscreenDateRange([start, end])
+                          : onTimeRangeSelect
                     }
-                    setDisplayType={displayType => {
-                      onUpdateChart?.({
-                        ...chart,
-                        config: {
-                          ...chart.config,
-                          displayType,
-                        },
-                      });
-                    }}
+                    setDisplayType={
+                      readOnly
+                        ? undefined
+                        : displayType => {
+                            onUpdateChart?.({
+                              ...chart,
+                              config: {
+                                ...chart.config,
+                                displayType,
+                              },
+                            });
+                          }
+                    }
                   />
                 )}
                 {effectiveQueriedConfig?.displayType === DisplayType.Table && (
-                  <Box p="xs" h="100%">
+                  <Box h="100%">
                     <DBTableChart
                       key={`${keyPrefix}-${chart.id}`}
                       title={title}
-                      toolbarPrefix={toolbar}
+                      toolbarPrefix={toolbarPrefixItems}
+                      toolbarSuffix={toolbarSuffixItems}
+                      enabled={chartEnabled}
                       config={effectiveQueriedConfig}
-                      variant="muted"
+                      variant="default"
                       getRowSearchLink={
                         isBuilderChartConfig(effectiveQueriedConfig)
                           ? row =>
@@ -905,7 +1149,9 @@ const Tile = forwardRef(
                   <DBNumberChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
-                    toolbarPrefix={toolbar}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
                 )}
@@ -913,7 +1159,19 @@ const Tile = forwardRef(
                   <DBPieChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
-                    toolbarPrefix={toolbar}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    enabled={chartEnabled}
+                    config={effectiveQueriedConfig}
+                  />
+                )}
+                {effectiveQueriedConfig?.displayType === DisplayType.Bar && (
+                  <DBBarChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
                 )}
@@ -923,7 +1181,9 @@ const Tile = forwardRef(
                       keyPrefix={keyPrefix}
                       chartId={chart.id}
                       title={title}
-                      toolbar={toolbar}
+                      toolbarPrefix={toolbarPrefixItems}
+                      toolbarSuffix={toolbarSuffixItems}
+                      enabled={chartEnabled}
                       queriedConfig={effectiveQueriedConfig}
                       source={source}
                       dateRange={effectiveDateRange}
@@ -949,7 +1209,7 @@ const Tile = forwardRef(
                     >
                       <DBSqlRowTableWithSideBar
                         key={`${keyPrefix}-${chart.id}`}
-                        enabled
+                        enabled={chartEnabled}
                         sourceId={chart.config.source}
                         config={{
                           ...effectiveQueriedConfig,
@@ -972,10 +1232,61 @@ const Tile = forwardRef(
                           groupBy: undefined,
                           granularity: undefined,
                         }}
-                        isLive={false}
+                        isLive={isLive && !isFullscreenView}
                         queryKeyPrefix={'search'}
-                        variant="muted"
+                        variant="default"
                         errorVariant="collapsible"
+                      />
+                    </ChartContainer>
+                  )}
+                {effectiveQueriedConfig?.displayType ===
+                  DisplayType.EventPatterns &&
+                  isBuilderChartConfig(effectiveQueriedConfig) &&
+                  isBuilderSavedChartConfig(chart.config) && (
+                    <ChartContainer
+                      title={title}
+                      toolbarItems={toolbar}
+                      disableReactiveContainer
+                    >
+                      <PatternTable
+                        key={`${keyPrefix}-${chart.id}`}
+                        source={source}
+                        config={{
+                          ...effectiveQueriedConfig,
+                          // PatternTable's usePatterns hook overrides `select`
+                          // with pattern-specific columns, so clear the
+                          // defaultTableSelectExpression to prevent
+                          // source-specific columns from leaking through.
+                          select: '',
+                          displayType: DisplayType.Table,
+                          dateRange: effectiveDateRange,
+                          granularity: undefined,
+                        }}
+                        bodyValueExpression={
+                          // Prefer the user's custom pattern expression
+                          // (stored in select) when set. Reject
+                          // multi-column strings — those are stale
+                          // defaultTableSelectExpression values, not a
+                          // single pattern expression. Uses bracket-aware
+                          // splitting so expressions like COALESCE(a, b)
+                          // are correctly treated as single.
+                          (typeof effectiveQueriedConfig.select === 'string' &&
+                          effectiveQueriedConfig.select.length > 0 &&
+                          isSingleExpression(effectiveQueriedConfig.select)
+                            ? effectiveQueriedConfig.select
+                            : undefined) ??
+                          (source ? (getEventBody(source) ?? '') : '')
+                        }
+                        totalCountConfig={{
+                          ...effectiveQueriedConfig,
+                          displayType: DisplayType.Table,
+                          dateRange: effectiveDateRange,
+                          select: 'count() as total',
+                          groupBy: undefined,
+                          orderBy: undefined,
+                          granularity: undefined,
+                        }}
+                        totalCountQueryKeyPrefix={`dashboard-patterns-${chart.id}`}
                       />
                     </ChartContainer>
                   )}
@@ -998,6 +1309,10 @@ const Tile = forwardRef(
         filterWarning,
         isSourceMissing,
         isSourceUnset,
+        hasBeenVisible,
+        alertAnnotations,
+        isLive,
+        readOnly,
       ],
     );
 
@@ -1005,9 +1320,11 @@ const Tile = forwardRef(
       <>
         <div
           data-testid={`dashboard-tile-${chart.id}`}
-          className={`p-2 pt-0 ${className} d-flex flex-column bg-muted cursor-grab rounded ${
-            isHighlighted && 'dashboard-chart-highlighted'
-          }`}
+          // `dashboard-chart-highlighted` triggers a one-shot flash animation
+          // when the tile is deep-linked via the `highlightedTileId` query param.
+          className={`pt-0 pb-2 ${className} d-flex flex-column bg-body border ${
+            readOnly ? 'cursor-default' : 'cursor-grab'
+          } rounded ${isHighlighted && 'dashboard-chart-highlighted'}`}
           id={`chart-${chart.id}`}
           onMouseOver={() => {
             setHovered(true);
@@ -1038,7 +1355,7 @@ const Tile = forwardRef(
           onMouseUp={onMouseUp}
           onTouchEnd={onTouchEnd}
         >
-          {hovered && (
+          {hovered && !readOnly && (
             <div
               style={{
                 position: 'absolute',
@@ -1055,10 +1372,19 @@ const Tile = forwardRef(
             />
           )}
           <div
+            ref={inViewportRef}
             className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
+            style={{ paddingInline: DASHBOARD_TILE_PADDING_INLINE }}
             onMouseDown={e => e.stopPropagation()}
           >
-            {renderChartContent()}
+            <CollapsedToolbarProvider
+              menuItems={collapsedMenuItems}
+              suffixCount={readOnly ? 0 : 1}
+            >
+              <ChartContainerCardHeaderProvider>
+                {renderChartContent(readOnly)}
+              </ChartContainerCardHeaderProvider>
+            </CollapsedToolbarProvider>
           </div>
           {children}
         </div>
@@ -1112,11 +1438,15 @@ const EditTileModal = ({
   const confirm = useConfirm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Reset dirty state only when a *different* tile is opened, not on every
+  // chart-object reference change (onSubmit recreates the chart object with
+  // the same id, which would clear dirty state after display-settings Apply).
+  const chartId = chart?.id;
   useEffect(() => {
-    if (chart != null) {
+    if (chartId != null) {
       setHasUnsavedChanges(false);
     }
-  }, [chart]);
+  }, [chartId]);
 
   const handleClose = useCallback(() => {
     if (isSaving) return;
@@ -1150,22 +1480,26 @@ const EditTileModal = ({
     >
       {chart != null && (
         <ZIndexContext.Provider value={modalZIndex + 10}>
-          <EditTimeChartForm
-            dashboardId={dashboardId}
-            chartConfig={chart.config}
-            dateRange={dateRange}
-            isSaving={isSaving}
-            onSave={config => {
-              onSave({
-                ...chart,
-                config: config,
-              });
-            }}
-            onClose={handleClose}
-            onDirtyChange={setHasUnsavedChanges}
-            isDashboardForm
-            autoRun
-          />
+          {/* Isolate chart cross-syncing to this edit modal: the preview chart
+              must not drive shadow tooltips on the dashboard tiles behind it. */}
+          <IsolatedChartSyncProvider>
+            <EditTimeChartForm
+              dashboardId={dashboardId}
+              chartConfig={chart.config}
+              dateRange={dateRange}
+              isSaving={isSaving}
+              onSave={config => {
+                onSave({
+                  ...chart,
+                  config: config,
+                });
+              }}
+              onClose={handleClose}
+              onDirtyChange={setHasUnsavedChanges}
+              isDashboardForm
+              autoRun
+            />
+          </IsolatedChartSyncProvider>
         </ZIndexContext.Provider>
       )}
     </Modal>
@@ -1220,6 +1554,7 @@ function DashboardContainerRow({
   makeLayoutChangeHandler,
   tileToLayoutItem,
   renderTileComponent,
+  readOnly,
 }: {
   container: DashboardContainerSchema;
   containerTiles: Tile[];
@@ -1241,6 +1576,7 @@ function DashboardContainerRow({
   makeLayoutChangeHandler: (tiles: Tile[]) => (newLayout: RGL.Layout[]) => void;
   tileToLayoutItem: (tile: Tile) => RGL.Layout;
   renderTileComponent: (tile: Tile) => React.ReactNode;
+  readOnly: boolean;
 }) {
   const groupTabs = container.tabs ?? [];
   const hasTabs = groupTabs.length >= 2;
@@ -1278,6 +1614,7 @@ function DashboardContainerRow({
       onRename={onRenameContainer}
       dragHandleProps={dragHandleProps}
       alertingTabIds={alertingTabIds}
+      readOnly={readOnly}
     >
       {(currentTabId: string | undefined) => {
         const visibleTiles = currentTabId
@@ -1288,18 +1625,22 @@ function DashboardContainerRow({
           <EmptyContainerPlaceholder
             containerId={currentTabId ?? container.id}
             isEmpty={visibleIsEmpty}
-            onAddTile={() => onAddTile(container.id, currentTabId)}
+            onAddTile={
+              readOnly ? undefined : () => onAddTile(container.id, currentTabId)
+            }
           >
             {visibleTiles.length > 0 && (
-              <ReactGridLayout
+              <SnapGridLayout
                 layout={visibleTiles.map(tileToLayoutItem)}
                 containerPadding={[0, 0]}
-                onLayoutChange={layoutChangeHandler}
+                onLayoutChange={readOnly ? undefined : layoutChangeHandler}
+                isDraggable={!readOnly}
+                isResizable={!readOnly}
                 cols={24}
                 rowHeight={32}
               >
                 {visibleTiles.map(renderTileComponent)}
-              </ReactGridLayout>
+              </SnapGridLayout>
             )}
           </EmptyContainerPlaceholder>
         );
@@ -1314,6 +1655,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const router = useRouter();
   const dashboardId = router.query.dashboardId as string | undefined;
+  const { enterKioskMode, exitKioskMode, isKioskMode } =
+    useDashboardKioskMode();
 
   const {
     dashboard,
@@ -1373,6 +1716,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [rawFilterQueries] = useQueryState(
     'filters',
     parseAsJsonEncoded<Filter[]>(),
+  );
+  // Toggle for overlaying alert firing/recovery markers on tile charts.
+  // Ephemeral view state (URL param), not persisted on the dashboard.
+  const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
+    'alertAnnotations',
+    parseAsBoolean.withDefault(false),
   );
 
   // Track if we've initialized query for this dashboard
@@ -1488,7 +1837,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   } = useDashboardRefresh({
     searchedTimeRange,
     onTimeRangeSelect,
-    isLive,
+    isLive: isLive || isKioskMode,
   });
 
   const onSubmit = useCallback(() => {
@@ -1654,7 +2003,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       window.dispatchEvent(new Event('resize'));
     });
     return () => cancelAnimationFrame(id);
-  }, [tocVisible]);
+  }, [isKioskMode, tocVisible]);
   // URL-based collapse state: tracks which containers the current viewer has
   // explicitly collapsed/expanded. Falls back to the DB-stored default.
   const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
@@ -1772,7 +2121,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setSelectedTileIds,
     handleToggleTileSelect,
     handleGroupSelected,
-  } = useTileSelection({ dashboard, setDashboard });
+  } = useTileSelection({
+    dashboard,
+    setDashboard,
+    enabled: !isKioskMode,
+  });
 
   const handleMoveTileToGroup = useCallback(
     (tileId: string, containerId: string | undefined, tabId?: string) => {
@@ -1817,6 +2170,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           chart={chart}
           dateRange={searchedTimeRange}
           onEditClick={() => setEditedTile(chart)}
+          readOnly={isKioskMode}
+          isLive={isRefreshEnabled}
           granularity={
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
@@ -1828,19 +2183,24 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             ...getFilterQueriesForSource(tileSourceId),
           ]}
           onTimeRangeSelect={onTimeRangeSelect}
+          showAlertAnnotations={showAlertAnnotations}
           isHighlighted={highlightedTileId === chart.id}
-          onUpdateChart={newChart => {
-            if (!dashboard) return;
-            setDashboard(
-              produce(dashboard, draft => {
-                const chartIndex = draft.tiles.findIndex(
-                  c => c.id === chart.id,
-                );
-                if (chartIndex === -1) return;
-                draft.tiles[chartIndex] = newChart;
-              }),
-            );
-          }}
+          onUpdateChart={
+            isKioskMode
+              ? undefined
+              : newChart => {
+                  if (!dashboard) return;
+                  setDashboard(
+                    produce(dashboard, draft => {
+                      const chartIndex = draft.tiles.findIndex(
+                        c => c.id === chart.id,
+                      );
+                      if (chartIndex === -1) return;
+                      draft.tiles[chartIndex] = newChart;
+                    }),
+                  );
+                }
+          }
           onDuplicateClick={async () => {
             if (dashboard != null) {
               if (
@@ -1896,12 +2256,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               });
             }
           }}
-          moveTargets={moveTargetContainers}
-          onMoveToGroup={(containerId, tabId) =>
-            handleMoveTileToGroup(chart.id, containerId, tabId)
+          moveTargets={isKioskMode ? undefined : moveTargetContainers}
+          onMoveToGroup={
+            isKioskMode
+              ? undefined
+              : (containerId, tabId) =>
+                  handleMoveTileToGroup(chart.id, containerId, tabId)
           }
-          isSelected={selectedTileIds.has(chart.id)}
-          onSelect={handleToggleTileSelect}
+          isSelected={!isKioskMode && selectedTileIds.has(chart.id)}
+          onSelect={isKioskMode ? undefined : handleToggleTileSelect}
         />
       );
     },
@@ -1917,17 +2280,19 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       where,
       whereLanguage,
       onTimeRangeSelect,
+      showAlertAnnotations,
       getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
       handleToggleTileSelect,
+      isKioskMode,
     ],
   );
 
   const makeOnLayoutChange = useCallback(
     (gridTiles: Tile[]) => (newLayout: RGL.Layout[]) => {
-      if (!dashboard) return;
+      if (!dashboard || isKioskMode) return;
       const currentLayout = gridTiles.map(tileToLayoutItem);
       let hasDiff = false;
       if (newLayout.length !== currentLayout.length) {
@@ -1950,7 +2315,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         setDashboard(produce(dashboard, updateLayout(newLayout)));
       }
     },
-    [dashboard, setDashboard],
+    [dashboard, isKioskMode, setDashboard],
   );
 
   // Helpers for updating URL-based collapse sets via immer.
@@ -2313,43 +2678,65 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Menu.Target>
 
         <Menu.Dropdown>
-          {containers.length > 0 && (
+          <Menu.Label>View</Menu.Label>
+          <Menu.Item
+            leftSection={<IconPresentation size={16} />}
+            onClick={enterKioskMode}
+            data-testid="enter-kiosk-mode-menu-item"
+          >
+            Enter kiosk mode
+          </Menu.Item>
+          {(hasTiles || containers.length > 0) && (
             <>
-              <Menu.Label>View</Menu.Label>
-              <Menu.Item
-                leftSection={
-                  tocVisible ? (
-                    <IconLayoutSidebarRightCollapse size={16} />
-                  ) : (
-                    <IconLayoutSidebarRightExpand size={16} />
-                  )
-                }
-                onClick={() => setTocVisible(v => !v)}
-                data-testid="toggle-toc-menu-item"
-              >
-                {tocVisible
-                  ? 'Hide table of contents'
-                  : 'Show table of contents'}
-              </Menu.Item>
-              <Menu.Item
-                leftSection={<IconChevronsUp size={16} />}
-                onClick={handleCollapseAll}
-                disabled={collapsibleContainers.length === 0}
-                data-testid="collapse-all-sections-menu-item"
-              >
-                Collapse all sections
-              </Menu.Item>
-              <Menu.Item
-                leftSection={<IconChevronsDown size={16} />}
-                onClick={handleExpandAll}
-                disabled={collapsibleContainers.length === 0}
-                data-testid="expand-all-sections-menu-item"
-              >
-                Expand all sections
-              </Menu.Item>
-              <Menu.Divider />
+              {hasTiles && (
+                <Menu.Item
+                  leftSection={<IconTimelineEvent size={16} />}
+                  onClick={() => setShowAlertAnnotations(v => !v)}
+                  data-testid="toggle-alert-annotations-menu-item"
+                >
+                  {showAlertAnnotations
+                    ? 'Hide alert annotations'
+                    : 'Show alert annotations'}
+                </Menu.Item>
+              )}
+              {containers.length > 0 && (
+                <>
+                  <Menu.Item
+                    leftSection={
+                      tocVisible ? (
+                        <IconLayoutSidebarRightCollapse size={16} />
+                      ) : (
+                        <IconLayoutSidebarRightExpand size={16} />
+                      )
+                    }
+                    onClick={() => setTocVisible(v => !v)}
+                    data-testid="toggle-toc-menu-item"
+                  >
+                    {tocVisible
+                      ? 'Hide table of contents'
+                      : 'Show table of contents'}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconChevronsUp size={16} />}
+                    onClick={handleCollapseAll}
+                    disabled={collapsibleContainers.length === 0}
+                    data-testid="collapse-all-sections-menu-item"
+                  >
+                    Collapse all sections
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconChevronsDown size={16} />}
+                    onClick={handleExpandAll}
+                    disabled={collapsibleContainers.length === 0}
+                    data-testid="expand-all-sections-menu-item"
+                  >
+                    Expand all sections
+                  </Menu.Item>
+                </>
+              )}
             </>
           )}
+          <Menu.Divider />
           {hasTiles && (
             <Menu.Item
               leftSection={<IconDownload size={16} />}
@@ -2415,7 +2802,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={() =>
               deleteDashboard.mutate(dashboard?.id ?? '', {
                 onSuccess: () => {
-                  router.push('/dashboards');
+                  router.push('/dashboards/list');
                 },
               })
             }
@@ -2529,43 +2916,45 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
         </title>
       </Head>
-      <OnboardingModal />
-      <EditTileModal
-        dashboardId={dashboardId}
-        chart={editedTile}
-        onClose={() => {
-          if (!isSaving) setEditedTile(undefined);
-        }}
-        dateRange={searchedTimeRange}
-        isSaving={isSaving}
-        onSave={newChart => {
-          if (dashboard == null) {
-            return;
-          }
-          setIsSaving(true);
-          setDashboard(
-            produce(dashboard, draft => {
-              const chartIndex = draft.tiles.findIndex(
-                chart => chart.id === newChart.id,
-              );
-              // This is a new chart (probably?)
-              if (chartIndex === -1) {
-                draft.tiles.push(newChart);
-              } else {
-                draft.tiles[chartIndex] = newChart;
-              }
-            }),
-            () => {
-              setEditedTile(undefined);
-              setIsSaving(false);
-            },
-            () => {
-              setIsSaving(false);
-            },
-          );
-        }}
-      />
-      {isLocalDashboard && (
+      {!isKioskMode && <OnboardingModal />}
+      {!isKioskMode && (
+        <EditTileModal
+          dashboardId={dashboardId}
+          chart={editedTile}
+          onClose={() => {
+            if (!isSaving) setEditedTile(undefined);
+          }}
+          dateRange={searchedTimeRange}
+          isSaving={isSaving}
+          onSave={newChart => {
+            if (dashboard == null) {
+              return;
+            }
+            setIsSaving(true);
+            setDashboard(
+              produce(dashboard, draft => {
+                const chartIndex = draft.tiles.findIndex(
+                  chart => chart.id === newChart.id,
+                );
+                // This is a new chart (probably?)
+                if (chartIndex === -1) {
+                  draft.tiles.push(newChart);
+                } else {
+                  draft.tiles[chartIndex] = newChart;
+                }
+              }),
+              () => {
+                setEditedTile(undefined);
+                setIsSaving(false);
+              },
+              () => {
+                setIsSaving(false);
+              },
+            );
+          }}
+        />
+      )}
+      {!isKioskMode && isLocalDashboard && (
         <Paper mt="xs" mb="md" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
@@ -2582,7 +2971,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Flex>
         </Paper>
       )}
-      {shouldShowIgnoredFiltersBanner &&
+      {!isKioskMode &&
+        shouldShowIgnoredFiltersBanner &&
         ignoredFilterExpressions.length > 0 && (
           <Alert
             mt="sm"
@@ -2602,14 +2992,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             a matching expression to apply these filters.
           </Alert>
         )}
-      <DashboardFilters
-        filters={filters}
-        filterValues={filterValues}
-        onSetFilterValue={setFilterValue}
-        dateRange={searchedTimeRange}
-      />
+      {!isKioskMode && (
+        <DashboardFilters
+          filters={filters}
+          filterValues={filterValues}
+          onSetFilterValue={setFilterValue}
+          dateRange={searchedTimeRange}
+        />
+      )}
       {/* Selection indicator */}
-      {selectedTileIds.size > 0 && (
+      {!isKioskMode && selectedTileIds.size > 0 && (
         <Paper p="xs" mt="sm" withBorder>
           <Flex align="center" gap="sm">
             <Text size="sm">
@@ -2651,15 +3043,19 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   onReorderContainers={handleReorderContainers}
                 >
                   {ungroupedTiles.length > 0 && (
-                    <ReactGridLayout
+                    <SnapGridLayout
                       layout={ungroupedTiles.map(tileToLayoutItem)}
                       containerPadding={[0, 0]}
-                      onLayoutChange={onUngroupedLayoutChange}
+                      onLayoutChange={
+                        isKioskMode ? undefined : onUngroupedLayoutChange
+                      }
+                      isDraggable={!isKioskMode}
+                      isResizable={!isKioskMode}
                       cols={24}
                       rowHeight={32}
                     >
                       {ungroupedTiles.map(renderTileComponent)}
-                    </ReactGridLayout>
+                    </SnapGridLayout>
                   )}
                   {containers.map(container => (
                     <SortableContainerWrapper
@@ -2715,6 +3111,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                           makeLayoutChangeHandler={makeOnLayoutChange}
                           tileToLayoutItem={tileToLayoutItem}
                           renderTileComponent={renderTileComponent}
+                          readOnly={isKioskMode}
                         />
                       )}
                     </SortableContainerWrapper>
@@ -2723,41 +3120,43 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </ErrorBoundary>
             ) : null}
           </Box>
-          <Menu position="top" width={200}>
-            <Menu.Target>
-              <Button
-                data-testid="add-dropdown-button"
-                variant={
-                  dashboard?.tiles.length === 0 ? 'primary' : 'secondary'
-                }
-                mt="sm"
-                fw={400}
-                w="100%"
-                leftSection={<IconPlus size={16} />}
-              >
-                Add
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item
-                data-testid="add-new-tile-menu-item"
-                leftSection={<IconChartBar size={16} />}
-                onClick={() => onAddTile()}
-              >
-                New Tile
-              </Menu.Item>
-              <Menu.Divider />
-              <Menu.Item
-                data-testid="add-new-group-menu-item"
-                leftSection={<IconSquaresDiagonal size={16} />}
-                onClick={() => handleAddContainer()}
-              >
-                New Group
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+          {!isKioskMode && (
+            <Menu position="top" width={200}>
+              <Menu.Target>
+                <Button
+                  data-testid="add-dropdown-button"
+                  variant={
+                    dashboard?.tiles.length === 0 ? 'primary' : 'secondary'
+                  }
+                  mt="sm"
+                  fw={400}
+                  w="100%"
+                  leftSection={<IconPlus size={16} />}
+                >
+                  Add
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  data-testid="add-new-tile-menu-item"
+                  leftSection={<IconChartBar size={16} />}
+                  onClick={() => onAddTile()}
+                >
+                  New Tile
+                </Menu.Item>
+                <Menu.Divider />
+                <Menu.Item
+                  data-testid="add-new-group-menu-item"
+                  leftSection={<IconSquaresDiagonal size={16} />}
+                  onClick={() => handleAddContainer()}
+                >
+                  New Group
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
         </Box>
-        {tocVisible && (
+        {!isKioskMode && tocVisible && (
           <DashboardTableOfContents
             containers={containers}
             isCollapsed={isContainerCollapsed}
@@ -2766,14 +3165,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           />
         )}
       </Flex>
-      <DashboardFiltersModal
-        opened={showFiltersModal}
-        onClose={() => setShowFiltersModal(false)}
-        filters={filters}
-        onSaveFilter={handleSaveFilter}
-        onRemoveFilter={handleRemoveFilter}
-        isLoading={isSavingDashboard || isFetchingDashboard}
-      />
+      {!isKioskMode && (
+        <DashboardFiltersModal
+          opened={showFiltersModal}
+          onClose={() => setShowFiltersModal(false)}
+          filters={filters}
+          onSaveFilter={handleSaveFilter}
+          onRemoveFilter={handleRemoveFilter}
+          isLoading={isSavingDashboard || isFetchingDashboard}
+        />
+      )}
     </>
   );
 
@@ -2781,11 +3182,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     <PageLayout
       data-testid="dashboard-page"
       header={
-        <PageHeader breadcrumbs={pageBreadcrumbs} stickyRow={queryToolbar}>
-          {titleRow}
-        </PageHeader>
+        isKioskMode ? (
+          <DashboardKioskHeader
+            dashboardName={dashboard?.name ?? ''}
+            onExit={exitKioskMode}
+          />
+        ) : (
+          <PageHeader breadcrumbs={pageBreadcrumbs} stickyRow={queryToolbar}>
+            {titleRow}
+          </PageHeader>
+        )
       }
       padded
+      fillViewport={isKioskMode}
+      contentClassName="bg-sunken"
       content={dashboardBody}
     />
   );

@@ -36,6 +36,8 @@ type AlertScheduleFieldsProps<T extends FieldValues> = {
   scheduleOffsetMinutes: number | null | undefined;
   maxScheduleOffsetMinutes: number;
   offsetWindowLabel: string;
+  numConsecutiveWindowsName?: FieldPath<T>;
+  numConsecutiveWindows?: number;
 };
 
 export function AlertScheduleFields<T extends FieldValues>({
@@ -46,6 +48,8 @@ export function AlertScheduleFields<T extends FieldValues>({
   scheduleOffsetMinutes,
   maxScheduleOffsetMinutes,
   offsetWindowLabel,
+  numConsecutiveWindowsName,
+  numConsecutiveWindows,
 }: AlertScheduleFieldsProps<T>) {
   const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
   const scheduleStartAtValue = useWatch({
@@ -54,7 +58,9 @@ export function AlertScheduleFields<T extends FieldValues>({
   }) as string | null | undefined;
   const hasScheduleStartAtAnchor = scheduleStartAtValue != null;
   const hasAdvancedScheduleValues =
-    (scheduleOffsetMinutes ?? 0) > 0 || hasScheduleStartAtAnchor;
+    (scheduleOffsetMinutes ?? 0) > 0 ||
+    hasScheduleStartAtAnchor ||
+    (numConsecutiveWindows ?? 1) > 1;
   const [opened, setOpened] = useState(hasAdvancedScheduleValues);
 
   useEffect(() => {
@@ -101,6 +107,48 @@ export function AlertScheduleFields<T extends FieldValues>({
           <Text size="xs" c="dimmed" mt="xs">
             Optional schedule controls for aligning alert windows.
           </Text>
+          {numConsecutiveWindowsName && (
+            <Group gap="xs" mt="xs">
+              <Group gap={4}>
+                <Text size="sm" opacity={0.7}>
+                  Consecutive windows
+                </Text>
+                <Tooltip
+                  label="Number of consecutive evaluation windows that must breach the threshold before an alert fires. Useful for reducing noise from transient spikes."
+                  multiline
+                  w={260}
+                  withArrow
+                  zIndex={10050}
+                >
+                  <Box style={{ lineHeight: 1, cursor: 'help' }}>
+                    <IconInfoCircle size={14} opacity={0.4} />
+                  </Box>
+                </Tooltip>
+              </Group>
+              <Controller
+                control={control}
+                name={numConsecutiveWindowsName}
+                render={({ field }) => (
+                  <NumberInput
+                    {...field}
+                    value={field.value ?? 1}
+                    onChange={v => {
+                      const num = typeof v === 'number' ? v : 1;
+                      field.onChange(num > 1 ? num : undefined);
+                    }}
+                    min={1}
+                    size="xs"
+                    w={70}
+                  />
+                )}
+              />
+              <Text size="sm" opacity={0.7}>
+                {(numConsecutiveWindows ?? 1) === 1
+                  ? 'window'
+                  : 'consecutive windows'}
+              </Text>
+            </Group>
+          )}
           {showScheduleOffsetInput && (
             <>
               <Group gap="xs" mt="xs">

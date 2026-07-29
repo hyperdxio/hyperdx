@@ -332,10 +332,19 @@ export const bulkInsertLogs = async (
   await bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
 };
 
+// ScopeAttributes and Attributes are optional so existing call sites that
+// only populate ResourceAttributes keep compiling unchanged. Omitting either
+// field drops the key from the JSONEachRow payload, and ClickHouse falls back
+// to the column default — an empty Map(LowCardinality(String), String) — so
+// the on-disk row is byte-identical to today's behaviour. New tests that need
+// to exercise the cross-scope attribute hashing (see HDX-4466) can opt in by
+// passing one or both maps explicitly.
 export const bulkInsertMetricsGauge = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -356,6 +365,8 @@ export const bulkInsertMetricsSum = async (
     IsMonotonic: boolean;
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -374,7 +385,11 @@ export const bulkInsertMetricsHistogram = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
+    ServiceName?: string;
     TimeUnix: Date;
+    Count?: number;
     BucketCounts: number[];
     ExplicitBounds: number[];
     AggregationTemporality: number;
@@ -386,6 +401,119 @@ export const bulkInsertMetricsHistogram = async (
   await bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
     metrics,
+  );
+};
+
+type ExponentialHistogramMetricPoint = {
+  TimeUnix: Date;
+  ServiceName?: string;
+  Scale?: number;
+  Count?: number;
+  Sum?: number;
+  ZeroCount?: number;
+  PositiveOffset?: number;
+  PositiveBucketCounts?: number[];
+  NegativeOffset?: number;
+  NegativeBucketCounts?: number[];
+  StartTimeUnix?: Date;
+  ResourceAttributes?: Record<string, string>;
+  ScopeAttributes?: Record<string, string>;
+  Attributes?: Record<string, string>;
+};
+
+type DenseExponentialHistogramBuckets = {
+  offset: number;
+  counts: number[];
+};
+
+const toDenseExponentialHistogramBuckets = (
+  buckets: Map<number, number>,
+): DenseExponentialHistogramBuckets => {
+  if (buckets.size === 0) {
+    return { offset: 0, counts: [] };
+  }
+
+  const indexes = [...buckets.keys()];
+  const offset = Math.min(...indexes);
+  const counts = Array(Math.max(...indexes) - offset + 1).fill(0);
+  for (const [index, count] of buckets) {
+    counts[index - offset] = count;
+  }
+  return { offset, counts };
+};
+
+export const bucketExponentialHistogramObservations = (
+  observations: number[],
+  scale = 0,
+) => {
+  if (!Number.isInteger(scale)) {
+    throw new Error('exponential histogram scale must be an integer');
+  }
+
+  const positiveBuckets = new Map<number, number>();
+  const negativeBuckets = new Map<number, number>();
+  let zeroCount = 0;
+
+  for (const observation of observations) {
+    if (!Number.isFinite(observation)) {
+      throw new Error('exponential histogram observations must be finite');
+    }
+    if (observation === 0) {
+      zeroCount += 1;
+      continue;
+    }
+
+    const buckets = observation > 0 ? positiveBuckets : negativeBuckets;
+    const index = Math.ceil(Math.log2(Math.abs(observation)) * 2 ** scale) - 1;
+    buckets.set(index, (buckets.get(index) ?? 0) + 1);
+  }
+
+  const positive = toDenseExponentialHistogramBuckets(positiveBuckets);
+  const negative = toDenseExponentialHistogramBuckets(negativeBuckets);
+  return {
+    Scale: scale,
+    Count: observations.length,
+    Sum: observations.reduce((sum, observation) => sum + observation, 0),
+    ZeroCount: zeroCount,
+    PositiveOffset: positive.offset,
+    PositiveBucketCounts: positive.counts,
+    NegativeOffset: negative.offset,
+    NegativeBucketCounts: negative.counts,
+  };
+};
+
+export const seedExponentialHistogramMetric = async ({
+  metricName,
+  points,
+  aggregationTemporality = 2,
+}: {
+  metricName: string;
+  points: ExponentialHistogramMetricPoint[];
+  aggregationTemporality?: number;
+}) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+
+  const startTimeUnix = points[0]?.StartTimeUnix ?? points[0]?.TimeUnix;
+  await bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM}`,
+    points.map(point => ({
+      MetricName: metricName,
+      ServiceName: 'test-service',
+      ResourceAttributes: {},
+      ScopeAttributes: {},
+      Attributes: {},
+      StartTimeUnix: startTimeUnix,
+      AggregationTemporality: aggregationTemporality,
+      Scale: 0,
+      ZeroCount: 0,
+      PositiveOffset: 0,
+      PositiveBucketCounts: [],
+      NegativeOffset: 0,
+      NegativeBucketCounts: [],
+      ...point,
+    })),
   );
 };
 

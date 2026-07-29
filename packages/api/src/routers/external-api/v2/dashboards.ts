@@ -122,6 +122,142 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Custom unit label.
  *           example: "ms"
  *
+ *     ChartPaletteToken:
+ *       type: string
+ *       enum: [chart-blue, chart-orange, chart-red, chart-cyan, chart-green, chart-pink, chart-purple, chart-light-blue, chart-brown, chart-gray, chart-success, chart-warning, chart-error]
+ *       description: >
+ *         Palette token used to color a number tile. Tokens reflow across
+ *         light and dark themes, so raw hex values are not accepted.
+ *       example: "chart-red"
+ *     BackgroundChart:
+ *       type: object
+ *       required:
+ *         - type
+ *       description: >
+ *         Optional background trend sparkline drawn behind a number tile's
+ *         value, derived from a time-bucketed version of the tile's query.
+ *         Builder number tiles only (raw SQL number tiles have no time
+ *         dimension to bucket).
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [line, area]
+ *           description: Sparkline shape.
+ *           example: "line"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: >
+ *             Optional palette-token override for the sparkline. When unset
+ *             the sparkline inherits the tile's static color.
+ *     NumericColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule comparing the displayed value against a single numeric bound.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [gt, gte, lt, lte]
+ *           description: Numeric comparison operator.
+ *           example: "gt"
+ *         value:
+ *           type: number
+ *           description: >
+ *             Numeric bound the displayed value is compared against. Only
+ *             finite numbers are accepted (Infinity and NaN are rejected).
+ *           example: 100
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "High"
+ *     BetweenColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule matching when the displayed value falls within an inclusive range.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [between]
+ *           description: Range comparison operator.
+ *           example: "between"
+ *         value:
+ *           type: array
+ *           minItems: 2
+ *           maxItems: 2
+ *           items:
+ *             type: number
+ *           description: >
+ *             Inclusive [min, max] range. Both bounds must be finite numbers.
+ *           example: [100, 500]
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "Warning"
+ *     EqualityColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule matching when the displayed value equals (eq) or does not equal (neq) a number or string.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [eq, neq]
+ *           description: Equality comparison operator.
+ *           example: "eq"
+ *         value:
+ *           oneOf:
+ *             - type: number
+ *             - type: string
+ *               maxLength: 200
+ *           description: >
+ *             A finite number, or a string up to 200 characters, to compare
+ *             for equality.
+ *           example: "OK"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "Healthy"
+ *     NumberTileColorCondition:
+ *       description: >
+ *         A single conditional color rule for a number tile. Rules are
+ *         evaluated in order and the last matching rule wins. When no rule
+ *         matches, the static color applies, then the default text color.
+ *         The number-tile editor surfaces numeric and equality operators
+ *         only.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/NumericColorCondition'
+ *         - $ref: '#/components/schemas/BetweenColorCondition'
+ *         - $ref: '#/components/schemas/EqualityColorCondition'
+ *       discriminator:
+ *         propertyName: operator
+ *         mapping:
+ *           gt: '#/components/schemas/NumericColorCondition'
+ *           gte: '#/components/schemas/NumericColorCondition'
+ *           lt: '#/components/schemas/NumericColorCondition'
+ *           lte: '#/components/schemas/NumericColorCondition'
+ *           between: '#/components/schemas/BetweenColorCondition'
+ *           eq: '#/components/schemas/EqualityColorCondition'
+ *           neq: '#/components/schemas/EqualityColorCondition'
+ *
  *     TimeChartSeries:
  *       type: object
  *       required:
@@ -627,6 +763,22 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Optional static color applied to the displayed number.
+ *         colorRules:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Ordered conditional color rules evaluated against the displayed
+ *             value (last match wins). Falls back to color, then the default
+ *             text color when no rule matches.
+ *           items:
+ *             $ref: '#/components/schemas/NumberTileColorCondition'
+ *         backgroundChart:
+ *           $ref: '#/components/schemas/BackgroundChart'
+ *           description: >
+ *             Optional background trend sparkline drawn behind the value.
  *
  *     PieBuilderChartConfig:
  *       type: object
@@ -657,9 +809,79 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 10000
  *           description: Field expression to group results by (one slice per group value).
  *           example: "service"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Optional custom SQL ORDER BY expression (raw SQL). Overrides the
+ *             default value-descending ordering and, when combined with
+ *             "limit", controls which slices are kept.
+ *           example: "\"Count\" DESC"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         limit:
+ *           type: integer
+ *           minimum: 1
+ *           description: >
+ *             Maximum number of slices (SQL LIMIT). Without a custom "orderBy"
+ *             the query keeps the groups with the largest aggregated values;
+ *             with an "orderBy" it keeps the first slices in that order. Omit
+ *             to fetch all groups.
+ *           example: 10
+ *
+ *     CategoricalBarBuilderChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a categorical bar chart tile. Each bar
+ *         represents one group value. Distinct from stacked_bar, which is a
+ *         time-series chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [bar]
+ *           description: Display type discriminator. Must be "bar" for categorical bar charts.
+ *           example: "bar"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value used to size each bar.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one bar per group value).
+ *           example: "service"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Optional custom SQL ORDER BY expression (raw SQL). Overrides the
+ *             default value-descending ordering and, when combined with
+ *             "limit", controls which bars are kept.
+ *           example: "\"Count\" DESC"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *         limit:
+ *           type: integer
+ *           minimum: 1
+ *           description: >
+ *             Maximum number of bars (SQL LIMIT). Without a custom "orderBy"
+ *             the query keeps the groups with the largest aggregated values;
+ *             with an "orderBy" it keeps the first bars in that order. Omit to
+ *             fetch all groups.
+ *           example: 10
  *
  *     HeatmapSelectItem:
  *       type: object
@@ -764,6 +986,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: string
  *           maxLength: 10000
  *           description: Filter condition for the search (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "level:error"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *
+ *     EventPatternsChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *       description: Configuration for an event pattern mining tile. Clusters log or trace events by recurring message shapes.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [event_patterns]
+ *           description: Display type discriminator. Must be "event_patterns" for pattern mining tiles.
+ *           example: "event_patterns"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to mine patterns from.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Column or expression to mine patterns from. Leave empty to use the source default (Body for logs, SpanName for traces).
+ *           default: ""
+ *           example: "Body"
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Filter condition for the pattern mining query (syntax depends on whereLanguage).
  *           default: ""
  *           example: "level:error"
  *         whereLanguage:
@@ -902,6 +1156,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               enum: [number]
  *               description: Display as a single big-number chart.
  *               example: "number"
+ *             color:
+ *               $ref: '#/components/schemas/ChartPaletteToken'
+ *               description: >
+ *                 Optional static color applied to the displayed number. Raw
+ *                 SQL number tiles do not support conditional colorRules.
  *
  *     PieRawSqlChartConfig:
  *       description: Raw SQL configuration for a pie chart.
@@ -916,6 +1175,20 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               enum: [pie]
  *               description: Display as a pie chart.
  *               example: "pie"
+ *
+ *     CategoricalBarRawSqlChartConfig:
+ *       description: Raw SQL configuration for a categorical bar chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [bar]
+ *               description: Display as a categorical bar chart.
+ *               example: "bar"
  *
  *     LineChartConfig:
  *       description: >
@@ -1058,6 +1331,27 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           items:
  *             $ref: '#/components/schemas/OnClickFilterTemplate'
  *
+ *     OnClickExternal:
+ *       type: object
+ *       required: [type, urlTemplate]
+ *       description: >
+ *         Link-out that navigates to an arbitrary external URL (e.g. a Grafana
+ *         or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [external]
+ *           description: OnClick variant discriminator. Must be "external" for external link-outs.
+ *           example: "external"
+ *         urlTemplate:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Handlebars template rendered against the clicked row; supports
+ *             `{{column}}` variables. The rendered value must be an absolute
+ *             http(s) URL.
+ *           example: "https://example.com/d/abc?var-service={{ServiceName}}"
+ *
  *     OnClick:
  *       description: >
  *         Link-out configuration applied when a user clicks a row of a table tile.
@@ -1067,11 +1361,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       oneOf:
  *         - $ref: '#/components/schemas/OnClickSearch'
  *         - $ref: '#/components/schemas/OnClickDashboard'
+ *         - $ref: '#/components/schemas/OnClickExternal'
  *       discriminator:
  *         propertyName: type
  *         mapping:
  *           search: '#/components/schemas/OnClickSearch'
  *           dashboard: '#/components/schemas/OnClickDashboard'
+ *           external: '#/components/schemas/OnClickExternal'
  *
  *     TableChartConfig:
  *       description: >
@@ -1112,22 +1408,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         mapping:
  *           sql: '#/components/schemas/PieRawSqlChartConfig'
  *
+ *     CategoricalBarChartConfig:
+ *       description: >
+ *         Categorical bar chart (one bar per group value; not a time series).
+ *         Omit configType for the builder variant (requires sourceId and
+ *         select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/CategoricalBarBuilderChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *
  *     TileConfig:
  *       description: >
  *         Tile chart configuration. displayType is the primary discriminant and
  *         determines which variant group applies. For displayTypes that support
- *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
- *         configType is the secondary discriminant: omit it for the builder
+ *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie,
+ *         bar), configType is the secondary discriminant: omit it for the builder
  *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
- *         search, and markdown displayTypes only have a builder variant.
+ *         search, event_patterns, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarChartConfig'
  *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
+ *         - $ref: '#/components/schemas/EventPatternsChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
  *         propertyName: displayType
@@ -1137,8 +1449,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
+ *           bar: '#/components/schemas/CategoricalBarChartConfig'
  *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
+ *           event_patterns: '#/components/schemas/EventPatternsChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
  *     DashboardContainerTab:
@@ -1748,6 +2062,127 @@ router.get(
     }
   },
 );
+
+/**
+ * @openapi
+ * /api/v2/dashboards/validate:
+ *   post:
+ *     summary: Validate Dashboard
+ *     description: |
+ *       Validates a dashboard body against the same schema and tile rules used
+ *       by POST /api/v2/dashboards. The dashboard is **never persisted**. Use
+ *       this endpoint at plan time (e.g. from a Terraform provider) to check
+ *       that a dashboard configuration is valid before applying it.
+ *     operationId: validateDashboard
+ *     tags: [Dashboards]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDashboardRequest'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: |
+ *                     The parsed dashboard body with defaults applied (no
+ *                     persistence, so no server-assigned tile IDs). Populated
+ *                     when valid is true, null when valid is false.
+ *             examples:
+ *               valid:
+ *                 summary: Valid dashboard body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized:
+ *                     name: "My Dashboard"
+ *                     tiles: []
+ *               invalid:
+ *                 summary: Invalid dashboard body
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "name"
+ *                       message: "Required"
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const parsed = createDashboardBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const { tiles, filters, containers } = parsed.data;
+    // Cast: createDashboardBodySchema tiles have optional `id`; the validator
+    // only reads sourceId/config — the cast is safe for a no-persist call.
+    const validationError = await validateDashboardTiles({
+      teamId: teamId.toString(),
+      tiles: tiles as ExternalDashboardTileWithId[],
+      filters,
+      containers: containers ?? [],
+    });
+    if (validationError) {
+      return res.json({
+        valid: false,
+        errors: [{ path: '', message: validationError }],
+        normalized: null,
+      });
+    }
+
+    return res.json({ valid: true, errors: [], normalized: parsed.data });
+  } catch (e) {
+    next(e);
+  }
+});
 
 /**
  * @openapi

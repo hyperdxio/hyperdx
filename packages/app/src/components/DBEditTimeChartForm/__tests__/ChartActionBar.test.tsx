@@ -5,8 +5,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-
-import { ChartActionBar } from '../ChartActionBar';
+import { ChartActionBar } from '@/components/DBEditTimeChartForm/ChartActionBar';
 
 jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: (props: any) => (
@@ -182,6 +181,30 @@ describe('ChartActionBar', () => {
 
   it('should not render ORDER BY editor for table tab when raw SQL', () => {
     renderActionBar({ activeTab: 'table', isRawSqlInput: true });
+
+    expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
+  });
+
+  it('should render ORDER BY editor for pie tab when not raw SQL', () => {
+    renderActionBar({ activeTab: 'pie', isRawSqlInput: false });
+
+    expect(screen.getByTestId('sql-editor-order-by')).toBeInTheDocument();
+  });
+
+  it('should render ORDER BY editor for bar tab when not raw SQL', () => {
+    renderActionBar({ activeTab: 'bar', isRawSqlInput: false });
+
+    expect(screen.getByTestId('sql-editor-order-by')).toBeInTheDocument();
+  });
+
+  it('should not render ORDER BY editor for pie tab when raw SQL', () => {
+    renderActionBar({ activeTab: 'pie', isRawSqlInput: true });
+
+    expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
+  });
+
+  it('should not render ORDER BY editor for time tab', () => {
+    renderActionBar({ activeTab: 'time' });
 
     expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
   });

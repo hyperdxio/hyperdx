@@ -3,7 +3,7 @@ import produce from 'immer';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
-export type ColorModePreference = 'light' | 'dark' | 'system';
+type ColorModePreference = 'light' | 'dark' | 'system';
 
 export type UserPreferences = {
   isUTC: boolean;

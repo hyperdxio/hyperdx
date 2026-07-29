@@ -1,6 +1,7 @@
 import { sanitizeUrl } from '@braintree/sanitize-url';
 import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { performance } from 'perf_hooks';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -8,8 +9,17 @@ import { CODE_VERSION } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
+import { recordOperationOutcome } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
+
+// SLO operations for the ClickHouse proxy. Both paths swallow their errors
+// (returning JSON / writing the response directly) so they never reach the API
+// error middleware — they must report their own SLIs. See
+// agent_docs/observability.md.
+const CONNECTION_TEST_OPERATION = 'clickhouse_proxy.connection_test';
+const QUERY_PROXY_OPERATION = 'clickhouse_proxy.query';
 
 /**
  * Validates and sanitizes a URL path to prevent injection attacks.
@@ -83,6 +93,20 @@ router.post(
   }),
   async (req, res) => {
     const { host, username, password } = req.body;
+
+    // Restrict to http/https to prevent file://, gopher://, etc.
+    const parsedHost = new URL(host);
+    if (parsedHost.protocol !== 'http:' && parsedHost.protocol !== 'https:') {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid protocol' });
+    }
+    const hostname = parsedHost.hostname.replace(IPV6_BRACKET_RE, '');
+    if (isPrivateIp(hostname)) {
+      return res.status(400).json({ success: false, error: 'Invalid host' });
+    }
+
+    const startedAt = performance.now();
     try {
       const result = await fetch(`${host}/?query=SELECT 1`, {
         headers: {
@@ -93,15 +117,31 @@ router.post(
       });
       // For status codes 204-399
       if (!result.ok) {
-        const errorText = await result.text();
+        recordOperationOutcome({
+          operation: CONNECTION_TEST_OPERATION,
+          outcome: 'error',
+          durationMs: performance.now() - startedAt,
+        });
+        // Do not reflect the raw response body to avoid leaking internal
+        // service responses in case of a misconfigured or SSRF host.
         return res.status(result.status).json({
           success: false,
-          error: errorText || 'Error connecting to ClickHouse server',
+          error: 'Error connecting to ClickHouse server',
         });
       }
       const data = await result.json();
+      recordOperationOutcome({
+        operation: CONNECTION_TEST_OPERATION,
+        outcome: 'success',
+        durationMs: performance.now() - startedAt,
+      });
       return res.json({ success: data === 1 });
     } catch (e: any) {
+      recordOperationOutcome({
+        operation: CONNECTION_TEST_OPERATION,
+        outcome: 'error',
+        durationMs: performance.now() - startedAt,
+      });
       // fetch returns a 400+ error and throws
       console.error(e);
       const errorMessage =
@@ -231,7 +271,6 @@ const proxyMiddleware: RequestHandler =
         }
 
         try {
-          // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(body);
         } catch (e) {
           console.error(
@@ -240,6 +279,17 @@ const proxyMiddleware: RequestHandler =
         }
       },
       proxyRes: (proxyRes, _req, res) => {
+        const startedAt = (res as Response).locals?.hdxProxyStartedAt;
+        const statusCode = proxyRes.statusCode ?? 0;
+        recordOperationOutcome({
+          operation: QUERY_PROXY_OPERATION,
+          // A response (even a 4xx/5xx from ClickHouse) means the proxy hop
+          // itself worked; outcome reflects whether ClickHouse served it.
+          outcome: statusCode < 400 ? 'success' : 'error',
+          durationMs:
+            typeof startedAt === 'number' ? performance.now() - startedAt : 0,
+        });
+
         // since clickhouse v24, the cors headers * will be attached to the response by default
         // which will cause the browser to block the response
         if (_req.headers['access-control-request-method']) {
@@ -258,6 +308,15 @@ const proxyMiddleware: RequestHandler =
         }
       },
       error: (err, _req, _res) => {
+        const startedAt = (_res as Response).locals?.hdxProxyStartedAt;
+        recordOperationOutcome({
+          operation: QUERY_PROXY_OPERATION,
+          // No usable response from ClickHouse (connection refused, timeout,
+          // DNS failure, ...) — a hard availability failure for the proxy.
+          outcome: 'error',
+          durationMs:
+            typeof startedAt === 'number' ? performance.now() - startedAt : 0,
+        });
         console.error('Proxy error:', err);
         (_res as Response).writeHead(500, {
           'Content-Type': 'application/json',
@@ -275,7 +334,25 @@ const proxyMiddleware: RequestHandler =
     // }),
   });
 
-router.get('/*', hasConnectionId, getConnection, proxyMiddleware);
-router.post('/*', hasConnectionId, getConnection, proxyMiddleware);
+// Stamp a start time so the proxy callbacks can record query SLO latency.
+const markProxyStart: RequestHandler = (_req, res, next) => {
+  res.locals.hdxProxyStartedAt = performance.now();
+  next();
+};
+
+router.get(
+  '/*',
+  hasConnectionId,
+  getConnection,
+  markProxyStart,
+  proxyMiddleware,
+);
+router.post(
+  '/*',
+  hasConnectionId,
+  getConnection,
+  markProxyStart,
+  proxyMiddleware,
+);
 
 export default router;

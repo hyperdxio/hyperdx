@@ -8,7 +8,8 @@
       "ignoreDependencies": [
         "eslint-config-next",
         "@chromatic-com/storybook",
-        "@storybook/addon-themes"
+        "@storybook/addon-themes",
+        "react-is"
       ]
     },
     "packages/api": {
@@ -26,15 +27,27 @@
     "packages/common-utils": {
       "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
       "project": ["src/**/*.ts"]
+    },
+    "packages/hdx-eval": {
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["tsx"],
+      "ignoreBinaries": ["claude"]
     }
   },
-  "ignore": ["scripts/dev-portal/**", ".github/scripts/**"],
-  "ignoreBinaries": ["make", "migrate", "playwright"],
+  "ignore": [
+    "scripts/dev-portal/**",
+    ".github/scripts/**",
+    ".github/actions/**",
+    "docker/hyperdx/**",
+    ".claude/**"
+  ],
+  "ignoreBinaries": ["make", "migrate"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",
     "concurrently",
     "dotenv",
     "babel-plugin-react-compiler"
   ],
+  "include": ["nsExports"],
   "exclude": ["enumMembers", "duplicates"]
 }

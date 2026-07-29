@@ -1,12 +1,42 @@
 import { rewriteSqlFilterWithKvItems } from '@/core/renderChartConfig';
-import { KvItemsLookup } from '@/queryParser';
+import { TextIndexInfoLookup } from '@/queryParser';
+
+type PartialKvItemsInfo = {
+  columnName: string;
+  separator: string;
+  useHasAny?: boolean;
+};
 
 const makeLookup = (
-  entries: Array<[string, { kvItemsColumn: string; separator: string }]>,
-): KvItemsLookup => new Map(entries);
+  entries: Array<[string, PartialKvItemsInfo]>,
+): TextIndexInfoLookup =>
+  new Map(
+    entries.map(([mapColumn, v]) => [
+      mapColumn,
+      {
+        kv: {
+          useHasAny: true,
+          indexName: `${v.columnName}_idx`,
+          mapColumn,
+          ...v,
+        },
+      },
+    ]),
+  );
 
-const defaultLookup: KvItemsLookup = makeLookup([
-  ['LogAttributes', { kvItemsColumn: 'LogAttributeItems', separator: '=' }],
+const defaultLookup: TextIndexInfoLookup = makeLookup([
+  ['LogAttributes', { columnName: 'LogAttributeItems', separator: '=' }],
+]);
+
+const legacyLookup: TextIndexInfoLookup = makeLookup([
+  [
+    'LogAttributes',
+    {
+      columnName: 'LogAttributeItems',
+      separator: '=',
+      useHasAny: false,
+    },
+  ],
 ]);
 
 describe('rewriteSqlFilterWithKvItems', () => {
@@ -232,10 +262,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
   describe('lookup configuration', () => {
     it('uses the configured separator in the rewritten concat', () => {
       const colonLookup = makeLookup([
-        [
-          'LogAttributes',
-          { kvItemsColumn: 'LogAttributeItems', separator: ':' },
-        ],
+        ['LogAttributes', { columnName: 'LogAttributeItems', separator: ':' }],
       ]);
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] = 'v'",
@@ -246,10 +273,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
 
     it('uses the configured kv items column name (backtick-quoted)', () => {
       const lookup = makeLookup([
-        [
-          'LogAttributes',
-          { kvItemsColumn: 'CustomItemsColumn', separator: '=' },
-        ],
+        ['LogAttributes', { columnName: 'CustomItemsColumn', separator: '=' }],
       ]);
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] = 'v'",
@@ -260,13 +284,10 @@ describe('rewriteSqlFilterWithKvItems', () => {
 
     it('applies independent lookup entries to each map column', () => {
       const lookup = makeLookup([
-        [
-          'LogAttributes',
-          { kvItemsColumn: 'LogAttributeItems', separator: '=' },
-        ],
+        ['LogAttributes', { columnName: 'LogAttributeItems', separator: '=' }],
         [
           'ResourceAttributes',
-          { kvItemsColumn: 'ResourceAttributeItems', separator: ':' },
+          { columnName: 'ResourceAttributeItems', separator: ':' },
         ],
       ]);
       const result = rewriteSqlFilterWithKvItems(
@@ -322,6 +343,86 @@ describe('rewriteSqlFilterWithKvItems', () => {
       expect(result).toContain(
         "has(`LogAttributeItems`, concat('k', '=', 'v'))",
       );
+    });
+  });
+
+  describe('hasAny fallback (useHasAny: false)', () => {
+    it("still rewrites Map['key'] = 'value' to has(...)", () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] = 'v'",
+        legacyLookup,
+      );
+      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'v'))");
+    });
+
+    it("still rewrites Map['key'] IN ('a') (single item) to has(...)", () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a')",
+        legacyLookup,
+      );
+      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+    });
+
+    it("rewrites Map['key'] IN ('a','b','c') to a chain of has(...) OR ...", () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', 'b', 'c')",
+        legacyLookup,
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'a'))",
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'b'))",
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'c'))",
+      );
+      expect(result).not.toContain('hasAny(');
+      expect(result).not.toContain('array(');
+      const orCount = (result.match(/ OR /g) ?? []).length;
+      expect(orCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('preserves precedence when the fallback OR chain sits inside an AND (IN on the left)', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', 'b') AND Severity = 'error'",
+        legacyLookup,
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'a'))",
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'b'))",
+      );
+      expect(result).toContain("Severity = 'error'");
+      expect(result).not.toContain('hasAny(');
+      // The OR chain MUST be parenthesized so AND doesn't bind tighter than OR
+      // and cause the right-hand `AND Severity` to attach to only the last has().
+      expect(result).toMatch(
+        /\(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\) AND /,
+      );
+    });
+
+    it('preserves precedence when the fallback OR chain sits inside an AND (IN on the right)', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "Severity = 'error' AND LogAttributes['k'] IN ('a', 'b')",
+        legacyLookup,
+      );
+      expect(result).toContain("Severity = 'error'");
+      expect(result).not.toContain('hasAny(');
+      // Same rationale as the mirror case above: precedence-sensitive parens.
+      expect(result).toMatch(
+        / AND \(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\)/,
+      );
+    });
+
+    it('does not rewrite when any IN value is an empty string', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', '')",
+        legacyLookup,
+      );
+      expect(result).not.toContain('has(');
+      expect(result).not.toContain('hasAny(');
     });
   });
 });

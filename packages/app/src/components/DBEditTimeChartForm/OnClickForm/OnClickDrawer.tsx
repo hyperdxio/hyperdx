@@ -25,6 +25,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { TextInputControlled } from '@/components/InputControlled';
 import { InputLabelWithTooltip } from '@/components/InputLabelWithTooltip';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { useDashboards } from '@/dashboard';
@@ -37,6 +38,7 @@ import {
   DrawerFormValues,
   DrawerSchema,
   emptyDashboardOnClick,
+  emptyExternalOnClick,
   emptySearchOnClick,
 } from './utils';
 
@@ -161,6 +163,34 @@ function DashboardOnClickFields({
   );
 }
 
+function ExternalOnClickFields({ control }: { control: DrawerControl }) {
+  return (
+    <Stack gap="xs">
+      <Text size="xs" c="dimmed">
+        {TEMPLATE_HELP_TEXT} The rendered value must be an absolute http(s) URL.
+        <br />
+        <br />
+        <b>Caution:</b> this may navigate to an external site and include
+        information from your data. Make sure the template does not contain any
+        sensitive information, and that the external site is trusted.
+      </Text>
+
+      <Box>
+        <InputLabelWithTooltip
+          label="URL"
+          tooltip="Handlebars template that resolves to an external URL. It is opened in a new tab when a row is clicked."
+        />
+        <TextInputControlled
+          control={control}
+          name="onClick.urlTemplate"
+          placeholder="https://example.com/abc?service={{ServiceName}}"
+          data-testid="onclick-external-url-input"
+        />
+      </Box>
+    </Stack>
+  );
+}
+
 function ModeFields({
   control,
   setValue,
@@ -182,6 +212,8 @@ function ModeFields({
         getValues={getValues}
       />
     );
+  } else if (onClick?.type === 'external') {
+    return <ExternalOnClickFields control={control} />;
   }
 
   return (
@@ -228,7 +260,13 @@ export default function OnClickDrawer({
   const watchedOnClick = useWatch({ control, name: 'onClick' });
 
   const isTargetMissing = useMemo(() => {
-    if (!watchedOnClick || watchedOnClick.target.mode !== 'id') return false;
+    if (
+      !watchedOnClick ||
+      watchedOnClick.type === 'external' ||
+      watchedOnClick.target.mode !== 'id'
+    ) {
+      return false;
+    }
 
     const validTargetIds =
       watchedOnClick.type === 'dashboard'
@@ -287,6 +325,7 @@ export default function OnClickDrawer({
                 { label: 'Default', value: 'default' },
                 { label: 'Search', value: 'search' },
                 { label: 'Dashboard', value: 'dashboard' },
+                { label: 'External', value: 'external' },
               ]}
               value={onClickValue?.type ?? 'default'}
               onChange={value => {
@@ -295,7 +334,9 @@ export default function OnClickDrawer({
                     ? emptySearchOnClick()
                     : value === 'dashboard'
                       ? emptyDashboardOnClick()
-                      : null;
+                      : value === 'external'
+                        ? emptyExternalOnClick()
+                        : null;
                 setValue('onClick', formValue);
               }}
               fullWidth

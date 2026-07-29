@@ -46,8 +46,9 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
     async ({ page }) => {
       await test.step('Navigate and open a session (with sidePanelTab=replay pre-set in URL to simulate search-page flow)', async () => {
         // Pre-set sidePanelTab=replay in the URL to simulate navigating from a search page
-        // row detail panel that had the Session Replay tab open. Without isNestedPanel=true,
-        // the inner DBRowSidePanel would inherit this URL param and open to the Replay tab again.
+        // row detail panel that had the Session Replay tab open. Selecting a session event
+        // must clear this param (clearInnerNavigation) so the in-place event detail opens to
+        // its default tab instead of re-rendering the Session Replay tab.
         await page.goto('/search');
         await sessionsPage.goto();
         await sessionsPage.selectDataSource();
@@ -75,43 +76,49 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
         await sessionsPage.clickFirstSessionEvent();
       });
 
-      await test.step('Event detail panel opens alongside the session replay — not replacing it', async () => {
-        // The row-side-panel must be visible (event detail drawer opened on top of session replay)
-        await expect(sessionsPage.rowSidePanel).toBeVisible();
-
-        // The original session replay panel must still be open (not replaced/closed)
+      await test.step('Event detail opens in place inside the single session drawer — not as a second drawer', async () => {
+        // Single-drawer navigation: the event detail renders in place inside the
+        // existing session-side-panel (via DBRowSidePanelInner). No second
+        // row-side-panel Drawer is opened.
         await expect(sessionsPage.sessionSidePanel).toBeVisible();
 
-        // Only one session-side-panel must exist (not a second replay opened inside the detail panel)
+        // Exactly one session drawer exists, and no separate row-side-panel
+        // drawer was stacked on top of it.
         await expect(page.getByTestId('session-side-panel')).toHaveCount(1);
+        await expect(page.getByTestId('row-side-panel')).toHaveCount(0);
 
-        // The row-side-panel must show the event detail TabBar (Overview, Trace, etc.)
-        // This guards against the regression where the inner panel re-opened session replay
-        // instead of showing event details (which has no TabBar, just the replay player)
+        // The session drawer now shows the event detail TabBar (Overview, Trace,
+        // etc.). This guards against the regression where selecting an event
+        // re-opened session replay instead of showing event details (which has
+        // no TabBar, just the replay player).
         await expect(
-          sessionsPage.rowSidePanel.getByTestId('side-panel-tabs'),
+          sessionsPage.sessionSidePanel.getByTestId('side-panel-tabs'),
         ).toBeVisible();
 
-        // The inner panel must NOT be showing the Session Replay tab content.
-        // Without isNestedPanel=true (broken), the inner DBRowSidePanel reads sidePanelTab=replay
-        // from the URL (injected above) and renders the Session Replay tab content (side-panel-tab-replay).
-        // With isNestedPanel=true (fixed), the inner panel uses local state and ignores the URL,
-        // opening to its default tab (Trace/Overview) instead.
+        // The event detail must NOT land on the Session Replay tab. Selecting an
+        // event clears the sidePanelTab=replay param injected above
+        // (clearInnerNavigation), so the inner panel opens to its default tab
+        // (Trace/Overview) and the replay tab content is not rendered.
         await expect(
-          sessionsPage.rowSidePanel.getByTestId('side-panel-tab-replay'),
+          sessionsPage.sessionSidePanel.getByTestId('side-panel-tab-replay'),
         ).toHaveCount(0);
       });
 
-      await test.step('Clicking the overlay closes the event detail panel but keeps the session replay open', async () => {
-        // Without the fix, withOverlay={!isNestedPanel} removed the overlay on nested panels,
-        // so there was nothing to click to close the panel (it had to be ESC only).
-        // With the fix (withOverlay always true), clicking the Mantine overlay dismisses the inner panel.
-        await sessionsPage.clickTopmostDrawerOverlay();
+      await test.step('Pressing Escape returns to the session event list within the same drawer', async () => {
+        // With an event open, the embedded DBRowSidePanelInner owns Esc and pops
+        // one level at a time; at the event root it hands back to the session
+        // (onNavigateToParent), so a single Esc returns to the session event
+        // list instead of closing the whole drawer. (The parent's own Esc is
+        // disabled while an event is selected to avoid a double-fire.)
+        await page.keyboard.press('Escape');
 
-        // The event detail panel must close
-        await expect(sessionsPage.rowSidePanel).toBeHidden();
+        // The event detail TabBar collapses back to the session event list.
+        await expect(
+          sessionsPage.sessionSidePanel.getByTestId('side-panel-tabs'),
+        ).toBeHidden();
+        await expect(sessionsPage.getSessionEventRows().first()).toBeVisible();
 
-        // The session replay drawer must still be open
+        // The session drawer itself stays open.
         await expect(sessionsPage.sessionSidePanel).toBeVisible();
       });
     },

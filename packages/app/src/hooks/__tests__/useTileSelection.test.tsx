@@ -1,8 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { Dashboard } from '@/dashboard';
-
-import useTileSelection from '../useTileSelection';
+import useTileSelection from '@/hooks/useTileSelection';
 
 function renderSelectionHook(dashboard: Dashboard) {
   let current = dashboard;

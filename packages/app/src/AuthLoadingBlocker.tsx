@@ -24,9 +24,13 @@ export default function AuthLoadingBlocker() {
           style={{
             zIndex: 2147483647,
           }}
+          role="status"
+          aria-live="polite"
         >
           Loading {brandName}
-          <span style={{ width: 0 }}>{'.'.repeat(periods)}</span>
+          <span style={{ width: 0 }} aria-hidden="true">
+            {'.'.repeat(periods)}
+          </span>
         </div>
       )}
     </>

@@ -1,12 +1,12 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 import ms from 'ms';
-import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
@@ -16,16 +16,10 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
-import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
-import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
-import {
-  BreadcrumbNavigationCallback,
-  BreadcrumbPath,
-} from './DBRowSidePanelHeader';
+import { RowSidePanelContext } from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
 
 enum ContextBy {
@@ -42,35 +36,13 @@ interface ContextSubpanelProps {
   dbSqlRowTableConfig: BuilderChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
-  breadcrumbPath?: BreadcrumbPath;
-  onBreadcrumbClick?: BreadcrumbNavigationCallback;
-}
-
-// Custom hook to manage nested panel state
-export function useNestedPanelState(isNested?: boolean) {
-  // Query state (URL-based) for root level
-  const queryState = {
-    contextRowId: useQueryState('contextRowId', parseAsStringEncoded),
-    // Source IDs are MongoDB ObjectIDs (hex strings) and contain no special
-    // characters, so no encoding is needed here.
-    contextRowSource: useQueryState('contextRowSource'),
-  };
-
-  // Local state for nested levels
-  const localState = {
-    contextRowId: useState<string | null>(null),
-    contextRowSource: useState<string | null>(null),
-  };
-
-  // Choose which state to use based on nesting level
-  const activeState = isNested ? localState : queryState;
-
-  return {
-    contextRowId: activeState.contextRowId[0],
-    contextRowSource: activeState.contextRowSource[0],
-    setContextRowId: activeState.contextRowId[1],
-    setContextRowSource: activeState.contextRowSource[1],
-  };
+  onNavigateToRow?: (
+    rowId: string,
+    aliasWith: WithClause[],
+    label: string,
+    sourceKind?: SourceKind,
+  ) => void;
+  'data-testid'?: string;
 }
 
 export default function ContextSubpanel({
@@ -78,8 +50,8 @@ export default function ContextSubpanel({
   dbSqlRowTableConfig,
   rowData,
   rowId,
-  breadcrumbPath,
-  onBreadcrumbClick,
+  onNavigateToRow,
+  'data-testid': dataTestId,
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
   const origTimestamp = rowData[ROW_DATA_ALIASES.TIMESTAMP];
@@ -100,36 +72,21 @@ export default function ContextSubpanel({
   const formWhere = useWatch({ control, name: 'where' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
-  // State management for nested panels
-  const isNested = !!breadcrumbPath?.length;
-
-  const {
-    contextRowId,
-    contextRowSource,
-    setContextRowId,
-    setContextRowSource,
-  } = useNestedPanelState(isNested);
-
-  const { data: contextRowSidePanelSource } = useSource({
-    id: contextRowSource || '',
-  });
-
-  const [contextAliasWith, setContextAliasWith] = useState<WithClause[]>([]);
-
-  const handleContextSidePanelClose = useCallback(() => {
-    setContextRowId(null);
-    setContextRowSource(null);
-  }, [setContextRowId, setContextRowSource]);
-
   const { setChildModalOpen } = useContext(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
-    (rowWhere: RowWhereResult) => {
-      setContextRowId(rowWhere.where);
-      setContextAliasWith(rowWhere.aliasWith);
-      setContextRowSource(source.id);
+    (rowWhere: RowWhereResult, row: Record<string, any>) => {
+      const body = row?.[ROW_DATA_ALIASES.BODY];
+      const fallback = isTraceSource(source) ? 'Span' : 'Log';
+      const label =
+        typeof body === 'string' && body.length > 0
+          ? body
+          : body != null
+            ? JSON.stringify(body)
+            : fallback;
+      onNavigateToRow?.(rowWhere.where, rowWhere.aliasWith, label, source.kind);
     },
-    [source.id, setContextRowId, setContextRowSource],
+    [onNavigateToRow, source],
   );
 
   const date = useMemo(() => new Date(origTimestamp), [origTimestamp]);
@@ -144,7 +101,7 @@ export default function ContextSubpanel({
 
   /* Functions to help generate WHERE clause based on
      which Context the user chooses (All, Host, Node, etc...).
-     Since we support lucene and sql, we need to format the condition 
+     Since we support lucene and sql, we need to format the condition
      based on the language
   */
   const {
@@ -259,7 +216,12 @@ export default function ContextSubpanel({
   return (
     <>
       {config && (
-        <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
+        <Flex
+          direction="column"
+          mih="0px"
+          style={{ flexGrow: 1 }}
+          data-testid={dataTestId}
+        >
           <Group justify="space-between" p="sm">
             <SegmentedControl
               size="xs"
@@ -317,23 +279,6 @@ export default function ContextSubpanel({
             />
           </div>
         </Flex>
-      )}
-      {contextRowId && contextRowSidePanelSource && (
-        <DBRowSidePanel
-          source={contextRowSidePanelSource}
-          rowId={contextRowId}
-          aliasWith={contextAliasWith}
-          onClose={handleContextSidePanelClose}
-          isNestedPanel={true}
-          breadcrumbPath={[
-            ...(breadcrumbPath ?? []),
-            {
-              label: `Surrounding Context`,
-              rowData,
-            },
-          ]}
-          onBreadcrumbClick={onBreadcrumbClick}
-        />
       )}
     </>
   );

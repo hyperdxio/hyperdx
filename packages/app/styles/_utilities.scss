@@ -15,6 +15,13 @@
   background-color: var(--color-bg-muted);
 }
 
+// "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+// the area behind `.bg-body` cards (e.g. dashboard tiles / group bodies) so the
+// cards visually pop.
+.bg-sunken {
+  background-color: var(--color-bg-sunken, var(--color-bg-muted));
+}
+
 .bg-muted-hover {
   &:hover {
     background-color: var(--color-bg-muted);

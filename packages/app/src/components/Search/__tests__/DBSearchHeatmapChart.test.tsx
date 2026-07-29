@@ -6,8 +6,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import type DBDeltaChartType from '../../DBDeltaChart';
-import { DBSearchHeatmapChart } from '../DBSearchHeatmapChart';
+import type DBDeltaChartType from '@/components/DBDeltaChart';
+import { DBSearchHeatmapChart } from '@/components/Search/DBSearchHeatmapChart';
 
 type FieldsState = {
   value: string;

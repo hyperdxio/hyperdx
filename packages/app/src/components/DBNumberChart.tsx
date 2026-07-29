@@ -21,13 +21,18 @@ import {
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
-import { formatNumber, getColorFromCSSToken } from '@/utils';
+import {
+  formatNumber,
+  getColorFromCSSToken,
+  resolveConditionalColor,
+} from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+import NumberTileBackgroundChart from './NumberTileBackgroundChart';
 
 const NUMBER_TILE_MIN_FONT_SIZE = 10;
 const NUMBER_TILE_MAX_FONT_SIZE = 72;
@@ -83,7 +88,7 @@ function SimpleNumber({
 }) {
   return (
     <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
-      <Text size="4rem" c={color}>
+      <Text size="4rem" c={color} data-testid="number-chart-value">
         {children}
       </Text>
     </Flex>
@@ -163,6 +168,7 @@ function AutoSizeNumber({
       <Text
         ref={textRef}
         c={color}
+        data-testid="number-chart-value"
         style={{
           fontSize,
           lineHeight: 1.1,
@@ -176,7 +182,7 @@ function AutoSizeNumber({
 }
 
 // Wraps AutoSizeNumber in an error boundary so a runtime failure in the
-// measurement / ResizeObserver pipeline never blanks out the tile —
+// measurement / ResizeObserver pipeline never blanks out the tile;
 // instead the dashboard falls back to the original fixed-size rendering.
 function SafeAutoSizeNumber({
   children,
@@ -258,18 +264,46 @@ export default function DBNumberChart({
     id: config.source,
   });
 
-  // Tile-level color override resolved at render time so token choices
-  // reflow correctly across light / dark / IDE themes.
-  // `resolveChartPaletteToken` accepts both current hue-named tokens and
-  // legacy `chart-1`..`chart-10` values from stored configs. The fetch
-  // path (`normalizeDashboardTileColors`) already heals stored data, so
-  // in practice this resolver only ever sees the migrated hue tokens —
-  // but we keep the call as defense in depth against any tile that gets
-  // constructed in memory without going through the fetch normalizer.
-  // Unknown strings fall back to the default text color.
-  const resolvedColorToken = resolveChartPaletteToken(config.color);
-  const tileColor = resolvedColorToken
-    ? getColorFromCSSToken(resolvedColorToken)
+  // Resolve the display color in three layers:
+  //   1. Conditional color rules evaluated against the raw value
+  //      (last-match-wins, Grafana threshold semantics). Falls through
+  //      when no rule matches.
+  //   2. Static tile color from `config.color`, run through
+  //      `resolveChartPaletteToken` so legacy `chart-1`..`chart-10`
+  //      stored values from pre-#2362 saves still resolve to the right
+  //      hue. The fetch-path `normalizeDashboardTileColors` already
+  //      heals stored data, but this guards in-memory tile configs that
+  //      bypass the fetch normalizer.
+  //   3. Default text color when nothing else resolves.
+  //
+  // The raw value (pre-format) is used so rules match on the actual data
+  // value, not the formatted string. ClickHouse returns UInt64 counts as
+  // strings over JSON (output_format_json_quote_64bit_integers=1), so
+  // coerce string values to numbers when possible so numeric operators
+  // match correctly.
+  // Re-use the already-computed `value`; the `?? Number.NaN` fallback there
+  // is for `formatNumber`'s sake, the coercion IIFE below treats undefined
+  // and NaN as "no value" so the rules short-circuit to the fallback color.
+  const rawValueRaw =
+    typeof value === 'number' && Number.isNaN(value)
+      ? undefined
+      : (value as number | string | undefined);
+
+  const rawValue: number | string | null | undefined = (() => {
+    if (rawValueRaw == null) return rawValueRaw;
+    if (typeof rawValueRaw === 'number') return rawValueRaw;
+    const n = Number(rawValueRaw);
+    return Number.isFinite(n) ? n : rawValueRaw;
+  })();
+
+  const resolvedToken = resolveConditionalColor(
+    rawValue ?? null,
+    config.colorRules,
+    resolveChartPaletteToken(config.color),
+  );
+
+  const tileColor = resolvedToken
+    ? getColorFromCSSToken(resolvedToken)
     : undefined;
 
   const toolbarItemsMemo = useMemo(() => {
@@ -329,9 +363,19 @@ export default function DBNumberChart({
           No data found within time range.
         </div>
       ) : (
-        <SafeAutoSizeNumber color={tileColor}>
-          {formattedValue ?? 'N/A'}
-        </SafeAutoSizeNumber>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          {config.backgroundChart && (
+            <NumberTileBackgroundChart
+              config={config}
+              backgroundChart={config.backgroundChart}
+            />
+          )}
+          <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
+            <SafeAutoSizeNumber color={tileColor}>
+              {formattedValue ?? 'N/A'}
+            </SafeAutoSizeNumber>
+          </div>
+        </div>
       )}
     </ChartContainer>
   );

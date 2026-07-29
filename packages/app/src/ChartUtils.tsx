@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
-import { omit } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
@@ -14,6 +13,9 @@ import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChart
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -21,7 +23,6 @@ import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
   BuilderChartConfigWithDateRange,
-  BuilderChartConfigWithOptTimestamp,
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -37,6 +38,7 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
+import { DEFAULT_SERIES_LIMIT } from './defaults';
 import { getMetricNameSql } from './otelSemanticConventions';
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
@@ -103,9 +105,19 @@ function getTimeChartDateRange(
     : getAlignedDateRange(dateRange, granularity);
 }
 
+export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
+  // Series capping is opt-in per tile via the chart's Display Settings; when
+  // unset, no __hdx_series_limit CTE is emitted and every series is fetched.
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit != null
+      ? Math.max(1, config.seriesLimit)
+      : undefined
+    : undefined;
+
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
@@ -119,8 +131,8 @@ export function convertToTimeChartConfig(
 
   // When the range is bucket-aligned, the end is the start of the next bucket,
   // so end-exclusive is required to avoid double-counting boundary events.
-  // When alignment is off the end is the user's exact selection — fall back to
-  // the caller's setting, if there is one.
+  // When alignment is off the end is the user's exact selection, so fall back
+  // to the caller's setting, if there is one.
   const isAligned = config.alignDateRangeToGranularity !== false;
   const dateRangeEndInclusive = isAligned
     ? false
@@ -133,6 +145,9 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
+        // Overwrite (not conditionally spread) so a cleared `null` from the
+        // source config is normalized to undefined rather than carried over.
+        seriesLimit,
       }
     : {
         ...config,
@@ -174,7 +189,7 @@ export function useTimeChartSettings(
 }
 
 export const ChartKeyJoiner = ' · ';
-export const PreviousPeriodSuffix = ' (previous)';
+const PreviousPeriodSuffix = ' (previous)';
 
 // Note: roundToNearestMinutes is broken in date-fns currently
 // additionally it doesn't support seconds or > 30min
@@ -407,9 +422,12 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-export function formatResponseForPieChart(
+const DEFAULT_MAX_CATEGORICAL_GROUPS = 500;
+
+export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
+  applyDefaultOrder: boolean = true,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -427,27 +445,31 @@ export function formatResponseForPieChart(
 
   const groupByColumns = inferGroupColumns(data.meta);
 
-  return (
-    data.data
-      .map(row => {
-        const label = groupByColumns?.length
-          ? groupByColumns.map(({ name }) => row[name]).join(' - ')
-          : valueColumn;
-        const rawValue = row[valueColumn];
-        const value =
-          typeof rawValue === 'number'
-            ? rawValue
-            : Number.parseFloat(`${rawValue}`);
-        return { label, value };
-      })
-      .filter(entry => !isNaN(entry.value) && isFinite(entry.value))
-      // Sort in descending order so the largest slice is always first and gets the first color in the palette
-      .sort((a, b) => b.value - a.value)
-      .map((entry, index) => ({
-        ...entry,
-        color: getColor(index, entry.label),
-      }))
-  );
+  const labelsAndValues = data.data
+    .map(row => {
+      const label = groupByColumns?.length
+        ? groupByColumns.map(({ name }) => row[name]).join(' - ')
+        : valueColumn;
+      const rawValue = row[valueColumn];
+      const value =
+        typeof rawValue === 'number'
+          ? rawValue
+          : Number.parseFloat(`${rawValue}`);
+      return { label, value };
+    })
+    .filter(entry => !isNaN(entry.value) && isFinite(entry.value));
+
+  if (applyDefaultOrder) {
+    // Sort in descending order so the largest entry is always first and gets the first color in the palette
+    labelsAndValues.sort((a, b) => b.value - a.value);
+  }
+
+  return labelsAndValues
+    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .map((entry, index) => ({
+      ...entry,
+      color: getColor(index, entry.label),
+    }));
 }
 
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
@@ -457,6 +479,48 @@ export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
     new Date(start.getTime() - offsetSeconds * 1000),
     new Date(end.getTime() - offsetSeconds * 1000),
   ];
+}
+
+/**
+ * Find the series whose active-point pixel Y is closest to the cursor.
+ *
+ * `seriesYByKey` maps each series' dataKey to the pixel Y of its
+ * active point (captured from the chart's active dots), and `pointerY`
+ * is the cursor's pixel Y. Both live in the same chart pixel space, so
+ * the nearest series is the one with the smallest vertical distance.
+ * Returns that series' dataKey, or `undefined` when the pointer is
+ * farther than `maxDistancePx` from every line (so nothing is
+ * highlighted in empty space). Candidates not present in the map are
+ * skipped, and ties resolve to the first candidate in `candidateKeys`.
+ */
+export function findNearestSeriesKey(
+  seriesYByKey: Map<string, number> | undefined,
+  candidateKeys: string[],
+  pointerY: number | undefined,
+  maxDistancePx: number,
+): string | undefined {
+  if (seriesYByKey == null || pointerY == null) {
+    return undefined;
+  }
+
+  let nearestKey: string | undefined;
+  let nearestDistance = Infinity;
+  for (const key of candidateKeys) {
+    const seriesY = seriesYByKey.get(key);
+    if (seriesY == null) {
+      continue;
+    }
+    const distance = Math.abs(seriesY - pointerY);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestKey = key;
+    }
+  }
+
+  if (nearestKey == null || nearestDistance > maxDistancePx) {
+    return undefined;
+  }
+  return nearestKey;
 }
 
 export interface LineData {
@@ -1076,40 +1140,11 @@ export function buildTableRowSearchUrl({
   });
 }
 
-export function convertToNumberChartConfig(
-  config: BuilderChartConfigWithDateRange,
-): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
-}
-
-export function convertToPieChartConfig(
-  config: BuilderChartConfigWithOptTimestamp,
-): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity']);
-}
-
-export function convertToTableChartConfig(
-  config: BuilderChartConfigWithOptTimestamp,
-): BuilderChartConfigWithOptTimestamp {
-  const convertedConfig = structuredClone(omit(config, ['granularity']));
-
-  // Set a default limit if not already set
-  if (!convertedConfig.limit) {
-    convertedConfig.limit = { limit: 200 };
-  }
-
-  // Set a default orderBy if groupBy is set but orderBy is not,
-  // so that the set of rows within the limit is stable.
-  if (
-    convertedConfig.groupBy &&
-    typeof convertedConfig.groupBy === 'string' &&
-    !convertedConfig.orderBy
-  ) {
-    convertedConfig.orderBy = convertedConfig.groupBy;
-  }
-
-  return convertedConfig;
-}
+export {
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+};
 
 export function buildMVDateRangeIndicator({
   mvOptimizationData,

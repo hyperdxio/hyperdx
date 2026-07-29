@@ -1,0 +1,75 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "traces"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "basic-insert"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "trace-test-service"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {},
+          "spans": [
+            {
+              "traceId": "5b8efff798038103d269b633813fc60c",
+              "spanId": "eee19b7ec3c1b174",
+              "parentSpanId": "",
+              "name": "root-operation",
+              "kind": 2,
+              "startTimeUnixNano": "1901999590000000000",
+              "endTimeUnixNano": "1901999590000123000",
+              "attributes": [
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                }
+              ],
+              "status": {
+                "code": 1
+              }
+            },
+            {
+              "traceId": "5b8efff798038103d269b633813fc60c",
+              "spanId": "f1f2f3f4f5f6f7f8",
+              "parentSpanId": "eee19b7ec3c1b174",
+              "name": "child-operation",
+              "kind": 3,
+              "startTimeUnixNano": "1901999590000010000",
+              "endTimeUnixNano": "1901999590000099000",
+              "attributes": [
+                {
+                  "key": "db.system",
+                  "value": {
+                    "stringValue": "clickhouse"
+                  }
+                }
+              ],
+              "status": {
+                "code": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { trimToolResponse } from '../trimToolResponse';
+import { trimToolResponse } from '@/utils/trimToolResponse';
 
 describe('trimToolResponse', () => {
   describe('return shape', () => {

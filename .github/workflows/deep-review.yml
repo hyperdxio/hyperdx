@@ -44,6 +44,10 @@ jobs:
       'ready_for_review' || !github.event.pull_request.draft
 
     runs-on: ubuntu-latest
+    env:
+      # Single-source the reviewer plugin ref: consumed by the plugin checkout,
+      # the review gate, and the state marker. Bump in one place.
+      PLUGIN_REF: compound-engineering-v3.6.1
     permissions:
       contents: read
       pull-requests: write
@@ -174,6 +178,63 @@ jobs:
             exit 1
           fi
 
+      # --- Review gate ------------------------------------------------------
+      # The multi-agent fan-out below is expensive. `synchronize` fires on
+      # every head update, including when `main` is merged into the PR branch
+      # to keep it current (GitHub "Update branch" / Kodiak). Such an update
+      # advances the merge-base to include the new main commits, so the PR's
+      # effective diff (merge-base..HEAD) stays byte-identical and re-running
+      # the review is pure waste. Gate on a hash of that diff: read the hash
+      # stored in the prior sticky comment's hidden marker and skip when it
+      # matches. Always review on manual dispatch, on ready_for_review, on the
+      # first run, and when the plugin ref changed.
+      - name: Find existing deep review comment
+        uses: peter-evans/find-comment@v4
+        id: find-comment
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- deep-review -->'
+          direction: last
+
+      - name: Compute review gate
+        id: gate
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          PRIOR_BODY: ${{ steps.find-comment.outputs.comment-body }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          # Hash the exact diff the reviewers see. ce-code-review with
+          # `base:<sha>` computes `git merge-base HEAD <sha>` then diffs from
+          # there with no rename detection, so mirror that. --no-color and
+          # --no-renames remove the config/heuristic sources of non-determinism.
+          MB=$(git merge-base HEAD "$BASE_SHA")
+          CUR_HASH=$(git diff --no-color --no-renames "$MB" HEAD | sha256sum | cut -d' ' -f1)
+          echo "diff_hash=$CUR_HASH" >> "$GITHUB_OUTPUT"
+
+          force() { echo "should_review=true" >> "$GITHUB_OUTPUT"; echo "gate: reviewing -- $1"; exit 0; }
+
+          [ "$EVENT_NAME" = "workflow_dispatch" ] && force "manual dispatch"
+          [ "$EVENT_ACTION" = "ready_for_review" ] && force "ready_for_review"
+          [ -z "${PRIOR_BODY:-}" ] && force "no prior review comment"
+
+          # Parse the hidden state marker from the prior comment. Fail-open:
+          # any parse miss (pre-gate comment, corrupted marker) -> review.
+          MARKER_RE='s/.*deep-review-state:[[:space:]]*diff=\([0-9a-f]\{64\}\);[[:space:]]*plugin=\([^ ]*\)[[:space:]]*-->.*/'
+          # `|| true`: under pipefail a head-induced SIGPIPE must not abort the
+          # gate. A parse miss falls through to the fail-open check below.
+          PRIOR_HASH=$(printf '%s' "$PRIOR_BODY" | sed -n "${MARKER_RE}\1/p" | head -n1) || true
+          PRIOR_PLUGIN=$(printf '%s' "$PRIOR_BODY" | sed -n "${MARKER_RE}\2/p" | head -n1) || true
+
+          [ -z "$PRIOR_HASH" ] && force "prior comment has no state marker"
+          [ "$PRIOR_PLUGIN" != "$PLUGIN_REF" ] && force "plugin ref changed ($PRIOR_PLUGIN -> $PLUGIN_REF)"
+          [ "$PRIOR_HASH" != "$CUR_HASH" ] && force "effective diff changed"
+
+          echo "should_review=false" >> "$GITHUB_OUTPUT"
+          echo "gate: skipping -- effective diff unchanged since last review ($CUR_HASH)"
+
       # Pre-clone the plugin marketplace at a pinned tag and pass it to the
       # action as a local path. The action's `plugin_marketplaces` input
       # validator rejects the `#<ref>` suffix that the underlying
@@ -181,14 +242,16 @@ jobs:
       # See base-action/src/install-plugins.ts:MARKETPLACE_URL_REGEX.
       # Bump `ref` deliberately; do not track main.
       - name: Checkout compound-engineering plugin
+        if: steps.gate.outputs.should_review == 'true'
         uses: actions/checkout@v6
         with:
           repository: EveryInc/compound-engineering-plugin
-          ref: compound-engineering-v3.6.1
+          ref: ${{ env.PLUGIN_REF }}
           path: ce-plugin
 
       - name: Run deep review
         id: review
+        if: steps.gate.outputs.should_review == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -356,15 +419,6 @@ jobs:
             --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
             --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
 
-      - name: Find existing deep review comment
-        uses: peter-evans/find-comment@v4
-        id: find-comment
-        with:
-          issue-number: ${{ steps.pr.outputs.number }}
-          comment-author: github-actions[bot]
-          body-includes: '<!-- deep-review -->'
-          direction: last
-
       # fromJSON() in `with:` has been observed to leave structured_output JSON
       # unparsed for the sibling claude-code-review workflow. Extract via jq.
       #
@@ -375,21 +429,28 @@ jobs:
       # a `review` key) and unwrap once more so we post markdown, not JSON.
       - name: Extract review from structured output
         id: extract
+        if: steps.gate.outputs.should_review == 'true'
         env:
           STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
+          DIFF_HASH: ${{ steps.gate.outputs.diff_hash }}
         run: |
           REVIEW="$(printf '%s' "$STRUCTURED_OUTPUT" | jq -r '.review')"
           if printf '%s' "$REVIEW" | jq -e 'type == "object" and has("review")' >/dev/null 2>&1; then
             REVIEW="$(printf '%s' "$REVIEW" | jq -r '.review')"
           fi
+          # Prepend the hidden state marker consumed by the gate on the next
+          # run. Keep this format in lockstep with the gate's parser (MARKER_RE).
+          MARKER="<!-- deep-review-state: diff=${DIFF_HASH}; plugin=${PLUGIN_REF} -->"
           {
             echo 'review<<DEEP_REVIEW_EOF'
+            printf '%s\n' "$MARKER"
             printf '%s' "$REVIEW"
             echo
             echo 'DEEP_REVIEW_EOF'
           } >> "$GITHUB_OUTPUT"
 
       - name: Post or update deep review
+        if: steps.gate.outputs.should_review == 'true'
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}

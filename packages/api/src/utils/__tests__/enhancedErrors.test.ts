@@ -2,14 +2,14 @@ import express, { Express } from 'express';
 import request from 'supertest';
 import { z } from 'zod';
 
-import { validateRequestWithEnhancedErrors as validateRequest } from '../enhancedErrors';
+import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import {
   alertSchema,
   externalDashboardTileSchema,
   externalQueryChartSeriesSchema,
   objectIdSchema,
   tagsSchema,
-} from '../zod';
+} from '@/utils/zod';
 
 describe('enhancedErrors', () => {
   let app: Express;

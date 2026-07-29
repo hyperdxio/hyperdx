@@ -173,4 +173,85 @@ describe('supportsDirectReadMap', () => {
   it('returns false when the version is undefined', () => {
     expect(supportsDirectReadMap(undefined)).toBe(false);
   });
+
+  describe('ClickHouse Cloud (isCloud=true)', () => {
+    describe('26.2 cloud backport branch (min 26.2.1.307)', () => {
+      it.each<readonly [ClickHouseVersionTuple, boolean]>([
+        [[26, 2, 1, 307], true],
+        [[26, 2, 1, 308], true],
+        [[26, 2, 2, 0], true],
+        [[26, 2, 99, 99], true],
+        [[26, 2, 1, 306], false],
+        [[26, 2, 1, 0], false],
+        [[26, 2, 0, 99], false],
+        [[26, 2, 0, 0], false],
+      ])('%j → %s', (version, expected) => {
+        expect(supportsDirectReadMap(version, true)).toBe(expected);
+      });
+    });
+
+    describe('26.3 cloud branch (always supported)', () => {
+      it.each<readonly [ClickHouseVersionTuple, boolean]>([
+        [[26, 3, 0, 0], true],
+        [[26, 3, 0, 1], true],
+        [[26, 3, 1, 0], true],
+        [[26, 3, 12, 2], true],
+        [[26, 3, 99, 99], true],
+      ])('%j → %s', (version, expected) => {
+        expect(supportsDirectReadMap(version, true)).toBe(expected);
+      });
+    });
+
+    describe('26.4 cloud backport branch (min 26.4.1.1740)', () => {
+      it.each<readonly [ClickHouseVersionTuple, boolean]>([
+        [[26, 4, 1, 1740], true],
+        [[26, 4, 1, 1741], true],
+        [[26, 4, 2, 0], true],
+        [[26, 4, 99, 99], true],
+        [[26, 4, 1, 1739], false],
+        [[26, 4, 1, 0], false],
+        [[26, 4, 0, 99], false],
+        [[26, 4, 0, 0], false],
+      ])('%j → %s', (version, expected) => {
+        expect(supportsDirectReadMap(version, true)).toBe(expected);
+      });
+    });
+
+    describe('26.5+ cloud baseline (always supported)', () => {
+      it.each<readonly [ClickHouseVersionTuple, boolean]>([
+        [[26, 5, 0, 0], true],
+        [[26, 6, 0, 0], true],
+        [[27, 0, 0, 0], true],
+      ])('%j → %s', (version, expected) => {
+        expect(supportsDirectReadMap(version, true)).toBe(expected);
+      });
+    });
+
+    describe('unsupported cloud branches', () => {
+      it.each<readonly [ClickHouseVersionTuple, boolean]>([
+        [[26, 1, 99, 99], false],
+        [[26, 0, 0, 0], false],
+        [[25, 12, 0, 0], false],
+        [[24, 0, 0, 0], false],
+      ])('%j → %s', (version, expected) => {
+        expect(supportsDirectReadMap(version, true)).toBe(expected);
+      });
+    });
+
+    it('returns false when the version is undefined', () => {
+      expect(supportsDirectReadMap(undefined, true)).toBe(false);
+    });
+
+    it.each<readonly [ClickHouseVersionTuple]>([
+      [[26, 3, 0, 0]],
+      [[26, 2, 1, 307]],
+      [[26, 4, 1, 1740]],
+    ])(
+      'cloud cutoffs differ from self-hosted on %j (supported on cloud, not self-hosted)',
+      version => {
+        expect(supportsDirectReadMap(version, false)).toBe(false);
+        expect(supportsDirectReadMap(version, true)).toBe(true);
+      },
+    );
+  });
 });

@@ -71,4 +71,30 @@ describe('utils/externalApi', () => {
       expect(translated.note).toBe('threshold raised to 100');
     });
   });
+
+  describe('numConsecutiveWindows handling', () => {
+    it('returns numConsecutiveWindows as null when the value is null', () => {
+      const alert = createAlertDocument({ numConsecutiveWindows: null });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.numConsecutiveWindows).toBeNull();
+    });
+
+    it('returns numConsecutiveWindows as null when the value is undefined', () => {
+      const alert = createAlertDocument({ numConsecutiveWindows: undefined });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.numConsecutiveWindows).toBeNull();
+    });
+
+    it('returns numConsecutiveWindows when the value is a positive integer', () => {
+      const alert = createAlertDocument({ numConsecutiveWindows: 3 });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.numConsecutiveWindows).toBe(3);
+    });
+  });
 });

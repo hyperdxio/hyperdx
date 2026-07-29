@@ -1,4 +1,4 @@
-import { groupByTags } from '../groupByTags';
+import { groupByTags } from '@/utils/groupByTags';
 
 type Item = { name: string; tags: string[] };
 

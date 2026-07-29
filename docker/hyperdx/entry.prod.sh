@@ -12,6 +12,8 @@ echo ""
 echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 
+node /etc/local/refresh-env.js
+
 # Optionally include the dashboard provisioner task
 EXTRA_NAMES=""
 EXTRA_CMDS=""

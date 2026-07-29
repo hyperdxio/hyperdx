@@ -14,6 +14,7 @@ export enum AlertState {
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+  PENDING = 'PENDING',
 }
 
 export interface IAlertError {
@@ -83,6 +84,9 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // Multi-window alerting: fire only after N violations in M consecutive windows
+  numConsecutiveWindows?: number | null;
 
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
@@ -190,6 +194,11 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
     },
+    numConsecutiveWindows: {
+      type: Number,
+      required: false,
+      min: 1,
+    },
     silenced: {
       required: false,
       type: {
@@ -231,5 +240,9 @@ const AlertSchema = new Schema<IAlert>(
     toJSON: { virtuals: true },
   },
 );
+
+// Team-scoped list/count queries (e.g. external API pagination) filter on team
+// and sort by _id. Compound so the sort is index-covered (no in-memory sort).
+AlertSchema.index({ team: 1, _id: 1 });
 
 export default mongoose.model<IAlert>('Alert', AlertSchema);

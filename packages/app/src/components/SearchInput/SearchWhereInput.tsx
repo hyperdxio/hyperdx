@@ -1,11 +1,14 @@
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { Box, Flex, Kbd } from '@mantine/core';
+import { ActionIcon, Box, Flex, Kbd, Tooltip } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { IconHelp } from '@tabler/icons-react';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
+import SyntaxReferenceModal from './SyntaxReferenceModal';
 
 import styles from './SearchWhereInput.module.scss';
 
@@ -116,6 +119,7 @@ export type SearchWhereInputProps = {
    * Source id used in various queries
    */
   sourceId?: string;
+  parentRef?: HTMLElement | null;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -163,7 +167,11 @@ export default function SearchWhereInput({
   dateRange,
   languageName = `${name}Language`,
   sourceId,
+  parentRef,
 }: SearchWhereInputProps) {
+  const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
+    useDisclosure(false);
+
   const { field: languageField } = useController({
     control,
     name: languageName as FieldPath<any>,
@@ -182,68 +190,87 @@ export default function SearchWhereInput({
   const sizeClass = size === 'xs' ? styles.sizeXs : styles.sizeSm;
 
   return (
-    <Box
-      className={styles.root}
-      style={{
-        width,
-        maxWidth,
-        minWidth,
-      }}
-    >
-      <Flex
-        align="center"
-        className={`${styles.languageSwitch} ${sizeClass}`}
-        data-testid="where-language-switch"
-        onMouseDown={e => e.preventDefault()}
+    <>
+      <SyntaxReferenceModal
+        opened={syntaxRefOpened}
+        onClose={closeSyntaxRef}
+        language={language}
+      />
+      <Box
+        className={styles.root}
+        style={{
+          width,
+          maxWidth,
+          minWidth,
+        }}
       >
-        <InputLanguageSwitch
-          language={language}
-          onLanguageChange={handleLanguageChange}
-        />
-      </Flex>
-      <Box className={`${styles.inputWrapper} ${sizeClass}`}>
-        {isSql ? (
-          <SQLInlineEditorControlled
-            {...tc}
-            control={control}
-            name={name}
-            placeholder={sqlPlaceholder}
-            onSubmit={onSubmit}
-            label={showLabel ? labelText : undefined}
-            queryHistoryType={sqlQueryHistoryType}
-            enableHotkey={enableHotkey}
-            allowMultiline={allowMultiline}
-            size={size}
-            additionalSuggestions={additionalSuggestions}
-            dateRange={dateRange}
-            sourceId={sourceId}
+        <Flex
+          align="center"
+          className={`${styles.languageSwitch} ${sizeClass}`}
+          data-testid="where-language-switch"
+          onMouseDown={e => e.preventDefault()}
+        >
+          <InputLanguageSwitch
+            language={language}
+            onLanguageChange={handleLanguageChange}
           />
-        ) : (
-          <SearchInputV2
-            {...tc}
-            control={control}
-            name={name}
-            onSubmit={onSubmit}
-            placeholder={lucenePlaceholder}
-            queryHistoryType={luceneQueryHistoryType}
-            enableHotkey={enableHotkey}
-            size={size}
-            data-testid={dataTestId}
-            additionalSuggestions={additionalSuggestions}
-            dateRange={dateRange}
-            sourceId={sourceId}
-          />
-        )}
-        {enableHotkey && (
-          <Box
-            className={styles.shortcutHint}
-            title="Press / or s to focus search"
-            aria-hidden
-          >
-            <Kbd size="xs">/</Kbd>
-          </Box>
-        )}
+          <Tooltip label="Syntax reference" withArrow position="top">
+            <ActionIcon
+              variant="subtle"
+              size="xs"
+              aria-label="Open syntax reference"
+              onClick={openSyntaxRef}
+              style={{ marginRight: 4 }}
+            >
+              <IconHelp size={14} />
+            </ActionIcon>
+          </Tooltip>
+        </Flex>
+        <Box className={`${styles.inputWrapper} ${sizeClass}`}>
+          {isSql ? (
+            <SQLInlineEditorControlled
+              {...tc}
+              control={control}
+              name={name}
+              placeholder={sqlPlaceholder}
+              onSubmit={onSubmit}
+              label={showLabel ? labelText : undefined}
+              queryHistoryType={sqlQueryHistoryType}
+              enableHotkey={enableHotkey}
+              allowMultiline={allowMultiline}
+              size={size}
+              additionalSuggestions={additionalSuggestions}
+              dateRange={dateRange}
+              sourceId={sourceId}
+              parentRef={parentRef}
+            />
+          ) : (
+            <SearchInputV2
+              {...tc}
+              control={control}
+              name={name}
+              onSubmit={onSubmit}
+              placeholder={lucenePlaceholder}
+              queryHistoryType={luceneQueryHistoryType}
+              enableHotkey={enableHotkey}
+              size={size}
+              data-testid={dataTestId}
+              additionalSuggestions={additionalSuggestions}
+              dateRange={dateRange}
+              sourceId={sourceId}
+            />
+          )}
+          {enableHotkey && (
+            <Box
+              className={styles.shortcutHint}
+              title="Press / or s to focus search"
+              aria-hidden
+            >
+              <Kbd size="xs">/</Kbd>
+            </Box>
+          )}
+        </Box>
       </Box>
-    </Box>
+    </>
   );
 }

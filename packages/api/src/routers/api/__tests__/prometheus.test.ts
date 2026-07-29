@@ -3,7 +3,7 @@ import {
   formatVectorResponse,
   parseDuration,
   parseTimestamp,
-} from '../prometheus';
+} from '@/routers/api/prometheus';
 
 describe('parseTimestamp', () => {
   it('returns numeric inputs unchanged', () => {

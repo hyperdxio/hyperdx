@@ -77,7 +77,7 @@ export default function GroupTabBar({
 
   return (
     <>
-      <Tabs.List style={{ flex: 1, border: 'none' }}>
+      <Tabs.List className="dashboard-group-tabs-list" style={{ flex: 1 }}>
         {tabs.map(tab => (
           <Tabs.Tab
             key={tab.id}

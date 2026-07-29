@@ -1,4 +1,4 @@
-import { stripFieldClause } from '../KubernetesFilters';
+import { stripFieldClause } from '@/components/KubernetesFilters';
 
 describe('stripFieldClause', () => {
   const resourceAttr = 'ResourceAttributes';

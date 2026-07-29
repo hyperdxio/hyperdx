@@ -26,8 +26,6 @@ const SAMPLES = 10_000;
 
 // ---- Types ---------------------------------------------------------
 
-export type { TrendBucket };
-
 /** CLI-specific pattern group that preserves full EventRow samples and uses `count` for backward compat. */
 export interface PatternGroup {
   id: string;

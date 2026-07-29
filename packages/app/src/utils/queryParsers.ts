@@ -40,8 +40,31 @@ export const parseAsStringEncoded = createParser<string>({
  * spaces, unencoded '[', ']', etc.) are handled via a fallback to plain
  * JSON.parse after the decodeURIComponent step naturally resolves '%22' →
  * '"', '+' → ' ', etc. via URLSearchParams.get().
+ *
+ * Optional `validate`: a guard that either returns the (narrowed) value or
+ * throws / returns `null` for a shape mismatch. A stale, hand-edited, or
+ * cross-version URL whose param is valid JSON but the wrong shape (`{}`, `5`,
+ * `"x"`, an array of malformed frames) then resolves to `null` instead of a
+ * structurally-invalid object. Combined with `.withDefault(...)`, callers get
+ * the safe default rather than a value that throws downstream during render.
+ * Zod schemas satisfy this signature via `schema.parse`.
  */
-export function parseAsJsonEncoded<T>() {
+export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
+  const finalize = (parsed: unknown): T | null => {
+    if (!validate) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return parsed as T;
+    }
+    try {
+      const validated = validate(parsed);
+      // A validator may signal rejection by returning null/undefined instead
+      // of throwing; treat both the same as a thrown mismatch.
+      return validated == null ? null : validated;
+    } catch {
+      return null;
+    }
+  };
+
   return createParser<T>({
     parse: value => {
       let decoded: string;
@@ -50,7 +73,7 @@ export function parseAsJsonEncoded<T>() {
       } catch {
         // Malformed URI sequence — value is likely old-format plain JSON.
         try {
-          return JSON.parse(value);
+          return finalize(JSON.parse(value));
         } catch {
           return null;
         }
@@ -59,7 +82,7 @@ export function parseAsJsonEncoded<T>() {
       // This handles both new-format (double-encoded) and old-format URLs,
       // since decodeURIComponent is a no-op on plain JSON strings.
       try {
-        return JSON.parse(decoded);
+        return finalize(JSON.parse(decoded));
       } catch {
         return null;
       }

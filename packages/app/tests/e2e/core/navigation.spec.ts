@@ -137,6 +137,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       const setupItem = page.locator(
         '[data-testid="setup-instructions-menu-item"]',
       );
+      const changelogItem = page.locator('[data-testid="changelog-menu-item"]');
       const shortcutsItem = page.locator(
         '[data-testid="keyboard-shortcuts-menu-item"]',
       );
@@ -144,11 +145,44 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
 
       await expect(documentationItem).toBeVisible();
       await expect(setupItem).toBeVisible();
+      await expect(changelogItem).toBeVisible();
       await expect(shortcutsItem).toBeVisible();
       await expect(discordItem).toBeVisible();
     });
 
+    await test.step('Open changelog from help menu with rendered markdown', async () => {
+      const changelogItem = page.getByTestId('changelog-menu-item');
+      await changelogItem.scrollIntoViewIfNeeded();
+      await changelogItem.click();
+
+      const dialog = page.getByRole('dialog', { name: "What's New" });
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+      const modal = dialog.getByTestId('changelog-modal');
+      const heading = modal.locator('h2').first();
+      const errorText = modal.getByText('Unable to load the changelog.');
+
+      // Wait for the async fetch to settle into either outcome, then assert it
+      // settled on success. The changelog asset is copied into public/ by
+      // next.config, so a broken copy fails here fast and legibly instead of
+      // timing out on the heading check.
+      await expect(heading.or(errorText)).toBeVisible({ timeout: 10_000 });
+      await expect(errorText).toHaveCount(0);
+
+      // The changelog markdown renders as real HTML (version headings become
+      // <h2>), so a visible heading proves it was parsed, not shown raw.
+      await expect(heading).toBeVisible();
+
+      // Close so the help menu can be reopened for the next step.
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+    });
+
     await test.step('Open keyboard shortcuts from help menu', async () => {
+      // The changelog step closed the menu, so reopen it first.
+      const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+      await helpMenuTrigger.click({ timeout: 10000 });
+
       const shortcutsItem = page.getByTestId('keyboard-shortcuts-menu-item');
       await shortcutsItem.scrollIntoViewIfNeeded();
       await shortcutsItem.click();
@@ -158,32 +192,28 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       ).toBeVisible({ timeout: 10_000 });
     });
   });
-});
 
-// Full-server tests that require authentication and backend services
-test.skip('Navigation - Full Server Features', { tag: ['@core'] }, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/search');
-  });
+  test('should show a fallback when the changelog fails to load', async ({
+    page,
+  }) => {
+    // Force the changelog asset to 404 so the modal's error branch renders.
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({ status: 404, body: 'not found' }),
+    );
 
-  test('should show full server navigation links', async ({ page }) => {
-    await test.step('Verify team settings link is visible', async () => {
-      const teamSettingsLink = page.locator(
-        '[data-testid="nav-link-team-settings"]',
-      );
-      await expect(teamSettingsLink).toBeVisible();
-      await expect(teamSettingsLink).toHaveAttribute('href', '/team-settings');
-    });
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
 
-    await test.step('Verify alerts link functionality', async () => {
-      const alertsLink = page.locator('[data-testid="nav-link-alerts"]');
-      await expect(alertsLink).toBeVisible();
-      await expect(alertsLink).toHaveAttribute('href', '/alerts');
+    const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+    await helpMenuTrigger.click({ timeout: 10000 });
 
-      // In full-server mode, we can actually navigate to alerts
-      await alertsLink.click();
-      await page.waitForURL('**/alerts**');
-      await expect(page).toHaveURL(/.*\/alerts/);
-    });
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
+
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Unable to load the changelog.')).toBeVisible(
+      { timeout: 10_000 },
+    );
   });
 });

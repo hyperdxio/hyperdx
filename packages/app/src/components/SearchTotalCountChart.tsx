@@ -35,13 +35,13 @@ export function useSearchTotalCount(
     enableParallelQueries?: boolean;
   } = {},
 ) {
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
+
   // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
   const queriedConfig = useMemo(
     () => convertToTimeChartConfig(config),
     [config],
   );
-
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const {
     data: totalCountData,
     isLoading,

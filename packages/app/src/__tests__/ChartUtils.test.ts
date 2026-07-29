@@ -8,7 +8,8 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
-  formatResponseForPieChart,
+  findNearestSeriesKey,
+  formatResponseForCategoricalChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
 import { COLORS } from '@/utils';
@@ -806,6 +807,37 @@ describe('ChartUtils', () => {
 
       expect(granularityFromFunction).toBe('5 minute');
     });
+
+    // seriesLimit lives on the builder member of the ChartConfigWithDateRange
+    // union, so narrow the result before reading it. The per-tile value is
+    // read from the config itself (no team override anymore).
+    const seriesLimitOf = (seriesLimit?: number | null) =>
+      (
+        convertToTimeChartConfig({
+          granularity: '5 minute',
+          dateRange: [
+            new Date('2025-11-26T00:00:00Z'),
+            new Date('2025-11-27T00:00:00Z'),
+          ],
+          ...(seriesLimit !== undefined ? { seriesLimit } : {}),
+        } as BuilderChartConfigWithDateRange) as BuilderChartConfigWithDateRange
+      ).seriesLimit;
+
+    it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
+      expect(seriesLimitOf()).toBeUndefined();
+    });
+
+    it('normalizes a cleared (null) seriesLimit to undefined (disabled)', () => {
+      expect(seriesLimitOf(null)).toBeUndefined();
+    });
+
+    it('uses the tile seriesLimit when provided', () => {
+      expect(seriesLimitOf(5)).toBe(5);
+    });
+
+    it('passes a large tile seriesLimit through unbounded', () => {
+      expect(seriesLimitOf(100000)).toBe(100000);
+    });
   });
 
   describe('convertToNumberChartConfig', () => {
@@ -870,12 +902,12 @@ describe('ChartUtils', () => {
     });
   });
 
-  describe('formatResponseForPieChart', () => {
+  describe('formatResponseForCategoricalChart', () => {
     const getColor = (index: number, label: string) =>
       `color-${index}-${label}`;
 
     it('returns empty array when data.data is empty', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -887,7 +919,7 @@ describe('ChartUtils', () => {
 
     it('throws when meta is missing', () => {
       expect(() =>
-        formatResponseForPieChart(
+        formatResponseForCategoricalChart(
           { data: [{ 'count()': 10 }] } as any,
           getColor,
         ),
@@ -896,7 +928,7 @@ describe('ChartUtils', () => {
 
     it('throws when there are no numeric value columns', () => {
       expect(() =>
-        formatResponseForPieChart(
+        formatResponseForCategoricalChart(
           {
             data: [{ ServiceName: 'checkout' }],
             meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
@@ -909,7 +941,7 @@ describe('ChartUtils', () => {
     });
 
     it('uses the value column name as label when there are no group-by columns', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ 'count()': 10 }],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -922,7 +954,7 @@ describe('ChartUtils', () => {
     });
 
     it('joins group-by column values with " - " as the label', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [
             { 'count()': 10, ServiceName: 'checkout', env: 'prod' },
@@ -951,7 +983,7 @@ describe('ChartUtils', () => {
     });
 
     it('parses string numeric values', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ 'count()': '42' }],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -964,7 +996,7 @@ describe('ChartUtils', () => {
     });
 
     it('filters out NaN values', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ 'count()': 'not-a-number' }, { 'count()': 5 }],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -977,7 +1009,7 @@ describe('ChartUtils', () => {
     });
 
     it('sorts entries in descending order by value', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [
             { 'count()': 3, ServiceName: 'c' },
@@ -995,7 +1027,7 @@ describe('ChartUtils', () => {
     });
 
     it('assigns colors by sorted index', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [
             { 'count()': 1, ServiceName: 'b' },
@@ -1013,8 +1045,61 @@ describe('ChartUtils', () => {
       expect(result[1]).toMatchObject({ label: 'b', color: 'color-1-b' });
     });
 
+    it('preserves the input row order and index-based colors when applyDefaultOrder is false', () => {
+      // Rows are intentionally NOT in descending-by-value order. With
+      // applyDefaultOrder=false (the custom ORDER BY render path), the server
+      // has already ordered the rows, so the function must not re-sort them and
+      // must assign palette colors by the incoming row index.
+      const result = formatResponseForCategoricalChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+        false,
+      );
+
+      // Row order is preserved exactly as provided (no descending re-sort).
+      expect(result).toEqual([
+        { label: 'c', value: 3, color: 'color-0-c' },
+        { label: 'a', value: 10, color: 'color-1-a' },
+        { label: 'b', value: 1, color: 'color-2-b' },
+      ]);
+    });
+
+    it('still sorts descending when applyDefaultOrder is explicitly true', () => {
+      const result = formatResponseForCategoricalChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+        true,
+      );
+
+      expect(result).toEqual([
+        { label: 'a', value: 10, color: 'color-0-a' },
+        { label: 'c', value: 3, color: 'color-1-c' },
+        { label: 'b', value: 1, color: 'color-2-b' },
+      ]);
+    });
+
     it('uses only the first numeric column as the value column', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ count: 5, duration: 999, ServiceName: 'svc' }],
           meta: [
@@ -1028,6 +1113,62 @@ describe('ChartUtils', () => {
       expect(result).toEqual([
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
+    });
+  });
+
+  describe('findNearestSeriesKey', () => {
+    it('returns the series whose captured Y is nearest the pointer', () => {
+      const seriesY = new Map([
+        ['a', 100],
+        ['b', 50],
+        ['c', 10],
+      ]);
+      expect(findNearestSeriesKey(seriesY, ['a', 'b', 'c'], 48, 30)).toBe('b');
+    });
+
+    it('returns undefined when no series is within maxDistancePx', () => {
+      const seriesY = new Map([
+        ['a', 100],
+        ['b', 50],
+      ]);
+      expect(
+        findNearestSeriesKey(seriesY, ['a', 'b'], 200, 30),
+      ).toBeUndefined();
+    });
+
+    it('includes a series exactly at maxDistancePx', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(findNearestSeriesKey(seriesY, ['a'], 70, 30)).toBe('a');
+    });
+
+    it('returns undefined when pointerY is undefined', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(
+        findNearestSeriesKey(seriesY, ['a'], undefined, 30),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined when the captured map is undefined', () => {
+      expect(findNearestSeriesKey(undefined, ['a'], 100, 30)).toBeUndefined();
+    });
+
+    it('returns undefined when there are no candidate keys', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(findNearestSeriesKey(seriesY, [], 100, 30)).toBeUndefined();
+    });
+
+    it('skips candidates absent from the captured map', () => {
+      const seriesY = new Map([['b', 105]]);
+      expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('b');
+    });
+
+    it('resolves ties to the first candidate', () => {
+      const seriesY = new Map([
+        ['a', 90],
+        ['b', 110],
+      ]);
+      // pointer 100 is 10px from both 'a' (90) and 'b' (110)
+      expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('a');
     });
   });
 });

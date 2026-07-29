@@ -1,3 +1,5 @@
+import { ColumnMeta } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 import {
   isUnsupportedCountFunction,
   optimizeFacetedKeyValuesConfig,
@@ -14,9 +16,6 @@ import {
   SourceKind,
   TLogSource,
 } from '@/types';
-
-import { ColumnMeta } from '..';
-import { ClickhouseClient } from '../node';
 
 describe('materializedViews', () => {
   const metadata: Metadata = {

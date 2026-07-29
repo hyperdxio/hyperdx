@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
@@ -31,7 +31,7 @@ const DashboardFilterSelect = ({
   isLoading,
   isError,
 }: DashboardFilterSelectProps) => {
-  const sortedValues = values?.toSorted() || [];
+  const valuesOrEmptyMemo = useMemo(() => values ?? [], [values]);
   const tooltipText = getAppliesToTooltip(filter);
 
   return (
@@ -64,7 +64,7 @@ const DashboardFilterSelect = ({
         <VirtualMultiSelect
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
-          data={sortedValues}
+          data={valuesOrEmptyMemo}
           // Surface loading as a dropdown hint rather than disabling the control,
           // so a completed/empty/failed query stays interactive and the user can
           // still clear or adjust the selection.

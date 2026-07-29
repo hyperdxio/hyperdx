@@ -1,7 +1,7 @@
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
-import useDashboardFilters from '../useDashboardFilters';
+import useDashboardFilters from '@/hooks/useDashboardFilters';
 
 // Mock nuqs useQueryState with a simple useState-like implementation
 let mockState: Filter[] | null = null;

@@ -6,6 +6,7 @@ import {
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_SESSIONS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
+  METADATA_MV_LOGS_SOURCE_NAME,
 } from '../utils/constants';
 
 const COMMON_FIELDS = [
@@ -229,6 +230,88 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
             orderByExpression: '',
           },
         });
+      }
+    },
+  );
+
+  test(
+    'source form sends the complete source on update (no field omission)',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      // Pins the contract that updateSource relies on: saving from the
+      // source form must not drop any populated field. The controller
+      // uses findOneAndReplace, so any field omitted from the PUT body
+      // is silently deleted from MongoDB. If the frontend ever moves
+      // to a partial/PATCH-style payload, this test will fail because
+      // the before/after diff will show fields disappearing.
+      //
+      // METADATA_MV_LOGS has the broadest field coverage in fixtures,
+      // including metadataMaterializedViews — the field whose deletion
+      // bug motivated the controller change.
+      const logSources = await getSources(page, 'log');
+      const sourceBefore = logSources.find(
+        (s: any) => s.name === METADATA_MV_LOGS_SOURCE_NAME,
+      );
+      expect(sourceBefore).toBeDefined();
+      expect(sourceBefore.metadataMaterializedViews).toBeDefined();
+      const sourceId = sourceBefore._id;
+
+      await searchPage.selectSource(METADATA_MV_LOGS_SOURCE_NAME);
+      await searchPage.openEditSourceModal();
+
+      // Gate on form hydration to avoid racing Save against
+      // react-hook-form's `values` reset. In full-stack mode "Edit
+      // source" navigates to /team and expands the source's
+      // TableSourceForm inline (no modal), so we scope by input name.
+      await expect(page.locator('input[name="name"]')).toHaveValue(
+        METADATA_MV_LOGS_SOURCE_NAME,
+      );
+
+      const putResponsePromise = page.waitForResponse(
+        res =>
+          res.url().includes(`/sources/${sourceId}`) &&
+          res.request().method() === 'PUT',
+      );
+      await searchPage.saveSourceForm();
+
+      // The seeded source sets implicitColumnExpression without
+      // bodyExpression, which triggers the pairing-warnings dialog.
+      // The PUT only fires after the user confirms via "Save anyway".
+      await page.getByRole('button', { name: 'Save anyway' }).click();
+
+      const putResponse = await putResponsePromise;
+      expect(putResponse.ok()).toBeTruthy();
+
+      const sourcesAfter = await getSources(page, 'log');
+      const sourceAfter = sourcesAfter.find((s: any) => s._id === sourceId);
+      expect(sourceAfter).toBeDefined();
+
+      // Specific regression: metadataMaterializedViews survived the
+      // form roundtrip with its user-meaningful fields intact. The
+      // embedded sub-document gets a fresh Mongoose-minted _id on
+      // each findOneAndReplace, which is fine — we only care that
+      // the rollup config the user configured is preserved.
+      expect(sourceAfter.metadataMaterializedViews).toMatchObject({
+        keyRollupTable: sourceBefore.metadataMaterializedViews.keyRollupTable,
+        kvRollupTable: sourceBefore.metadataMaterializedViews.kvRollupTable,
+        granularity: sourceBefore.metadataMaterializedViews.granularity,
+      });
+
+      // Broader contract: every populated field present before the save
+      // is still present after the save. Server-managed bookkeeping
+      // fields are expected to differ (timestamps, version) or stay
+      // pinned (_id, team) on their own schedule.
+      const serverManagedKeys = new Set([
+        '_id',
+        '__v',
+        'team',
+        'createdAt',
+        'updatedAt',
+      ]);
+      for (const key of Object.keys(sourceBefore)) {
+        if (serverManagedKeys.has(key)) continue;
+        if (sourceBefore[key] == null) continue;
+        expect(sourceAfter).toHaveProperty(key);
       }
     },
   );

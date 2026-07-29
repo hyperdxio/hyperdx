@@ -4,6 +4,7 @@ import ky from 'ky-universal';
 import type {
   Alert,
   AlertApiResponse,
+  AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   InstallationApiResponse,
   MeApiResponse,
@@ -187,6 +188,34 @@ const api = {
       queryKey: api.getAlertQueryKey(alertId),
       queryFn: () => hdxServer(`alerts/${alertId}`).json<AlertApiResponse>(),
       enabled: alertId != null,
+    });
+  },
+  getAlertHistoryQueryKey: (
+    alertId: string | undefined,
+    startTime: number,
+    endTime: number,
+  ) => ['alertHistory', alertId, startTime, endTime] as const,
+  // Fetches alert firing/recovery transitions within a time range, for drawing
+  // annotations on dashboard charts. Bounds are quantized to the minute so a
+  // live/auto-refreshing dashboard doesn't produce a new query key (and refetch
+  // every alerted tile) on every sub-minute tick.
+  useAlertHistory(
+    alertId: string | undefined,
+    dateRange: [Date, Date],
+    { enabled = true }: { enabled?: boolean } = {},
+  ) {
+    const BUCKET_MS = 60_000;
+    const startTime =
+      Math.floor(dateRange[0].getTime() / BUCKET_MS) * BUCKET_MS;
+    const endTime = Math.floor(dateRange[1].getTime() / BUCKET_MS) * BUCKET_MS;
+    return useQuery({
+      queryKey: api.getAlertHistoryQueryKey(alertId, startTime, endTime),
+      queryFn: () =>
+        hdxServer(`alerts/${alertId}/history`, {
+          method: 'GET',
+          searchParams: { startTime, endTime },
+        }).json<AlertHistoryRangeApiResponse>(),
+      enabled: enabled && alertId != null,
     });
   },
   useServices() {
@@ -541,8 +570,8 @@ export const prometheusApi = {
     end: number;
     step: string;
     connectionId: string;
-    database: string;
-    table: string;
+    database?: string;
+    table?: string;
   }): Promise<PrometheusQueryRangeResponse> =>
     prometheusFetch('v1/prometheus/query_range', {
       query: params.query,
@@ -550,8 +579,8 @@ export const prometheusApi = {
       end: String(params.end),
       step: params.step,
       connectionId: params.connectionId,
-      database: params.database,
-      table: params.table,
+      ...(params.database ? { database: params.database } : {}),
+      ...(params.table ? { table: params.table } : {}),
     }),
 
   labelValues: (params: {

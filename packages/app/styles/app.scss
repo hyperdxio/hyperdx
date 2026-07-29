@@ -209,14 +209,51 @@ button:focus-visible {
   opacity: 0.4 !important;
 }
 
-.react-grid-item > .react-resizable-handle::after {
-  border-color: var(--color-text) !important;
-  right: -4px;
-  bottom: -4px;
-  width: 4px;
-  height: 4px;
-  border-right: 2px solid var(--color-text) !important;
-  border-bottom: 2px solid var(--color-text) !important;
+.react-grid-item > .react-resizable-handle {
+  padding: 0;
+  // Drop react-resizable's default corner glyph (a low-opacity SVG angle it
+  // sets via background-image); we render our own grip below instead.
+  background-image: none;
+
+  // Modern dotted grip: a triangular cluster of dots tucked into the corner.
+  &::after {
+    content: '';
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 12px;
+    height: 12px;
+    border: none !important;
+    background-image: radial-gradient(
+      circle,
+      var(--color-text-muted) 40%,
+      transparent 45%
+    );
+    background-size: 4px 4px;
+    background-position: bottom right;
+
+    // Clip the dot grid into a lower-right triangle for a classic grip look.
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+}
+
+.react-grid-item:hover > .react-resizable-handle::after {
+  opacity: 0.65;
+}
+
+.react-grid-item > .react-resizable-handle:hover::after {
+  opacity: 1;
+}
+
+// Mantine's default Tabs variant draws a full-width underline beneath the tab
+// list via a ::before pseudo-element. Dashboard groups already have their own
+// border plus a white-header / muted-body split, so this line is redundant.
+// Scoped to the list's ::before so the active-tab indicator (a separate
+// element that reuses --tab-border-color) is left intact.
+.dashboard-group-tabs-list::before {
+  display: none !important;
 }
 
 // custom overrides for jsontree
@@ -284,6 +321,16 @@ button:focus-visible {
   &:focus-visible {
     outline: none;
   }
+}
+
+// The chart surface (and its interaction layers) is keyboard-focusable for
+// accessibility, which paints a browser focus ring when the chart is *clicked*.
+// Suppress the ring only for pointer focus (`:focus:not(:focus-visible)`) so a
+// click doesn't outline the chart, while keyboard focus (`:focus-visible`)
+// still shows a visible indicator as required by WCAG 2.4.11.
+.recharts-surface:focus:not(:focus-visible),
+.recharts-surface *:focus:not(:focus-visible) {
+  outline: none;
 }
 
 // Global cursor pointer for interactive elements

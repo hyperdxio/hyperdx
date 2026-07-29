@@ -1,18 +1,15 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import Webhook from '@/models/webhook';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
-
-export function registerGetWebhook(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerGetWebhook({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_get_webhook',
     {
       title: 'List Webhooks',
@@ -22,7 +19,7 @@ export function registerGetWebhook(
         'clickstack_save_alert.',
       inputSchema: z.object({}),
     },
-    withToolTracing('clickstack_get_webhook', context, async () => {
+    async () => {
       const webhooks = await Webhook.find({ team: teamId });
 
       const output = webhooks.map(wh => ({
@@ -36,6 +33,6 @@ export function registerGetWebhook(
           { type: 'text' as const, text: JSON.stringify(output, null, 2) },
         ],
       };
-    }),
+    },
   );
 }

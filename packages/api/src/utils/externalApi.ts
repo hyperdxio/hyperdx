@@ -237,6 +237,7 @@ export type ExternalAlert = {
   interval: AlertInterval;
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: string | null;
+  numConsecutiveWindows?: number | null;
   thresholdType: AlertThresholdType;
   source?: string;
   state: AlertState;
@@ -338,6 +339,7 @@ export function translateAlertDocumentToExternalAlert(
       scheduleOffsetMinutes: alertObj.scheduleOffsetMinutes,
     }),
     scheduleStartAt: transformScheduleStartAt(alertObj.scheduleStartAt),
+    numConsecutiveWindows: alertObj.numConsecutiveWindows ?? null,
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,

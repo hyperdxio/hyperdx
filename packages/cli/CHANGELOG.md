@@ -1,5 +1,59 @@
 # @hyperdx/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- 386c365d: Add terminal charting to the CLI, built on the same renderChartConfig SQL
+  pipeline as the web dashboards:
+
+  - Interactive Dashboards page in the TUI (`d` key) with tile navigation,
+    fullscreen tiles, time-range editing, and refresh
+  - `hdx chart` command for troubleshooting from the terminal (including by
+    AI agents): render saved dashboard tiles (`-d/-t`), ad-hoc builder charts
+    (`-s <source>` with `--agg/--value/--where/--group-by/--series`), or ad-hoc
+    raw SQL (`--sql` with `$__timeFilter`/`$__timeInterval` macros)
+  - Supported chart types: line, stacked bar, number, table, bar, pie, and
+    markdown; flexible time ranges (`--since 1h`, `--from now-24h`, ISO dates);
+    `--json` output for structured consumption; ANSI colors auto-stripped when
+    piping (`--color auto|always|never`)
+
+### Patch Changes
+
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+
+## 0.5.2
+
+### Patch Changes
+
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+
+## 0.5.1
+
+### Patch Changes
+
+- 5c46215f8: Bump `@clickhouse/client*` to `1.23.0-head.fae5998.1` and fix the type
+  incompatibility it introduces.
+
+  In `@clickhouse/client*` 1.23 each platform package (`@clickhouse/client`,
+  `@clickhouse/client-web`) bundles its own copy of the shared types, so their
+  `ClickHouseSettings` types — which reference the nominally-compared `SettingsMap`
+  class — are no longer the same type as `@clickhouse/client-common`'s. The shared
+  `processClickhouseSettings()` helper produces the `client-common` flavor, so
+  assigning it into the per-platform clients' `query()` now requires an explicit
+  bridge. Guard the existing `as ClickHouseSettings` assertions at those
+  boundaries (`node.ts`, `browser.ts`, `cli`) with a scoped
+  `@typescript-eslint/no-unsafe-type-assertion` disable, matching the existing
+  "client library type mismatch" pattern. No runtime behavior changes.
+
+- 45954c318: Import ClickHouse client types from the platform packages
+  (`@clickhouse/client` / `@clickhouse/client-web`) instead of the deprecated
+  `@clickhouse/client-common`. This makes the packages forward-compatible with
+  `@clickhouse/client*` 1.23 (where `client-common` is deprecated and each
+  platform package bundles and re-exports its own copy of the shared types)
+  without bumping the pinned version. No runtime behavior changes.
+- 1a64796c1: Removing relative imports and using path aliases
+
 ## 0.5.0
 
 ### Minor Changes

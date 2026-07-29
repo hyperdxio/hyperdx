@@ -18,6 +18,7 @@ const log = (msg: string) => process.stdout.write(`${msg}\n`);
 const logError = (msg: string) => process.stderr.write(`${msg}\n`);
 
 const require = createRequire(import.meta.url);
+
 const PKG_VERSION: string = (require('../package.json') as { version: string })
   .version;
 

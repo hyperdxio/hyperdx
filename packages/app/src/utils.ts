@@ -8,6 +8,7 @@ import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
+  ColorCondition,
   NumericUnit,
   SourceKind,
   TMetricSource,
@@ -612,6 +613,85 @@ function semanticTokenFallback(
   }
 }
 
+/**
+ * Evaluates a single conditional color rule against a runtime value.
+ *
+ * Numeric operators (`gt`, `gte`, `lt`, `lte`, `between`) return false when
+ * `typeof value !== 'number'`. Equality operators (`eq`, `neq`) use strict
+ * comparison; cross-type mismatches (`"5"` vs `5`) return false. String
+ * operators (`contains`, `startsWith`, `endsWith`, `regex`) return false when
+ * `typeof value !== 'string'`. Bad regex patterns are silently treated as
+ * no-match (schema `.refine` is best-effort; this is the runtime safety net).
+ */
+export function evaluateColorCondition(
+  value: number | string,
+  rule: ColorCondition,
+): boolean {
+  switch (rule.operator) {
+    case 'gt':
+      return typeof value === 'number' && value > rule.value;
+    case 'gte':
+      return typeof value === 'number' && value >= rule.value;
+    case 'lt':
+      return typeof value === 'number' && value < rule.value;
+    case 'lte':
+      return typeof value === 'number' && value <= rule.value;
+    case 'between': {
+      if (typeof value !== 'number') return false;
+      const [a, b] = rule.value;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      return value >= lo && value <= hi;
+    }
+    case 'eq':
+      return value === rule.value;
+    case 'neq':
+      // Guard on typeof so cross-type mismatches return false, matching the
+      // contract in the docstring (`eq` already gets this from `===`).
+      return typeof value === typeof rule.value && value !== rule.value;
+    case 'contains':
+      return typeof value === 'string' && value.includes(rule.value);
+    case 'startsWith':
+      return typeof value === 'string' && value.startsWith(rule.value);
+    case 'endsWith':
+      return typeof value === 'string' && value.endsWith(rule.value);
+    case 'regex':
+      if (typeof value !== 'string') return false;
+      try {
+        return new RegExp(rule.value).test(value);
+      } catch {
+        return false;
+      }
+  }
+}
+
+/**
+ * Resolves the display color for a number tile by evaluating ordered
+ * conditional color rules against the tile's current value.
+ *
+ * Rules are evaluated in order; the LAST matching rule's color wins
+ * (higher-priority rules go last). When no rule matches, `fallback` is
+ * returned. When `value` is null/undefined or `rules` is empty,
+ * `fallback` is returned immediately.
+ *
+ * @param value    The tile's current numeric (or string) value.
+ * @param rules    Ordered list of conditional color rules from the config.
+ * @param fallback The tile's static color (`config.color`) to use when no
+ *                 rule matches, or undefined to use the default text color.
+ */
+export function resolveConditionalColor(
+  value: number | string | null | undefined,
+  rules: ColorCondition[] | undefined,
+  fallback: ChartPaletteToken | undefined,
+): ChartPaletteToken | undefined {
+  if (!rules || rules.length === 0 || value == null) return fallback;
+  let match: ChartPaletteToken | undefined = fallback;
+  for (const rule of rules) {
+    if (evaluateColorCondition(value, rule)) match = rule.color;
+  }
+  return match;
+}
+
 export function hashCode(str: string) {
   let hash = 0,
     i,
@@ -679,20 +759,6 @@ export function getChartColorSuccessHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-success-highlight',
     'successHighlight',
-  );
-}
-
-export function getChartColorErrorHighlight(): string {
-  return getSemanticChartColor(
-    '--color-chart-error-highlight',
-    'errorHighlight',
-  );
-}
-
-export function getChartColorWarningHighlight(): string {
-  return getSemanticChartColor(
-    '--color-chart-warning-highlight',
-    'warningHighlight',
   );
 }
 
@@ -1064,28 +1130,63 @@ export const formatUptime = (seconds: number) => {
 
 // FIXME: eventually we want to separate metric name into two fields
 // Date formatting
-export const mergePath = (path: string[], jsonColumns: string[] = []) => {
+//
+// `mergePath` rebuilds a column-access expression for a nested path that the
+// row table flattened during display. It has three column-type modes:
+//
+//   - JSON column: dotted backtick-quoted accessor, e.g. `Body.\`key\``
+//   - Map column: bracketed string-key subscript, e.g. `LogAttributes['1']`
+//   - Array column (default): numeric segments get 1-based array subscripts
+//     (`Array[N+1]`); string segments get bracketed string-key subscripts.
+//
+// Without the Map-column branch, a Map(String, String) like `LogAttributes`
+// with a numeric-looking key (`"1"`) collapses into the array branch and
+// ClickHouse rejects the resulting `LogAttributes[2]` with
+// `Illegal types of arguments: Map(String, String), UInt8 for function
+// arrayElement`. HDX-4369.
+// Escape backslash and single-quote inside a key before interpolating it
+// into a single-quoted SQL string. Keys can contain user-controlled
+// characters (Map sub-keys, JSON field names from the row data) and an
+// unescaped quote produces malformed SQL.
+const escapeSqlSingleQuoted = (v: string): string =>
+  v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+export const mergePath = (
+  path: string[],
+  jsonColumns: string[] = [],
+  mapColumns: string[] = [],
+) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
     return key;
   }
-  return jsonColumns.includes(key)
-    ? `${key}.${rest
-        .map(v =>
-          v
-            .split('.')
-            .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
-            .join('.'),
-        )
-        .join('.')}`
-    : `${key}${rest
-        .map(v => {
-          const asNumber = Number(v);
-          const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
-          // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
-          return isArrayIndex ? `[${asNumber + 1}]` : `['${v}']`;
-        })
-        .join('')}`;
+  if (jsonColumns.includes(key)) {
+    return `${key}.${rest
+      .map(v =>
+        v
+          .split('.')
+          .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
+          .join('.'),
+      )
+      .join('.')}`;
+  }
+  if (mapColumns.includes(key)) {
+    // Map columns always take string-key subscripts; ClickHouse's Map index
+    // operator is keyed by the Map's key type, not by integer position. A
+    // numeric-looking sub-key like `"1"` on a Map(String, ...) must still
+    // render as `Map['1']`.
+    return `${key}${rest.map(v => `['${escapeSqlSingleQuoted(v)}']`).join('')}`;
+  }
+  return `${key}${rest
+    .map(v => {
+      const asNumber = Number(v);
+      const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
+      // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
+      return isArrayIndex
+        ? `[${asNumber + 1}]`
+        : `['${escapeSqlSingleQuoted(v)}']`;
+    })
+    .join('')}`;
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {

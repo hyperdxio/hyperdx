@@ -8,11 +8,10 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import { createTestClient } from '@/mcp/__tests__/mcpTestUtils';
+import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
-
-import { McpContext } from '../../tools/types';
-import { createTestClient } from '../mcpTestUtils';
 
 /**
  * Shared setup/teardown for all dashboard MCP tool tests.

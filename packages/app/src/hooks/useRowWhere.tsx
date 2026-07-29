@@ -1,18 +1,19 @@
 import { useCallback, useMemo } from 'react';
 import MD5 from 'crypto-js/md5';
 import SqlString from 'sqlstring';
+import z from 'zod';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
-import { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
+import { WithClauseSchema } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
 
 // Type for WITH clause entries, derived from ChartConfig's with property
-export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
+export type WithClause = z.infer<typeof WithClauseSchema>;
 
 // Internal row field names used by the table component for row tracking
 export const INTERNAL_ROW_FIELDS = {

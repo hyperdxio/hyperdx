@@ -53,12 +53,6 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-  prometheusremotewrite:
-    endpoint: http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write
-    tls:
-      insecure: true
-    resource_to_telemetry_conversion:
-      enabled: true
 
 service:
   # Pipeline `processors:` lists live in the base config.yaml so users can
@@ -71,10 +65,6 @@ service:
     metrics:
       receivers: [otlp/hyperdx]
       exporters: [clickhouse]
-    metrics/promql:
-      receivers: [otlp/hyperdx]
-      processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
     logs/in:
       receivers: [otlp/hyperdx]
       exporters: [routing/logs]

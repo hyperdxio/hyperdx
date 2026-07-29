@@ -60,7 +60,7 @@ package-lock.json
 # build output
 **/dist
 **/build
-**/tsconfig.tsbuildinfo
+**/*.tsbuildinfo
 
 # jest coverage report
 **/coverage

@@ -2,7 +2,7 @@
  * FilterComponent - Reusable component for search filters
  * Used for applying, excluding, pinning, and searching filters
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 export class FilterComponent {
   readonly page: Page;
@@ -70,11 +70,34 @@ export class FilterComponent {
   }
 
   /**
-   * Apply/select a filter value
+   * Apply/select a filter value.
+   *
+   * Click the checkbox *input* rather than the row wrapper. The toggle handler
+   * lives on an inner group that wraps the input, while the `filter-checkbox-*`
+   * wrapper also contains the hover-revealed action overlay (Only/Exclude/Pin).
+   * Clicking the wrapper's center can land in a dead gap once that overlay
+   * expands the row — dropping the toggle and leaving the box unchecked — and is
+   * especially fragile on narrow nested Map/JSON rows. The input sits at the
+   * row's left inside the group, so a click on it bubbles to the toggle handler
+   * regardless of row width or overlay state.
+   *
+   * Facet lists also re-render as lazily-loaded values stream in, which can
+   * remount the checkbox out from under a single click. Retry until the input
+   * actually reflects the checked state so a lost click is recovered rather than
+   * surfacing as a flaky stuck-unchecked timeout.
    */
   async applyFilter(columnName: string, valueName: string) {
-    const checkbox = this.getFilterCheckbox(columnName, valueName);
-    await checkbox.click();
+    const input = this.getFilterCheckboxInput(columnName, valueName);
+    await expect(async () => {
+      if (!(await input.isChecked())) {
+        await input.scrollIntoViewIfNeeded();
+        await input.click();
+      }
+      // Selecting a value flips the checkbox from filter state synchronously, so
+      // a click that registered reflects well within this window; if it doesn't,
+      // the click was dropped by a re-render and the outer retry clicks again.
+      await expect(input).toBeChecked({ timeout: 3000 });
+    }).toPass({ timeout: 20000 });
   }
 
   /**
@@ -265,6 +288,105 @@ export class FilterComponent {
       );
     }
     return visible;
+  }
+
+  /**
+   * Click the "More filters" button to reveal all string columns. High-cardinality
+   * columns (e.g. a plain `service-name` String column) are hidden until this is
+   * clicked; LowCardinality columns and Map/JSON keys show by default. No-op if the
+   * button isn't present (already expanded, or nothing more to show).
+   */
+  async showMoreFilters(): Promise<void> {
+    const btn = this.page.getByRole('button', {
+      name: 'More filters',
+      exact: true,
+    });
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+      await this.page
+        .getByRole('button', { name: 'Less filters', exact: true })
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch(() => {});
+    }
+  }
+
+  /**
+   * Expand a (possibly nested) facet group so its value checkboxes are visible.
+   * `groupTestids` is the ordered chain of group test ids to expand: a single
+   * `filter-group-<name>` for a top-level column, or the `nested-filter-group-*`
+   * chain for Map/JSON keys and dotted column names (which the sidebar renders
+   * as a nested tree). Resolves once the checkbox for `sampleValue` is visible.
+   * Idempotent: a group is only clicked when its child isn't already shown.
+   */
+  async revealColumnValues(
+    groupTestids: readonly string[],
+    columnName: string,
+    sampleValue: string,
+  ): Promise<void> {
+    await this.showMoreFilters();
+    for (let i = 0; i < groupTestids.length; i++) {
+      const childTestid =
+        i < groupTestids.length - 1
+          ? groupTestids[i + 1]
+          : `filter-checkbox-${columnName}-${sampleValue}`;
+      const child = this.page.getByTestId(childTestid);
+      if (!(await child.isVisible().catch(() => false))) {
+        await this.page.getByTestId(groupTestids[i]).click();
+        await child.waitFor({ state: 'visible', timeout: 10000 });
+      }
+    }
+  }
+
+  // ---- Value distributions ----
+
+  /**
+   * The per-group "Show/Hide Distribution" toggle in a filter group header.
+   * `columnName` is the group's display name (a top-level column name, or the
+   * Map/JSON property path for a nested child) — the same value used for the
+   * group's value-checkbox test ids.
+   */
+  getDistributionToggle(columnName: string) {
+    return this.page.getByTestId(`toggle-distribution-button-${columnName}`);
+  }
+
+  /**
+   * Toggle on the value distribution for a column's filter group.
+   */
+  async showDistribution(columnName: string): Promise<void> {
+    const toggle = this.getDistributionToggle(columnName);
+    await toggle.scrollIntoViewIfNeeded();
+    await toggle.click();
+  }
+
+  /**
+   * The distribution percentage label rendered next to a value once
+   * distributions are shown (e.g. "~33%").
+   */
+  getDistributionPercentage(columnName: string, valueName: string) {
+    return this.page.getByTestId(
+      `filter-distribution-${columnName}-${valueName}`,
+    );
+  }
+
+  // ---- Column display ----
+
+  /**
+   * The per-group "Add/Remove Column" toggle in a filter group header.
+   * `columnName` is the group's display name (top-level column, or the Map/JSON
+   * property path for a nested child).
+   */
+  getColumnToggle(columnName: string) {
+    return this.page.getByTestId(`toggle-column-button-${columnName}`);
+  }
+
+  /**
+   * Click the "Add/Remove Column" toggle for a column's filter group. Adds the
+   * column to (or removes it from) the search SELECT and re-runs the query.
+   */
+  async toggleColumn(columnName: string): Promise<void> {
+    const toggle = this.getColumnToggle(columnName);
+    await toggle.scrollIntoViewIfNeeded();
+    await toggle.click();
   }
 
   // ---- Shared Filters ----

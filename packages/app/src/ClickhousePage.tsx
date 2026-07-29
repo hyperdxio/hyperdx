@@ -811,7 +811,7 @@ function ClickhousePage() {
                           <ReactCodeMirror
                             extensions={[clickhouseSql()]}
                             editable={false}
-                            value={formatSql(row.query)}
+                            value={formatSql(String(row.query ?? ''))}
                             theme={colorScheme === 'dark' ? 'dark' : 'light'}
                             lang="sql"
                             maxHeight="200px"

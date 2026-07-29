@@ -31,6 +31,10 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DENOISE_NOISE_THRESHOLD,
+  DENOISE_SAMPLE_SIZE,
+} from '@hyperdx/common-utils/dist/drain';
+import {
   BuilderChartConfigWithDateRange,
   SelectList,
   SourceKind,
@@ -68,6 +72,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
+import { useChartSyncId } from '@/chartSync';
 import { searchChartConfigDefaults } from '@/defaults';
 import {
   useAliasMapFromChartConfig,
@@ -120,7 +125,7 @@ import {
 } from './ExpandableRowTable';
 import LogLevel from './LogLevel';
 
-import styles from '../../styles/LogTable.module.scss';
+import styles from '@styles/LogTable.module.scss';
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -213,6 +218,7 @@ const PatternTrendChart = ({
   dateRange: [Date, Date];
   color?: string;
 }) => {
+  const syncId = useChartSyncId();
   return (
     <div
       // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
@@ -236,7 +242,7 @@ const PatternTrendChart = ({
             width={500}
             height={300}
             data={data}
-            syncId="hdx"
+            syncId={syncId}
             syncMethod="value"
             margin={{ top: 4, left: 0, right: 4, bottom: 0 }}
           >
@@ -1516,10 +1522,14 @@ function DBSqlRowTableComponent({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  onResolvedColumnsChange,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
-  onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
+  onRowDetailsClick?: (
+    rowWhere: RowWhereResult,
+    row: Record<string, any>,
+  ) => void;
   highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
@@ -1542,6 +1552,7 @@ function DBSqlRowTableComponent({
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1701,7 +1712,7 @@ function DBSqlRowTableComponent({
 
   const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowDetailsClick?.(getRowWhere(row));
+      return onRowDetailsClick?.(getRowWhere(row), row);
     },
     [onRowDetailsClick, getRowWhere],
   );
@@ -1712,11 +1723,19 @@ function DBSqlRowTableComponent({
     }
   }, [isError, onError, error]);
 
+  // Surface the result-set column types upward.
+  // `data?.meta` keeps a stable identity per query result.
+  useEffect(() => {
+    if (data?.meta != null && data.meta.length > 0) {
+      onResolvedColumnsChange?.(data.meta);
+    }
+  }, [data?.meta, onResolvedColumnsChange]);
+
   const { data: source } = useSource({ id: sourceId });
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
-    samples: 10_000,
+    samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
     severityTextExpression:
       (source?.kind === SourceKind.Log
@@ -1729,7 +1748,9 @@ function DBSqlRowTableComponent({
     queryKey: ['noisy-patterns', config],
     queryFn: async () => {
       return Object.values(groupedPatterns.data).filter(
-        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+        p =>
+          p.count / (groupedPatterns.sampledRowCount ?? 1) >
+          DENOISE_NOISE_THRESHOLD,
       );
     },
     enabled:

@@ -7,8 +7,8 @@
  * - Migration idempotency (safe to run multiple times)
  */
 
-import type { UserPreferences } from '../useUserPreferences';
-import { migrateUserPreferences } from '../useUserPreferences';
+import type { UserPreferences } from '@/useUserPreferences';
+import { migrateUserPreferences } from '@/useUserPreferences';
 
 const STORAGE_KEY = 'hdx-user-preferences';
 

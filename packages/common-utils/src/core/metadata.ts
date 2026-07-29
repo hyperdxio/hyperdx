@@ -1,5 +1,6 @@
 import type { ClickHouseSettings } from '@clickhouse/client-common';
-import { omit, pick } from 'lodash';
+import { chunk, omit, pick } from 'lodash';
+import SqlString from 'sqlstring';
 
 import {
   BaseClickhouseClient,
@@ -13,6 +14,11 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
+import {
+  buildTextIndexInfoLookup,
+  skipIndexMatches,
+  TextIndexInfo,
+} from '@/queryParser';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
@@ -21,7 +27,11 @@ import type {
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
-import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
+import {
+  ClickHouseVersion,
+  parseClickHouseVersion,
+  supportsMergeTreeTextIndex,
+} from './clickhouseVersion';
 import {
   optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
@@ -30,13 +40,110 @@ import {
 import {
   getAlignedDateRange,
   getDistributedTableArgs,
+  MetadataMVQueryOptions,
   objectHash,
+  TextIndexColumnQueryOptions,
+  TextIndexMapColumnQueryOptions,
 } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 const DEFAULT_MAX_KEYS = 1000;
+
+// Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
+export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
+
+type KeyFetchingStrategies = {
+  mapTextIndexLookup: TextIndexInfo[];
+  nativeTextIndexLookup: SkipIndexMetadata[];
+  metadataMVs: { columnName: string; mvName: string }[];
+  rawTable: string[];
+};
+
+export type KeyValues = {
+  key: string;
+  value: string[] | number[];
+};
+
+// See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
+// integer literal avoids the `_CAST` wrapper entirely.
+const inlineNonNegativeInt = (value: number, label: string): string => {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${label} must be a non-negative integer, got: ${String(value)}`,
+    );
+  }
+  return String(value);
+};
+
+const unquoteIdentifier = (identifier: string): string => {
+  if (
+    (identifier.startsWith('`') && identifier.endsWith('`')) ||
+    (identifier.startsWith('"') && identifier.endsWith('"'))
+  ) {
+    return identifier.slice(1, -1);
+  }
+  return identifier;
+};
+
+const quoteJsonPathSegment = (segment: string): string => {
+  const unquoted = unquoteIdentifier(segment);
+  return `\`${unquoted.replace(/`/g, '``')}\``;
+};
+
+const quoteIdentifierIfNeeded = (identifier: string): string => {
+  const unquoted = unquoteIdentifier(identifier);
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(unquoted)
+    ? unquoted
+    : quoteJsonPathSegment(unquoted);
+};
+
+const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
+  const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const isBareIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/.test(columnName);
+  const patternSource = isBareIdentifier
+    ? `\`${escaped}\`|(?<![A-Za-z0-9_\`-])${escaped}(?![A-Za-z0-9_\`-])`
+    : `\`${escaped}\``;
+  // Pattern source is a ClickHouse column identifier from system.columns,
+  // not user input.
+  // eslint-disable-next-line security/detect-non-literal-regexp
+  return new RegExp(patternSource).test(sql);
+};
+
+// Builds a regex fragment that matches an identifier either as a raw
+// unquoted token or wrapped in backticks.
+const identifierPattern = (identifier: string): string => {
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rawEscaped = escapeRegex(identifier);
+  // Backticks inside an identifier are escaped by doubling them in
+  // ClickHouse's formatted output.
+  const quotedEscaped = escapeRegex(identifier.replace(/`/g, '``'));
+  return `(?:\`${quotedEscaped}\`|${rawEscaped})`;
+};
+
+const JSON_STRING_TYPE_SUFFIX = '.:String';
+
+const renderJsonStringSubcolumn = (
+  column: string,
+  jsonPath: string,
+  options: { preserveStringTypeSuffix?: boolean } = {},
+): string => {
+  const columnIdentifier = quoteIdentifierIfNeeded(column);
+  const untypedJsonPath =
+    options.preserveStringTypeSuffix &&
+    jsonPath.endsWith(JSON_STRING_TYPE_SUFFIX)
+      ? jsonPath.slice(0, -JSON_STRING_TYPE_SUFFIX.length)
+      : jsonPath;
+
+  const path = untypedJsonPath
+    .split('.')
+    .filter(Boolean)
+    .map(quoteJsonPathSegment)
+    .join('.');
+
+  return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
+};
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -84,6 +191,11 @@ export class MetadataCache {
   // TODO: Shard cache by time
 }
 
+export type MapColumnTextIndexes = {
+  keysIndex?: { indexName: string };
+  itemsIndex?: { indexName: string; separator: string };
+};
+
 export type TableMetadata = {
   database: string;
   name: string;
@@ -99,6 +211,12 @@ export type TableMetadata = {
   create_table_query: string;
   /** DDL for the local (non-distributed) table, when the table is Distributed */
   create_local_table_query?: string;
+  /**
+   * True when the queried table routes to other tables rather than holding its
+   * own data — i.e. a Distributed or Merge table (whose underlying target
+   * tables may declare differing column sets).
+   **/
+  isPointerTable?: boolean;
   /** Note: This will contain the engine_full of the local table, when the table is Distributed */
   engine_full: string;
   as_select: string;
@@ -152,6 +270,69 @@ export class Metadata {
     const currentSettings = this.getClickHouseSettings();
     const updatedSettings = { ...currentSettings, ...settings };
     this.cache.set('clickhouse-settings', updatedSettings);
+  }
+
+  private async renderMetadataKeyExpression({
+    databaseName,
+    tableName,
+    connectionId,
+    keyExpression,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    keyExpression: string;
+  }): Promise<string> {
+    const directColumn = await this.getColumn({
+      databaseName,
+      tableName,
+      column: unquoteIdentifier(keyExpression),
+      connectionId,
+    });
+    if (directColumn != null) {
+      return quoteIdentifierIfNeeded(keyExpression);
+    }
+
+    const bracketPath = parseKeyPath(keyExpression);
+    if (bracketPath.length >= 2) {
+      const column = unquoteIdentifier(bracketPath[0]);
+      const columnMeta = await this.getColumn({
+        databaseName,
+        tableName,
+        column,
+        connectionId,
+      });
+
+      if (
+        convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON
+      ) {
+        return renderJsonStringSubcolumn(column, bracketPath[1]);
+      }
+
+      return keyExpression;
+    }
+
+    const dotIdx = keyExpression.indexOf('.');
+    if (dotIdx === -1 || keyExpression.includes('(')) {
+      return keyExpression;
+    }
+
+    const column = unquoteIdentifier(keyExpression.slice(0, dotIdx));
+    const jsonPath = keyExpression.slice(dotIdx + 1);
+    const columnMeta = await this.getColumn({
+      databaseName,
+      tableName,
+      column,
+      connectionId,
+    });
+
+    if (convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON) {
+      return renderJsonStringSubcolumn(column, jsonPath, {
+        preserveStringTypeSuffix: true,
+      });
+    }
+
+    return keyExpression;
   }
 
   private async queryTableMetadata({
@@ -342,6 +523,79 @@ export class Metadata {
     })[0];
   }
 
+  async getMapColumnTextIndexes({
+    databaseName,
+    tableName,
+    connectionId,
+  }: TableConnection) {
+    return this.cache.getOrFetch(
+      `${connectionId}.${databaseName}.${tableName}.mapColumnTextIndexes`,
+      async () => {
+        return buildTextIndexInfoLookup({
+          metadata: this,
+          databaseName: databaseName,
+          tableName: tableName,
+          connectionId: connectionId,
+        });
+      },
+    );
+  }
+
+  async getNativeArrayColumnTextIndexes({
+    databaseName,
+    tableName,
+    connectionId,
+  }: TableConnection): Promise<Map<string, SkipIndexMetadata>> {
+    return this.cache.getOrFetch(
+      `${connectionId}.${databaseName}.${tableName}.nativeColumnTextIndexes`,
+      async () => {
+        const [columns, skipIndices] = await Promise.all([
+          this.getColumns({ databaseName, tableName, connectionId }),
+          this.getSkipIndices({
+            databaseName,
+            tableName,
+            connectionId,
+          }).catch(() => [] as SkipIndexMetadata[]),
+        ]);
+
+        /** Map from map column name to its text index info */
+        const indices: Map<string, SkipIndexMetadata> = new Map();
+        for (const idx of skipIndices) {
+          if (
+            skipIndexMatches(idx, 'text', { tokenizer: 'array' }) &&
+            columns.some(col => col.name === idx.expression)
+          ) {
+            indices.set(idx.expression, idx);
+          }
+        }
+        return indices;
+      },
+    );
+  }
+
+  private async partsOverlapFilter({
+    databaseName,
+    tableName,
+    dateRange,
+    timestampValueExpression,
+  }: {
+    databaseName: string;
+    tableName: string;
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+  }): Promise<ChSql> {
+    if (!dateRange || !timestampValueExpression) return chSql`1`;
+    const startTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})`;
+    const endTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})`;
+    return chSql`part_name IN (
+      SELECT name
+      FROM system.parts
+      WHERE database = ${{ String: databaseName }} AND table = ${{ String: tableName }}
+        AND active=1
+        AND ((min_time >= ${startTime} AND min_time <= ${endTime}) OR (max_time <= ${endTime} AND max_time >= ${startTime}) OR (min_time <= ${startTime} AND max_time >= ${endTime}))
+    )`;
+  }
+
   async getMapKeys({
     databaseName,
     tableName,
@@ -352,6 +606,7 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    signal,
   }: {
     databaseName: string;
     tableName: string;
@@ -362,7 +617,10 @@ export class Metadata {
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    signal?: AbortSignal;
   }) {
+    inlineNonNegativeInt(maxKeys, 'maxKeys');
+
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
       metadataMVs && dateRange
@@ -384,6 +642,90 @@ export class Metadata {
       return cachedKeys;
     }
 
+    const textIndexInfoLookup = await this.getMapColumnTextIndexes({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+
+    const clickhouseVersion = await this.getServerVersion({ connectionId });
+    const canQueryMergeTreeTextIndex =
+      supportsMergeTreeTextIndex(clickhouseVersion);
+    // Text Index path: query the key rollup index
+    const textIndexInfo = textIndexInfoLookup.get(column);
+    if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
+      const partsFilter = await this.partsOverlapFilter({
+        databaseName,
+        tableName,
+        dateRange,
+        timestampValueExpression,
+      });
+      const index = textIndexInfo.key.indexName;
+      const sql = chSql`
+        SELECT token AS key
+        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
+        WHERE ${partsFilter}
+        GROUP BY key HAVING key != ''
+        LIMIT ${{ Int32: maxKeys }}`;
+      try {
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(r => r.json<{ key: string }>())
+          .then(d => d.data.map(r => r.key).filter(Boolean));
+        if (keys.length > 0) {
+          this.cache.set(cacheKey, keys);
+          return keys;
+        }
+      } catch (e) {
+        console.warn(
+          'getMapKeys rollup query failed for key text index query',
+          e,
+        );
+        return [];
+      }
+    } else if (textIndexInfo?.kv?.indexName && canQueryMergeTreeTextIndex) {
+      const partsFilter = await this.partsOverlapFilter({
+        databaseName,
+        tableName,
+        dateRange,
+        timestampValueExpression,
+      });
+      const index = textIndexInfo.kv.indexName;
+      const separator = textIndexInfo.kv.separator;
+      const sql = chSql`
+        SELECT splitByString(${{ String: separator }}, token)[1] AS key
+        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
+        WHERE ${partsFilter}
+        GROUP BY key HAVING key != ''
+        LIMIT ${{ Int32: maxKeys }}`;
+      try {
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(r => r.json<{ key: string }>())
+          .then(d => d.data.map(r => r.key).filter(Boolean));
+        if (keys.length > 0) {
+          this.cache.set(cacheKey, keys);
+          return keys;
+        }
+      } catch (e) {
+        console.warn(
+          'getMapKeys rollup query failed for kv text index query',
+          e,
+        );
+        return [];
+      }
+    }
+
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
       const rollupKeys = await this.cache.getOrFetch<string[]>(
@@ -399,15 +741,28 @@ export class Metadata {
               chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
             );
             const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
-            const sql = chSql`
-              SELECT Key
-              FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
-              WHERE ColumnIdentifier = ${{ String: column }}
-                ${timeFilter}
-              GROUP BY Key
-              ORDER BY sum(count) DESC
-              LIMIT ${{ Int32: maxKeys }}
-            `;
+            let sql: ChSql;
+            if (metadataMVs.keyRollupTable) {
+              sql = chSql`
+                SELECT Key
+                FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
+                WHERE ColumnIdentifier = ${{ String: column }}
+                  ${timeFilter}
+                GROUP BY Key
+                ORDER BY sum(count) DESC
+                LIMIT ${{ Int32: maxKeys }}
+              `;
+            } else {
+              sql = chSql`
+                SELECT Key
+                FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+                WHERE ColumnIdentifier = ${{ String: column }}
+                  ${timeFilter}
+                GROUP BY Key
+                ORDER BY sum(count) DESC
+                LIMIT ${{ Int32: maxKeys }}
+              `;
+            }
 
             return await this.clickhouseClient
               .query<'JSON'>({
@@ -420,6 +775,7 @@ export class Metadata {
                   max_execution_time: 15,
                   max_rows_to_read: '0',
                 },
+                abort_signal: signal,
               })
               .then(res => res.json<{ Key: string }>())
               .then(d => d.data.map(row => row.Key).filter(k => k));
@@ -474,13 +830,19 @@ export class Metadata {
       ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
       : '';
 
+    // NOTE: getSubcolumn(col, 'keys') is used instead of the `col.keys` dot
+    // form because, on a multi-shard Distributed read of a Map subcolumn, some
+    // ClickHouse builds name that plan column inconsistently across the
+    // distributed hop (one side `col.keys`, the other `getSubcolumn(col,'keys')`),
+    // failing with THERE_IS_NO_COLUMN / NOT_FOUND_COLUMN_IN_BLOCK. The explicit
+    // function form serializes to a single consistent name and avoids it.
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
       sql = chSql`
         WITH sampledKeys as (
-          SELECT ${{
+          SELECT getSubcolumn(${{
             Identifier: column,
-          }}.keys AS keys
+          }}, 'keys') AS keys
           FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
           LIMIT ${{
             Int32: this.getClickHouseSettings().max_rows_to_read
@@ -488,14 +850,14 @@ export class Metadata {
               : DEFAULT_METADATA_MAX_ROWS_TO_READ,
           }}
         )
-        SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(keys) as keysArr
+        SELECT groupUniqArrayArray(${{ UNSAFE_RAW_SQL: inlineNonNegativeInt(maxKeys, 'maxKeys') }})(keys) as keysArr
         FROM sampledKeys`;
     } else {
       sql = chSql`
         WITH sampledKeys as (
-          SELECT ${{
+          SELECT getSubcolumn(${{
             Identifier: column,
-          }}.keys AS keysArr
+          }}, 'keys') AS keysArr
           FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
           LIMIT ${{
             Int32: this.getClickHouseSettings().max_rows_to_read
@@ -525,6 +887,7 @@ export class Metadata {
             // Set the value to 0 (unlimited) so that the LIMIT is used instead
             max_rows_to_read: '0',
           },
+          abort_signal: signal,
         })
         .then(res => res.json<{ keysArr?: string[]; key?: string }>())
         .then(d => {
@@ -641,6 +1004,7 @@ export class Metadata {
     connectionId,
     dateRange,
     timestampValueExpression,
+    signal,
   }: {
     databaseName: string;
     tableName: string;
@@ -650,6 +1014,7 @@ export class Metadata {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
     connectionId: string;
+    signal?: AbortSignal;
   }) {
     const dateRangeCacheSuffix =
       dateRange && timestampValueExpression
@@ -684,8 +1049,33 @@ export class Metadata {
     ];
     const where = chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`;
 
-    const sql = key
-      ? chSql`
+    const colMeta = key
+      ? await this.getColumn({
+          databaseName,
+          tableName,
+          column,
+          connectionId,
+        })
+      : undefined;
+    const jsonValueExpression =
+      key && convertCHDataTypeToJSType(colMeta?.type ?? '') === JSDataType.JSON
+        ? renderJsonStringSubcolumn(column, key)
+        : undefined;
+
+    let sql: ChSql;
+    if (jsonValueExpression) {
+      sql = chSql`
+      SELECT DISTINCT ${{
+        UNSAFE_RAW_SQL: jsonValueExpression,
+      }} as value
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      ${where}
+      LIMIT ${{
+        Int32: maxValues,
+      }}
+    `;
+    } else if (key) {
+      sql = chSql`
       SELECT DISTINCT ${{
         Identifier: column,
       }}[${{ String: key }}] as value
@@ -694,8 +1084,9 @@ export class Metadata {
       LIMIT ${{
         Int32: maxValues,
       }}
-    `
-      : chSql`
+    `;
+    } else {
+      sql = chSql`
       SELECT DISTINCT ${{
         Identifier: column,
       }} as value
@@ -705,6 +1096,7 @@ export class Metadata {
         Int32: maxValues,
       }}
     `;
+    }
 
     return this.cache.getOrFetch<string[]>(cacheKey, async () => {
       const values = await this.clickhouseClient
@@ -720,10 +1112,268 @@ export class Metadata {
             read_overflow_mode: 'break',
             ...this.getClickHouseSettings(),
           },
+          abort_signal: signal,
         })
         .then(res => res.json<{ value: string }>())
         .then(d => d.data.map(row => row.value));
       return values;
+    });
+  }
+
+  private async getMapTextIndexKeyValues({
+    databaseName,
+    tableName,
+    connectionId,
+    queryOptions,
+    dateRange,
+    timestampValueExpression,
+    signal,
+  }: TableConnection & {
+    queryOptions: TextIndexMapColumnQueryOptions;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    signal?: AbortSignal;
+  }): Promise<KeyValues[] | undefined> {
+    const queryOptionsHash = objectHash(queryOptions);
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getMapTextIndexKeyValues`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      try {
+        const sqlBranches: Array<ChSql> = [];
+        for (const [columnName, info] of queryOptions.entries()) {
+          const orChain = concatChSql(
+            ' OR ',
+            info.keys.map(
+              k =>
+                chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
+            ),
+          );
+          const partsFilter = await this.partsOverlapFilter({
+            databaseName,
+            tableName,
+            dateRange,
+            timestampValueExpression,
+          });
+          const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
+          const sql = chSql`
+        SELECT * FROM (
+          SELECT ${{ String: columnName }} as column,
+            substring(token, 1, position(token, ${{ String: info.separator }}) - 1) AS key,
+            groupUniqArray(${{ Int32: info.limit }})(${valueSql}) AS value
+          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: info.indexName }})
+          WHERE ${partsFilter}
+            AND (${orChain})
+            AND ${valueSql} != ''
+          GROUP BY column, key
+        )`;
+          sqlBranches.push(sql);
+        }
+        const sql = concatChSql(' UNION ALL ', sqlBranches);
+
+        return await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: String(
+                this.getClickHouseSettings().max_rows_to_read ??
+                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
+              ),
+              read_overflow_mode: 'break',
+              ...this.getClickHouseSettings(),
+            },
+            abort_signal: signal,
+          })
+          .then(res =>
+            res.json<{ column: string; key: string; value: string[] }>(),
+          )
+          .then(d =>
+            d.data.map(row => ({
+              key: `${row.column}['${row.key}']`,
+              value: row.value,
+            })),
+          );
+      } catch (error) {
+        // Text-index queries can fail transiently (part merged mid-read,
+        // unsupported server, etc.). Isolate the failure so sibling
+        // strategies (native text index, MV, raw table) still return data.
+        console.warn(
+          'getMapTextIndexKeyValues failed; skipping this strategy for the current batch',
+          error,
+        );
+        return undefined;
+      }
+    });
+  }
+
+  private async getTextIndexKeyValues({
+    databaseName,
+    tableName,
+    connectionId,
+    queryOptions,
+    dateRange,
+    timestampValueExpression,
+    signal,
+  }: TableConnection & {
+    queryOptions: TextIndexColumnQueryOptions;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    signal?: AbortSignal;
+  }): Promise<KeyValues[] | undefined> {
+    const queryOptionsHash = objectHash(queryOptions);
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getTextIndexKeyValues`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      try {
+        const sqlBranches: Array<ChSql> = [];
+        for (const [columnName, info] of queryOptions.entries()) {
+          const partsFilter = await this.partsOverlapFilter({
+            databaseName,
+            tableName,
+            dateRange,
+            timestampValueExpression,
+          });
+          const sql = chSql`
+        SELECT * FROM (
+          SELECT ${{ String: columnName }} AS key,
+            groupUniqArray(${{ Int32: info.limit }})(token) AS value
+          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: info.indexName }})
+          WHERE ${partsFilter}
+            AND token != ''
+          GROUP BY key
+        )`;
+          sqlBranches.push(sql);
+        }
+        const sql = concatChSql(' UNION ALL ', sqlBranches);
+
+        const values = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: String(
+                this.getClickHouseSettings().max_rows_to_read ??
+                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
+              ),
+              read_overflow_mode: 'break',
+              ...this.getClickHouseSettings(),
+            },
+            abort_signal: signal,
+          })
+          .then(res => res.json<KeyValues>())
+          .then(d => d.data);
+        return values;
+      } catch (error) {
+        // See `getMapTextIndexKeyValues` — same isolation rationale.
+        console.warn(
+          'getTextIndexKeyValues failed; skipping this strategy for the current batch',
+          error,
+        );
+        return undefined;
+      }
+    });
+  }
+
+  private async getMetadataMVKeyValues({
+    databaseName,
+    connectionId,
+    dateRange,
+    metadataMVs,
+    queryOptions,
+    maxValuesPerKey,
+    signal,
+  }: TableConnection & {
+    queryOptions: MetadataMVQueryOptions;
+    dateRange: [Date, Date];
+    maxValuesPerKey: number;
+    signal?: AbortSignal;
+  }): Promise<KeyValues[] | undefined> {
+    const queryOptionsHash = objectHash(queryOptions);
+    const metadataMVsHash = objectHash(metadataMVs ?? {});
+    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${metadataMVsHash}.${queryOptionsHash}.getMetadataMVKeyValues`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      if (!metadataMVs) {
+        console.warn('getMetadataMVKeyValues: metadataMVs is undefined');
+        return undefined;
+      }
+
+      const alignedDateRange = getAlignedDateRange(
+        dateRange,
+        metadataMVs.granularity,
+      );
+      const startExpr = renderStartOfBucketExpr(
+        metadataMVs.granularity,
+        chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+      );
+      const endExpr = renderStartOfBucketExpr(
+        metadataMVs.granularity,
+        chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+      );
+      const timeFilter = chSql`Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
+
+      const sqlBranches: ChSql[] = [];
+      for (const [mvName, entry] of queryOptions.entries()) {
+        // this should only be one mv... but we have a for loop in case
+        const branch: ChSql[] = [];
+        for (const [columnName, keys] of entry) {
+          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${concatChSql(
+            ',',
+            keys.map(key => chSql`${{ String: key }}`),
+          )}))`;
+          branch.push(sql);
+        }
+        const sql = chSql`
+          SELECT * FROM (
+            SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) as Values
+            FROM ${tableExpr({ database: databaseName, table: mvName })}
+            WHERE ${concatChSql(' OR ', branch)}
+              AND ${timeFilter}
+              AND notEmpty(Value)
+            GROUP BY ColumnIdentifier, Key
+            ORDER BY ColumnIdentifier, Key
+          )`;
+        sqlBranches.push(sql);
+      }
+      const sql = concatChSql(' UNION ALL ', sqlBranches);
+
+      type BatchRow = {
+        ColumnIdentifier: string;
+        Key: string;
+        Values: string[];
+        total_count: number;
+      };
+
+      try {
+        return await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              timeout_overflow_mode: 'break',
+              max_execution_time: 15,
+              max_rows_to_read: '0',
+            },
+            abort_signal: signal,
+          })
+          .then(res => res.json<BatchRow>())
+          .then(d =>
+            d.data.map(row => {
+              const value = row.Values.filter(v => v);
+              if (row.ColumnIdentifier === 'NativeColumn') {
+                return { key: row.Key, value };
+              }
+              return {
+                key: `${row.ColumnIdentifier}['${row.Key}']`,
+                value,
+              };
+            }),
+          );
+      } catch (e) {
+        console.warn('Batched rollup query failed, falling back to per-key', e);
+      }
+      return undefined;
     });
   }
 
@@ -827,6 +1477,7 @@ export class Metadata {
 
     // For Distributed tables, fetch metadata of the underlying local table to get correct partition key, sorting key, etc.
     if (tableMetadata?.engine === 'Distributed') {
+      tableMetadata.isPointerTable = true;
       try {
         const { cluster, database, table } =
           getDistributedTableArgs(tableMetadata) ?? {};
@@ -876,6 +1527,12 @@ export class Metadata {
       }
     }
 
+    // Merge tables (including a Distributed table whose local table is a Merge
+    // table) also route to other tables rather than holding their own data.
+    if (tableMetadata?.engine === 'Merge') {
+      tableMetadata.isPointerTable = true;
+    }
+
     // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
     if (
       tableMetadata?.partition_key.startsWith('(') &&
@@ -884,6 +1541,28 @@ export class Metadata {
       tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
     }
     return tableMetadata;
+  }
+
+  async getAllTableMetadata({
+    databaseName,
+    connectionId,
+  }: {
+    databaseName: string;
+    connectionId: string;
+  }) {
+    const cacheKey = `${connectionId}.${databaseName}.tableMetadata`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      const sql = chSql`SELECT * FROM system.tables WHERE database = ${{ String: databaseName }}`;
+      const json = await this.clickhouseClient
+        .query<'JSON'>({
+          connectionId,
+          query: sql.sql,
+          query_params: sql.params,
+          clickhouse_settings: this.getClickHouseSettings(),
+        })
+        .then(res => res.json<TableMetadata>());
+      return json.data;
+    });
   }
 
   /** Reads the value of the setting with the given name from system.settings. */
@@ -926,6 +1605,44 @@ export class Metadata {
         throw e;
       }
     });
+  }
+
+  /**
+   * Returns true when the connected server is ClickHouse Cloud, detected by
+   * checking whether `SharedMergeTree` is registered in `system.table_engines`.
+   * The SharedMergeTree engine is compiled into Cloud builds only, so its
+   * presence in the engine registry is a reliable Cloud signal that does not
+   * depend on any user table existing.
+   *
+   * Result is cached per connection — Cloud-ness is a server property.
+   */
+  async isClickHouseCloud({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<boolean> {
+    const result = await this.cache.getOrFetch(
+      `${connectionId}.isClickHouseCloud`,
+      async () => {
+        try {
+          const query =
+            "SELECT count() > 0 AS is_cloud FROM system.table_engines WHERE name = 'SharedMergeTree'";
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query,
+              clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
+            })
+            .then(res => res.json<{ is_cloud: boolean }>());
+          return json.data.length > 0 && json.data[0].is_cloud;
+        } catch (e) {
+          console.warn('Error detecting ClickHouse Cloud:', e);
+          return undefined;
+        }
+      },
+    );
+    return result ?? false;
   }
 
   /**
@@ -1257,6 +1974,12 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
+        const renderedKey = await this.renderMetadataKeyExpression({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+          keyExpression: key,
+        });
         const config: BuilderChartConfigWithDateRange = {
           ...chartConfig,
           with: [
@@ -1279,7 +2002,7 @@ export class Metadata {
               condition: `cityHash64(${chartConfig.timestampValueExpression}, rand()) % (SELECT sample_factor FROM tableStats) = 0`,
             },
           ],
-          select: `${key} AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage`,
+          select: `${renderedKey} AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage`,
           orderBy: '__hdx_percentage DESC',
           groupBy: `__hdx_value`,
           limit: { limit },
@@ -1322,15 +2045,125 @@ export class Metadata {
     );
   }
 
+  private async doMetadataMVsAggregateColumn(
+    { databaseName, tableName, connectionId }: TableConnection,
+    columnName: string,
+  ): Promise<boolean> {
+    const allTableMetadata = await this.getAllTableMetadata({
+      databaseName,
+      connectionId,
+    });
+    for (const table of allTableMetadata) {
+      // eslint-disable-next-line security/detect-non-literal-regexp
+      const expectedPrefix = new RegExp(
+        `^CREATE MATERIALIZED VIEW ${identifierPattern(databaseName)}\\.${identifierPattern(table.name)} TO ${identifierPattern(databaseName)}\\.${identifierPattern(tableName)}`,
+      );
+      if (
+        table.engine !== 'MaterializedView' ||
+        !expectedPrefix.test(table.create_table_query)
+      ) {
+        continue;
+      }
+      return columnAppearsInMvSelect(table.as_select, columnName);
+    }
+    return false;
+  }
+
+  private async determineKeyValueFetchingStrategy({
+    databaseName,
+    tableName,
+    connectionId,
+    metadataMVs,
+  }: TableConnection): Promise<KeyFetchingStrategies> {
+    return this.cache.getOrFetch(
+      `${connectionId}.${databaseName}.${tableName}.${JSON.stringify(metadataMVs)}.determineKeyValueFetchingStrategy`,
+      async () => {
+        const clickhouseVersion = await this.getServerVersion({ connectionId });
+        const canQueryMergeTreeTextIndex =
+          supportsMergeTreeTextIndex(clickhouseVersion);
+        const columnMetadata = await this.getColumns({
+          databaseName,
+          tableName,
+          connectionId,
+        });
+        const mapTextIndexInfoLookup = await this.getMapColumnTextIndexes({
+          databaseName,
+          tableName,
+          connectionId,
+        });
+        const nativeTextIndexInfoLookup =
+          await this.getNativeArrayColumnTextIndexes({
+            databaseName,
+            tableName,
+            connectionId,
+          });
+
+        const strategies: KeyFetchingStrategies = {
+          mapTextIndexLookup: [],
+          nativeTextIndexLookup: [],
+          metadataMVs: [],
+          rawTable: [],
+        };
+
+        for (const col of columnMetadata) {
+          if (col.name === 'Timestamp') continue; // ignore the timestamp column
+          // first check if this column is a map with a kv index
+          if (
+            canQueryMergeTreeTextIndex &&
+            mapTextIndexInfoLookup.get(col.name)?.kv
+          ) {
+            strategies.mapTextIndexLookup.push(
+              mapTextIndexInfoLookup.get(col.name)!,
+            );
+            continue;
+          }
+          // second: check if this column is a native column with a kv index
+          if (
+            canQueryMergeTreeTextIndex &&
+            nativeTextIndexInfoLookup.has(col.name)
+          ) {
+            strategies.nativeTextIndexLookup.push(
+              nativeTextIndexInfoLookup.get(col.name)!,
+            );
+            continue;
+          }
+          // third: check if there are metadataMVs that contain a SELECT to aggregate this field
+          if (
+            metadataMVs &&
+            metadataMVs.kvRollupTable &&
+            (await this.doMetadataMVsAggregateColumn(
+              {
+                databaseName,
+                tableName: metadataMVs.kvRollupTable,
+                connectionId,
+              },
+              col.name,
+            ))
+          ) {
+            strategies.metadataMVs.push({
+              columnName: col.name,
+              mvName: metadataMVs.kvRollupTable,
+            });
+            continue;
+          }
+          // fallback: normal table scan
+          strategies.rawTable.push(col.name);
+        }
+
+        return strategies;
+      },
+    );
+  }
+
   /**
-   * Fetches top values for one or more keys from the KV rollup table in a
+   * Fetches top values for one or more keys from the text index, metadataMV, or the raw table in a
    * single batched query. Falls back to getMapValues when no rollup is available.
    */
   async getAllKeyValues({
     databaseName,
     tableName,
     keyExpressions,
-    maxValuesPerKey = 1000,
+    maxValuesPerKey = 20,
     connectionId,
     metadataMVs,
     dateRange,
@@ -1343,11 +2176,32 @@ export class Metadata {
     maxValuesPerKey?: number;
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
-    dateRange?: [Date, Date];
-    timestampValueExpression?: string;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
     signal?: AbortSignal;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<KeyValues[]> {
     if (keyExpressions.length === 0) return [];
+
+    if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
+      const batched = await Promise.allSettled(
+        chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
+          this.getAllKeyValues({
+            databaseName,
+            tableName,
+            keyExpressions: batch,
+            maxValuesPerKey,
+            connectionId,
+            metadataMVs,
+            dateRange,
+            timestampValueExpression,
+            signal,
+          }),
+        ),
+      );
+      return batched
+        .filter(v => v.status === 'fulfilled')
+        .flatMap(v => v.value);
+    }
 
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
@@ -1355,226 +2209,181 @@ export class Metadata {
       const isMapKey = path.length >= 2;
       return {
         keyExpression: keyExpr,
-        rollupColumn: isMapKey ? path[0] : 'NativeColumn',
-        rollupKey: isMapKey ? path[1] : path[0],
-        column: path[0],
+        rollupColumn: isMapKey ? unquoteIdentifier(path[0]) : 'NativeColumn',
+        rollupKey: isMapKey ? path[1] : unquoteIdentifier(path[0]),
+        column: unquoteIdentifier(path[0]),
         mapKey: isMapKey ? path[1] : undefined,
       };
     });
 
-    // Try rollup table first when available
-    if (metadataMVs && dateRange) {
-      const alignedDateRange = getAlignedDateRange(
-        dateRange,
-        metadataMVs.granularity,
-      );
+    //   Strategy:
+    //     JSON -> disabled
+    //     Maps -> kv text index, then try to rollup (if in the MV statement), fallback to raw table scan
+    //     Columns -> text index, then try the rollup (if in the MV statement), fallback to raw table scan
+    const keyValueFetchingStrategies =
+      await this.determineKeyValueFetchingStrategy({
+        databaseName,
+        tableName,
+        connectionId,
+        metadataMVs,
+      });
 
-      const startExpr = renderStartOfBucketExpr(
-        metadataMVs.granularity,
-        chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
-      );
-      const endExpr = renderStartOfBucketExpr(
-        metadataMVs.granularity,
-        chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
-      );
-      const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
-
-      const sortedKeyIds = parsed
-        .map(p => `${p.rollupColumn}:${p.rollupKey}`)
-        .sort()
-        .join(',');
-      const cacheKey = `${connectionId}.${databaseName}.${tableName}.${sortedKeyIds}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.allKeyValues.${maxValuesPerKey}`;
-
-      const tupleParams = concatChSql(
-        ',',
-        parsed.map(
-          p =>
-            chSql`(${{ String: p.rollupColumn }}, ${{ String: p.rollupKey }})`,
-        ),
-      );
-
-      type BatchRow = {
-        ColumnIdentifier: string;
-        Key: string;
-        Value: string;
-        total_count: number;
-      };
-
-      let batchResults: BatchRow[] = [];
-      try {
-        batchResults = await this.cache.getOrFetch(cacheKey, async () => {
-          const sql = chSql`
-              SELECT ColumnIdentifier, Key, Value, sum(count) as total_count
-              FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
-              WHERE (ColumnIdentifier, Key) IN (${tupleParams})
-                AND Value != ''
-                ${timeFilter}
-              GROUP BY ColumnIdentifier, Key, Value
-              ORDER BY ColumnIdentifier, Key, total_count DESC
-              LIMIT ${{ Int32: maxValuesPerKey }} BY ColumnIdentifier, Key
-            `;
-
-          return await this.clickhouseClient
-            .query<'JSON'>({
-              query: sql.sql,
-              query_params: sql.params,
-              connectionId,
-              clickhouse_settings: {
-                ...this.getClickHouseSettings(),
-                timeout_overflow_mode: 'break',
-                max_execution_time: 15,
-                max_rows_to_read: '0',
-              },
-              abort_signal: signal,
-            })
-            .then(res => res.json<BatchRow>())
-            .then(d => d.data);
-        });
-      } catch (e) {
-        console.warn('Batched rollup query failed, falling back to per-key', e);
-      }
-
-      // Group results by (ColumnIdentifier, Key) and apply per-key limit
-      const resultMap = new Map<string, string[]>();
-      for (const row of batchResults) {
-        const mapKey = `${row.ColumnIdentifier}:${row.Key}`;
-        let arr = resultMap.get(mapKey);
-        if (!arr) {
-          arr = [];
-          resultMap.set(mapKey, arr);
-        }
-        if (arr.length < maxValuesPerKey) {
-          arr.push(row.Value);
-        }
-      }
-
-      // Build results, falling back to getMapValues for keys with no rollup data
-      return Promise.all(
-        parsed.map(async p => {
-          const mapKey = `${p.rollupColumn}:${p.rollupKey}`;
-          const values = resultMap.get(mapKey);
-          if (values && values.length > 0) {
-            return { key: p.keyExpression, value: values };
+    // build expressions for each query type
+    const mapTextIndexQueryOptions: TextIndexMapColumnQueryOptions = new Map();
+    const nativeTextIndexQueryOptions: TextIndexColumnQueryOptions = new Map();
+    const metadataMVQueryOptions: MetadataMVQueryOptions = new Map();
+    const rawQueryOptions: string[] = [];
+    for (const key of parsed) {
+      // first check text index
+      if (key.mapKey) {
+        const mapTextIndex = keyValueFetchingStrategies.mapTextIndexLookup.find(
+          idx => idx.kv && idx.kv.mapColumn === key.column,
+        );
+        if (mapTextIndex?.kv) {
+          let entry = mapTextIndexQueryOptions.get(key.column);
+          if (!entry) {
+            entry = {
+              indexName: mapTextIndex.kv.indexName,
+              limit: maxValuesPerKey,
+              separator: mapTextIndex.kv.separator,
+              keys: [],
+            };
+            mapTextIndexQueryOptions.set(key.column, entry);
           }
-          const fallback = await this.getMapValues({
-            databaseName,
-            tableName,
-            column: p.column,
-            key: p.mapKey,
-            maxValues: maxValuesPerKey,
-            connectionId,
-            dateRange,
-            timestampValueExpression,
+          entry.keys.push(key.mapKey);
+          continue;
+        }
+      } else {
+        const nativeTextIndex =
+          keyValueFetchingStrategies.nativeTextIndexLookup.find(
+            idx => idx.expression === key.column,
+          );
+        if (nativeTextIndex) {
+          nativeTextIndexQueryOptions.set(key.column, {
+            indexName: nativeTextIndex.name,
+            limit: maxValuesPerKey,
           });
-          return { key: p.keyExpression, value: fallback };
+          continue;
+        }
+      }
+
+      // then check metadataMVs
+      const metadataMVEntry = keyValueFetchingStrategies.metadataMVs.find(
+        v => v.columnName === key.column,
+      );
+      if (metadataMVEntry) {
+        let tableEntry = metadataMVQueryOptions.get(metadataMVEntry.mvName);
+        if (!tableEntry) {
+          tableEntry = new Map();
+          metadataMVQueryOptions.set(metadataMVEntry.mvName, tableEntry);
+        }
+        let columnEntry = tableEntry.get(key.rollupColumn);
+        if (!columnEntry) {
+          columnEntry = [];
+          tableEntry.set(key.rollupColumn, columnEntry);
+        }
+        columnEntry.push(key.rollupKey);
+        continue;
+      }
+
+      // Re-quote `key.column` for the raw-table SQL: it was stripped of
+      // backticks by `unquoteIdentifier` above, and column names with hyphens
+      // or dots (e.g. `Map-Attributes`, `service-name`) need them back or the
+      // whole batch fails, dropping facets for every key on this path.
+      // Map keys are ingest-controlled data (they come from user telemetry and
+      // from callers like the MCP describeSource tool), so they must be
+      // SQL-escaped before being embedded as a literal — `SqlString.escape`
+      // returns a fully-quoted, safely-escaped ClickHouse string literal.
+      if (keyValueFetchingStrategies.rawTable.includes(key.column)) {
+        const quotedColumn = quoteIdentifierIfNeeded(key.column);
+        if (key.mapKey) {
+          rawQueryOptions.push(
+            `${quotedColumn}[${SqlString.escape(key.mapKey)}]`,
+          );
+        } else {
+          rawQueryOptions.push(quotedColumn);
+        }
+      }
+    }
+
+    // fire all the kv fetch queries
+    const promises: Array<Promise<KeyValues[] | undefined>> = [];
+    if (mapTextIndexQueryOptions.size > 0) {
+      promises.push(
+        this.getMapTextIndexKeyValues({
+          databaseName,
+          tableName,
+          connectionId,
+          queryOptions: mapTextIndexQueryOptions,
+          dateRange,
+          timestampValueExpression,
+          signal,
         }),
       );
     }
-
-    // No rollup available — fall back to main table scan for all keys
-    return Promise.all(
-      parsed.map(async p => {
-        const value = await this.getMapValues({
+    if (nativeTextIndexQueryOptions.size > 0) {
+      promises.push(
+        this.getTextIndexKeyValues({
           databaseName,
           tableName,
-          column: p.column,
-          key: p.mapKey,
-          maxValues: maxValuesPerKey,
           connectionId,
+          queryOptions: nativeTextIndexQueryOptions,
           dateRange,
           timestampValueExpression,
-        });
-        return { key: p.keyExpression, value };
-      }),
-    );
-  }
-
-  /**
-   * Single-query discovery: returns all (ColumnIdentifier, Key) pairs from the
-   * KV rollup table. Falls back to column metadata + getMapValues when no rollup
-   * is available.
-   */
-  async getAllFieldsAndValues({
-    databaseName,
-    tableName,
-    connectionId,
-    metadataMVs,
-    dateRange,
-    maxValuesPerKey = 20,
-    maxKeys,
-    signal,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange?: [Date, Date];
-    maxValuesPerKey?: number;
-    maxKeys?: number;
-    signal?: AbortSignal;
-  }): Promise<{ key: string; value: string[] }[]> {
-    if (!metadataMVs || !dateRange) return [];
-
-    const alignedDateRange = getAlignedDateRange(
-      dateRange,
-      metadataMVs.granularity,
-    );
-    const startExpr = renderStartOfBucketExpr(
-      metadataMVs.granularity,
-      chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
-    );
-    const endExpr = renderStartOfBucketExpr(
-      metadataMVs.granularity,
-      chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
-    );
-    const timeFilter = chSql`Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
-
-    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.fieldsAndValues.${maxValuesPerKey}.${maxKeys ?? 'all'}`;
-
-    type RollupRow = {
-      ColumnIdentifier: string;
-      Key: string;
-      Values: string[];
-    };
-
-    const rows = await this.cache.getOrFetch(cacheKey, async () => {
-      const limitClause = maxKeys
-        ? chSql`LIMIT ${{ Int32: maxKeys }}`
-        : chSql``;
-      const sql = chSql`
-            SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) AS Values
-            FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
-            WHERE Value != ''
-              AND ${timeFilter}
-            GROUP BY ColumnIdentifier, Key
-            ORDER BY ColumnIdentifier = 'NativeColumn' DESC, ColumnIdentifier, Key
-            ${limitClause}
-          `;
-
-      return await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
+          signal,
+        }),
+      );
+    }
+    if (metadataMVQueryOptions.size > 0) {
+      promises.push(
+        this.getMetadataMVKeyValues({
+          databaseName,
+          tableName,
           connectionId,
-          clickhouse_settings: {
-            ...this.getClickHouseSettings(),
-            timeout_overflow_mode: 'break',
-            max_execution_time: 30,
-            max_rows_to_read: '0',
+          queryOptions: metadataMVQueryOptions,
+          maxValuesPerKey,
+          dateRange,
+          metadataMVs,
+          signal,
+        }),
+      );
+    }
+    if (rawQueryOptions.length > 0) {
+      promises.push(
+        // Isolate raw-table failures (timeout, abort, network) the same way
+        // the three sibling strategies do internally, so a single rejection
+        // here doesn't discard already-successful text-index / MV results
+        // when they're aggregated through `Promise.all` below.
+        this.getKeyValues({
+          chartConfig: {
+            from: {
+              databaseName,
+              tableName,
+            },
+            connection: connectionId,
+            dateRange,
+            timestampValueExpression,
+            select: '',
+            where: '',
           },
-          abort_signal: signal,
-        })
-        .then(res => res.json<RollupRow>())
-        .then(d => d.data);
-    });
-
-    return rows.map(row => {
-      const keyExpr =
-        row.ColumnIdentifier === 'NativeColumn'
-          ? row.Key
-          : `${row.ColumnIdentifier}['${row.Key}']`;
-      return { key: keyExpr, value: row.Values };
-    });
+          keys: rawQueryOptions,
+          limit: maxValuesPerKey,
+          source: undefined,
+          signal,
+        }).catch(error => {
+          console.warn(
+            'getKeyValues (raw table) failed; skipping this strategy for the current batch',
+            error,
+          );
+          return undefined;
+        }),
+      );
+    }
+    return (await Promise.allSettled(promises))
+      .filter(res => res.status === 'fulfilled')
+      .map(v => v.value)
+      .filter(v => v !== undefined)
+      .flat();
   }
 
   async getKeyValues({
@@ -1602,7 +2411,7 @@ export class Metadata {
     source:
       | Omit<TSource, 'connection'> /* for overlap with ISource type */
       | undefined;
-  }): Promise<{ key: string; value: string[] | number[] }[]> {
+  }): Promise<KeyValues[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',
@@ -1621,12 +2430,23 @@ export class Metadata {
       async () => {
         if (keys.length === 0) return [];
 
+        const renderedKeys = await Promise.all(
+          keys.map(key =>
+            this.renderMetadataKeyExpression({
+              databaseName: chartConfig.from.databaseName,
+              tableName: chartConfig.from.tableName,
+              connectionId: chartConfig.connection,
+              keyExpression: key,
+            }),
+          ),
+        );
+
         // When disableRowLimit is true, query directly without CTE
         // Otherwise, use CTE with row limits for sampling
         const sqlConfig = disableRowLimit
           ? {
               ...chartConfig,
-              select: keys
+              select: renderedKeys
                 .map((k, i) => {
                   const condition = keyConditions?.[i];
                   // `groupUniqArrayIf` lets each key be constrained by its own
@@ -1644,7 +2464,8 @@ export class Metadata {
               // than selecting just the JSON paths corresponding to the given keys.
               // paramN aliases are used to avoid issues with special characters or complex expressions in keys.
               const selectExpr =
-                keys.map((k, i) => `${k} as param${i}`).join(', ') || '*';
+                renderedKeys.map((k, i) => `${k} as param${i}`).join(', ') ||
+                '*';
 
               return {
                 with: [
@@ -1731,7 +2552,7 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
-  }): Promise<{ key: string; value: string[] | number[] }[]> {
+  }): Promise<KeyValues[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',

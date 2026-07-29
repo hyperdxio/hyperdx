@@ -15,12 +15,8 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { IconSettings } from '@tabler/icons-react';
 
-import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
-import { getDurationMsExpression } from '@/source';
-import type { NumberFormat } from '@/types';
-
-import type { AddFilterFn } from '../DBDeltaChart';
-import DBDeltaChart from '../DBDeltaChart';
+import type { AddFilterFn } from '@/components/DBDeltaChart';
+import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart, {
   ColorLegend,
   darkPalette,
@@ -28,7 +24,10 @@ import DBHeatmapChart, {
   lightPalette,
   type SelectionBounds,
   toHeatmapChartConfig,
-} from '../DBHeatmapChart';
+} from '@/components/DBHeatmapChart';
+import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
+import { getDurationMsExpression } from '@/source';
+import type { NumberFormat } from '@/types';
 
 export function DBSearchHeatmapChart({
   chartConfig,

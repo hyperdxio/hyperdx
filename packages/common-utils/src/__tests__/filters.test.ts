@@ -1,5 +1,7 @@
 import {
   filtersToQuery,
+  isRenderablePinnedFilter,
+  parseQuery,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
   validateSavedQuery,
@@ -167,6 +169,191 @@ describe('filters', () => {
           condition: "message IN ('a\\\\''b')",
         },
       ]);
+    });
+
+    describe('dateTimeColumns', () => {
+      const dateTimeColumns = new Map<string, string>([
+        ['Timestamp', 'DateTime64(9)'],
+        ['TimestampTime', 'DateTime'],
+      ]);
+
+      it('wraps an excluded DateTime64 value in parseDateTime64BestEffort', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>(),
+            excluded: new Set<string | boolean>([
+              '2026-06-16T15:35:16.731000000Z',
+            ]),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16T15:35:16.731000000Z', 9))",
+          },
+        ]);
+      });
+
+      it('wraps an included DateTime64 value in parseDateTime64BestEffort', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>([
+              '2026-06-16T15:35:16.731000000Z',
+            ]),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "Timestamp IN (parseDateTime64BestEffort('2026-06-16T15:35:16.731000000Z', 9))",
+          },
+        ]);
+      });
+
+      it('wraps a plain DateTime column with parseDateTimeBestEffort (IN does not promote DateTime↔DateTime64)', () => {
+        const filters = {
+          TimestampTime: {
+            included: new Set<string | boolean>(['2026-06-17T11:56:41Z']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
+          },
+        ]);
+      });
+
+      it('matches the precision of a non-9 DateTime64 column', () => {
+        const filters = {
+          ts3: {
+            included: new Set<string | boolean>(['2026-06-17T11:56:41.123Z']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(
+          filtersToQuery(filters, {
+            dateTimeColumns: new Map([['ts3', "DateTime64(3, 'UTC')"]]),
+          }),
+        ).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "ts3 IN (parseDateTime64BestEffort('2026-06-17T11:56:41.123Z', 3))",
+          },
+        ]);
+      });
+
+      it('wraps a Date column with toDate', () => {
+        const filters = {
+          day: {
+            included: new Set<string | boolean>(['2026-06-17']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(
+          filtersToQuery(filters, {
+            dateTimeColumns: new Map([['day', 'Date']]),
+          }),
+        ).toEqual([
+          { type: 'sql', condition: "day IN (toDate('2026-06-17'))" },
+        ]);
+      });
+
+      it('wraps multiple DateTime64 values', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>(),
+            excluded: new Set<string | boolean>(['2026-06-16', '2026-06-17']),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16', 9), parseDateTime64BestEffort('2026-06-17', 9))",
+          },
+        ]);
+      });
+
+      it('wraps both included and excluded values for the same DateTime key', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>(['2026-06-16']),
+            excluded: new Set<string | boolean>(['2026-06-17']),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "Timestamp IN (parseDateTime64BestEffort('2026-06-16', 9))",
+          },
+          {
+            type: 'sql',
+            condition:
+              "Timestamp NOT IN (parseDateTime64BestEffort('2026-06-17', 9))",
+          },
+        ]);
+      });
+
+      it('does not wrap when stringifyKeys is set (string comparison)', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>(),
+            excluded: new Set<string | boolean>(['2026-06-16']),
+          },
+        };
+        expect(
+          filtersToQuery(filters, { dateTimeColumns, stringifyKeys: true }),
+        ).toEqual([
+          {
+            type: 'sql',
+            condition: "toString(Timestamp) NOT IN ('2026-06-16')",
+          },
+        ]);
+      });
+
+      it('does not wrap non-DateTime keys', () => {
+        const filters = {
+          ServiceName: {
+            included: new Set<string | boolean>(['api']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          { type: 'sql', condition: "ServiceName IN ('api')" },
+        ]);
+      });
+
+      it('does not wrap boolean values on a DateTime key', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>([true]),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          { type: 'sql', condition: 'Timestamp IN (true)' },
+        ]);
+      });
+
+      it('leaves output unchanged when no dateTimeColumns are provided', () => {
+        const filters = {
+          Timestamp: {
+            included: new Set<string | boolean>(),
+            excluded: new Set<string | boolean>(['2026-06-16']),
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          { type: 'sql', condition: "Timestamp NOT IN ('2026-06-16')" },
+        ]);
+      });
     });
   });
 
@@ -419,6 +606,113 @@ describe('filters', () => {
           where: 'Bad:((("',
         },
       ]);
+    });
+  });
+
+  describe('parseQuery BETWEEN bounds', () => {
+    it('parses a numeric BETWEEN into a range', () => {
+      expect(
+        parseQuery([
+          { type: 'sql', condition: 'Duration BETWEEN 100 AND 5000' },
+        ]).filters,
+      ).toEqual({
+        Duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 100, max: 5000 },
+        },
+      });
+    });
+
+    it('drops a BETWEEN with quoted / non-numeric bounds instead of emitting NaN', () => {
+      expect(
+        parseQuery([
+          {
+            type: 'sql',
+            condition: "ts BETWEEN '2024-01-01' AND '2024-02-01'",
+          },
+        ]).filters,
+      ).toEqual({});
+    });
+
+    it('drops a compound BETWEEN whose trailing clause the regex would swallow', () => {
+      // The greedy regex would capture `2 AND other IN ('x')` as the upper
+      // bound; `Number` rejects it as non-numeric so nothing is emitted.
+      expect(
+        parseQuery([
+          {
+            type: 'sql',
+            condition: "col BETWEEN 1 AND 2 AND other IN ('x')",
+          },
+        ]).filters,
+      ).toEqual({});
+    });
+  });
+
+  describe('isRenderablePinnedFilter', () => {
+    const sql = (condition: string): Filter => ({ type: 'sql', condition });
+
+    it.each([
+      ["ServiceName IN ('checkout', 'payments')", 'IN'],
+      ["SeverityText NOT IN ('debug', 'trace')", 'NOT IN'],
+      ['Duration BETWEEN 100 AND 5000', 'BETWEEN (numeric)'],
+      ["LogAttributes['x'] IN ('y')", 'map-access column'],
+      ["Body IN ('a AND b')", 'value containing AND'],
+    ])('accepts a single renderable predicate: %s (%s)', condition => {
+      expect(isRenderablePinnedFilter(sql(condition))).toBe(true);
+    });
+
+    it.each([
+      ["ServiceName = 'checkout'", 'plain equality (never renders)'],
+      [
+        "ServiceName IN ('x') AND foo = 1",
+        'IN + dropped conjunct (divergence)',
+      ],
+      ["A IN ('x') AND B IN ('y')", 'compound over two columns'],
+      ["ts BETWEEN '2024-01-01' AND '2024-02-01'", 'non-numeric BETWEEN'],
+      ["col BETWEEN 1 AND 2 AND other IN ('x')", 'BETWEEN swallowing a clause'],
+      [
+        'ServiceName NOT BETWEEN 1 AND 2',
+        'NOT folded into the key (renders inverted)',
+      ],
+      ["NOT (ServiceName IN ('x'))", 'leading NOT folded into the key'],
+      ['', 'empty condition'],
+    ])('rejects %s (%s)', condition => {
+      expect(isRenderablePinnedFilter(sql(condition))).toBe(false);
+    });
+
+    it('rejects non-sql filter shapes (lucene, sql_ast)', () => {
+      expect(
+        isRenderablePinnedFilter({ type: 'lucene', condition: 'app:*' }),
+      ).toBe(false);
+      expect(
+        isRenderablePinnedFilter({
+          type: 'sql_ast',
+          operator: '=',
+          left: 'ServiceName',
+          right: "'x'",
+        }),
+      ).toBe(false);
+    });
+
+    it('accepts exactly what filtersToQuery emits (round-trip)', () => {
+      // Every clause filtersToQuery produces must be individually renderable,
+      // guaranteeing the API accepts anything the UI itself would persist.
+      const emitted = filtersToQuery({
+        ServiceName: {
+          included: new Set(['checkout']),
+          excluded: new Set(['debug']),
+        },
+        Duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 1, max: 2 },
+        },
+      });
+      expect(emitted.length).toBeGreaterThan(0);
+      for (const f of emitted) {
+        expect(isRenderablePinnedFilter(f)).toBe(true);
+      }
     });
   });
 });

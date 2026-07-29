@@ -5,11 +5,9 @@
 # hooks that run when creating/switching/removing worktrees via `wt`.
 
 # ---------------------------------------------------------------------------
-# pre-start: blocking — symlink node_modules from primary worktree for
-# instant dependency access. If the branch needs different deps:
-#   rm node_modules && yarn install
+# pre-start: install dependencies so app is ready to run
 # ---------------------------------------------------------------------------
-pre-start = "ln -sf {{ primary_worktree_path }}/node_modules {{ worktree_path }}/node_modules"
+pre-start = "yarn install"
 
 # ---------------------------------------------------------------------------
 # post-start: background tasks

@@ -1,6 +1,8 @@
 import router from 'next/router';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 
+import type { ServiceAggregation } from '@/hooks/useServiceMap';
+
 export function navigateToTraceSearch({
   dateRange,
   source,
@@ -43,22 +45,117 @@ export function formatApproximateNumber(num: number): string {
   return `~${Math.round(billions)}B`;
 }
 
+/**
+ * The metric that drives node coloring on the service map. The user switches
+ * between these with the segmented control; each maps to a distinct hue so the
+ * color scale reads as a different dimension (red = errors, amber = latency,
+ * blue = throughput).
+ */
+export type ServiceMapMetric = 'errorRate' | 'latency' | 'throughput';
+
+export const SERVICE_MAP_METRICS: ServiceMapMetric[] = [
+  'latency',
+  'errorRate',
+  'throughput',
+];
+
+export const SERVICE_MAP_METRIC_LABEL: Record<ServiceMapMetric, string> = {
+  errorRate: 'Error rate',
+  latency: 'Latency',
+  throughput: 'Throughput',
+};
+
+// Hue (HSL) used for each metric's color ramp. Saturation encodes intensity.
+export const SERVICE_MAP_METRIC_HUE: Record<ServiceMapMetric, number> = {
+  errorRate: 0, // red
+  latency: 35, // amber
+  throughput: 210, // blue
+};
+
+/**
+ * The comparable scalar used to rank a service for a given metric. This is the
+ * value that gets normalized against the graph-wide max to derive color
+ * intensity, so the same helper drives both the per-node color and the legend's
+ * max label. Latency uses p95 (raw duration units); throughput is total
+ * incoming + outgoing request volume (matching how node size is scaled).
+ */
+export function getServiceMetricValue(
+  service: ServiceAggregation,
+  metric: ServiceMapMetric,
+): number {
+  const { incomingRequests, outgoingRequests } = service;
+  switch (metric) {
+    case 'errorRate':
+      return incomingRequests.errorPercentage;
+    case 'latency':
+      return incomingRequests.hasLatency ? incomingRequests.p95 : 0;
+    case 'throughput':
+      return incomingRequests.totalRequests + outgoingRequests;
+  }
+}
+
+// Sequential color ramp shared by every metric — only the hue differs. As
+// intensity rises the fill goes from a light tint (high lightness, low
+// saturation) to a dark, saturated shade, i.e. a proper light→dark sequential
+// scale rather than a grey→color saturation ramp. Endpoints are tuned to read
+// on both the light and dark canvas.
+const RAMP_SATURATION = { from: 35, to: 72 };
+const RAMP_LIGHTNESS = { from: 90, to: 42 };
+// The border is the same hue/saturation as the fill but a fixed step darker so
+// nodes keep a crisp outline at every intensity (and in light mode).
+const BORDER_LIGHTNESS_STEP = 24;
+const BORDER_MIN_LIGHTNESS = 18;
+
+function lerp(from: number, to: number, t: number): number {
+  return from + (to - from) * t;
+}
+
+function clamp01(t: number): number {
+  return Math.max(0, Math.min(1, t));
+}
+
+/**
+ * Background fill for a node/legend stop at a normalized intensity (0..1) on a
+ * metric's ramp. Saturation and lightness are rounded so the emitted HSL string
+ * is stable and free of floating-point noise.
+ */
+function rampFill(hue: number, intensity: number) {
+  const t = clamp01(intensity);
+  const s = Math.round(lerp(RAMP_SATURATION.from, RAMP_SATURATION.to, t));
+  const l = Math.round(lerp(RAMP_LIGHTNESS.from, RAMP_LIGHTNESS.to, t));
+  return { s, l, css: `hsl(${hue} ${s}% ${l}%)` };
+}
+
 export function getNodeColors(
-  errorPercent: number,
-  maxErrorPercent: number,
+  value: number,
+  max: number,
   isSelected: boolean,
+  metric: ServiceMapMetric = 'errorRate',
 ) {
-  const saturation =
-    maxErrorPercent > 0
-      ? (Math.min(errorPercent, maxErrorPercent) / maxErrorPercent) * 100
-      : 0;
-  const backgroundColor = `hsl(0 ${saturation}% 80%)`;
-  const borderColor = isSelected ? 'white' : `hsl(0 ${saturation}% 40%)`;
+  const intensity = max > 0 ? Math.min(value, max) / max : 0;
+  const hue = SERVICE_MAP_METRIC_HUE[metric];
+  const { s, l, css } = rampFill(hue, intensity);
+  const borderLightness = Math.max(
+    l - BORDER_LIGHTNESS_STEP,
+    BORDER_MIN_LIGHTNESS,
+  );
+  const borderColor = isSelected
+    ? 'white'
+    : `hsl(${hue} ${s}% ${borderLightness}%)`;
 
   return {
-    backgroundColor,
+    backgroundColor: css,
     borderColor,
   };
+}
+
+/**
+ * CSS `linear-gradient` for a metric's legend swatch, built from the same ramp
+ * endpoints as the node fills so the legend and the graph always agree.
+ */
+export function getMetricGradientCss(metric: ServiceMapMetric): string {
+  const hue = SERVICE_MAP_METRIC_HUE[metric];
+  return `linear-gradient(to right, ${rampFill(hue, 0).css}, ${rampFill(hue, 1).css})`;
 }
 
 /**

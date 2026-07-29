@@ -11,6 +11,8 @@ export function useExplainQuery(
   _config: ChartConfigWithOptDateRange,
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) {
+  const { enabled, ...restOptions } = options ?? {};
+
   const config = {
     ..._config,
     with: undefined,
@@ -42,7 +44,7 @@ export function useExplainQuery(
     },
     retry: false,
     staleTime: 1000 * 60,
-    enabled: !isSourceLoading,
-    ...options,
+    enabled: enabled && !isSourceLoading,
+    ...restOptions,
   });
 }

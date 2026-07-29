@@ -11,7 +11,7 @@ import {
   DEFAULT_THEME_COLOR,
   HEX_COLOR_PATTERN,
   sanitizeThemeColor,
-} from '../DynamicFavicon';
+} from '@/components/DynamicFavicon';
 
 // Note: Testing the full DynamicFavicon component requires mocking
 // the Next.js Head component and ThemeProvider, which is complex.
