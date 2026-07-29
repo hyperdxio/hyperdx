@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import cx from 'classnames';
 import { ActionIcon, getDefaultZIndex, Group } from '@mantine/core';
 import {
   IconCaretDownFilled,
@@ -213,17 +214,22 @@ export const ChartTooltipContainer = ({
   header,
   children,
   footer,
+  contentClassName,
 }: {
   header?: React.ReactNode;
   children: React.ReactNode;
   /** Bordered block below the content; the pinned tooltip's drill-down actions. */
   footer?: React.ReactNode;
+  /** Extra class on the content wrapper (e.g. the hover tooltip's height clamp). */
+  contentClassName?: string;
 }) => (
   <div className={styles.chartTooltip}>
     {header != null && (
       <div className={styles.chartTooltipHeader}>{header}</div>
     )}
-    <div className={styles.chartTooltipContent}>{children}</div>
+    <div className={cx(styles.chartTooltipContent, contentClassName)}>
+      {children}
+    </div>
     {footer != null && (
       <div className={styles.chartTooltipFooter}>{footer}</div>
     )}
