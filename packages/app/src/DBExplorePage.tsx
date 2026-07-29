@@ -73,8 +73,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
-  IconArrowsDiagonal,
-  IconArrowsDiagonalMinimize2,
   IconBolt,
   IconCheck,
   IconChevronDown,
@@ -102,9 +100,7 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import { SavedSearchesFlyout } from '@/components/SavedSearches/SavedSearchesFlyout';
-import SearchWhereInput, {
-  getStoredLanguage,
-} from '@/components/SearchInput/SearchWhereInput';
+import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -144,6 +140,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import DBTableChart from './components/DBTableChart';
 import { DBTreemapChart } from './components/DBTreemapChart';
 import { ExploreContextBand } from './components/Explore/ExploreContextBand';
+import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
@@ -589,7 +586,7 @@ function SaveSearchModalComponent({
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -617,7 +614,7 @@ function SaveSearchModalComponent({
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -1147,7 +1144,7 @@ function DBExplorePage() {
         select: searchedConfig.select || '',
         where: searchedConfig.where || '',
         whereLanguage:
-          searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+          searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
         source:
           searchedConfig.source ||
           (savedSearchId || directTraceId ? '' : defaultSourceId),
@@ -1184,7 +1181,7 @@ function DBExplorePage() {
           ? searchedSource.defaultTableSelectExpression
           : undefined),
       where: _savedSearch?.where ?? '',
-      whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
+      whereLanguage: _savedSearch?.whereLanguage ?? 'sql',
       source: _savedSearch?.source,
       filters: _savedSearch?.filters ?? [],
       orderBy: _savedSearch?.orderBy || defaultOrderBy,
@@ -1217,7 +1214,7 @@ function DBExplorePage() {
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
         whereLanguage:
-          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'sql',
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
@@ -1259,7 +1256,7 @@ function DBExplorePage() {
         source: defaultSourceId,
         where: '',
         select: '',
-        whereLanguage: getStoredLanguage() ?? 'lucene',
+        whereLanguage: getStoredLanguage() ?? 'sql',
         filters: [],
         orderBy: '',
       });
@@ -1478,7 +1475,7 @@ function DBExplorePage() {
       source: chartSourceId,
       where: searchedConfig.where ?? '',
       whereLanguage:
-        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     }),
@@ -1551,7 +1548,7 @@ function DBExplorePage() {
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -2154,7 +2151,7 @@ function DBExplorePage() {
         setSearchedConfig({
           source: null,
           where: '',
-          whereLanguage: getStoredLanguage() ?? 'lucene',
+          whereLanguage: getStoredLanguage() ?? 'sql',
           filters: [],
         });
         return;
@@ -2407,106 +2404,58 @@ function DBExplorePage() {
           onCreate={onNewSourceCreate}
         />
         {/* Band 2: Query editor */}
-        {(() => {
-          const queryInput = (
-            <SearchWhereInput
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="where"
-              onSubmit={onSubmit}
-              sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-              luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-              enableHotkey
-              data-testid="search-input"
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-              size="xs"
-              allowMultiline={isQueryExpanded}
-            />
-          );
-          const timeControls = (
-            <>
-              <TimePicker
-                data-testid="time-picker"
-                inputValue={displayedTimeInputValue}
-                setInputValue={setDisplayedTimeInputValue}
-                onSearch={onTimePickerSearch}
-                onRelativeSearch={onTimePickerRelativeSearch}
-                showLive={view === 'list'}
-                isLiveMode={isLive}
-                // Default to relative time mode if the user has made changes to interval and reloaded.
-                defaultRelativeTimeMode={
-                  isLive && interval !== LIVE_TAIL_DURATION_MS
-                }
-                width="100%"
-                size="xs"
-              />
-              {view === 'list' && denoiseResults != true && (
-                <SearchLiveControl
-                  isLive={isLive}
-                  refreshFrequency={refreshFrequency}
-                  onToggle={() =>
-                    isLive ? setIsLive(false) : handleResumeLiveTail()
+        <Box px="sm" pt="sm">
+          <ExploreQueryEditor
+            tableConnection={inputSourceTableConnection}
+            control={control}
+            name="where"
+            onSubmit={onSubmit}
+            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+            enableHotkey
+            data-testid="search-input"
+            dateRange={searchedTimeRange}
+            sourceId={inputSource}
+            size="xs"
+            isExpanded={isQueryExpanded}
+            onToggleExpand={toggleQueryExpanded}
+            controls={
+              <>
+                <TimePicker
+                  data-testid="time-picker"
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={onTimePickerSearch}
+                  onRelativeSearch={onTimePickerRelativeSearch}
+                  showLive={view === 'list'}
+                  isLiveMode={isLive}
+                  // Default to relative time mode if the user has made changes to interval and reloaded.
+                  defaultRelativeTimeMode={
+                    isLive && interval !== LIVE_TAIL_DURATION_MS
                   }
-                  onSelectCadence={ms => {
-                    setRefreshFrequency(ms);
-                    if (!isLive) {
-                      handleResumeLiveTail();
-                    }
-                  }}
+                  width="100%"
+                  size="xs"
                 />
-              )}
-              <SearchRunControl isFormStateDirty={formState.isDirty} />
-            </>
-          );
-          const expandToggle = (
-            <Tooltip
-              label={isQueryExpanded ? 'Collapse editor' : 'Expand editor'}
-              position="bottom"
-            >
-              <ActionIcon
-                variant="subtle"
-                size="input-xs"
-                color="gray"
-                onClick={toggleQueryExpanded}
-                aria-label={
-                  isQueryExpanded ? 'Collapse editor' : 'Expand editor'
-                }
-                data-testid="query-expand-toggle"
-                style={{ flexShrink: 0 }}
-              >
-                {isQueryExpanded ? (
-                  <IconArrowsDiagonalMinimize2 size={16} />
-                ) : (
-                  <IconArrowsDiagonal size={16} />
+                {view === 'list' && denoiseResults != true && (
+                  <SearchLiveControl
+                    isLive={isLive}
+                    refreshFrequency={refreshFrequency}
+                    onToggle={() =>
+                      isLive ? setIsLive(false) : handleResumeLiveTail()
+                    }
+                    onSelectCadence={ms => {
+                      setRefreshFrequency(ms);
+                      if (!isLive) {
+                        handleResumeLiveTail();
+                      }
+                    }}
+                  />
                 )}
-              </ActionIcon>
-            </Tooltip>
-          );
-          return isQueryExpanded ? (
-            <Box px="sm" pt="sm">
-              <Group justify="flex-end" gap="sm" mb="xs" wrap="wrap">
-                {timeControls}
-                {expandToggle}
-              </Group>
-              {queryInput}
-            </Box>
-          ) : (
-            <Flex gap="sm" px="sm" pt="sm" wrap="wrap" align="center">
-              <Box style={{ flex: '1 1 320px', minWidth: 'min(320px, 100%)' }}>
-                {queryInput}
-              </Box>
-              {expandToggle}
-              <Flex
-                gap="sm"
-                style={{ flex: '0 1 500px', minWidth: 0 }}
-                align="center"
-              >
-                {timeControls}
-              </Flex>
-            </Flex>
-          );
-        })()}
+                <SearchRunControl isFormStateDirty={formState.isDirty} />
+              </>
+            }
+          />
+        </Box>
         <ActiveFilterPills
           searchFilters={searchFilters}
           chartConfig={filtersChartConfig}

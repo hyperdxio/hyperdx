@@ -69,6 +69,9 @@ type SQLInlineEditorProps = {
   // (intersection) rather than the union — for an expression that must be valid
   // against every connection, e.g. a chart-level Group By over multiple series.
   intersectFields?: boolean;
+  // Show a line-number gutter. Off by default so existing inline usages stay
+  // compact; opt-in for editor-style surfaces (e.g. the Explore query editor).
+  showLineNumbers?: boolean;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -96,6 +99,7 @@ export default function SQLInlineEditor({
   dateRange,
   sourceId,
   intersectFields,
+  showLineNumbers = false,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
@@ -372,7 +376,10 @@ export default function SQLInlineEditor({
             }, [setIsFocused])}
             extensions={cmExtensions}
             onCreateEditor={updateAutocompleteColumns}
-            basicSetup={DEFAULT_CODE_MIRROR_BASIC_SETUP}
+            basicSetup={{
+              ...DEFAULT_CODE_MIRROR_BASIC_SETUP,
+              lineNumbers: showLineNumbers,
+            }}
             placeholder={placeholder}
             onClick={onClickCodeMirror}
           />
