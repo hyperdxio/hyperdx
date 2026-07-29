@@ -101,6 +101,12 @@ function useMetricNames(
     isTruncated: [gauge, histogram, sum, exponentialHistogram].some(
       query => query.data?.truncated,
     ),
+    // Surfaced because a failed kind otherwise just vanishes from the list: the
+    // query is not retried, so a transient error or a query too slow to finish
+    // would silently omit those metrics from an apparently healthy dropdown.
+    hasError: [gauge, histogram, sum, exponentialHistogram].some(
+      query => query.isError,
+    ),
   };
 }
 
@@ -197,6 +203,7 @@ export function MetricNameSelect({
     sumMetrics,
     exponentialHistogramMetrics,
     isTruncated,
+    hasError,
   } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {
@@ -240,8 +247,14 @@ export function MetricNameSelect({
       // on close so a collapsed control still shows its selection.
       onDropdownOpen={() => setSearchValue('')}
       onDropdownClose={() => setSearchValue(selectedLabel)}
+      // Reported in the description rather than the `error` slot, which belongs
+      // to form validation for this field.
       description={
-        isTruncated ? 'Too many metrics to list — type to search' : undefined
+        hasError
+          ? 'Some metrics could not be loaded'
+          : isTruncated
+            ? 'Too many metrics to list — type to search'
+            : undefined
       }
       comboboxProps={{
         position: 'bottom-start',

@@ -144,6 +144,22 @@ describe('MetricNameSelect', () => {
     await waitFor(() => expect(input).toHaveValue(''));
   });
 
+  // A failed kind is not retried, so without this its metrics would simply be
+  // missing from a dropdown that looks perfectly healthy.
+  it('reports a metric kind that failed to load', () => {
+    useGetMetricNames.mockImplementation(({ tableName }: any) =>
+      tableName === 'otel_metrics_sum'
+        ? { data: undefined, isError: true }
+        : { data: tableName ? { names: ['up'], truncated: false } : undefined },
+    );
+
+    renderSelect();
+
+    expect(
+      screen.getByText('Some metrics could not be loaded'),
+    ).toBeInTheDocument();
+  });
+
   it('tells the user to search when the catalog is truncated', () => {
     useGetMetricNames.mockImplementation(({ tableName }: any) => ({
       data: tableName ? { names: ['a'], truncated: true } : undefined,
