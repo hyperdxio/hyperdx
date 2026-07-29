@@ -6,8 +6,14 @@ import {
   Completion,
   CompletionSource,
 } from '@codemirror/autocomplete';
-import { StreamLanguage, type StreamParser } from '@codemirror/language';
+import {
+  HighlightStyle,
+  StreamLanguage,
+  type StreamParser,
+  syntaxHighlighting,
+} from '@codemirror/language';
 import { EditorState, type Extension } from '@codemirror/state';
+import { tags as t } from '@lezer/highlight';
 import {
   ActionIcon,
   Box,
@@ -76,6 +82,32 @@ const baseTheme = EditorView.theme({
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px' },
 });
+
+/**
+ * Explicit, high-priority highlight style shared by SQL and Lucene. The @uiw
+ * `basicSetup` only registers CodeMirror's `defaultHighlightStyle` as a
+ * fallback, which leaves identifiers and operators uncolored and reads as "no
+ * highlighting". These mid-tone hues are chosen to stay legible on both the
+ * light and dark app backgrounds, so a single definition works in either
+ * color scheme.
+ */
+const queryHighlightStyle = HighlightStyle.define([
+  { tag: [t.keyword, t.operatorKeyword, t.modifier], color: '#8b5cf6' },
+  { tag: [t.string, t.special(t.string)], color: '#37b24d' },
+  { tag: [t.number, t.bool, t.null], color: '#e8590c' },
+  { tag: [t.typeName], color: '#0ca678' },
+  {
+    tag: [t.standard(t.name), t.function(t.variableName)],
+    color: '#4dabf7',
+  },
+  { tag: [t.propertyName], color: '#4dabf7' },
+  { tag: [t.operator, t.punctuation], color: '#adb5bd' },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment],
+    color: '#868e96',
+    fontStyle: 'italic',
+  },
+]);
 
 /* Block newline insertion while collapsed so a single line stays single. */
 const singleLine = EditorState.transactionFilter.of(tr => {
@@ -211,6 +243,7 @@ export function QueryEditor({
     return [
       baseTheme,
       createCodeMirrorStyleTheme(),
+      syntaxHighlighting(queryHighlightStyle),
       submitKeymap,
       keymap.of([{ key: 'Tab', run: acceptCompletion }]),
       ...languageExtensions(language, fields),
