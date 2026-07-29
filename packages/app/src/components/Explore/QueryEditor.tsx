@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   acceptCompletion,
   autocompletion,
   Completion,
   CompletionSource,
+  startCompletion,
 } from '@codemirror/autocomplete';
 import {
   HighlightStyle,
@@ -231,9 +232,12 @@ export function QueryEditor({
       keymap.of([
         {
           key: 'Enter',
-          run: () => {
+          run: view => {
             if (!onSubmitRef.current) return false;
             onSubmitRef.current();
+            // Keep the caret in the editor so the query can be tweaked while
+            // results load, instead of losing focus on submit.
+            queueMicrotask(() => view.focus());
             return true;
           },
         },
@@ -250,6 +254,13 @@ export function QueryEditor({
       ...(expanded ? [EditorView.lineWrapping] : [singleLine, clipScroller]),
     ];
   }, [language, expanded, fields]);
+
+  // Surface field/variable suggestions as soon as the editor is focused, so
+  // people can discover available fields without knowing exact names.
+  const handleFocus = useCallback(() => {
+    const view = ref.current?.view;
+    if (view) startCompletion(view);
+  }, []);
 
   const showToggle = languages.length > 1;
   const collapsedHeight = '30px';
@@ -307,6 +318,7 @@ export function QueryEditor({
           ref={ref}
           value={value}
           onChange={onChange}
+          onFocus={handleFocus}
           placeholder={placeholder}
           theme={colorScheme === 'dark' ? 'dark' : 'light'}
           extensions={extensions}
