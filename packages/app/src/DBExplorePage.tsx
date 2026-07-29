@@ -11,7 +11,6 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import router from 'next/router';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -74,11 +73,14 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
+  IconArrowsDiagonal,
+  IconArrowsDiagonalMinimize2,
   IconBolt,
   IconCheck,
   IconChevronDown,
   IconClock,
   IconCode,
+  IconDownload,
   IconPlayerPlay,
   IconPlus,
   IconStack2,
@@ -90,7 +92,6 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
-import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
@@ -100,10 +101,10 @@ import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import { SavedSearchesFlyout } from '@/components/SavedSearches/SavedSearchesFlyout';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -142,6 +143,8 @@ import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import DBTableChart from './components/DBTableChart';
 import { DBTreemapChart } from './components/DBTreemapChart';
+import { ExploreContextBand } from './components/Explore/ExploreContextBand';
+import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
@@ -409,53 +412,19 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
   );
 }
 
-function SearchResultsCountGroup({
-  isFilterSidebarCollapsed,
-  onExpandFilters,
-  histogramTimeChartConfig,
-  enableParallelQueries,
-  hideCount,
-}: {
-  isFilterSidebarCollapsed: boolean;
-  onExpandFilters: () => void;
-  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
-  enableParallelQueries?: boolean;
-  /** Metric sources have no row count — skip the total-count query. */
-  hideCount?: boolean;
-}) {
-  return (
-    <Group gap={4} align="center">
-      {isFilterSidebarCollapsed && (
-        <ExpandFiltersButton onExpand={onExpandFilters} />
-      )}
-      {!hideCount && (
-        <SearchTotalCountChart
-          config={histogramTimeChartConfig}
-          queryKeyPrefix={QUERY_KEY_PREFIX}
-          enableParallelQueries={enableParallelQueries}
-        />
-      )}
-    </Group>
-  );
-}
-
 function SearchNumRows({
   config,
-  sqlConfig,
   enabled,
   searchElapsedMs,
   isSearching,
   isLiveTail = false,
 }: {
   config: ChartConfigWithDateRange;
-  sqlConfig?: ChartConfigWithDateRange;
   enabled: boolean;
   searchElapsedMs: number | null;
   isSearching: boolean;
   isLiveTail?: boolean;
 }) {
-  const [statsOpened, { open: openStats, close: closeStats }] =
-    useDisclosure(false);
   const { data, isLoading, error } = useExplainQuery(config, {
     enabled,
     // Keep the previous row count on screen while a new EXPLAIN runs so the
@@ -478,53 +447,64 @@ function SearchNumRows({
   const showElapsed = showElapsedLoading || searchElapsedMs != null;
 
   return (
+    <Group gap={4} align="center">
+      <Text size="xs" c="dimmed">
+        {isLoading
+          ? 'Scanned Rows ...'
+          : error || numRows == null
+            ? ''
+            : `Scanned Rows: ${Number(numRows).toLocaleString()}`}
+      </Text>
+      {showElapsed && (
+        <>
+          {(hasData || isLoading) && (
+            <Text size="xs" c="dimmed">
+              |
+            </Text>
+          )}
+          <Text size="xs" c="dimmed">
+            {showElapsedLoading
+              ? 'Elapsed Time: ...'
+              : `Elapsed Time: ${formatDurationMs(searchElapsedMs!)}`}
+          </Text>
+        </>
+      )}
+    </Group>
+  );
+}
+
+// Opens the generated SQL for the current results/timeline config in a modal.
+// Kept separate from the stats text so it can live in the results controls row.
+function GeneratedSqlButton({
+  config,
+  sqlConfig,
+}: {
+  config: ChartConfigWithDateRange;
+  sqlConfig?: ChartConfigWithDateRange;
+}) {
+  const [opened, { open, close }] = useDisclosure(false);
+  return (
     <>
       <Modal
-        opened={statsOpened}
-        onClose={closeStats}
+        opened={opened}
+        onClose={close}
         title={sqlConfig != null ? 'Generated SQL (Timeline)' : 'Generated SQL'}
         size="xl"
       >
         <ChartSQLPreview config={sqlConfig ?? config} enableCopy />
       </Modal>
-      <Group gap={4} align="center">
-        <Text size="xs">
-          {isLoading
-            ? 'Scanned Rows ...'
-            : error || numRows == null
-              ? ''
-              : `Scanned Rows: ${Number(numRows).toLocaleString()}`}
-        </Text>
-        {showElapsed && (
-          <>
-            {(hasData || isLoading) && (
-              <Text size="xs" c="dimmed">
-                |
-              </Text>
-            )}
-            <Text size="xs">
-              {showElapsedLoading
-                ? 'Elapsed Time: ...'
-                : `Elapsed Time: ${formatDurationMs(searchElapsedMs!)}`}
-            </Text>
-          </>
-        )}
-        {/* The generated-SQL preview is derived purely from config, not the
-            explain query, so it renders unconditionally. Gating it on explain
-            loading/data would make it flicker on every live-tail poll, since
-            each poll changes the dateRange (and thus the explain queryKey). */}
-        <Tooltip label="Show Generated SQL" position="top">
-          <ActionIcon
-            variant="subtle"
-            size="sm"
-            color="gray"
-            onClick={openStats}
-            aria-label="Show Generated SQL"
-          >
-            <IconCode size={16} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
+      <Tooltip label="Show Generated SQL" position="top">
+        <ActionIcon
+          variant="subtle"
+          size="input-xs"
+          color="gray"
+          onClick={open}
+          aria-label="Show Generated SQL"
+          data-testid="generated-sql-button"
+        >
+          <IconCode size={16} />
+        </ActionIcon>
+      </Tooltip>
     </>
   );
 }
@@ -1486,6 +1466,12 @@ function DBExplorePage() {
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
+  const [
+    savedSearchesFlyoutOpened,
+    { open: openSavedSearchesFlyout, close: closeSavedSearchesFlyout },
+  ] = useDisclosure(false);
+  const [isQueryExpanded, { toggle: toggleQueryExpanded }] =
+    useDisclosure(false);
   const chartSearchConfig = useMemo(
     () => ({
       select: searchedConfig.select ?? '',
@@ -2280,7 +2266,14 @@ function DBExplorePage() {
         <Stack mt="lg" mx="xs">
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
-              <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
+              <Anchor
+                component="button"
+                type="button"
+                fz="sm"
+                c="dimmed"
+                onClick={openSavedSearchesFlyout}
+                data-testid="saved-searches-breadcrumb"
+              >
                 Saved Searches
               </Anchor>
               <Text fz="sm" c="dimmed" maw={400} truncate="end">
@@ -2347,19 +2340,6 @@ function DBExplorePage() {
                   {savedSearch.tags?.length || 0}
                 </Button>
               </Tags>
-
-              <SearchPageActionBar
-                onClickDeleteSavedSearch={() => {
-                  deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                    onSuccess: () => {
-                      router.push('/search/list');
-                    },
-                  });
-                }}
-                onClickSaveAsNew={() => {
-                  setSaveSearchModalState('create');
-                }}
-              />
             </Group>
           </Group>
         </Stack>
@@ -2370,69 +2350,52 @@ function DBExplorePage() {
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <SourceSelectControlled
-            key={`${savedSearchId}`}
-            size="xs"
-            control={control}
-            name="source"
-            onCreate={openNewSourceModal}
-            onEdit={onEditCurrentSource}
-            onManageSources={onManageSources}
-            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
-            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
-              inputSourceObj,
-            )}
-            allowedSourceKinds={ALLOWED_SOURCE_KINDS}
-            data-testid="source-selector"
-            style={{ minWidth: 150 }}
-          />
-          <SourceSchemaPreview
-            source={inputSourceObj}
-            controlled
-            open={isSourceSchemaPreviewOpen}
-            onClose={() => setIsSourceSchemaPreviewOpen(false)}
-          />
-          <>
-            {!savedSearchId ? (
-              <Button
-                data-testid="save-search-button"
-                variant="secondary"
+        {/* Band 1: Context */}
+        <ExploreContextBand
+          sourceSelect={
+            <>
+              <SourceSelectControlled
+                key={`${savedSearchId}`}
                 size="xs"
-                onClick={onSaveSearch}
-                style={{ flexShrink: 0 }}
-              >
-                Save
-              </Button>
-            ) : (
-              <Button
-                data-testid="update-search-button"
-                variant="secondary"
-                size="xs"
-                onClick={() => {
-                  setSaveSearchModalState('update');
-                }}
-                style={{ flexShrink: 0 }}
-              >
-                Update
-              </Button>
-            )}
-            {!IS_LOCAL_MODE && (
-              <Button
-                data-testid="alerts-button"
-                variant="secondary"
-                size="xs"
-                onClick={openAlertModal}
-                style={{ flexShrink: 0 }}
-              >
-                <Group gap={4}>
-                  Alerts
-                  <AlertStatusIcon alerts={savedSearch?.alerts} />
-                </Group>
-              </Button>
-            )}
-          </>
-        </Flex>
+                control={control}
+                name="source"
+                onCreate={openNewSourceModal}
+                onEdit={onEditCurrentSource}
+                onManageSources={onManageSources}
+                onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+                isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+                  inputSourceObj,
+                )}
+                allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+                data-testid="source-selector"
+                style={{ minWidth: 150 }}
+              />
+              <SourceSchemaPreview
+                source={inputSourceObj}
+                controlled
+                open={isSourceSchemaPreviewOpen}
+                onClose={() => setIsSourceSchemaPreviewOpen(false)}
+              />
+            </>
+          }
+          savedSearchId={savedSearchId}
+          savedSearchName={savedSearch?.name}
+          isDirty={formState.isDirty}
+          isLocalMode={IS_LOCAL_MODE}
+          alerts={savedSearch?.alerts}
+          onOpenSavedViews={openSavedSearchesFlyout}
+          onSaveView={onSaveSearch}
+          onUpdate={() => setSaveSearchModalState('update')}
+          onSaveAsNew={() => setSaveSearchModalState('create')}
+          onOpenAlert={openAlertModal}
+          onDelete={() =>
+            deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+              onSuccess: () => {
+                router.push('/explore');
+              },
+            })
+          }
+        />
         <SourceEditModal
           opened={modelFormExpanded}
           onClose={onModelFormExpandClose}
@@ -2443,8 +2406,9 @@ function DBExplorePage() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm" wrap="wrap" align="center">
-          <Box style={{ flex: '1 1 320px', minWidth: 'min(320px, 100%)' }}>
+        {/* Band 2: Query editor */}
+        {(() => {
+          const queryInput = (
             <SearchWhereInput
               tableConnection={inputSourceTableConnection}
               control={control}
@@ -2457,46 +2421,92 @@ function DBExplorePage() {
               dateRange={searchedTimeRange}
               sourceId={inputSource}
               size="xs"
+              allowMultiline={isQueryExpanded}
             />
-          </Box>
-          <Flex
-            gap="sm"
-            style={{ flex: '0 1 500px', minWidth: 0 }}
-            align="center"
-          >
-            <TimePicker
-              data-testid="time-picker"
-              inputValue={displayedTimeInputValue}
-              setInputValue={setDisplayedTimeInputValue}
-              onSearch={onTimePickerSearch}
-              onRelativeSearch={onTimePickerRelativeSearch}
-              showLive={view === 'list'}
-              isLiveMode={isLive}
-              // Default to relative time mode if the user has made changes to interval and reloaded.
-              defaultRelativeTimeMode={
-                isLive && interval !== LIVE_TAIL_DURATION_MS
-              }
-              width="100%"
-              size="xs"
-            />
-            {view === 'list' && denoiseResults != true && (
-              <SearchLiveControl
-                isLive={isLive}
-                refreshFrequency={refreshFrequency}
-                onToggle={() =>
-                  isLive ? setIsLive(false) : handleResumeLiveTail()
+          );
+          const timeControls = (
+            <>
+              <TimePicker
+                data-testid="time-picker"
+                inputValue={displayedTimeInputValue}
+                setInputValue={setDisplayedTimeInputValue}
+                onSearch={onTimePickerSearch}
+                onRelativeSearch={onTimePickerRelativeSearch}
+                showLive={view === 'list'}
+                isLiveMode={isLive}
+                // Default to relative time mode if the user has made changes to interval and reloaded.
+                defaultRelativeTimeMode={
+                  isLive && interval !== LIVE_TAIL_DURATION_MS
                 }
-                onSelectCadence={ms => {
-                  setRefreshFrequency(ms);
-                  if (!isLive) {
-                    handleResumeLiveTail();
-                  }
-                }}
+                width="100%"
+                size="xs"
               />
-            )}
-            <SearchRunControl isFormStateDirty={formState.isDirty} />
-          </Flex>
-        </Flex>
+              {view === 'list' && denoiseResults != true && (
+                <SearchLiveControl
+                  isLive={isLive}
+                  refreshFrequency={refreshFrequency}
+                  onToggle={() =>
+                    isLive ? setIsLive(false) : handleResumeLiveTail()
+                  }
+                  onSelectCadence={ms => {
+                    setRefreshFrequency(ms);
+                    if (!isLive) {
+                      handleResumeLiveTail();
+                    }
+                  }}
+                />
+              )}
+              <SearchRunControl isFormStateDirty={formState.isDirty} />
+            </>
+          );
+          const expandToggle = (
+            <Tooltip
+              label={isQueryExpanded ? 'Collapse editor' : 'Expand editor'}
+              position="bottom"
+            >
+              <ActionIcon
+                variant="subtle"
+                size="input-xs"
+                color="gray"
+                onClick={toggleQueryExpanded}
+                aria-label={
+                  isQueryExpanded ? 'Collapse editor' : 'Expand editor'
+                }
+                data-testid="query-expand-toggle"
+                style={{ flexShrink: 0 }}
+              >
+                {isQueryExpanded ? (
+                  <IconArrowsDiagonalMinimize2 size={16} />
+                ) : (
+                  <IconArrowsDiagonal size={16} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+          );
+          return isQueryExpanded ? (
+            <Box px="sm" pt="sm">
+              <Group justify="flex-end" gap="sm" mb="xs" wrap="wrap">
+                {timeControls}
+                {expandToggle}
+              </Group>
+              {queryInput}
+            </Box>
+          ) : (
+            <Flex gap="sm" px="sm" pt="sm" wrap="wrap" align="center">
+              <Box style={{ flex: '1 1 320px', minWidth: 'min(320px, 100%)' }}>
+                {queryInput}
+              </Box>
+              {expandToggle}
+              <Flex
+                gap="sm"
+                style={{ flex: '0 1 500px', minWidth: 0 }}
+                align="center"
+              >
+                {timeControls}
+              </Flex>
+            </Flex>
+          );
+        })()}
         <ActiveFilterPills
           searchFilters={searchFilters}
           chartConfig={filtersChartConfig}
@@ -2513,6 +2523,12 @@ function DBExplorePage() {
           savedSearchId={savedSearchId}
         />
       )}
+      <SavedSearchesFlyout
+        opened={savedSearchesFlyoutOpened}
+        onClose={closeSavedSearchesFlyout}
+        currentSavedSearchId={savedSearchId}
+        linkPrefix="/explore"
+      />
       <DirectTraceSidePanel
         opened={directTraceId != null}
         traceId={directTraceId ?? ''}
@@ -2568,85 +2584,109 @@ function DBExplorePage() {
               {chartConfig && histogramTimeChartConfig && (
                 <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                   <Box className={searchPageStyles.searchStatsContainer}>
-                    <Group
-                      justify="space-between"
-                      align="center"
-                      style={{ width: '100%' }}
-                    >
-                      <Group gap="md" align="center" wrap="nowrap">
-                        <SearchResultsCountGroup
-                          isFilterSidebarCollapsed={isFilterSidebarCollapsed}
-                          onExpandFilters={() =>
-                            setIsFilterSidebarCollapsed(false)
-                          }
-                          histogramTimeChartConfig={histogramTimeChartConfig}
-                          enableParallelQueries
-                          hideCount={isMetricSource}
-                        />
+                    <ExploreResultsToolbar
+                      resultsCount={
+                        !isMetricSource && (
+                          <SearchTotalCountChart
+                            config={histogramTimeChartConfig}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            enableParallelQueries
+                          />
+                        )
+                      }
+                      stats={
+                        !isMetricSource && (
+                          <SearchNumRows
+                            config={{
+                              ...chartConfig,
+                              dateRange: searchedTimeRange,
+                            }}
+                            enabled={isReady}
+                            searchElapsedMs={searchElapsedMs}
+                            isSearching={isAnyQueryFetching}
+                            isLiveTail={isLive ?? false}
+                          />
+                        )
+                      }
+                      filterExpand={
+                        isFilterSidebarCollapsed && (
+                          <ExpandFiltersButton
+                            onExpand={() => setIsFilterSidebarCollapsed(false)}
+                          />
+                        )
+                      }
+                      viewSwitcher={
                         <SearchViewSwitcher
                           value={view}
                           onChange={setView}
                           sourceKind={searchedSource?.kind}
                         />
-                      </Group>
-                      <Group gap="sm" align="center">
-                        {view === 'list' && (
-                          <SearchSortMenu
-                            groupLabel="Sort by"
-                            options={displayedColumns.map(column => ({
-                              value: column,
-                              label: column,
-                            }))}
-                            activeField={listSort.field}
-                            direction={listSort.direction}
-                            onChange={applyListSort}
-                            onRevert={revertListSort}
-                            canRevert={!!searchedConfig.orderBy}
-                            sqlSlot={
-                              <SQLInlineEditorControlled
-                                tableConnection={inputSourceTableConnection}
-                                control={control}
-                                name="orderBy"
-                                defaultValue={defaultSearchConfig.orderBy}
-                                onSubmit={onSubmit}
-                                label="ORDER BY"
-                                size="xs"
-                                dateRange={searchedTimeRange}
-                                sourceId={inputSource}
-                              />
-                            }
-                          />
-                        )}
-                        {(view === 'table' ||
-                          view === 'bar' ||
-                          view === 'pie' ||
-                          view === 'treemap') && (
-                          <SearchSortMenu
-                            groupLabel="Sort groups by"
-                            options={[
-                              { value: 'value', label: 'Value' },
-                              { value: 'name', label: 'Name' },
-                            ]}
-                            activeField={aggConfig.sort}
-                            direction={aggConfig.sortDir}
-                            onChange={(field, dir) => {
-                              setAggConfig({
-                                sort: field as AggSortField,
-                                sortDir: dir,
-                              });
-                              onSubmit();
-                            }}
-                            onRevert={() => {
-                              setAggConfig({ sort: 'value', sortDir: 'desc' });
-                              onSubmit();
-                            }}
-                            canRevert={
-                              aggConfig.sort !== 'value' ||
-                              aggConfig.sortDir !== 'desc'
-                            }
-                          />
-                        )}
-                        {view === 'list' && (
+                      }
+                      sortControl={
+                        <>
+                          {view === 'list' && (
+                            <SearchSortMenu
+                              groupLabel="Sort by"
+                              options={displayedColumns.map(column => ({
+                                value: column,
+                                label: column,
+                              }))}
+                              activeField={listSort.field}
+                              direction={listSort.direction}
+                              onChange={applyListSort}
+                              onRevert={revertListSort}
+                              canRevert={!!searchedConfig.orderBy}
+                              sqlSlot={
+                                <SQLInlineEditorControlled
+                                  tableConnection={inputSourceTableConnection}
+                                  control={control}
+                                  name="orderBy"
+                                  defaultValue={defaultSearchConfig.orderBy}
+                                  onSubmit={onSubmit}
+                                  label="ORDER BY"
+                                  size="xs"
+                                  dateRange={searchedTimeRange}
+                                  sourceId={inputSource}
+                                />
+                              }
+                            />
+                          )}
+                          {(view === 'table' ||
+                            view === 'bar' ||
+                            view === 'pie' ||
+                            view === 'treemap') && (
+                            <SearchSortMenu
+                              groupLabel="Sort groups by"
+                              options={[
+                                { value: 'value', label: 'Value' },
+                                { value: 'name', label: 'Name' },
+                              ]}
+                              activeField={aggConfig.sort}
+                              direction={aggConfig.sortDir}
+                              onChange={(field, dir) => {
+                                setAggConfig({
+                                  sort: field as AggSortField,
+                                  sortDir: dir,
+                                });
+                                onSubmit();
+                              }}
+                              onRevert={() => {
+                                setAggConfig({
+                                  sort: 'value',
+                                  sortDir: 'desc',
+                                });
+                                onSubmit();
+                              }}
+                              canRevert={
+                                aggConfig.sort !== 'value' ||
+                                aggConfig.sortDir !== 'desc'
+                              }
+                            />
+                          )}
+                        </>
+                      }
+                      columnsControl={
+                        view === 'list' && (
                           <SearchColumnPicker
                             availableColumns={availableColumns}
                             selectedColumns={displayedColumns}
@@ -2669,22 +2709,34 @@ function DBExplorePage() {
                               />
                             }
                           />
-                        )}
-                        {!isMetricSource && (
-                          <SearchNumRows
+                        )
+                      }
+                      sqlPreview={
+                        !isMetricSource && (
+                          <GeneratedSqlButton
                             config={{
                               ...chartConfig,
                               dateRange: searchedTimeRange,
                             }}
                             sqlConfig={histogramTimeChartConfig ?? undefined}
-                            enabled={isReady}
-                            searchElapsedMs={searchElapsedMs}
-                            isSearching={isAnyQueryFetching}
-                            isLiveTail={isLive ?? false}
                           />
-                        )}
-                      </Group>
-                    </Group>
+                        )
+                      }
+                      exportControl={
+                        <Tooltip label="Export (coming soon)" position="top">
+                          <ActionIcon
+                            variant="subtle"
+                            size="input-xs"
+                            color="gray"
+                            disabled
+                            aria-label="Export results"
+                            data-testid="export-button"
+                          >
+                            <IconDownload size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      }
+                    />
                   </Box>
                   {isAggregatedSearchView(view) && (
                     <SearchAggControls
