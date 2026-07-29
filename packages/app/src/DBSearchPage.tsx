@@ -1318,18 +1318,15 @@ export function DBSearchPage() {
     // If the user changes the source dropdown, reset the select and orderby fields
     // to match the new source selected
     if (watchedSource !== prevSourceRef.current) {
-      // If the form is just catching up to the source that the search config
-      // already points at, don't reset the select/orderBy/filters - this is just
-      // a resolution from a source name to its ID, not a user-initiated change.
-      // Saved searches are excluded: on `/search/<savedSearchId>` the source is
-      // written to the URL by the saved-search effect, so the form converging on
-      // it is the normal load path, and the body below is what re-applies the
-      // saved search's own select/orderBy.
-      if (
-        savedSearchId == null &&
-        watchedSource &&
-        watchedSource === searchedSource?.id
-      ) {
+      // Whether the form is only catching up to the source the search config
+      // already points at — a source name resolving to its ID, a saved search's
+      // own source arriving, or history navigation — rather than the user
+      // picking a different source. Either way the URL's other params were
+      // chosen deliberately and must not be rewritten.
+      const isCatchingUpToConfig =
+        !!watchedSource && watchedSource === searchedSource?.id;
+
+      if (isCatchingUpToConfig && savedSearchId == null) {
         prevSourceRef.current = watchedSource;
         if (rawSearchedConfig.source !== watchedSource) {
           // Partial update — the other search params are left as they are.
@@ -1346,18 +1343,26 @@ export function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
-        if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue('select', '');
-          setValue('orderBy', '');
-          // Defer filter clearing: wait until the new source's columns load,
-          // then keep filters whose root column exists on the new schema.
-          pendingFilterReconcileRef.current = watchedSource ?? null;
-          // If the user is in a saved search, prefer the saved search's select/orderBy if available
-        } else {
-          setValue('select', savedSearch?.select ?? '');
-          setValue('orderBy', savedSearch?.orderBy ?? '');
-          // Don't clear filters - we're loading from saved search
+        // Only a real user-initiated source change may reset the query fields. On a saved
+        // search route the form also catches up to the source the URL points at
+        // (the saved-search effect writes it), and resetting there would discard
+        // select/orderBy the link carried — e.g. an unsaved tweak that was
+        // bookmarked or refreshed. The submit below still runs, since that is how
+        // a freshly loaded page pushes its defaults into the search config.
+        if (!isCatchingUpToConfig) {
+          // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
+          if (savedSearchId == null || savedSearch?.source !== watchedSource) {
+            setValue('select', '');
+            setValue('orderBy', '');
+            // Defer filter clearing: wait until the new source's columns load,
+            // then keep filters whose root column exists on the new schema.
+            pendingFilterReconcileRef.current = watchedSource ?? null;
+            // If the user is in a saved search, prefer the saved search's select/orderBy if available
+          } else {
+            setValue('select', savedSearch?.select ?? '');
+            setValue('orderBy', savedSearch?.orderBy ?? '');
+            // Don't clear filters - we're loading from saved search
+          }
         }
         // Push the new source to URL/searchedConfig so the chart re-queries.
         // Debounced so a later filter reconcile (which also submits) collapses

@@ -339,6 +339,65 @@ test.describe('Saved Search Functionality', () => {
   );
 
   test(
+    'should preserve SELECT and ORDER BY carried in a saved search link loaded cold',
+    {},
+    async ({ page }) => {
+      /**
+       * The other SELECT tests reload `page.url().split('?')[0]`, dropping the
+       * query string — so none of them cover a link whose URL config differs
+       * from what the saved search stores, which is what you have after tweaking
+       * SELECT without saving. A bookmark, a shared link, or a plain browser
+       * refresh keeps that query string, and it has to survive a *cold* load,
+       * where the source list isn't cached and the form's source therefore
+       * arrives a render later than the rest of the config.
+       */
+      const savedSelect = 'Timestamp, Body';
+      const tweakedSelect = 'Timestamp, Body, lower(Body) as body_lower';
+      let linkWithTweak: string;
+
+      await test.step('Create a saved search with a plain SELECT', async () => {
+        await searchPage.setCustomSELECT(savedSelect);
+        await searchPage.submitEmptySearch();
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Cold Load Config Test',
+        );
+      });
+
+      await test.step('Tweak SELECT without saving, so the link differs from the saved search', async () => {
+        await searchPage.setCustomSELECT(tweakedSelect);
+        await searchPage.submitEmptySearch();
+        await searchPage.table.waitForRowsToPopulate(true);
+
+        // Keep the query string: it is the thing under test.
+        linkWithTweak = page.url();
+        expect(new URL(linkWithTweak).searchParams.get('select')).toContain(
+          'lower(Body)',
+        );
+      });
+
+      await test.step('Load that link cold, the way a refresh or a new tab does', async () => {
+        await page.goto(linkWithTweak);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+        await searchPage.table.waitForRowsToPopulate(true);
+        // The page submits on a 1s debounce, so give any rewrite time to land
+        // rather than asserting on the pre-rewrite state.
+        // eslint-disable-next-line playwright/no-wait-for-timeout
+        await page.waitForTimeout(2000);
+      });
+
+      await test.step('The tweak survives, in the form and in the URL', async () => {
+        await expect(searchPage.getSELECTEditor()).toContainText(
+          'lower(Body) as body_lower',
+        );
+        expect(new URL(page.url()).searchParams.get('select')).toContain(
+          'lower(Body)',
+        );
+      });
+    },
+  );
+
+  test(
     'should preserve default SELECT when saving a search',
     {},
     async ({ page }) => {

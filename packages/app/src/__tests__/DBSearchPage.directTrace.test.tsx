@@ -524,29 +524,41 @@ describe('DBSearchPage direct trace flow', () => {
     );
   });
 
-  it('does not skip the source-change effect on a saved search route', async () => {
+  it('submits on a saved search route without discarding the config the link carried', async () => {
     // On `/search/<savedSearchId>` the source is written to the URL by the
-    // saved-search effect, and the source-change effect is what re-applies the
-    // saved search's own select/orderBy. Treating the form catching up as a
-    // no-op there stops that from happening (HDX saved-search SELECT tests).
+    // saved-search effect, so the form catches up to it on a cold load. The
+    // submit still has to run — that is how a freshly loaded page pushes its
+    // defaults into the search config — but it must not clear `select`, which a
+    // bookmarked or refreshed link may carry (e.g. an unsaved tweak).
     mockDirectTraceId = null;
     mockSourcesLoading = true;
     mockSearchedConfig = {
       source: 'log-source',
       where: '',
-      select: 'Timestamp, Body',
+      select: 'Timestamp, Body, lower(Body) as body_lower',
       whereLanguage: undefined,
       filters: [],
-      orderBy: '',
+      orderBy: 'Timestamp DESC',
     };
-    window.history.pushState({}, '', '/search/saved-1?source=log-source');
+    window.history.pushState(
+      {},
+      '',
+      '/search/saved-1?source=log-source&select=Timestamp%2C%20Body%2C%20lower(Body)%20as%20body_lower&orderBy=Timestamp%20DESC',
+    );
 
     await renderThroughSourceLoad();
 
-    // The full config is submitted (the effect body ran), not the
-    // `{ source }`-only canonicalization used for plain deeplinks.
     expect(mockSetSearchedConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'log-source', where: '' }),
+      expect.objectContaining({
+        source: 'log-source',
+        select: 'Timestamp, Body, lower(Body) as body_lower',
+        orderBy: 'Timestamp DESC',
+      }),
     );
+    // Nothing may land that empties them.
+    for (const [config] of mockSetSearchedConfig.mock.calls) {
+      expect(config).not.toMatchObject({ select: '' });
+      expect(config).not.toMatchObject({ orderBy: '' });
+    }
   });
 });
