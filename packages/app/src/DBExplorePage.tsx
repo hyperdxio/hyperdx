@@ -12,7 +12,6 @@ import {
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import router from 'next/router';
-import { formatDistanceToNow } from 'date-fns';
 import {
   parseAsBoolean,
   parseAsInteger,
@@ -49,9 +48,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Anchor,
   Box,
-  Breadcrumbs,
   Button,
   Card,
   Code,
@@ -180,9 +177,7 @@ import {
 } from './utils/queryParsers';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
-import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
-import { FormatTime } from './useFormatTime';
 
 import searchPageStyles from '@styles/SearchPage.module.scss';
 
@@ -2254,88 +2249,6 @@ function DBExplorePage() {
         />
       )}
       <OnboardingModal />
-      {savedSearch && (
-        <Stack mt="lg" mx="xs">
-          <Group justify="space-between">
-            <Breadcrumbs fz="sm">
-              <Anchor
-                component="button"
-                type="button"
-                fz="sm"
-                c="dimmed"
-                onClick={openSavedSearchesFlyout}
-                data-testid="saved-searches-breadcrumb"
-              >
-                Saved Searches
-              </Anchor>
-              <Text fz="sm" c="dimmed" maw={400} truncate="end">
-                {savedSearch.name}
-              </Text>
-            </Breadcrumbs>
-            <Text size="xs" c="dimmed" lh={1}>
-              {savedSearch.createdBy && (
-                <span>
-                  Created by{' '}
-                  {savedSearch.createdBy.name || savedSearch.createdBy.email}.{' '}
-                </span>
-              )}
-              {savedSearch.updatedAt && (
-                <Tooltip
-                  label={
-                    <>
-                      <FormatTime
-                        value={savedSearch.updatedAt}
-                        format="short"
-                      />
-                      {savedSearch.updatedBy
-                        ? ` by ${savedSearch.updatedBy.name || savedSearch.updatedBy.email}`
-                        : ''}
-                    </>
-                  }
-                >
-                  <span>{`Updated ${formatDistanceToNow(new Date(savedSearch.updatedAt), { addSuffix: true })}.`}</span>
-                </Tooltip>
-              )}
-            </Text>
-          </Group>
-          <Group justify="space-between" align="flex-end">
-            <div data-testid="saved-search-name">
-              <EditablePageName
-                key={savedSearch.id}
-                name={savedSearch?.name ?? 'Untitled Search'}
-                onSave={editedName => {
-                  updateSavedSearch.mutate({
-                    id: savedSearch.id,
-                    name: editedName,
-                  });
-                }}
-              />
-            </div>
-
-            <Group gap="xs">
-              <FavoriteButton
-                resourceType="savedSearch"
-                resourceId={savedSearch.id}
-              />
-              <Tags
-                allowCreate
-                values={savedSearch.tags || []}
-                onChange={handleUpdateTags}
-              >
-                <Button
-                  data-testid="tags-button"
-                  variant="secondary"
-                  size="xs"
-                  style={{ flexShrink: 0 }}
-                >
-                  <IconTags size={14} className="me-1" />
-                  {savedSearch.tags?.length || 0}
-                </Button>
-              </Tags>
-            </Group>
-          </Group>
-        </Stack>
-      )}
       <form
         data-testid="search-form"
         onSubmit={onFormSubmit}
@@ -2375,6 +2288,33 @@ function DBExplorePage() {
           isDirty={formState.isDirty}
           isLocalMode={IS_LOCAL_MODE}
           alerts={savedSearch?.alerts}
+          favoriteButton={
+            savedSearch && (
+              <FavoriteButton
+                resourceType="savedSearch"
+                resourceId={savedSearch.id}
+              />
+            )
+          }
+          tagsControl={
+            savedSearch && (
+              <Tags
+                allowCreate
+                values={savedSearch.tags || []}
+                onChange={handleUpdateTags}
+              >
+                <Button
+                  data-testid="tags-button"
+                  variant="secondary"
+                  size="xs"
+                  style={{ flexShrink: 0 }}
+                >
+                  <IconTags size={14} className="me-1" />
+                  {savedSearch.tags?.length || 0}
+                </Button>
+              </Tags>
+            )
+          }
           onOpenSavedViews={openSavedSearchesFlyout}
           onSaveView={onSaveSearch}
           onUpdate={() => setSaveSearchModalState('update')}

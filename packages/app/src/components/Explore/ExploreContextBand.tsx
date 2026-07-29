@@ -146,6 +146,8 @@ export function ExploreContextBand({
   isDirty,
   isLocalMode,
   alerts,
+  favoriteButton,
+  tagsControl,
   onOpenSavedViews,
   onSaveView,
   onUpdate,
@@ -160,6 +162,10 @@ export function ExploreContextBand({
   isDirty: boolean;
   isLocalMode: boolean;
   alerts?: AlertLike[];
+  /** Favorite toggle for the current saved view (rendered by the page). */
+  favoriteButton?: React.ReactNode;
+  /** Tags control for the current saved view (rendered by the page). */
+  tagsControl?: React.ReactNode;
   onOpenSavedViews: () => void;
   onSaveView: () => void;
   onUpdate: () => void;
@@ -191,6 +197,12 @@ export function ExploreContextBand({
         </Text>
       </Button>
       <SaveStatusPill savedSearchId={savedSearchId} isDirty={isDirty} />
+      {savedSearchId && (favoriteButton || tagsControl) ? (
+        <Group gap="xs" wrap="nowrap">
+          {favoriteButton}
+          {tagsControl}
+        </Group>
+      ) : null}
       <Group gap="sm" ml="auto" wrap="nowrap">
         {!savedSearchId ? (
           <Button
