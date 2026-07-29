@@ -104,6 +104,7 @@ export function ChartSeriesEditor({
   tableSource,
   errors,
   clearErrors,
+  dateRange,
 }: ChartSeriesEditorProps) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -360,6 +361,7 @@ export function ChartSeriesEditor({
                 setValue(`${namePrefix}metricType`, value)
               }
               metricSource={tableSource}
+              dateRange={dateRange}
               data-testid="metric-name-selector"
               error={errors?.metricName?.message}
               onFocus={() => clearErrors(`${namePrefix}metricName`)}

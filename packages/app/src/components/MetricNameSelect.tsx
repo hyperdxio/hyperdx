@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
@@ -6,14 +6,15 @@ import {
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 
-import { useGetKeyValues } from '@/hooks/useMetadata';
+import { useGetMetricNames } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
-const MAX_METRIC_NAME_OPTIONS = 3000;
 const SEPARATOR = ':::::::';
+const SEARCH_DEBOUNCE_MS = 300;
 
-const chartConfigByMetricType = ({
+const metricNamesQueryArgs = ({
   dateRange,
   metricSource,
   metricType,
@@ -42,16 +43,12 @@ const chartConfigByMetricType = ({
   }
 
   return {
-    // metricSource,
-    from: {
-      databaseName: metricSource.from.databaseName,
-      tableName: metricSource.metricTables?.[metricType] ?? '',
-    },
-    where: '',
-    whereLanguage: 'sql' as const,
-    select: '',
+    databaseName: metricSource.from.databaseName,
+    // Empty when this source has no table for the kind, which disables the query
+    // rather than emitting `FROM db.``` and failing on every render.
+    tableName: metricSource.metricTables?.[metricType] ?? '',
+    connectionId: metricSource.connection,
     timestampValueExpression: metricSource.timestampValueExpression ?? '',
-    connection: metricSource.connection,
     dateRange: _dateRange,
   };
 };
@@ -59,73 +56,51 @@ const chartConfigByMetricType = ({
 function useMetricNames(
   metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
+  namePattern?: string,
 ) {
-  const {
-    gaugeConfig,
-    histogramConfig,
-    sumConfig,
-    exponentialHistogramConfig,
-  } = useMemo(() => {
-    return {
-      gaugeConfig: chartConfigByMetricType({
-        dateRange,
-        metricSource,
-        metricType: MetricsDataType.Gauge,
+  const { gaugeArgs, histogramArgs, sumArgs, exponentialHistogramArgs } =
+    useMemo(
+      () => ({
+        gaugeArgs: metricNamesQueryArgs({
+          dateRange,
+          metricSource,
+          metricType: MetricsDataType.Gauge,
+        }),
+        histogramArgs: metricNamesQueryArgs({
+          dateRange,
+          metricSource,
+          metricType: MetricsDataType.Histogram,
+        }),
+        sumArgs: metricNamesQueryArgs({
+          dateRange,
+          metricSource,
+          metricType: MetricsDataType.Sum,
+        }),
+        exponentialHistogramArgs: metricNamesQueryArgs({
+          dateRange,
+          metricSource,
+          metricType: MetricsDataType.ExponentialHistogram,
+        }),
       }),
-      histogramConfig: chartConfigByMetricType({
-        dateRange,
-        metricSource,
-        metricType: MetricsDataType.Histogram,
-      }),
-      sumConfig: chartConfigByMetricType({
-        dateRange,
-        metricSource,
-        metricType: MetricsDataType.Sum,
-      }),
-      exponentialHistogramConfig: chartConfigByMetricType({
-        dateRange,
-        metricSource,
-        metricType: MetricsDataType.ExponentialHistogram,
-      }),
-    };
-  }, [metricSource, dateRange]);
+      [metricSource, dateRange],
+    );
 
-  const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfig: gaugeConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
+  const gauge = useGetMetricNames({ ...gaugeArgs, namePattern });
+  const histogram = useGetMetricNames({ ...histogramArgs, namePattern });
+  const sum = useGetMetricNames({ ...sumArgs, namePattern });
+  const exponentialHistogram = useGetMetricNames({
+    ...exponentialHistogramArgs,
+    namePattern,
   });
-  const { data: histogramMetrics } = useGetKeyValues({
-    chartConfig: histogramConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
-  const { data: sumMetrics } = useGetKeyValues({
-    chartConfig: sumConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
-  const { data: exponentialHistogramMetrics } = useGetKeyValues(
-    {
-      chartConfig: exponentialHistogramConfig,
-      keys: ['MetricName'],
-      limit: MAX_METRIC_NAME_OPTIONS,
-      disableRowLimit: true,
-    },
-    {
-      enabled:
-        !!metricSource.metricTables?.[MetricsDataType.ExponentialHistogram],
-    },
-  );
 
   return {
-    gaugeMetrics: gaugeMetrics?.[0].value,
-    histogramMetrics: histogramMetrics?.[0].value,
-    sumMetrics: sumMetrics?.[0].value,
-    exponentialHistogramMetrics: exponentialHistogramMetrics?.[0].value,
+    gaugeMetrics: gauge.data?.names,
+    histogramMetrics: histogram.data?.names,
+    sumMetrics: sum.data?.names,
+    exponentialHistogramMetrics: exponentialHistogram.data?.names,
+    isTruncated: [gauge, histogram, sum, exponentialHistogram].some(
+      query => query.data?.truncated,
+    ),
   };
 }
 
@@ -179,6 +154,7 @@ export function MetricNameSelect({
   isLoading,
   isError,
   metricSource,
+  dateRange,
   error,
   onFocus,
   'data-testid': dataTestId,
@@ -190,16 +166,38 @@ export function MetricNameSelect({
   isLoading?: boolean;
   isError?: boolean;
   metricSource: TMetricSource;
+  dateRange?: DateRange['dateRange'];
   error?: string;
   onFocus?: () => void;
   'data-testid'?: string;
 }) {
+  const [searchValue, setSearchValue] = useState('');
+
+  // Mantine mirrors the selected option's *label* into a searchable Select's
+  // input when the selection changes, and reports it through `onSearchChange`
+  // exactly like typed text. Passing that on would search ClickHouse for
+  // "up (Gauge)", which matches nothing, so an already-configured chart would
+  // open to an empty list. Compared case-insensitively because the label for a
+  // saved exponential-histogram metric differs only in case from the one built
+  // for a discovered metric.
+  const selectedLabel = metricName
+    ? `${metricName} (${capitalizeFirstLetter(metricType)})`
+    : '';
+  const trimmedSearch = searchValue.trim();
+  const activeSearch =
+    trimmedSearch.toLowerCase() === selectedLabel.toLowerCase()
+      ? ''
+      : trimmedSearch;
+
+  const [debouncedSearch] = useDebouncedValue(activeSearch, SEARCH_DEBOUNCE_MS);
+
   const {
     gaugeMetrics,
     histogramMetrics,
     sumMetrics,
     exponentialHistogramMetrics,
-  } = useMetricNames(metricSource);
+    isTruncated,
+  } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {
     return getMetricOptions(
@@ -235,6 +233,16 @@ export function MetricNameSelect({
       }
       data={options}
       limit={100}
+      searchValue={searchValue}
+      onSearchChange={setSearchValue}
+      // Start each browse from an empty input so the full list is offered and the
+      // mirrored label cannot be partially deleted and searched for; restore it
+      // on close so a collapsed control still shows its selection.
+      onDropdownOpen={() => setSearchValue('')}
+      onDropdownClose={() => setSearchValue(selectedLabel)}
+      description={
+        isTruncated ? 'Too many metrics to list — type to search' : undefined
+      }
       comboboxProps={{
         position: 'bottom-start',
         width: 'auto',

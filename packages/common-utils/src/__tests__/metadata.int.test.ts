@@ -971,4 +971,162 @@ describe('Metadata Integration Tests', () => {
       );
     });
   });
+  // Coverage here was logs-only, which is how a metrics-specific truncation bug
+  // shipped repeatedly. Runs against a table shaped like the real OTel gauge
+  // table holding more distinct names than one page can return.
+  describe('getMetricNames', () => {
+    let metadata: Metadata;
+    const GENERATED = 1000;
+    // Most of these merely *contain* "up". The exact `up` gauge — Prometheus'
+    // scrape-health metric — sorts last alphabetically, so it is the one a
+    // name-ordered page cannot reach.
+    const NOISE = [
+      'backup_size_bytes',
+      'group_reads',
+      'mongodb_up',
+      'node_uptime_seconds',
+      'up',
+    ];
+
+    const baseArgs = {
+      databaseName: 'default',
+      tableName: 'test_metrics_gauge',
+      connectionId: 'test_connection',
+      dateRange: [new Date('2023-01-01'), new Date('2025-01-01')] as [
+        Date,
+        Date,
+      ],
+      timestampValueExpression: 'TimeUnix',
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.test_metrics_gauge (
+            ServiceName LowCardinality(String),
+            MetricName String,
+            TimeUnix DateTime64(9),
+            Value Float64,
+            Attributes Map(LowCardinality(String), String)
+          )
+          ENGINE = MergeTree()
+          ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
+        `,
+      });
+      await client.command({
+        query: `INSERT INTO default.test_metrics_gauge
+          SELECT 'svc', concat('metric_', leftPad(toString(number), 5, '0')),
+                 toDateTime64('2024-06-01 12:00:00', 9), 1, map()
+          FROM numbers(${GENERATED})`,
+      });
+      await client.command({
+        query: `INSERT INTO default.test_metrics_gauge
+          SELECT 'svc', arrayJoin([${NOISE.map(n => `'${n}'`).join(', ')}]),
+                 toDateTime64('2024-06-01 12:00:00', 9), 1, map()`,
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: 'DROP TABLE IF EXISTS default.test_metrics_gauge',
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('reports truncation instead of silently dropping names', async () => {
+      const result = await metadata.getMetricNames({ ...baseArgs, limit: 100 });
+
+      expect(result.names).toHaveLength(100);
+      expect(result.truncated).toBe(true);
+    });
+
+    it('returns an alphabetically ordered page when browsing', async () => {
+      const result = await metadata.getMetricNames({ ...baseArgs, limit: 50 });
+
+      expect(result.names).toEqual([...result.names].sort());
+    });
+
+    // The reported failure mode: `up` is present and healthy, but a capped page
+    // cannot reach it, and the exact match must outrank the many names that
+    // merely contain it.
+    it('surfaces an exact match a capped page could not otherwise reach', async () => {
+      const browsing = await metadata.getMetricNames({
+        ...baseArgs,
+        limit: 100,
+      });
+      expect(browsing.names).not.toContain('up');
+
+      const searched = await metadata.getMetricNames({
+        ...baseArgs,
+        limit: 100,
+        namePattern: 'up',
+      });
+
+      expect(searched.names[0]).toBe('up');
+      expect(searched.names).toContain('mongodb_up');
+    });
+
+    it('ranks prefix matches ahead of mid-string ones', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'node_',
+      });
+
+      expect(result.names[0]).toBe('node_uptime_seconds');
+    });
+
+    it('matches namePattern case-insensitively', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'UP',
+      });
+
+      expect([...result.names].sort()).toEqual([...NOISE].sort());
+    });
+
+    // Escaping `_` must still leave it matching a literal underscore. Asserting
+    // only that wildcards stop matching would also pass if the pattern were
+    // over-escaped into matching nothing, which would break essentially every
+    // Prometheus search since those names are full of underscores.
+    it('still matches underscores after escaping them', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'node_uptime',
+      });
+
+      expect(result.names).toEqual(['node_uptime_seconds']);
+    });
+
+    it('treats ILIKE wildcards in namePattern as literals', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'metric%000',
+      });
+
+      expect(result.names).toEqual([]);
+    });
+
+    it('returns every name when the limit exceeds the distinct count', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        limit: GENERATED + NOISE.length + 10,
+      });
+
+      expect(result.truncated).toBe(false);
+      expect(result.names).toHaveLength(GENERATED + NOISE.length);
+      expect(result.names).toContain('up');
+    });
+
+    it('excludes names outside the date range', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        dateRange: [new Date('2020-01-01'), new Date('2020-12-31')],
+        namePattern: 'up',
+      });
+
+      expect(result.names).toEqual([]);
+    });
+  });
 });
