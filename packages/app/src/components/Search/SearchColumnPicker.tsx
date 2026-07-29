@@ -78,8 +78,7 @@ export function SearchColumnPicker({
     >
       <Popover.Target>
         <Button
-          variant="subtle"
-          color="gray"
+          variant="secondary"
           size="xs"
           disabled={disabled}
           leftSection={<IconColumns size={14} />}

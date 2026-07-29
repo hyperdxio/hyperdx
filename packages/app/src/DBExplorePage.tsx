@@ -42,6 +42,7 @@ import {
   Filter,
   isTraceSource,
   MetricsDataType,
+  SavedChartConfig,
   SourceKind,
   TMetricSource,
   TSource,
@@ -75,7 +76,9 @@ import {
   IconChevronDown,
   IconClock,
   IconCode,
+  IconDotsVertical,
   IconDownload,
+  IconLayoutGridAdd,
   IconPlayerPlay,
   IconPlus,
   IconStack2,
@@ -97,6 +100,7 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import { SavedSearchesFlyout } from '@/components/SavedSearches/SavedSearchesFlyout';
+import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
@@ -460,14 +464,17 @@ function SearchNumRows({
   );
 }
 
-// Opens the generated SQL for the current results/timeline config in a modal.
-// Kept separate from the stats text so it can live in the results controls row.
-function GeneratedSqlButton({
+// Overflow (3-dots) menu for secondary results actions. Holds "Show generated
+// SQL" (opens a modal for the current results/timeline config) and "Export".
+// Kept out of the main controls row so it stays uncluttered.
+function ResultsOverflowMenu({
   config,
   sqlConfig,
+  showGeneratedSql = true,
 }: {
   config: ChartConfigWithDateRange;
   sqlConfig?: ChartConfigWithDateRange;
+  showGeneratedSql?: boolean;
 }) {
   const [opened, { open, close }] = useDisclosure(false);
   return (
@@ -480,18 +487,61 @@ function GeneratedSqlButton({
       >
         <ChartSQLPreview config={sqlConfig ?? config} enableCopy />
       </Modal>
-      <Tooltip label="Show Generated SQL" position="top">
-        <ActionIcon
-          variant="subtle"
-          size="input-xs"
-          color="gray"
-          onClick={open}
-          aria-label="Show Generated SQL"
-          data-testid="generated-sql-button"
-        >
-          <IconCode size={16} />
-        </ActionIcon>
-      </Tooltip>
+      <Menu position="bottom-end" withinPortal>
+        <Menu.Target>
+          <Button
+            variant="secondary"
+            size="xs"
+            px={8}
+            aria-label="More actions"
+            data-testid="results-overflow-menu"
+          >
+            <IconDotsVertical size={16} />
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          {showGeneratedSql && (
+            <Menu.Item
+              leftSection={<IconCode size={16} />}
+              onClick={open}
+              data-testid="generated-sql-button"
+            >
+              Show generated SQL
+            </Menu.Item>
+          )}
+          <Menu.Item
+            leftSection={<IconDownload size={16} />}
+            disabled
+            data-testid="export-button"
+          >
+            Export (coming soon)
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+    </>
+  );
+}
+
+// "Add to dashboard" action for chart-tile views. Opens the shared
+// SaveToDashboardModal with the current aggregation rendered as a tile config.
+function AddToDashboardButton({ config }: { config: SavedChartConfig }) {
+  const [opened, { open, close }] = useDisclosure(false);
+  return (
+    <>
+      <SaveToDashboardModal
+        chartConfig={config}
+        opened={opened}
+        onClose={close}
+      />
+      <Button
+        variant="secondary"
+        size="xs"
+        onClick={open}
+        leftSection={<IconLayoutGridAdd size={14} />}
+        data-testid="add-to-dashboard-button"
+      >
+        Add to dashboard
+      </Button>
     </>
   );
 }
@@ -1989,6 +2039,30 @@ function DBExplorePage() {
     searchedMetricSource,
   ]);
 
+  // Dashboard-tile config for the "Add to dashboard" action: reuses the
+  // aggregated chart config but references the source by id (as tiles do) and
+  // drops the runtime-only date range so the tile follows the dashboard's own
+  // time range.
+  const addToDashboardConfig = useMemo<SavedChartConfig | undefined>(() => {
+    if (!aggViewChartConfig || !searchedConfig.source) {
+      return undefined;
+    }
+    return {
+      name: savedSearch?.name || 'Explore chart',
+      source: searchedConfig.source,
+      displayType: aggViewChartConfig.displayType,
+      select: aggViewChartConfig.select,
+      where: searchedConfig.where ?? '',
+      whereLanguage: searchedConfig.whereLanguage ?? 'sql',
+      filters: searchedConfig.filters ?? [],
+      groupBy: aggViewChartConfig.groupBy,
+      orderBy: aggViewChartConfig.orderBy,
+      granularity: aggViewChartConfig.granularity,
+      seriesLimit: aggViewChartConfig.seriesLimit,
+      with: aggViewChartConfig.with,
+    } as SavedChartConfig;
+  }, [aggViewChartConfig, savedSearch?.name, searchedConfig]);
+
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
       e.preventDefault();
@@ -2503,6 +2577,12 @@ function DBExplorePage() {
                           sourceKind={searchedSource?.kind}
                         />
                       }
+                      addToDashboard={
+                        isAggregatedSearchView(view) &&
+                        addToDashboardConfig && (
+                          <AddToDashboardButton config={addToDashboardConfig} />
+                        )
+                      }
                       sortControl={
                         <>
                           {view === 'list' && (
@@ -2592,30 +2672,15 @@ function DBExplorePage() {
                           />
                         )
                       }
-                      sqlPreview={
-                        !isMetricSource && (
-                          <GeneratedSqlButton
-                            config={{
-                              ...chartConfig,
-                              dateRange: searchedTimeRange,
-                            }}
-                            sqlConfig={histogramTimeChartConfig ?? undefined}
-                          />
-                        )
-                      }
-                      exportControl={
-                        <Tooltip label="Export (coming soon)" position="top">
-                          <ActionIcon
-                            variant="subtle"
-                            size="input-xs"
-                            color="gray"
-                            disabled
-                            aria-label="Export results"
-                            data-testid="export-button"
-                          >
-                            <IconDownload size={16} />
-                          </ActionIcon>
-                        </Tooltip>
+                      overflowMenu={
+                        <ResultsOverflowMenu
+                          config={{
+                            ...chartConfig,
+                            dateRange: searchedTimeRange,
+                          }}
+                          sqlConfig={histogramTimeChartConfig ?? undefined}
+                          showGeneratedSql={!isMetricSource}
+                        />
                       }
                     />
                   </Box>

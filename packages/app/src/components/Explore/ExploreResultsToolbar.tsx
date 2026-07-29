@@ -11,19 +11,21 @@ export function ExploreResultsToolbar({
   stats,
   filterExpand,
   viewSwitcher,
+  addToDashboard,
   sortControl,
   columnsControl,
-  sqlPreview,
-  exportControl,
+  overflowMenu,
 }: {
   resultsCount?: React.ReactNode;
   stats?: React.ReactNode;
   filterExpand?: React.ReactNode;
   viewSwitcher: React.ReactNode;
+  /** "Add to dashboard" action, shown only for chart-tile views. */
+  addToDashboard?: React.ReactNode;
   sortControl?: React.ReactNode;
   columnsControl?: React.ReactNode;
-  sqlPreview?: React.ReactNode;
-  exportControl?: React.ReactNode;
+  /** Overflow (3-dots) menu holding secondary actions (SQL, export). */
+  overflowMenu?: React.ReactNode;
 }) {
   return (
     <Stack gap={6} w="100%" data-testid="explore-results-toolbar">
@@ -37,10 +39,10 @@ export function ExploreResultsToolbar({
           {viewSwitcher}
         </Group>
         <Group gap="sm" align="center" wrap="nowrap">
+          {addToDashboard}
           {sortControl}
           {columnsControl}
-          {sqlPreview}
-          {exportControl}
+          {overflowMenu}
         </Group>
       </Group>
     </Stack>

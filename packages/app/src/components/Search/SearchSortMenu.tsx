@@ -89,8 +89,7 @@ export function SearchSortMenu({
     <Popover position="bottom-end" withinPortal shadow="md" width={240}>
       <Popover.Target>
         <Button
-          variant="subtle"
-          color="gray"
+          variant="secondary"
           size="xs"
           disabled={disabled}
           leftSection={<IconArrowsSort size={14} />}
