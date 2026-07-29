@@ -41,6 +41,10 @@ function parseChangelog(content) {
   return { header, sections };
 }
 
+// A release heading, used to confirm a section runs to the next release rather
+// than to some other H2.
+const RELEASE_HEADING_RE = /^## v\d+\.\d+\.\d+/;
+
 export function insertSection(content, { version, inputs, date, body }) {
   // A blank file counts as missing: the capture step in release.yml can leave a
   // zero-byte CHANGELOG.md behind when `git show` finds nothing.
@@ -62,7 +66,14 @@ export function insertSection(content, { version, inputs, date, body }) {
   // later run ever cleans up.
   const headingPrefix = `## v${version} `;
   const kept = sections.filter(
-    s => s.version !== version && !s.text.startsWith(headingPrefix),
+    s =>
+      s.version !== version &&
+      !s.text.startsWith(headingPrefix) &&
+      // Drop anything that is not a release section. A `## ` heading added by
+      // hand would otherwise persist forever: extractSection rejects the
+      // section it splits, so it is never replaced, and it renders in the
+      // in-app modal as though it were a release.
+      RELEASE_HEADING_RE.test(s.text),
   );
   return (
     [header.trimEnd(), section, ...kept.map(s => s.text.trimEnd())].join(
@@ -70,10 +81,6 @@ export function insertSection(content, { version, inputs, date, body }) {
     ) + '\n'
   );
 }
-
-// A release heading, used to confirm a section runs to the next release rather
-// than to some other H2.
-const RELEASE_HEADING_RE = /^## v\d+\.\d+\.\d+/;
 
 // `latest: true` returns the newest section whatever its version. The release
 // version changes whenever a new changeset raises the bump level, so a
@@ -118,11 +125,45 @@ export function extractSection(content, { version, inputs, latest }) {
 // early, legible feedback in CI (the changelog jobs run without node_modules,
 // so a real markdown parser is not available to them).
 const MAX_BODY_BYTES = 65536;
-const ALLOWED_LINK_PREFIX_RE = /^https:\/\/(github\.com|docs\.hyperdx\.io)\//i;
+// Mirrors allowChangelogUrl in packages/app/.../ChangelogModal.tsx. The CI gate
+// must never be stricter than the render gate, or the publish job reddens for
+// content that would have rendered correctly — `https://docs.hyperdx.io` with
+// no trailing slash being the obvious case.
+const ALLOWED_LINK_PREFIX_RE =
+  /^https:\/\/(github\.com|docs\.hyperdx\.io)([/?#]|$)/i;
+
+// Replace fenced and indented code blocks with blank lines, preserving line
+// count so the structural checks below cannot fire on a legitimate example.
+// A fenced YAML snippet opening with `---`, or a snippet containing `## `,
+// renders fine and must not fail the publish job.
+function blankCodeBlocks(text) {
+  let fence = null;
+  return text
+    .split('\n')
+    .map(line => {
+      const open = line.match(/^\s{0,3}(```+|~~~+)/);
+      if (fence) {
+        const closed = open && line.trim().startsWith(fence[0]);
+        if (closed) fence = null;
+        return '';
+      }
+      if (open) {
+        fence = open[1];
+        return '';
+      }
+      // Indented code block (four spaces or a tab).
+      return /^(\t| {4})/.test(line) ? '' : line;
+    })
+    .join('\n');
+}
 
 export function validateBody(body) {
   const errors = [];
   const fail = m => errors.push(m);
+  // Structural checks run over prose only; link and image checks run over the
+  // whole body, since a link inside a fence still needs to be legitimate if it
+  // is ever copied out.
+  const prose = blankCodeBlocks(body);
 
   if (!body.trim()) fail('Body is blank.');
   if (Buffer.byteLength(body, 'utf-8') > MAX_BODY_BYTES) {
@@ -136,11 +177,13 @@ export function validateBody(body) {
   if (/hyperdx-release-notes/.test(body)) {
     fail('Body contains a release-notes marker; the splice owns those.');
   }
-  if (/^## /m.test(body)) {
-    fail('Body contains an H2 heading; the splice owns those. Use ###.');
+  // CommonMark allows an ATX heading indented up to three spaces and delimited
+  // by a tab, so `   ## v9.9.9` renders as a real <h2> while `^## ` misses it.
+  if (/^[ \t]{0,3}#{1,2}[ \t]/m.test(prose)) {
+    fail('Body contains an H1/H2 heading; the splice owns those. Use ###.');
   }
-  // Setext underlines forge an H2 without a leading `## `.
-  if (/^[ \t]*(=+|-{2,})[ \t]*$/m.test(body)) {
+  // Setext underlines forge an H2 without any leading `#`.
+  if (/^[ \t]{0,3}(=+|-{2,})[ \t]*$/m.test(prose)) {
     fail('Body contains a setext heading underline.');
   }
   // Any image syntax: inline `![x](…)`, reference `![x][r]`, shortcut `![x]`.
@@ -148,7 +191,7 @@ export function validateBody(body) {
     fail('Body contains an image; not permitted in release notes.');
   }
   // Reference definitions, whose target may sit on the following line.
-  if (/^[ \t]*\[[^\]]+\]:/m.test(body)) {
+  if (/^[ \t]{0,3}\[[^\]]+\]:/m.test(prose)) {
     fail('Body uses reference-style links; use inline links only.');
   }
   // Bare autolinks are CommonMark and carry no `](`.

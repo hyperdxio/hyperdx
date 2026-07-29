@@ -276,6 +276,42 @@ jobs:
             ls /tmp/changesets
           fi
 
+      # Everything the generator needs is materialised here, by trusted shell,
+      # so the model itself needs no Bash at all. That is the point: a prefix
+      # allowlist over git is not read-only. `git log --output=<path>` writes an
+      # arbitrary file, and a `[diff] external = <cmd>` stanza written into
+      # .git/config makes a plain `git diff` execute it — which would be
+      # arbitrary code execution in the one process that holds
+      # ANTHROPIC_API_KEY.
+      - name: Collect generator inputs
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false' && steps.changesets_export.outputs.empty != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/inputs
+
+          # Which entries landed in which package this release.
+          git diff origin/main -- 'packages/*/CHANGELOG.md' \
+            > /tmp/inputs/package-changelogs.diff
+
+          # Changeset entries carry short commit ids; resolve them to PR numbers
+          # and titles so the model can cite `(#NNN)` without network access.
+          : > /tmp/inputs/pr-references.txt
+          grep -ohE '^\+- [0-9a-f]{8}:' /tmp/inputs/package-changelogs.diff \
+            | sed 's/^+- //; s/://' | sort -u \
+            | while read -r sha; do
+                pr="$(gh api "repos/${REPO}/commits/${sha}/pulls" \
+                  --jq '.[0] | "#\(.number) \(.title)"' 2>/dev/null || true)"
+                [ -n "$pr" ] && echo "${sha} ${pr}" >> /tmp/inputs/pr-references.txt
+              done || true
+
+          echo "--- collected inputs ---"
+          wc -l /tmp/inputs/package-changelogs.diff /tmp/inputs/pr-references.txt
+
       - name: Generate release notes with Claude
         if:
           steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
@@ -288,9 +324,11 @@ jobs:
           # `.claude/settings.json` on the checked-out branch could widen this
           # allowlist or register hooks. The allowlist is a usability guard, not
           # the security boundary — that is the job split (see header comment).
+          # No Bash. Every input is pre-materialised under /tmp/inputs by the
+          # trusted step above, so the model only reads files and writes one.
           claude_args: |
             --setting-sources user
-            --allowedTools "Read,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+            --allowedTools "Read,Write"
           prompt: |
             VERSION: ${{ steps.meta.outputs.version }}
             REPO: ${{ github.repository }}

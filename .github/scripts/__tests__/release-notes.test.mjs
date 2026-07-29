@@ -501,3 +501,65 @@ test('extractSection treats a maintainer-inserted H2 as a miss, not a truncation
 test('CLI extract requires --changelog rather than reporting a cache miss', () => {
   assert.equal(runCli(['extract', '--version', '1.0.0']).code, 1);
 });
+
+test('validateBody accepts a bare-host link, matching the render-time allowlist', () => {
+  // allowChangelogUrl accepts these, so the CI gate must not be stricter or the
+  // publish job reddens for content that would have rendered fine.
+  assert.deepEqual(validateBody('See [docs](https://docs.hyperdx.io).\n'), []);
+  assert.deepEqual(validateBody('See [gh](https://github.com).\n'), []);
+  assert.deepEqual(validateBody('See [q](https://docs.hyperdx.io?a=1).\n'), []);
+  // The host must still be the whole host, not a prefix of a longer one.
+  assert.ok(validateBody('See [x](https://github.com.evil.tld).\n').length > 0);
+});
+
+test('validateBody ignores structure inside code blocks', () => {
+  const fenced = [
+    'Summary.',
+    '',
+    'Example config:',
+    '',
+    '```yaml',
+    '---',
+    'exporters:',
+    '  clickhouse: {}',
+    '```',
+    '',
+    'And a snippet:',
+    '',
+    '```markdown',
+    '## Not a real heading',
+    '```',
+    '',
+    'Indented block:',
+    '',
+    '    ## also not a heading',
+    '',
+  ].join('\n');
+  assert.deepEqual(validateBody(fenced), []);
+});
+
+test('validateBody rejects CommonMark heading forms that a bare ^## misses', () => {
+  // Up to three leading spaces, and a tab delimiter, both render as real H2s.
+  assert.ok(validateBody('   ## v9.9.9 — Security notice\n').length > 0);
+  assert.ok(validateBody('##\tv9.9.9 — Security notice\n').length > 0);
+  assert.ok(validateBody(' # Forged H1\n').length > 0);
+  // `###` and deeper are the section headings the prompt asks for.
+  assert.deepEqual(validateBody('### ✨ New Features\n\n- **x**: y\n'), []);
+});
+
+test('insertSection drops a hand-added non-release section instead of orphaning it', () => {
+  const file = insertSection(null, OPTS);
+  const withOrphan = `${file}\n## Notes from review\n\nSomething a human typed.\n`;
+  const out = insertSection(withOrphan, {
+    ...OPTS,
+    version: '2.34.0',
+    inputs: 'newer',
+    date: '2026-08-01',
+    body: 'Newer body.',
+  });
+
+  assert.doesNotMatch(out, /Notes from review/);
+  // Real release sections are still preserved.
+  assert.match(out, /## v2\.33\.0/);
+  assert.match(out, /## v2\.34\.0/);
+});
