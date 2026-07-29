@@ -102,7 +102,7 @@ import OnboardingModal from '@/components/OnboardingModal';
 import { SavedSearchesFlyout } from '@/components/SavedSearches/SavedSearchesFlyout';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
-import SearchTotalCountChart from '@/components/SearchTotalCountChart';
+import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
@@ -138,6 +138,7 @@ import { DBTreemapChart } from './components/DBTreemapChart';
 import { ExploreContextBand } from './components/Explore/ExploreContextBand';
 import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
+import { SeveritySummary } from './components/Explore/SeveritySummary';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
@@ -403,24 +404,45 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
   );
 }
 
-function SearchNumRows({
-  config,
+// Abbreviate large scanned-row counts (1,157,950 -> "1.16M") to keep the stats
+// line short. The headline result count stays fully grouped for precision.
+const compactNumberFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 2,
+});
+
+// Single compact stats line for the results band: "<count> results ·
+// <scanned> scanned · <elapsed>". Folds the result count (count query),
+// scanned rows (EXPLAIN) and elapsed time into one dimmed line with the count
+// emphasized, instead of three labeled fragments.
+function ResultsStats({
+  countConfig,
+  explainConfig,
   enabled,
   searchElapsedMs,
   isSearching,
   isLiveTail = false,
 }: {
-  config: ChartConfigWithDateRange;
+  countConfig: BuilderChartConfigWithDateRange;
+  explainConfig: ChartConfigWithDateRange;
   enabled: boolean;
   searchElapsedMs: number | null;
   isSearching: boolean;
   isLiveTail?: boolean;
 }) {
-  const { data, isLoading, error } = useExplainQuery(config, {
+  const {
+    totalCount,
+    isLoading: isCountLoading,
+    isError: isCountError,
+  } = useSearchTotalCount(countConfig, QUERY_KEY_PREFIX, {
+    enableParallelQueries: true,
+  });
+
+  const { data, error: explainError } = useExplainQuery(explainConfig, {
     enabled,
     // Keep the previous row count on screen while a new EXPLAIN runs so the
-    // "Scanned Rows" value doesn't flash a loading state on every live-tail
-    // poll (each poll changes the dateRange, and thus the query key).
+    // scanned-rows value doesn't flash on every live-tail poll (each poll
+    // changes the dateRange, and thus the query key).
     placeholderData: keepPreviousData,
   });
 
@@ -428,35 +450,59 @@ function SearchNumRows({
     return null;
   }
 
-  const explainRow = data?.[0];
-  const numRows = explainRow?.rows;
-  const hasData = !isLoading && !error && numRows != null;
+  const numRows = data?.[0]?.rows;
+  const scanned =
+    !explainError && numRows != null
+      ? compactNumberFormatter.format(Number(numRows))
+      : null;
 
   // During live tail we keep showing the last measured elapsed time and never
-  // flash the "..." loading state, so the value doesn't flicker between polls.
+  // flash the loading state, so the value doesn't flicker between polls.
   const showElapsedLoading = isSearching && !isLiveTail;
   const showElapsed = showElapsedLoading || searchElapsedMs != null;
 
+  const separator = (
+    <Text span size="xs" c="dimmed" aria-hidden>
+      &middot;
+    </Text>
+  );
+
   return (
-    <Group gap={4} align="center">
+    <Group
+      gap={6}
+      align="center"
+      wrap="nowrap"
+      data-testid="search-total-count"
+    >
       <Text size="xs" c="dimmed">
-        {isLoading
-          ? 'Scanned Rows ...'
-          : error || numRows == null
-            ? ''
-            : `Scanned Rows: ${Number(numRows).toLocaleString()}`}
+        <Text span size="xs" fw={600} c="var(--mantine-color-text)">
+          {isCountLoading ? (
+            <span className="effect-pulse">&middot;&middot;&middot;</span>
+          ) : totalCount != null && !isCountError ? (
+            totalCount.toLocaleString('en-US')
+          ) : (
+            '0'
+          )}
+        </Text>{' '}
+        results
       </Text>
+      {scanned != null && (
+        <>
+          {separator}
+          <Text size="xs" c="dimmed">
+            {scanned} scanned
+          </Text>
+        </>
+      )}
       {showElapsed && (
         <>
-          {(hasData || isLoading) && (
-            <Text size="xs" c="dimmed">
-              |
-            </Text>
-          )}
+          {separator}
           <Text size="xs" c="dimmed">
-            {showElapsedLoading
-              ? 'Elapsed Time: ...'
-              : `Elapsed Time: ${formatDurationMs(searchElapsedMs!)}`}
+            {showElapsedLoading ? (
+              <span className="effect-pulse">&middot;&middot;&middot;</span>
+            ) : (
+              formatDurationMs(searchElapsedMs!)
+            )}
           </Text>
         </>
       )}
@@ -2144,6 +2190,60 @@ function DBExplorePage() {
         };
   }, [chartConfig, searchedTimeRange, aliasWith]);
 
+  // Severity expression for the current source (logs only). Used both to run
+  // the error/warning summary counts and to know which column a severity pill
+  // click should filter on.
+  const severityExpression =
+    searchedSource?.kind === SourceKind.Log
+      ? searchedSource?.severityTextExpression
+      : undefined;
+  const severityProperty = severityExpression
+    ? cleanClickHouseExpression(severityExpression)
+    : undefined;
+
+  // Grouped count (severity value → count) over the searched window, mirroring
+  // the results query's filters. The SeveritySummary component buckets rows into
+  // error/warning client-side and renders clickable pills.
+  const severitySummaryConfig = useMemo<
+    BuilderChartConfigWithDateRange | undefined
+  >(() => {
+    if (chartConfig == null || !severityExpression) {
+      return undefined;
+    }
+    return {
+      ...chartConfig,
+      select: [
+        {
+          aggFn: 'count',
+          aggCondition: '',
+          valueExpression: '',
+        },
+      ],
+      groupBy: severityExpression,
+      orderBy: undefined,
+      granularity: undefined,
+      dateRange: searchedTimeRange,
+      displayType: DisplayType.Table,
+      with: aliasWith,
+      alignDateRangeToGranularity: false,
+      dateRangeEndInclusive: true,
+    } satisfies BuilderChartConfigWithDateRange;
+  }, [chartConfig, severityExpression, searchedTimeRange, aliasWith]);
+
+  const activeSeverityValues = useMemo<string[]>(() => {
+    if (!severityProperty) return [];
+    const included = searchFilters.filters[severityProperty]?.included;
+    return included ? Array.from(included).map(String) : [];
+  }, [searchFilters.filters, severityProperty]);
+
+  const handleSeverityToggle = useCallback(
+    (values: string[], isActive: boolean) => {
+      if (!severityProperty) return;
+      searchFilters.setIncludedValues(severityProperty, isActive ? [] : values);
+    },
+    [searchFilters, severityProperty],
+  );
+
   const openNewSourceModal = useCallback(() => {
     setNewSourceModalOpened(true);
   }, []);
@@ -2541,18 +2641,11 @@ function DBExplorePage() {
                   <Box className={searchPageStyles.searchStatsContainer}>
                     <ExploreResultsToolbar
                       resultsCount={
-                        !isMetricSource && (
-                          <SearchTotalCountChart
-                            config={histogramTimeChartConfig}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            enableParallelQueries
-                          />
-                        )
-                      }
-                      stats={
-                        !isMetricSource && (
-                          <SearchNumRows
-                            config={{
+                        !isMetricSource &&
+                        histogramTimeChartConfig && (
+                          <ResultsStats
+                            countConfig={histogramTimeChartConfig}
+                            explainConfig={{
                               ...chartConfig,
                               dateRange: searchedTimeRange,
                             }}
@@ -2560,6 +2653,18 @@ function DBExplorePage() {
                             searchElapsedMs={searchElapsedMs}
                             isSearching={isAnyQueryFetching}
                             isLiveTail={isLive ?? false}
+                          />
+                        )
+                      }
+                      stats={
+                        !isMetricSource &&
+                        severitySummaryConfig && (
+                          <SeveritySummary
+                            config={severitySummaryConfig}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            activeValues={activeSeverityValues}
+                            onToggle={handleSeverityToggle}
                           />
                         )
                       }

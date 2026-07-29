@@ -62,7 +62,7 @@ const SEARCH_VIEWS: SearchViewMeta[] = [
   },
   {
     value: 'table',
-    label: 'Summary table',
+    label: 'Grouped table',
     icon: <IconTable size={16} />,
     aggregated: true,
   },

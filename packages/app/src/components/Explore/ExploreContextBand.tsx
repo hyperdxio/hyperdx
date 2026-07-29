@@ -5,6 +5,7 @@ import {
   IconBookmarks,
   IconCheck,
   IconChevronDown,
+  IconDeviceFloppy,
   IconPlus,
   IconSettings,
 } from '@tabler/icons-react';
@@ -211,6 +212,7 @@ export function ExploreContextBand({
             size="xs"
             onClick={onSaveView}
             style={{ flexShrink: 0 }}
+            leftSection={<IconDeviceFloppy size={14} />}
           >
             Save view
           </Button>

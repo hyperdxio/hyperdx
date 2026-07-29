@@ -212,6 +212,31 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  // Set a property's included values to exactly `values` (an OR-set) in one
+  // update. Unlike setFilterValue(..., 'only') which takes a single value, this
+  // scopes a column to multiple values at once (e.g. a "severity: error" pill
+  // that maps to both ERROR and FATAL). Passing an empty array clears the
+  // filter entirely.
+  const setIncludedValues = useCallback(
+    (property: string, values: (string | boolean)[]) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (values.length === 0) {
+            delete draft[property];
+          } else {
+            draft[property] = {
+              included: new Set(values),
+              excluded: new Set(),
+            };
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
@@ -308,6 +333,7 @@ export const useSearchPageFilterState = ({
     setFilters,
     setFilterValue,
     setOnlyFilters,
+    setIncludedValues,
     replaceFilterValue,
     setFilterRange,
     clearFilter,
