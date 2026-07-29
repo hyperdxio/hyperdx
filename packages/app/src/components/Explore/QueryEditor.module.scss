@@ -1,0 +1,31 @@
+.card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+  background-color: var(--color-bg-field);
+  overflow: hidden;
+}
+
+.header {
+  padding: 4px 6px 4px 6px;
+  border-bottom: 1px solid var(--color-border);
+  min-height: 38px;
+  background-color: var(--color-bg-surface);
+}
+
+.controls {
+  min-width: 0;
+}
+
+.body {
+  padding: 2px 6px;
+}
+
+/* Blend the line-number gutter into the card. */
+.body :global(.cm-gutters) {
+  background: transparent !important;
+  border: none !important;
+}
+
+.body :global(.cm-editor) {
+  background: transparent !important;
+}

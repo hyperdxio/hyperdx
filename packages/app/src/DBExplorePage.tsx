@@ -125,12 +125,7 @@ import {
   parseTimeQuery,
   useNewTimeQuery,
 } from '@/timeQuery';
-import {
-  formatDurationMs,
-  QUERY_LOCAL_STORAGE,
-  useLocalStorage,
-  usePrevious,
-} from '@/utils';
+import { formatDurationMs, useLocalStorage, usePrevious } from '@/utils';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import { DBBarChart } from './components/DBBarChart';
@@ -2410,13 +2405,10 @@ function DBExplorePage() {
             control={control}
             name="where"
             onSubmit={onSubmit}
-            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
             dateRange={searchedTimeRange}
             sourceId={inputSource}
-            size="xs"
             isExpanded={isQueryExpanded}
             onToggleExpand={toggleQueryExpanded}
             controls={

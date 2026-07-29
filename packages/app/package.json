@@ -29,6 +29,7 @@
     "@codemirror/autocomplete": "^6.0.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
+    "@codemirror/language": "^6.12.4",
     "@codemirror/lint": "^6.0.0",
     "@codemirror/state": "^6.0.0",
     "@dagrejs/dagre": "^1.1.5",
