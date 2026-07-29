@@ -5,7 +5,8 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Group, Tooltip, UnstyledButton } from '@mantine/core';
+import { Box, Button, Group, Tooltip } from '@mantine/core';
+import { IconAlertCircle, IconAlertTriangle } from '@tabler/icons-react';
 import { keepPreviousData } from '@tanstack/react-query';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -19,6 +20,19 @@ type SeverityBucket = 'error' | 'warn';
 const BUCKET_COLOR: Record<SeverityBucket, string> = {
   error: 'var(--color-chart-error)',
   warn: 'var(--color-chart-warning)',
+};
+
+const BUCKET_ICON: Record<
+  SeverityBucket,
+  React.ComponentType<{ size?: number; color?: string }>
+> = {
+  error: IconAlertCircle,
+  warn: IconAlertTriangle,
+};
+
+const BUCKET_TITLE: Record<SeverityBucket, string> = {
+  error: 'Error',
+  warn: 'Warning',
 };
 
 // Reuse the canonical log-level classifier so bucketing matches the log level
@@ -96,93 +110,86 @@ export function SeveritySummary({
   }, [data]);
 
   const activeSet = new Set(activeValues ?? []);
+  // Active when every value in this bucket is present in the query. The query
+  // may hold both buckets' values at once, so this is a subset test rather than
+  // an exact match.
   const isBucketActive = (bucket: BucketResult) =>
-    bucket.values.length > 0 &&
-    bucket.values.every(v => activeSet.has(v)) &&
-    activeSet.size === bucket.values.length;
+    bucket.values.length > 0 && bucket.values.every(v => activeSet.has(v));
 
   const pills: {
     bucket: SeverityBucket;
     result: BucketResult;
-    label: string;
   }[] = [
-    { bucket: 'error', result: error, label: 'error' },
-    { bucket: 'warn', result: warn, label: 'warning' },
+    { bucket: 'error', result: error },
+    { bucket: 'warn', result: warn },
   ];
 
-  const visiblePills = pills.filter(
-    p => p.result.count > 0 || isBucketActive(p.result),
-  );
-  if (visiblePills.length === 0) return null;
-
   return (
-    <Group gap={6} wrap="nowrap">
-      {visiblePills.map(({ bucket, result, label }) => {
+    <Group gap="xs" wrap="nowrap">
+      {pills.map(({ bucket, result }) => {
         const active = isBucketActive(result);
-        const clickable = onToggle != null && result.values.length > 0;
+        const clickable =
+          onToggle != null && (result.values.length > 0 || active);
         const color = BUCKET_COLOR[bucket];
-        const text = `${numberFormatter.format(result.count)} ${
-          result.count === 1 ? label : `${label}s`
-        }`;
-        const pillStyle: React.CSSProperties = {
+        const Icon = BUCKET_ICON[bucket];
+        const title = BUCKET_TITLE[bucket];
+
+        // Neutral secondary button (matching the Columns/Sort controls); tinted
+        // with the semantic status color only while its filter is active.
+        const rootStyle: React.CSSProperties = active
+          ? {
+              borderColor: `color-mix(in srgb, ${color} 55%, transparent)`,
+              backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
+              color,
+            }
+          : {};
+
+        const countChipStyle: React.CSSProperties = {
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 6,
-          height: 22,
-          padding: '0 8px',
-          borderRadius: 'var(--mantine-radius-sm)',
-          fontSize: 'var(--mantine-font-size-xs)',
-          fontWeight: 500,
+          justifyContent: 'center',
+          minWidth: 18,
+          height: 16,
+          padding: '0 5px',
+          borderRadius: 999,
+          fontSize: 11,
+          fontWeight: 600,
           lineHeight: 1,
-          whiteSpace: 'nowrap',
-          color: active ? '#fff' : color,
           backgroundColor: active
-            ? color
-            : `color-mix(in srgb, ${color} 14%, transparent)`,
-          border: `1px solid color-mix(in srgb, ${color} ${
-            active ? '0%' : '35%'
-          }, transparent)`,
-          cursor: clickable ? 'pointer' : 'default',
+            ? `color-mix(in srgb, ${color} 22%, transparent)`
+            : 'var(--mantine-color-default-hover)',
+          color: active ? color : 'var(--mantine-color-dimmed)',
         };
-        const dot = (
-          <Box
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: active ? '#fff' : color,
-              flexShrink: 0,
-            }}
-          />
-        );
-        const pill = clickable ? (
-          <UnstyledButton
-            style={pillStyle}
-            onClick={() => onToggle?.(result.values, active)}
-            data-testid={`severity-summary-${bucket}`}
-          >
-            {dot}
-            {text}
-          </UnstyledButton>
-        ) : (
-          <Box
-            component="span"
-            style={pillStyle}
-            data-testid={`severity-summary-${bucket}`}
-          >
-            {dot}
-            {text}
-          </Box>
-        );
+
         return (
           <Tooltip
             key={bucket}
-            label={active ? `Clear ${label} filter` : `Filter to ${label}s`}
+            label={active ? `Clear ${title} filter` : `Filter to ${title}s`}
             disabled={!clickable}
             withArrow
             position="top"
           >
-            {pill}
+            <Button
+              variant="secondary"
+              size="xs"
+              disabled={!clickable}
+              onClick={
+                clickable ? () => onToggle?.(result.values, active) : undefined
+              }
+              leftSection={
+                <Icon size={14} color={active ? color : undefined} />
+              }
+              style={rootStyle}
+              styles={{
+                label: { display: 'flex', alignItems: 'center', gap: 6 },
+              }}
+              data-testid={`severity-summary-${bucket}`}
+            >
+              {title}
+              <Box component="span" style={countChipStyle}>
+                {numberFormatter.format(result.count)}
+              </Box>
+            </Button>
           </Tooltip>
         );
       })}
