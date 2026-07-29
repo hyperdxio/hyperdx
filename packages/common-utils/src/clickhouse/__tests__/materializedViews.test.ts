@@ -46,7 +46,7 @@ describe('materializedViews', () => {
     renderKeyExpressions: jest
       .fn()
       .mockImplementation(({ keys }: { keys: string[] }) =>
-        Promise.resolve(keys),
+        Promise.resolve(new Map(keys.map(k => [k, k]))),
       ),
   } as unknown as Metadata;
 

@@ -341,7 +341,8 @@ export class Metadata {
   }
 
   /**
-   * Batch-render key expressions to their physical SQL form.
+   * Batch-render key expressions to their physical SQL form, keyed by the raw
+   * expression the caller passed in.
    *
    * Public so that callers building SQL which must line up with what
    * `getKeyValues` emits — e.g. the materialized-view EXPLAIN probe in
@@ -358,17 +359,22 @@ export class Metadata {
     tableName: string;
     connectionId: string;
     keys: string[];
-  }): Promise<string[]> {
-    return Promise.all(
-      keys.map(key =>
-        this.renderMetadataKeyExpression({
-          databaseName,
-          tableName,
-          connectionId,
-          keyExpression: key,
-        }),
-      ),
+  }): Promise<Map<string, string>> {
+    const rendered = new Map<string, string>();
+    await Promise.all(
+      keys.map(async key => {
+        rendered.set(
+          key,
+          await this.renderMetadataKeyExpression({
+            databaseName,
+            tableName,
+            connectionId,
+            keyExpression: key,
+          }),
+        );
+      }),
     );
+    return rendered;
   }
 
   private async queryTableMetadata({
@@ -2472,34 +2478,32 @@ export class Metadata {
       async () => {
         if (keys.length === 0) return [];
 
-        const renderedKeys = await this.renderKeyExpressions({
+        // A constraint only ever references sibling keys from this same call,
+        // so the map always covers it; `?? key` is a defensive fallback rather
+        // than an expected path.
+        const renderedByKey = await this.renderKeyExpressions({
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
           connectionId: chartConfig.connection,
           keys,
         });
-
-        // Render each constraint against the same expressions used in the
-        // SELECT below. A constraint only ever references sibling keys from
-        // this same call, so the map always covers it; `?? rawKey` is a
-        // defensive fallback rather than an expected path.
-        const rawToRendered = new Map(
-          keys.map((key, i) => [key, renderedKeys[i]]),
-        );
-        const renderedConditions = keyConditions?.map(
-          state =>
-            state &&
-            filterStateToPredicate(state, key => rawToRendered.get(key) ?? key),
-        );
+        const renderKey = (key: string) => renderedByKey.get(key) ?? key;
+        const renderedKeys = keys.map(renderKey);
 
         // When disableRowLimit is true, query directly without CTE
         // Otherwise, use CTE with row limits for sampling
         const sqlConfig = disableRowLimit
           ? {
               ...chartConfig,
-              select: renderedKeys
-                .map((k, i) => {
-                  const condition = renderedConditions?.[i];
+              select: keys
+                .map((key, i) => {
+                  const k = renderKey(key);
+                  const state = keyConditions?.at(i);
+                  // Render the constraint against the same expressions used in
+                  // the SELECT, or the predicate would address a different
+                  // physical column than the aggregate wrapping it.
+                  const condition =
+                    state && filterStateToPredicate(state, renderKey);
                   // `groupUniqArrayIf` lets each key be constrained by its own
                   // predicate, so multiple faceted value lists are computed in a
                   // single scan instead of one query per key.

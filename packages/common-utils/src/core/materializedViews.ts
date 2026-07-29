@@ -964,28 +964,22 @@ export async function optimizeFacetedKeyValuesConfig<
       // Render against the MV, since that is the table getKeyValues will
       // render against once this config is returned. An EXPLAIN built from raw
       // expressions would validate different SQL than the one we end up running.
-      const renderedKeys = await metadata.renderKeyExpressions({
+      const renderedByKey = await metadata.renderKeyExpressions({
         databaseName: mv.databaseName,
         tableName: mv.tableName,
         connectionId: chartConfig.connection,
         keys,
       });
-      const rawToRendered = new Map(
-        keys.map((key, i) => [key, renderedKeys[i]]),
-      );
+      const renderKey = (key: string) => renderedByKey.get(key) ?? key;
       const config = {
         ...structuredClone(chartConfig),
         timestampValueExpression: mv.timestampColumn,
         from: { databaseName: mv.databaseName, tableName: mv.tableName },
-        select: renderedKeys
-          .map((k, i) => {
-            const state = keyConditions[i];
-            const condition =
-              state &&
-              filterStateToPredicate(
-                state,
-                key => rawToRendered.get(key) ?? key,
-              );
+        select: keys
+          .map((key, i) => {
+            const k = renderKey(key);
+            const state = keyConditions.at(i);
+            const condition = state && filterStateToPredicate(state, renderKey);
             return condition
               ? `groupUniqArrayIf(1)(${k}, ${condition}) AS param${i}`
               : `groupUniqArray(1)(${k}) AS param${i}`;

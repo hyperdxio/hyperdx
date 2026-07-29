@@ -140,22 +140,20 @@ export const filterStateToPredicate = (
  * Keys and members are sorted so that insertion order alone never produces a
  * spurious cache miss.
  */
-export const serializeFilterState = (state: FilterState): string =>
-  JSON.stringify(
-    Object.keys(state)
-      .sort()
-      .map(key => {
-        const { included, excluded, range } = state[key];
-        const sortMembers = (values: Set<string | boolean>) =>
-          Array.from(values).map(String).sort();
-        return [
-          key,
-          sortMembers(included),
-          sortMembers(excluded),
-          range ?? null,
-        ];
-      }),
+export const serializeFilterState = (state: FilterState): string => {
+  const sortMembers = (values: Set<string | boolean>) =>
+    Array.from(values).map(String).sort();
+  return JSON.stringify(
+    Object.entries(state)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, { included, excluded, range }]) => [
+        key,
+        sortMembers(included),
+        sortMembers(excluded),
+        range ?? null,
+      ]),
   );
+};
 
 // Helper function to parse a string value as boolean if possible, or otherwise
 // return as string with surrounding quotes removed and SQL-escaped quotes unescaped.
