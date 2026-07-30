@@ -1,7 +1,7 @@
 import {
+  getSourceDependentMacrosUsed,
   hasMacro,
   INTERVAL_MACROS,
-  SOURCE_DEPENDENT_MACROS,
   TIME_RANGE_MACROS,
 } from '@hyperdx/common-utils/dist/macros';
 
@@ -29,11 +29,11 @@ export function getRawSqlTilesMissingRequiredSource(
       return;
     }
     const { sqlTemplate } = tile.config;
-    // SOURCE_DEPENDENT_MACROS are bare names ('filters', 'sourceTable') for
-    // hasMacro; surface them in the user-facing `$__name` form.
-    const macros = SOURCE_DEPENDENT_MACROS.filter(macro =>
-      hasMacro(sqlTemplate, macro),
-    ).map(macro => `$__${macro}`);
+    // getSourceDependentMacrosUsed returns bare names ('filters',
+    // 'sourceTable'); surface them in the user-facing `$__name` form.
+    const macros = getSourceDependentMacrosUsed(sqlTemplate).map(
+      macro => `$__${macro}`,
+    );
     if (macros.length > 0) {
       offending.push({
         tile: tile.name?.trim() || `tile #${index + 1}`,

@@ -1,7 +1,11 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
-import { getDefaultSourceId, useDefaultOrderBy } from '@/DBSearchPage';
+import {
+  buildSavedSearchNavigationUrl,
+  getDefaultSourceId,
+  useDefaultOrderBy,
+} from '@/DBSearchPage';
 import * as metadataModule from '@/hooks/useMetadata';
 import * as sourceModule from '@/source';
 
@@ -9,6 +13,28 @@ import * as sourceModule from '@/source';
 jest.mock('@/layout', () => ({
   withAppNav: (component: any) => component,
 }));
+
+describe('buildSavedSearchNavigationUrl', () => {
+  it('drops saved-search query state when the source uses the default relative range', () => {
+    expect(
+      buildSavedSearchNavigationUrl(
+        '/clickstack',
+        'saved-search-id',
+        '?where=service%3Aapi&orderBy=timestamp',
+      ),
+    ).toBe('/clickstack/search/saved-search-id');
+  });
+
+  it('keeps an absolute range out of live-tail mode', () => {
+    expect(
+      buildSavedSearchNavigationUrl(
+        '/clickstack',
+        'saved-search-id',
+        '?from=100&to=200&isLive=false&where=service%3Aapi&orderBy=timestamp',
+      ),
+    ).toBe('/clickstack/search/saved-search-id?from=100&to=200&isLive=false');
+  });
+});
 
 describe('useDefaultOrderBy', () => {
   beforeEach(() => {
