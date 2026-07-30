@@ -1864,28 +1864,6 @@ export function DBSearchPage() {
     [searchFilters],
   );
 
-  const severityGroupByColumn = useMemo(() => {
-    switch (searchedSource?.kind) {
-      case SourceKind.Log:
-        return searchedSource?.severityTextExpression;
-      case SourceKind.Trace:
-        return searchedSource?.statusCodeExpression;
-      default:
-        return undefined;
-    }
-  }, [searchedSource]);
-
-  const handleSeverityLegendClick = useCallback(
-    (rawValues: string[]) => {
-      if (!severityGroupByColumn) return;
-      searchFilters.setIncludeFilter(
-        cleanClickHouseExpression(severityGroupByColumn),
-        rawValues,
-      );
-    },
-    [searchFilters, severityGroupByColumn],
-  );
-
   const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
@@ -2456,11 +2434,12 @@ export function DBSearchPage() {
                         />
                       </Box>
                     )}
-                    {!hasQueryError && severityGroupByColumn && (
+                    {!hasQueryError && (
                       <SearchHistogramLegend
                         config={histogramTimeChartConfig}
                         queryKeyPrefix={QUERY_KEY_PREFIX}
-                        onSeverityClick={handleSeverityLegendClick}
+                        sourceId={searchedConfig.source ?? undefined}
+                        onFocusSeries={handleFocusSeries}
                       />
                     )}
                     <Box flex="1" mih="0" px="sm">
@@ -2564,12 +2543,13 @@ export function DBSearchPage() {
                           />
                         </Box>
                       )}
-                      {!hasQueryError && severityGroupByColumn && (
+                      {!hasQueryError && (
                         <SearchHistogramLegend
                           config={histogramTimeChartConfig}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
+                          sourceId={searchedConfig.source ?? undefined}
                           enableParallelQueries
-                          onSeverityClick={handleSeverityLegendClick}
+                          onFocusSeries={handleFocusSeries}
                         />
                       )}
                     </>

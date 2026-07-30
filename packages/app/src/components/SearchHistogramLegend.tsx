@@ -1,159 +1,230 @@
 import { useMemo } from 'react';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Group, Text, UnstyledButton } from '@mantine/core';
+import { Group, Popover, Text, UnstyledButton } from '@mantine/core';
 
+import { formatResponseForSeriesTotals } from '@/ChartUtils';
 import {
-  inferCountColumn,
-  inferGroupColumn,
+  decodeSeriesGroupFilters,
+  type SeriesGroupFilter,
+} from '@/components/DBTimeChart';
+import {
   type SearchHistogramQueryOptions,
   useSearchHistogramQuery,
 } from '@/hooks/useSearchHistogramQuery';
-import {
-  getChartColorError,
-  getChartColorInfo,
-  getChartColorWarning,
-  getLogLevelClass,
-} from '@/utils';
+import { useSource } from '@/source';
+import { getLogLevelClass } from '@/utils';
 
-type LogLevelClass = 'info' | 'warn' | 'error';
+/**
+ * Inline items before overflowing into a "+N more" popover. The search legend
+ * spans the full width under the histogram, so it fits more than the chart
+ * tile's own legend (which is boxed into a dashboard tile), but it still has to
+ * stay one row so it doesn't push the results table down.
+ */
+const MAX_INLINE_ITEMS = 6;
 
-type SeverityCount = {
+const LOG_LEVEL_RANK: Record<string, number> = { error: 3, warn: 2, info: 1 };
+
+export type SeriesTotalItem = {
+  dataKey: string;
   label: string;
-  class: LogLevelClass;
   color: string;
-  count: number;
-  /**
-   * Every raw column value that rolled up into this class (e.g. "ERR" and
-   * "fatal" both land under Error), so clicking the item can filter on all of
-   * them rather than just the one we happened to label it with.
-   */
-  rawValues: string[];
+  total: number;
+  /** Column/value pairs to filter on when this item is clicked. */
+  groupFilters: SeriesGroupFilter[];
 };
 
-// Rendered bottom-to-top to match the histogram's stacking order.
-const CLASS_DISPLAY_ORDER: { class: LogLevelClass; label: string }[] = [
-  { class: 'info', label: 'Info' },
-  { class: 'warn', label: 'Warn' },
-  { class: 'error', label: 'Error' },
-];
+/**
+ * How severe a series looks, based on its group values rather than on which
+ * column was grouped — the histogram groups by whatever the source designates,
+ * and the values may or may not be log levels.
+ */
+function getSeverityRank(groupFilters: SeriesGroupFilter[]): number {
+  let rank = 0;
+  for (const { value } of groupFilters) {
+    const logLevelClass = getLogLevelClass(value);
+    if (logLevelClass != null) {
+      rank = Math.max(rank, LOG_LEVEL_RANK[logLevelClass] ?? 0);
+    }
+  }
+  return rank;
+}
 
-const CLASS_COLORS: Record<LogLevelClass, () => string> = {
-  info: getChartColorInfo,
-  warn: getChartColorWarning,
-  error: getChartColorError,
-};
-
-export function useSearchSeverityCounts(
+export function useSearchSeriesTotals(
   config: BuilderChartConfigWithDateRange,
   queryKeyPrefix: string,
-  options: SearchHistogramQueryOptions = {},
+  {
+    sourceId,
+    ...queryOptions
+  }: SearchHistogramQueryOptions & { sourceId?: string } = {},
 ) {
-  // Shares the histogram's React Query cache entry, so this adds no extra
-  // query — we just re-aggregate the same rows over the whole date range.
+  // Resolves from the histogram's React Query cache entry, so the legend adds
+  // no query of its own.
   const { data, isLoading } = useSearchHistogramQuery(
     config,
     queryKeyPrefix,
-    options,
+    queryOptions,
   );
 
-  const severityCounts = useMemo<SeverityCount[]>(() => {
-    if (!data?.data || !data.meta) return [];
+  // The same source the chart resolves, so severity/status groupings get the
+  // same semantic colors the bars are drawn with.
+  const { data: source } = useSource({ id: sourceId || config.source });
 
-    const countColumn = inferCountColumn(data.meta);
-    const groupColumn = inferGroupColumn(data.meta);
-    if (!groupColumn) return [];
+  const items = useMemo<SeriesTotalItem[]>(() => {
+    if (data?.meta == null || data.data == null) return [];
 
-    const totals = new Map<
-      LogLevelClass,
-      { count: number; rawValues: Set<string> }
-    >();
-
-    for (const row of data.data) {
-      const rawValue = String(row[groupColumn] ?? '');
-      const count = Number(row[countColumn] ?? 0);
-      if (!Number.isFinite(count)) continue;
-
-      // Unrecognized severities are colored as info in the chart, so they must
-      // be counted as info here or the legend totals won't sum to the result count.
-      const logLevelClass = getLogLevelClass(rawValue) ?? 'info';
-
-      const total = totals.get(logLevelClass) ?? {
-        count: 0,
-        rawValues: new Set<string>(),
-      };
-      total.count += count;
-      total.rawValues.add(rawValue);
-      totals.set(logLevelClass, total);
+    let seriesTotals;
+    let groupColumns: string[];
+    let isSingleValueColumn: boolean;
+    try {
+      ({ seriesTotals, groupColumns, isSingleValueColumn } =
+        formatResponseForSeriesTotals({ response: data, source }));
+    } catch (e) {
+      // Mirror the chart's handling of an unusable response shape: degrade to
+      // no legend rather than taking the search page down.
+      console.error(e);
+      return [];
     }
 
-    return CLASS_DISPLAY_ORDER.flatMap(({ class: logLevelClass, label }) => {
-      const total = totals.get(logLevelClass);
-      if (total == null || total.count === 0) return [];
-      return [
-        {
-          label,
-          class: logLevelClass,
-          color: CLASS_COLORS[logLevelClass](),
-          count: total.count,
-          rawValues: [...total.rawValues],
-        },
-      ];
-    });
-  }, [data]);
+    // Without a group-by there is a single series whose total is already shown
+    // as the result count above the histogram, so a legend would just repeat it.
+    if (groupColumns.length === 0) return [];
 
-  return { severityCounts, isLoading };
+    return seriesTotals
+      .map(series => ({
+        dataKey: series.dataKey,
+        label: series.displayName,
+        color: series.color,
+        total: series.total,
+        groupFilters: decodeSeriesGroupFilters({
+          seriesKey: series.dataKey,
+          groupColumns,
+          isSingleValueColumn,
+        }),
+      }))
+      .filter(item => item.total > 0 && item.groupFilters.length > 0)
+      .sort(
+        (a, b) =>
+          // Most important first. Severity-looking series lead with the most
+          // severe (matching how the chart's own legend lists the top of the
+          // stack first); anything else falls back to the biggest contributor,
+          // which also makes the "+N more" cutoff meaningful.
+          getSeverityRank(b.groupFilters) - getSeverityRank(a.groupFilters) ||
+          b.total - a.total ||
+          a.label.localeCompare(b.label),
+      );
+  }, [data, source]);
+
+  return { items, isLoading };
 }
 
+function LegendItem({
+  item,
+  onFocusSeries,
+}: {
+  item: SeriesTotalItem;
+  onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+}) {
+  return (
+    <UnstyledButton
+      onClick={() => onFocusSeries?.(item.groupFilters)}
+      aria-label={`Filter by ${item.label}`}
+      title={`${item.label}: ${item.total.toLocaleString()}`}
+    >
+      <Group gap={4} align="center" wrap="nowrap">
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 2,
+            backgroundColor: item.color,
+            flexShrink: 0,
+          }}
+        />
+        <Text size="xs" c="dimmed" maw={180} truncate="end">
+          {item.label}
+        </Text>
+        <Text size="xs" fw={500}>
+          {item.total.toLocaleString()}
+        </Text>
+      </Group>
+    </UnstyledButton>
+  );
+}
+
+/**
+ * Totals per histogram series across the whole selected time range, so a
+ * breakdown (e.g. "how many errors in the last 45 minutes") reads as one number
+ * instead of bars to sum by eye. Clicking an item narrows the search to it.
+ *
+ * Driven entirely by the groups the query returned: severity-like values are
+ * colored semantically and ordered most-severe-first, while any other grouping
+ * gets the chart's palette colors and is ordered by total.
+ */
 export default function SearchHistogramLegend({
   config,
   queryKeyPrefix,
+  sourceId,
   disableQueryChunking,
   enableParallelQueries,
-  onSeverityClick,
+  onFocusSeries,
 }: {
   config: BuilderChartConfigWithDateRange;
   queryKeyPrefix: string;
+  sourceId?: string;
   disableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
-  /** Called with every raw column value belonging to the clicked severity class. */
-  onSeverityClick?: (rawValues: string[]) => void;
+  onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
 }) {
-  const { severityCounts } = useSearchSeverityCounts(config, queryKeyPrefix, {
+  const { items } = useSearchSeriesTotals(config, queryKeyPrefix, {
+    sourceId,
     disableQueryChunking,
     enableParallelQueries,
   });
 
-  if (severityCounts.length === 0) {
+  if (items.length === 0) {
     return null;
   }
 
+  const inlineItems = items.slice(0, MAX_INLINE_ITEMS);
+  const overflowItems = items.slice(MAX_INLINE_ITEMS);
+
   return (
-    <Group gap="sm" px="sm" pb={4} data-testid="search-histogram-legend">
-      {severityCounts.map(item => (
-        <UnstyledButton
-          key={item.class}
-          onClick={() => onSeverityClick?.(item.rawValues)}
-          aria-label={`Filter by ${item.label}`}
-        >
-          <Group gap={4} align="center">
-            <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 2,
-                backgroundColor: item.color,
-                flexShrink: 0,
-              }}
-            />
-            <Text size="xs" c="dimmed">
-              {item.label}
-            </Text>
-            <Text size="xs" fw={500}>
-              {item.count.toLocaleString()}
-            </Text>
-          </Group>
-        </UnstyledButton>
+    <Group
+      gap="sm"
+      px="sm"
+      pb={4}
+      wrap="nowrap"
+      data-testid="search-histogram-legend"
+    >
+      {inlineItems.map(item => (
+        <LegendItem
+          key={item.dataKey}
+          item={item}
+          onFocusSeries={onFocusSeries}
+        />
       ))}
+      {overflowItems.length > 0 && (
+        <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
+          <Popover.Target>
+            <UnstyledButton aria-label="Show remaining series">
+              <Text size="xs" c="dimmed">
+                +{overflowItems.length} more
+              </Text>
+            </UnstyledButton>
+          </Popover.Target>
+          <Popover.Dropdown p="xs">
+            <Group gap={6} maw={320} style={{ flexDirection: 'column' }}>
+              {overflowItems.map(item => (
+                <LegendItem
+                  key={item.dataKey}
+                  item={item}
+                  onFocusSeries={onFocusSeries}
+                />
+              ))}
+            </Group>
+          </Popover.Dropdown>
+        </Popover>
+      )}
     </Group>
   );
 }

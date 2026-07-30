@@ -212,27 +212,6 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
-  // Set a single property to include multiple values atomically (clearing any
-  // existing included/excluded state for that property). Useful when the legend
-  // groups several raw values into one class (e.g. "error", "ERR", "fatal" →
-  // Error class) and clicking it should include all of them in one update.
-  const setIncludeFilter = useCallback(
-    (property: string, values: (string | boolean)[]) => {
-      if (values.length === 0) return;
-      setFilters(prevFilters => {
-        const newFilters = produce(prevFilters, draft => {
-          draft[property] = {
-            included: new Set(values),
-            excluded: new Set(),
-          };
-        });
-        updateFilterQuery(newFilters);
-        return newFilters;
-      });
-    },
-    [updateFilterQuery],
-  );
-
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
@@ -329,7 +308,6 @@ export const useSearchPageFilterState = ({
     setFilters,
     setFilterValue,
     setOnlyFilters,
-    setIncludeFilter,
     replaceFilterValue,
     setFilterRange,
     clearFilter,
