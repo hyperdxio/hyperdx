@@ -1,3 +1,4 @@
+import { ColumnMeta } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import {
   GET_ALL_KEY_VALUES_CHUNK_SIZE,
@@ -617,6 +618,84 @@ describe('Metadata', () => {
           clickhouse_settings: undefined,
         }),
       );
+    });
+
+    it('uses groupUniqArrayIf for keys that have a condition (faceted lookup)', async () => {
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ['colA', 'colB'],
+        keyConditions: [
+          undefined,
+          { colA: { included: new Set(['x']), excluded: new Set() } },
+        ],
+        limit: 10,
+        disableRowLimit: true,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls.at(-1)![0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      // No condition → plain groupUniqArray; condition → groupUniqArrayIf so
+      // both facets resolve in a single scan.
+      expect(actualConfig.select).toContain(
+        'groupUniqArray(10)(colA) AS param0',
+      );
+      expect(actualConfig.select).toContain(
+        "groupUniqArrayIf(10)(colB, (colA IN ('x'))) AS param1",
+      );
+    });
+
+    it('renders faceted conditions the same way as the keys they constrain', async () => {
+      // A JSON column renders to a typed subcolumn rather than the bracket
+      // form the caller wrote. If the predicate kept the raw expression it
+      // would address a different (or non-existent) column than the aggregate
+      // wrapping it, so both halves must come out rendered.
+      const jsonMetadata = new Metadata(mockClickhouseClient, mockCache);
+      jest
+        .spyOn(jsonMetadata, 'getColumn')
+        .mockImplementation(async ({ column }) =>
+          column === 'Attributes'
+            ? ({ name: 'Attributes', type: 'JSON' } as ColumnMeta)
+            : undefined,
+        );
+
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await jsonMetadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["Attributes['cluster']", "Attributes['namespace']"],
+        keyConditions: [
+          undefined,
+          {
+            "Attributes['cluster']": {
+              included: new Set(['prod']),
+              excluded: new Set(),
+            },
+          },
+        ],
+        limit: 10,
+        disableRowLimit: true,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls.at(-1)![0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.select).toContain(
+        'groupUniqArrayIf(10)(Attributes.`namespace`.:String, ' +
+          "(Attributes.`cluster`.:String IN ('prod'))) AS param1",
+      );
+      // The raw bracket form must not survive into either half.
+      expect(actualConfig.select).not.toContain("Attributes['");
     });
 
     it('should apply row limit by default when disableRowLimit is not specified', async () => {
