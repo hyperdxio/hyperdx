@@ -237,8 +237,13 @@ export function useMultipleAllFields(
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, timestampValueExpression, intersect, ...queryOptions } =
-    options ?? {};
+  const {
+    dateRange,
+    timestampValueExpression,
+    intersect,
+    enabled: enabledOption = true,
+    ...queryOptions
+  } = options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
@@ -277,13 +282,14 @@ export function useMultipleAllFields(
         ? intersect2dArray<Field>(fields2d)
         : deduplicate2dArray<Field>(fields2d);
     },
+    ...queryOptions,
     enabled:
+      enabledOption &&
       tableConnections.length > 0 &&
       tableConnections.every(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...queryOptions,
   });
 }
 

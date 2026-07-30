@@ -108,6 +108,7 @@ import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -549,8 +550,18 @@ function SaveSearchModalComponent({
             tags: tags,
           });
 
-          router.push(`/search/${savedSearch.id}${window.location.search}`);
-          onClose();
+          // useQueryStates can restore the previous search URL during a
+          // client-side transition. Reload the saved-search route instead so
+          // the newly created search hydrates from its stored configuration,
+          // rather than stale query state from the previous search. Preserve
+          // only the independent time range, which is not saved-search config.
+          window.location.assign(
+            buildSavedSearchNavigationUrl(
+              router.basePath,
+              savedSearch.id,
+              window.location.search,
+            ),
+          );
         } catch (error) {
           console.error('Error creating saved search:', error);
           notifications.show({
@@ -887,6 +898,33 @@ const queryStateMap = {
   orderBy: parseAsStringEncoded,
 };
 
+export function buildSavedSearchNavigationUrl(
+  basePath: string,
+  savedSearchId: string,
+  currentSearch: string,
+) {
+  const currentParams = new URLSearchParams(currentSearch);
+  const timeRangeParams = new URLSearchParams();
+  const from = currentParams.get('from');
+  const to = currentParams.get('to');
+
+  if (from != null && to != null) {
+    timeRangeParams.set('from', from);
+    timeRangeParams.set('to', to);
+
+    // An explicit absolute range must remain in range mode after the saved
+    // search reload; otherwise the default live-tail mode can take over.
+    if (currentParams.get('isLive') === 'false') {
+      timeRangeParams.set('isLive', 'false');
+    }
+  }
+
+  const timeRangeSearch = timeRangeParams.toString();
+  return `${basePath}/search/${savedSearchId}${
+    timeRangeSearch ? `?${timeRangeSearch}` : ''
+  }`;
+}
+
 export function useSearchTelemetry({
   isAnyQueryFetching,
   isLive,
@@ -967,7 +1005,21 @@ export function DBSearchPage() {
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
-  const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+
+  // `?source=` accepts a source name as well as a source ID. Resolve it to an ID
+  // here. The param is not changed until the user changes the source in the UI.
+  const { source: searchedSource } = useResolvedSourceParam(
+    rawSearchedConfig.source,
+    {
+      kinds: [SourceKind.Log, SourceKind.Trace],
+    },
+  );
+
+  const searchedConfig = useMemo(
+    () => ({ ...rawSearchedConfig, source: searchedSource?.id }),
+    [rawSearchedConfig, searchedSource?.id],
+  );
   const [directTraceId, setDirectTraceId] = useQueryState(
     'traceId',
     parseAsStringEncoded,
@@ -985,10 +1037,6 @@ export function DBSearchPage() {
     'hdx-last-selected-source-id',
     '',
   );
-  const { data: searchedSource } = useSource({
-    id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
-  });
   const directTraceSource =
     directTraceId != null && searchedSource?.kind === SourceKind.Trace
       ? searchedSource
@@ -1057,9 +1105,13 @@ export function DBSearchPage() {
         where: searchedConfig.where || '',
         whereLanguage:
           searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+        // When source is provided in the URL or in the saved search, don't
+        // fallback to the default source.
         source:
           searchedConfig.source ||
-          (savedSearchId || directTraceId ? '' : defaultSourceId),
+          (savedSearchId || directTraceId || rawSearchedConfig.source
+            ? ''
+            : defaultSourceId),
         filters: searchedConfig.filters ?? [],
         orderBy: searchedConfig.orderBy ?? '',
       },
@@ -1138,8 +1190,14 @@ export function DBSearchPage() {
   // been wiped (ex. clicking on the same saved search again)
   useEffect(() => {
     const { source, where, select, whereLanguage, filters } = searchedConfig;
+    // Source is "empty" when it's not present in the URL, not when it cannot be resolved
+    // to an existing source.
     const isSearchConfigEmpty =
-      !source && !where && !select && !whereLanguage && !filters?.length;
+      !rawSearchedConfig.source &&
+      !where &&
+      !select &&
+      !whereLanguage &&
+      !filters?.length;
 
     // Landed on saved search (if we just landed on a searchId route)
     if (
@@ -1177,6 +1235,7 @@ export function DBSearchPage() {
   }, [
     savedSearch,
     searchedConfig,
+    rawSearchedConfig.source,
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
@@ -1296,6 +1355,23 @@ export function DBSearchPage() {
     // If the user changes the source dropdown, reset the select and orderby fields
     // to match the new source selected
     if (watchedSource !== prevSourceRef.current) {
+      // Whether the form is only catching up to the source the search config
+      // already points at — a source name resolving to its ID, a saved search's
+      // own source arriving, or history navigation — rather than the user
+      // picking a different source. Either way the URL's other params were
+      // chosen deliberately and must not be rewritten.
+      const isCatchingUpToConfig =
+        !!watchedSource && watchedSource === searchedSource?.id;
+
+      if (isCatchingUpToConfig && savedSearchId == null) {
+        prevSourceRef.current = watchedSource;
+        if (rawSearchedConfig.source !== watchedSource) {
+          // Partial update — the other search params are left as they are.
+          setSearchedConfig({ source: watchedSource });
+        }
+        return;
+      }
+
       prevSourceRef.current = watchedSource;
       const newInputSourceObj = inputSourceObjs?.find(
         s => s.id === watchedSource,
@@ -1304,18 +1380,26 @@ export function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
-        if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue('select', '');
-          setValue('orderBy', '');
-          // Defer filter clearing: wait until the new source's columns load,
-          // then keep filters whose root column exists on the new schema.
-          pendingFilterReconcileRef.current = watchedSource ?? null;
-          // If the user is in a saved search, prefer the saved search's select/orderBy if available
-        } else {
-          setValue('select', savedSearch?.select ?? '');
-          setValue('orderBy', savedSearch?.orderBy ?? '');
-          // Don't clear filters - we're loading from saved search
+        // Only a real user-initiated source change may reset the query fields. On a saved
+        // search route the form also catches up to the source the URL points at
+        // (the saved-search effect writes it), and resetting there would discard
+        // select/orderBy the link carried — e.g. an unsaved tweak that was
+        // bookmarked or refreshed. The submit below still runs, since that is how
+        // a freshly loaded page pushes its defaults into the search config.
+        if (!isCatchingUpToConfig) {
+          // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
+          if (savedSearchId == null || savedSearch?.source !== watchedSource) {
+            setValue('select', '');
+            setValue('orderBy', '');
+            // Defer filter clearing: wait until the new source's columns load,
+            // then keep filters whose root column exists on the new schema.
+            pendingFilterReconcileRef.current = watchedSource ?? null;
+            // If the user is in a saved search, prefer the saved search's select/orderBy if available
+          } else {
+            setValue('select', savedSearch?.select ?? '');
+            setValue('orderBy', savedSearch?.orderBy ?? '');
+            // Don't clear filters - we're loading from saved search
+          }
         }
         // Push the new source to URL/searchedConfig so the chart re-queries.
         // Debounced so a later filter reconcile (which also submits) collapses
@@ -1331,6 +1415,9 @@ export function DBSearchPage() {
     inputSourceObjs,
     setLastSelectedSourceId,
     debouncedSubmit,
+    searchedSource?.id,
+    rawSearchedConfig.source,
+    setSearchedConfig,
   ]);
 
   const retainCompatibleFilters = useStableCallback((columns: ColumnMeta[]) => {
