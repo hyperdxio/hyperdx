@@ -84,6 +84,7 @@ import {
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
+  SpanStatusCode,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -104,6 +105,10 @@ const alertProcessFailuresCounter = getCounter(
       'Count of alert evaluations that threw an unexpected error during processing.',
   },
 );
+const alertBatchFailuresCounter = getCounter('hyperdx.alerts.batch_failures', {
+  description:
+    'Count of alert batches (one per connection) that failed before their alerts could be evaluated, e.g. a ClickHouse connection failure.',
+});
 
 /**
  * Determine if an alert has group-by behavior.
@@ -1648,19 +1653,24 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     });
   }
 
+  /**
+   * Schedules every alert in one connection's batch onto the task queue.
+   *
+   * @returns true if the batch was scheduled, false if it failed.
+   */
   async processAlertTask(
     alertTask: AlertTask,
     teamWebhooksById: Map<string, IWebhook>,
-  ) {
-    await tasksTracer.startActiveSpan('processAlertTask', async span => {
-      span.setAttribute(
-        'hyperdx.alerts.team.id',
-        alertTask.conn.team.toString(),
-      );
-      span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
-      span.setAttribute('hyperdx.alerts.batch.size', alertTask.alerts.length);
-
+  ): Promise<boolean> {
+    return tasksTracer.startActiveSpan('processAlertTask', async span => {
       try {
+        span.setAttribute(
+          'hyperdx.alerts.team.id',
+          alertTask.conn.team.toString(),
+        );
+        span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
+        span.setAttribute('hyperdx.alerts.batch.size', alertTask.alerts.length);
+
         const { alerts, conn } = alertTask;
         logger.info(
           {
@@ -1686,6 +1696,24 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
             ),
           );
         }
+        return true;
+      } catch (e) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: getErrorMessage(e),
+        });
+        span.recordException(e instanceof Error ? e : new Error(String(e)));
+        alertBatchFailuresCounter.add(1);
+        logger.error(
+          {
+            connectionId: alertTask.conn.id,
+            teamId: alertTask.conn.team.toString(),
+            alertCount: alertTask.alerts.length,
+            error: serializeError(e),
+          },
+          'Failed to process alert batch, skipping its alerts for this cycle',
+        );
+        return false;
       } finally {
         span.end();
       }
@@ -1734,12 +1762,16 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       `Obtained teams and webhooks for all alertTasks`,
     );
 
+    let failedBatchCount = 0;
     for (const task of alertTasks) {
       const teamWebhooksById =
         teamToWebhooks.get(task.conn.team.toString()) ?? new Map();
-      this.task_queue.add(async () =>
-        this.processAlertTask(task, teamWebhooksById),
-      );
+      this.task_queue.add(async () => {
+        const success = await this.processAlertTask(task, teamWebhooksById);
+        if (!success) {
+          failedBatchCount++;
+        }
+      });
     }
     logger.debug(
       {
@@ -1755,6 +1787,8 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     logger.info(
       {
         args: this.args,
+        taskCount,
+        failedBatchCount,
       },
       'finished processing all tasks on task_queue',
     );
