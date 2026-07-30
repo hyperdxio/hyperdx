@@ -1,11 +1,14 @@
 import React from 'react';
 import objectHash from 'object-hash';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import { hashKey } from '@tanstack/react-query';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
+import SearchHistogramLegend from '@/components/SearchHistogramLegend';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 
 // Mock the API and hooks
@@ -175,5 +178,88 @@ describe('DBSearchPage QueryKey Consistency', () => {
     const searchQueryKeyHash = objectHash(searchQueryKey);
     const chartQueryKeyHash = objectHash(chartQueryKey);
     expect(searchQueryKeyHash).toBe(chartQueryKeyHash);
+  });
+
+  // The severity legend re-aggregates the histogram's rows over the whole date
+  // range, so it must resolve from the histogram's cache entry rather than
+  // issuing a second ClickHouse query. React Query only dedupes when the keys
+  // hash identically, so assert against its own hashing function: a plain
+  // `toEqual` would pass even for keys that hash apart (e.g. an explicit
+  // `disableQueryChunking: undefined` vs `false`).
+  it('should use a queryKey that hashes identically to DBTimeChart for SearchHistogramLegend', () => {
+    const config: BuilderChartConfigWithDateRange = {
+      select: 'count()',
+      from: { databaseName: 'test', tableName: 'logs' },
+      where: '',
+      timestampValueExpression: 'timestamp',
+      connection: 'test-connection',
+      displayType: DisplayType.StackedBar,
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+    };
+
+    const queryKeyPrefix = 'search';
+
+    // DBTimeChart also issues a (disabled) previous-period query whose key has
+    // no options element, so render each component in isolation and pick the
+    // main chunked query rather than indexing into a shared call list.
+    const renderAndGetPrimaryQueryKey = (element: React.ReactElement) => {
+      mockUseQueriedChartConfig.mockClear();
+      renderWithMantine(element);
+      const keys = mockUseQueriedChartConfig.mock.calls
+        .map(call => call[1]?.queryKey)
+        .filter(key => key?.length === 4);
+      expect(keys).toHaveLength(1);
+      return keys[0];
+    };
+
+    const chartQueryKey = renderAndGetPrimaryQueryKey(
+      <DBTimeChart
+        config={config}
+        queryKeyPrefix={queryKeyPrefix}
+        enableParallelQueries={true}
+      />,
+    );
+
+    const legendQueryKey = renderAndGetPrimaryQueryKey(
+      <SearchHistogramLegend
+        config={config}
+        queryKeyPrefix={queryKeyPrefix}
+        enableParallelQueries={true}
+      />,
+    );
+
+    const totalCountQueryKey = renderAndGetPrimaryQueryKey(
+      <SearchTotalCountChart
+        config={config}
+        queryKeyPrefix={queryKeyPrefix}
+        enableParallelQueries={true}
+      />,
+    );
+
+    expect(hashKey(legendQueryKey)).toBe(hashKey(chartQueryKey));
+    expect(hashKey(totalCountQueryKey)).toBe(hashKey(chartQueryKey));
+  });
+
+  it('should not pin disableQueryChunking in the legend queryKey when the histogram leaves it unset', () => {
+    const config: BuilderChartConfigWithDateRange = {
+      select: 'count()',
+      from: { databaseName: 'test', tableName: 'logs' },
+      where: '',
+      timestampValueExpression: 'timestamp',
+      connection: 'test-connection',
+      displayType: DisplayType.StackedBar,
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+    };
+
+    renderWithMantine(
+      <SearchHistogramLegend config={config} queryKeyPrefix="search" />,
+    );
+
+    const legendQueryKey = mockUseQueriedChartConfig.mock.calls[0][1]?.queryKey;
+
+    // `JSON.stringify` drops undefined values, so an unset flag must stay
+    // undefined rather than being normalized to `false` — otherwise the key
+    // hashes differently from the histogram's and the cache entry splits.
+    expect(legendQueryKey[3].disableQueryChunking).toBeUndefined();
   });
 });

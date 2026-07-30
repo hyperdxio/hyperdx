@@ -1,16 +1,13 @@
 import { useMemo } from 'react';
-import {
-  filterColumnMetaByType,
-  JSDataType,
-  ResponseJSON,
-} from '@hyperdx/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Group, Text, UnstyledButton } from '@mantine/core';
-import { keepPreviousData } from '@tanstack/react-query';
 
-import api from '@/api';
-import { convertToTimeChartConfig } from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  inferCountColumn,
+  inferGroupColumn,
+  type SearchHistogramQueryOptions,
+  useSearchHistogramQuery,
+} from '@/hooks/useSearchHistogramQuery';
 import {
   getChartColorError,
   getChartColorInfo,
@@ -18,117 +15,90 @@ import {
   getLogLevelClass,
 } from '@/utils';
 
+type LogLevelClass = 'info' | 'warn' | 'error';
+
 type SeverityCount = {
   label: string;
-  class: 'error' | 'warn' | 'info';
+  class: LogLevelClass;
   color: string;
   count: number;
+  /**
+   * Every raw column value that rolled up into this class (e.g. "ERR" and
+   * "fatal" both land under Error), so clicking the item can filter on all of
+   * them rather than just the one we happened to label it with.
+   */
   rawValues: string[];
 };
 
-function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
-  if (!meta) return 'count()';
-  if (meta.find(col => col.name === 'count()')) {
-    return 'count()';
-  }
-  return (
-    filterColumnMetaByType(meta, [JSDataType.Number])?.[0]?.name ?? 'count()'
-  );
-}
+// Rendered bottom-to-top to match the histogram's stacking order.
+const CLASS_DISPLAY_ORDER: { class: LogLevelClass; label: string }[] = [
+  { class: 'info', label: 'Info' },
+  { class: 'warn', label: 'Warn' },
+  { class: 'error', label: 'Error' },
+];
 
-function inferGroupColumn(
-  meta: ResponseJSON['meta'] | undefined,
-): string | undefined {
-  if (!meta) return undefined;
-  return filterColumnMetaByType(meta, [JSDataType.String])?.[0]?.name;
-}
+const CLASS_COLORS: Record<LogLevelClass, () => string> = {
+  info: getChartColorInfo,
+  warn: getChartColorWarning,
+  error: getChartColorError,
+};
 
 export function useSearchSeverityCounts(
-  config: BuilderChartConfigWithDateRange | undefined,
+  config: BuilderChartConfigWithDateRange,
   queryKeyPrefix: string,
-  { enableParallelQueries }: { enableParallelQueries?: boolean } = {},
+  options: SearchHistogramQueryOptions = {},
 ) {
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
-
-  const queriedConfig = useMemo(
-    () => (config ? convertToTimeChartConfig(config) : undefined),
-    [config],
+  // Shares the histogram's React Query cache entry, so this adds no extra
+  // query — we just re-aggregate the same rows over the whole date range.
+  const { data, isLoading } = useSearchHistogramQuery(
+    config,
+    queryKeyPrefix,
+    options,
   );
-
-  const { data, isLoading } = useQueriedChartConfig(queriedConfig!, {
-    queryKey: [
-      queryKeyPrefix,
-      queriedConfig,
-      'chunked',
-      {
-        disableQueryChunking: false,
-        enableParallelQueries,
-        parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
-      },
-    ],
-    staleTime: 1000 * 60 * 5,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
-    enableQueryChunking: true,
-    enabled: !isLoadingMe && queriedConfig != null,
-  });
 
   const severityCounts = useMemo<SeverityCount[]>(() => {
     if (!data?.data || !data.meta) return [];
 
     const countColumn = inferCountColumn(data.meta);
     const groupColumn = inferGroupColumn(data.meta);
-
     if (!groupColumn) return [];
 
-    const classTotals: Record<
-      string,
+    const totals = new Map<
+      LogLevelClass,
       { count: number; rawValues: Set<string> }
-    > = {
-      error: { count: 0, rawValues: new Set() },
-      warn: { count: 0, rawValues: new Set() },
-      info: { count: 0, rawValues: new Set() },
-    };
+    >();
 
     for (const row of data.data) {
-      const severity = String(row[groupColumn] ?? '');
+      const rawValue = String(row[groupColumn] ?? '');
       const count = Number(row[countColumn] ?? 0);
-      const cls = getLogLevelClass(severity) ?? 'info';
+      if (!Number.isFinite(count)) continue;
 
-      classTotals[cls].count += count;
-      classTotals[cls].rawValues.add(severity);
-    }
+      // Unrecognized severities are colored as info in the chart, so they must
+      // be counted as info here or the legend totals won't sum to the result count.
+      const logLevelClass = getLogLevelClass(rawValue) ?? 'info';
 
-    const result: SeverityCount[] = [];
-    if (classTotals.info.count > 0) {
-      result.push({
-        label: 'Info',
-        class: 'info',
-        color: getChartColorInfo(),
-        count: classTotals.info.count,
-        rawValues: [...classTotals.info.rawValues],
-      });
-    }
-    if (classTotals.warn.count > 0) {
-      result.push({
-        label: 'Warn',
-        class: 'warn',
-        color: getChartColorWarning(),
-        count: classTotals.warn.count,
-        rawValues: [...classTotals.warn.rawValues],
-      });
-    }
-    if (classTotals.error.count > 0) {
-      result.push({
-        label: 'Error',
-        class: 'error',
-        color: getChartColorError(),
-        count: classTotals.error.count,
-        rawValues: [...classTotals.error.rawValues],
-      });
+      const total = totals.get(logLevelClass) ?? {
+        count: 0,
+        rawValues: new Set<string>(),
+      };
+      total.count += count;
+      total.rawValues.add(rawValue);
+      totals.set(logLevelClass, total);
     }
 
-    return result;
+    return CLASS_DISPLAY_ORDER.flatMap(({ class: logLevelClass, label }) => {
+      const total = totals.get(logLevelClass);
+      if (total == null || total.count === 0) return [];
+      return [
+        {
+          label,
+          class: logLevelClass,
+          color: CLASS_COLORS[logLevelClass](),
+          count: total.count,
+          rawValues: [...total.rawValues],
+        },
+      ];
+    });
   }, [data]);
 
   return { severityCounts, isLoading };
@@ -137,32 +107,33 @@ export function useSearchSeverityCounts(
 export default function SearchHistogramLegend({
   config,
   queryKeyPrefix,
-  groupByColumn,
+  disableQueryChunking,
   enableParallelQueries,
   onSeverityClick,
 }: {
-  config: BuilderChartConfigWithDateRange | undefined;
+  config: BuilderChartConfigWithDateRange;
   queryKeyPrefix: string;
-  groupByColumn: string | undefined;
+  disableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /** Called with every raw column value belonging to the clicked severity class. */
   onSeverityClick?: (rawValues: string[]) => void;
 }) {
-  const { severityCounts, isLoading } = useSearchSeverityCounts(
-    config,
-    queryKeyPrefix,
-    { enableParallelQueries },
-  );
+  const { severityCounts } = useSearchSeverityCounts(config, queryKeyPrefix, {
+    disableQueryChunking,
+    enableParallelQueries,
+  });
 
-  if (isLoading || severityCounts.length === 0 || !groupByColumn) {
+  if (severityCounts.length === 0) {
     return null;
   }
 
   return (
-    <Group gap="sm" px="sm" pb={4}>
+    <Group gap="sm" px="sm" pb={4} data-testid="search-histogram-legend">
       {severityCounts.map(item => (
         <UnstyledButton
           key={item.class}
           onClick={() => onSeverityClick?.(item.rawValues)}
+          aria-label={`Filter by ${item.label}`}
         >
           <Group gap={4} align="center">
             <div

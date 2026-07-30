@@ -2460,8 +2460,6 @@ export function DBSearchPage() {
                       <SearchHistogramLegend
                         config={histogramTimeChartConfig}
                         queryKeyPrefix={QUERY_KEY_PREFIX}
-                        groupByColumn={severityGroupByColumn}
-                        enableParallelQueries
                         onSeverityClick={handleSeverityLegendClick}
                       />
                     )}
@@ -2570,7 +2568,6 @@ export function DBSearchPage() {
                         <SearchHistogramLegend
                           config={histogramTimeChartConfig}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
-                          groupByColumn={severityGroupByColumn}
                           enableParallelQueries
                           onSeverityClick={handleSeverityLegendClick}
                         />
