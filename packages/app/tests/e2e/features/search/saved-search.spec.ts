@@ -245,6 +245,20 @@ test.describe('Saved Search Functionality', () => {
           'Info Logs Navigation Test',
         );
 
+        const savedSearchParams = new URL(page.url()).searchParams;
+        // This scenario starts at /search with the app's default relative
+        // range, not explicit URL bounds. Saving must not manufacture fixed
+        // bounds. Saved-search hydration may serialize its restored
+        // configuration into the URL, so verify the hydrated inputs below
+        // rather than treating URL parameters as the source of truth.
+        expect(savedSearchParams.has('from')).toBe(false);
+        expect(savedSearchParams.has('to')).toBe(false);
+
+        await expect(searchPage.input).toHaveValue('SeverityText:info');
+        await expect(searchPage.getOrderByEditor()).toContainText(
+          customOrderBy,
+        );
+
         // Capture the saved search URL (without query params)
         savedSearchUrl = page.url().split('?')[0];
       });
