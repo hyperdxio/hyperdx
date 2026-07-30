@@ -235,6 +235,7 @@ export const DBRowSidePanelInner = ({
     sourceStack,
     navStack,
     tab: persistedTab,
+    preferredTab,
     pushSource,
     pushNav,
     popOne,
@@ -331,11 +332,16 @@ export const DBRowSidePanelInner = ({
       label: string,
       sourceKind?: SourceKind,
     ) => {
-      // Same-source drilldown (e.g. surrounding context) → jump to this
-      // source's default tab.
-      pushNav({ rowId, aliasWith, label, sourceKind }, defaultTab);
+      // Same-source drilldown (e.g. picking a neighbour out of surrounding
+      // context) changes which row is shown, not which view of it, so keep the
+      // reader in their remembered view. reconcileTab drops it if the
+      // destination doesn't offer that tab.
+      pushNav(
+        { rowId, aliasWith, label, sourceKind },
+        preferredTab ?? defaultTab,
+      );
     },
-    [pushNav, defaultTab],
+    [pushNav, preferredTab, defaultTab],
   );
 
   const handleSourceStackPush = useCallback(

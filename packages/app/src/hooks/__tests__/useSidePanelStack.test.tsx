@@ -438,6 +438,32 @@ describe('useSidePanelStack', () => {
       expect(readLastTab()).toBe(Tab.Parsed);
     });
 
+    it('does not remember a navigational tab as a reading view', () => {
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      act(() => result.current.setTab(Tab.Parsed));
+      // Opening Surrounding Context to hunt for a neighbouring row must not cost
+      // the reader the view they had chosen.
+      act(() => result.current.setTab(Tab.Context));
+
+      expect(readLastTab()).toBe(Tab.Parsed);
+      // It is still the active tab for the current row, just not remembered.
+      expect(setterFor('sidePanelTab')).toHaveBeenLastCalledWith(Tab.Context);
+    });
+
+    it('exposes the reading view separately from where the URL points', () => {
+      seedLastTab(Tab.Parsed);
+      seedParam('sidePanelTab', Tab.Context);
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      // The panel shows Surrounding Context...
+      expect(result.current.tab).toBe(Tab.Context);
+      // ...while a row-changing navigation can still target the reading view.
+      expect(result.current.preferredTab).toBe(Tab.Parsed);
+    });
+
     it('discards a remembered tab this build no longer knows about', () => {
       seedLastTab('a-tab-from-a-future-release');
       const { result } = renderHook(() =>

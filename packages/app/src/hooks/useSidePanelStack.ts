@@ -13,6 +13,14 @@ import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 
 export const LAST_TAB_STORAGE_KEY = 'hdx-side-panel-last-tab';
 
+/**
+ * Tabs that are a way to *find* another row rather than a way to read the
+ * current one, so they never become the remembered preference. Opening
+ * Surrounding Context to pick out a neighbour shouldn't cost you the reading
+ * view you had chosen, nor strand you on another context list once you land.
+ */
+const NAVIGATIONAL_TABS: readonly Tab[] = [Tab.Context];
+
 const EMPTY_SOURCE_STACK: SourceFrame[] = [];
 const EMPTY_NAV_STACK: NavEntry[] = [];
 
@@ -56,6 +64,12 @@ export type SidePanelStack = {
   isStale: boolean;
   /** Persisted tab, or null when unset. Reconcile against the source's tabs. */
   tab: Tab | null;
+  /**
+   * The reader's remembered reading view, independent of where the URL currently
+   * points. Use this as the destination for navigations that change *which row*
+   * is shown rather than which view of it, so the reader keeps their view.
+   */
+  preferredTab: Tab | null;
 
   /** Push a cross-source frame (e.g. View Trace) and jump to its default tab. */
   pushSource: (frame: SourceFrame, destinationTab: Tab) => void;
@@ -222,7 +236,9 @@ export default function useSidePanelStack({
 
   const setTab = useCallback(
     (next: Tab) => {
-      setStoredTab(next);
+      if (!NAVIGATIONAL_TABS.includes(next)) {
+        setStoredTab(next);
+      }
       setQueryTab(next);
     },
     [setStoredTab, setQueryTab],
@@ -241,6 +257,7 @@ export default function useSidePanelStack({
       navStack,
       isStale,
       tab: rememberedTab,
+      preferredTab: lastTab,
       pushSource,
       pushNav,
       popOne,
@@ -251,6 +268,7 @@ export default function useSidePanelStack({
     [
       clearTrail,
       rememberedTab,
+      lastTab,
       isStale,
       navStack,
       popOne,
