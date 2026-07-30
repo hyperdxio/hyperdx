@@ -10,6 +10,30 @@ import {
 } from '@/components/DBRowSidePanel.types';
 import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 
+export const LAST_TAB_STORAGE_KEY = 'hdx-side-panel-last-tab';
+
+function readLastTab(): Tab | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(LAST_TAB_STORAGE_KEY);
+    if (stored && Object.values(Tab).includes(stored as Tab)) {
+      return stored as Tab;
+    }
+  } catch {
+    // Ignore localStorage errors (private browsing, quota, etc.)
+  }
+  return null;
+}
+
+function writeLastTab(tab: Tab): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LAST_TAB_STORAGE_KEY, tab);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
 const EMPTY_SOURCE_STACK: SourceFrame[] = [];
 const EMPTY_NAV_STACK: NavEntry[] = [];
 
@@ -116,13 +140,15 @@ export default function useSidePanelStack({
     [rawSourceStack, rawNavStack, stackRoot, initialRowId],
   );
 
+  const rememberedTab = tab ?? readLastTab();
+
   const pushSource = useCallback(
     (frame: SourceFrame, destinationTab: Tab) => {
       // Compute from the *effective* stack (empty when stale) so a push from a
       // stale URL starts a fresh, owned trail instead of extending old frames.
       setSourceStack([
         ...sourceStack,
-        { ...frame, originTab: tab ?? undefined },
+        { ...frame, originTab: rememberedTab ?? undefined },
       ]);
       setNavStack([]);
       setStackRoot(initialRowId ?? null);
@@ -130,7 +156,7 @@ export default function useSidePanelStack({
     },
     [
       sourceStack,
-      tab,
+      rememberedTab,
       initialRowId,
       setSourceStack,
       setNavStack,
@@ -142,14 +168,17 @@ export default function useSidePanelStack({
   const pushNav = useCallback(
     (entry: NavEntry, destinationTab: Tab) => {
       setSourceStack(sourceStack);
-      setNavStack([...navStack, { ...entry, originTab: tab ?? undefined }]);
+      setNavStack([
+        ...navStack,
+        { ...entry, originTab: rememberedTab ?? undefined },
+      ]);
       setStackRoot(initialRowId ?? null);
       setQueryTab(destinationTab);
     },
     [
       sourceStack,
       navStack,
-      tab,
+      rememberedTab,
       initialRowId,
       setSourceStack,
       setNavStack,
@@ -199,7 +228,13 @@ export default function useSidePanelStack({
     [sourceStack, navStack, setSourceStack, setNavStack, setQueryTab],
   );
 
-  const setTab = useCallback((next: Tab) => setQueryTab(next), [setQueryTab]);
+  const setTab = useCallback(
+    (next: Tab) => {
+      writeLastTab(next);
+      setQueryTab(next);
+    },
+    [setQueryTab],
+  );
 
   const clearTrail = useCallback(() => {
     setSourceStack(null); // sidePanelSourceStack
@@ -213,7 +248,7 @@ export default function useSidePanelStack({
       sourceStack,
       navStack,
       isStale,
-      tab,
+      tab: rememberedTab,
       pushSource,
       pushNav,
       popOne,
@@ -223,6 +258,7 @@ export default function useSidePanelStack({
     }),
     [
       clearTrail,
+      rememberedTab,
       isStale,
       navStack,
       popOne,
@@ -230,7 +266,6 @@ export default function useSidePanelStack({
       pushSource,
       setTab,
       sourceStack,
-      tab,
       truncateTo,
     ],
   );
