@@ -30,6 +30,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
@@ -85,7 +86,11 @@ function DBServiceMapPage() {
   const brandName = useBrandDisplayName();
 
   const { data: sources } = useSources();
-  const [sourceId, setSourceId] = useQueryState('source');
+  // `?source=` accepts a source name as well as a source ID.
+  const [sourceIdParam, setSourceId] = useQueryState('source');
+  const { source: paramSource } = useResolvedSourceParam(sourceIdParam, {
+    kinds: [SourceKind.Trace],
+  });
   const [isCreateSourceModalOpen, setIsCreateSourceModalOpen] = useState(false);
 
   const [searchedConfig, setSearchedConfig] =
@@ -103,13 +108,10 @@ function DBServiceMapPage() {
   const defaultSource = sources?.find(
     (source): source is TTraceSource => source.kind === SourceKind.Trace,
   );
-  const source =
-    sourceId && sources
-      ? (sources.find(
-          (source): source is TTraceSource =>
-            source.id === sourceId && source.kind === SourceKind.Trace,
-        ) ?? defaultSource)
-      : defaultSource;
+
+  // A param that matches no trace source falls back to the default.
+  // useResolvedSourceParam will show a notification to the user.
+  const source = paramSource ?? defaultSource;
 
   const { control, handleSubmit, setValue } = useForm({
     values: {
@@ -124,11 +126,15 @@ function DBServiceMapPage() {
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
+  // Keep the param in step with the selected source, which also canonicalizes a
+  // source name to its ID. Only write a real source: on a cold load the form
+  // value is undefined until the source list arrives, and writing that would
+  // wipe the `?source=` the user arrived with.
   useEffect(() => {
-    if (watchedSource !== sourceId) {
-      setSourceId(watchedSource ?? null);
+    if (watchedSource && watchedSource !== sourceIdParam) {
+      setSourceId(watchedSource);
     }
-  }, [watchedSource, sourceId, setSourceId]);
+  }, [watchedSource, sourceIdParam, setSourceId]);
 
   const sourceTableConnection = useMemo(() => tcFromSource(source), [source]);
 

@@ -5,7 +5,11 @@ import { getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_METRICS_SOURCE_NAME,
+  DEFAULT_SESSIONS_SOURCE_NAME,
+  DEFAULT_TRACES_MV_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
+  K8S_LOGS_NO_METRICS_SOURCE_NAME,
 } from '../utils/constants';
 
 /**
@@ -24,6 +28,67 @@ function waitForNotification(page: Page, text: string) {
     .locator('.mantine-Notification-root')
     .filter({ hasText: text })
     .waitFor({ state: 'visible', timeout: 15000 });
+}
+
+/** The ID the API assigned to a seeded source, to assert canonicalization against. */
+async function sourceIdByName(
+  page: Page,
+  kind: 'log' | 'trace' | 'metric' | 'session',
+  name: string,
+) {
+  const sources = await getSources(page, kind);
+  const match = sources.find((s: { name: string }) => s.name === name);
+  expect(match, `seeded ${kind} source "${name}"`).toBeDefined();
+  return match.id as string;
+}
+
+/**
+ * Records every notification that appears, so a test can assert one *didn't*
+ * fire. A plain `toHaveCount(0)` can't: these warnings auto-close, so the
+ * assertion passes either way if it runs after the toast has gone. Call before
+ * navigating.
+ */
+async function recordNotifications(page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __notifications: string[] }).__notifications = seen;
+    new MutationObserver(records => {
+      for (const record of records) {
+        record.addedNodes.forEach(node => {
+          if (!(node instanceof HTMLElement)) return;
+          const root = node.closest('.mantine-Notification-root') ?? node;
+          if (root.querySelector?.('.mantine-Notification-title') != null) {
+            seen.push(root.textContent ?? '');
+          }
+        });
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  });
+}
+
+function getRecordedNotifications(page: Page) {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __notifications?: string[] }).__notifications ??
+      [],
+  );
+}
+
+/** Every source picker on these pages renders with this placeholder. */
+function sourcePicker(page: Page, index = 0) {
+  return page.getByPlaceholder('Data Source').nth(index);
+}
+
+async function expectParamCanonicalized(
+  page: Page,
+  param: string,
+  expectedId: string,
+) {
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get(param), {
+      timeout: 15000,
+    })
+    .toBe(expectedId);
 }
 
 test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
@@ -165,5 +230,174 @@ test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
     );
     await searchPage.table.waitForRowsToPopulate();
     expect(page.url()).toContain(`source=${logsSourceId}`);
+  });
+
+  test('opens the service map with a source name', async ({ page }) => {
+    // Deliberately not the *default* trace source: the page falls back to the
+    // first one, so only a non-default source proves the param was honoured
+    // rather than dropped on the cold load.
+    const traceSourceId = await sourceIdByName(
+      page,
+      'trace',
+      DEFAULT_TRACES_MV_SOURCE_NAME,
+    );
+
+    await page.goto(
+      `/service-map?source=${encodeURIComponent(DEFAULT_TRACES_MV_SOURCE_NAME)}`,
+    );
+
+    await expect(page.getByTestId('service-map-page')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(sourcePicker(page)).toHaveValue(DEFAULT_TRACES_MV_SOURCE_NAME);
+    await expectParamCanonicalized(page, 'source', traceSourceId);
+  });
+
+  test('opens the services dashboard with a source name', async ({ page }) => {
+    // A non-default trace source, so the fallback can't mask a dropped param.
+    const traceSourceId = await sourceIdByName(
+      page,
+      'trace',
+      DEFAULT_TRACES_MV_SOURCE_NAME,
+    );
+
+    // The preset-filter request is keyed on the page's source; an unresolved
+    // value used to be sent verbatim.
+    const failed: string[] = [];
+    page.on('response', res => {
+      if (res.url().includes('dashboards/preset') && res.status() >= 400) {
+        failed.push(`${res.status()} ${res.url()}`);
+      }
+    });
+
+    await page.goto(
+      `/services?source=${encodeURIComponent(DEFAULT_TRACES_MV_SOURCE_NAME)}&where=ServiceName%3Afrontend&whereLanguage=lucene`,
+    );
+
+    await expect(page.getByTestId('services-dashboard-page')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(sourcePicker(page)).toHaveValue(DEFAULT_TRACES_MV_SOURCE_NAME);
+    // The tabs only render once a trace source resolved.
+    await expect(page.getByRole('tab', { name: 'HTTP Service' })).toBeVisible();
+    await expectParamCanonicalized(page, 'source', traceSourceId);
+    // The rest of the link survives: the page submits its form on load, so a
+    // `where` it never read would be written back as empty.
+    const params = new URL(page.url()).searchParams;
+    expect(params.get('where')).toBe('ServiceName:frontend');
+    expect(params.get('whereLanguage')).toBe('lucene');
+    expect(failed).toEqual([]);
+  });
+
+  test('opens sessions with a source name', async ({ page }) => {
+    const sessionSourceId = await sourceIdByName(
+      page,
+      'session',
+      DEFAULT_SESSIONS_SOURCE_NAME,
+    );
+
+    await page.goto(
+      `/sessions?sessionSource=${encodeURIComponent(DEFAULT_SESSIONS_SOURCE_NAME)}`,
+    );
+
+    await expect(page.getByTestId('sessions-page')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(sourcePicker(page)).toHaveValue(DEFAULT_SESSIONS_SOURCE_NAME);
+    await expectParamCanonicalized(page, 'sessionSource', sessionSourceId);
+  });
+
+  test('warns and keeps the link when the session source does not exist', async ({
+    page,
+  }) => {
+    const warning = waitForNotification(page, 'Source not found');
+    await page.goto('/sessions?sessionSource=Deleted%20Sessions');
+    await warning;
+
+    await expect(page.getByTestId('sessions-page')).toBeVisible();
+    // The page must not submit its (empty) form over the param: that would drop
+    // the link, and with it the explanation of why nothing is selected.
+    expect(new URL(page.url()).searchParams.get('sessionSource')).toBe(
+      'Deleted Sessions',
+    );
+    await expect(sourcePicker(page)).toHaveValue('');
+  });
+
+  test('does not rewrite the kubernetes log source it was given', async ({
+    page,
+  }) => {
+    await recordNotifications(page);
+
+    // This log source has no correlated metric source, so the metric half is
+    // filled in from the shared connection. If the form catching up to the
+    // derived pair is mistaken for a user pick, the metric source's own
+    // correlation writes *back* over the log source — replacing the one the link
+    // asked for, and looping through the derivation while it does it.
+    const logSourceId = await sourceIdByName(
+      page,
+      'log',
+      K8S_LOGS_NO_METRICS_SOURCE_NAME,
+    );
+
+    // React reports the runaway version of that feedback loop as
+    // "Maximum update depth exceeded".
+    const consoleErrors: string[] = [];
+    page.on('console', msg => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
+
+    await page.goto(
+      `/kubernetes?logSource=${encodeURIComponent(K8S_LOGS_NO_METRICS_SOURCE_NAME)}`,
+    );
+
+    await expect(page.getByTestId('kubernetes-dashboard-page')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(sourcePicker(page, 0)).toHaveValue(
+      K8S_LOGS_NO_METRICS_SOURCE_NAME,
+    );
+    await expectParamCanonicalized(page, 'logSource', logSourceId);
+    expect(await getRecordedNotifications(page)).toEqual([]);
+    expect(
+      consoleErrors.filter(e => e.includes('Maximum update depth')),
+    ).toEqual([]);
+  });
+
+  test('opens the kubernetes dashboard with a source name', async ({
+    page,
+  }) => {
+    await recordNotifications(page);
+
+    const logSourceId = await sourceIdByName(
+      page,
+      'log',
+      DEFAULT_LOGS_SOURCE_NAME,
+    );
+    const metricSourceId = await sourceIdByName(
+      page,
+      'metric',
+      DEFAULT_METRICS_SOURCE_NAME,
+    );
+
+    // Only the log source is given, so the page correlates the metric source
+    // itself — which is also what makes a spurious "Updated Metrics Source"
+    // notice observable if the resolution flip is mistaken for a user pick.
+    await page.goto(
+      `/kubernetes?logSource=${encodeURIComponent(DEFAULT_LOGS_SOURCE_NAME)}`,
+    );
+
+    await expect(page.getByTestId('kubernetes-dashboard-page')).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(sourcePicker(page, 0)).toHaveValue(DEFAULT_LOGS_SOURCE_NAME);
+    await expect(sourcePicker(page, 1)).toHaveValue(
+      DEFAULT_METRICS_SOURCE_NAME,
+    );
+    await expectParamCanonicalized(page, 'logSource', logSourceId);
+    await expectParamCanonicalized(page, 'metricSource', metricSourceId);
+
+    // Filling in the missing half on load is expected; announcing it as though
+    // the user had just switched sources is not.
+    expect(await getRecordedNotifications(page)).toEqual([]);
   });
 });
