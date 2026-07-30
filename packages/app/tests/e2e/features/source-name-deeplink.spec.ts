@@ -307,6 +307,55 @@ test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
     await expectParamCanonicalized(page, 'sessionSource', sessionSourceId);
   });
 
+  test('opens the chart explorer with a source name in the config', async ({
+    page,
+  }) => {
+    const logSources = await getSources(page, 'log');
+    const logsSource = logSources.find(
+      (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+    );
+    expect(logsSource).toBeDefined();
+
+    // A minimal builder config with the source given by *name*. `connection`
+    // comes from the API so the chart can actually query — /chart autoRuns.
+    const config = {
+      name: '',
+      select: [
+        {
+          aggFn: 'count',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: '',
+        },
+      ],
+      where: '',
+      whereLanguage: 'lucene',
+      displayType: 'line',
+      granularity: 'auto',
+      alignDateRangeToGranularity: true,
+      source: DEFAULT_LOGS_SOURCE_NAME,
+      connection: logsSource.connection,
+    };
+
+    await page.goto(
+      `/chart?config=${encodeURIComponent(JSON.stringify(config))}`,
+    );
+
+    await expect(page.getByTestId('chart-explorer-page')).toBeVisible({
+      timeout: 15000,
+    });
+    // Scoped to the editor: the AI assistant reuses the `source-selector` id.
+    const chartForm = page.getByTestId('chart-explorer-form');
+    await expect(chartForm.getByTestId('source-selector')).toHaveValue(
+      DEFAULT_LOGS_SOURCE_NAME,
+      { timeout: 15000 },
+    );
+    // A resolved source means the query can be built and the chart drawn.
+    await expect(
+      page.locator('.recharts-responsive-container').first(),
+    ).toBeVisible({ timeout: 20000 });
+  });
+
   test('warns and keeps the link when the session source does not exist', async ({
     page,
   }) => {
