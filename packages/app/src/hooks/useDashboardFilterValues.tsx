@@ -42,6 +42,24 @@ const filterToKey = (filter: DashboardFilter): string =>
     whereLanguage: filter.whereLanguage ?? 'sql',
   } satisfies FilterSourceKey);
 
+/**
+ * Whether `b`'s selections narrow `a`'s selectable values in link mode. The
+ * single source of truth for the linking rule: both the faceted constraint
+ * below and the chain icons in DashboardFilters.tsx consume this, so the query
+ * behavior and what the UI claims about it can't drift apart.
+ *
+ * Requires the same source + metric type (so the constrained column exists in
+ * the queried table). `where`/`whereLanguage` are deliberately NOT part of it —
+ * those only affect query batching (`filterToKey`), not narrowing. Filters
+ * sharing an expression don't link: FilterState is keyed by expression, so such
+ * a sibling carries this filter's own selection and would collapse a
+ * multi-select to what's already picked.
+ */
+export const filtersLink = (a: DashboardFilter, b: DashboardFilter): boolean =>
+  a.source === b.source &&
+  a.sourceMetricType === b.sourceMetricType &&
+  a.expression !== b.expression;
+
 type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
   /** filterIds[i] = array of filter IDs whose values come from keys[i] */
   filterIds: string[][];
@@ -64,12 +82,9 @@ function useOptimizedKeyValuesCalls({
 
   // Faceted filtering: each filter's selectable values are narrowed by the
   // CURRENT selections of its sibling filters. For every filter, collect the
-  // selections of the OTHER filters that target the same source + metric type
-  // (so the constrained columns exist in the queried table), EXCLUDING the
-  // filter's own expression (otherwise a multi-select would collapse to only
-  // its already-selected values). Passing this down as a per-key constraint
-  // lets all of a source's filters resolve in one `groupUniqArrayIf` scan
-  // instead of one query per filter.
+  // selections of the siblings that link to it (see `filtersLink`). Passing
+  // this down as a per-key constraint lets all of a source's filters resolve in
+  // one `groupUniqArrayIf` scan instead of one query per filter.
   //
   // The constraint stays a FilterState rather than SQL: getKeyValues renders
   // it against the same key expressions it puts in the SELECT, which raw SQL
@@ -80,13 +95,7 @@ function useOptimizedKeyValuesCalls({
       const prunedState: FilterState = {};
       let hasSelection = false;
       for (const sibling of filters) {
-        if (
-          sibling.source !== filter.source ||
-          sibling.sourceMetricType !== filter.sourceMetricType ||
-          // Exclude-self: FilterState is keyed by expression, so a sibling that
-          // shares this filter's expression carries this filter's own selection.
-          sibling.expression === filter.expression
-        ) {
+        if (!filtersLink(filter, sibling)) {
           continue;
         }
         const selection = filterValues[sibling.expression];
