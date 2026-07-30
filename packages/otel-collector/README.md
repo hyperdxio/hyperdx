@@ -129,6 +129,54 @@ custom OTel configurations without rebuilding the collector.
 | `https`  | core   |
 | `yaml`   | core   |
 
+## ClickHouse schema seed
+
+At container start, the entrypoint runs the Go-based seed tool
+(`cmd/migrate/main.go`) which applies the idempotent schema SQL from
+`docker/otel-collector/schema/seed/` (goose with `WithNoVersioning`, so no
+goose tracking table is created). The clickhouse exporter itself runs with
+`create_schema: false`.
+
+### Replicated database engine (HDX-4664)
+
+By default the seed creates the target database with ClickHouse's default
+engine (Atomic). Setting
+`HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE_ENGINE=Replicated` makes the seed
+ensure the database uses the **Replicated (DatabaseReplicated)** engine
+instead, matching clickhouse-operator's `enableDatabaseSync` behavior (table
+metadata stored in Keeper):
+
+- **Missing database** — created with
+  `ENGINE = Replicated('/clickhouse/databases/<name>', '{shard}', '{replica}')`
+  (the operator's path convention).
+- **Already Replicated** — no-op.
+- **Non-Replicated and empty** — dropped and recreated as Replicated. This
+  mirrors the operator's conversion of the empty Atomic `default` database, so
+  the collector and operator agree on the engine no matter which side runs
+  first.
+- **Non-Replicated with tables** — never dropped (that would lose data); the
+  seed logs a warning and continues against the existing database.
+
+Independently of this env var, whenever the target database uses the
+Replicated engine — whether created by the seed or by clickhouse-operator —
+the seed rewrites the table engines in the schema to their replicated
+variants (`MergeTree` → `ReplicatedMergeTree`, `SummingMergeTree` →
+`ReplicatedSummingMergeTree`) so table **data** replicates across replicas
+(plain MergeTree tables in a Replicated database only replicate metadata).
+
+Notes:
+
+- Requires ClickHouse Keeper (or ZooKeeper) plus `{shard}`/`{replica}` macros
+  on the server, as in operator-managed deployments. See
+  `smoke-tests/otel-collector/clickhouse-replicated.xml` for a single-node
+  example.
+- The experimental PromQL `TimeSeries` schema (`ENABLE_PROMQL=true`) is left
+  untouched and is not replication-aware.
+- The legacy exporter-managed schema path
+  (`HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true`, also implied by
+  `HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE=true`) skips the seed tool
+  entirely, so this env var has no effect there.
+
 ## Ingesting Datadog traces, metrics, and logs
 
 The `datadogreceiver` contrib component is compiled into the binary so a

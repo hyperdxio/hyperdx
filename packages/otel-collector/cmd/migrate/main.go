@@ -9,11 +9,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +32,14 @@ type Config struct {
 	User     string
 	Password string
 	Database string
+
+	// DatabaseEngine selects the engine used when creating the target
+	// database. Empty (default) keeps the current behavior where the seed SQL
+	// creates the database with the server default (Atomic). "Replicated"
+	// makes the seed ensure the database uses the Replicated
+	// (DatabaseReplicated) engine, matching clickhouse-operator's
+	// enableDatabaseSync behavior.
+	DatabaseEngine string
 
 	// Table TTL (Go duration string, e.g. "720h")
 	TablesTTL string
@@ -53,6 +63,7 @@ func loadConfig() (*Config, error) {
 		User:                  getEnv("CLICKHOUSE_USER", "default"),
 		Password:              getEnv("CLICKHOUSE_PASSWORD", ""),
 		Database:              getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE", "default"),
+		DatabaseEngine:        getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE_ENGINE", ""),
 		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "720h"),
 		TLSCAFile:             getEnv("CLICKHOUSE_TLS_CA_FILE", ""),
 		TLSCertFile:           getEnv("CLICKHOUSE_TLS_CERT_FILE", ""),
@@ -60,6 +71,15 @@ func loadConfig() (*Config, error) {
 		TLSServerNameOverride: getEnv("CLICKHOUSE_TLS_SERVER_NAME_OVERRIDE", ""),
 		TLSInsecureSkipVerify: getEnv("CLICKHOUSE_TLS_INSECURE_SKIP_VERIFY", "") == "true",
 		MaxRetries:            5,
+	}
+
+	// Validate the database engine. Only the default (Atomic) and Replicated
+	// engines are supported; anything else is a deterministic
+	// misconfiguration.
+	if !isDefaultEngine(cfg.DatabaseEngine) && !isReplicatedEngine(cfg.DatabaseEngine) {
+		return nil, fmt.Errorf(
+			"invalid HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE_ENGINE %q (supported: %q, %q)",
+			cfg.DatabaseEngine, "Atomic", "Replicated")
 	}
 
 	// Get schema directory from CLI argument
@@ -379,6 +399,175 @@ func supportsFullTextSearch(major, minor int) bool {
 	return major > 26 || (major == 26 && minor >= 2)
 }
 
+// replicatedEngineName is the engine name reported by system.databases for
+// databases using the Replicated (DatabaseReplicated) engine.
+const replicatedEngineName = "Replicated"
+
+// isDefaultEngine returns true when the configured database engine keeps the
+// default behavior (the seed SQL creates the database with the server default,
+// Atomic).
+func isDefaultEngine(engine string) bool {
+	return engine == "" || strings.EqualFold(engine, "atomic")
+}
+
+// isReplicatedEngine returns true when the configured database engine requests
+// the Replicated (DatabaseReplicated) engine.
+func isReplicatedEngine(engine string) bool {
+	return strings.EqualFold(engine, replicatedEngineName)
+}
+
+// databaseAction describes what ensureReplicatedDatabase should do with the
+// target database.
+type databaseAction int
+
+const (
+	// dbActionCreate: the database does not exist; create it as Replicated.
+	dbActionCreate databaseAction = iota
+	// dbActionNone: the database already uses the Replicated engine.
+	dbActionNone
+	// dbActionConvert: the database exists with a non-Replicated engine and is
+	// empty; drop it and recreate it as Replicated. This mirrors
+	// clickhouse-operator's enableDatabaseSync conversion so the collector and
+	// operator agree on the engine no matter which side runs first.
+	dbActionConvert
+	// dbActionKeep: the database exists with a non-Replicated engine and
+	// already has tables. Never drop it (that would lose data); keep it as-is.
+	dbActionKeep
+)
+
+// decideDatabaseAction is the pure decision function behind
+// ensureReplicatedDatabase, factored out for testability.
+func decideDatabaseAction(exists bool, engine string, tableCount uint64) databaseAction {
+	if !exists {
+		return dbActionCreate
+	}
+	if engine == replicatedEngineName {
+		return dbActionNone
+	}
+	if tableCount == 0 {
+		return dbActionConvert
+	}
+	return dbActionKeep
+}
+
+// replicatedDatabaseDDL returns the DDL for creating the target database with
+// the Replicated engine. The Keeper path follows clickhouse-operator's
+// convention (/clickhouse/databases/<name>) and the shard/replica names come
+// from the server-side {shard}/{replica} macros.
+func replicatedDatabaseDDL(database string) string {
+	return fmt.Sprintf(
+		"CREATE DATABASE IF NOT EXISTS `%s` ENGINE = Replicated('/clickhouse/databases/%s', '{shard}', '{replica}')",
+		database, database)
+}
+
+// getDatabaseEngine queries system.databases for the target database's engine.
+// exists is false when the database does not exist.
+func getDatabaseEngine(ctx context.Context, db *sql.DB, database string) (engine string, exists bool, err error) {
+	err = db.QueryRowContext(ctx,
+		"SELECT engine FROM system.databases WHERE name = ?", database).Scan(&engine)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("failed to query engine of database %q: %w", database, err)
+	}
+	return engine, true, nil
+}
+
+// countDatabaseTables returns the number of tables in the target database.
+func countDatabaseTables(ctx context.Context, db *sql.DB, database string) (uint64, error) {
+	var count uint64
+	err := db.QueryRowContext(ctx,
+		"SELECT count() FROM system.tables WHERE database = ?", database).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count tables in database %q: %w", database, err)
+	}
+	return count, nil
+}
+
+// ensureReplicatedDatabase makes sure the target database uses the Replicated
+// engine before the schema seed runs:
+//   - missing            -> create it as Replicated
+//   - already Replicated -> nothing to do
+//   - other engine, empty -> drop + recreate as Replicated (mirrors
+//     clickhouse-operator's enableDatabaseSync conversion; resolves the
+//     startup race between the collector seed and the operator)
+//   - other engine, has tables -> keep as-is and warn; dropping it would lose
+//     data
+func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) error {
+	engine, exists, err := getDatabaseEngine(ctx, db, database)
+	if err != nil {
+		return err
+	}
+
+	var tableCount uint64
+	if exists {
+		tableCount, err = countDatabaseTables(ctx, db, database)
+		if err != nil {
+			return err
+		}
+	}
+
+	switch decideDatabaseAction(exists, engine, tableCount) {
+	case dbActionNone:
+		log.Printf("Database %q already uses the Replicated engine", database)
+		return nil
+	case dbActionKeep:
+		log.Printf("WARNING: Database %q uses the %s engine and already has %d table(s); refusing to drop it to avoid data loss. It will NOT be converted to the Replicated engine.",
+			database, engine, tableCount)
+		return nil
+	case dbActionConvert:
+		log.Printf("Database %q uses the %s engine and is empty; dropping and recreating it with the Replicated engine", database, engine)
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s` SYNC", database)); err != nil {
+			return fmt.Errorf("failed to drop database %q: %w", database, err)
+		}
+	case dbActionCreate:
+		log.Printf("Database %q does not exist; creating it with the Replicated engine", database)
+	}
+
+	if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
+		return fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+	}
+	return nil
+}
+
+// mergeTreeEngineRe matches the plain (Summing)MergeTree engine lines emitted
+// by the seed schema files. It is anchored to whole lines so other engines
+// (e.g. the experimental TimeSeries engine) are never touched.
+var mergeTreeEngineRe = regexp.MustCompile(`(?m)^ENGINE = (MergeTree|SummingMergeTree)\b`)
+
+// rewriteEnginesForReplicated rewrites the table engines in the processed
+// schema directory to their Replicated variants (MergeTree ->
+// ReplicatedMergeTree, SummingMergeTree -> ReplicatedSummingMergeTree). In a
+// Replicated database, plain MergeTree tables would have replicated metadata
+// but local (non-replicated) data, so replicated table engines are required
+// for correctness on multi-replica clusters.
+func rewriteEnginesForReplicated(tempDir string) error {
+	return filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".sql") {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read schema file %s: %w", path, err)
+		}
+
+		rewritten := mergeTreeEngineRe.ReplaceAll(content, []byte("ENGINE = Replicated$1"))
+		if string(rewritten) == string(content) {
+			return nil
+		}
+
+		if err := os.WriteFile(path, rewritten, 0644); err != nil {
+			return fmt.Errorf("failed to write schema file %s: %w", path, err)
+		}
+		return nil
+	})
+}
+
 // swapLogsSchemaForCompat replaces the full-text-search logs schema with the
 // compatibility variant (bloom_filter indexes) in the processed temp directory.
 // It removes 00002_otel_logs.sql and renames 00002_otel_logs_compat.sql to
@@ -506,6 +695,25 @@ func main() {
 		log.Fatalf("Failed to determine ClickHouse version: %v", err)
 	}
 
+	// When the Replicated database engine is requested, make sure the target
+	// database uses it before seeding tables.
+	if isReplicatedEngine(cfg.DatabaseEngine) {
+		log.Printf("Requested database engine: %s", replicatedEngineName)
+		if err := ensureReplicatedDatabase(ctx, db, cfg.Database); err != nil {
+			log.Fatalf("Failed to ensure Replicated database %q: %v", cfg.Database, err)
+		}
+	}
+
+	// Detect the actual engine of the target database. If it uses the
+	// Replicated engine — whether created above or e.g. by
+	// clickhouse-operator's enableDatabaseSync — the table engines in the
+	// schema are rewritten to their Replicated variants below.
+	dbEngine, dbExists, err := getDatabaseEngine(ctx, db, cfg.Database)
+	if err != nil {
+		log.Fatalf("Failed to determine engine of database %q: %v", cfg.Database, err)
+	}
+	targetIsReplicated := dbExists && dbEngine == replicatedEngineName
+
 	// Parse tables TTL
 	tablesTTLExpr, err := ttlToClickHouseInterval(cfg.TablesTTL)
 	if err != nil {
@@ -543,6 +751,17 @@ func main() {
 		log.Printf("ENABLE_PROMQL not set, skipping PromQL TimeSeries schema")
 		if err := removePromqlSchema(tempDir); err != nil {
 			log.Fatalf("Failed to remove promql schema: %v", err)
+		}
+	}
+
+	// Rewrite table engines to their Replicated variants when the target
+	// database uses the Replicated engine, so table data is replicated across
+	// replicas (plain MergeTree tables in a Replicated database only replicate
+	// metadata).
+	if targetIsReplicated {
+		log.Printf("Database %q uses the Replicated engine; rewriting table engines to Replicated variants", cfg.Database)
+		if err := rewriteEnginesForReplicated(tempDir); err != nil {
+			log.Fatalf("Failed to rewrite table engines for Replicated database: %v", err)
 		}
 	}
 

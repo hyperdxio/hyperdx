@@ -966,3 +966,236 @@ SETTINGS ttl_only_drop_parts = 1;`
 		t.Errorf("processSchemaDir output mismatch\ngot:\n%s\nwant:\n%s", string(got), expected)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Replicated database engine support (HDX-4664)
+// ---------------------------------------------------------------------------
+
+func TestDatabaseEngineHelpers(t *testing.T) {
+	defaultCases := map[string]bool{
+		"":           true,
+		"Atomic":     true,
+		"atomic":     true,
+		"ATOMIC":     true,
+		"Replicated": false,
+		"bogus":      false,
+	}
+	for engine, want := range defaultCases {
+		if got := isDefaultEngine(engine); got != want {
+			t.Errorf("isDefaultEngine(%q): got %v, want %v", engine, got, want)
+		}
+	}
+
+	replicatedCases := map[string]bool{
+		"Replicated": true,
+		"replicated": true,
+		"REPLICATED": true,
+		"":           false,
+		"Atomic":     false,
+		"bogus":      false,
+	}
+	for engine, want := range replicatedCases {
+		if got := isReplicatedEngine(engine); got != want {
+			t.Errorf("isReplicatedEngine(%q): got %v, want %v", engine, got, want)
+		}
+	}
+}
+
+func TestLoadConfigDatabaseEngine(t *testing.T) {
+	origArgs := os.Args
+	t.Cleanup(func() { os.Args = origArgs })
+
+	t.Run("accepts supported engines", func(t *testing.T) {
+		for _, engine := range []string{"", "Atomic", "atomic", "Replicated", "replicated"} {
+			dir := t.TempDir()
+			os.Args = []string{"migrate", dir}
+			t.Setenv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE_ENGINE", engine)
+
+			cfg, err := loadConfig()
+			if err != nil {
+				t.Fatalf("engine %q: unexpected error: %v", engine, err)
+			}
+			if cfg.DatabaseEngine != engine {
+				t.Errorf("engine %q: DatabaseEngine got %q", engine, cfg.DatabaseEngine)
+			}
+		}
+	})
+
+	t.Run("rejects unsupported engine", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Args = []string{"migrate", dir}
+		t.Setenv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE_ENGINE", "Ordinary")
+
+		_, err := loadConfig()
+		if err == nil {
+			t.Fatal("expected error for unsupported database engine")
+		}
+		if !strings.Contains(err.Error(), "HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE_ENGINE") {
+			t.Errorf("expected engine env var in error, got: %v", err)
+		}
+	})
+}
+
+func TestDecideDatabaseAction(t *testing.T) {
+	tests := []struct {
+		name       string
+		exists     bool
+		engine     string
+		tableCount uint64
+		want       databaseAction
+	}{
+		{"missing database is created", false, "", 0, dbActionCreate},
+		{"already Replicated is a no-op", true, "Replicated", 0, dbActionNone},
+		{"already Replicated with tables is a no-op", true, "Replicated", 12, dbActionNone},
+		{"empty Atomic is converted", true, "Atomic", 0, dbActionConvert},
+		{"non-empty Atomic is kept", true, "Atomic", 3, dbActionKeep},
+		{"non-empty other engine is kept", true, "Ordinary", 1, dbActionKeep},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := decideDatabaseAction(tt.exists, tt.engine, tt.tableCount); got != tt.want {
+				t.Errorf("decideDatabaseAction(%v, %q, %d): got %v, want %v",
+					tt.exists, tt.engine, tt.tableCount, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReplicatedDatabaseDDL(t *testing.T) {
+	got := replicatedDatabaseDDL("default")
+	want := "CREATE DATABASE IF NOT EXISTS `default` ENGINE = Replicated('/clickhouse/databases/default', '{shard}', '{replica}')"
+	if got != want {
+		t.Errorf("replicatedDatabaseDDL:\ngot:  %s\nwant: %s", got, want)
+	}
+}
+
+func TestRewriteEnginesForReplicated(t *testing.T) {
+	t.Run("rewrites MergeTree and SummingMergeTree engines", func(t *testing.T) {
+		dir := t.TempDir()
+		sqlContent := `CREATE TABLE IF NOT EXISTS default.otel_logs
+(col1 String)
+ENGINE = MergeTree
+PARTITION BY toDate(Timestamp)
+ORDER BY col1
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+CREATE TABLE IF NOT EXISTS default.otel_logs_kv_rollup_15m
+(col1 String)
+ENGINE = SummingMergeTree
+ORDER BY col1;
+`
+		if err := os.WriteFile(filepath.Join(dir, "001_test.sql"), []byte(sqlContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := rewriteEnginesForReplicated(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, err := os.ReadFile(filepath.Join(dir, "001_test.sql"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := `CREATE TABLE IF NOT EXISTS default.otel_logs
+(col1 String)
+ENGINE = ReplicatedMergeTree
+PARTITION BY toDate(Timestamp)
+ORDER BY col1
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+CREATE TABLE IF NOT EXISTS default.otel_logs_kv_rollup_15m
+(col1 String)
+ENGINE = ReplicatedSummingMergeTree
+ORDER BY col1;
+`
+		if string(got) != want {
+			t.Errorf("rewriteEnginesForReplicated output mismatch\ngot:\n%s\nwant:\n%s", string(got), want)
+		}
+	})
+
+	t.Run("leaves other engines untouched", func(t *testing.T) {
+		dir := t.TempDir()
+		sqlContent := `CREATE TABLE IF NOT EXISTS default.metrics_ts
+ENGINE = TimeSeries
+SETTINGS allow_experimental_time_series_table = 1;
+`
+		path := filepath.Join(dir, "001_timeseries.sql")
+		if err := os.WriteFile(path, []byte(sqlContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := rewriteEnginesForReplicated(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != sqlContent {
+			t.Errorf("TimeSeries schema should be untouched\ngot:\n%s\nwant:\n%s", string(got), sqlContent)
+		}
+	})
+
+	t.Run("ignores non-SQL files", func(t *testing.T) {
+		dir := t.TempDir()
+		content := "ENGINE = MergeTree\n"
+		path := filepath.Join(dir, "README.md")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := rewriteEnginesForReplicated(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != content {
+			t.Errorf("non-SQL file should be untouched, got %q", string(got))
+		}
+	})
+
+	t.Run("rewrites the real seed schema files", func(t *testing.T) {
+		// Run against the actual seed directory (after macro processing, like
+		// main() does) to guarantee every shipped schema is rewritten to a
+		// Replicated-compatible engine.
+		seedDir := filepath.Join("..", "..", "..", "..", "docker", "otel-collector", "schema", "seed")
+		if _, err := os.Stat(seedDir); err != nil {
+			t.Skipf("seed directory not available: %v", err)
+		}
+
+		tempDir, err := processSchemaDir(seedDir, "default", "toIntervalDay(30)")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		if err := rewriteEnginesForReplicated(tempDir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		files, err := listSQLFiles(tempDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range files {
+			content, err := os.ReadFile(filepath.Join(tempDir, f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mergeTreeEngineRe.Match(content) {
+				t.Errorf("%s: still contains a non-replicated MergeTree engine after rewrite", f)
+			}
+			if f == "00008_otel_metrics_timeseries.sql" {
+				if !strings.Contains(string(content), "ENGINE = TimeSeries") {
+					t.Errorf("%s: TimeSeries engine should be untouched", f)
+				}
+			}
+		}
+	})
+}
