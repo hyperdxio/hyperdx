@@ -95,6 +95,7 @@ import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchHistogramLegend from '@/components/SearchHistogramLegend';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -1863,6 +1864,28 @@ export function DBSearchPage() {
     [searchFilters],
   );
 
+  const severityGroupByColumn = useMemo(() => {
+    switch (searchedSource?.kind) {
+      case SourceKind.Log:
+        return searchedSource?.severityTextExpression;
+      case SourceKind.Trace:
+        return searchedSource?.statusCodeExpression;
+      default:
+        return undefined;
+    }
+  }, [searchedSource]);
+
+  const handleSeverityLegendClick = useCallback(
+    (rawValues: string[]) => {
+      if (!severityGroupByColumn) return;
+      searchFilters.setIncludeFilter(
+        cleanClickHouseExpression(severityGroupByColumn),
+        rawValues,
+      );
+    },
+    [searchFilters, severityGroupByColumn],
+  );
+
   const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
@@ -2433,6 +2456,15 @@ export function DBSearchPage() {
                         />
                       </Box>
                     )}
+                    {!hasQueryError && severityGroupByColumn && (
+                      <SearchHistogramLegend
+                        config={histogramTimeChartConfig}
+                        queryKeyPrefix={QUERY_KEY_PREFIX}
+                        groupByColumn={severityGroupByColumn}
+                        enableParallelQueries
+                        onSeverityClick={handleSeverityLegendClick}
+                      />
+                    )}
                     <Box flex="1" mih="0" px="sm">
                       <PatternTable
                         source={searchedSource}
@@ -2533,6 +2565,15 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                         </Box>
+                      )}
+                      {!hasQueryError && severityGroupByColumn && (
+                        <SearchHistogramLegend
+                          config={histogramTimeChartConfig}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          groupByColumn={severityGroupByColumn}
+                          enableParallelQueries
+                          onSeverityClick={handleSeverityLegendClick}
+                        />
                       )}
                     </>
                   )}
