@@ -93,5 +93,10 @@ docker-compose.prod.yml
 # NX
 .nx/
 
+# stryker (mutation testing)
+**/.stryker-tmp/
+**/reports/mutation/
+**/reports/stryker-incremental.json
+
 # webstorm
 .idea
