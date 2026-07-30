@@ -88,6 +88,9 @@ export interface IAlert {
   // Multi-window alerting: fire only after N violations in M consecutive windows
   numConsecutiveWindows?: number | null;
 
+  // Re-notify while firing: null = transition only, 0 = every evaluation, N = every N minutes.
+  renotifyIntervalMinutes?: number | null;
+
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
   createdAt: Date;
@@ -198,6 +201,11 @@ const AlertSchema = new Schema<IAlert>(
       type: Number,
       required: false,
       min: 1,
+    },
+    renotifyIntervalMinutes: {
+      type: Number,
+      required: false,
+      min: 0,
     },
     silenced: {
       required: false,

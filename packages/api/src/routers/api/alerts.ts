@@ -87,6 +87,7 @@ const formatAlertResponse = (
       'updatedAt',
       'executionErrors',
       'numConsecutiveWindows',
+      'renotifyIntervalMinutes',
     ]),
   };
 };

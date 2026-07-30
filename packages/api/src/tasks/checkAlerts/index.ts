@@ -773,6 +773,18 @@ export const parseAlertData = (
   return { value, extraFields };
 };
 
+/**
+ * Whether the group already has a notification that was sent and has not been
+ * resolved yet. `fired` is absent on histories written before it was
+ * introduced, so only an explicit `false` counts as "never notified".
+ */
+const hasUnresolvedNotification = (
+  previousHistory: AggregatedAlertHistory | undefined,
+): boolean =>
+  (previousHistory?.state === AlertState.ALERT ||
+    previousHistory?.state === AlertState.PENDING) &&
+  previousHistory.fired !== false;
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -1057,7 +1069,7 @@ export const processAlert = async (
           },
           'Skipped firing alert due to silence',
         );
-        return;
+        return false;
       }
 
       alertEvaluationsCounter.add(1, {
@@ -1100,6 +1112,37 @@ export const processAlert = async (
         );
         executionErrors.push(makeWebhookAlertError(e));
       }
+      return true;
+    };
+
+    // Gates re-notification of an already-firing group by renotifyIntervalMinutes.
+    const shouldNotifyWhileFiring = (
+      previousHistory: AggregatedAlertHistory | undefined,
+    ): boolean => {
+      if (!hasUnresolvedNotification(previousHistory)) {
+        return true;
+      }
+      const { renotifyIntervalMinutes } = alert;
+      const lastNotifiedAt = previousHistory?.lastNotifiedAt;
+      const shouldNotify =
+        renotifyIntervalMinutes != null &&
+        (renotifyIntervalMinutes <= 0 ||
+          lastNotifiedAt == null ||
+          nowInMinsRoundDown.getTime() - lastNotifiedAt.getTime() >=
+            renotifyIntervalMinutes * 60_000);
+
+      if (!shouldNotify) {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_renotify' });
+        logger.debug(
+          {
+            alertId: alert.id,
+            lastNotifiedAt,
+            renotifyIntervalMinutes,
+          },
+          'Skipped re-notifying an already-notified alert',
+        );
+      }
+      return shouldNotify;
     };
 
     const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
@@ -1131,9 +1174,7 @@ export const processAlert = async (
       groupKey: string,
     ) => {
       if (
-        (previousHistory?.state === AlertState.ALERT ||
-          previousHistory?.state === AlertState.PENDING) &&
-        previousHistory?.fired !== false &&
+        hasUnresolvedNotification(previousHistory) &&
         currentHistory.state === AlertState.OK
       ) {
         const lastValue =
@@ -1170,17 +1211,23 @@ export const processAlert = async (
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
       const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
+      history.lastNotifiedAt = previous?.lastNotifiedAt;
       if (doesExceedThreshold(alert, value)) {
         history.counts += 1;
         if (shouldFireBasedOnConsecutiveWindows()) {
           history.state = AlertState.ALERT;
           history.fired = true;
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: '',
-            totalCount: value,
-            startTime: alertTimestamp,
-          });
+          if (
+            shouldNotifyWhileFiring(previous) &&
+            (await trySendNotification({
+              state: AlertState.ALERT,
+              group: '',
+              totalCount: value,
+              startTime: alertTimestamp,
+            }))
+          ) {
+            history.lastNotifiedAt = nowInMinsRoundDown;
+          }
         } else {
           history.state = AlertState.PENDING;
           // Carry forward fired=true if a notification was previously sent and not yet resolved.
@@ -1376,18 +1423,23 @@ export const processAlert = async (
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
       const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
+      history.lastNotifiedAt = groupPrevious?.lastNotifiedAt;
 
-      // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
+      // If it hit ALERT during this run, send the notification
       if (hitAlertThisRun) {
         const context = latestAlertContext.get(groupKey);
-        if (context) {
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: groupKey,
-            totalCount: context.value,
-            startTime: context.startTime,
-            attributes: context.attributes,
-          });
+        if (context && shouldNotifyWhileFiring(groupPrevious)) {
+          if (
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: context.value,
+              startTime: context.startTime,
+              attributes: context.attributes,
+            })
+          ) {
+            history.lastNotifiedAt = nowInMinsRoundDown;
+          }
 
           // Inject a mock previous history so the resolve check below catches it
           // if the final state for this group is OK (i.e. it breached then resolved).
@@ -1464,6 +1516,7 @@ export interface AggregatedAlertHistory {
   state: AlertState;
   group?: string;
   fired?: boolean;
+  lastNotifiedAt?: Date;
 }
 
 /**
@@ -1521,6 +1574,7 @@ export const getPreviousAlertHistories = async (
               createdAt: { $first: '$createdAt' },
               state: { $first: '$state' },
               fired: { $first: '$fired' },
+              lastNotifiedAt: { $first: '$lastNotifiedAt' },
             },
           },
           {
@@ -1530,6 +1584,7 @@ export const getPreviousAlertHistories = async (
               state: 1,
               group: '$_id.group',
               fired: 1,
+              lastNotifiedAt: 1,
             },
           },
         ]);
