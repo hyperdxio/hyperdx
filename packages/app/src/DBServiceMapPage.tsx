@@ -31,6 +31,7 @@ import SearchWhereInput, {
 import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import { useRouteChangeState } from '@/hooks/useRouteChangeState';
 import { withAppNav } from '@/layout';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
@@ -84,6 +85,7 @@ const searchQueryStateMap = {
 
 function DBServiceMapPage() {
   const brandName = useBrandDisplayName();
+  const { isLeavingPageRef } = useRouteChangeState();
 
   const { data: sources } = useSources();
   // `?source=` accepts a source name as well as a source ID.
@@ -106,7 +108,8 @@ function DBServiceMapPage() {
   });
 
   const defaultSource = sources?.find(
-    (source): source is TTraceSource => source.kind === SourceKind.Trace,
+    (source): source is TTraceSource =>
+      source.kind === SourceKind.Trace && !source.disabled,
   );
 
   // A param that matches no trace source falls back to the default.
@@ -127,14 +130,17 @@ function DBServiceMapPage() {
     useState(false);
 
   // Keep the param in step with the selected source, which also canonicalizes a
-  // source name to its ID. Only write a real source: on a cold load the form
-  // value is undefined until the source list arrives, and writing that would
-  // wipe the `?source=` the user arrived with.
+  // source name to its ID. Two guards:
+  //  - only write a real source, because on a cold load the form value is
+  //    undefined until the source list arrives and writing that would wipe the
+  //    `?source=` the user arrived with;
+  //  - stop once we are leaving, to avoid a race with other pages that also write `?source=`
   useEffect(() => {
+    if (isLeavingPageRef.current) return;
     if (watchedSource && watchedSource !== sourceIdParam) {
       setSourceId(watchedSource);
     }
-  }, [watchedSource, sourceIdParam, setSourceId]);
+  }, [watchedSource, sourceIdParam, setSourceId, isLeavingPageRef]);
 
   const sourceTableConnection = useMemo(() => tcFromSource(source), [source]);
 

@@ -46,6 +46,7 @@ import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
+import { useRouteChangeState } from './hooks/useRouteChangeState';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { withAppNav } from './layout';
 import { Session, useSessions } from './sessions';
@@ -235,6 +236,7 @@ const appliedConfigMap = {
 function SessionsPage() {
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
+  const { isLeavingPageRef } = useRouteChangeState();
   // `?sessionSource=` accepts a source name as well as a source ID. The form
   // holds the resolved ID, so nothing downstream ever sees a name.
   const { source: paramSource } = useResolvedSourceParam(
@@ -273,10 +275,17 @@ function SessionsPage() {
   // Push the selected source into the param when it isn't there yet, and
   // canonicalize a source name URL Param to the ID it resolved to.
   useEffect(() => {
+    // Don't push if the user is leaving the page, to avoid a race with the next page's effects that set query params.
+    if (isLeavingPageRef.current) return;
     if (sourceId && sourceId !== appliedConfig.sessionSource) {
       setAppliedConfig({ sessionSource: sourceId });
     }
-  }, [appliedConfig.sessionSource, setAppliedConfig, sourceId]);
+  }, [
+    appliedConfig.sessionSource,
+    isLeavingPageRef,
+    setAppliedConfig,
+    sourceId,
+  ]);
 
   // Auto-select the first session source when the page loads
   useEffect(() => {
@@ -322,10 +331,12 @@ function SessionsPage() {
   // submitting would write the empty form source over the param (losing both the
   // link and the "Source not found" warning) and reset the searched time range.
   useEffect(() => {
+    // Don't auto-submit if the user is leaving the page, to avoid a race with the next page's effects that set query params.
+    if (isLeavingPageRef.current) return;
     if (sourceId !== (paramSource?.id ?? null)) {
       onSubmit();
     }
-  }, [sourceId, paramSource?.id, onSubmit]);
+  }, [sourceId, paramSource?.id, onSubmit, isLeavingPageRef]);
 
   const [selectedSessionQuery, setSelectedSessionQuery] = useQueryStates(
     selectedSessionQueryStateMap,

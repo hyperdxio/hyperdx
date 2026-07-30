@@ -48,6 +48,7 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import { useRouteChangeState } from '@/hooks/useRouteChangeState';
 import { withAppNav } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
@@ -162,6 +163,7 @@ export function getEffectiveTraceSourceId(
 
 function ServicesDashboardPage() {
   const brandName = useBrandDisplayName();
+  const { isLeavingPageRef } = useRouteChangeState();
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -255,8 +257,10 @@ function ServicesDashboardPage() {
     [appliedConfigWithoutFilters, additionalFilters],
   );
 
-  // Update the `source` query parameter if the appliedConfig source changes
+  // Update the `source` query parameter if the appliedConfig source changes.
   useEffect(() => {
+    // Don't write when leaving the page, to avoid races with other pages writing the same param.
+    if (isLeavingPageRef.current) return;
     if (
       appliedConfigWithoutFilters.source &&
       appliedConfigWithoutFilters.source !== appliedConfigParams.source
@@ -267,6 +271,7 @@ function ServicesDashboardPage() {
     appliedConfigWithoutFilters.source,
     appliedConfigParams.source,
     setAppliedConfigParams,
+    isLeavingPageRef,
   ]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
@@ -302,10 +307,12 @@ function ServicesDashboardPage() {
   // Note: do not include appliedConfig.source in the deps,
   // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
+    // Don't write when leaving the page, to avoid races with other pages writing the same param.
+    if (isLeavingPageRef.current) return;
     if (sourceId && sourceId != previousSourceId) {
       onSubmit(false);
     }
-  }, [sourceId, onSubmit, previousSourceId]);
+  }, [sourceId, onSubmit, previousSourceId, isLeavingPageRef]);
 
   // Auto-submit when service changes
   // Note: do not include appliedConfig.service in the deps,
@@ -314,10 +321,12 @@ function ServicesDashboardPage() {
     // Nothing to submit before a source is selected, and submitting then writes
     // the form's empty source over the `?source=` the page is still resolving.
     if (!sourceId) return;
+    // Don't write when leaving the page, to avoid races with other pages writing the same param.
+    if (isLeavingPageRef.current) return;
     if (service != previousService) {
       onSubmit(false);
     }
-  }, [service, onSubmit, previousService, sourceId]);
+  }, [service, onSubmit, previousService, sourceId, isLeavingPageRef]);
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">

@@ -39,6 +39,7 @@ async function sourceIdByName(
   const sources = await getSources(page, kind);
   const match = sources.find((s: { name: string }) => s.name === name);
   expect(match, `seeded ${kind} source "${name}"`).toBeDefined();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return match.id as string;
 }
 
@@ -51,6 +52,7 @@ async function sourceIdByName(
 async function recordNotifications(page: Page) {
   await page.addInitScript(() => {
     const seen: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (window as unknown as { __notifications: string[] }).__notifications = seen;
     new MutationObserver(records => {
       for (const record of records) {
@@ -69,9 +71,27 @@ async function recordNotifications(page: Page) {
 function getRecordedNotifications(page: Page) {
   return page.evaluate(
     () =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (window as unknown as { __notifications?: string[] }).__notifications ??
       [],
   );
+}
+
+/**
+ * Waits for the URL to stop changing. Several pages write params for a moment
+ * after load (a canonicalization, a submit); a navigation started while one of
+ * those is in flight is cancelled and re-issued by Next with the query merged in,
+ * which is a pre-existing race and not what these tests are about.
+ */
+async function waitForUrlToSettle(page: Page) {
+  let previous = '';
+  for (let i = 0; i < 20; i++) {
+    const current = page.url();
+    if (current === previous) return;
+    previous = current;
+    // eslint-disable-next-line playwright/no-wait-for-timeout
+    await page.waitForTimeout(300);
+  }
 }
 
 /** Every source picker on these pages renders with this placeholder. */
@@ -253,6 +273,47 @@ test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
     await expectParamCanonicalized(page, 'source', traceSourceId);
   });
 
+  test('keeps writing the picked source to the param after earlier param writes', async ({
+    page,
+  }) => {
+    const traceSourceId = await sourceIdByName(
+      page,
+      'trace',
+      DEFAULT_TRACES_SOURCE_NAME,
+    );
+    const mvTraceSourceId = await sourceIdByName(
+      page,
+      'trace',
+      DEFAULT_TRACES_MV_SOURCE_NAME,
+    );
+
+    // Arrive by name so the page canonicalizes the param — a write that must not
+    // be mistaken for leaving the page. nuqs updates params through the Next
+    // router here, so each one emits the same event a real navigation does.
+    await page.goto(
+      `/service-map?source=${encodeURIComponent(DEFAULT_TRACES_SOURCE_NAME)}`,
+    );
+    await expect(page.getByTestId('service-map-page')).toBeVisible({
+      timeout: 15000,
+    });
+    await expectParamCanonicalized(page, 'source', traceSourceId);
+
+    // Two picks: the first one's own param write is itself another chance to
+    // wedge the page, which the second pick would then expose.
+    for (const [name, id] of [
+      [DEFAULT_TRACES_MV_SOURCE_NAME, mvTraceSourceId],
+      [DEFAULT_TRACES_SOURCE_NAME, traceSourceId],
+    ] as const) {
+      await sourcePicker(page).click();
+      await page.getByRole('option', { name, exact: true }).click();
+
+      // The form is driven by the param, so a param that stops following the
+      // dropdown also reverts what the map displays.
+      await expect(sourcePicker(page)).toHaveValue(name);
+      await expectParamCanonicalized(page, 'source', id);
+    }
+  });
+
   test('opens the services dashboard with a source name', async ({ page }) => {
     // A non-default trace source, so the fallback can't mask a dropped param.
     const traceSourceId = await sourceIdByName(
@@ -260,6 +321,13 @@ test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
       'trace',
       DEFAULT_TRACES_MV_SOURCE_NAME,
     );
+
+    // React reports a runaway render/effect cycle as "Maximum update depth
+    // exceeded"; this page has several effects that write params from form state.
+    const consoleErrors: string[] = [];
+    page.on('console', msg => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
 
     // The preset-filter request is keyed on the page's source; an unresolved
     // value used to be sent verbatim.
@@ -287,7 +355,82 @@ test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
     expect(params.get('where')).toBe('ServiceName:frontend');
     expect(params.get('whereLanguage')).toBe('lucene');
     expect(failed).toEqual([]);
+    expect(
+      consoleErrors.filter(e => e.includes('Maximum update depth')),
+    ).toEqual([]);
   });
+
+  // `/search`, `/service-map` and `/services` all carry their current source in
+  // the same `source` param, and each mirrors its own choice into it. During a
+  // client-side transition the outgoing page is still mounted while the
+  // destination renders, so without a guard the two overwrite each other's value
+  // until React bails out with "Maximum update depth exceeded".
+  const SHARED_SOURCE_PARAM_PAGES = [
+    { path: '/service-map', testId: 'service-map-page' },
+    { path: '/services', testId: 'services-dashboard-page' },
+    { path: '/search', testId: 'search-results-panel' },
+  ] as const;
+
+  for (const from of SHARED_SOURCE_PARAM_PAGES) {
+    for (const to of SHARED_SOURCE_PARAM_PAGES) {
+      if (from === to) continue;
+
+      test(`hands the shared source param over from ${from.path} to ${to.path}`, async ({
+        page,
+      }) => {
+        // A non-default trace source, so the origin insists on something the
+        // destination wouldn't have picked for itself.
+        const traceSourceId = await sourceIdByName(
+          page,
+          'trace',
+          DEFAULT_TRACES_MV_SOURCE_NAME,
+        );
+
+        const consoleErrors: string[] = [];
+        page.on('console', msg => {
+          if (msg.type() === 'error') consoleErrors.push(msg.text());
+        });
+
+        await page.goto(`${from.path}?source=${traceSourceId}`);
+        await expect(page.getByTestId(from.testId)).toBeVisible({
+          timeout: 15000,
+        });
+        expect(new URL(page.url()).searchParams.get('source')).toBe(
+          traceSourceId,
+        );
+
+        await waitForUrlToSettle(page);
+        await page.evaluate(path => {
+          const nextWindow =
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            window as unknown as {
+              next: { router: { push: (u: string) => void } };
+            };
+          nextWindow.next.router.push(path);
+        }, to.path);
+
+        await expect(page.getByTestId(to.testId)).toBeVisible({
+          timeout: 15000,
+        });
+
+        // Like the sidebar links, the push carries no query, so the destination
+        // picking its own source is expected. What must not happen is the param
+        // continuing to move afterwards: sample rather than poll, because the
+        // failure is the value *changing*, not never matching.
+        const samples: (string | null)[] = [];
+        for (let i = 0; i < 4; i++) {
+          // eslint-disable-next-line playwright/no-wait-for-timeout
+          await page.waitForTimeout(400);
+          samples.push(new URL(page.url()).searchParams.get('source'));
+        }
+        const settled = samples[0];
+        expect(samples).toEqual([settled, settled, settled, settled]);
+        expect(
+          consoleErrors.filter(e => e.includes('Maximum update depth')),
+        ).toEqual([]);
+      });
+    }
+  }
 
   test('opens sessions with a source name', async ({ page }) => {
     const sessionSourceId = await sourceIdByName(

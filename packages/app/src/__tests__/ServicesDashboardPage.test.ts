@@ -33,6 +33,7 @@ describe('buildInFilterCondition', () => {
 
 describe('getEffectiveTraceSourceId', () => {
   // Only the fields the helper reads; cast because TSource requires much more.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const sources = [
     { id: 'log-1', name: 'Logs', kind: SourceKind.Log },
     {
