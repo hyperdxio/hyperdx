@@ -221,7 +221,7 @@ describe('RawLogTable', () => {
         />,
       );
 
-      expect(await screen.findByText(/Error loading chart/i)).toBeTruthy();
+      expect(await screen.findByTestId('chart-error-state')).toBeTruthy();
       expect(fetchNextPage).not.toHaveBeenCalled();
     });
 
@@ -252,7 +252,7 @@ describe('RawLogTable', () => {
         />,
       );
 
-      expect(await screen.findByText(/Error loading chart/i)).toBeTruthy();
+      expect(await screen.findByTestId('chart-error-state')).toBeTruthy();
       expect(fetchNextPage).not.toHaveBeenCalled();
     });
 

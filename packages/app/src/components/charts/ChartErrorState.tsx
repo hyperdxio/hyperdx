@@ -47,6 +47,7 @@ export default function ChartErrorState({
 
   return (
     <div
+      data-testid="chart-error-state"
       className={cx(
         'h-100 w-100 d-flex g-1 flex-column align-items-center text-muted overflow-scroll',
         {
