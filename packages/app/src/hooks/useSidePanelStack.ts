@@ -8,31 +8,10 @@ import {
   SourceFrame,
   Tab,
 } from '@/components/DBRowSidePanel.types';
+import { useLocalStorage } from '@/utils';
 import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 
 export const LAST_TAB_STORAGE_KEY = 'hdx-side-panel-last-tab';
-
-function readLastTab(): Tab | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const stored = localStorage.getItem(LAST_TAB_STORAGE_KEY);
-    if (stored && Object.values(Tab).includes(stored as Tab)) {
-      return stored as Tab;
-    }
-  } catch {
-    // Ignore localStorage errors (private browsing, quota, etc.)
-  }
-  return null;
-}
-
-function writeLastTab(tab: Tab): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(LAST_TAB_STORAGE_KEY, tab);
-  } catch {
-    // Ignore localStorage errors
-  }
-}
 
 const EMPTY_SOURCE_STACK: SourceFrame[] = [];
 const EMPTY_NAV_STACK: NavEntry[] = [];
@@ -140,7 +119,20 @@ export default function useSidePanelStack({
     [rawSourceStack, rawNavStack, stackRoot, initialRowId],
   );
 
-  const rememberedTab = tab ?? readLastTab();
+  const [storedTab, setStoredTab] = useLocalStorage<Tab | null>(
+    LAST_TAB_STORAGE_KEY,
+    null,
+  );
+
+  // Drop a stored tab the current build no longer knows about (renamed/removed
+  // between releases): it would otherwise be stamped into the nav stack as
+  // originTab and fail that stack's schema parse, discarding the whole trail.
+  const lastTab =
+    storedTab != null && Object.values<string>(Tab).includes(storedTab)
+      ? storedTab
+      : null;
+
+  const rememberedTab = tab ?? lastTab;
 
   const pushSource = useCallback(
     (frame: SourceFrame, destinationTab: Tab) => {
@@ -230,10 +222,10 @@ export default function useSidePanelStack({
 
   const setTab = useCallback(
     (next: Tab) => {
-      writeLastTab(next);
+      setStoredTab(next);
       setQueryTab(next);
     },
-    [setQueryTab],
+    [setStoredTab, setQueryTab],
   );
 
   const clearTrail = useCallback(() => {

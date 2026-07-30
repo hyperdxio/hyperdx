@@ -374,29 +374,36 @@ describe('useSidePanelStack', () => {
     expect(setterFor('sidePanelTab')).toHaveBeenCalledWith(null);
   });
 
-  describe('localStorage tab persistence', () => {
-    beforeEach(() => {
-      localStorage.removeItem(LAST_TAB_STORAGE_KEY);
-    });
+  describe('remembered tab (localStorage)', () => {
+    // useLocalStorage JSON-encodes, so seed/read through JSON here.
+    function seedLastTab(value: unknown) {
+      localStorage.setItem(LAST_TAB_STORAGE_KEY, JSON.stringify(value));
+    }
+    function readLastTab() {
+      const raw = localStorage.getItem(LAST_TAB_STORAGE_KEY);
+      return raw == null ? null : JSON.parse(raw);
+    }
 
-    it('setTab persists the tab to localStorage', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('setTab remembers the tab for the next open', () => {
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
       );
       act(() => result.current.setTab(Tab.Parsed));
-      expect(localStorage.getItem(LAST_TAB_STORAGE_KEY)).toBe(Tab.Parsed);
+      expect(readLastTab()).toBe(Tab.Parsed);
     });
 
-    it('uses localStorage tab as fallback when URL param is null', () => {
-      localStorage.setItem(LAST_TAB_STORAGE_KEY, Tab.Context);
+    it('seeds the tab from the remembered value when the URL has none', () => {
+      seedLastTab(Tab.Context);
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
       );
       expect(result.current.tab).toBe(Tab.Context);
     });
 
-    it('URL param takes precedence over localStorage', () => {
-      localStorage.setItem(LAST_TAB_STORAGE_KEY, Tab.Context);
+    it('an explicit URL tab wins over the remembered value', () => {
+      seedLastTab(Tab.Context);
       seedParam('sidePanelTab', Tab.Trace);
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
@@ -404,15 +411,15 @@ describe('useSidePanelStack', () => {
       expect(result.current.tab).toBe(Tab.Trace);
     });
 
-    it('returns null when neither URL param nor localStorage is set', () => {
+    it('stays null when nothing is remembered and the URL has no tab', () => {
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
       );
       expect(result.current.tab).toBeNull();
     });
 
-    it('pushSource records localStorage-based tab as originTab', () => {
-      localStorage.setItem(LAST_TAB_STORAGE_KEY, Tab.Parsed);
+    it('stamps the remembered tab as originTab so Back restores it', () => {
+      seedLastTab(Tab.Parsed);
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
       );
@@ -422,20 +429,26 @@ describe('useSidePanelStack', () => {
       ]);
     });
 
-    it('explicit navigation (pushSource) does not update localStorage', () => {
+    it('a targeted navigation does not overwrite the remembered tab', () => {
+      seedLastTab(Tab.Parsed);
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
       );
       act(() => result.current.pushSource(FRAME, Tab.Trace));
-      expect(localStorage.getItem(LAST_TAB_STORAGE_KEY)).toBeNull();
+      expect(readLastTab()).toBe(Tab.Parsed);
     });
 
-    it('ignores invalid localStorage values', () => {
-      localStorage.setItem(LAST_TAB_STORAGE_KEY, 'not-a-valid-tab');
+    it('discards a remembered tab this build no longer knows about', () => {
+      seedLastTab('a-tab-from-a-future-release');
       const { result } = renderHook(() =>
         useSidePanelStack({ initialRowId: 'root-1' }),
       );
       expect(result.current.tab).toBeNull();
+      // And it must not leak into the nav stack, whose schema would reject it.
+      act(() => result.current.pushSource(FRAME, Tab.Trace));
+      expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([
+        { ...FRAME, originTab: undefined },
+      ]);
     });
   });
 });
