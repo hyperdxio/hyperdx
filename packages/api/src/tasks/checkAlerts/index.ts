@@ -1111,6 +1111,7 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
+        return false;
       }
       return true;
     };
@@ -1125,11 +1126,11 @@ export const processAlert = async (
       const { renotifyIntervalMinutes } = alert;
       const lastNotifiedAt = previousHistory?.lastNotifiedAt;
       const shouldNotify =
-        renotifyIntervalMinutes != null &&
-        (renotifyIntervalMinutes <= 0 ||
-          lastNotifiedAt == null ||
-          nowInMinsRoundDown.getTime() - lastNotifiedAt.getTime() >=
-            renotifyIntervalMinutes * 60_000);
+        lastNotifiedAt == null ||
+        (renotifyIntervalMinutes != null &&
+          (renotifyIntervalMinutes <= 0 ||
+            nowInMinsRoundDown.getTime() - lastNotifiedAt.getTime() >=
+              renotifyIntervalMinutes * 60_000));
 
       if (!shouldNotify) {
         alertEvaluationsCounter.add(1, { outcome: 'skipped_renotify' });
