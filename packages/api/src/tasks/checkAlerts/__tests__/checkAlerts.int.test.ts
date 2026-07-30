@@ -9098,9 +9098,7 @@ describe('checkAlerts', () => {
     });
 
     describe('re-notification (renotifyIntervalMinutes)', () => {
-      // A sustained breach across four consecutive 5m windows: every evaluation
-      // below sees data in its own window, so the alert stays in ALERT
-      // throughout without ever returning to OK.
+      // Data in every 5m window, so the alert stays ALERT and never resolves.
       const insertSustainedBreach = () =>
         bulkInsertLogs(
           ['00:05:00', '00:10:00', '00:15:00', '00:20:00'].map(time => ({
@@ -9143,8 +9141,7 @@ describe('checkAlerts', () => {
             channel: { type: 'webhook', webhookId: webhook._id.toString() },
             interval: '5m',
             thresholdType: AlertThresholdType.ABOVE,
-            // threshold=1 (not 0): ABOVE is inclusive, so threshold=0 would make
-            // an empty window breach too and the alert could never resolve.
+            // threshold=1: ABOVE is inclusive, so 0 would breach empty windows too.
             threshold: 1,
             savedSearchId: savedSearch.id,
             renotifyIntervalMinutes,
@@ -9188,8 +9185,7 @@ describe('checkAlerts', () => {
           'ALERT',
           'ALERT',
         ]);
-        // lastNotifiedAt is pinned to the window that notified and carried
-        // forward unchanged across the silent evaluations.
+        // lastNotifiedAt stays pinned to the notifying window while silent.
         expect(histories.map(h => h.lastNotifiedAt?.toISOString())).toEqual(
           Array(4).fill('2024-01-01T00:10:00.000Z'),
         );
@@ -9208,8 +9204,7 @@ describe('checkAlerts', () => {
       });
 
       it('re-notifies only after renotifyIntervalMinutes has elapsed', async () => {
-        // 10m re-notification on a 5m interval: notify at 00:10, skip 00:15,
-        // re-notify at 00:20, skip 00:25.
+        // 10m interval, 5m ticks: notify 00:10, skip 00:15, notify 00:20, skip 00:25.
         const { notificationCounts, histories } = await runSustainedBreach(10);
 
         expect(notificationCounts).toEqual([1, 1, 2, 2]);
@@ -9276,8 +9271,7 @@ describe('checkAlerts', () => {
         }).sort({ createdAt: 1 });
         expect(histories.map(h => h.state)).toEqual(['ALERT', 'OK', 'ALERT']);
 
-        // ALERT, resolved OK, then ALERT again: the second firing episode is a
-        // fresh transition, so it notifies even with re-notification off.
+        // Second ALERT is a fresh transition after resolving, so it notifies.
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
       });
     });
