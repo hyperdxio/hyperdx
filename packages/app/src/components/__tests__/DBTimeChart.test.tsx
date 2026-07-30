@@ -1,4 +1,8 @@
 import React from 'react';
+import { MantineProvider } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
 import { ChartKeyJoiner } from '@/ChartUtils';
@@ -175,6 +179,182 @@ describe('DBTimeChart', () => {
     expect(mvOptExplanationConfig).toBe(queriedChartConfig);
     expect(queriedChartConfig).toBe(indicatorConfig);
     expect(mvOptExplanationConfig).toBe(indicatorConfig);
+  });
+
+  it('disables the MV-optimization query when both MV and date-range indicators are hidden', () => {
+    jest.mocked(useSource).mockReturnValue({
+      data: { id: 'test-source', name: 'Test Source' },
+    } as any);
+
+    renderWithMantine(
+      <DBTimeChart
+        config={baseTestConfig}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator={false}
+      />,
+    );
+
+    expect(jest.mocked(useMVOptimizationExplanation)).toHaveBeenCalled();
+    const options = jest.mocked(useMVOptimizationExplanation).mock.calls[0][1];
+    expect(options?.enabled).toBe(false);
+  });
+
+  it('keeps the MV-optimization query enabled when only the date-range indicator is shown', () => {
+    jest.mocked(useSource).mockReturnValue({
+      data: { id: 'test-source', name: 'Test Source' },
+    } as any);
+
+    renderWithMantine(
+      <DBTimeChart
+        config={baseTestConfig}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator
+      />,
+    );
+
+    const options = jest.mocked(useMVOptimizationExplanation).mock.calls[0][1];
+    expect(options?.enabled).toBe(true);
+  });
+
+  describe('load-all series escape hatch', () => {
+    // A high-cardinality group-by response: MAX_RENDERED_TIME_CHART_SERIES (250)
+    // default cap + 50 extra groups, so 50 series are hidden and the
+    // HiddenSeriesIndicator surfaces the load-all affordance.
+    const HIDDEN = 50;
+    const GROUP_COUNT = 250 + HIDDEN;
+
+    const highCardinalityData = Array.from({ length: GROUP_COUNT }, (_, i) => ({
+      timestamp: 1704067200,
+      value: i + 1,
+      group: `g${i}`,
+    }));
+    const highCardinalityMeta = [
+      { name: 'timestamp', type: 'DateTime' },
+      { name: 'value', type: 'UInt64' },
+      { name: 'group', type: 'String' },
+    ];
+
+    const groupByConfig = {
+      ...baseTestConfig,
+      groupBy: 'group',
+    };
+
+    beforeEach(() => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: highCardinalityData,
+          meta: highCardinalityMeta,
+          rows: GROUP_COUNT,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+    });
+
+    it('surfaces the load-all button when the render cap hides series, then hides it after loading all', async () => {
+      const user = userEvent.setup();
+      renderWithMantine(<DBTimeChart config={groupByConfig} />);
+
+      // 50 series over the default 250 cap => the load-all affordance appears.
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      expect(loadAllButton).toBeInTheDocument();
+
+      await user.click(loadAllButton);
+
+      // After loading all, every series is materialized (bounded, but far above
+      // GROUP_COUNT), so nothing is hidden and the affordance disappears.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the load-all opt-in across an unrelated re-render with a fresh-but-equal config', async () => {
+      // Regression for the reset effect firing on every render: dashboard tiles
+      // pass a fresh config object literal each render (e.g. on hover), so a
+      // reset keyed on config/queriedConfig identity would snap showAllSeries
+      // back to false and re-cap the chart. The opt-in must survive a re-render
+      // whose config is a new object with identical query shape.
+      const user = userEvent.setup();
+      const { rerender } = renderWithMantine(
+        <DBTimeChart config={groupByConfig} />,
+      );
+
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      await user.click(loadAllButton);
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Re-render with a brand-new object that is structurally identical (mimics
+      // the dashboard rebuilding the tile config inline on an unrelated render).
+      rerender(
+        <MantineProvider>
+          <Notifications />
+          <DBTimeChart config={{ ...groupByConfig }} />
+        </MantineProvider>,
+      );
+
+      // The opt-in survives: no series are re-hidden, so the affordance stays
+      // gone. (Before the fix, the reset effect fired here and it reappeared.)
+      expect(
+        screen.queryByRole('button', { name: /load all .* series/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('resets the load-all opt-in when the query shape changes (e.g. seriesLimit re-authored)', async () => {
+      // The reset must still fire for a genuine query change: after loading all,
+      // re-authoring the tile (here, tightening seriesLimit) re-applies the cap.
+      const user = userEvent.setup();
+      const { rerender } = renderWithMantine(
+        <DBTimeChart config={groupByConfig} />,
+      );
+
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      await user.click(loadAllButton);
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Change the query shape (a positive seriesLimit below GROUP_COUNT keeps
+      // series hidden), which should reset the opt-in and re-show the affordance.
+      rerender(
+        <MantineProvider>
+          <Notifications />
+          <DBTimeChart config={{ ...groupByConfig, seriesLimit: 5 }} />
+        </MantineProvider>,
+      );
+
+      expect(
+        await screen.findByRole('button', { name: /load all .* series/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not hide series (no load-all affordance) when seriesLimit is 0 (unlimited)', () => {
+      renderWithMantine(
+        <DBTimeChart config={{ ...groupByConfig, seriesLimit: 0 }} />,
+      );
+
+      // seriesLimit=0 resolves to an unlimited render cap, so no series are
+      // dropped and the load-all affordance never appears.
+      expect(
+        screen.queryByRole('button', { name: /load all .* series/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('renders DateRangeIndicator when MV optimization returns a different date range', () => {

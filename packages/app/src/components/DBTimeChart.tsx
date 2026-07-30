@@ -39,6 +39,10 @@ import {
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
+import {
+  MAX_LOADABLE_TIME_CHART_SERIES,
+  resolveRenderedSeriesCap,
+} from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -51,6 +55,7 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
+import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 /** A single group column / value pair decoded from a chart series key. */
@@ -138,6 +143,9 @@ function ChartTooltipOverlay({
   fallbackNumberFormat,
   numberFormatByKey,
   previousPeriodOffsetSeconds,
+  hiddenSeriesCount,
+  onLoadAllSeries,
+  expanded,
 }: {
   payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
@@ -148,6 +156,12 @@ function ChartTooltipOverlay({
   /** Per-value-column formats, keyed by result column name. */
   numberFormatByKey: Map<string, NumberFormat>;
   previousPeriodOffsetSeconds?: number;
+  /** Series dropped by the chart's render cap (see ChartSeriesTooltip). */
+  hiddenSeriesCount?: number;
+  /** Render every series on the chart, bypassing the cap. */
+  onLoadAllSeries?: () => void;
+  /** "Load all" is active: render every row in the scrollable tooltip body. */
+  expanded?: boolean;
 }) {
   const isOpen =
     payload != null &&
@@ -261,6 +275,9 @@ function ChartTooltipOverlay({
             buildSearchUrl={buildSearchUrl}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
+            hiddenSeriesCount={hiddenSeriesCount}
+            onLoadAllSeries={onLoadAllSeries}
+            expanded={expanded}
           />
         </Popover.Dropdown>
       </Popover>
@@ -332,6 +349,10 @@ function DBTimeChartComponent({
     new Set(),
   );
 
+  // When the render cap hides series, the hidden-series notice lets the user
+  // opt into rendering every series (accepting the memory/perf cost).
+  const [showAllSeries, setShowAllSeries] = useState(false);
+
   const handleToggleSeries = useCallback(
     (seriesName: string, isShiftKey?: boolean) => {
       setSelectedSeriesSet(prev => {
@@ -377,12 +398,34 @@ function DBTimeChartComponent({
     [config],
   );
 
-  // Determine whether the config can be optimized with an MV, to determine whether
-  // to show the MV optimization indicator and date range indicator in the toolbar
+  // Stable identity for the query's SHAPE, excluding the sliding time window.
+  // `queriedConfig` (and the `config` it derives from) is a fresh object literal
+  // on every render — dashboard tiles rebuild the tile config inline each render
+  // (e.g. on hover) and live ranges tick the dateRange/granularity — so keying
+  // effects on its object reference, or serializing the whole thing, would fire
+  // them on unrelated re-renders / every live tick. Stripping the time fields
+  // yields a value that changes only when the user re-authors the query.
+  const queryShapeIdentity = useMemo(() => {
+    // Serialize every top-level field except the sliding time window.
+    const shape: Record<string, unknown> = { ...queriedConfig };
+    delete shape.dateRange;
+    delete shape.granularity;
+    delete shape.dateRangeEndInclusive;
+    return JSON.stringify(shape);
+  }, [queriedConfig]);
+
+  // Determine whether the config can be optimized with an MV, to drive the MV
+  // optimization indicator and the MV-derived date-range indicator in the
+  // toolbar. Only those two indicators consume `mvOptimizationData`, so skip
+  // this extra ClickHouse EXPLAIN when both are hidden — which includes the
+  // edit-modal preview (ChartPreviewPanel passes showMVOptimizationIndicator and
+  // showDateRangeIndicator both false), so the EXPLAIN is skipped there too.
   const builderQueriedConfig: BuilderChartConfigWithDateRange | undefined =
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
+  const { data: mvOptimizationData } = useMVOptimizationExplanation(
+    builderQueriedConfig,
+    { enabled: showMVOptimizationIndicator || showDateRangeIndicator },
+  );
 
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
@@ -461,6 +504,7 @@ function DBTimeChartComponent({
     valueColumns,
     isSingleValueColumn,
     lineData,
+    hiddenSeriesCount,
   } = useMemo(() => {
     const defaultResponse = {
       error: null,
@@ -470,6 +514,7 @@ function DBTimeChartComponent({
       groupColumns: [],
       valueColumns: [],
       isSingleValueColumn: true,
+      hiddenSeriesCount: 0,
     };
 
     if (data == null || !isSuccess) {
@@ -488,6 +533,16 @@ function DBTimeChartComponent({
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
+        // "Load all" (from the warning / pinned tooltip) overrides everything;
+        // otherwise the per-tile Series Limit drives the cap (null = default,
+        // 0 = unlimited). On builder group-by charts the SQL CTE already trims
+        // to seriesLimit, so this is a no-op there; on raw SQL it's the only
+        // cardinality guard. "Load all" is bounded (not truly unlimited) so a
+        // runaway high-cardinality result can't exhaust browser memory; drawn
+        // lines stay capped at HARD_LINES_LIMIT either way.
+        maxSeries: showAllSeries
+          ? MAX_LOADABLE_TIME_CHART_SERIES
+          : resolveRenderedSeriesCap(config.seriesLimit),
       });
       return {
         ...defaultResponse,
@@ -508,9 +563,11 @@ function DBTimeChartComponent({
     fillNulls,
     source,
     config.compareToPreviousPeriod,
+    config.seriesLimit,
     previousPeriodData,
     hiddenSeries,
     previousPeriodOffsetSeconds,
+    showAllSeries,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
@@ -548,6 +605,22 @@ function DBTimeChartComponent({
   const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
 
+  // Reset the "load all" opt-in whenever the query shape changes. Dashboard
+  // tiles key on chart.id (not config) and the edit-modal preview has no key, so
+  // the component stays mounted across config edits; without this a stale
+  // showAllSeries=true would bypass the newly-authored series cap on the next
+  // query. Keyed on `queryShapeIdentity` (a stable serialization of the query
+  // shape) rather than the `queriedConfig` object reference — which is new every
+  // render — so unrelated re-renders (tile hover) and live-range ticks don't
+  // reset the opt-in, while re-authoring the group-by / filter / series limit
+  // still does. Also dismiss any open pin: its frozen snapshot belongs to the
+  // previous query, and the resync effect would otherwise repaint it with the
+  // new query's series at the stale click anchor.
+  useEffect(() => {
+    setShowAllSeries(false);
+    dismissPinned();
+  }, [queryShapeIdentity, dismissPinned]);
+
   // Pin the tooltip on click. Not gated on `source`: source-less charts still
   // show values/percent-change, and the drill-down actions hide themselves when
   // there's no source. `disableDrillDown` stays an explicit opt-out.
@@ -563,6 +636,20 @@ function DBTimeChartComponent({
       setActiveClickPayload(payload);
     },
     [disableDrillDown, notifyTooltipPinned],
+  );
+
+  // In-place refresh of the already-open pin's frozen snapshot (used by the
+  // chart's resync effect after "load all" / live ticks). Unlike
+  // setPinnedPayload this does NOT broadcast the cross-chart pin-dismiss — it
+  // isn't opening a new pin, just repainting the current one's rows.
+  const refreshPinnedPayload = useCallback(
+    (payload: ActiveClickPayload | undefined) => {
+      if (disableDrillDown) {
+        return;
+      }
+      setActiveClickPayload(payload);
+    },
+    [disableDrillDown],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -770,6 +857,17 @@ function DBTimeChartComponent({
       );
     }
 
+    if (hiddenSeriesCount > 0) {
+      allToolbarItems.push(
+        <HiddenSeriesIndicator
+          key="db-time-chart-hidden-series-indicator"
+          hiddenSeriesCount={hiddenSeriesCount}
+          renderedSeriesCount={lineData.length}
+          onLoadAll={() => setShowAllSeries(true)}
+        />,
+      );
+    }
+
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
@@ -788,6 +886,8 @@ function DBTimeChartComponent({
     showDateRangeIndicator,
     mvOptimizationData,
     queriedConfig,
+    hiddenSeriesCount,
+    lineData.length,
   ]);
 
   return (
@@ -824,6 +924,15 @@ function DBTimeChartComponent({
             fallbackNumberFormat={queriedConfig.numberFormat}
             numberFormatByKey={formatByColumn}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+            // "+N more" in the pinned tooltip loads every series (same escape
+            // hatch as the hidden-series warning). Only offered while capped.
+            hiddenSeriesCount={hiddenSeriesCount}
+            onLoadAllSeries={
+              showAllSeries ? undefined : () => setShowAllSeries(true)
+            }
+            // Once loaded, render the full set in the scrollable tooltip body
+            // (not just the 20-row preview) so "load all" actually shows them.
+            expanded={showAllSeries}
           />
           <MemoChart
             dateRange={dateRange}
@@ -840,6 +949,7 @@ function DBTimeChartComponent({
             referenceLines={referenceLines}
             annotations={annotations}
             setIsClickActive={setPinnedPayload}
+            refreshClickActive={refreshPinnedPayload}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}

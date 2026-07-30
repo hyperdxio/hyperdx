@@ -12,6 +12,10 @@ import {
   formatResponseForCategoricalChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
+import {
+  MAX_RENDERED_TIME_CHART_SERIES,
+  resolveRenderedSeriesCap,
+} from '@/defaults';
 import { COLORS } from '@/utils';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
@@ -760,6 +764,183 @@ describe('ChartUtils', () => {
           isDashed: true,
         },
       ]);
+    });
+
+    it('does not cap series when the group count is within the limit', () => {
+      const groupCount = MAX_RENDERED_TIME_CHART_SERIES;
+      const data = Array.from({ length: groupCount }, (_, i) => ({
+        value: i + 1,
+        group: `g${i}`,
+        __hdx_time_bucket: '2025-11-26T11:12:00Z',
+      }));
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      expect(actual.hiddenSeriesCount).toBe(0);
+      expect(actual.lineData).toHaveLength(groupCount);
+    });
+
+    it('caps high-cardinality group-bys and keeps the highest-peak series', () => {
+      // One extra group over the cap so exactly one series should be dropped —
+      // and it should be the lowest-value one (value 0).
+      const groupCount = MAX_RENDERED_TIME_CHART_SERIES + 1;
+      const data = Array.from({ length: groupCount }, (_, i) => ({
+        // group 0 has the smallest peak, so it is the one that gets dropped.
+        value: i,
+        group: `g${i}`,
+        __hdx_time_bucket: '2025-11-26T11:12:00Z',
+      }));
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      // Exactly the overflow is hidden and the rendered set is capped.
+      expect(actual.hiddenSeriesCount).toBe(1);
+      expect(actual.lineData).toHaveLength(MAX_RENDERED_TIME_CHART_SERIES);
+
+      // The lowest-peak series (value 0) is dropped from both lineData and the
+      // materialized bucket objects; a high-peak one survives.
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      expect(keptKeys.has('g0')).toBe(false);
+      expect(keptKeys.has(`g${groupCount - 1}`)).toBe(true);
+      for (const bucket of actual.graphResults) {
+        expect(bucket).not.toHaveProperty('g0');
+      }
+    });
+
+    it('renders every series when maxSeries is Infinity (load-all escape hatch)', () => {
+      const groupCount = MAX_RENDERED_TIME_CHART_SERIES + 50;
+      const data = Array.from({ length: groupCount }, (_, i) => ({
+        value: i,
+        group: `g${i}`,
+        __hdx_time_bucket: '2025-11-26T11:12:00Z',
+      }));
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: Number.POSITIVE_INFINITY,
+      });
+
+      expect(actual.hiddenSeriesCount).toBe(0);
+      expect(actual.lineData).toHaveLength(groupCount);
+    });
+
+    it('ranks by peak magnitude across all buckets (not just the last)', () => {
+      // g0 peaks high in bucket 1 then drops to 0; a naive "last value" ranking
+      // would drop it, but peak-across-buckets must keep it over a flat-low g1.
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      // Cap to 1 so exactly the single highest-peak series survives.
+      const data = [
+        { value: 999, group: 'g0', __hdx_time_bucket: '2025-11-26T11:12:00Z' },
+        { value: 0, group: 'g0', __hdx_time_bucket: '2025-11-26T11:13:00Z' },
+        { value: 5, group: 'g1', __hdx_time_bucket: '2025-11-26T11:12:00Z' },
+        { value: 5, group: 'g1', __hdx_time_bucket: '2025-11-26T11:13:00Z' },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:14:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: 1,
+      });
+
+      expect(actual.lineData).toHaveLength(1);
+      expect(actual.lineData[0].dataKey).toBe('g0');
+      expect(actual.hiddenSeriesCount).toBe(1);
+    });
+
+    it('breaks peak ties deterministically by first-seen (insertion) order', () => {
+      // Three series with identical peaks; capping to 2 must keep the first two
+      // encountered (g0, g1) and drop g2 — stable, order-independent of hashing.
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      const data = [
+        { value: 7, group: 'g0', __hdx_time_bucket: '2025-11-26T11:12:00Z' },
+        { value: 7, group: 'g1', __hdx_time_bucket: '2025-11-26T11:12:00Z' },
+        { value: 7, group: 'g2', __hdx_time_bucket: '2025-11-26T11:12:00Z' },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: 2,
+      });
+
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      expect(keptKeys.has('g0')).toBe(true);
+      expect(keptKeys.has('g1')).toBe(true);
+      expect(keptKeys.has('g2')).toBe(false);
+    });
+  });
+
+  describe('resolveRenderedSeriesCap', () => {
+    it('returns the default cap for null/undefined', () => {
+      expect(resolveRenderedSeriesCap(null)).toBe(
+        MAX_RENDERED_TIME_CHART_SERIES,
+      );
+      expect(resolveRenderedSeriesCap(undefined)).toBe(
+        MAX_RENDERED_TIME_CHART_SERIES,
+      );
+    });
+
+    it('returns Infinity for 0 (unlimited)', () => {
+      expect(resolveRenderedSeriesCap(0)).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    it('returns the value for a positive limit', () => {
+      expect(resolveRenderedSeriesCap(25)).toBe(25);
     });
   });
 

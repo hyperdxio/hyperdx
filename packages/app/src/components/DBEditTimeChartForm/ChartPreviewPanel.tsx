@@ -228,6 +228,10 @@ export function ChartPreviewPanel({
             }
             errorVariant="inline"
             showMVOptimizationIndicator={false}
+            // Preview doesn't need the MV indicators; disabling both lets
+            // DBTimeChart skip the extra MV-optimization EXPLAIN query, which
+            // otherwise fires on every edit-modal open / submit.
+            showDateRangeIndicator={false}
           />
         </div>
       )}

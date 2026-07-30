@@ -1,6 +1,7 @@
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
@@ -352,7 +353,12 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
-        limit: config.seriesLimit ?? undefined,
+        // 0 = unlimited internally, but the external `limit` is positive-only;
+        // emit it as absent so a GET->PUT round-trip isn't rejected by the
+        // write-body schema. null/undefined also map to absent.
+        limit: hasPositiveSeriesLimit(config.seriesLimit)
+          ? config.seriesLimit
+          : undefined,
       };
     case DisplayType.Bar:
       return {
@@ -364,7 +370,12 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
-        limit: config.seriesLimit ?? undefined,
+        // 0 = unlimited internally, but the external `limit` is positive-only;
+        // emit it as absent so a GET->PUT round-trip isn't rejected by the
+        // write-body schema. null/undefined also map to absent.
+        limit: hasPositiveSeriesLimit(config.seriesLimit)
+          ? config.seriesLimit
+          : undefined,
       };
     case DisplayType.Table:
       return {
