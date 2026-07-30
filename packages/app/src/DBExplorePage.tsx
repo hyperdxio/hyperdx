@@ -2896,98 +2896,6 @@ function DBExplorePage() {
                               />
                             )
                       }
-                      sortControl={
-                        !isSqlUiMode && (
-                          <>
-                            {view === 'list' && (
-                              <SearchSortMenu
-                                groupLabel="Sort by"
-                                options={displayedColumns.map(column => ({
-                                  value: column,
-                                  label: column,
-                                }))}
-                                activeField={listSort.field}
-                                direction={listSort.direction}
-                                onChange={applyListSort}
-                                onRevert={revertListSort}
-                                canRevert={!!searchedConfig.orderBy}
-                                sqlSlot={
-                                  <SQLInlineEditorControlled
-                                    tableConnection={inputSourceTableConnection}
-                                    control={control}
-                                    name="orderBy"
-                                    defaultValue={defaultSearchConfig.orderBy}
-                                    onSubmit={onSubmit}
-                                    label="ORDER BY"
-                                    size="xs"
-                                    dateRange={searchedTimeRange}
-                                    sourceId={inputSource}
-                                  />
-                                }
-                              />
-                            )}
-                            {(view === 'table' ||
-                              view === 'bar' ||
-                              view === 'pie' ||
-                              view === 'treemap') && (
-                              <SearchSortMenu
-                                groupLabel="Sort groups by"
-                                options={[
-                                  { value: 'value', label: 'Value' },
-                                  { value: 'name', label: 'Name' },
-                                ]}
-                                activeField={aggConfig.sort}
-                                direction={aggConfig.sortDir}
-                                onChange={(field, dir) => {
-                                  setAggConfig({
-                                    sort: field as AggSortField,
-                                    sortDir: dir,
-                                  });
-                                  onSubmit();
-                                }}
-                                onRevert={() => {
-                                  setAggConfig({
-                                    sort: 'value',
-                                    sortDir: 'desc',
-                                  });
-                                  onSubmit();
-                                }}
-                                canRevert={
-                                  aggConfig.sort !== 'value' ||
-                                  aggConfig.sortDir !== 'desc'
-                                }
-                              />
-                            )}
-                          </>
-                        )
-                      }
-                      columnsControl={
-                        view === 'list' &&
-                        !isSqlUiMode && (
-                          <SearchColumnPicker
-                            availableColumns={availableColumns}
-                            selectedColumns={displayedColumns}
-                            onApply={applyColumns}
-                            sqlSlot={
-                              <SQLInlineEditorControlled
-                                tableConnection={inputSourceTableConnection}
-                                control={control}
-                                name="select"
-                                defaultValue={defaultSearchConfig.select}
-                                placeholder={
-                                  defaultSearchConfig.select || 'SELECT Columns'
-                                }
-                                onSubmit={onSubmit}
-                                label="SELECT"
-                                size="xs"
-                                allowMultiline
-                                dateRange={searchedTimeRange}
-                                sourceId={inputSource}
-                              />
-                            }
-                          />
-                        )
-                      }
                       overflowMenu={
                         <ResultsOverflowMenu
                           config={
@@ -3006,18 +2914,102 @@ function DBExplorePage() {
                           showGeneratedSql={!isMetricSource}
                         />
                       }
+                      shapeControls={
+                        !isSqlUiMode && isAggregatedSearchView(view) ? (
+                          <SearchAggControls
+                            view={view}
+                            config={aggConfig}
+                            onChange={setAggConfig}
+                            defaultGroupBy={defaultAggGroupBy}
+                            onSubmit={onSubmit}
+                            metricSource={searchedMetricSource}
+                          />
+                        ) : undefined
+                      }
+                      shapeActions={
+                        isSqlUiMode ? undefined : view === 'list' ? (
+                          <>
+                            <SearchColumnPicker
+                              availableColumns={availableColumns}
+                              selectedColumns={displayedColumns}
+                              onApply={applyColumns}
+                              sqlSlot={
+                                <SQLInlineEditorControlled
+                                  tableConnection={inputSourceTableConnection}
+                                  control={control}
+                                  name="select"
+                                  defaultValue={defaultSearchConfig.select}
+                                  placeholder={
+                                    defaultSearchConfig.select ||
+                                    'SELECT Columns'
+                                  }
+                                  onSubmit={onSubmit}
+                                  label="SELECT"
+                                  size="xs"
+                                  allowMultiline
+                                  dateRange={searchedTimeRange}
+                                  sourceId={inputSource}
+                                />
+                              }
+                            />
+                            <SearchSortMenu
+                              groupLabel="Sort by"
+                              options={displayedColumns.map(column => ({
+                                value: column,
+                                label: column,
+                              }))}
+                              activeField={listSort.field}
+                              direction={listSort.direction}
+                              onChange={applyListSort}
+                              onRevert={revertListSort}
+                              canRevert={!!searchedConfig.orderBy}
+                              sqlSlot={
+                                <SQLInlineEditorControlled
+                                  tableConnection={inputSourceTableConnection}
+                                  control={control}
+                                  name="orderBy"
+                                  defaultValue={defaultSearchConfig.orderBy}
+                                  onSubmit={onSubmit}
+                                  label="ORDER BY"
+                                  size="xs"
+                                  dateRange={searchedTimeRange}
+                                  sourceId={inputSource}
+                                />
+                              }
+                            />
+                          </>
+                        ) : view === 'table' ||
+                          view === 'bar' ||
+                          view === 'pie' ||
+                          view === 'treemap' ? (
+                          <SearchSortMenu
+                            groupLabel="Sort groups by"
+                            options={[
+                              { value: 'value', label: 'Value' },
+                              { value: 'name', label: 'Name' },
+                            ]}
+                            activeField={aggConfig.sort}
+                            direction={aggConfig.sortDir}
+                            onChange={(field, dir) => {
+                              setAggConfig({
+                                sort: field as AggSortField,
+                                sortDir: dir,
+                              });
+                              onSubmit();
+                            }}
+                            onRevert={() => {
+                              setAggConfig({ sort: 'value', sortDir: 'desc' });
+                              onSubmit();
+                            }}
+                            canRevert={
+                              aggConfig.sort !== 'value' ||
+                              aggConfig.sortDir !== 'desc'
+                            }
+                          />
+                        ) : undefined
+                      }
                     />
                   </Box>
-                  {isAggregatedSearchView(view) && !isSqlUiMode && (
-                    <SearchAggControls
-                      view={view}
-                      config={aggConfig}
-                      onChange={setAggConfig}
-                      defaultGroupBy={defaultAggGroupBy}
-                      onSubmit={onSubmit}
-                      metricSource={searchedMetricSource}
-                    />
-                  )}
                   {viewShowsHistogram(view) &&
                     !hasQueryError &&
                     !isSqlUiMode && (

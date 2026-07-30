@@ -1,31 +1,34 @@
+/* Flat container: the mode control, editor, and filters sit directly on the
+   page rather than inside a bordered card. */
 .card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--mantine-radius-default);
-  background-color: var(--color-bg-field);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .header {
-  padding: 4px 6px 4px 6px;
-  border-bottom: 1px solid var(--color-border);
-  min-height: 38px;
-  background-color: var(--color-bg-surface);
+  min-height: 34px;
 }
 
 .controls {
   min-width: 0;
 }
 
+/* The builder editor keeps an input-style border so it still reads as an
+   editable field once the surrounding card is gone. */
 .body {
-  padding: 2px 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+  background-color: var(--color-bg-field);
 }
 
 /* Raw-SQL body: full statement editor with a help/instructions row above it. */
 .sqlBody {
-  padding: 6px;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Blend the line-number gutter into the card. */
 .body :global(.cm-gutters) {
   background: transparent !important;
   border: none !important;
@@ -35,13 +38,9 @@
   background: transparent !important;
 }
 
-/* Active filter chips live inside the card, below the input. Collapse the
-   strip entirely when there are no chips (ActiveFilterPills renders null). */
+/* Active filter chips sit below the input. Collapse the strip entirely when
+   there are no chips (ActiveFilterPills renders null). */
 .filters {
-  padding: 6px 0;
-  border-top: 1px solid var(--color-border);
-  background-color: var(--color-bg-surface);
-
   &:empty {
     display: none;
   }

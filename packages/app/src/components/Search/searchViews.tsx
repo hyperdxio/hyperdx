@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Group, Tooltip } from '@mantine/core';
+import { ActionIcon, Divider, Group, Tooltip } from '@mantine/core';
 import {
   IconBracketsContain,
   IconChartBar,
@@ -196,6 +196,26 @@ export function SearchViewSwitcher({
     [sourceKind, chartTypesOnly],
   );
 
+  // Group raw (non-aggregated) views apart from the chart types so the strip of
+  // icons reads as two related clusters instead of one undifferentiated row.
+  const rawViews = options.filter(o => !o.aggregated);
+  const chartViews = options.filter(o => o.aggregated);
+
+  const renderOption = (option: SearchViewMeta) => (
+    <Tooltip label={option.label} key={option.value} fz="xs" color="gray">
+      <ActionIcon
+        variant={value === option.value ? 'primary' : 'subtle'}
+        color={value === option.value ? undefined : 'gray'}
+        size="md"
+        onClick={() => onChange(option.value)}
+        aria-label={option.label}
+        data-active={value === option.value || undefined}
+      >
+        {option.icon}
+      </ActionIcon>
+    </Tooltip>
+  );
+
   return (
     <Group
       gap={2}
@@ -203,20 +223,11 @@ export function SearchViewSwitcher({
       className="bg-muted px-1 py-1 rounded"
       data-testid="search-view-switcher"
     >
-      {options.map(option => (
-        <Tooltip label={option.label} key={option.value} fz="xs" color="gray">
-          <ActionIcon
-            variant={value === option.value ? 'primary' : 'subtle'}
-            color={value === option.value ? undefined : 'gray'}
-            size="md"
-            onClick={() => onChange(option.value)}
-            aria-label={option.label}
-            data-active={value === option.value || undefined}
-          >
-            {option.icon}
-          </ActionIcon>
-        </Tooltip>
-      ))}
+      {rawViews.map(renderOption)}
+      {rawViews.length > 0 && chartViews.length > 0 && (
+        <Divider orientation="vertical" mx={4} my={2} />
+      )}
+      {chartViews.map(renderOption)}
     </Group>
   );
 }
