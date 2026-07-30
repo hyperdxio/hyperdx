@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
-import { optimizeGetKeyValuesCalls } from '@hyperdx/common-utils/dist/core/materializedViews';
+import {
+  optimizeFacetedKeyValuesConfig,
+  optimizeGetKeyValuesCalls,
+} from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -24,6 +28,10 @@ jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
     .mockImplementation(async ({ keys, chartConfig }) => [
       { keys, chartConfig },
     ]),
+  // Default: no covering MV → faceted query runs against the raw config.
+  optimizeFacetedKeyValuesConfig: jest
+    .fn()
+    .mockImplementation(async ({ chartConfig }) => chartConfig),
 }));
 
 describe('useDashboardFilterValues', () => {
@@ -1055,5 +1063,298 @@ describe('useDashboardFilterValues', () => {
         }),
       }),
     );
+  });
+
+  describe('faceted filtering (cascading filters)', () => {
+    // Returns the single arg object passed to the MOST RECENT getKeyValues call
+    // whose `keys` exactly match, or undefined if no such call was made. (Most
+    // recent matters when a rerender issues a fresh call for the same keys.)
+    const callForKeys = (keys: string[]) =>
+      (mockMetadata.getKeyValues.mock.calls as any[])
+        .filter(([arg]) => JSON.stringify(arg.keys) === JSON.stringify(keys))
+        .at(-1)?.[0];
+
+    const envAndStatus: DashboardFilter[] = [
+      {
+        id: 'filter1',
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'environment',
+        source: 'logs-source',
+      },
+      {
+        id: 'filter2',
+        type: 'QUERY_EXPRESSION',
+        name: 'Status',
+        expression: 'status',
+        source: 'logs-source',
+      },
+    ];
+
+    beforeEach(() => {
+      jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+        data: mockSources,
+        isLoading: false,
+      } as any);
+      // Unconstrained groups still go through the optimizer; restore its
+      // passthrough (clearAllMocks resets call data but not implementations).
+      jest
+        .mocked(optimizeGetKeyValuesCalls)
+        .mockImplementation(async ({ keys, chartConfig }) => [
+          { keys, chartConfig },
+        ]);
+      // Default: faceted queries run against the raw config (no covering MV).
+      jest
+        .mocked(optimizeFacetedKeyValuesConfig)
+        .mockImplementation(async ({ chartConfig }) => chartConfig);
+    });
+
+    // What a filter narrowed by an `environment: production` selection should
+    // receive. The hook passes the selection down as state, not as SQL, so
+    // getKeyValues can render its keys the same way it renders the SELECT.
+    const envProductionConstraint = {
+      environment: {
+        included: new Set<string>(['production']),
+        excluded: new Set<string>(),
+      },
+    };
+
+    it('resolves every key in one faceted scan, constraining each by the others (exclude-self)', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // A single scan for the whole source — not one query per filter.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      // `status` is constrained by the environment selection; `environment` is
+      // NOT constrained by its own selection (exclude-self → undefined).
+      expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
+        undefined,
+        envProductionConstraint,
+      ]);
+    });
+
+    it('runs one unconstrained query when nothing is selected', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {},
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      // No conditions → plain groupUniqArray (no keyConditions passed).
+      expect(
+        callForKeys(['environment', 'status'])?.keyConditions,
+      ).toBeUndefined();
+    });
+
+    it('still uses a single scan for many filters when one is selected', async () => {
+      const filters: DashboardFilter[] = [
+        ...envAndStatus,
+        {
+          id: 'filter3',
+          type: 'QUERY_EXPRESSION',
+          name: 'Log Level',
+          expression: 'log_level',
+          source: 'logs-source',
+        },
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // One faceted scan regardless of how many filters/selections.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      expect(
+        callForKeys(['environment', 'status', 'log_level'])?.keyConditions,
+      ).toEqual([undefined, envProductionConstraint, envProductionConstraint]);
+    });
+
+    it('does not apply a selection from one source to filters on another source', async () => {
+      const filters: DashboardFilter[] = [
+        ...envAndStatus,
+        {
+          id: 'filter3',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service',
+          expression: 'service.name',
+          source: 'traces-source',
+        },
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // The logs group is faceted (status narrowed by env)...
+      expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
+        undefined,
+        envProductionConstraint,
+      ]);
+      // ...but the traces filter is never constrained by the logs selection.
+      expect(callForKeys(['service.name'])?.keyConditions).toBeUndefined();
+    });
+
+    it('does not apply a selection across metric types of the same source', async () => {
+      // Same source, different metric type → different physical table, so the
+      // constrained column need not exist there.
+      const filters: DashboardFilter[] = [
+        {
+          id: 'gauge-filter',
+          type: 'QUERY_EXPRESSION',
+          name: 'Gauge Metric',
+          expression: 'MetricName',
+          source: 'metric-source',
+          sourceMetricType: MetricsDataType.Gauge,
+        },
+        {
+          id: 'sum-filter',
+          type: 'QUERY_EXPRESSION',
+          name: 'Sum Metric',
+          expression: 'SumMetricName',
+          source: 'metric-source',
+          sourceMetricType: MetricsDataType.Sum,
+        },
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            filterValues: {
+              MetricName: {
+                included: new Set<string>(['CPU_Usage']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(callForKeys(['MetricName'])?.keyConditions).toBeUndefined();
+      expect(callForKeys(['SumMetricName'])?.keyConditions).toBeUndefined();
+    });
+
+    it('refetches with updated conditions when a selection changes', async () => {
+      const { result, rerender } = renderHook(
+        ({ filterValues }) =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues,
+          }),
+        {
+          wrapper,
+          initialProps: { filterValues: {} as FilterState },
+        },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      expect(
+        callForKeys(['environment', 'status'])?.keyConditions,
+      ).toBeUndefined();
+
+      rerender({
+        filterValues: {
+          environment: {
+            included: new Set<string>(['production']),
+            excluded: new Set<string>(),
+          },
+        },
+      });
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
+        undefined,
+        envProductionConstraint,
+      ]);
+    });
+
+    it('runs the faceted scan against a covering materialized view when one is found', async () => {
+      // Simulate a covering MV: the resolver points the faceted query at the
+      // rollup table.
+      jest
+        .mocked(optimizeFacetedKeyValuesConfig)
+        .mockImplementation(async ({ chartConfig }) => ({
+          ...chartConfig,
+          from: { databaseName: 'telemetry', tableName: 'logs_rollup_1m' },
+        }));
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      const call = callForKeys(['environment', 'status']);
+      // The single faceted scan targets the rollup, still carrying the per-key
+      // conditions.
+      expect(call?.chartConfig?.from).toEqual({
+        databaseName: 'telemetry',
+        tableName: 'logs_rollup_1m',
+      });
+      expect(call?.keyConditions).toEqual([undefined, envProductionConstraint]);
+    });
   });
 });
