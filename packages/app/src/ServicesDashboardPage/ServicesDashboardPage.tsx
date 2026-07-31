@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -48,13 +54,11 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { useRouteChangeState } from '@/hooks/useRouteChangeState';
 import { withAppNav } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { usePrevious } from '@/utils';
 
 import DatabaseTab from './DatabaseTab';
 import ErrorsTab from './ErrorsTab';
@@ -163,7 +167,6 @@ export function getEffectiveTraceSourceId(
 
 function ServicesDashboardPage() {
   const brandName = useBrandDisplayName();
-  const { isLeavingPageRef } = useRouteChangeState();
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -214,10 +217,7 @@ function ServicesDashboardPage() {
   });
 
   const service = useWatch({ control, name: 'service' });
-  const previousService = usePrevious(service);
-
   const sourceId = useWatch({ control, name: 'source' });
-  const previousSourceId = usePrevious(sourceId);
 
   // `defaultValues` above is captured on mount, before the source list has
   // loaded, so the effective source has to be pushed in afterwards — otherwise
@@ -257,22 +257,16 @@ function ServicesDashboardPage() {
     [appliedConfigWithoutFilters, additionalFilters],
   );
 
-  // Update the `source` query parameter if the appliedConfig source changes.
-  useEffect(() => {
-    // Don't write when leaving the page, to avoid races with other pages writing the same param.
-    if (isLeavingPageRef.current) return;
-    if (
-      appliedConfigWithoutFilters.source &&
-      appliedConfigWithoutFilters.source !== appliedConfigParams.source
-    ) {
-      setAppliedConfigParams({ source: appliedConfigWithoutFilters.source });
+  // Update the `source` query parameter if the appliedConfig source changes,
+  // which also canonicalizes a source name to its ID.
+  const syncSourceParam = useEffectEvent((effectiveSource: string) => {
+    if (effectiveSource && effectiveSource !== appliedConfigParams.source) {
+      setAppliedConfigParams({ source: effectiveSource });
     }
-  }, [
-    appliedConfigWithoutFilters.source,
-    appliedConfigParams.source,
-    setAppliedConfigParams,
-    isLeavingPageRef,
-  ]);
+  });
+  useEffect(() => {
+    syncSourceParam(appliedConfigWithoutFilters.source);
+  }, [appliedConfigWithoutFilters.source]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -303,30 +297,19 @@ function ServicesDashboardPage() {
     [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue],
   );
 
-  // Auto-submit when source changes
-  // Note: do not include appliedConfig.source in the deps,
-  // to avoid infinite render loops when navigating away from the page
-  useEffect(() => {
-    // Don't write when leaving the page, to avoid races with other pages writing the same param.
-    if (isLeavingPageRef.current) return;
-    if (sourceId && sourceId != previousSourceId) {
-      onSubmit(false);
-    }
-  }, [sourceId, onSubmit, previousSourceId, isLeavingPageRef]);
-
-  // Auto-submit when service changes
-  // Note: do not include appliedConfig.service in the deps,
-  // to avoid infinite render loops when navigating away from the page
-  useEffect(() => {
+  // Auto-submit when the selected source or service changes.
+  const submitOnSelectionChange = useEffectEvent(() => {
     // Nothing to submit before a source is selected, and submitting then writes
     // the form's empty source over the `?source=` the page is still resolving.
     if (!sourceId) return;
-    // Don't write when leaving the page, to avoid races with other pages writing the same param.
-    if (isLeavingPageRef.current) return;
-    if (service != previousService) {
-      onSubmit(false);
-    }
-  }, [service, onSubmit, previousService, sourceId, isLeavingPageRef]);
+    onSubmit(false);
+  });
+  useEffect(() => {
+    submitOnSelectionChange();
+  }, [sourceId]);
+  useEffect(() => {
+    submitOnSelectionChange();
+  }, [service]);
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">

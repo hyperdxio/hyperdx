@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import {
@@ -31,7 +37,6 @@ import SearchWhereInput, {
 import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { useRouteChangeState } from '@/hooks/useRouteChangeState';
 import { withAppNav } from '@/layout';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
@@ -85,7 +90,6 @@ const searchQueryStateMap = {
 
 function DBServiceMapPage() {
   const brandName = useBrandDisplayName();
-  const { isLeavingPageRef } = useRouteChangeState();
 
   const { data: sources } = useSources();
   // `?source=` accepts a source name as well as a source ID.
@@ -130,17 +134,17 @@ function DBServiceMapPage() {
     useState(false);
 
   // Keep the param in step with the selected source, which also canonicalizes a
-  // source name to its ID. Two guards:
-  //  - only write a real source, because on a cold load the form value is
-  //    undefined until the source list arrives and writing that would wipe the
-  //    `?source=` the user arrived with;
-  //  - stop once we are leaving, to avoid a race with other pages that also write `?source=`
-  useEffect(() => {
-    if (isLeavingPageRef.current) return;
-    if (watchedSource && watchedSource !== sourceIdParam) {
-      setSourceId(watchedSource);
+  // source name to its ID. Only write a real source: on a cold load the form
+  // value is undefined until the source list arrives, and writing that would
+  // wipe the `?source=` the user arrived with.
+  const syncSourceParam = useEffectEvent((formSource: string | undefined) => {
+    if (formSource && formSource !== sourceIdParam) {
+      setSourceId(formSource);
     }
-  }, [watchedSource, sourceIdParam, setSourceId, isLeavingPageRef]);
+  });
+  useEffect(() => {
+    syncSourceParam(watchedSource);
+  }, [watchedSource]);
 
   const sourceTableConnection = useMemo(() => tcFromSource(source), [source]);
 

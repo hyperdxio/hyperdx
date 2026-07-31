@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { sub } from 'date-fns';
@@ -46,7 +53,6 @@ import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
-import { useRouteChangeState } from './hooks/useRouteChangeState';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { withAppNav } from './layout';
 import { Session, useSessions } from './sessions';
@@ -236,7 +242,6 @@ const appliedConfigMap = {
 function SessionsPage() {
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
-  const { isLeavingPageRef } = useRouteChangeState();
   // `?sessionSource=` accepts a source name as well as a source ID. The form
   // holds the resolved ID, so nothing downstream ever sees a name.
   const { source: paramSource } = useResolvedSourceParam(
@@ -274,18 +279,14 @@ function SessionsPage() {
 
   // Push the selected source into the param when it isn't there yet, and
   // canonicalize a source name URL Param to the ID it resolved to.
-  useEffect(() => {
-    // Don't push if the user is leaving the page, to avoid a race with the next page's effects that set query params.
-    if (isLeavingPageRef.current) return;
-    if (sourceId && sourceId !== appliedConfig.sessionSource) {
-      setAppliedConfig({ sessionSource: sourceId });
+  const syncSourceParam = useEffectEvent((formSource: string | null) => {
+    if (formSource && formSource !== appliedConfig.sessionSource) {
+      setAppliedConfig({ sessionSource: formSource });
     }
-  }, [
-    appliedConfig.sessionSource,
-    isLeavingPageRef,
-    setAppliedConfig,
-    sourceId,
-  ]);
+  });
+  useEffect(() => {
+    syncSourceParam(sourceId);
+  }, [sourceId]);
 
   // Auto-select the first session source when the page loads
   useEffect(() => {
@@ -325,18 +326,19 @@ function SessionsPage() {
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
 
-  // Auto submit when service or source changes. Compared against the *resolved*
-  // param only: while `?sessionSource=` is still resolving — or when it names no
+  // Auto submit when the source changes. Compared against the *resolved* param
+  // only: while `?sessionSource=` is still resolving — or when it names no
   // source at all — there is nothing for the form to have diverged from, and
   // submitting would write the empty form source over the param (losing both the
   // link and the "Source not found" warning) and reset the searched time range.
-  useEffect(() => {
-    // Don't auto-submit if the user is leaving the page, to avoid a race with the next page's effects that set query params.
-    if (isLeavingPageRef.current) return;
+  const submitOnSourceChange = useEffectEvent(() => {
     if (sourceId !== (paramSource?.id ?? null)) {
       onSubmit();
     }
-  }, [sourceId, paramSource?.id, onSubmit, isLeavingPageRef]);
+  });
+  useEffect(() => {
+    submitOnSourceChange();
+  }, [sourceId]);
 
   const [selectedSessionQuery, setSelectedSessionQuery] = useQueryStates(
     selectedSessionQueryStateMap,

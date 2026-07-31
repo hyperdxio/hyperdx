@@ -29,14 +29,6 @@ jest.mock('next/dynamic', () => ({
   },
 }));
 
-// The page tracks navigations away from itself (useRouteChangeState), which needs
-// a router. Only the event emitter is exercised here.
-jest.mock('next/router', () => ({
-  useRouter: () => ({
-    events: { on: () => {}, off: () => {} },
-  }),
-}));
-
 jest.mock('nuqs', () => {
   const noop = () => {};
   return {
