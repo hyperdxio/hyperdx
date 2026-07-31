@@ -24,7 +24,7 @@ const MAX_INLINE_ITEMS = 6;
 
 const LOG_LEVEL_RANK: Record<string, number> = { error: 3, warn: 2, info: 1 };
 
-export type SeriesTotalItem = {
+type SeriesTotalItem = {
   dataKey: string;
   label: string;
   color: string;
@@ -49,7 +49,7 @@ function getSeverityRank(groupFilters: SeriesGroupFilter[]): number {
   return rank;
 }
 
-export function useSearchSeriesTotals(
+function useSearchSeriesTotals(
   config: BuilderChartConfigWithDateRange,
   queryKeyPrefix: string,
   {

@@ -23,6 +23,12 @@ import { COLORS } from '@/utils';
 const SEMANTIC_INFO_HEX = '#437eef';
 const SEMANTIC_ERROR_HEX = '#ff725c';
 
+// A log source grouped by severity, which is what turns on semantic coloring.
+const LOG_SOURCE = {
+  kind: SourceKind.Log,
+  severityTextExpression: 'SeverityText',
+} as TSource;
+
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
     it('should throw an error if there is no timestamp column', () => {
@@ -301,17 +307,12 @@ describe('ChartUtils', () => {
         ],
       };
 
-      const source = {
-        kind: SourceKind.Log,
-        severityTextExpression: 'SeverityText',
-      } as TSource;
-
       const actual = formatResponseForTimeChart({
         currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
         generateEmptyBuckets: false,
-        source,
+        source: LOG_SOURCE,
       });
 
       expect(actual.lineData).toEqual([
@@ -1210,11 +1211,6 @@ describe('ChartUtils', () => {
       ],
     };
 
-    const LOG_SOURCE = {
-      kind: SourceKind.Log,
-      severityTextExpression: 'SeverityText',
-    } as TSource;
-
     it('sums each series across every bucket in the range', () => {
       const { seriesTotals } = formatResponseForSeriesTotals({
         response: SEVERITY_RESPONSE,
@@ -1378,9 +1374,7 @@ describe('ChartUtils', () => {
 
     it('throws when the response has no metadata', () => {
       expect(() =>
-        formatResponseForSeriesTotals({
-          response: { data: [], meta: undefined } as any,
-        }),
+        formatResponseForSeriesTotals({ response: { data: [] } }),
       ).toThrow('No meta data found in response');
     });
   });

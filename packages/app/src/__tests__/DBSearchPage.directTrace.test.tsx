@@ -117,7 +117,7 @@ jest.mock('@/searchFilters', () => ({
 jest.mock('@/hooks/useChartConfig', () => ({
   useAliasMapFromChartConfig: () => ({ data: {} }),
   // The histogram legend derives its totals from this query.
-  useQueriedChartConfig: () => ({ data: undefined, isLoading: false }),
+  useQueriedChartConfig: jest.fn(() => ({ data: undefined, isLoading: false })),
 }));
 
 jest.mock('@/hooks/useExplainQuery', () => ({

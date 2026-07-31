@@ -78,15 +78,3 @@ export function inferCountColumn(
     filterColumnMetaByType(meta, [JSDataType.Number])?.[0]?.name ?? 'count()'
   );
 }
-
-/**
- * The grouped column of the histogram query — severity text for logs, status
- * code for traces. The search page only ever groups the histogram by that one
- * column, so the first string column is it.
- */
-export function inferGroupColumn(
-  meta: ResponseJSON['meta'] | undefined,
-): string | undefined {
-  if (!meta) return undefined;
-  return filterColumnMetaByType(meta, [JSDataType.String])?.[0]?.name;
-}

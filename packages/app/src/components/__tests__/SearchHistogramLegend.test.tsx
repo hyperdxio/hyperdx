@@ -2,7 +2,6 @@ import React from 'react';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,19 +9,21 @@ import userEvent from '@testing-library/user-event';
 import SearchHistogramLegend from '@/components/SearchHistogramLegend';
 import { COLORS } from '@/utils';
 
-const mockUseSearchHistogramQuery = jest.fn();
-const mockUseSource = jest.fn();
-
 jest.mock('@/hooks/useSearchHistogramQuery', () => ({
   ...jest.requireActual('@/hooks/useSearchHistogramQuery'),
-  useSearchHistogramQuery: (...args: unknown[]) =>
-    mockUseSearchHistogramQuery(...args),
+  useSearchHistogramQuery: jest.fn(),
 }));
 
 jest.mock('@/source', () => ({
   ...jest.requireActual('@/source'),
-  useSource: (...args: unknown[]) => mockUseSource(...args),
+  useSource: jest.fn(),
 }));
+
+// Grabbed off the mocked modules (rather than via `jest.mocked`) so the fixtures
+// below can be the partial shapes these tests actually care about.
+const { useSearchHistogramQuery: mockUseSearchHistogramQuery } =
+  jest.requireMock('@/hooks/useSearchHistogramQuery');
+const { useSource: mockUseSource } = jest.requireMock('@/source');
 
 // Keep in sync with SEMANTIC_CHART_PALETTE in @/utils.
 const SEMANTIC_INFO_HEX = '#437eef';
@@ -38,10 +39,12 @@ const CONFIG: BuilderChartConfigWithDateRange = {
   dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
 };
 
+// Only the fields the color/grouping logic reads; `useSource` is mocked, so
+// this needs no cast to the full TSource union.
 const LOG_SOURCE = {
   kind: SourceKind.Log,
   severityTextExpression: 'SeverityText',
-} as TSource;
+};
 
 type Row = { bucket: string; count: string | number; group: string };
 
@@ -283,7 +286,7 @@ describe('SearchHistogramLegend', () => {
   it('renders nothing rather than throwing on an unusable response shape', () => {
     const consoleError = jest
       .spyOn(console, 'error')
-      .mockImplementation(() => {});
+      .mockImplementation(() => undefined);
     // No timestamp column: the chart formatter throws on this.
     mockUseSearchHistogramQuery.mockReturnValue({
       data: {
