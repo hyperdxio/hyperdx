@@ -46,6 +46,11 @@ export type SeriesNeeds = {
   quantiles?: boolean;
   /** Histogram quantile merge tail groups by s.MetricName. */
   metricName?: boolean;
+  /** min(FirstSeen): the identity's earliest sample timestamp within the
+   * scanned Date range. The rollup sum path reads it as the recipe's
+   * birth-bucket gate (tier states carry no StartTimeUnix — see
+   * sumRollupCtesV2). */
+  firstSeen?: boolean;
   /** Bare series columns referenced by group-by/where expressions. */
   bareColumns?: string[];
   /** Map keys referenced per attribute map — projected as mini-maps
@@ -136,6 +141,7 @@ const seriesInnerColumns = (needs: SeriesNeeds): string => {
   if (needs.metricName) cols.add('MetricName');
   if (needs.explicitBounds) cols.add('ExplicitBounds');
   if (needs.quantiles) cols.add('Quantiles');
+  if (needs.firstSeen) cols.add('FirstSeen');
   for (const col of needs.bareColumns ?? []) {
     const src = SERIES_BARE_COLUMN_SOURCE[col];
     if (src) cols.add(src);
@@ -160,6 +166,9 @@ const seriesNeedsSelect = (needs: SeriesNeeds): string => {
   if (needs.explicitBounds)
     add('ExplicitBounds', 'any(ExplicitBounds) AS ExplicitBounds');
   if (needs.quantiles) add('Quantiles', 'any(Quantiles) AS Quantiles');
+  // min, not any: the series table carries one row per (Date, insert block)
+  // with SimpleAggregateFunction(min) FirstSeen partial states.
+  if (needs.firstSeen) add('FirstSeen', 'min(FirstSeen) AS FirstSeen');
   for (const col of needs.bareColumns ?? []) {
     const expr = SERIES_BARE_COLUMN_SELECT[col];
     if (expr) add(col, expr);
@@ -248,8 +257,60 @@ const seriesScanFilter = (fast: unknown) =>
 const NOT_STALENESS_MARKER = `bitAnd(Flags, 1) = 0`;
 
 /**
- * Gauge: aggregate the float points per (series, bucket), then join labels.
- * Final CTE is named `Metrics`; exposes LastValue + label columns.
+ * Prometheus's instant-selector lookback delta: a gauge-class LEVEL
+ * evaluation at time T reads the newest sample in (T − 300s, T]. This is
+ * the DEFAULT semantics of every gauge-class LEVEL shape (gauges and
+ * up-down-counter level aggregates) — no toggle. Fixed 300s, never a
+ * function of the display bucket (a bare Prometheus selector at any step
+ * looks back exactly this far).
+ */
+export const LEVEL_LOOKBACK_SECONDS = 300;
+
+/** Display-bucket width for the level-lookback shapes: a resolved constant,
+ * or late-bound to the dashboard interval in template mode. */
+export type LevelLookbackBucket = { bucketSeconds: number | '$__interval_s' };
+
+const levelBucketSql = (bucket: LevelLookbackBucket) => {
+  const b = bucket.bucketSeconds;
+  return typeof b === 'number'
+    ? {
+        bs: String(b),
+        bms: String(b * 1000),
+        bmsMinus1: String(b * 1000 - 1),
+      }
+    : {
+        bs: '$__interval_s',
+        bms: '($__interval_s * 1000)',
+        bmsMinus1: '($__interval_s * 1000 - 1)',
+      };
+};
+
+/**
+ * Gauge-class LEVEL shape (gauges; up-down-counter level aggregates route
+ * here too — the level IS the sample value). Under the DEFAULT Prometheus
+ * 5-minute instant lookback (`levelLookback` set): per display bucket b the
+ * per-series value is the newest non-marker sample in the trailing window
+ * (bucketEnd − 300s, bucketEnd]; a marker as the newest in-window sample
+ * kills the series (no carry past a marker); NaN is a real value and is
+ * carried; a hole longer than 5 minutes renders absent. Aggregations fold
+ * ACROSS the per-series looked-back values. Final CTE is named `Metrics`;
+ * exposes LastValue + label columns.
+ *
+ * RAW lookback path: after the per-(SeriesHash, TimeUnix) transport-retry
+ * collapse, each sample is fanned (ARRAY JOIN) to every display bucket whose
+ * trailing window contains it: window ends E·bucket with E in
+ * [ceil(t/bucket), ceil((t+300s)/bucket) − 1] — i.e. t ∈ (end−300s, end].
+ * argMax per (series, display bucket) then picks the newest sample of each
+ * window, and HAVING argMax(TsIsMarker, TimeUnix) = 0 applies the marker
+ * kill. For bucket ≥ 300s each sample feeds at most one bucket (exactly one
+ * at bucket = 300s, where the window IS the bucket — bit-identical to the
+ * old bucket-scoped shape); at 60s buckets each sample feeds five. The scan
+ * must be padded by the lookback (see LEVEL_LOOKBACK_SECONDS at the
+ * callsite); over-scan fans into pre-window buckets and is trimmed by the
+ * outer display-window WHERE. Bucket labels are epoch-second arithmetic
+ * (UTC-anchored) — identical to toStartOfInterval for the second-scale
+ * granularity ladder; day-scale buckets assume a UTC server, like the rest
+ * of the epoch math here.
  */
 export const gaugeCtesV2 = ({
   fast,
@@ -260,6 +321,7 @@ export const gaugeCtesV2 = ({
   timeBucketCol,
   bucketValueExpr,
   dropStaleBuckets,
+  levelLookback,
 }: {
   fast?: boolean;
   needs: SeriesNeeds;
@@ -275,17 +337,49 @@ export const gaugeCtesV2 = ({
    * which consumes every deduped row and needs markers filtered out
    * entirely). */
   dropStaleBuckets: boolean;
-}): WithClauses => [
-  {
-    // Same-timestamp duplicates collapse to max(Value) per (series, ts)
-    // before the per-bucket pick — deterministic instead of an argMax tie.
-    // Marker rows are excluded from the value pick (maxIf / Rule-6 WHERE);
-    // in the staleness-aware variant a timestamp where ALL rows are markers
-    // survives dedup (TsIsMarker=1, ValueMax defaults to 0 but can only be
-    // picked if newest — and then the HAVING drops the whole bucket row).
-    name: 'Bucketed',
-    sql: dropStaleBuckets
-      ? chSql`
+  /** The 5m-lookback fan-out (the default LEVEL semantics). Only valid with
+   * `dropStaleBuckets` (the last-value pick shape — the isDelta path
+   * consumes every deduped row and keeps the bucket-scoped shape). Omitted
+   * when the display bucket width cannot be resolved. */
+  levelLookback?: LevelLookbackBucket;
+}): WithClauses => {
+  const lb = levelLookback ? levelBucketSql(levelLookback) : undefined;
+  return [
+    {
+      // Same-timestamp duplicates collapse to max(Value) per (series, ts)
+      // before the per-bucket pick — deterministic instead of an argMax tie.
+      // Marker rows are excluded from the value pick (maxIf / Rule-6 WHERE);
+      // in the staleness-aware variants a timestamp where ALL rows are markers
+      // survives dedup (TsIsMarker=1, ValueMax defaults to 0 but can only be
+      // picked if newest — and then the HAVING drops the whole bucket row).
+      // Markers must be SCANNED (no Rule-6 WHERE) so they can kill.
+      name: 'Bucketed',
+      sql: lb
+        ? chSql`
+      SELECT
+        \`${timeBucketCol}\`,
+        SeriesHash AS AttributesHash,
+        argMax(ValueMax, TimeUnix) AS LastValue
+      FROM (
+        SELECT
+          MetricName,
+          SeriesHash,
+          TimeUnix,
+          maxIf(Value, ${NOT_STALENESS_MARKER}) AS ValueMax,
+          min(bitAnd(Flags, 1)) AS TsIsMarker
+        FROM ${pointsFrom}
+        WHERE ${pointsWhere}${seriesScanFilter(fast)}
+        GROUP BY MetricName, SeriesHash, TimeUnix
+      )
+      ARRAY JOIN arrayMap(
+        n -> toDateTime((intDiv(toUnixTimestamp64Milli(TimeUnix) + ${lb.bmsMinus1}, ${lb.bms}) + toInt64(n) - 1) * ${lb.bs}),
+        range(toUInt64(greatest(intDiv(toUnixTimestamp64Milli(TimeUnix) + ${String(LEVEL_LOOKBACK_SECONDS * 1000 - 1)}, ${lb.bms}) - intDiv(toUnixTimestamp64Milli(TimeUnix) + ${lb.bmsMinus1}, ${lb.bms}) + 1, 0)))
+      ) AS \`${timeBucketCol}\`
+      GROUP BY SeriesHash, \`${timeBucketCol}\`
+      HAVING argMax(TsIsMarker, TimeUnix) = 0
+    `
+        : dropStaleBuckets
+          ? chSql`
       SELECT
         ${timeExpr},
         SeriesHash AS AttributesHash,
@@ -304,7 +398,7 @@ export const gaugeCtesV2 = ({
       GROUP BY SeriesHash, \`${timeBucketCol}\`
       HAVING argMax(TsIsMarker, TimeUnix) = 0
     `
-      : chSql`
+          : chSql`
       SELECT
         ${timeExpr},
         SeriesHash AS AttributesHash,
@@ -317,10 +411,10 @@ export const gaugeCtesV2 = ({
       )
       GROUP BY SeriesHash, \`${timeBucketCol}\`
     `,
-  },
-  {
-    name: 'Metrics',
-    sql: chSql`
+    },
+    {
+      name: 'Metrics',
+      sql: chSql`
       SELECT
         b.\`${timeBucketCol}\` AS \`${timeBucketCol}\`,
         b.AttributesHash AS AttributesHash,
@@ -332,8 +426,9 @@ export const gaugeCtesV2 = ({
       INNER JOIN Series AS s ON b.AttributesHash = s.SeriesHash`
       }
     `,
-  },
-];
+    },
+  ];
+};
 
 /**
  * Sum (counter): per-point window pass computes both the cumulative-counter
@@ -353,6 +448,7 @@ export const sumCtesV2 = ({
   timeExpr,
   timeBucketCol,
   rateDivisor,
+  startTimeLookbackSeconds,
 }: {
   fast?: { temporality: 'delta' | 'cumulative'; isMonotonic?: boolean };
   /** Temporality/monotonicity resolved from the series profile WITHOUT the
@@ -368,6 +464,22 @@ export const sumCtesV2 = ({
   /** DISPLAY bucket width in seconds as a SQL expression — a resolved
    * constant, or `$__interval_s` in template mode. */
   rateDivisor: string;
+  /** StartTime-aware first-sample credit (monotonic cumulative only). Per
+   * the OTLP contract a cumulative sample's Value is the accumulation since
+   * its StartTimeUnix, so when StartTimeUnix shows the series began recently
+   * — within the scan lookback of the sample itself — the full Value IS the
+   * increase and is credited instead of the unconditional first-sample NULL.
+   * Pass the SAME lookback seconds the cumulative chain already scans back
+   * (the per-sample gate deliberately bounds the credited accumulation span
+   * by the lookback — the span the lag chain already tolerates between
+   * samples — instead of scaling it with the panel window). This is exactly
+   * the temporality-flip transition (the flip mints a new series identity
+   * whose first sample carries StartTimeUnix = the previous delta sample's
+   * timestamp) and the churn birth (first sample value 0 — crediting it
+   * changes nothing); a series merely ENTERING the scan keeps NULL, its
+   * StartTimeUnix predates the gate window. Undefined disables the gate
+   * (defensive — every cumulative-capable caller has a lookback). */
+  startTimeLookbackSeconds?: number;
 }): WithClauses => {
   const temporality = fast?.temporality ?? resolved?.temporality;
   const isMonotonic = fast != null ? fast.isMonotonic : resolved?.isMonotonic;
@@ -375,6 +487,10 @@ export const sumCtesV2 = ({
   const needCumMono = needCum && isMonotonic !== false;
   const needCumNonMono = needCum && isMonotonic !== true;
   const needDelta = temporality !== 'cumulative';
+  const startGateSeconds =
+    needCumMono && startTimeLookbackSeconds != null
+      ? Math.ceil(startTimeLookbackSeconds)
+      : undefined;
   const rateExpr =
     temporality === 'delta'
       ? 'b.RateIfDelta'
@@ -409,13 +525,16 @@ export const sumCtesV2 = ({
       // The GROUP BY streams in primary-key order
       // (MetricName, SeriesHash, TimeUnix).
       //
-      // On the first row of each series partition lagInFrame returns NULL and
-      // the row contributes nothing to the bucket-level sum(). Monotonic
-      // counter resets use Prometheus semantics per the v2 cookbook
-      // (§5.8/§5.9): a decrease means the counter restarted, so the full
-      // post-reset value counts as the increase (rather than v1's clamp-to-0).
-      // Non-monotonic cumulative sums (UpDownCounters) legitimately decrease,
-      // so their rate is the plain (possibly negative) difference.
+      // On the first row of each series partition lagInFrame returns NULL —
+      // the row contributes nothing to the bucket-level sum() UNLESS the
+      // sample's own StartTimeUnix declares a recent series start (within the
+      // scan lookback of the sample), in which case the full Value is the
+      // increase (see startTimeLookbackSeconds). Monotonic counter resets use
+      // Prometheus semantics per the v2 cookbook (§5.8/§5.9): a decrease
+      // means the counter restarted, so the full post-reset value counts as
+      // the increase (rather than v1's clamp-to-0). Non-monotonic cumulative
+      // sums (UpDownCounters) legitimately decrease, so their rate is the
+      // plain (possibly negative) difference.
       name: 'Source',
       sql: chSql`
       SELECT
@@ -429,7 +548,11 @@ export const sumCtesV2 = ({
           needCumMono
             ? `,
         multiIf(
-          PrevValue IS NULL, NULL,
+          PrevValue IS NULL, ${
+            startGateSeconds != null
+              ? `IF(StartTimeUnix >= TimeUnix - INTERVAL ${startGateSeconds} second, ValueMax, NULL)`
+              : 'NULL'
+          },
           ValueMax >= PrevValue, ValueMax - PrevValue,
           ValueMax
         ) AS RateIfCumulative`
@@ -450,7 +573,14 @@ export const sumCtesV2 = ({
           MetricName,
           SeriesHash,
           TimeUnix,
-          max(Value) AS ValueMax
+          max(Value) AS ValueMax${
+            // duplicates are byte-identical re-sends, so any pick agrees;
+            // max is deterministic under merges
+            startGateSeconds != null
+              ? `,
+          max(StartTimeUnix) AS StartTimeUnix`
+              : ''
+          }
         FROM ${pointsFrom}
         WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
         GROUP BY MetricName, SeriesHash, TimeUnix
@@ -506,10 +636,28 @@ export const sumCtesV2 = ({
 };
 
 /**
- * Gauge over a rollup tier (5m/1h AggregatingMergeTree): per-series last
- * value in each display bucket via argMaxMerge(Last) — identical semantics
- * to last_value(Value) on raw points. `timeExpr` must bucket the tier's
- * TimeBucket column.
+ * Gauge-class LEVEL shape over a rollup tier (5m/1h AggregatingMergeTree),
+ * under the default 5m instant lookback. Tier reads stay pre-aggregated —
+ * no fan-out. Two branches:
+ *
+ * - Display bucket == tier bucket: the trailing lookback window of display
+ *   bucket b is (b, b+300s], which for the 5m tier covers EXACTLY tier
+ *   bucket b — so argMaxMerge(Last) of the OWN tier bucket IS the lookback
+ *   evaluation (exact: lookback == tier width). For the 1h tier the window
+ *   is only the trailing 5m of the tier bucket, and the Last state — which
+ *   carries no within-bucket timestamp — is the documented stand-in: exact
+ *   whenever a series' newest sample of the hour lands in its trailing 5
+ *   minutes (true for every ≤5m-cadence series).
+ * - Display bucket COARSER than the tier: only the LAST tier bucket of each
+ *   display bucket sits inside the trailing lookback window (window end ==
+ *   display bucket end == that tier bucket's end); every other tier row is
+ *   invisible to every evaluation and is filtered out, then re-labeled to
+ *   its display bucket start.
+ *
+ * Marker residual, both branches: tier rows are marker-free by construction
+ * (the MV filters at insert), so a marker PRECEDED by same-tier-bucket real
+ * samples of the same series cannot kill the state. Display buckets FINER
+ * than the tier are unsupported on tiers — the router keeps them on raw.
  */
 export const gaugeRollupCtesV2 = ({
   fast,
@@ -518,6 +666,8 @@ export const gaugeRollupCtesV2 = ({
   rollupWhere,
   timeExpr,
   timeBucketCol,
+  bucketSeconds,
+  tierSeconds,
 }: {
   fast?: boolean;
   needs: SeriesNeeds;
@@ -525,10 +675,25 @@ export const gaugeRollupCtesV2 = ({
   rollupWhere: TemplatedInput;
   timeExpr: TemplatedInput;
   timeBucketCol: string;
+  /** Display bucket width; drives the branch pick (== tier vs coarser). */
+  bucketSeconds: number;
+  /** The routed tier's width (300 or 3600). */
+  tierSeconds: number;
 }): WithClauses => [
   {
     name: 'Bucketed',
-    sql: chSql`
+    sql:
+      bucketSeconds > tierSeconds
+        ? chSql`
+      SELECT
+        toDateTime(toUnixTimestamp(TimeBucket) - ${String(bucketSeconds - tierSeconds)}) AS \`${timeBucketCol}\`,
+        SeriesHash AS AttributesHash,
+        argMaxMerge(Last) AS LastValue
+      FROM ${rollupFrom}
+      WHERE ${rollupWhere}${seriesScanFilter(fast)} AND ((toUnixTimestamp(TimeBucket) + ${String(tierSeconds)}) % ${String(bucketSeconds)}) = 0
+      GROUP BY SeriesHash, \`${timeBucketCol}\`
+    `
+        : chSql`
       SELECT
         ${timeExpr},
         SeriesHash AS AttributesHash,
@@ -561,11 +726,28 @@ export const gaugeRollupCtesV2 = ({
  * max, chain buckets per series with reset detection (a drop between buckets
  * means the counter restarted: count F fully; the stored Max recovers resets
  * INSIDE a bucket), then re-bucket to the display granularity. For delta
- * temporality the rollup Sum column is exact for once-delivered points;
- * transport retries that evade the exporter's insert-dedup token are baked
- * into the summed MV states and cannot be query-deduped here (the raw path
- * dedups per (SeriesHash, TimeUnix) at query time) — fixable only by
- * request-scoped dedup at the exporter.
+ * temporality the rollup Sum column is exact for once-delivered points
+ * (late transport retries are dropped at insert by the exporter's
+ * deterministic dedup token + widened deduplication windows).
+ *
+ * First-sample credit on tiers (the same rule as the raw path's
+ * StartTimeUnix gate, expressed with the signals rollups actually store):
+ * a new identity's first tier bucket has prevL IS NULL, and its F — the
+ * identity's first sample — used to enter the chain only as a baseline,
+ * dropping F's own accumulation. Tier states carry no StartTimeUnix, so the
+ * recency gate is approximated by the series table's FirstSeen:
+ * prevL IS NULL AND FirstSeen >= TimeBucket means this tier bucket CONTAINS
+ * the identity's first-ever sample (its birth bucket) — credit F in full, on
+ * top of the within-bucket part. A series merely entering the scan keeps the
+ * baseline behavior (FirstSeen predates the bucket). Caveats:
+ * (a) FirstSeen cannot verify that F's declared StartTime was recent — an
+ * identity born with an ancient StartTime (a counter already running for
+ * days when first scraped) is credited here but refused by the raw path's
+ * StartTimeUnix gate; (b) FirstSeen is min() over the scanned Date range
+ * only, so an identity silent since before the scan's first day could
+ * masquerade as newborn if its first in-range sample lands in a displayed
+ * prevL-IS-NULL bucket (needs a > lookback silence straddling BOTH the scan
+ * start and a date boundary).
  */
 export const sumRollupCtesV2 = ({
   fast,
@@ -638,10 +820,22 @@ export const sumRollupCtesV2 = ({
     `,
     },
     {
+      // The birth-bucket gate needs the series table's FirstSeen next to the
+      // window chain, so the monotonic-cumulative variants join Series INTO
+      // Chained (1:1 per SeriesHash: the window partitions are unaffected).
+      // Shapes without that variant keep the plain pass-through. NOTE: the
+      // whole-metric fast path also carries this join — the caller includes
+      // the Series CTE whenever the monotonic-cumulative rollup shape is
+      // emitted (see renderChartConfig).
       name: 'Chained',
       sql: chSql`
       SELECT
-        *${
+        ${
+          needCumMono
+            ? `src.*,
+        s.FirstSeen AS FirstSeen`
+            : '*'
+        }${
           needCum
             ? `,
         any(toNullable(L)) OVER (
@@ -653,8 +847,8 @@ export const sumRollupCtesV2 = ({
         }${
           needCumMono
             ? `,
-        ${'' /* cross-bucket part (reset between buckets: count F fully) + within-bucket part. The tier's stored Max detects a reset INSIDE the bucket (Max > L means some sample exceeded the final one, i.e. the counter restarted mid-bucket) and recovers the pre-reset climb: (Max - F) + L. Keying detection on Max rather than L < F also counts resets whose post-reset accumulation re-crosses F. Residual: 2+ resets inside ONE tier bucket still undercount (the climb between them is invisible to First/Last/Max) — the raw path remains exact. The histogram/exp tier COUNT chains have no Max-of-Count column, so mid-bucket resets stay a raw-path-only guarantee there (tier quantiles are rank-insensitive to the loss). */}
-        IF(prevL IS NULL, 0, IF(F >= prevL, F - prevL, F)) + IF(L >= MaxV, L - F, (MaxV - F) + L) AS IncIfCumulative`
+        ${'' /* cross-bucket part (reset between buckets: count F fully; birth bucket: the FirstSeen gate credits F when the series table says the identity was born inside this bucket) + within-bucket part. The tier's stored Max detects a reset INSIDE the bucket (Max > L means some sample exceeded the final one, i.e. the counter restarted mid-bucket) and recovers the pre-reset climb: (Max - F) + L. Keying detection on Max rather than L < F also counts resets whose post-reset accumulation re-crosses F. Residual: 2+ resets inside ONE tier bucket still undercount (the climb between them is invisible to First/Last/Max) — the raw path remains exact. The histogram/exp tier COUNT chains have no Max-of-Count column, so mid-bucket resets stay a raw-path-only guarantee there (tier quantiles are rank-insensitive to the loss). */}
+        IF(prevL IS NULL, IF(FirstSeen >= TimeBucket, F, 0), IF(F >= prevL, F - prevL, F)) + IF(L >= MaxV, L - F, (MaxV - F) + L) AS IncIfCumulative`
             : ''
         }${
           needCumNonMono
@@ -671,7 +865,12 @@ export const sumRollupCtesV2 = ({
         ) AS RunningSumIfDelta`
             : ''
         }
-      FROM Source
+      FROM ${
+        needCumMono
+          ? `Source AS src
+      INNER JOIN Series AS s ON src.AttributesHash = s.SeriesHash`
+          : 'Source'
+      }
     `,
     },
     {
@@ -982,7 +1181,8 @@ const deltaExpCtes = ({
         any(Scale) AS Scale,
         argMax((PositiveBucketCounts, PositiveOffset), Count) AS tpl,
         argMax((NegativeBucketCounts, NegativeOffset), Count) AS ntpl,
-        max(toInt64(ZeroCount)) AS zero_count
+        max(toInt64(ZeroCount)) AS zero_count,
+        max(ZeroThreshold) AS zt
       FROM ${pointsFrom}
       WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
       GROUP BY SeriesHash, TimeUnix
@@ -997,7 +1197,8 @@ const deltaExpCtes = ({
         Scale AS scale,
         sumMap(${expTupleToMap('tpl')}) AS pos,
         sumMap(${expTupleToMap('ntpl')}) AS neg,
-        sum(zero_count) AS zero
+        sum(zero_count) AS zero,
+        max(zt) AS zt
       FROM ExpRaw
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
     `,
@@ -1025,6 +1226,7 @@ const cumulativeExpCtes = ({
         tpl,
         zero_count,
         total_count,
+        zt,
         any(tpl) OVER w AS prev_tpl,
         any(ntpl) OVER w AS prev_ntpl,
         any(Scale) OVER w AS prev_scale,
@@ -1075,7 +1277,8 @@ const cumulativeExpCtes = ({
           argMax((PositiveBucketCounts, PositiveOffset), Count) AS tpl,
           argMax((NegativeBucketCounts, NegativeOffset), Count) AS ntpl,
           max(toInt64(ZeroCount)) AS zero_count,
-          max(toInt64(Count)) AS total_count
+          max(toInt64(Count)) AS total_count,
+          max(ZeroThreshold) AS zt
         FROM ${pointsFrom}
         WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
         GROUP BY SeriesHash, TimeUnix
@@ -1095,7 +1298,8 @@ const cumulativeExpCtes = ({
         eff_scale AS scale,
         sumMap(pos_if_cum) AS pos,
         sumMap(neg_if_cum) AS neg,
-        sum(zero_if_cum) AS zero
+        sum(zero_if_cum) AS zero,
+        max(zt) AS zt
       FROM ExpRaw
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, eff_scale
     `,
@@ -1127,6 +1331,7 @@ const dualExpCtes = ({
         negMap,
         zero_count,
         total_count,
+        zt,
         any(posMap) OVER w AS prev_posMap,
         any(negMap) OVER w AS prev_negMap,
         any(Scale) OVER w AS prev_scale,
@@ -1188,7 +1393,8 @@ const dualExpCtes = ({
             Count
           ) AS negMap,
           max(toInt64(ZeroCount)) AS zero_count,
-          max(toInt64(Count)) AS total_count
+          max(toInt64(Count)) AS total_count,
+          max(ZeroThreshold) AS zt
         FROM ${pointsFrom}
         WHERE ${pointsWhere} AND ${SERIES_HASH_FILTER} AND ${NOT_STALENESS_MARKER}
         GROUP BY SeriesHash, TimeUnix
@@ -1213,7 +1419,8 @@ const dualExpCtes = ({
         sumMap(negMap) AS neg_if_delta,
         sumMap(neg_if_cum) AS neg_if_cum,
         sum(zero_count) AS zero_if_delta,
-        sum(zero_if_cum) AS zero_if_cum
+        sum(zero_if_cum) AS zero_if_cum,
+        max(zt) AS zt
       FROM ExpRaw
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale, eff_scale
     `,
@@ -1283,7 +1490,8 @@ const expHistogramQuantileCtesV2 = ({
         p.scale AS scale,
         p.pos AS chosenMap,
         p.neg AS chosenNegMap,
-        p.zero AS chosenZero
+        p.zero AS chosenZero,
+        p.zt AS zt
       FROM ExpPerSeries AS p${
         fast
           ? ''
@@ -1298,7 +1506,8 @@ const expHistogramQuantileCtesV2 = ({
         IF(s.Temporality = 'delta', p.scale_if_delta, p.scale_if_cum) AS scale,
         IF(s.Temporality = 'delta', p.pos_if_delta, p.pos_if_cum) AS chosenMap,
         IF(s.Temporality = 'delta', p.neg_if_delta, p.neg_if_cum) AS chosenNegMap,
-        IF(s.Temporality = 'delta', p.zero_if_delta, p.zero_if_cum) AS chosenZero
+        IF(s.Temporality = 'delta', p.zero_if_delta, p.zero_if_cum) AS chosenZero,
+        p.zt AS zt
       FROM ExpPerSeries AS p
       INNER JOIN Series AS s ON p.SeriesHash = s.SeriesHash
     `,
@@ -1316,7 +1525,15 @@ const expHistogramQuantileCtesV2 = ({
  *   1. negative buckets, most-negative first (negative index k holds
  *      observations in [-base^(k+1), -base^k), so ascending VALUE order is
  *      DESCENDING index order — the merged arrays are reversed);
- *   2. the zero bucket (a rank inside it resolves to 0);
+ *   2. the zero bucket — LINEAR interpolation inside [lo, zeroWidth] with the
+ *      natural lower bound lo = -zeroWidth iff negatives were observed, else 0
+ *      (Prometheus promql/quantile.go zero-bucket semantics; zeroWidth is the
+ *      max OTLP ZeroThreshold plumbed through the per-series chains). With
+ *      zeroWidth = 0 — the SDK default and every producer that never declares
+ *      a width — the arm returns exactly 0., bit-identical to the previous
+ *      hardcoded arm. The arm divides by zeroTotal and is only reachable when
+ *      zeroTotal > 0 (the preceding negative arms and the total > 0 guard
+ *      cover the rest), so keep the multiIf arm ORDER exactly as written;
  *   3. positive buckets ascending, interpolated within (base^k, base^(k+1)].
  * In-bucket interpolation is EXPONENTIAL, matching Prometheus 3.x
  * histogram_quantile on native histograms (measured: linear drifted +0.08%
@@ -1361,7 +1578,8 @@ const expQuantileTailCtes = ({
           arrayMap(k -> toInt64(floor(k / exp2(scale - minScale))), mapKeys(chosenNegMap)),
           arrayMap(v -> toInt64(v), mapValues(chosenNegMap))
         ) AS mergedNeg,
-        sum(toInt64(chosenZero)) AS zeroTotal
+        sum(toInt64(chosenZero)) AS zeroTotal,
+        max(zt) AS zeroWidth
       FROM ExpScaled
       GROUP BY \`__hdx_time_bucket\`, ${groupBy ? 'group, ' : ''}minScale
     `,
@@ -1388,7 +1606,10 @@ const expQuantileTailCtes = ({
           negTotal > 0 AND rank <= negTotal AND nidx = 0, -pow(base, nks[length(nks)]), ${'' /* numeric edge: rank at the top of the negative region */}
           negTotal > 0 AND rank <= negTotal AND nvs[nidx] = 0, -pow(base, nks[nidx] + 1),
           negTotal > 0 AND rank <= negTotal, -pow(base, nks[nidx] + 1 - ((rank - if(nidx = 1, 0, ncum[nidx - 1])) / nvs[nidx])),
-          rank <= negTotal + zeroTotal, 0.,
+          rank <= negTotal + zeroTotal,
+            if(negTotal > 0, -zeroWidth, 0.)
+            + (zeroWidth - if(negTotal > 0, -zeroWidth, 0.))
+              * ((rank - negTotal) / zeroTotal),
           idx = 0, pow(base, ks[length(ks)] + 1), ${'' /* numeric edge: rank past the last bucket */}
           vs[idx] = 0, pow(base, ks[idx]),
           pow(base, ks[idx] + ((rank - (negTotal + zeroTotal + if(idx = 1, 0, cum[idx - 1]))) / vs[idx]))
@@ -1469,7 +1690,8 @@ const expTierCte = ({
       argMaxMerge(Last) AS l,
       sumMap(SumPositive) AS pos_delta,
       sumMap(SumNegative) AS neg_delta,
-      sum(SumZeroCount) AS zero_delta
+      sum(SumZeroCount) AS zero_delta,
+      max(ZeroThreshold) AS zt
     FROM ${pointsFrom}
     WHERE ${pointsWhere}${seriesScanFilter(fast)}
     GROUP BY SeriesHash, TimeBucket, Scale
@@ -1495,6 +1717,7 @@ const expChainedCte = (): WithClauses[number] => ({
       pos_delta,
       neg_delta,
       zero_delta,
+      zt,
       tupleElement(f, 'PositiveBuckets') AS fPos,
       tupleElement(l, 'PositiveBuckets') AS lPos,
       tupleElement(f, 'NegativeBuckets') AS fNeg,
@@ -1586,7 +1809,8 @@ const expHistogramRollupQuantileCtesV2 = ({
         Scale AS scale,
         sumMap(SumPositive) AS pos,
         sumMap(SumNegative) AS neg,
-        sum(SumZeroCount) AS zero
+        sum(SumZeroCount) AS zero,
+        max(ZeroThreshold) AS zt
       FROM ${pointsFrom}
       WHERE ${pointsWhere}${seriesScanFilter(fast)}
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
@@ -1606,7 +1830,8 @@ const expHistogramRollupQuantileCtesV2 = ({
         Scale AS scale,
         sumMap(pos_inc_cum) AS pos,
         sumMap(neg_inc_cum) AS neg,
-        sum(zero_inc_cum) AS zero
+        sum(zero_inc_cum) AS zero,
+        max(zt) AS zt
       FROM ExpChained
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
     `,
@@ -1627,7 +1852,8 @@ const expHistogramRollupQuantileCtesV2 = ({
         sum(zero_delta) AS zero_if_delta,
         sumMap(pos_inc_cum) AS pos_if_cum,
         sumMap(neg_inc_cum) AS neg_if_cum,
-        sum(zero_inc_cum) AS zero_if_cum
+        sum(zero_inc_cum) AS zero_if_cum,
+        max(zt) AS zt
       FROM ExpChained
       GROUP BY SeriesHash, \`__hdx_time_bucket\`, Scale
     `,
@@ -1644,7 +1870,8 @@ const expHistogramRollupQuantileCtesV2 = ({
         p.scale AS scale,
         p.pos AS chosenMap,
         p.neg AS chosenNegMap,
-        p.zero AS chosenZero
+        p.zero AS chosenZero,
+        p.zt AS zt
       FROM ExpPerSeries AS p${
         fast
           ? ''
@@ -1659,7 +1886,8 @@ const expHistogramRollupQuantileCtesV2 = ({
         p.scale AS scale,
         IF(s.Temporality = 'delta', CAST(p.pos_if_delta, 'Map(Int32, Int64)'), p.pos_if_cum) AS chosenMap,
         IF(s.Temporality = 'delta', CAST(p.neg_if_delta, 'Map(Int32, Int64)'), p.neg_if_cum) AS chosenNegMap,
-        IF(s.Temporality = 'delta', toInt64(p.zero_if_delta), p.zero_if_cum) AS chosenZero
+        IF(s.Temporality = 'delta', toInt64(p.zero_if_delta), p.zero_if_cum) AS chosenZero,
+        p.zt AS zt
       FROM ExpPerSeries AS p
       INNER JOIN Series AS s ON p.SeriesHash = s.SeriesHash
     `,

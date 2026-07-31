@@ -1111,8 +1111,10 @@ describe('metrics v2 render', () => {
       expect(cum).toContain('chosenNegMap');
       // ascending-VALUE order over negative indices = descending index order
       expect(cum).toContain('arrayReverse(mergedNeg.1) AS nks');
-      // rank inside the zero bucket resolves to 0
-      expect(cum).toContain('rank <= negTotal + zeroTotal, 0.');
+      // rank inside the zero bucket interpolates inside [lo, zeroWidth]
+      // (fix #5) — the hardcoded-0 arm is gone
+      expect(cum).toContain('if(negTotal > 0, -zeroWidth, 0.)');
+      expect(cum).not.toContain('rank <= negTotal + zeroTotal, 0.');
       // in-bucket interpolation is EXPONENTIAL (Prometheus 3.x native
       // histogram semantics): positive base^(k + frac), negative
       // -base^(k + 1 - frac) — never the linear lo + (hi - lo) * frac
@@ -1252,6 +1254,496 @@ describe('metrics v2 render', () => {
       expect(rendered).not.toContain('_5m');
       expect(rendered).not.toContain('_1h');
       expect(rendered).toContain('sum_inc_cum'); // Sum/Count increase ratio
+    });
+  });
+
+  describe('recipe fixes #5 (zero-bucket interpolation) + #6 (first-sample credit)', () => {
+    const expQuantileCfg = (
+      temporality: 'delta' | 'cumulative' | undefined,
+      over?: Record<string, unknown>,
+    ) => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue(
+        temporality == null ? {} : { temporality, otherMetricTypes: [] },
+      );
+      return {
+        ...base,
+        ...quantileWindow,
+        metricTables: {
+          ...base.metricTables,
+          expHistogramPoints: 'otel_metrics_exp_histogram_points',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.5,
+            aggCondition: '',
+            valueExpression: 'Value',
+            metricName: 'test.exp.duration',
+            metricType: MetricsDataType.ExponentialHistogram,
+          },
+        ],
+        ...over,
+      } as ChartConfigWithOptDateRange;
+    };
+    // Prometheus zero-bucket semantics: a rank inside the zero bucket
+    // (|value| <= ZeroThreshold) interpolates linearly inside
+    // [lo, zeroWidth], lo = -zeroWidth iff negatives were observed, else 0.
+    // The old arm returned a hardcoded 0 — a total miss for producers with
+    // a non-default ZeroThreshold (rel error 1.0 measured on the parity
+    // harness's zt = 1e-3 witness).
+    const ZERO_ARM =
+      'rank <= negTotal + zeroTotal,\n            if(negTotal > 0, -zeroWidth, 0.)';
+
+    it('exp raw quantiles plumb ZeroThreshold into the zero-bucket arm (all three temporality shapes)', async () => {
+      for (const temporality of ['delta', 'cumulative', undefined] as const) {
+        const rendered = parameterizedQueryToSql(
+          await renderChartConfig(
+            expQuantileCfg(temporality),
+            mockMetadata,
+            undefined,
+          ),
+        );
+        expect(rendered).toContain('max(ZeroThreshold) AS zt');
+        expect(rendered).toContain('p.zt AS zt');
+        expect(rendered).toContain('max(zt) AS zeroWidth');
+        expect(rendered).toContain(ZERO_ARM);
+        expect(rendered).not.toContain('rank <= negTotal + zeroTotal, 0.');
+      }
+    });
+
+    it('exp rollup quantiles read the tier ZeroThreshold column', async () => {
+      const rollupCfg = (temporality: 'delta' | 'cumulative' | undefined) =>
+        expQuantileCfg(temporality, {
+          dateRange: base.dateRange, // 24h window
+          metricTables: {
+            ...base.metricTables,
+            expHistogramPoints: 'otel_metrics_exp_histogram_points',
+            expHistogramPoints5m: 'otel_metrics_exp_histogram_points_5m',
+          },
+          granularity: '30 minute',
+        });
+      for (const temporality of ['delta', 'cumulative', undefined] as const) {
+        const rendered = parameterizedQueryToSql(
+          await renderChartConfig(
+            rollupCfg(temporality),
+            mockMetadata,
+            undefined,
+          ),
+        );
+        expect(rendered).toContain('otel_metrics_exp_histogram_points_5m');
+        expect(rendered).toContain('max(ZeroThreshold) AS zt');
+        expect(rendered).toContain('max(zt) AS zeroWidth');
+        expect(rendered).toContain(ZERO_ARM);
+      }
+    });
+
+    it('raw cumulative sums credit a recently-started series first sample (StartTimeUnix gate)', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      // unknown scrape interval → flat 300s lookback; the gate uses the SAME
+      // lookback seconds the cumulative chain already scans back
+      let rendered = parameterizedQueryToSql(
+        await renderChartConfig(sumCfg(), mockMetadata, undefined),
+      );
+      expect(rendered).toContain('max(StartTimeUnix) AS StartTimeUnix');
+      expect(rendered).toContain(
+        'IF(StartTimeUnix >= TimeUnix - INTERVAL 300 second, ValueMax, NULL)',
+      );
+
+      // known 60s interval → the 121s padded lookback drives the gate too
+      (
+        mockMetadata.getMetricScrapeIntervalEstimate as jest.Mock
+      ).mockResolvedValue({
+        intervalSeconds: 60,
+        maxIntervalSeconds: 60,
+        uncertain: false,
+      });
+      rendered = parameterizedQueryToSql(
+        await renderChartConfig(sumCfg(), mockMetadata, undefined),
+      );
+      expect(rendered).toContain(
+        'IF(StartTimeUnix >= TimeUnix - INTERVAL 121 second, ValueMax, NULL)',
+      );
+
+      // delta reads no previous sample and must not read StartTimeUnix
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        otherMetricTypes: [],
+      });
+      const delta = parameterizedQueryToSql(
+        await renderChartConfig(sumCfg(), mockMetadata, undefined),
+      );
+      expect(delta).not.toContain('StartTimeUnix');
+    });
+
+    it('rollup cumulative sums credit the birth bucket via the series-table FirstSeen', async () => {
+      const rollupSumCfg = () =>
+        sumCfg({
+          metricTables: { ...base.metricTables, points1h: 'points_1h' },
+          granularity: '1 day',
+          dateRange: [
+            new Date('2025-02-06T00:00:00Z'),
+            new Date('2025-02-13T00:00:00Z'),
+          ],
+        });
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      const cum = parameterizedQueryToSql(
+        await renderChartConfig(rollupSumCfg(), mockMetadata, undefined),
+      );
+      // min, not any: FirstSeen is a SimpleAggregateFunction(min) partial
+      expect(cum).toContain('min(FirstSeen) AS FirstSeen');
+      expect(cum).toContain('s.FirstSeen AS FirstSeen');
+      expect(cum).toContain(
+        'IF(prevL IS NULL, IF(FirstSeen >= TimeBucket, F, 0), IF(F >= prevL, F - prevL, F)) + IF(L >= MaxV, L - F, (MaxV - F) + L)',
+      );
+      expect(cum).toContain(
+        'INNER JOIN Series AS s ON src.AttributesHash = s.SeriesHash',
+      );
+
+      // delta tiers read exact per-bucket sums — no chain, no gate
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        otherMetricTypes: [],
+      });
+      const delta = parameterizedQueryToSql(
+        await renderChartConfig(rollupSumCfg(), mockMetadata, undefined),
+      );
+      expect(delta).not.toContain('FirstSeen');
+
+      // UpDownCounters (non-monotonic) keep the plain level diff — no gate
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: false,
+        otherMetricTypes: [],
+      });
+      const nonMono = parameterizedQueryToSql(
+        await renderChartConfig(rollupSumCfg(), mockMetadata, undefined),
+      );
+      expect(nonMono).not.toContain('FirstSeen');
+    });
+
+    it('whole-metric fast path keeps the Series CTE ONLY for the rollup FirstSeen join', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      const fastCfg = (over?: Record<string, unknown>) =>
+        sumCfg({ where: '', ...over });
+      // fast rollup: the Series CTE exists solely for the FirstSeen join —
+      // the scan filter and label join stay dropped
+      const rollup = parameterizedQueryToSql(
+        await renderChartConfig(
+          fastCfg({
+            metricTables: { ...base.metricTables, points1h: 'points_1h' },
+            granularity: '1 day',
+            dateRange: [
+              new Date('2025-02-06T00:00:00Z'),
+              new Date('2025-02-13T00:00:00Z'),
+            ],
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rollup).toMatch(/[^a-zA-Z]Series AS \(/);
+      expect(rollup).toContain(
+        'INNER JOIN Series AS s ON src.AttributesHash = s.SeriesHash',
+      );
+      expect(rollup).not.toContain('SeriesHash IN');
+      // fast raw: the StartTimeUnix gate is join-free — no Series CTE
+      const raw = parameterizedQueryToSql(
+        await renderChartConfig(fastCfg(), mockMetadata, undefined),
+      );
+      expect(raw).not.toMatch(/[^a-zA-Z]Series AS \(/);
+      expect(raw).toContain(
+        'IF(StartTimeUnix >= TimeUnix - INTERVAL 300 second, ValueMax, NULL)',
+      );
+    });
+  });
+
+  describe('gauge lookback default (Prometheus 5m instant lookback for LEVEL panels)', () => {
+    const gaugeCfg = (over?: Record<string, unknown>) =>
+      ({
+        ...base,
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            valueExpression: 'Value',
+            metricName: 'test.cpu',
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+        ...over,
+      }) as ChartConfigWithOptDateRange;
+
+    it('raw gauges fan each sample to every display bucket whose trailing 5m window contains it', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(gaugeCfg(), mockMetadata, undefined),
+      );
+      // 60s buckets: window ends E·bucket with E in
+      // [ceil(t/bucket), ceil((t+300s)/bucket) − 1] — five per sample
+      expect(rendered).toContain('ARRAY JOIN arrayMap(');
+      expect(rendered).toContain('+ 59999, 60000)');
+      expect(rendered).toContain('+ 299999, 60000)');
+      // markers are SCANNED (no Rule-6 WHERE on the level scan) so the
+      // newest in-window marker kills the series — no carry past a marker
+      expect(rendered).toContain('maxIf(Value, bitAnd(Flags, 1) = 0)');
+      expect(rendered).toContain('HAVING argMax(TsIsMarker, TimeUnix) = 0');
+      expect(rendered).not.toContain('AND bitAnd(Flags, 1) = 0');
+      // the scan pads by the FIXED 300s lookback (never a function of the
+      // display bucket) plus the +1-bucket upper ceiling
+      expect(rendered).toContain('- INTERVAL 300 second');
+      expect(rendered).toContain('+ INTERVAL 1 minute');
+    });
+
+    it('at 300s buckets the trailing window IS the bucket (one fan target per sample)', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({ granularity: '5 minute' }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('ARRAY JOIN arrayMap(');
+      // bucketMs − 1 == lookbackMs − 1 == 299999: both intDiv ends coincide
+      expect(rendered).toContain('+ 299999, 300000)');
+    });
+
+    it('tier, display bucket == tier bucket: the OWN tier Last state IS the lookback evaluation', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({
+            metricTables: {
+              ...base.metricTables,
+              points5m: 'otel_metrics_points_5m',
+            },
+            granularity: '5 minute',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_points_5m');
+      expect(rendered).toContain('argMaxMerge(Last)');
+      expect(rendered).not.toContain('ARRAY JOIN');
+      // no alignment filter / re-label arithmetic on the own-bucket branch
+      expect(rendered).not.toContain('toUnixTimestamp(TimeBucket)');
+    });
+
+    it('tier, coarser display buckets: only the LAST tier bucket of each display bucket survives', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({
+            metricTables: {
+              ...base.metricTables,
+              points5m: 'otel_metrics_points_5m',
+            },
+            granularity: '15 minute',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain(
+        '((toUnixTimestamp(TimeBucket) + 300) % 900) = 0',
+      );
+      expect(rendered).toContain(
+        'toDateTime(toUnixTimestamp(TimeBucket) - 600)',
+      );
+      expect(rendered).toContain('argMaxMerge(Last)');
+    });
+
+    it('up-down LEVEL aggregates route through the lookback shape; increase/unresolved/delta stay on the sum shape', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: false,
+        otherMetricTypes: [],
+      });
+      const level = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({
+            select: [
+              {
+                aggFn: 'max',
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'system.memory.usage',
+                metricType: MetricsDataType.Sum,
+              },
+            ],
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(level).toContain('ARRAY JOIN arrayMap(');
+      expect(level).toContain('LastValue');
+      // the Series CTE keys on the PANEL's type — no gauge co-mingling
+      expect(level).toContain("MetricType = 'sum'");
+      expect(level).not.toContain('lagInFrame');
+
+      // increase is not a level — the sum shape stays
+      const increase = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({
+            select: [
+              {
+                aggFn: 'increase',
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'system.memory.usage',
+                metricType: MetricsDataType.Sum,
+              },
+            ],
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(increase).not.toContain('ARRAY JOIN');
+      expect(increase).toContain('RateIfCumulativeNonMonotonic');
+
+      // unresolved temporality: mixed level aggregates are out of the
+      // default's scope — dual sum shape
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({});
+      const unresolved = parameterizedQueryToSql(
+        await renderChartConfig(sumCfg(), mockMetadata, undefined),
+      );
+      expect(unresolved).not.toContain('ARRAY JOIN');
+      expect(unresolved).toContain('SumIfDelta');
+
+      // delta up-down levels are out of scope too
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        isMonotonic: false,
+        otherMetricTypes: [],
+      });
+      const delta = parameterizedQueryToSql(
+        await renderChartConfig(sumCfg(), mockMetadata, undefined),
+      );
+      expect(delta).not.toContain('ARRAY JOIN');
+    });
+
+    it('isDelta gauges keep the bucket-scoped shape and the unpadded scan', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({
+            select: [
+              {
+                aggFn: 'max',
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                isDelta: true,
+              },
+            ],
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).not.toContain('ARRAY JOIN');
+      expect(rendered).not.toContain('- INTERVAL 300 second');
+    });
+
+    it('template mode late-binds the fan-out bucket width to $__interval_s', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({
+            isRenderingRawSqlTemplate: true,
+            dateRange: [new Date(0), new Date(0)],
+            granularity: 'auto',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('ARRAY JOIN arrayMap(');
+      expect(rendered).toContain('($__interval_s * 1000)');
+    });
+
+    it('non-tier-multiple display buckets never route gauge-class panels to a mismatched tier', async () => {
+      const tables = {
+        ...base.metricTables,
+        points5m: 'otel_metrics_points_5m',
+        points1h: 'otel_metrics_points_1h',
+      };
+      // '90 minute' is not a 1h multiple but IS a 5m multiple — the finer
+      // tier serves it (the alignment filter needs bucket % tier == 0)
+      const ninety = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({ metricTables: tables, granularity: '90 minute' }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(ninety).toContain('otel_metrics_points_5m');
+      expect(ninety).not.toContain('otel_metrics_points_1h');
+      expect(ninety).toContain(
+        '((toUnixTimestamp(TimeBucket) + 300) % 5400) = 0',
+      );
+      // '7 minute' is a multiple of neither tier — raw fan-out (any width)
+      const seven = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({ metricTables: tables, granularity: '7 minute' }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(seven).not.toContain('otel_metrics_points_5m');
+      expect(seven).not.toContain('otel_metrics_points_1h');
+      expect(seven).toContain('ARRAY JOIN arrayMap(');
+      // monotonic sums keep the plain threshold routing (they re-bucket via
+      // toStartOfInterval — no multiplicity requirement)
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      const sum = parameterizedQueryToSql(
+        await renderChartConfig(
+          sumCfg({ metricTables: tables, granularity: '90 minute' }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(sum).toContain('otel_metrics_points_1h');
+    });
+
+    it('template mode keeps gauge-class panels on the raw fan-out even when tiers are configured', async () => {
+      // the tier branches bake conversion-time bucket constants, which a
+      // rebound $__interval_s would mislabel — raw late-binds every term
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          gaugeCfg({
+            metricTables: {
+              ...base.metricTables,
+              points5m: 'otel_metrics_points_5m',
+              points1h: 'otel_metrics_points_1h',
+            },
+            isRenderingRawSqlTemplate: true,
+            dateRange: [new Date(0), new Date(0)],
+            granularity: '15 minute',
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).not.toContain('otel_metrics_points_5m');
+      expect(rendered).not.toContain('otel_metrics_points_1h');
+      expect(rendered).toContain('ARRAY JOIN arrayMap(');
+      expect(rendered).toContain('($__interval_s * 1000)');
+      expect(rendered).not.toContain('% 900');
     });
   });
 
@@ -1442,9 +1934,12 @@ describe('metrics v2 render', () => {
         undefined,
       ),
     );
-    // avg of per-series LEVELS (Bucketed.Sum = newest sample), never the diff
-    expect(rendered).toMatch(/avg\(\s*Sum\s*\)/);
+    // avg of per-series LEVELS — routed through the gauge-class 5m-lookback
+    // shape (LastValue = newest in-window sample), never the diff
+    expect(rendered).toMatch(/avg\(\s*LastValue\s*\)/);
+    expect(rendered).toContain('ARRAY JOIN arrayMap(');
     expect(rendered).not.toMatch(/avg\(\s*Rate\s*\)/);
+    expect(rendered).not.toContain('lagInFrame');
 
     // monotonic counters keep the per-second Rate
     (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({

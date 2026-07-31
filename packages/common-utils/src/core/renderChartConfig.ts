@@ -8,6 +8,7 @@ import { Metadata } from '@/core/metadata';
 import {
   gaugeCtesV2,
   gaugeRollupCtesV2,
+  LEVEL_LOOKBACK_SECONDS,
   parseSeriesNeeds,
   seriesCteV2,
   sumCtesV2,
@@ -2645,6 +2646,32 @@ async function translateMetricChartConfigV2(
         }
       : undefined;
 
+  // Gauge-class LEVEL panels — gauges (except the synthetic isDelta shape)
+  // and resolved up-down-counter level aggregates — render under the
+  // DEFAULT Prometheus 5-minute instant lookback (see gaugeCtesV2): per
+  // display bucket, the per-series value is the newest in-window sample.
+  // The up-down level routes through the same shape because the level IS
+  // the sample value (both read the shared float points tables; the Series
+  // CTE's MetricType filter keys on the panel's type). Out of the default's
+  // scope by decision: DELTA up-down levels and MIXED-temporality level
+  // aggregates keep the bucket-scoped sum shape.
+  const LEVEL_AGG_FNS: string[] = [
+    'avg',
+    'max',
+    'min',
+    'sum',
+    'quantile',
+    'last_value',
+  ];
+  const isUpDownLevel =
+    metricType === MetricsDataType.Sum &&
+    resolvedProfile?.temporality === 'cumulative' &&
+    resolvedProfile.isMonotonic === false &&
+    _select.aggFn != null &&
+    LEVEL_AGG_FNS.includes(_select.aggFn);
+  const gaugeClassLevel =
+    (metricType === MetricsDataType.Gauge && !_select.isDelta) || isUpDownLevel;
+
   // Rate/lag chains (cumulative or unresolved temporality) need each
   // series' PREVIOUS SAMPLE, which lives up to a scrape interval before the
   // window — one display bucket is not enough (a 15s-bucket panel on a
@@ -2657,8 +2684,11 @@ async function translateMetricChartConfigV2(
   // bound keeps the +1-bucket ceiling: it feeds the final display bucket.
   // Delta-resolved shapes read no previous sample and keep ±1-bucket
   // parity; summary quantiles take the last point per bucket (no chain).
+  // Gauge-class LEVEL shapes never take the rate-chain lookback (they pad
+  // by the FIXED 300s level lookback instead — no scrape estimate needed).
   const needsLookback =
     metricType !== MetricsDataType.Gauge &&
+    !isUpDownLevel &&
     seriesProfile?.temporality !== 'delta' &&
     !(metricType === MetricsDataType.Summary && _select.aggFn === 'quantile') &&
     Array.isArray(chartConfig.dateRange);
@@ -2717,9 +2747,15 @@ async function translateMetricChartConfigV2(
     : 0;
 
   // Sum/histogram-family types widen the scan by ±1 bucket so rates can be
-  // computed at the range edges (v1 parity). Gauges scan the range as-is.
+  // computed at the range edges (v1 parity). Gauge-class LEVEL shapes widen
+  // too — their trailing lookback windows reach up to 300s before the first
+  // display bucket's end (over-scan fans into pre-window buckets and is
+  // trimmed by the outer display WHERE). Only the synthetic isDelta gauge
+  // keeps the unpadded scan.
   const includedDataInterval =
-    metricType === MetricsDataType.Gauge ? undefined : resolvedInterval;
+    metricType === MetricsDataType.Gauge && !gaugeClassLevel
+      ? undefined
+      : resolvedInterval;
 
   // Rollup tier routing: raw points for sub-5m buckets, the 5m tier for
   // 5m..1h buckets, the 1h tier beyond — the cookbook's "route by range×step"
@@ -2749,11 +2785,27 @@ async function translateMetricChartConfigV2(
     metricType === MetricsDataType.Histogram ||
     (metricType === MetricsDataType.ExponentialHistogram &&
       _select.aggFn !== 'avg');
+  // Gauge-class LEVEL shapes put two extra conditions on a tier:
+  // (1) the display bucket must be a MULTIPLE of the tier width — the
+  // lookback tier read keeps only the tier bucket ending at each display
+  // bucket end (alignment filter), so a non-multiple width (reachable via
+  // saved dashboards / the API schemas, never the UI ladder) would leave
+  // most display buckets rowless; a non-multiple of one tier can still be
+  // a multiple of the finer one ('90 minute' → the 5m tier).
+  // (2) never in template mode — the tier branches bake the display-bucket
+  // arithmetic from the conversion-time granularity while the scan bounds
+  // and trim late-bind $__interval_s, so a rebound interval would mislabel
+  // or clip buckets. The raw fan-out late-binds every term and handles any
+  // width, so both cases fall back to it.
+  const gaugeTierUsable = (tierSecs: number) =>
+    !gaugeClassLevel ||
+    (!chartConfig.isRenderingRawSqlTemplate &&
+      intervalSeconds % tierSecs === 0);
   const rollupTable = !canUseRollup
     ? undefined
-    : intervalSeconds >= 3600 && tier1h
+    : intervalSeconds >= 3600 && tier1h && gaugeTierUsable(3600)
       ? tier1h
-      : intervalSeconds >= 300 && tier5m
+      : intervalSeconds >= 300 && tier5m && gaugeTierUsable(300)
         ? tier5m
         : undefined;
   const tierSeconds =
@@ -2803,27 +2855,32 @@ async function translateMetricChartConfigV2(
   // margin lives HERE (not in the shared emission ceil, which also serves
   // the rollup branch): ceil(2×59.6)+1 must yield 121, not 2×60+1.
   const SCAN_LOOKBACK_JITTER_MARGIN_SECONDS = 1;
-  const scanLookbackSeconds = !needsLookback
-    ? undefined
-    : Math.min(
-        MAX_SCAN_LOOKBACK_SECONDS,
-        rollupTable
-          ? // rollup scans bound the toStartOfInterval-quantized TimeBucket —
-            // grid points carry no jitter, so no margin needed here
-            Math.max(
-              tierSeconds ?? 300,
-              scrapeIntervalEstimate?.intervalSeconds
-                ? 2 * scrapeIntervalEstimate.intervalSeconds
-                : 0,
-            )
-          : Math.max(
-              scrapeIntervalEstimate?.intervalSeconds
-                ? Math.ceil(2 * scrapeIntervalEstimate.intervalSeconds) +
-                    SCAN_LOOKBACK_JITTER_MARGIN_SECONDS
-                : 300,
-              intervalSeconds || 0,
-            ),
-      );
+  // Gauge-class LEVEL shapes pad by the fixed Prometheus instant lookback
+  // (never a function of the display bucket); everything else keeps the
+  // rate-chain lookback.
+  const scanLookbackSeconds = gaugeClassLevel
+    ? LEVEL_LOOKBACK_SECONDS
+    : !needsLookback
+      ? undefined
+      : Math.min(
+          MAX_SCAN_LOOKBACK_SECONDS,
+          rollupTable
+            ? // rollup scans bound the toStartOfInterval-quantized TimeBucket —
+              // grid points carry no jitter, so no margin needed here
+              Math.max(
+                tierSeconds ?? 300,
+                scrapeIntervalEstimate?.intervalSeconds
+                  ? 2 * scrapeIntervalEstimate.intervalSeconds
+                  : 0,
+              )
+            : Math.max(
+                scrapeIntervalEstimate?.intervalSeconds
+                  ? Math.ceil(2 * scrapeIntervalEstimate.intervalSeconds) +
+                      SCAN_LOOKBACK_JITTER_MARGIN_SECONDS
+                  : 300,
+                intervalSeconds || 0,
+              ),
+        );
 
   // Phase 1 WHERE: user where/filters/aggConditions (label matchers) +
   // MetricName + MetricType, bounded on the bare Date sort key (column
@@ -3005,6 +3062,18 @@ async function translateMetricChartConfigV2(
       : (chartConfig.groupBy ?? [])
           .map(g => `${g.valueExpression} ${g.alias ?? ''}`)
           .join(', ');
+  // First-sample credit, tier path: the rollup sum chain's birth-bucket gate
+  // joins the series table's FirstSeen (tier states carry no StartTimeUnix —
+  // the raw path reads the points' StartTimeUnix directly), so FirstSeen is
+  // projected — and the Series CTE emitted even on the whole-metric fast
+  // path — whenever the monotonic-cumulative rollup shape can be emitted.
+  // The conditions mirror sumRollupCtesV2's needCumMono (fast and resolved
+  // both derive from the same series profile).
+  const sumRollupFirstSeenGate =
+    metricType === MetricsDataType.Sum &&
+    rollupTable != null &&
+    resolvedProfile?.temporality !== 'delta' &&
+    resolvedProfile?.isMonotonic !== false;
   const seriesNeeds = parseSeriesNeeds(
     [groupByText],
     metricType === MetricsDataType.Sum
@@ -3014,6 +3083,7 @@ async function translateMetricChartConfigV2(
             resolvedProfile == null ||
             (resolvedProfile.temporality === 'cumulative' &&
               resolvedProfile.isMonotonic === undefined),
+          firstSeen: sumRollupFirstSeenGate,
         }
       : metricType === MetricsDataType.Histogram
         ? {
@@ -3109,7 +3179,7 @@ async function translateMetricChartConfigV2(
     from: { databaseName: from.databaseName, tableName: scanTable },
   });
 
-  if (metricType === MetricsDataType.Gauge) {
+  if (metricType === MetricsDataType.Gauge || isUpDownLevel) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
       // resolvedInterval carries the scrape-interval snap for 'auto'
@@ -3138,8 +3208,22 @@ async function translateMetricChartConfigV2(
         // Also matches the rollup tier's argMaxMerge(Last) semantics.
         `argMax(ValueMax, TimeUnix)`;
 
-    // Gauges need no temporality, but the fast path still requires the
-    // cross-type collision check (shared float points table).
+    // Display bucket width for the raw lookback fan-out: a resolved
+    // constant, or late-bound to $__interval_s in template mode. Undefined
+    // (unresolvable width, or the isDelta shape) keeps the bucket-scoped
+    // shape.
+    const levelLookback =
+      gaugeClassLevel && !rollupTable
+        ? chartConfig.isRenderingRawSqlTemplate
+          ? { bucketSeconds: '$__interval_s' as const }
+          : intervalSeconds > 0
+            ? { bucketSeconds: intervalSeconds }
+            : undefined
+        : undefined;
+
+    // Gauge-class levels need no temporality branch, but the fast path
+    // still requires the cross-type collision check (shared float points
+    // table; symmetric for the routed up-down level).
     const gaugeFast = isWholeMetric && floatTableCollisionSafe;
     return {
       ...restChartConfig,
@@ -3153,6 +3237,10 @@ async function translateMetricChartConfigV2(
               rollupWhere: pointsWhere,
               timeExpr,
               timeBucketCol,
+              // gaugeTierUsable enforces intervalSeconds is a tier multiple
+              // (and non-template) before a gauge-class panel routes here
+              bucketSeconds: intervalSeconds,
+              tierSeconds: tierSeconds ?? 300,
             })
           : gaugeCtesV2({
               fast: gaugeFast,
@@ -3167,10 +3255,13 @@ async function translateMetricChartConfigV2(
               // last value. The isDelta expression consumes every deduped row,
               // so it relies on the plain Rule-6 marker filter instead.
               dropStaleBuckets: !_select.isDelta,
+              levelLookback,
             })),
       ],
       select: [
         {
+          // routed up-down levels keep the sum branch's default alias
+          ...(isUpDownLevel ? { alias: 'Value' } : {}),
           ..._select,
           valueExpression: 'LastValue',
           aggCondition: '', // applied at the Series CTE
@@ -3224,7 +3315,11 @@ async function translateMetricChartConfigV2(
       ? '$__interval_s'
       : String(Math.max(1, intervalSeconds));
     const sumWith: NonNullable<BuilderChartConfigWithOptDateRangeEx['with']> = [
-      ...(sumFast ? [] : [seriesCte]),
+      // The fast path still needs the Series CTE when the rollup chain's
+      // birth-bucket gate joins FirstSeen (the scan filter and label join
+      // stay dropped — the join is 1:1 per SeriesHash on the aggregated
+      // tier rows).
+      ...(sumFast && !sumRollupFirstSeenGate ? [] : [seriesCte]),
       ...(rollupTable
         ? sumRollupCtesV2({
             fast: sumFast,
@@ -3245,6 +3340,7 @@ async function translateMetricChartConfigV2(
             timeExpr,
             timeBucketCol,
             rateDivisor,
+            startTimeLookbackSeconds: scanLookbackSeconds,
           })),
     ];
 
@@ -3323,11 +3419,12 @@ async function translateMetricChartConfigV2(
                 // avg/max/min/pXX operate across per-series rates — all
                 // window-invariant. UpDownCounters (IsMonotonic = false) are
                 // LEVELS that arrive typed as Sum (memory usage, open
-                // connections): differencing a level produces
-                // plausible-looking noise, so gauge-style aggregates read
-                // the per-bucket level instead (Bucketed.Sum = the newest
-                // sample per series). Unresolved profiles keep counter
-                // treatment — the picker labels it "(assumes counter)".
+                // connections): their level aggregates route through the
+                // gauge-class 5m-lookback shape ABOVE (isUpDownLevel), so
+                // this Sum pick only serves the residuals (aggFns outside
+                // the level set; Bucketed.Sum = the newest sample per
+                // series). Unresolved profiles keep counter treatment —
+                // the picker labels it "(assumes counter)".
                 alias: 'Value',
                 ..._select,
                 valueExpression:
