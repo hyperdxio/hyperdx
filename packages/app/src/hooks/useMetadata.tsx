@@ -12,6 +12,10 @@ import {
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  FilterState,
+  serializeFilterState,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
@@ -337,6 +341,7 @@ export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode = 'exact',
@@ -346,6 +351,8 @@ export function useMultipleGetKeyValues(
       | BuilderChartConfigWithDateRange
       | BuilderChartConfigWithDateRange[];
     keys: string[];
+    /** Per-key constraints for faceted ('exact' mode) value lookups. */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -371,6 +378,9 @@ export function useMultipleGetKeyValues(
       metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      // Serialized: react-query hashes keys with JSON.stringify, which would
+      // flatten every distinct Set selection to `{}`.
+      keyConditions?.map(c => c && serializeFilterState(c)),
       disableRowLimit,
       maxKeys,
     ],
@@ -417,6 +427,7 @@ export function useMultipleGetKeyValues(
             return metadata.getKeyValuesWithMVs({
               chartConfig,
               keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
               limit,
               disableRowLimit,
               source,
@@ -477,6 +488,7 @@ export function useGetKeyValues(
   {
     chartConfig,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode,
@@ -484,6 +496,8 @@ export function useGetKeyValues(
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key constraints for faceted value lookups (groupUniqArrayIf). */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -495,6 +509,7 @@ export function useGetKeyValues(
     {
       chartConfigs: chartConfig ? [chartConfig] : [],
       keys,
+      keyConditions,
       limit,
       disableRowLimit,
       mode,
