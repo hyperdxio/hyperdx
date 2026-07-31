@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Controller,
   useForm,
@@ -13,17 +13,8 @@ import {
   OnClick,
   OnClickTarget,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Button,
-  Divider,
-  Drawer,
-  Group,
-  SegmentedControl,
-  Stack,
-  Text,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { Alert, Box, SegmentedControl, Stack, Text } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { TextInputControlled } from '@/components/InputControlled';
 import { InputLabelWithTooltip } from '@/components/InputLabelWithTooltip';
@@ -224,36 +215,33 @@ function ModeFields({
   );
 }
 
-type OnClickDrawerProps = {
-  opened: boolean;
+type OnClickSectionProps = {
   value: OnClick | undefined;
   onChange: (value: OnClick | undefined) => void;
-  onClose: () => void;
 };
 
-export default function OnClickDrawer({
-  opened,
+/**
+ * Row Click Action editor rendered as a docked rail section. Edits write live
+ * to the tile draft (the tile's Save/Cancel is the single commit point), so
+ * there is no Apply button. An invalid template is surfaced inline and simply
+ * not written until it becomes valid again.
+ */
+export default function OnClickSection({
   value,
   onChange,
-  onClose,
-}: OnClickDrawerProps) {
+}: OnClickSectionProps) {
   const appliedDefaults: DrawerFormValues = useMemo(
     () => ({ onClick: value }),
-    [value],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once on mount
+    [],
   );
 
-  const { control, handleSubmit, reset, setValue, getValues } =
-    useForm<DrawerFormValues>({
+  const { control, setValue, getValues, formState } = useForm<DrawerFormValues>(
+    {
       defaultValues: appliedDefaults,
       resolver: zodResolver(DrawerSchema),
-    });
-
-  // Whenever the drawer is (re)opened with a fresh value from the parent,
-  // sync the local form to that value. Reopening after a cancel should not
-  // resurrect abandoned edits.
-  useEffect(() => {
-    if (opened) reset(appliedDefaults);
-  }, [opened, appliedDefaults, reset]);
+    },
+  );
 
   const { data: dashboards } = useDashboards();
   const { data: sources } = useSources();
@@ -277,94 +265,83 @@ export default function OnClickDrawer({
     return !validTargetIds.includes(watchedOnClick.target.id);
   }, [watchedOnClick, dashboards, sources]);
 
-  const applyChanges = useCallback(() => {
-    handleSubmit(values => {
-      try {
-        if (values.onClick) {
-          validateOnClickTemplate(values.onClick);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+
+  // Autosave: on each edit, validate the template and (if valid and the target
+  // resolves) write the value through to the tile draft. Invalid states are
+  // shown inline and held back until they become valid again.
+  const isDirty = Object.keys(formState.dirtyFields).length > 0;
+  useEffect(() => {
+    if (!isDirty) return;
+    const handle = setTimeout(() => {
+      const next = getValues('onClick') ?? undefined;
+      if (next) {
+        try {
+          validateOnClickTemplate(next);
+        } catch (err) {
+          setTemplateError(
+            err instanceof Error ? err.message : 'Invalid template',
+          );
+          return;
         }
-      } catch (err) {
-        notifications.show({
-          title: 'Invalid template',
-          message: err instanceof Error ? err.message : 'Unknown error',
-          color: 'red',
-        });
-        return;
       }
-
-      onChange(values.onClick ?? undefined);
-      onClose();
-    })();
-  }, [handleSubmit, onChange, onClose]);
-
-  const handleClose = useCallback(() => {
-    reset(appliedDefaults);
-    onClose();
-  }, [reset, appliedDefaults, onClose]);
+      setTemplateError(null);
+      if (isTargetMissing) return;
+      onChange(next);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [watchedOnClick, isDirty, isTargetMissing, getValues, onChange]);
 
   return (
-    <Drawer
-      title="Row Click Action"
-      opened={opened}
-      onClose={handleClose}
-      position="right"
-      size="lg"
-    >
-      <Stack data-testid="onclick-drawer">
-        <Text size="xs" c="dimmed">
-          Configure the action taken when clicking on a table row.
-        </Text>
+    <Stack data-testid="onclick-section">
+      <Text size="xs" c="dimmed">
+        Configure the action taken when clicking on a table row.
+      </Text>
 
-        <Controller
-          control={control}
-          name="onClick"
-          render={({ field: { value: onClickValue } }) => (
-            <SegmentedControl
-              data-testid="onclick-mode-segmented"
-              data={[
-                { label: 'Default', value: 'default' },
-                { label: 'Search', value: 'search' },
-                { label: 'Dashboard', value: 'dashboard' },
-                { label: 'External', value: 'external' },
-              ]}
-              value={onClickValue?.type ?? 'default'}
-              onChange={value => {
-                const formValue =
-                  value === 'search'
-                    ? emptySearchOnClick()
-                    : value === 'dashboard'
-                      ? emptyDashboardOnClick()
-                      : value === 'external'
-                        ? emptyExternalOnClick()
-                        : null;
-                setValue('onClick', formValue);
-              }}
-              fullWidth
-            />
-          )}
-        />
+      <Controller
+        control={control}
+        name="onClick"
+        render={({ field: { value: onClickValue } }) => (
+          <SegmentedControl
+            data-testid="onclick-mode-segmented"
+            data={[
+              { label: 'Default', value: 'default' },
+              { label: 'Search', value: 'search' },
+              { label: 'Dashboard', value: 'dashboard' },
+              { label: 'External', value: 'external' },
+            ]}
+            value={onClickValue?.type ?? 'default'}
+            onChange={value => {
+              const formValue =
+                value === 'search'
+                  ? emptySearchOnClick()
+                  : value === 'dashboard'
+                    ? emptyDashboardOnClick()
+                    : value === 'external'
+                      ? emptyExternalOnClick()
+                      : null;
+              setValue('onClick', formValue, { shouldDirty: true });
+            }}
+            fullWidth
+          />
+        )}
+      />
 
-        <ModeFields
-          control={control}
-          setValue={setValue}
-          getValues={getValues}
-        />
+      <ModeFields control={control} setValue={setValue} getValues={getValues} />
 
-        <Divider />
-        <Group justify="space-between">
-          <Button variant="subtle" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            onClick={applyChanges}
-            disabled={isTargetMissing}
-            data-testid="onclick-apply-button"
-          >
-            Apply
-          </Button>
-        </Group>
-      </Stack>
-    </Drawer>
+      {(isTargetMissing || templateError) && (
+        <Alert
+          variant="warning"
+          p="xs"
+          icon={<IconAlertTriangle size={16} />}
+          data-testid="onclick-error"
+        >
+          <Text size="xs" m={0}>
+            {templateError ??
+              'The selected target no longer exists. Pick another to save this action.'}
+          </Text>
+        </Alert>
+      )}
+    </Stack>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Control,
   FieldErrors,
@@ -8,26 +8,27 @@ import {
 } from 'react-hook-form';
 import {
   DateRange,
-  isChartPaletteToken,
   MetricsDataType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Button,
   Divider,
   Flex,
   Group,
+  Menu,
   Text,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
   IconArrowDown,
   IconArrowUp,
+  IconChevronDown,
+  IconChevronRight,
   IconCopy,
-  IconPalette,
+  IconDotsVertical,
   IconTrash,
 } from '@tabler/icons-react';
 
@@ -43,17 +44,16 @@ import {
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
-import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
-import SeriesColorDrawer from '@/components/SeriesColorDrawer';
-import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
+import SeriesColorPopover from '@/components/SeriesColorPopover';
+import SeriesFormatPopover from '@/components/SeriesFormatPopover';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { getColorFromCSSToken, getMetricTableName } from '@/utils';
+import { getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -214,29 +214,61 @@ export function ChartSeriesEditor({
     name: `${namePrefix}numberFormat`,
   });
 
-  const [
-    isSeriesNumberFormatOpen,
-    { open: openSeriesNumberFormat, close: closeSeriesNumberFormat },
-  ] = useDisclosure(false);
-
   const seriesColor = useWatch({ control, name: `${namePrefix}color` });
   const seriesColorRules = useWatch({
     control,
     name: `${namePrefix}colorRules`,
   });
 
-  const [
-    isSeriesColorOpen,
-    { open: openSeriesColor, close: closeSeriesColor },
-  ] = useDisclosure(false);
+  const valueExpression = useWatch({
+    control,
+    name: `${namePrefix}valueExpression`,
+  });
+
+  // One-line summary shown when the series body is collapsed, so a stack of
+  // series stays scannable without every aggregation editor expanded.
+  const summary = useMemo(() => {
+    const target =
+      tableSource?.kind === SourceKind.Metric
+        ? metricName
+        : aggFn === 'count'
+          ? ''
+          : valueExpression;
+    const head = [aggFn, target].filter(Boolean).join(' ').trim();
+    const where = aggCondition ? ` where ${aggCondition}` : '';
+    return `${head}${where}`.trim() || 'New series';
+  }, [aggFn, valueExpression, metricName, aggCondition, tableSource?.kind]);
+
+  const [expanded, setExpanded] = useState(true);
+
+  const canMoveUp = (index ?? -1) > 0;
+  const canMoveDown = (index ?? -1) < length - 1;
+  const canRemove = (index ?? -1) > 0 || length > 1;
 
   return (
     <>
       <Divider
         label={
-          <Group gap="xs">
-            <Text size="xxs">Alias</Text>
+          <Group gap="xs" wrap="nowrap">
+            <Tooltip label={expanded ? 'Collapse series' : 'Expand series'}>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="xs"
+                onClick={() => setExpanded(e => !e)}
+                aria-label={expanded ? 'Collapse series' : 'Expand series'}
+                aria-expanded={expanded}
+                data-testid="series-expand-toggle"
+              >
+                {expanded ? (
+                  <IconChevronDown size={14} />
+                ) : (
+                  <IconChevronRight size={14} />
+                )}
+              </ActionIcon>
+            </Tooltip>
 
+            <Text size="xxs">Alias</Text>
             <div style={{ width: 150 }}>
               <TextInputControlled
                 name={`${namePrefix}alias`}
@@ -247,262 +279,252 @@ export function ChartSeriesEditor({
                 data-testid="series-alias-input"
               />
             </div>
-            {(index ?? -1) > 0 && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onSwapSeries(index, index - 1)}
-                title="Move up"
+
+            {!expanded && (
+              <UnstyledButton
+                onClick={() => setExpanded(true)}
+                style={{ overflow: 'hidden' }}
               >
-                <IconArrowUp size={14} />
-              </Button>
+                <Text size="xs" c="dimmed" truncate="end" maw={260}>
+                  {summary}
+                </Text>
+              </UnstyledButton>
             )}
-            {(index ?? -1) < length - 1 && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onSwapSeries(index, index + 1)}
-                title="Move down"
-              >
-                <IconArrowDown size={14} />
-              </Button>
-            )}
-            {showDuplicate && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onDuplicateSeries(index)}
-                title="Duplicate series"
-                data-testid="series-duplicate-button"
-              >
-                <IconCopy size={14} />
-              </Button>
-            )}
-            {((index ?? -1) > 0 || length > 1) && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xs"
-                onClick={() => onRemoveSeries(index)}
-              >
-                <IconTrash size={14} className="me-2" />
-                Remove Series
-              </Button>
-            )}
-            <Tooltip label="Edit series display format">
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="xs"
-                onClick={openSeriesNumberFormat}
-                aria-label="Edit series display format"
-              >
-                {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
-              </ActionIcon>
-            </Tooltip>
+
+            <SeriesFormatPopover
+              numberFormat={seriesNumberFormat}
+              onChange={format => {
+                setValue(`${namePrefix}numberFormat`, format.numberFormat);
+                onSubmit();
+              }}
+            />
+
             {showColor && (
-              <Tooltip label="Edit column color">
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="xs"
-                  onClick={openSeriesColor}
-                  aria-label="Edit column color"
-                  data-testid="series-color-button"
-                >
-                  <IconPalette
-                    size={16}
-                    color={
-                      seriesColor && isChartPaletteToken(seriesColor)
-                        ? getColorFromCSSToken(seriesColor)
-                        : undefined
-                    }
-                  />
-                </ActionIcon>
-              </Tooltip>
+              <SeriesColorPopover
+                color={seriesColor}
+                colorRules={seriesColorRules}
+                onChange={next => {
+                  setValue(`${namePrefix}color`, next.color);
+                  setValue(`${namePrefix}colorRules`, next.colorRules);
+                  onSubmit();
+                }}
+              />
             )}
+
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
+                <Tooltip label="Series actions">
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="xs"
+                    aria-label="Series actions"
+                    data-testid="series-actions-menu"
+                  >
+                    <IconDotsVertical size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {canMoveUp && (
+                  <Menu.Item
+                    leftSection={<IconArrowUp size={14} />}
+                    onClick={() => onSwapSeries(index, index - 1)}
+                  >
+                    Move up
+                  </Menu.Item>
+                )}
+                {canMoveDown && (
+                  <Menu.Item
+                    leftSection={<IconArrowDown size={14} />}
+                    onClick={() => onSwapSeries(index, index + 1)}
+                  >
+                    Move down
+                  </Menu.Item>
+                )}
+                {showDuplicate && (
+                  <Menu.Item
+                    leftSection={<IconCopy size={14} />}
+                    onClick={() => onDuplicateSeries(index)}
+                    data-testid="series-duplicate-button"
+                  >
+                    Duplicate series
+                  </Menu.Item>
+                )}
+                {canRemove && (
+                  <Menu.Item
+                    color="red"
+                    leftSection={<IconTrash size={14} />}
+                    onClick={() => onRemoveSeries(index)}
+                  >
+                    Remove series
+                  </Menu.Item>
+                )}
+              </Menu.Dropdown>
+            </Menu>
           </Group>
         }
         labelPosition="right"
         mb={8}
         mt="sm"
       />
-      <Flex gap="sm" mt="xs" align="start">
-        <div
-          style={{
-            minWidth: 200,
-          }}
-        >
-          <AggFnSelectControlled
-            aggFnName={`${namePrefix}aggFn`}
-            quantileLevelName={`${namePrefix}level`}
-            defaultValue={AGG_FNS[0]?.value ?? 'avg'}
-            control={control}
-            hideCustom={tableSource?.kind === SourceKind.Metric}
-            metricType={
-              tableSource?.kind === SourceKind.Metric ? metricType : undefined
-            }
-          />
-        </div>
-        {tableSource?.kind === SourceKind.Metric && metricType && (
-          <div style={{ minWidth: 220 }}>
-            <MetricNameSelect
-              metricName={metricName}
-              metricType={metricType}
-              setMetricName={value => {
-                setValue(`${namePrefix}metricName`, value);
-                setValue(`${namePrefix}valueExpression`, 'Value');
+      {expanded && (
+        <>
+          <Flex gap="sm" mt="xs" align="start">
+            <div
+              style={{
+                minWidth: 200,
               }}
-              setMetricType={value =>
-                setValue(`${namePrefix}metricType`, value)
-              }
-              metricSource={tableSource}
-              data-testid="metric-name-selector"
-              error={errors?.metricName?.message}
-              onFocus={() => clearErrors(`${namePrefix}metricName`)}
-            />
-            {metricType === 'gauge' && (
-              <Flex justify="end">
-                <CheckBoxControlled
-                  control={control}
-                  name={`${namePrefix}isDelta`}
-                  label="Delta"
-                  size="xs"
-                  className="mt-2"
+            >
+              <AggFnSelectControlled
+                aggFnName={`${namePrefix}aggFn`}
+                quantileLevelName={`${namePrefix}level`}
+                defaultValue={AGG_FNS[0]?.value ?? 'avg'}
+                control={control}
+                hideCustom={tableSource?.kind === SourceKind.Metric}
+                metricType={
+                  tableSource?.kind === SourceKind.Metric
+                    ? metricType
+                    : undefined
+                }
+              />
+            </div>
+            {tableSource?.kind === SourceKind.Metric && metricType && (
+              <div style={{ minWidth: 220 }}>
+                <MetricNameSelect
+                  metricName={metricName}
+                  metricType={metricType}
+                  setMetricName={value => {
+                    setValue(`${namePrefix}metricName`, value);
+                    setValue(`${namePrefix}valueExpression`, 'Value');
+                  }}
+                  setMetricType={value =>
+                    setValue(`${namePrefix}metricType`, value)
+                  }
+                  metricSource={tableSource}
+                  data-testid="metric-name-selector"
+                  error={errors?.metricName?.message}
+                  onFocus={() => clearErrors(`${namePrefix}metricName`)}
                 />
-              </Flex>
+                {metricType === 'gauge' && (
+                  <Flex justify="end">
+                    <CheckBoxControlled
+                      control={control}
+                      name={`${namePrefix}isDelta`}
+                      label="Delta"
+                      size="xs"
+                      className="mt-2"
+                    />
+                  </Flex>
+                )}
+              </div>
             )}
-          </div>
-        )}
-        {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
-          <div
-            style={{
-              minWidth: 220,
-              ...(aggFn === 'none' && { flexGrow: 2 }),
-            }}
-          >
-            <SQLInlineEditorControlled
-              tableConnection={tableConnection}
-              control={control}
-              name={`${namePrefix}valueExpression`}
-              placeholder="SQL Column"
-              onSubmit={onSubmit}
-            />
-          </div>
-        )}
-        {(showWhere || showGroupBy || showHaving) && (
-          <div
-            className="flex-grow-1 gap-2 align-items-center"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'auto 1fr auto 1fr',
-            }}
-          >
-            {showWhere && (
-              <>
-                <Text size="sm">Where</Text>
-                <div
-                  style={{
-                    gridColumn:
-                      showHaving === showGroupBy ? 'span 3' : undefined,
-                  }}
-                >
-                  <SearchWhereInput
-                    tableConnection={tableConnection}
-                    control={control}
-                    name={`${namePrefix}aggCondition`}
-                    onSubmit={onSubmit}
-                    showLabel={false}
-                    additionalSuggestions={attributeSuggestions}
-                  />
-                </div>
-              </>
+            {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
+              <div
+                style={{
+                  minWidth: 220,
+                  ...(aggFn === 'none' && { flexGrow: 2 }),
+                }}
+              >
+                <SQLInlineEditorControlled
+                  tableConnection={tableConnection}
+                  control={control}
+                  name={`${namePrefix}valueExpression`}
+                  placeholder="SQL Column"
+                  onSubmit={onSubmit}
+                />
+              </div>
             )}
-            {showGroupBy && (
-              <>
-                <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
-                </Text>
-                <div
-                  style={{
-                    minWidth: 200,
-                    maxWidth: '100%',
-                    gridColumn:
-                      !showHaving && !showWhere ? 'span 3' : undefined,
-                  }}
-                >
-                  <SQLInlineEditorControlled
-                    parentRef={parentRef}
-                    tableConnection={tableConnection}
-                    control={control}
-                    name={`groupBy`}
-                    placeholder="SQL Columns"
-                    disableKeywordAutocomplete
-                    onSubmit={onSubmit}
-                  />
-                </div>
-                {showHaving && (
+            {(showWhere || showGroupBy || showHaving) && (
+              <div
+                className="flex-grow-1 gap-2 align-items-center"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'auto 1fr auto 1fr',
+                }}
+              >
+                {showWhere && (
                   <>
-                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
-                    </Text>
-                    <div style={{ minWidth: 300, maxWidth: '100%' }}>
-                      <SQLInlineEditorControlled
+                    <Text size="sm">Where</Text>
+                    <div
+                      style={{
+                        gridColumn:
+                          showHaving === showGroupBy ? 'span 3' : undefined,
+                      }}
+                    >
+                      <SearchWhereInput
                         tableConnection={tableConnection}
                         control={control}
-                        name="having"
-                        placeholder="SQL HAVING clause (ex. count() > 100)"
-                        disableKeywordAutocomplete
+                        name={`${namePrefix}aggCondition`}
                         onSubmit={onSubmit}
+                        showLabel={false}
+                        additionalSuggestions={attributeSuggestions}
                       />
                     </div>
                   </>
                 )}
-              </>
+                {showGroupBy && (
+                  <>
+                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                      Group By
+                    </Text>
+                    <div
+                      style={{
+                        minWidth: 200,
+                        maxWidth: '100%',
+                        gridColumn:
+                          !showHaving && !showWhere ? 'span 3' : undefined,
+                      }}
+                    >
+                      <SQLInlineEditorControlled
+                        parentRef={parentRef}
+                        tableConnection={tableConnection}
+                        control={control}
+                        name={`groupBy`}
+                        placeholder="SQL Columns"
+                        disableKeywordAutocomplete
+                        onSubmit={onSubmit}
+                      />
+                    </div>
+                    {showHaving && (
+                      <>
+                        <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                          Having
+                        </Text>
+                        <div style={{ minWidth: 300, maxWidth: '100%' }}>
+                          <SQLInlineEditorControlled
+                            tableConnection={tableConnection}
+                            control={control}
+                            name="having"
+                            placeholder="SQL HAVING clause (ex. count() > 100)"
+                            disableKeywordAutocomplete
+                            onSubmit={onSubmit}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
             )}
-          </div>
-        )}
-      </Flex>
-      {tableSource?.kind === SourceKind.Metric && metricName && metricType && (
-        <MetricAttributeHelperPanel
-          databaseName={databaseName}
-          metricType={metricType}
-          metricName={metricName}
-          tableSource={tableSource}
-          attributeKeys={attributeKeys}
-          isLoading={isLoadingAttributes}
-          language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
-          metricMetadata={metricMetadata}
-          onAddToWhere={handleAddToWhere}
-          onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
-        />
-      )}
-      <SeriesNumberFormatDrawer
-        opened={isSeriesNumberFormatOpen}
-        numberFormat={seriesNumberFormat}
-        onChange={format => {
-          setValue(`${namePrefix}numberFormat`, format.numberFormat);
-          onSubmit();
-        }}
-        onClose={() => {
-          closeSeriesNumberFormat();
-        }}
-      />
-      {showColor && (
-        <SeriesColorDrawer
-          opened={isSeriesColorOpen}
-          color={seriesColor}
-          colorRules={seriesColorRules}
-          onChange={next => {
-            setValue(`${namePrefix}color`, next.color);
-            setValue(`${namePrefix}colorRules`, next.colorRules);
-            onSubmit();
-          }}
-          onClose={closeSeriesColor}
-        />
+          </Flex>
+          {tableSource?.kind === SourceKind.Metric &&
+            metricName &&
+            metricType && (
+              <MetricAttributeHelperPanel
+                databaseName={databaseName}
+                metricType={metricType}
+                metricName={metricName}
+                tableSource={tableSource}
+                attributeKeys={attributeKeys}
+                isLoading={isLoadingAttributes}
+                language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+                metricMetadata={metricMetadata}
+                onAddToWhere={handleAddToWhere}
+                onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
+              />
+            )}
+        </>
       )}
     </>
   );

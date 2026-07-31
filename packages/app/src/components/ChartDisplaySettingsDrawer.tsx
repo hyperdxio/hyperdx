@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
@@ -11,7 +11,6 @@ import {
   Button,
   Checkbox,
   Divider,
-  Drawer,
   Group,
   NumberInput,
   Stack,
@@ -33,7 +32,6 @@ import {
 import { ColorSwatchInput } from './ColorSwatchInput';
 import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
-import SettingsSidePanel from './SettingsSidePanel';
 
 export type ChartConfigDisplaySettings = Pick<
   ChartConfigWithDateRange,
@@ -61,12 +59,11 @@ export type ChartConfigDisplaySettings = Pick<
  * Internal form shape: `colorRules` is stored with `localId`s for dnd-kit
  * stability; they are stripped before the settings are passed to `onChange`.
  */
-type DrawerFormValues = Omit<ChartConfigDisplaySettings, 'colorRules'> & {
+type SectionFormValues = Omit<ChartConfigDisplaySettings, 'colorRules'> & {
   colorRules?: ColorRuleWithId[];
 };
 
-interface ChartDisplaySettingsDrawerProps {
-  opened: boolean;
+interface ChartDisplaySettingsSectionProps {
   settings: ChartConfigDisplaySettings;
   /** Auto-detected number format (e.g. duration for trace sources).
    *  Used as the default when no explicit numberFormat is set. */
@@ -75,23 +72,19 @@ interface ChartDisplaySettingsDrawerProps {
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
   previousDateRange?: [Date, Date];
-  onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
-  onClose: () => void;
-  isPerSeriesNumberFormatAllowed?: boolean;
   /**
-   * Render the settings as an in-place side panel (no Drawer overlay) instead
-   * of a nested drawer. Used inside the tile editor drawer so opening Display
-   * Settings docks a panel beside the editor/preview rather than stacking a
-   * second drawer on top (which made a single Esc press close both) — and keeps
-   * the tile visible while its display options are changed.
+   * Called with the settings whenever the user edits a control. Writes live to
+   * the tile draft; the tile's own Save/Cancel is the single commit point, so
+   * there is no per-section Apply.
    */
-  asPanel?: boolean;
+  onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
+  isPerSeriesNumberFormatAllowed?: boolean;
 }
 
 function applyDefaultSettings(
   settings: ChartConfigDisplaySettings,
   fallbackNumberFormat?: NumberFormat,
-): DrawerFormValues {
+): SectionFormValues {
   return {
     numberFormat:
       settings.numberFormat ?? fallbackNumberFormat ?? DEFAULT_NUMBER_FORMAT,
@@ -115,90 +108,88 @@ function applyDefaultSettings(
   };
 }
 
-export default function ChartDisplaySettingsDrawer({
+export default function ChartDisplaySettingsSection({
   settings,
-  opened,
   displayType,
   configType,
   defaultNumberFormat,
   onChange,
-  onClose,
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
-  asPanel = false,
-}: ChartDisplaySettingsDrawerProps) {
+}: ChartDisplaySettingsSectionProps) {
+  // The section mounts fresh each time it is opened, so the incoming settings
+  // seed the form once. Live edits then flow straight back out via `onChange`.
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
-    [settings, defaultNumberFormat],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once on mount
+    [],
   );
 
   const {
     control,
-    handleSubmit,
-    reset,
     setValue,
+    reset,
+    getValues,
     formState: { dirtyFields },
-  } = useForm<DrawerFormValues>({
+  } = useForm<SectionFormValues>({
     defaultValues: appliedDefaults,
   });
-
-  // Reset only on the closed→open transition so every dismiss path — Apply,
-  // Cancel, Esc, or a tab change that closes the panel via the bare disclosure —
-  // behaves like cancel: abandoned edits never linger to be written by the next
-  // Apply. This is edge-triggered on `opened` (via a ref) rather than on
-  // `appliedDefaults` identity: `defaultNumberFormat` is a fresh object literal
-  // on every render, so a level-triggered reset would fire on each keystroke in
-  // the main form while the panel is open, silently discarding unapplied edits.
-  const wasOpenedRef = useRef(false);
-  useEffect(() => {
-    if (opened && !wasOpenedRef.current) {
-      reset(appliedDefaults);
-    }
-    wasOpenedRef.current = opened;
-  }, [opened, appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
 
-  const handleClose = useCallback(() => {
-    reset(appliedDefaults);
-    onClose();
-  }, [onClose, reset, appliedDefaults]);
+  // Push the current form values to the tile draft. `numberFormat` is only
+  // persisted when the user actually chose one (either the tile already had an
+  // explicit override, or the user touched the format control this session);
+  // otherwise emit undefined so the datasource-derived format keeps driving
+  // render instead of freezing the inferred fallback into the config.
+  const pushChanges = useCallback(() => {
+    const formValues = getValues();
+    const { colorRules, ...rest } = formValues;
+    const numberFormatExplicit =
+      settings.numberFormat != null || dirtyFields.numberFormat != null;
+    onChange(
+      {
+        ...rest,
+        numberFormat: numberFormatExplicit
+          ? formValues.numberFormat
+          : undefined,
+        colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
+      },
+      true,
+    );
+  }, [getValues, onChange, settings.numberFormat, dirtyFields.numberFormat]);
 
-  const applyChanges = useCallback(() => {
-    handleSubmit(formValues => {
-      // Strip client-side localIds before passing rules to the config.
-      const { colorRules, ...rest } = formValues;
-      // Persist numberFormat only when the user actually chose one: either the
-      // tile already had an explicit override (settings.numberFormat) or the
-      // user changed the format control in this session (dirtyFields). Otherwise
-      // emit undefined so the datasource-derived format keeps driving render
-      // instead of freezing the drawer's inferred fallback into the config.
-      const numberFormatExplicit =
-        settings.numberFormat != null || dirtyFields.numberFormat != null;
-      const hasDirtyFields = Object.keys(dirtyFields).length > 0;
-      onChange(
-        {
-          ...rest,
-          numberFormat: numberFormatExplicit
-            ? formValues.numberFormat
-            : undefined,
-          colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
-        },
-        hasDirtyFields,
-      );
-    })();
-    onClose();
-  }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
+  // Autosave: whenever a field changes (and the user has actually edited
+  // something), debounce and write through. Reading the watched snapshot keeps
+  // the effect firing on every edit; the debounce coalesces high-frequency
+  // inputs (color-rule text, sliders, number inputs) so the preview query is
+  // not re-run on every keystroke.
+  const watchedValues = useWatch({ control });
+  const isDirty = Object.keys(dirtyFields).length > 0;
+  useEffect(() => {
+    if (!isDirty) return;
+    const handle = setTimeout(() => pushChanges(), 300);
+    return () => clearTimeout(handle);
+  }, [watchedValues, isDirty, pushChanges]);
 
   const resetToDefaults = useCallback(() => {
-    reset(
-      applyDefaultSettings(
-        {} as ChartConfigDisplaySettings,
-        defaultNumberFormat,
-      ),
+    const defaults = applyDefaultSettings(
+      {} as ChartConfigDisplaySettings,
+      defaultNumberFormat,
     );
-  }, [reset, defaultNumberFormat]);
+    reset(defaults, { keepDefaultValues: true });
+    // reset() does not mark fields dirty, so push explicitly.
+    onChange(
+      {
+        ...defaults,
+        colorRules: defaults.colorRules
+          ? stripLocalIds(defaults.colorRules)
+          : undefined,
+      },
+      true,
+    );
+  }, [reset, defaultNumberFormat, onChange]);
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
@@ -223,20 +214,15 @@ export default function ChartDisplaySettingsDrawer({
   const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
-  // Per-series colors on line / bar / pie ship in a follow-up PR via
-  // `select[i].color`.
   const showTileColor = displayType === DisplayType.Number;
 
   // The background sparkline is derived from a time-bucketed version of the
-  // tile's query, so it only applies to builder number tiles: raw SQL number
-  // tiles return a single value with no time dimension to bucket. On a SQL
-  // number tile the control is shown disabled with a hint rather than hidden,
-  // so the option stays discoverable.
+  // tile's query, so it only applies to builder number tiles.
   const showBackgroundChart = displayType === DisplayType.Number;
   const isBackgroundChartDisabled = configType === 'sql';
 
-  const content = (
-    <Stack>
+  return (
+    <Stack data-testid="display-settings-section">
       {isTimeChart && (
         <>
           <CheckBoxControlled
@@ -251,7 +237,9 @@ export default function ChartDisplaySettingsDrawer({
               label="Fill Missing Intervals with Zero"
               checked={isFillNullsEnabled}
               onChange={e => {
-                setValue('fillNulls', e.currentTarget.checked ? 0 : false);
+                setValue('fillNulls', e.currentTarget.checked ? 0 : false, {
+                  shouldDirty: true,
+                });
               }}
             />
           </Box>
@@ -283,7 +271,7 @@ export default function ChartDisplaySettingsDrawer({
               <Controller
                 control={control}
                 name="seriesLimit"
-                render={({ field: { onChange, value } }) => (
+                render={({ field: { onChange: onFieldChange, value } }) => (
                   <NumberInput
                     size="xs"
                     label="Series Limit"
@@ -293,7 +281,7 @@ export default function ChartDisplaySettingsDrawer({
                     allowDecimal={false}
                     value={value ?? ''}
                     onChange={v =>
-                      onChange(v === '' || v == null ? null : Number(v))
+                      onFieldChange(v === '' || v == null ? null : Number(v))
                     }
                   />
                 )}
@@ -310,7 +298,7 @@ export default function ChartDisplaySettingsDrawer({
             <Controller
               control={control}
               name="seriesLimit"
-              render={({ field: { onChange, value } }) => (
+              render={({ field: { onChange: onFieldChange, value } }) => (
                 <NumberInput
                   size="xs"
                   label="Series Limit"
@@ -320,7 +308,7 @@ export default function ChartDisplaySettingsDrawer({
                   allowDecimal={false}
                   value={value ?? ''}
                   onChange={v =>
-                    onChange(v === '' || v == null ? null : Number(v))
+                    onFieldChange(v === '' || v == null ? null : Number(v))
                   }
                 />
               )}
@@ -359,10 +347,10 @@ export default function ChartDisplaySettingsDrawer({
             <Controller
               control={control}
               name="color"
-              render={({ field: { onChange, value } }) => (
+              render={({ field: { onChange: onFieldChange, value } }) => (
                 <ColorSwatchInput
                   value={value}
-                  onChange={onChange}
+                  onChange={onFieldChange}
                   ariaLabel="Number tile color"
                 />
               )}
@@ -372,8 +360,11 @@ export default function ChartDisplaySettingsDrawer({
             <Controller
               control={control}
               name="colorRules"
-              render={({ field: { onChange, value } }) => (
-                <ColorRulesEditor value={value ?? []} onChange={onChange} />
+              render={({ field: { onChange: onFieldChange, value } }) => (
+                <ColorRulesEditor
+                  value={value ?? []}
+                  onChange={onFieldChange}
+                />
               )}
             />
           </Box>
@@ -386,10 +377,10 @@ export default function ChartDisplaySettingsDrawer({
           <Controller
             control={control}
             name="backgroundChart"
-            render={({ field: { onChange, value } }) => (
+            render={({ field: { onChange: onFieldChange, value } }) => (
               <BackgroundChartInput
                 value={value}
-                onChange={onChange}
+                onChange={onFieldChange}
                 disabled={isBackgroundChartDisabled}
               />
             )}
@@ -416,46 +407,11 @@ export default function ChartDisplaySettingsDrawer({
         }
       />
       <Divider />
-      <Group gap="xs" mt="xs" justify="space-between">
-        <Button type="submit" variant="secondary" onClick={resetToDefaults}>
+      <Group gap="xs" mt="xs" justify="flex-start">
+        <Button variant="secondary" onClick={resetToDefaults}>
           Reset to Defaults
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          onClick={applyChanges}
-          data-testid="display-settings-apply-button"
-        >
-          Apply
         </Button>
       </Group>
     </Stack>
-  );
-
-  // Panel mode: dock the settings as a full-height side panel beside the editor
-  // instead of stacking a second drawer, so the tile/preview stays visible
-  // while its display options are changed.
-  if (asPanel) {
-    if (!opened) return null;
-    return (
-      <SettingsSidePanel
-        title="Display Settings"
-        onClose={handleClose}
-        data-testid="display-settings-panel"
-      >
-        {content}
-      </SettingsSidePanel>
-    );
-  }
-
-  return (
-    <Drawer
-      title="Display Settings"
-      opened={opened}
-      onClose={handleClose}
-      position="right"
-    >
-      {content}
-    </Drawer>
   );
 }

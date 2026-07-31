@@ -1,9 +1,9 @@
 import React from 'react';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import ChartDisplaySettingsDrawer, {
+import ChartDisplaySettingsSection, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
 
@@ -12,18 +12,21 @@ import ChartDisplaySettingsDrawer, {
 window.HTMLElement.prototype.scrollIntoView = jest.fn();
 
 // FormatTime depends on useUserPreferences (jotai + localStorage); mock it
-// so the drawer renders in isolation.
+// so the section renders in isolation.
 jest.mock('@/useFormatTime', () => ({
   FormatTime: jest.fn(() => null),
 }));
 
-describe('ChartDisplaySettingsDrawer', () => {
+// The Display section writes live (debounced) to the tile draft — there is no
+// Apply button — so assertions wait for the latest onChange payload.
+const lastOnChangeArg = (onChange: jest.Mock) =>
+  onChange.mock.calls[onChange.mock.calls.length - 1][0];
+
+describe('ChartDisplaySettingsSection', () => {
   const baseProps = {
-    opened: true,
     configType: 'sql' as const,
     settings: {} as ChartConfigDisplaySettings,
     onChange: jest.fn(),
-    onClose: jest.fn(),
   };
 
   beforeEach(() => {
@@ -33,7 +36,7 @@ describe('ChartDisplaySettingsDrawer', () => {
   describe('color picker section', () => {
     it('shows the color picker when displayType is Number', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Number}
         />,
@@ -46,7 +49,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the color picker when displayType is Table', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Table}
         />,
@@ -57,46 +60,36 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('calls onChange with the selected color token when Apply is clicked', async () => {
+    it('writes the selected color token live', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Number}
           onChange={onChange}
         />,
       );
 
-      // Open the palette popover.
       await user.click(screen.getByTestId('color-swatch-input-trigger'));
-
-      // Pick a categorical token.
-      const swatch = await screen.findByTestId(
-        'color-swatch-option-chart-blue',
+      await user.click(
+        await screen.findByTestId('color-swatch-option-chart-blue'),
       );
-      await user.click(swatch);
 
-      // Verify the trigger shows the selected token.
-      const trigger = screen.getByTestId('color-swatch-input-trigger');
-      expect(trigger).toHaveTextContent(/blue/i);
-
-      // Apply the settings.
-      await user.click(screen.getByRole('button', { name: /apply/i }));
-
-      expect(onChange).toHaveBeenCalledTimes(1);
-      // react-hook-form passes (values, event) to the onSubmit handler;
-      // check the values argument directly.
-      expect(onChange.mock.calls[0][0]).toMatchObject({ color: 'chart-blue' });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({
+          color: 'chart-blue',
+        }),
+      );
     });
 
-    it('calls onChange with a semantic token when Apply is clicked', async () => {
+    it('writes a semantic color token live', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Number}
           onChange={onChange}
@@ -107,19 +100,19 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(
         await screen.findByTestId('color-swatch-option-chart-success'),
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({
-        color: 'chart-success',
-      });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({
+          color: 'chart-success',
+        }),
+      );
     });
   });
 
   describe('fit y-axis to data setting', () => {
     it('shows the "Fit Y-Axis to Data" checkbox for line charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Line}
         />,
@@ -132,7 +125,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the "Fit Y-Axis to Data" checkbox for table charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Table}
         />,
@@ -145,7 +138,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('defaults to unchecked (lower bound = 0)', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Line}
         />,
@@ -156,12 +149,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeChecked();
     });
 
-    it('calls onChange with fitYAxisToData = true when enabled and applied', async () => {
+    it('writes fitYAxisToData = true live when enabled', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Line}
           onChange={onChange}
@@ -171,12 +164,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(
         screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({
-        fitYAxisToData: true,
-      });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({
+          fitYAxisToData: true,
+        }),
+      );
     });
   });
 
@@ -185,7 +178,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('shows the Series Limit input for builder line charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Line}
         />,
@@ -198,7 +191,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the Series Limit input for raw SQL line charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Line}
         />,
@@ -211,7 +204,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the Series Limit input for table charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Table}
         />,
@@ -222,12 +215,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('calls onChange with the entered seriesLimit when applied', async () => {
+    it('writes the entered seriesLimit live', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Line}
           onChange={onChange}
@@ -238,10 +231,10 @@ describe('ChartDisplaySettingsDrawer', () => {
         screen.getByRole('textbox', { name: /series limit/i }),
         '25',
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 25 });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({ seriesLimit: 25 }),
+      );
     });
 
     // Emits null (not undefined) so the cleared/disabled state survives JSON
@@ -252,7 +245,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Line}
           settings={{ seriesLimit: 10 } as ChartConfigDisplaySettings}
@@ -261,10 +254,10 @@ describe('ChartDisplaySettingsDrawer', () => {
       );
 
       await user.clear(screen.getByRole('textbox', { name: /series limit/i }));
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange).seriesLimit).toBeNull(),
+      );
     });
   });
 
@@ -275,7 +268,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       'shows the Series Limit input for builder %s charts',
       displayType => {
         renderWithMantine(
-          <ChartDisplaySettingsDrawer
+          <ChartDisplaySettingsSection
             {...builderProps}
             displayType={displayType}
           />,
@@ -289,7 +282,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the Series Limit input for raw SQL pie charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Pie}
         />,
@@ -300,12 +293,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('calls onChange with the entered seriesLimit when applied', async () => {
+    it('writes the entered seriesLimit live', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Bar}
           onChange={onChange}
@@ -316,10 +309,10 @@ describe('ChartDisplaySettingsDrawer', () => {
         screen.getByRole('textbox', { name: /series limit/i }),
         '10',
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 10 });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({ seriesLimit: 10 }),
+      );
     });
 
     // Emits null (not undefined) for the same URL round-tripping reason as
@@ -329,7 +322,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Pie}
           settings={{ seriesLimit: 10 } as ChartConfigDisplaySettings}
@@ -338,10 +331,10 @@ describe('ChartDisplaySettingsDrawer', () => {
       );
 
       await user.clear(screen.getByRole('textbox', { name: /series limit/i }));
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange).seriesLimit).toBeNull(),
+      );
     });
   });
 
@@ -350,7 +343,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('shows the toggle for builder table charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Table}
         />,
@@ -363,7 +356,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('shows the toggle for raw SQL table charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Table}
         />,
@@ -376,7 +369,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the toggle for line charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Line}
         />,
@@ -389,7 +382,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the toggle for number tiles', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Number}
         />,
@@ -400,12 +393,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('calls onChange with alternateRowBackground = true when enabled and applied', async () => {
+    it('writes alternateRowBackground = true live when enabled', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Table}
           onChange={onChange}
@@ -415,20 +408,20 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(
         screen.getByRole('checkbox', { name: /alternate row background/i }),
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({
-        alternateRowBackground: true,
-      });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({
+          alternateRowBackground: true,
+        }),
+      );
     });
 
-    it('calls onChange with alternateRowBackground = true for raw SQL table charts', async () => {
+    it('writes alternateRowBackground = true live for raw SQL table charts', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Table}
           onChange={onChange}
@@ -438,12 +431,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(
         screen.getByRole('checkbox', { name: /alternate row background/i }),
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({
-        alternateRowBackground: true,
-      });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({
+          alternateRowBackground: true,
+        }),
+      );
     });
   });
 
@@ -452,7 +445,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('shows the toggle for builder table charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...builderProps}
           displayType={DisplayType.Table}
         />,
@@ -467,7 +460,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it('does not show the toggle for raw SQL table charts', () => {
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
           displayType={DisplayType.Table}
         />,
@@ -485,7 +478,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
-    // a duration format from the datasource; the drawer receives it as
+    // a duration format from the datasource; the section receives it as
     // `defaultNumberFormat` and shows it as the fallback when no explicit
     // numberFormat is set.
     const durationFormat = { output: 'duration' as const, factor: 1e-9 };
@@ -495,22 +488,26 @@ describe('ChartDisplaySettingsDrawer', () => {
       displayType: DisplayType.Number,
     };
 
-    it('does not persist the auto-detected format when Apply is clicked without changing it', async () => {
+    it('does not persist the auto-detected format when only another setting changes', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...numberBuilderProps}
           defaultNumberFormat={durationFormat}
           onChange={onChange}
         />,
       );
 
-      await user.click(screen.getByRole('button', { name: /apply/i }));
+      // Change the color, never touch the format.
+      await user.click(screen.getByTestId('color-swatch-input-trigger'));
+      await user.click(
+        await screen.findByTestId('color-swatch-option-chart-blue'),
+      );
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0].numberFormat).toBeUndefined();
+      await waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(lastOnChangeArg(onChange).numberFormat).toBeUndefined();
     });
 
     it('persists the format when the user changes the output format', async () => {
@@ -518,7 +515,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...numberBuilderProps}
           defaultNumberFormat={durationFormat}
           onChange={onChange}
@@ -531,12 +528,12 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(
         await screen.findByRole('option', { name: 'Number', hidden: true }),
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0].numberFormat).toMatchObject({
-        output: 'number',
-      });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange).numberFormat).toMatchObject({
+          output: 'number',
+        }),
+      );
     });
 
     it('preserves an existing explicit format when only another setting changes', async () => {
@@ -544,7 +541,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...numberBuilderProps}
           settings={
             {
@@ -560,68 +557,38 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(
         await screen.findByTestId('color-swatch-option-chart-blue'),
       );
-      await user.click(screen.getByRole('button', { name: /apply/i }));
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0]).toMatchObject({
-        color: 'chart-blue',
-        numberFormat: { output: 'currency' },
-      });
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange)).toMatchObject({
+          color: 'chart-blue',
+          numberFormat: { output: 'currency' },
+        }),
+      );
     });
   });
 
-  // The dashboard tile editor renders this component as a docked side panel
-  // (asPanel) instead of an overlay Drawer. That fork was previously untested.
-  describe('asPanel (docked side panel) mode', () => {
-    it('renders the docked panel, not an overlay dialog, when opened', () => {
-      renderWithMantine(
-        <ChartDisplaySettingsDrawer
-          {...baseProps}
-          displayType={DisplayType.Line}
-          asPanel
-        />,
-      );
-
-      expect(screen.getByTestId('display-settings-panel')).toBeInTheDocument();
-      // The panel is a plain Box, so it must not expose the Drawer's dialog role.
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      // ...but it must still be a labelled landmark for assistive tech.
-      expect(
-        screen.getByRole('region', { name: 'Display Settings' }),
-      ).toBeInTheDocument();
-    });
-
-    it('renders nothing when asPanel and not opened', () => {
-      renderWithMantine(
-        <ChartDisplaySettingsDrawer
-          {...baseProps}
-          opened={false}
-          displayType={DisplayType.Line}
-          asPanel
-        />,
-      );
-
-      expect(
-        screen.queryByTestId('display-settings-panel'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('invokes onClose when the panel close button is clicked', async () => {
-      const onClose = jest.fn();
+  describe('reset to defaults', () => {
+    it('emits default settings when Reset to Defaults is clicked', async () => {
+      const onChange = jest.fn();
       const user = userEvent.setup();
 
       renderWithMantine(
-        <ChartDisplaySettingsDrawer
+        <ChartDisplaySettingsSection
           {...baseProps}
+          configType="builder"
           displayType={DisplayType.Line}
-          onClose={onClose}
-          asPanel
+          settings={{ seriesLimit: 10 } as ChartConfigDisplaySettings}
+          onChange={onChange}
         />,
       );
 
-      await user.click(screen.getByTestId('settings-panel-close-button'));
+      await user.click(
+        screen.getByRole('button', { name: /reset to defaults/i }),
+      );
 
-      expect(onClose).toHaveBeenCalledTimes(1);
+      await waitFor(() =>
+        expect(lastOnChangeArg(onChange).seriesLimit).toBeNull(),
+      );
     });
   });
 });

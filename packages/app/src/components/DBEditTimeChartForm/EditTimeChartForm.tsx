@@ -16,6 +16,7 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  OnClick,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -29,11 +30,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import {
-  useDisclosure,
-  useIsomorphicEffect,
-  usePrevious,
-} from '@mantine/hooks';
+import { useIsomorphicEffect, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconBracketsContain,
@@ -48,7 +45,7 @@ import {
 } from '@tabler/icons-react';
 
 import { getPreviousDateRange } from '@/ChartUtils';
-import ChartDisplaySettingsDrawer, {
+import ChartDisplaySettingsSection, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
 import PromqlChartEditor from '@/components/ChartEditor/PromqlChartEditor';
@@ -83,10 +80,15 @@ import {
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
+import OnClickSection from './OnClickForm/OnClickSection';
 import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
+import TileSettingsRail, {
+  RailSection,
+  RailSectionOption,
+} from './TileSettingsRail';
 import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
   buildChartConfigForExplanations,
@@ -346,26 +348,26 @@ export default function EditTimeChartForm({
     ],
   );
 
-  const [
-    displaySettingsOpened,
-    { open: openDisplaySettings, close: closeDisplaySettings },
-  ] = useDisclosure(false);
+  // A single docked "Tile settings" rail hosts every secondary editor
+  // (Display / Row Click). Heatmap is the display-type-specific variant of the
+  // 'display' section. Per-series color/format live in their own popovers, so
+  // they are not tracked here. Replacing the former stack of overlay drawers
+  // with one section value guarantees mutual exclusivity for free.
+  const [railSection, setRailSection] = useState<RailSection | null>(null);
 
-  const [
-    heatmapSettingsOpened,
-    { open: openHeatmapSettings, close: closeHeatmapSettings },
-  ] = useDisclosure(false);
+  const openDisplaySettings = useCallback(() => setRailSection('display'), []);
+  // Heatmap shares the 'display' section (its content swaps on display type).
+  const openHeatmapSettings = openDisplaySettings;
+  const openRowClick = useCallback(() => setRailSection('rowClick'), []);
+  const closeRail = useCallback(() => setRailSection(null), []);
 
   // Need to force a rerender on change as the modal will not be mounted when initially rendered
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
-  // On a dashboard the editor lives inside a Drawer, so opening a settings
-  // view (regular Display Settings or the heatmap variant) docks a side panel
-  // next to the editor/preview instead of stacking a second drawer. On the
-  // Chart Explorer page the editor is not in a drawer, so they keep their own
-  // overlay drawer.
-  const showSettingsPanel =
-    isDashboardForm && (displaySettingsOpened || heatmapSettingsOpened);
+  // On a dashboard the editor lives inside a Drawer, so opening the rail docks
+  // a side panel next to the editor/preview instead of stacking a drawer; the
+  // Esc handshake with the containing drawer only applies there.
+  const showSettingsPanel = isDashboardForm && railSection != null;
 
   // Tell the containing drawer to hand Esc over to the docked panel: while a
   // panel is open the drawer disables its own Esc-to-close (see EditTileDrawer),
@@ -426,18 +428,11 @@ export default function EditTimeChartForm({
       // drawer's, should its `closeOnEscape` not yet have flipped) bails on
       // the `defaultPrevented` guard instead of tearing down the editor.
       e.preventDefault();
-      if (displaySettingsOpened) closeDisplaySettings();
-      if (heatmapSettingsOpened) closeHeatmapSettings();
+      closeRail();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    showSettingsPanel,
-    displaySettingsOpened,
-    heatmapSettingsOpened,
-    closeDisplaySettings,
-    closeHeatmapSettings,
-  ]);
+  }, [showSettingsPanel, closeRail]);
 
   // Whether the current tab has a regular Display Settings view. Search,
   // Patterns and Markdown have none; Heatmap uses its own variant instead.
@@ -447,19 +442,45 @@ export default function EditTimeChartForm({
     displayType !== DisplayType.Markdown &&
     displayType !== DisplayType.Heatmap;
 
-  // On tab change, close any settings panel that doesn't belong to the new tab
-  // so a stale panel (e.g. Number's Display Settings) is never shown on a tab
-  // without one, or the wrong variant (heatmap vs. regular) lingers.
+  // Whether the current tab exposes a Row Click Action (table tiles only).
+  const displayTypeSupportsRowClick = displayType === DisplayType.Table;
+
+  // On tab change, close the rail if the active section doesn't belong to the
+  // new tab so a stale section (e.g. Number's Display Settings, or Row Click on
+  // a non-table tile) is never shown where it doesn't apply.
   useEffect(() => {
     if (displayType === previousDisplayType) return;
-    if (!displayTypeSupportsDisplaySettings) closeDisplaySettings();
-    if (displayType !== DisplayType.Heatmap) closeHeatmapSettings();
+    setRailSection(prev => {
+      if (prev == null) return prev;
+      if (
+        prev === 'display' &&
+        !displayTypeSupportsDisplaySettings &&
+        displayType !== DisplayType.Heatmap
+      ) {
+        return null;
+      }
+      if (prev === 'rowClick' && displayType !== DisplayType.Table) return null;
+      return prev;
+    });
+  }, [displayType, previousDisplayType, displayTypeSupportsDisplaySettings]);
+
+  // Sections offered by the rail's switcher for the current display type.
+  const railSections = useMemo<RailSectionOption[]>(() => {
+    const sections: RailSectionOption[] = [];
+    if (
+      displayTypeSupportsDisplaySettings ||
+      displayType === DisplayType.Heatmap
+    ) {
+      sections.push({ value: 'display', label: 'Display' });
+    }
+    if (displayTypeSupportsRowClick) {
+      sections.push({ value: 'rowClick', label: 'Row Click' });
+    }
+    return sections;
   }, [
-    displayType,
-    previousDisplayType,
     displayTypeSupportsDisplaySettings,
-    closeDisplaySettings,
-    closeHeatmapSettings,
+    displayTypeSupportsRowClick,
+    displayType,
   ]);
 
   // Only update this on submit, otherwise we'll have issues
@@ -784,14 +805,28 @@ export default function EditTimeChartForm({
       setValue('series.0.valueExpression', data.value);
       setValue('series.0.countExpression', data.count || 'count()');
       setValue('series.0.heatmapScaleType', data.scaleType);
-      // Heatmap settings are applied outside RHF's change tracking.
+      // Heatmap settings are applied outside RHF's change tracking. The rail
+      // section writes live, so the tile's own Save/Cancel is the commit point
+      // (no panel to close here).
       subFormDirty.current = true;
       onDirtyChange?.(true);
       onSubmit();
-      closeHeatmapSettings();
     },
-    [setValue, onDirtyChange, onSubmit, closeHeatmapSettings],
+    [setValue, onDirtyChange, onSubmit],
   );
+
+  // Row Click Action writes live to the tile draft. Unlike the display/heatmap
+  // sub-editors this maps to a real RHF field, so `shouldDirty` marks the tile
+  // dirty without the `subFormDirty` latch.
+  const handleUpdateOnClick = useCallback(
+    (value: OnClick | undefined) => {
+      setValue('onClick', value, { shouldDirty: true });
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
+
+  const onClick = useWatch({ control, name: 'onClick' });
 
   const heatmapValueExpression = useWatch({
     control,
@@ -1000,6 +1035,7 @@ export default function EditTimeChartForm({
                 control={control}
                 setValue={setValue}
                 onOpenDisplaySettings={openDisplaySettings}
+                onOpenRowClick={openRowClick}
                 onSubmit={onSubmit}
                 isDashboardForm={isDashboardForm}
                 alert={alert}
@@ -1034,6 +1070,7 @@ export default function EditTimeChartForm({
                 onSubmit={onSubmit}
                 openDisplaySettings={openDisplaySettings}
                 openHeatmapSettings={openHeatmapSettings}
+                openRowClick={openRowClick}
               />
             )}
             <ChartActionBar
@@ -1072,27 +1109,41 @@ export default function EditTimeChartForm({
             onSubmit={onSubmit}
           />
         </Box>
-        <ChartDisplaySettingsDrawer
-          asPanel={isDashboardForm}
-          opened={displaySettingsOpened}
-          settings={displaySettings}
-          defaultNumberFormat={autoDetectedNumberFormat}
-          previousDateRange={!dashboardId ? previousDateRange : undefined}
-          displayType={displayType}
-          configType={configType}
-          onChange={handleUpdateDisplaySettings}
-          onClose={closeDisplaySettings}
-          isPerSeriesNumberFormatAllowed={configType !== 'sql'}
-        />
-        <HeatmapSettingsDrawer
-          asPanel={isDashboardForm}
-          opened={heatmapSettingsOpened}
-          onClose={closeHeatmapSettings}
-          connection={tableConnection}
-          parentRef={parentRef}
-          defaultValues={heatmapSettingsDefaults}
-          onSubmit={handleUpdateHeatmapSettings}
-        />
+        {railSection != null && railSections.length > 0 && (
+          <TileSettingsRail
+            section={railSection}
+            sections={railSections}
+            onSectionChange={setRailSection}
+            onClose={closeRail}
+            data-testid="tile-settings-rail"
+          >
+            {railSection === 'display' ? (
+              displayType === DisplayType.Heatmap ? (
+                <HeatmapSettingsDrawer
+                  asRailSection
+                  connection={tableConnection}
+                  parentRef={parentRef}
+                  defaultValues={heatmapSettingsDefaults}
+                  onSubmit={handleUpdateHeatmapSettings}
+                />
+              ) : (
+                <ChartDisplaySettingsSection
+                  settings={displaySettings}
+                  defaultNumberFormat={autoDetectedNumberFormat}
+                  previousDateRange={
+                    !dashboardId ? previousDateRange : undefined
+                  }
+                  displayType={displayType}
+                  configType={configType}
+                  onChange={handleUpdateDisplaySettings}
+                  isPerSeriesNumberFormatAllowed={configType !== 'sql'}
+                />
+              )
+            ) : railSection === 'rowClick' ? (
+              <OnClickSection value={onClick} onChange={handleUpdateOnClick} />
+            ) : null}
+          </TileSettingsRail>
+        )}
       </Flex>
       <SaveToDashboardModal
         chartConfig={chartConfig}

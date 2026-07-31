@@ -70,6 +70,7 @@ type ChartEditorControlsProps = {
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
   openHeatmapSettings: () => void;
+  openRowClick: () => void;
 };
 
 export function ChartEditorControls({
@@ -100,6 +101,7 @@ export function ChartEditorControls({
   onSubmit,
   openDisplaySettings,
   openHeatmapSettings,
+  openRowClick,
 }: ChartEditorControlsProps) {
   const canAddSeries =
     displayType !== DisplayType.Pie &&
@@ -390,11 +392,7 @@ export function ChartEditorControls({
             </Group>
             <Group>
               {displayType === DisplayType.Table && (
-                <OnClickFormButton
-                  control={control}
-                  setValue={setValue}
-                  onSubmit={onSubmit}
-                />
+                <OnClickFormButton control={control} onOpen={openRowClick} />
               )}
               <Button
                 onClick={openDisplaySettings}

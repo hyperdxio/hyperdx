@@ -295,23 +295,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   test('should warn when closing tile editor with unsaved display settings changes', async () => {
     await dashboardPage.openNewTileEditor();
 
-    // Open the Display Settings drawer
+    // Open the Display section in the docked tile settings rail
     await dashboardPage.page.getByTestId('display-settings-button').click();
-    const applyButton = dashboardPage.page.getByTestId(
-      'display-settings-apply-button',
-    );
-    await expect(applyButton).toBeVisible({ timeout: 5000 });
+    const rail = dashboardPage.page.getByTestId('tile-settings-rail');
+    await expect(rail).toBeVisible({ timeout: 5000 });
 
-    // Toggle a checkbox via its label
+    // Toggle a checkbox via its label — this writes live to the tile draft
     await dashboardPage.page
       .locator('label', { hasText: 'Compare to Previous Period' })
       .click();
+    // Allow the debounced live-write to flush before closing.
+    await dashboardPage.page.waitForTimeout(400);
 
-    // Apply and wait for the drawer to close
-    await applyButton.click();
-    await expect(applyButton).toBeHidden({ timeout: 5000 });
+    // Close the rail (Esc hands back to the editor)
+    await dashboardPage.page.getByTestId('settings-panel-close-button').click();
+    await expect(rail).toBeHidden({ timeout: 5000 });
 
-    // Try to close — should show unsaved changes confirm
+    // Try to close the editor — should show unsaved changes confirm
     await dashboardPage.page.keyboard.press('Escape');
     await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
       timeout: 5000,

@@ -28,16 +28,17 @@ const HeatmapSettingsSchema = z.object({
 export type HeatmapSettingsValues = z.infer<typeof HeatmapSettingsSchema>;
 
 export default function HeatmapSettingsDrawer({
-  opened,
+  opened = false,
   onClose,
   connection,
   parentRef,
   defaultValues,
   onSubmit,
   asPanel = false,
+  asRailSection = false,
 }: {
-  opened: boolean;
-  onClose: () => void;
+  opened?: boolean;
+  onClose?: () => void;
   connection: TableConnection;
   parentRef?: HTMLElement | null;
   defaultValues: HeatmapSettingsValues;
@@ -48,6 +49,13 @@ export default function HeatmapSettingsDrawer({
    * callers (e.g. the Search page heatmap) are unaffected.
    */
   asPanel?: boolean;
+  /**
+   * Render bare content (no Drawer/panel chrome) for embedding inside the
+   * docked tile settings rail. In this mode edits write live to the tile draft
+   * via `onSubmit` (debounced) and there is no Apply button — the tile's
+   * Save/Cancel is the single commit point.
+   */
+  asRailSection?: boolean;
 }) {
   const form = useForm({
     resolver: zodResolver(HeatmapSettingsSchema),
@@ -74,10 +82,21 @@ export default function HeatmapSettingsDrawer({
 
   const handleClose = useCallback(() => {
     form.reset(defaultValues);
-    onClose();
+    onClose?.();
   }, [onClose, form, defaultValues]);
 
   const scaleType = useWatch({ control: form.control, name: 'scaleType' });
+
+  // Rail mode autosave: write valid edits through to the tile draft on change
+  // (debounced, and only once the user has actually edited something).
+  // handleSubmit gates on the zod schema, so an empty Value is never pushed.
+  const railValues = useWatch({ control: form.control });
+  const isDirty = form.formState.isDirty;
+  useEffect(() => {
+    if (!asRailSection || !isDirty) return;
+    const handle = setTimeout(() => form.handleSubmit(onSubmit)(), 300);
+    return () => clearTimeout(handle);
+  }, [asRailSection, isDirty, railValues, form, onSubmit]);
 
   const content = (
     <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -132,22 +151,32 @@ export default function HeatmapSettingsDrawer({
           error={form.formState.errors.count?.message}
         />
 
-        <Divider />
-        <Group gap="xs" justify="flex-end">
-          <Button variant="secondary" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            leftSection={<IconPlayerPlay size={16} />}
-          >
-            Apply
-          </Button>
-        </Group>
+        {!asRailSection && (
+          <>
+            <Divider />
+            <Group gap="xs" justify="flex-end">
+              <Button variant="secondary" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                type="submit"
+                leftSection={<IconPlayerPlay size={16} />}
+              >
+                Apply
+              </Button>
+            </Group>
+          </>
+        )}
       </Stack>
     </form>
   );
+
+  // Rail mode: bare content embedded in the docked tile settings rail, which
+  // supplies its own header/close. Edits write live via the autosave effect.
+  if (asRailSection) {
+    return content;
+  }
 
   // Panel mode: dock as a full-height side panel beside the editor (used inside
   // the tile editor drawer) instead of stacking a second drawer.

@@ -474,10 +474,12 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Click the drawer's Apply button and wait for the drawer to close.
+   * The Row Click Action section writes live to the tile draft (no Apply
+   * button). Let the debounced write flush, then close the rail.
    */
   async applyRowClickDrawer() {
-    await this.page.getByTestId('onclick-apply-button').click();
+    await this.page.waitForTimeout(400);
+    await this.page.getByTestId('settings-panel-close-button').click();
     await this.rowClickDrawer.waitFor({ state: 'hidden', timeout: 5000 });
   }
 
@@ -525,27 +527,28 @@ export class ChartEditorComponent {
   }
 
   get rowClickDrawer() {
-    return this.page.getByTestId('onclick-drawer');
+    // Row Click Action now renders as a section inside the docked tile
+    // settings rail rather than a standalone drawer.
+    return this.page.getByTestId('onclick-section');
   }
 
   /**
-   * The Display Settings container. In the dashboard tile editor this is a
-   * docked side panel (a Box with `data-testid="display-settings-panel"`); on
-   * Chart Explorer it's an overlay Drawer (`role="dialog"`). Match either so the
-   * shared helpers work in both contexts.
+   * The Display Settings container. Both the dashboard tile editor and Chart
+   * Explorer now dock the settings as one rail (`data-testid`
+   * "tile-settings-rail"); the Display section renders inside it.
    */
   get displaySettingsContainer(): Locator {
-    return this.page
-      .getByTestId('display-settings-panel')
-      .or(this.page.getByRole('dialog', { name: 'Display Settings' }));
+    return this.page.getByTestId('tile-settings-rail');
   }
 
   /**
-   * Click Apply in the open Display Settings panel/drawer and wait for it to close.
+   * The Display section writes live to the tile draft (no Apply button). Let
+   * the debounced write flush, then close the rail.
    */
   async applyDisplaySettings() {
     const container = this.displaySettingsContainer;
-    await container.getByRole('button', { name: 'Apply', exact: true }).click();
+    await this.page.waitForTimeout(400);
+    await this.page.getByTestId('settings-panel-close-button').click();
     await container.waitFor({ state: 'hidden', timeout: 5000 });
   }
 

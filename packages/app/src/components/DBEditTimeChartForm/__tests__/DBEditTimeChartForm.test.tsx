@@ -511,11 +511,17 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
       ...props,
     });
 
+  const duplicateFirstSeries = async () => {
+    // Duplicate now lives in the series row's kebab (overflow) menu.
+    await userEvent.click(screen.getAllByTestId('series-actions-menu')[0]);
+    await userEvent.click(await screen.findByTestId('series-duplicate-button'));
+  };
+
   it('inserts a copy of the series directly below when duplicating', async () => {
     renderWithSingleSeries();
     expect(screen.getAllByTestId('series-alias-input')).toHaveLength(1);
 
-    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await duplicateFirstSeries();
 
     const aliasInputs = screen.getAllByTestId('series-alias-input');
     expect(aliasInputs).toHaveLength(2);
@@ -529,7 +535,7 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const onSave = jest.fn();
     renderWithSingleSeries({ onSave });
 
-    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await duplicateFirstSeries();
     await userEvent.click(screen.getByTestId('chart-save-button'));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -546,7 +552,7 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const onSave = jest.fn();
     renderWithSingleSeries({ onSave });
 
-    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await duplicateFirstSeries();
 
     const aliasInputs = screen.getAllByTestId('series-alias-input');
     await userEvent.clear(aliasInputs[1]);
@@ -613,16 +619,20 @@ describe('DBEditTimeChartForm - Column color', () => {
     expect(screen.queryByTestId('series-color-button')).not.toBeInTheDocument();
   });
 
-  it('opens the column color drawer when the control is clicked', async () => {
+  it('opens the column color popover when the control is clicked', async () => {
     renderComponent({ chartConfig: tableConfig });
 
     await userEvent.click(screen.getByTestId('series-color-button'));
 
-    // The drawer renders the reused color swatch + rules editor.
+    // The popover renders the reused color swatch + rules editor and writes
+    // live (no Apply button — the tile's Save is the single commit point).
     expect(
-      await screen.findByTestId('color-swatch-input-trigger'),
+      await screen.findByTestId('series-color-popover'),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('series-color-apply')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('color-swatch-input-trigger'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('series-color-apply')).not.toBeInTheDocument();
   });
 });
 
@@ -651,9 +661,7 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
 
-    expect(
-      await screen.findByTestId('display-settings-panel'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('tile-settings-rail')).toBeInTheDocument();
     // The containing drawer relies on this notification to disable its own
     // Esc-to-close before the panel is ever visible (guards the capture-phase
     // race that would otherwise dismiss the entire editor).
@@ -666,15 +674,13 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
     renderDashboardForm({ onSettingsPanelOpenChange, onClose });
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
-    expect(
-      await screen.findByTestId('display-settings-panel'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('tile-settings-rail')).toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: 'Escape' });
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId('display-settings-panel'),
+        screen.queryByTestId('tile-settings-rail'),
       ).not.toBeInTheDocument();
     });
     // The editor form is still there and was never asked to close.
@@ -696,16 +702,14 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
     renderDashboardForm();
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
-    expect(
-      await screen.findByTestId('display-settings-panel'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('tile-settings-rail')).toBeInTheDocument();
 
     const openCombobox = document.createElement('div');
     Object.entries(attrs).forEach(([k, v]) => openCombobox.setAttribute(k, v));
     document.body.appendChild(openCombobox);
     fireEvent.keyDown(openCombobox, { key: 'Escape' });
 
-    expect(screen.getByTestId('display-settings-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('tile-settings-rail')).toBeInTheDocument();
     openCombobox.remove();
   });
 
@@ -713,9 +717,7 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
     renderDashboardForm();
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
-    expect(
-      await screen.findByTestId('display-settings-panel'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('tile-settings-rail')).toBeInTheDocument();
 
     // A focusable disclosure such as an Accordion.Control carries
     // aria-expanded but is not a combobox; the narrowed exemption must let Esc
@@ -727,7 +729,7 @@ describe('DBEditTimeChartForm - Docked settings panel Esc contract', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId('display-settings-panel'),
+        screen.queryByTestId('tile-settings-rail'),
       ).not.toBeInTheDocument();
     });
     accordionControl.remove();
@@ -779,7 +781,7 @@ describe('DBEditTimeChartForm - Docked panel Esc inside a real Drawer', () => {
     renderWithMantine(<EditTileDrawerHarness onDrawerClose={onDrawerClose} />);
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
-    const panel = await screen.findByTestId('display-settings-panel');
+    const panel = await screen.findByTestId('tile-settings-rail');
     expect(panel).toBeInTheDocument();
 
     // Dispatch Escape the way a real keypress does: on the focused element,
@@ -790,7 +792,7 @@ describe('DBEditTimeChartForm - Docked panel Esc inside a real Drawer', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId('display-settings-panel'),
+        screen.queryByTestId('tile-settings-rail'),
       ).not.toBeInTheDocument();
     });
     // The drawer must survive: only the panel closed.
@@ -803,15 +805,13 @@ describe('DBEditTimeChartForm - Docked panel Esc inside a real Drawer', () => {
     renderWithMantine(<EditTileDrawerHarness onDrawerClose={onDrawerClose} />);
 
     await userEvent.click(screen.getByTestId('display-settings-button'));
-    expect(
-      await screen.findByTestId('display-settings-panel'),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('tile-settings-rail')).toBeInTheDocument();
 
     // First Escape: closes the panel, drawer stays open.
     await userEvent.keyboard('{Escape}');
     await waitFor(() => {
       expect(
-        screen.queryByTestId('display-settings-panel'),
+        screen.queryByTestId('tile-settings-rail'),
       ).not.toBeInTheDocument();
     });
     expect(onDrawerClose).not.toHaveBeenCalled();

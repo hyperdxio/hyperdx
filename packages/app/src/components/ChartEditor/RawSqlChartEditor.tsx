@@ -102,6 +102,7 @@ export default function RawSqlChartEditor({
   control,
   setValue,
   onOpenDisplaySettings,
+  onOpenRowClick,
   onSubmit,
   isDashboardForm,
   alert,
@@ -110,6 +111,7 @@ export default function RawSqlChartEditor({
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   onOpenDisplaySettings: () => void;
+  onOpenRowClick: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
@@ -286,11 +288,7 @@ export default function RawSqlChartEditor({
 
           <Group>
             {displayType === DisplayType.Table && (
-              <OnClickFormButton
-                control={control}
-                setValue={setValue}
-                onSubmit={onSubmit}
-              />
+              <OnClickFormButton control={control} onOpen={onOpenRowClick} />
             )}
             <Button
               onClick={onOpenDisplaySettings}

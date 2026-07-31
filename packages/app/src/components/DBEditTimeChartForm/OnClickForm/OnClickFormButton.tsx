@@ -1,27 +1,15 @@
-import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
+import { Control, useWatch } from 'react-hook-form';
 import { Button } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 
-import OnClickDrawer from './OnClickDrawer';
-
 interface OnClickFormButtonProps {
   control: Control<ChartEditorFormState>;
-  setValue: UseFormSetValue<ChartEditorFormState>;
-  onSubmit?: (suppressErrorNotification?: boolean) => void;
+  /** Opens the Row Click Action section in the docked tile settings rail. */
+  onOpen: () => void;
 }
 
-export function OnClickFormButton({
-  control,
-  setValue,
-  onSubmit,
-}: OnClickFormButtonProps) {
-  const [
-    onClickDrawerOpened,
-    { open: openOnClickDrawer, close: closeOnClickDrawer },
-  ] = useDisclosure(false);
-
+export function OnClickFormButton({ control, onOpen }: OnClickFormButtonProps) {
   const onClickValue = useWatch({ control, name: 'onClick' });
   const onClickTypeLabel =
     onClickValue?.type === 'search'
@@ -33,24 +21,13 @@ export function OnClickFormButton({
           : 'Default';
 
   return (
-    <>
-      <Button
-        onClick={openOnClickDrawer}
-        size="compact-sm"
-        variant="secondary"
-        data-testid="onclick-drawer-trigger"
-      >
-        Row Click Action: {onClickTypeLabel}
-      </Button>
-      <OnClickDrawer
-        opened={onClickDrawerOpened}
-        value={onClickValue}
-        onChange={value => {
-          setValue('onClick', value, { shouldDirty: true });
-          onSubmit?.();
-        }}
-        onClose={closeOnClickDrawer}
-      />
-    </>
+    <Button
+      onClick={onOpen}
+      size="compact-sm"
+      variant="secondary"
+      data-testid="onclick-drawer-trigger"
+    >
+      Row Click Action: {onClickTypeLabel}
+    </Button>
   );
 }
