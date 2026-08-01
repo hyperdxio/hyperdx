@@ -224,6 +224,7 @@ describe('External API Alerts', () => {
           message: 'This is a test alert for format verification',
           note: null,
           numConsecutiveWindows: null,
+          renotifyIntervalMinutes: null,
           threshold: 123,
           interval: '15m',
           source: AlertSource.TILE,
