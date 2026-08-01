@@ -1,4 +1,6 @@
+import PQueue from '@esm2cjs/p-queue';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { Tile } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
@@ -6,15 +8,26 @@ import ms from 'ms';
 import { URLSearchParams } from 'url';
 
 import * as config from '@/config';
+import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
 import { connectDB, mongooseConnection, ObjectId } from '@/models';
-import Alert, { AlertSource, AlertState, type IAlert } from '@/models/alert';
+import Alert, {
+  AlertSource,
+  AlertState,
+  type IAlert,
+  type IAlertError,
+} from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { type ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { type ISource, Source } from '@/models/source';
 import Webhook, { IWebhook } from '@/models/webhook';
+import {
+  AggregatedAlertHistory,
+  getConsecutiveWindowHistories,
+  getPreviousAlertHistories,
+} from '@/tasks/checkAlerts';
 import {
   type AlertDetails,
   type AlertProvider,
@@ -24,8 +37,6 @@ import {
 import { MappedOmit } from '@/tasks/types';
 import { convertMsToGranularityString } from '@/utils/common';
 import logger from '@/utils/logger';
-
-import { AggregatedAlertHistory, getPreviousAlertHistories } from '..';
 
 type PartialAlertDetails = MappedOmit<AlertDetails, 'previousMap'>;
 
@@ -108,13 +119,56 @@ async function getTileDetails(
   }
 
   if (isRawSqlSavedChartConfig(tile.config)) {
-    logger.warn({
-      tileId,
-      dashboardId: dashboard._id,
-      alertId: alert.id,
-      message: 'skipping alert with raw sql chart config, not supported',
-    });
-    return [];
+    if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+      logger.warn({
+        tileId,
+        dashboardId: dashboard._id,
+        alertId: alert.id,
+        message:
+          'skipping alert with raw sql chart config, only line/bar display types are supported',
+      });
+      return [];
+    }
+
+    // Raw SQL tiles store connection ID directly on the config
+    const connection = await Connection.findOne({
+      _id: tile.config.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for raw sql tile',
+        connectionId: tile.config.connection,
+        tileId,
+        dashboardId: dashboard._id,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    // Optionally look up source for filter/macro metadata
+    let source: ISource | undefined;
+    if (tile.config.source) {
+      const sourceDoc = await Source.findOne({
+        _id: tile.config.source,
+        team: alert.team,
+      });
+      if (sourceDoc) {
+        source = sourceDoc.toObject();
+      }
+    }
+
+    return [
+      connection,
+      {
+        alert,
+        source,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      },
+    ];
   }
 
   const source = await Source.findOne({
@@ -165,6 +219,7 @@ async function loadAlert(
   alert: IAlert,
   groupedTasks: Map<string, AlertTask>,
   previousAlerts: Map<string, AggregatedAlertHistory>,
+  recentHistoryMap: Map<string, AggregatedAlertHistory[]>,
   now: Date,
 ) {
   if (!alert.source) {
@@ -207,7 +262,11 @@ async function loadAlert(
   if (!v) {
     throw new Error(`provider did not set key ${conn.id} before appending`);
   }
-  v.alerts.push({ ...details, previousMap: previousAlerts });
+  v.alerts.push({
+    ...details,
+    previousMap: previousAlerts,
+    recentHistoryMap,
+  });
 }
 
 export default class DefaultAlertProvider implements AlertProvider {
@@ -225,11 +284,25 @@ export default class DefaultAlertProvider implements AlertProvider {
 
     const now = new Date();
     const alertIds = alerts.map(({ id }) => id);
-    const previousAlerts = await getPreviousAlertHistories(alertIds, now);
+    // Share a single queue across both history fetches so their combined
+    // in-flight per-alert queries stay within one global cap.
+    const historyQueryQueue = new PQueue({
+      concurrency: ALERT_HISTORY_QUERY_CONCURRENCY,
+    });
+    const [previousAlerts, recentHistoryMap] = await Promise.all([
+      getPreviousAlertHistories(alertIds, now, historyQueryQueue),
+      getConsecutiveWindowHistories(alerts, now, historyQueryQueue),
+    ]);
 
     for (const alert of alerts) {
       try {
-        await loadAlert(alert, groupedTasks, previousAlerts, now);
+        await loadAlert(
+          alert,
+          groupedTasks,
+          previousAlerts,
+          recentHistoryMap,
+          now,
+        );
       } catch (e) {
         logger.error({
           message: `failed to load alert: ${e}`,
@@ -269,11 +342,13 @@ export default class DefaultAlertProvider implements AlertProvider {
     endTime,
     granularity,
     startTime,
+    tileId,
   }: {
     dashboardId: string;
     endTime: Date;
     granularity: string;
     startTime: Date;
+    tileId?: string;
   }): string {
     const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
     // extend both start and end time by 7x granularity
@@ -284,11 +359,18 @@ export default class DefaultAlertProvider implements AlertProvider {
       granularity: convertMsToGranularityString(ms(granularity)),
       to,
     });
+    if (tileId) {
+      queryParams.set('highlightedTileId', tileId);
+    }
     url.search = queryParams.toString();
     return url.toString();
   }
 
-  async updateAlertState(alertId: string, histories: IAlertHistory[]) {
+  async updateAlertState(
+    alertId: string,
+    histories: IAlertHistory[],
+    errors: IAlertError[],
+  ) {
     // Save history records first (in parallel), then update alert state
     // Use Promise.allSettled to handle partial failures gracefully
     const historyResults = await Promise.allSettled(
@@ -322,12 +404,21 @@ export default class DefaultAlertProvider implements AlertProvider {
 
     const finalState = historiesToCheck.some(h => h.state === AlertState.ALERT)
       ? AlertState.ALERT
-      : AlertState.OK;
+      : historiesToCheck.some(h => h.state === AlertState.PENDING)
+        ? AlertState.PENDING
+        : AlertState.OK;
 
-    // Update alert state based on successfully saved histories
+    // Update alert state + errors based on this execution
     await Alert.updateOne(
       { _id: new mongoose.Types.ObjectId(alertId) },
-      { $set: { state: finalState } },
+      { $set: { state: finalState, executionErrors: errors } },
+    );
+  }
+
+  async recordAlertErrors(alertId: string, errors: IAlertError[]) {
+    await Alert.updateOne(
+      { _id: new mongoose.Types.ObjectId(alertId) },
+      { $set: { executionErrors: errors } },
     );
   }
 

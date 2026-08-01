@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
-import { Flex, Select } from '@mantine/core';
+import { ComboboxChevron, Flex, Select } from '@mantine/core';
 import { IconTable } from '@tabler/icons-react';
 
 import { useTablesDirect } from '@/clickhouse';
 
-import SourceSchemaPreview from './SourceSchemaPreview';
-import { SourceSelectRightSection } from './SourceSelect';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './SourceSchemaPreview';
+import { SourceManagementMenu } from './SourceSelect';
 
-export default function DBTableSelect({
+function DBTableSelect({
   database,
   setTable,
   table,
@@ -38,37 +41,44 @@ export default function DBTableSelect({
     label: db.name,
   }));
 
-  const rightSectionProps = SourceSelectRightSection({
-    sourceSchemaPreview:
-      connectionId && database && table ? (
-        <SourceSchemaPreview
-          source={{
-            connection: connectionId,
-            from: { databaseName: database, tableName: table },
-          }}
-          variant="text"
-        />
-      ) : undefined,
-  });
+  const [isSchemaPreviewOpen, setIsSchemaPreviewOpen] = useState(false);
+  const previewSource =
+    connectionId && database && table
+      ? {
+          connection: connectionId,
+          from: { databaseName: database, tableName: table },
+        }
+      : undefined;
 
   return (
-    <Flex align="center" gap={8}>
+    <Flex align="center" gap={4}>
       <Select
         searchable
         placeholder="Table"
         leftSection={<IconTable size={16} />}
+        rightSection={<ComboboxChevron />}
         maxDropdownHeight={280}
         data={data}
         disabled={isTablesLoading}
         value={table}
-        comboboxProps={{ withinPortal: false }}
+        comboboxProps={{ withinPortal: true }}
         onChange={v => setTable(v ?? undefined)}
         onBlur={onBlur}
         name={name}
         ref={inputRef}
         size={size}
         className="flex-grow-1"
-        {...rightSectionProps}
+      />
+      <SourceManagementMenu
+        hasSelection={!!table}
+        onSchemaPreview={() => setIsSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(previewSource)}
+      />
+      <SourceSchemaPreview
+        source={previewSource}
+        controlled
+        open={isSchemaPreviewOpen}
+        onClose={() => setIsSchemaPreviewOpen(false)}
       />
     </Flex>
   );
@@ -83,11 +93,7 @@ export function DBTableSelectControlled({
   size?: string;
   connectionId: string | undefined;
 } & UseControllerProps<any>) {
-  const {
-    field,
-    fieldState: { invalid, isTouched, isDirty },
-    formState: { touchedFields, dirtyFields },
-  } = useController(props);
+  const { field } = useController(props);
 
   return (
     <DBTableSelect

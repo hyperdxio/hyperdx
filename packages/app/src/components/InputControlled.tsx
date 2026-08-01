@@ -1,14 +1,14 @@
 import React from 'react';
 import { Control, Controller, FieldValues, Path } from 'react-hook-form';
 import {
+  Autocomplete,
+  AutocompleteProps,
   Checkbox,
   CheckboxProps,
   Input,
   InputProps,
   PasswordInput,
   PasswordInputProps,
-  Switch,
-  SwitchProps,
   TextInput,
   TextInputProps,
 } from '@mantine/core';
@@ -48,12 +48,11 @@ interface CheckboxControlledProps<T extends FieldValues>
   rules?: Parameters<Control<T>['register']>[1];
 }
 
-interface SwitchControlledProps<T extends FieldValues>
-  extends Omit<SwitchProps, 'name' | 'style'>,
-    Omit<
-      React.InputHTMLAttributes<HTMLInputElement>,
-      'name' | 'size' | 'color'
-    > {
+// Autocomplete already extends the native input attributes (minus its own
+// value-based onChange and size), so it carries maxLength/placeholder without
+// a second InputHTMLAttributes extend that would clash on onChange.
+interface AutocompleteControlledProps<T extends FieldValues>
+  extends Omit<AutocompleteProps, 'name' | 'style'> {
   name: Path<T>;
   control: Control<T>;
   rules?: Parameters<Control<T>['register']>[1];
@@ -136,19 +135,27 @@ export function CheckBoxControlled<T extends FieldValues>({
   );
 }
 
-export function SwitchControlled<T extends FieldValues>({
+export function AutocompleteControlled<T extends FieldValues>({
   name,
   control,
   rules,
   ...props
-}: SwitchControlledProps<T>) {
+}: AutocompleteControlledProps<T>) {
   return (
     <Controller
       name={name}
       control={control}
       rules={rules}
+      // Autocomplete is free-text: onChange passes the typed/selected string
+      // straight through, and value is coerced from a possibly-undefined field
+      // to '' so it stays controlled.
       render={({ field: { value, ...field }, fieldState: { error } }) => (
-        <Switch {...props} {...field} checked={value} error={error?.message} />
+        <Autocomplete
+          {...props}
+          {...field}
+          value={value ?? ''}
+          error={error?.message}
+        />
       )}
     />
   );

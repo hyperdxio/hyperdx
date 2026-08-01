@@ -1,12 +1,13 @@
 import React from 'react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import DBHistogramChart, {
+  resolvePinnedBarIndex,
+} from '@/components/DBHistogramChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import DBHistogramChart from '../DBHistogramChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -151,5 +152,28 @@ describe('DBHistogramChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolvePinnedBarIndex', () => {
+  it('accepts a non-negative integer number', () => {
+    expect(resolvePinnedBarIndex(0)).toBe(0);
+    expect(resolvePinnedBarIndex(3)).toBe(3);
+  });
+
+  it('accepts a numeric string', () => {
+    expect(resolvePinnedBarIndex('5')).toBe(5);
+    expect(resolvePinnedBarIndex('0')).toBe(0);
+  });
+
+  it('rejects values that resolve to no bar', () => {
+    expect(resolvePinnedBarIndex(null)).toBeUndefined();
+    expect(resolvePinnedBarIndex(undefined)).toBeUndefined();
+    expect(resolvePinnedBarIndex('')).toBeUndefined();
+    expect(resolvePinnedBarIndex('   ')).toBeUndefined();
+    expect(resolvePinnedBarIndex(-1)).toBeUndefined();
+    expect(resolvePinnedBarIndex(2.5)).toBeUndefined();
+    expect(resolvePinnedBarIndex('abc')).toBeUndefined();
+    expect(resolvePinnedBarIndex(NaN)).toBeUndefined();
   });
 });

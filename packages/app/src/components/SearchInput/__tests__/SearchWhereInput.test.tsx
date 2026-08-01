@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import SearchWhereInput from '../SearchWhereInput';
+import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 
 function renderWithMantine(ui: React.ReactElement) {
   return render(
@@ -110,7 +110,7 @@ describe('SearchWhereInput', () => {
 
       // Check for placeholder text in the CodeMirror editor
       // Note: CodeMirror may render placeholder differently
-      const sqlPlaceholder = screen.queryByText(/SQL WHERE clause/i);
+      screen.queryByText(/SQL WHERE clause/i);
       // If placeholder is not directly visible, the component should still render
       expect(screen.getByText('WHERE')).toBeInTheDocument();
     });

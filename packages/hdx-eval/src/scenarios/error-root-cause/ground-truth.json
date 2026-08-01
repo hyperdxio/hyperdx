@@ -1,0 +1,173 @@
+{
+  "scenario": "error-root-cause",
+  "agentPrompt": "Checkout requests are failing for some users in the last 10 minutes. Find the root cause.",
+  "expected": {
+    "rootCauseService": "payment-service",
+    "rootCauseOperation": "payment.charge",
+    "downstreamFailure": "db.payment.connect",
+    "errorBodyPattern": "db-payment",
+    "errorMessageVariants": [
+      "connection timeout to db-payment",
+      "timeout connecting to db-payment.internal",
+      "db-payment unreachable after 5 retries"
+    ],
+    "userFacingService": "checkout-api",
+    "userFacingOperation": "POST /api/checkout",
+    "onsetMinutesAgo": 5,
+    "approxFailingTraces": 8
+  },
+  "distractors": [
+    {
+      "kind": "api-gateway TLS handshake spike",
+      "service": "api-gateway",
+      "windowMinutesAgo": [25, 20],
+      "approxCount": 50,
+      "errorMessage": "tls handshake timeout: peer reset",
+      "whyNotRootCause": "Resolved 20 minutes ago; unrelated to current checkout failures."
+    },
+    {
+      "kind": "auth-service rate-limit blip",
+      "service": "auth-service",
+      "windowMinutesAgo": [40, 38],
+      "approxCount": 20,
+      "errorMessage": "rate limit exceeded: 1000 req/min on /v2/token",
+      "whyNotRootCause": "Resolved 38 minutes ago; not in the current incident window."
+    },
+    {
+      "kind": "search-service slow queries",
+      "service": "search-service",
+      "windowMinutesAgo": "throughout-hour",
+      "approxCount": 80,
+      "whyNotRootCause": "Status OK, not errors. Slow but successful. Unrelated to checkout cascade."
+    },
+    {
+      "kind": "background payment.charge declines",
+      "service": "payment-service",
+      "spanName": "payment.charge",
+      "windowMinutesAgo": "throughout-hour",
+      "approxCount": 200,
+      "errorTypes": [
+        "card declined",
+        "insufficient funds",
+        "CVV mismatch",
+        "expired card",
+        "payment method not supported"
+      ],
+      "whyNotRootCause": "Operational user-level declines, not infrastructure failures. error.type='PaymentDeclined' (not ConnectionTimeoutError). Distributed throughout the hour, not concentrated in the recent window."
+    },
+    {
+      "kind": "notification-service smtp failure (concurrent)",
+      "service": "notification-service",
+      "spanName": "notify.email",
+      "windowMinutesAgo": [5, 0],
+      "approxCount": 25,
+      "errorMessage": "smtp connection refused: smtp.internal:587",
+      "errorType": "SMTPConnectionError",
+      "whyNotRootCause": "Concurrent but separate incident — these traces have no checkout-api parent and don't appear in any checkout trace tree. Different dependency (smtp.internal vs db-payment.internal)."
+    },
+    {
+      "kind": "cdn origin-fetch burst (concurrent)",
+      "service": "cdn",
+      "spanName": "cdn.cache.fetch",
+      "windowMinutesAgo": [5, 0],
+      "approxCount": 80,
+      "errorMessage": "origin connection refused: origin-static.internal:443",
+      "errorType": "OriginUnreachableError",
+      "whyNotRootCause": "Concurrent recent 5xx spike, but on cdn traces with no checkout-api parent. Looks superficially similar to the planted cascade (service-can't-reach-dependency) but lives in entirely separate trace trees and has no link to payment-service or checkout-api. Status-code-only queries will return these alongside the planted failures."
+    }
+  ],
+  "anomalyAttributes": {
+    "spanAttributes": {
+      "db.system": "postgres",
+      "db.name": "payments",
+      "error.type": "ConnectionTimeoutError",
+      "net.peer.name": "db-payment.internal"
+    },
+    "logAttributes": {
+      "error.kind": "DBTimeout",
+      "component": "payment-service"
+    }
+  },
+  "rubric": {
+    "programmatic": [
+      ["names_root_cause_service", 2, "payment-service"],
+      [
+        "names_underlying_failure",
+        2,
+        "(connection timeout|db connection|connect.*timeout|timeout.*connect|unreachable)"
+      ],
+      ["names_user_facing_service", 1, "checkout(-api)?"],
+      ["names_db_target", 1, "db-payment"],
+      [
+        "names_error_type",
+        2,
+        "(ConnectionTimeoutError|connection.?timeout|DBTimeout|error\\.type[^a-z]+(connection|db))"
+      ],
+      ["names_db_host_fqdn", 1, "db-payment\\.internal"],
+      [
+        "names_specific_db_span",
+        1,
+        "(db\\.payment\\.connect|payment\\.charge)"
+      ],
+      [
+        "ruled_out_a_distractor",
+        2,
+        "(rul(ed|ing) out|not (the )?(root )?cause|concurrent (but )?(separate|unrelated)|distractor|separate (incident|trace tree|burst))[\\s\\S]{0,250}?\\b(tls|api-gateway|auth-service|rate.?limit|smtp|notification-service|cdn|origin|card declin|insufficient funds|search-service)"
+      ],
+      [
+        "false_blame_tls_handshake",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\b(tls handshake|api-gateway[^.\\n]{0,40}?(tls|handshake|peer reset))",
+        true
+      ],
+      [
+        "false_blame_auth_rate_limit",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(rate.?limit|auth-service[^.\\n]{0,40}?(rate.?limit|429|throttl))",
+        true
+      ],
+      [
+        "false_blame_smtp",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(smtp|notification-service[^.\\n]{0,40}?(smtp|email))",
+        true
+      ],
+      [
+        "false_blame_payment_decline",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(card declined|insufficient funds|cvv mismatch|expired card|payment.?declined)",
+        true
+      ],
+      [
+        "false_blame_cdn_origin",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(cdn|origin[^.\\n]{0,40}?(refused|unreachable|timeout)|cache.?miss[^.\\n]{0,40}?upstream)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer correctly identify payment-service as the root-cause service AND the DB connection timeout to db-payment as the underlying failure? The error message has 3 variants — recognizing them as one cause counts."
+        },
+        {
+          "id": "completeness",
+          "weight": 2,
+          "description": "Did it explain the full failure chain — payment-service db.payment.connect timeout → payment.charge fails → checkout-api 5xx — rather than just naming one layer?"
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Did the answer correctly distinguish the planted timeout cascade from the distractors? Specifically: (a) Resolved historical incidents — api-gateway TLS spike at T-25min, auth-service rate-limit blip at T-40min — are NOT the current cause. (b) search-service slow queries are OK status, not errors. (c) payment-service payment.charge declines (card declined/insufficient funds) are operational user-level failures, NOT the infrastructure incident. (d) notification-service smtp errors and cdn origin-fetch errors are CONCURRENT bursts in the same window but live on separate traces with no checkout-api parent — not the cause of checkout failures. Status-code-only queries will surface all of these together; the agent must trace the causal chain rather than rely on raw error counts. Mistaking any of these for the root cause is a calibration failure."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Was the answer concise, well-structured, and free of filler or unnecessary speculation?"
+        }
+      ]
+    }
+  }
+}

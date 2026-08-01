@@ -1,18 +1,19 @@
 import { useCallback, useMemo } from 'react';
 import MD5 from 'crypto-js/md5';
 import SqlString from 'sqlstring';
+import z from 'zod';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
-import { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
+import { WithClauseSchema } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
 
 // Type for WITH clause entries, derived from ChartConfig's with property
-export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
+export type WithClause = z.infer<typeof WithClauseSchema>;
 
 // Internal row field names used by the table component for row tracking
 export const INTERNAL_ROW_FIELDS = {
@@ -52,6 +53,11 @@ export function processRowToWhereClause(
         throw new Error(
           `valueExpr not found for ${column}, ${JSON.stringify(columnMap)}`,
         );
+      }
+
+      // Handle nullish values for all types uniformly
+      if (value == null) {
+        return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
       }
 
       switch (jsType) {
@@ -100,10 +106,6 @@ export function processRowToWhereClause(
           );
 
         default:
-          // Handle nullish values
-          if (value == null) {
-            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
-          }
           // Handle the case when string is too long
           if (value.length > MAX_STRING_LENGTH) {
             return SqlString.format(
@@ -131,9 +133,11 @@ export function processRowToWhereClause(
 export default function useRowWhere({
   meta,
   aliasMap,
+  primaryKeyColumns,
 }: {
   meta?: ColumnMetaType[];
   aliasMap?: Record<string, string | undefined>; // map alias -> valueExpr, undefined is not supported
+  primaryKeyColumns?: Set<string>;
 }) {
   const columnMap = useMemo(
     () =>
@@ -171,11 +175,21 @@ export default function useRowWhere({
         [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
         ...dbRow
       } = row;
+
+      // When primaryKeyColumns is provided, only use those columns in the
+      // WHERE clause. This avoids filtering on large columns like Body that
+      // trigger expensive index loading in ClickHouse.
+      const filteredRow = primaryKeyColumns
+        ? Object.fromEntries(
+            Object.entries(dbRow).filter(([col]) => primaryKeyColumns.has(col)),
+          )
+        : dbRow;
+
       return {
-        where: processRowToWhereClause(dbRow, columnMap),
+        where: processRowToWhereClause(filteredRow, columnMap),
         aliasWith,
       };
     },
-    [columnMap, aliasWith],
+    [columnMap, aliasWith, primaryKeyColumns],
   );
 }

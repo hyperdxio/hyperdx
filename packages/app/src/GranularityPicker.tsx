@@ -3,7 +3,7 @@ import { useController, UseControllerProps } from 'react-hook-form';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import { Select } from '@mantine/core';
 
-export default function GranularityPicker({
+export function GranularityPicker({
   value,
   onChange,
   disabled,
@@ -70,14 +70,8 @@ export default function GranularityPicker({
   );
 }
 
-export function GranularityPickerControlledComponent(
-  props: UseControllerProps<any>,
-) {
-  const {
-    field,
-    fieldState: { invalid, isTouched, isDirty },
-    formState: { touchedFields, dirtyFields },
-  } = useController(props);
+function GranularityPickerControlledComponent(props: UseControllerProps<any>) {
+  const { field } = useController(props);
 
   return <GranularityPicker value={field.value} onChange={field.onChange} />;
 }

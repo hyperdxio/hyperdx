@@ -1,0 +1,35 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "from-json-ecs-log-level"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "{\"log\":{\"level\":\"fatal\"},\"message\":\"ECS-style nested log\"}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -8,15 +8,31 @@
 # - Otel Collector (otelcol)
 
 ARG NODE_VERSION=22.22
-ARG CLICKHOUSE_VERSION=26.1
-ARG OTEL_COLLECTOR_VERSION=0.147.0
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.147.0
+ARG CLICKHOUSE_VERSION=26.5
+ARG OTEL_COLLECTOR_VERSION=0.155.0
+ARG OTEL_COLLECTOR_CORE_VERSION=1.61.0
 
 # base #############################################################################################
 # == Otel Collector Image ==
-FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
-FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
+FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_VERSION} AS otel_collector_opampsupervisor_base
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
+
+# Build the custom HyperDX collector binary using OCB (OpenTelemetry Collector Builder).
+# This replaces the pre-built otel/opentelemetry-collector-contrib image so we can
+# include custom receiver/processor components alongside the standard contrib ones.
+# Note: The official OCB image may ship an older Go than the contrib modules require,
+# so we copy the ocb binary into a golang base with a newer toolchain.
+FROM otel/opentelemetry-collector-builder:${OTEL_COLLECTOR_VERSION} AS ocb-bin
+FROM golang:1.26-alpine AS ocb-builder
+ARG OTEL_COLLECTOR_VERSION
+ARG OTEL_COLLECTOR_CORE_VERSION
+COPY --from=ocb-bin /usr/local/bin/ocb /usr/local/bin/ocb
+WORKDIR /build
+COPY packages/otel-collector/builder-config.yaml .
+RUN --mount=type=cache,target=/go/pkg/mod,id=ocb-gomod \
+    --mount=type=cache,target=/root/.cache/go-build,id=ocb-gobuild \
+    sed -i "s/__OTEL_COLLECTOR_VERSION__/${OTEL_COLLECTOR_VERSION}/g; s/__OTEL_COLLECTOR_CORE_VERSION__/${OTEL_COLLECTOR_CORE_VERSION}/g" builder-config.yaml && \
+    CGO_ENABLED=0 ocb --config=builder-config.yaml
 
 # Build the Go migration tool with full TLS support for ClickHouse
 FROM golang:1.26-alpine AS migrate-builder
@@ -36,7 +52,7 @@ COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./ts
 # full source is copied in the build stages that need it.
 COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
 COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/tsconfig.build.json ./packages/api/package.json ./packages/api/
-COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/css.d.ts ./packages/app/eslint.config.mjs ./packages/app/
 
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
@@ -70,6 +86,9 @@ COPY --from=app ./pages ./packages/app/pages
 COPY --from=app ./public ./packages/app/public
 COPY --from=app ./styles ./packages/app/styles
 COPY --from=app ./types ./packages/app/types
+# next.config.mjs copies this into public/ so the in-app changelog viewer can
+# fetch it; the build fails loudly if it is missing (see next.config.mjs).
+COPY --from=app ./CHANGELOG.md ./packages/app/CHANGELOG.md
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_STANDALONE=true
@@ -113,7 +132,8 @@ COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packa
 COPY --chown=node:node --from=builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
 COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/packages/app/public
 
-# Set up start script
+# Set up start scripts
+COPY --chown=node:node --from=hyperdx ./refresh-env.js /etc/local/refresh-env.js
 COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
@@ -132,7 +152,7 @@ ARG USER_GID=10001
 ENV CODE_VERSION=$CODE_VERSION
 ENV OTEL_RESOURCE_ATTRIBUTES="service.version=$CODE_VERSION"
 # Copy from otel collector bases
-COPY --from=otel_collector_base --chmod=755 /otelcol-contrib /otelcontribcol
+COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 COPY --from=otel_collector_opampsupervisor_base --chmod=755 /usr/local/bin/opampsupervisor /usr/local/bin/opampsupervisor
 
 # Copy Node.js runtime from node base
@@ -181,6 +201,7 @@ ENV NODE_ENV=production
 
 # Set up App
 COPY --from=prod /app /app
+COPY --from=hyperdx ./refresh-env.js /etc/local/refresh-env.js
 COPY --from=hyperdx ./entry.local.base.sh /etc/local/entry.base.sh
 
 # Copy VEX exception files for Docker Scout vulnerability suppression

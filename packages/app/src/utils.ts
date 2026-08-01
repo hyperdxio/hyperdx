@@ -2,67 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import type { MutableRefObject, SetStateAction } from 'react';
+import type { SetStateAction } from 'react';
+import TimestampNano from 'timestamp-nano';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  CATEGORICAL_PALETTE_TOKENS,
+  ChartPaletteToken,
+  ColorCondition,
+  NumericUnit,
   SourceKind,
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
-import { NOW } from './config';
-import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
-
-export function omit<T extends object, K extends keyof T>(
-  obj: T,
-  paths: K[],
-): Omit<T, K> {
-  return {
-    ...paths.reduce(
-      (mem, key) => ((k: K, { [k]: ignored, ...rest }) => rest)(key, mem),
-      obj as object,
-    ),
-  } as Omit<T, K>;
-}
-
-export function generateSearchUrl({
-  query,
-  dateRange,
-  lineId,
-  isUTC,
-  savedSearchId,
-}: {
-  savedSearchId?: string;
-  query?: string;
-  dateRange?: [Date, Date];
-  lineId?: string;
-  isUTC?: boolean;
-}) {
-  const fromDate = dateRange ? dateRange[0] : new Date(NOW);
-  const toDate = dateRange ? dateRange[1] : new Date(NOW);
-  const qparams = new URLSearchParams({
-    q: query ?? '',
-    from: fromDate.getTime().toString(),
-    to: toDate.getTime().toString(),
-    tq: dateRangeToString([fromDate, toDate], isUTC ?? false),
-    ...(lineId ? { lid: lineId } : {}),
-  });
-  return `/search${
-    savedSearchId != null ? `/${savedSearchId}` : ''
-  }?${qparams.toString()}`;
-}
-
-export function useFirstNonNullValue<T>(value: T): T {
-  const [firstNonNullValue, setFirstNonNullValue] = useState<T>(value);
-  useEffect(() => {
-    if (value != null) {
-      setFirstNonNullValue(v => (v == null ? value : v));
-    }
-  }, [value]);
-  return firstNonNullValue;
-}
 
 // From: https://usehooks.com/useWindowSize/
 export function useWindowSize() {
@@ -98,15 +52,6 @@ export const isValidUrl = (input: string) => {
   try {
     new URL(input);
     return true;
-  } catch (err) {
-    return false;
-  }
-};
-
-export const isValidJson = (input: string) => {
-  try {
-    JSON.parse(input);
-    return true;
   } catch {
     return false;
   }
@@ -132,7 +77,7 @@ export const getShortUrl = (url: string) => {
     }
 
     return shortUrl;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -189,7 +134,7 @@ export const QUERY_LOCAL_STORAGE = {
   LIMIT: 10, // cache up to 10
 };
 
-export function getLocalStorageValue<T>(key: string): T | null {
+function getLocalStorageValue<T>(key: string): T | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -304,7 +249,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   return [storedValue, setValue] as const;
 }
 
-export function useQueryHistory<T>(type: string | undefined) {
+export function useQueryHistory(type: string | undefined) {
   const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
   const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
   const setQueryHistory = useCallback(
@@ -411,60 +356,145 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// Chart color palette - single source of truth
-// Colors from Observable categorical palette, with custom brand green
-// https://observablehq.com/@d3/color-schemes
-export const CHART_PALETTE = {
-  green: '#00c28a', // Brand green (Mantine green.5) - used as primary chart color
-  blue: '#4269d0',
-  orange: '#efb118',
-  red: '#ff725c',
-  cyan: '#6cc5b0',
-  pink: '#ff8ab7',
-  purple: '#a463f2',
-  lightBlue: '#97bbf5',
-  brown: '#9c6b4e',
-  gray: '#9498a0',
-  // Highlighted variants (lighter shades for hover/selection states)
-  greenHighlight: '#80d9b3',
-  redHighlight: '#ffa090',
-  orangeHighlight: '#f5c94d',
-} as const;
+/**
+ * Chart Categorical Palette - ten distinguishable hues based on
+ * Observable 10 (https://observablehq.com/@d3/color-schemes), with
+ * `chart-blue` swapped to `#437eef` to match the brand link color
+ * (`--click-global-color-text-link-default`). All other hues are
+ * straight from Observable 10. Unified across themes.
+ *
+ * **JS is the source of truth for categorical hues.** Both HyperDX and
+ * ClickStack resolve `--color-chart-{hue}` to the same hex today, so
+ * the JS readers (`getColorFromCSSVariable`, `getColorFromCSSToken`)
+ * return values directly from this object without round-tripping
+ * through `getComputedStyle`. The matching `--color-chart-{hue}` CSS
+ * vars in `_tokens.scss` exist as a stylesheet-author affordance only
+ * (inline `var()` use, devtools inspection); they are NOT read back by
+ * the React rendering path. Per-brand identity is carried by the
+ * semantic chart tokens below and by non-chart UI chrome (Mantine
+ * accent, sidebar gradient, etc.).
+ *
+ * Keep in sync with `CATEGORICAL_PALETTE_TOKENS` in
+ * `@hyperdx/common-utils/dist/types` and with the `--color-chart-{hue}`
+ * vars in `packages/app/src/theme/themes/_chart-categorical-tokens.scss`
+ * (the single shared SCSS source for categorical hues; both brand
+ * themes `@use` it).
+ */
+type CategoricalChartPaletteToken = (typeof CATEGORICAL_PALETTE_TOKENS)[number];
 
-// ClickStack theme chart color palette - Observable 10 categorical palette
-// https://observablehq.com/@d3/color-schemes
-export const CLICKSTACK_CHART_PALETTE = {
-  blue: '#437EEF', // Primary color for ClickStack
-  orange: '#efb118',
-  red: '#ff725c',
-  cyan: '#6cc5b0',
-  green: '#3ca951',
-  pink: '#ff8ab7',
-  purple: '#a463f2',
-  lightBlue: '#97bbf5',
-  brown: '#9c6b4e',
-  gray: '#9498a0',
-  // Highlighted variants (lighter shades for hover/selection states)
-  greenHighlight: '#80d9b3',
-  redHighlight: '#ffa090',
-  orangeHighlight: '#f5c94d',
-} as const;
+const CATEGORICAL_HEX_BY_TOKEN = {
+  'chart-blue': '#437eef',
+  'chart-orange': '#efb118',
+  'chart-red': '#ff725c',
+  'chart-cyan': '#6cc5b0',
+  'chart-green': '#3ca951',
+  'chart-pink': '#ff8ab7',
+  'chart-purple': '#a463f2',
+  'chart-light-blue': '#97bbf5',
+  'chart-brown': '#9c6b4e',
+  'chart-gray': '#9498a0',
+} as const satisfies Record<CategoricalChartPaletteToken, string>;
 
-// Ordered array for chart series - green first for brand consistency (HyperDX default)
-// Maps to CSS variables: COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
-// NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
-export const COLORS = [
-  CHART_PALETTE.green, // 1 - Brand green (primary) - HyperDX default
-  CHART_PALETTE.blue, // 2
-  CHART_PALETTE.orange, // 3
-  CHART_PALETTE.red, // 4
-  CHART_PALETTE.cyan, // 5
-  CHART_PALETTE.pink, // 6
-  CHART_PALETTE.purple, // 7
-  CHART_PALETTE.lightBlue, // 8
-  CHART_PALETTE.brown, // 9
-  CHART_PALETTE.gray, // 10
-];
+// Reverse-direction completeness check: if `CATEGORICAL_HEX_BY_TOKEN`
+// ever grows an extra key that's not in `CATEGORICAL_PALETTE_TOKENS`
+// (e.g. a deprecated hex stuck around after dropping the token from the
+// shared enum), this type collapses to `never` and the assignment below
+// becomes a compile error. The `satisfies` above already enforces the
+// forward direction (every categorical token has a hex), so together
+// they pin the two structures to a 1:1 mapping at build time.
+type _CategoricalHexCompleteness =
+  Exclude<
+    keyof typeof CATEGORICAL_HEX_BY_TOKEN,
+    CategoricalChartPaletteToken
+  > extends never
+    ? true
+    : never;
+const _categoricalHexCompletenessCheck: _CategoricalHexCompleteness = true;
+void _categoricalHexCompletenessCheck;
+
+type SemanticChartColorKey =
+  | 'success'
+  | 'warning'
+  | 'error'
+  | 'info'
+  | 'successHighlight'
+  | 'warningHighlight'
+  | 'errorHighlight';
+
+/**
+ * Per-brand semantic chart palette. SSR / `getComputedStyle` fallback
+ * for `getChartColor{Success,Warning,Error,Info,*Highlight}` helpers.
+ * Live values come from `--color-chart-{success|warning|error|info}[-highlight]`
+ * in `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin).
+ *
+ * Kept per-brand (instead of collapsed to one object) so the
+ * `Record<'hyperdx' | 'clickstack', SemanticChartHexes>` constraint
+ * forces both brands to declare every semantic key — dropping or
+ * renaming one in either entry becomes a compile error rather than a
+ * silent runtime divergence between SSR and client. The two entries
+ * are byte-identical today; collapse to a flat object if and when a
+ * brand actually needs to diverge.
+ */
+type SemanticChartHexes = Readonly<Record<SemanticChartColorKey, string>>;
+
+const SEMANTIC_CHART_PALETTE: Readonly<
+  Record<'hyperdx' | 'clickstack', SemanticChartHexes>
+> = {
+  hyperdx: {
+    success: '#3ca951',
+    warning: '#efb118',
+    error: '#ff725c',
+    info: '#437eef',
+    successHighlight: '#80d9b3',
+    warningHighlight: '#f5c94d',
+    errorHighlight: '#ffa090',
+  },
+  clickstack: {
+    success: '#3ca951',
+    warning: '#efb118',
+    error: '#ff725c',
+    info: '#437eef',
+    successHighlight: '#80d9b3',
+    warningHighlight: '#f5c94d',
+    errorHighlight: '#ffa090',
+  },
+};
+
+/**
+ * Ordered hex array for positional series assignment.
+ * `COLORS[i]` === `CATEGORICAL_HEX_BY_TOKEN[CATEGORICAL_PALETTE_TOKENS[i]]`.
+ * Returned directly by `getColorFromCSSVariable(i)` on both server and
+ * client — the categorical palette is unified across themes, so there's
+ * no benefit to reading the matching CSS var via `getComputedStyle`.
+ *
+ * Typed as `readonly string[]` (not `string[]`) because the array is a
+ * derived snapshot of `CATEGORICAL_HEX_BY_TOKEN` — mutating it in place
+ * would desync the two structures the completeness check above pins
+ * together. `CATEGORICAL_PALETTE_TOKENS` is a `readonly` tuple of
+ * `CategoricalChartPaletteToken` already, so the `.map` callback's
+ * `token` parameter is the narrow union and `CATEGORICAL_HEX_BY_TOKEN`
+ * index lookup is exhaustive without further assertion.
+ */
+export const COLORS: readonly string[] = CATEGORICAL_PALETTE_TOKENS.map(
+  token => CATEGORICAL_HEX_BY_TOKEN[token],
+);
+
+/**
+ * Palette token types and runtime guards live in common-utils so the
+ * Zod schema in `SharedChartSettingsSchema` can reference them; the
+ * theme-aware CSS resolver `getColorFromCSSToken` below stays in app
+ * because it depends on `getComputedStyle(document.documentElement)`.
+ *
+ * Re-exported here so existing app-side imports from `@/utils` keep
+ * working unchanged.
+ */
+export {
+  CATEGORICAL_PALETTE_TOKENS,
+  CHART_PALETTE_TOKENS,
+  resolveChartPaletteToken,
+  SEMANTIC_PALETTE_TOKENS,
+} from '@hyperdx/common-utils/dist/types';
+export type { ChartPaletteToken };
 
 /**
  * Detects the active theme by checking for theme classes on documentElement.
@@ -488,30 +518,58 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
 }
 
 /**
- * Reads chart color from CSS variable based on index.
- * CSS variables handle theme switching automatically via theme classes on documentElement.
- * Falls back to COLORS array if CSS variable is not available (SSR or getComputedStyle fails).
+ * Returns the Nth categorical chart hex by series index. Index wraps
+ * modulo `CATEGORICAL_PALETTE_TOKENS.length`.
  *
- * Note on SSR/Hydration: During SSR, this returns fallback colors (HyperDX green palette).
- * On client hydration, it reads from CSS variables which may differ for ClickStack theme.
- * This is expected behavior - charts typically render after data fetching (client-side),
- * so hydration mismatches are rare. If needed, wrap chart components with suppressHydrationWarning.
+ * Reads from the JS palette directly. The matching `--color-chart-{hue}`
+ * CSS var resolves to the same hex on every theme today, so the
+ * previous `getComputedStyle` round-trip added a layout read per series
+ * with no functional benefit. If a future brand wants to override hues,
+ * reintroduce the DOM read here (and add per-brand entries to
+ * `CATEGORICAL_HEX_BY_TOKEN`).
  */
-export function getColorFromCSSVariable(index: number): string {
-  const colorArrayLength = COLORS.length;
+function getColorFromCSSVariable(index: number): string {
+  const i = index % CATEGORICAL_PALETTE_TOKENS.length;
+  return COLORS[i];
+}
+
+/**
+ * Resolves a chart palette token to a hex string.
+ *
+ * Categorical hue tokens (`chart-blue`, `chart-orange`, ...) come
+ * straight from `CATEGORICAL_HEX_BY_TOKEN` — the palette is unified
+ * across themes, so the matching `--color-chart-{hue}` CSS var would
+ * always resolve to the same value, and skipping `getComputedStyle`
+ * avoids an unnecessary layout read per series.
+ *
+ * Semantic tokens (`chart-success`, `-warning`, `-error`) DO vary per
+ * brand, so they read the matching CSS var (`--color-chart-{name}`)
+ * via `getComputedStyle` and fall back to the active theme's entry in
+ * `SEMANTIC_CHART_PALETTE` for SSR / `getComputedStyle` failures.
+ *
+ * @example
+ *   getColorFromCSSToken('chart-blue')     // Observable blue (both themes)
+ *   getColorFromCSSToken('chart-warning')  // theme-aware warning
+ */
+export function getColorFromCSSToken(token: ChartPaletteToken): string {
+  if (isCategoricalChartPaletteToken(token)) {
+    return CATEGORICAL_HEX_BY_TOKEN[token];
+  }
+
+  // After the categorical short-circuit, `token` is narrowed to a
+  // semantic token (`chart-success`/`chart-warning`/`chart-error`)
+  // — the parameter type that `semanticTokenFallback` enforces via
+  // its exhaustiveness check.
+  const semanticToken = token;
+  const cssVarName = `--color-${semanticToken}`;
 
   if (typeof window === 'undefined') {
-    // SSR: fallback to default colors (HyperDX palette)
-    return COLORS[index % colorArrayLength];
+    return semanticTokenFallback(semanticToken);
   }
 
   try {
-    const cssVarName = `--color-chart-${(index % colorArrayLength) + 1}`;
-    // Read from documentElement - CSS variables cascade from theme classes
     const computedStyle = getComputedStyle(document.documentElement);
     const color = computedStyle.getPropertyValue(cssVarName).trim();
-
-    // Only use CSS variable if it's actually set (non-empty)
     if (color && color !== '') {
       return color;
     }
@@ -519,8 +577,119 @@ export function getColorFromCSSVariable(index: number): string {
     // Fallback if getComputedStyle fails
   }
 
-  // Fallback to default colors
-  return COLORS[index % colorArrayLength];
+  return semanticTokenFallback(semanticToken);
+}
+
+function isCategoricalChartPaletteToken(
+  token: ChartPaletteToken,
+): token is keyof typeof CATEGORICAL_HEX_BY_TOKEN {
+  return Object.prototype.hasOwnProperty.call(CATEGORICAL_HEX_BY_TOKEN, token);
+}
+
+function semanticTokenFallback(
+  token: Exclude<ChartPaletteToken, CategoricalChartPaletteToken>,
+): string {
+  switch (token) {
+    case 'chart-success':
+    case 'chart-warning':
+    case 'chart-error': {
+      const theme = detectActiveTheme();
+      const key = token.slice('chart-'.length) as
+        | 'success'
+        | 'warning'
+        | 'error';
+      return SEMANTIC_CHART_PALETTE[theme][key];
+    }
+    default: {
+      // Exhaustiveness assertion: if a new semantic token lands on
+      // `ChartPaletteToken` without a matching case above, this line
+      // becomes a compile error. The fallback was previously
+      // `COLORS[0]` with a "brand-primary" comment, but that path is
+      // unreachable through the parameter type and silently masked
+      // future drift.
+      const _exhaustive: never = token;
+      throw new Error(`Unhandled semantic chart token: ${_exhaustive}`);
+    }
+  }
+}
+
+/**
+ * Evaluates a single conditional color rule against a runtime value.
+ *
+ * Numeric operators (`gt`, `gte`, `lt`, `lte`, `between`) return false when
+ * `typeof value !== 'number'`. Equality operators (`eq`, `neq`) use strict
+ * comparison; cross-type mismatches (`"5"` vs `5`) return false. String
+ * operators (`contains`, `startsWith`, `endsWith`, `regex`) return false when
+ * `typeof value !== 'string'`. Bad regex patterns are silently treated as
+ * no-match (schema `.refine` is best-effort; this is the runtime safety net).
+ */
+export function evaluateColorCondition(
+  value: number | string,
+  rule: ColorCondition,
+): boolean {
+  switch (rule.operator) {
+    case 'gt':
+      return typeof value === 'number' && value > rule.value;
+    case 'gte':
+      return typeof value === 'number' && value >= rule.value;
+    case 'lt':
+      return typeof value === 'number' && value < rule.value;
+    case 'lte':
+      return typeof value === 'number' && value <= rule.value;
+    case 'between': {
+      if (typeof value !== 'number') return false;
+      const [a, b] = rule.value;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      return value >= lo && value <= hi;
+    }
+    case 'eq':
+      return value === rule.value;
+    case 'neq':
+      // Guard on typeof so cross-type mismatches return false, matching the
+      // contract in the docstring (`eq` already gets this from `===`).
+      return typeof value === typeof rule.value && value !== rule.value;
+    case 'contains':
+      return typeof value === 'string' && value.includes(rule.value);
+    case 'startsWith':
+      return typeof value === 'string' && value.startsWith(rule.value);
+    case 'endsWith':
+      return typeof value === 'string' && value.endsWith(rule.value);
+    case 'regex':
+      if (typeof value !== 'string') return false;
+      try {
+        return new RegExp(rule.value).test(value);
+      } catch {
+        return false;
+      }
+  }
+}
+
+/**
+ * Resolves the display color for a number tile by evaluating ordered
+ * conditional color rules against the tile's current value.
+ *
+ * Rules are evaluated in order; the LAST matching rule's color wins
+ * (higher-priority rules go last). When no rule matches, `fallback` is
+ * returned. When `value` is null/undefined or `rules` is empty,
+ * `fallback` is returned immediately.
+ *
+ * @param value    The tile's current numeric (or string) value.
+ * @param rules    Ordered list of conditional color rules from the config.
+ * @param fallback The tile's static color (`config.color`) to use when no
+ *                 rule matches, or undefined to use the default text color.
+ */
+export function resolveConditionalColor(
+  value: number | string | null | undefined,
+  rules: ColorCondition[] | undefined,
+  fallback: ChartPaletteToken | undefined,
+): ChartPaletteToken | undefined {
+  if (!rules || rules.length === 0 || value == null) return fallback;
+  let match: ChartPaletteToken | undefined = fallback;
+  for (const rule of rules) {
+    if (evaluateColorCondition(value, rule)) match = rule.color;
+  }
+  return match;
 }
 
 export function hashCode(str: string) {
@@ -537,21 +706,19 @@ export function hashCode(str: string) {
 }
 
 /**
- * Gets theme-aware chart color from CSS variable or falls back to palette.
- * Reads from --color-chart-{type} CSS variable, falls back to theme-appropriate palette.
+ * Theme-aware semantic chart color resolver. Reads `cssVarName` from
+ * `documentElement` and falls back to the active theme's value from
+ * `SEMANTIC_CHART_PALETTE` (HyperDX during SSR).
  *
- * Note on SSR/Hydration: During SSR, returns HyperDX colors as default.
- * On client, reads from CSS variables for accurate theme colors.
- * Charts typically render client-side after data fetching, minimizing hydration issues.
+ * Charts typically render client-side after data fetching, so hydration
+ * mismatches between the SSR fallback and the live var are rare.
  */
 function getSemanticChartColor(
   cssVarName: string,
-  hyperdxColor: string,
-  clickstackColor: string,
+  key: SemanticChartColorKey,
 ): string {
   if (typeof window === 'undefined') {
-    // SSR: use HyperDX as default (can't detect theme without DOM)
-    return hyperdxColor;
+    return SEMANTIC_CHART_PALETTE.hyperdx[key];
   }
 
   try {
@@ -564,59 +731,34 @@ function getSemanticChartColor(
     // Fallback if getComputedStyle fails
   }
 
-  // Fallback to theme-appropriate palette
-  const activeTheme = detectActiveTheme();
-  return activeTheme === 'clickstack' ? clickstackColor : hyperdxColor;
+  return SEMANTIC_CHART_PALETTE[detectActiveTheme()][key];
 }
 
-// Semantic colors for log levels (theme-aware)
-// These are functions that read from CSS variables with theme-appropriate fallbacks
+// Semantic chart colors (theme-aware). Read from CSS variables with
+// per-theme fallbacks in `SEMANTIC_CHART_PALETTE`.
 export function getChartColorSuccess(): string {
-  return getSemanticChartColor(
-    '--color-chart-success',
-    CHART_PALETTE.green,
-    CLICKSTACK_CHART_PALETTE.green,
-  );
+  return getSemanticChartColor('--color-chart-success', 'success');
 }
 
 export function getChartColorWarning(): string {
-  return getSemanticChartColor(
-    '--color-chart-warning',
-    CHART_PALETTE.orange,
-    CLICKSTACK_CHART_PALETTE.orange,
-  );
+  return getSemanticChartColor('--color-chart-warning', 'warning');
 }
 
 export function getChartColorError(): string {
-  return getSemanticChartColor(
-    '--color-chart-error',
-    CHART_PALETTE.red,
-    CLICKSTACK_CHART_PALETTE.red,
-  );
+  return getSemanticChartColor('--color-chart-error', 'error');
+}
+
+/** Chart blue used for info-level logs and similar "neutral / default"
+ *  series. Same hue as categorical `chart-blue` on both brands. */
+export function getChartColorInfo(): string {
+  return getSemanticChartColor('--color-chart-info', 'info');
 }
 
 // Highlighted variants (theme-aware)
 export function getChartColorSuccessHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-success-highlight',
-    CHART_PALETTE.greenHighlight,
-    CLICKSTACK_CHART_PALETTE.greenHighlight,
-  );
-}
-
-export function getChartColorErrorHighlight(): string {
-  return getSemanticChartColor(
-    '--color-chart-error-highlight',
-    CHART_PALETTE.redHighlight,
-    CLICKSTACK_CHART_PALETTE.redHighlight,
-  );
-}
-
-export function getChartColorWarningHighlight(): string {
-  return getSemanticChartColor(
-    '--color-chart-warning-highlight',
-    CHART_PALETTE.orangeHighlight,
-    CLICKSTACK_CHART_PALETTE.orangeHighlight,
+    'successHighlight',
   );
 }
 
@@ -631,8 +773,7 @@ export const semanticKeyedColor = (
       ? getChartColorError()
       : logLevel === 'warn'
         ? getChartColorWarning()
-        : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
-          getColorFromCSSVariable(0);
+        : getChartColorInfo();
   }
 
   // Use CSS variable for theme-aware colors, fallback to hardcoded array
@@ -645,8 +786,7 @@ export const logLevelColor = (key: string | number | undefined) => {
     ? getChartColorError()
     : logLevel === 'warn'
       ? getChartColorWarning()
-      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
-        getColorFromCSSVariable(0);
+      : getChartColorInfo();
 };
 
 // order of colors for sorting. primary color (blue/green) on bottom, then yellow, then red
@@ -663,8 +803,7 @@ const getLevelColor = (logLevel?: string) => {
     ? getChartColorError()
     : logLevel === 'warn'
       ? getChartColorWarning()
-      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
-        getColorFromCSSVariable(0);
+      : getChartColorInfo();
 };
 
 export const getColorProps = (index: number, level: string): string => {
@@ -685,21 +824,6 @@ export const truncateMiddle = (str: string, maxLen = 10) => {
   )}`;
 };
 
-export const useIsBlog = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/blog');
-};
-
-export const useIsDocs = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/docs');
-};
-
-export const useIsTerms = () => {
-  const router = useRouter();
-  return router?.pathname.startsWith('/terms');
-};
-
 export const usePrevious = <T>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
   useEffect(() => {
@@ -709,8 +833,150 @@ export const usePrevious = <T>(value: T): T | undefined => {
   return ref.current;
 };
 
+type AutoScaleUnitConfig = {
+  type: 'auto_scale';
+  base: 'iec' | 'si';
+  isBits: boolean;
+  perSec: boolean;
+};
+
+type FixedUnitConfig = {
+  type: 'fixed';
+  suffix: string;
+};
+
+type UnitFormatConfig = AutoScaleUnitConfig | FixedUnitConfig;
+
+const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
+  // Data
+  [NumericUnit.BytesIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BytesSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: false,
+  },
+  [NumericUnit.BitsIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.BitsSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: false,
+  },
+  [NumericUnit.Kibibytes]: { type: 'fixed', suffix: 'KiB' },
+  [NumericUnit.Kilobytes]: { type: 'fixed', suffix: 'KB' },
+  [NumericUnit.Mebibytes]: { type: 'fixed', suffix: 'MiB' },
+  [NumericUnit.Megabytes]: { type: 'fixed', suffix: 'MB' },
+  [NumericUnit.Gibibytes]: { type: 'fixed', suffix: 'GiB' },
+  [NumericUnit.Gigabytes]: { type: 'fixed', suffix: 'GB' },
+  [NumericUnit.Tebibytes]: { type: 'fixed', suffix: 'TiB' },
+  [NumericUnit.Terabytes]: { type: 'fixed', suffix: 'TB' },
+  [NumericUnit.Pebibytes]: { type: 'fixed', suffix: 'PiB' },
+  [NumericUnit.Petabytes]: { type: 'fixed', suffix: 'PB' },
+  // Data Rate
+  [NumericUnit.PacketsSec]: { type: 'fixed', suffix: 'pkt/s' },
+  [NumericUnit.BytesSecIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: false,
+    perSec: true,
+  },
+  [NumericUnit.BytesSecSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: false,
+    perSec: true,
+  },
+  [NumericUnit.BitsSecIEC]: {
+    type: 'auto_scale',
+    base: 'iec',
+    isBits: true,
+    perSec: true,
+  },
+  [NumericUnit.BitsSecSI]: {
+    type: 'auto_scale',
+    base: 'si',
+    isBits: true,
+    perSec: true,
+  },
+  [NumericUnit.KibibytesSec]: { type: 'fixed', suffix: 'KiB/s' },
+  [NumericUnit.KibibitsSec]: { type: 'fixed', suffix: 'Kibit/s' },
+  [NumericUnit.KilobytesSec]: { type: 'fixed', suffix: 'KB/s' },
+  [NumericUnit.KilobitsSec]: { type: 'fixed', suffix: 'Kbit/s' },
+  [NumericUnit.MebibytesSec]: { type: 'fixed', suffix: 'MiB/s' },
+  [NumericUnit.MebibitsSec]: { type: 'fixed', suffix: 'Mibit/s' },
+  [NumericUnit.MegabytesSec]: { type: 'fixed', suffix: 'MB/s' },
+  [NumericUnit.MegabitsSec]: { type: 'fixed', suffix: 'Mbit/s' },
+  [NumericUnit.GibibytesSec]: { type: 'fixed', suffix: 'GiB/s' },
+  [NumericUnit.GibibitsSec]: { type: 'fixed', suffix: 'Gibit/s' },
+  [NumericUnit.GigabytesSec]: { type: 'fixed', suffix: 'GB/s' },
+  [NumericUnit.GigabitsSec]: { type: 'fixed', suffix: 'Gbit/s' },
+  [NumericUnit.TebibytesSec]: { type: 'fixed', suffix: 'TiB/s' },
+  [NumericUnit.TebibitsSec]: { type: 'fixed', suffix: 'Tibit/s' },
+  [NumericUnit.TerabytesSec]: { type: 'fixed', suffix: 'TB/s' },
+  [NumericUnit.TerabitsSec]: { type: 'fixed', suffix: 'Tbit/s' },
+  [NumericUnit.PebibytesSec]: { type: 'fixed', suffix: 'PiB/s' },
+  [NumericUnit.PebibitsSec]: { type: 'fixed', suffix: 'Pibit/s' },
+  [NumericUnit.PetabytesSec]: { type: 'fixed', suffix: 'PB/s' },
+  [NumericUnit.PetabitsSec]: { type: 'fixed', suffix: 'Pbit/s' },
+  // Throughput
+  [NumericUnit.Cps]: { type: 'fixed', suffix: 'cps' },
+  [NumericUnit.Ops]: { type: 'fixed', suffix: 'ops' },
+  [NumericUnit.Rps]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.ReadsSec]: { type: 'fixed', suffix: 'rps' },
+  [NumericUnit.Wps]: { type: 'fixed', suffix: 'wps' },
+  [NumericUnit.Iops]: { type: 'fixed', suffix: 'iops' },
+  [NumericUnit.Cpm]: { type: 'fixed', suffix: 'cpm' },
+  [NumericUnit.Opm]: { type: 'fixed', suffix: 'opm' },
+  [NumericUnit.RpmReads]: { type: 'fixed', suffix: 'rpm' },
+  [NumericUnit.Wpm]: { type: 'fixed', suffix: 'wpm' },
+};
+
+const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+const SI_BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+const IEC_BIT_UNITS = ['b', 'Kibit', 'Mibit', 'Gibit', 'Tibit', 'Pibit'];
+const SI_BIT_UNITS = ['b', 'Kbit', 'Mbit', 'Gbit', 'Tbit', 'Pbit'];
+
+const formatAutoScaleData = (
+  value: number,
+  base: 'iec' | 'si',
+  isBits: boolean,
+  perSec: boolean,
+  mantissa: number,
+): string => {
+  const divisor = base === 'iec' ? 1024 : 1000;
+  const units =
+    base === 'iec'
+      ? isBits
+        ? IEC_BIT_UNITS
+        : IEC_BYTE_UNITS
+      : isBits
+        ? SI_BIT_UNITS
+        : SI_BYTE_UNITS;
+  const rateSuffix = perSec ? '/s' : '';
+
+  let absVal = Math.abs(value);
+  let i = 0;
+  while (absVal >= divisor && i < units.length - 1) {
+    absVal /= divisor;
+    i++;
+  }
+  const scaledValue = value < 0 ? -absVal : absVal;
+  return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
+};
+
 export const formatNumber = (
-  value?: number,
+  value?: string | number,
   options?: NumberFormat,
 ): string => {
   if (!value && value !== 0) {
@@ -719,17 +985,55 @@ export const formatNumber = (
 
   // Guard against NaN only - ClickHouse can return numbers as strings, which
   // we should still format. Only truly non-numeric values (NaN) get passed through.
-  if (isNaN(value as number)) {
-    return String(value);
+  if (typeof value !== 'number') {
+    if (isNaN(Number(value))) {
+      return String(value);
+    }
+    value = Number(value);
   }
 
   if (!options) {
     return value.toString();
   }
 
+  const mantissa = options.mantissa ?? 0;
+
+  // Handle new unit categories with numericUnit
+  if (
+    options.numericUnit &&
+    (options.output === 'byte' ||
+      options.output === 'data_rate' ||
+      options.output === 'throughput')
+  ) {
+    const config = NUMERIC_UNIT_CONFIGS[options.numericUnit];
+    if (config) {
+      if (config.type === 'auto_scale') {
+        return formatAutoScaleData(
+          value,
+          config.base,
+          config.isBits,
+          config.perSec,
+          mantissa,
+        );
+      }
+      return `${value.toFixed(mantissa)} ${config.suffix}`;
+    }
+  }
+
+  // Handle data_rate / throughput without a numericUnit — fall through to number
+  if (options.output === 'data_rate' || options.output === 'throughput') {
+    return value.toFixed(mantissa);
+  }
+
+  if (options.output === 'duration') {
+    const factor = options.factor ?? 1;
+    const ms = value * factor * 1000;
+    return formatDurationMs(ms);
+  }
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
-    mantissa: options.mantissa || 0,
+    mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
     ...(options.output === 'byte' && {
@@ -751,6 +1055,66 @@ export const formatNumber = (
   );
 };
 
+/**
+ * Formats a duration value given in milliseconds into a human-readable
+ * adaptive string (e.g. "120.41s", "45ms", "3µs"). Mirrors the trace
+ * waterfall rendering style.
+ */
+export function formatDurationMs(ms: number): string {
+  if (ms < 0) {
+    return `-${formatDurationMs(-ms)}`;
+  }
+
+  if (ms === 0) {
+    return '0ms';
+  }
+
+  if (ms < 1) {
+    const µs = ms * 1000;
+    if (µs < 10) {
+      return `${parseFloat(µs.toPrecision(2))}µs`;
+    }
+    const µsRounded = Math.round(µs);
+    if (µsRounded < 1000) {
+      return `${µsRounded}µs`;
+    }
+  }
+
+  if (ms < 1000) {
+    if (ms < 10) {
+      return `${parseFloat(ms.toPrecision(3))}ms`;
+    }
+    return `${parseFloat(ms.toFixed(1))}ms`;
+  }
+
+  if (ms < 60_000) {
+    return `${parseFloat((ms / 1000).toFixed(2))}s`;
+  }
+
+  if (ms < 3_600_000) {
+    return `${parseFloat((ms / 60_000).toFixed(2))}min`;
+  }
+
+  return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
+}
+
+/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
+export function formatDurationMsCompact(ms: number): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+  if (ms === 0) return '0';
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 1) {
+    const µs = ms * 1000;
+    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
+  }
+  if (ms < 1000) {
+    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  }
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+}
+
 // format uptime as days, hours, minutes or seconds
 export const formatUptime = (seconds: number) => {
   if (seconds < 60) {
@@ -765,34 +1129,67 @@ export const formatUptime = (seconds: number) => {
 };
 
 // FIXME: eventually we want to separate metric name into two fields
-export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
-  const [mName, mDataType] = (metricName ?? '').split(' - ');
-
-  return {
-    name: mName,
-    dataType: mDataType as MetricsDataType,
-  };
-};
-
 // Date formatting
-export const mergePath = (path: string[], jsonColumns: string[] = []) => {
+//
+// `mergePath` rebuilds a column-access expression for a nested path that the
+// row table flattened during display. It has three column-type modes:
+//
+//   - JSON column: dotted backtick-quoted accessor, e.g. `Body.\`key\``
+//   - Map column: bracketed string-key subscript, e.g. `LogAttributes['1']`
+//   - Array column (default): numeric segments get 1-based array subscripts
+//     (`Array[N+1]`); string segments get bracketed string-key subscripts.
+//
+// Without the Map-column branch, a Map(String, String) like `LogAttributes`
+// with a numeric-looking key (`"1"`) collapses into the array branch and
+// ClickHouse rejects the resulting `LogAttributes[2]` with
+// `Illegal types of arguments: Map(String, String), UInt8 for function
+// arrayElement`. HDX-4369.
+// Escape backslash and single-quote inside a key before interpolating it
+// into a single-quoted SQL string. Keys can contain user-controlled
+// characters (Map sub-keys, JSON field names from the row data) and an
+// unescaped quote produces malformed SQL.
+const escapeSqlSingleQuoted = (v: string): string =>
+  v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+export const mergePath = (
+  path: string[],
+  jsonColumns: string[] = [],
+  mapColumns: string[] = [],
+) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
     return key;
   }
-  return jsonColumns.includes(key)
-    ? `${key}.${rest
-        .map(v =>
-          v
-            .split('.')
-            .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
-            .join('.'),
-        )
-        .join('.')}`
-    : `${key}['${rest.join("']['")}']`;
+  if (jsonColumns.includes(key)) {
+    return `${key}.${rest
+      .map(v =>
+        v
+          .split('.')
+          .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
+          .join('.'),
+      )
+      .join('.')}`;
+  }
+  if (mapColumns.includes(key)) {
+    // Map columns always take string-key subscripts; ClickHouse's Map index
+    // operator is keyed by the Map's key type, not by integer position. A
+    // numeric-looking sub-key like `"1"` on a Map(String, ...) must still
+    // render as `Map['1']`.
+    return `${key}${rest.map(v => `['${escapeSqlSingleQuoted(v)}']`).join('')}`;
+  }
+  return `${key}${rest
+    .map(v => {
+      const asNumber = Number(v);
+      const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
+      // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
+      return isArrayIndex
+        ? `[${asNumber + 1}]`
+        : `['${escapeSqlSingleQuoted(v)}']`;
+    })
+    .join('')}`;
 };
 
-export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
+const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output = null;
   let error = null;
   try {
@@ -805,7 +1202,7 @@ export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 };
 
 export const parseJSON = <T = any>(json: string) => {
-  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  const [_error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
 
@@ -954,3 +1351,8 @@ export const isElementClickable = (el: HTMLElement): boolean => {
   // or if the element at point is a descendant of the element passed in
   return el === elementAtPoint || el.contains(elementAtPoint);
 };
+
+export function parseTimestampToMs(isoString: string): number {
+  const ts = TimestampNano.fromString(isoString);
+  return ts.toDate().getTime() + (ts.getNano() % 1_000_000) / 1_000_000;
+}

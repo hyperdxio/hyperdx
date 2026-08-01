@@ -1,15 +1,21 @@
 <p align="center">
   <a href="https://hyperdx.io">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./.github/images/logo_dark.png#gh-dark-mode-only">
-      <img alt="hyperdx logo" src="./.github/images/logo_light.png#gh-light-mode-only">
-    </picture>
+    <img alt="hyperdx logo" src="./packages/app/public/favicons/hyperdx/favicon.svg" width="128">
   </a>
 </p>
 
----
+<h1 align="center">HyperDX</h1>
 
-# HyperDX
+<p align="center">
+  <a href="https://github.com/hyperdxio/hyperdx/stargazers"><img src="https://badgen.net/github/stars/hyperdxio/hyperdx?label=%E2%98%85" alt="GitHub stars" /></a>
+  <img src="https://badgen.net/github/license/hyperdxio/hyperdx" alt="License" />
+  <a href="https://github.com/hyperdxio/hyperdx/actions/workflows/release.yml"><img src="https://github.com/hyperdxio/hyperdx/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://hyperdx.io/discord"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the HyperDX Discord" /></a>
+</p>
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/2030?utm_source=repository-badge&utm_medium=badge&utm_campaign=badge-repository-2030" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/2030" alt="hyperdxio%2Fhyperdx | Trendshift" width="250" height="55"/></a>
+</p>
 
 [HyperDX](https://hyperdx.io), a core component of
 [ClickStack](https://clickhouse.com/use-cases/observability), helps engineers

@@ -144,6 +144,7 @@ export function WebhookForm({
         url,
         body: defaultBody,
         headers: parsedHeaders,
+        ...(isEditing && { webhookId: webhook._id }),
       });
       notifications.show({
         color: 'green',
@@ -276,6 +277,8 @@ export function WebhookForm({
   };
 
   const service = useWatch({ control: form.control, name: 'service' });
+  const headersText = useWatch({ control: form.control, name: 'headers' });
+  const hasMaskedHeaders = isEditing && !!headersText?.includes('****');
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -306,6 +309,11 @@ export function WebhookForm({
         <TextInput
           label="Webhook URL"
           data-testid="webhook-url-input"
+          description={
+            isEditing
+              ? 'URL is masked for security. Enter a new URL to update.'
+              : undefined
+          }
           placeholder={
             service === WebhookService.Slack
               ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
@@ -336,6 +344,12 @@ export function WebhookForm({
           <label className=".mantine-TextInput-label" key="1">
             Webhook Headers (optional)
           </label>,
+          hasMaskedHeaders && (
+            <Text key="1a" size="xs" c="dimmed" mt={-4}>
+              Header values are masked. Enter new values to update or remove
+              keys to delete them.
+            </Text>
+          ),
           <div className="mb-2" key="2">
             <Controller
               name="headers"

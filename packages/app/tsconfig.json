@@ -17,10 +17,10 @@
     "useUnknownInCatchVariables": false,
     "jsx": "preserve",
     "types": ["@types/intercom-web", "jest"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@styles/*": ["styles/*"]
+      "@/*": ["./src/*"],
+      "@styles/*": ["./styles/*"],
+      "tests/*": ["./tests/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],

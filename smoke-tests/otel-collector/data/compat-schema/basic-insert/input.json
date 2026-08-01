@@ -1,0 +1,51 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "compat-schema"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "basic-insert"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "compat-test-service"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "compat schema test log entry"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000001",
+              "severityNumber": 13,
+              "severityText": "WARN",
+              "body": {
+                "stringValue": "compat schema warning message"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

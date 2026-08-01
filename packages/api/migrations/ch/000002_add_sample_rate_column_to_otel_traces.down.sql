@@ -1,0 +1,1 @@
+ALTER TABLE ${DATABASE}.otel_traces DROP COLUMN IF EXISTS `SampleRate`;

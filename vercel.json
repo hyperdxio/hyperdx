@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "yarn install --immutable",
+  "buildCommand": "yarn workspace @hyperdx/common-utils build && yarn workspace @hyperdx/api build:vercel && yarn workspace @hyperdx/app build",
+  "outputDirectory": "packages/app/.next",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./packages/app ./packages/api ./packages/common-utils"
+}

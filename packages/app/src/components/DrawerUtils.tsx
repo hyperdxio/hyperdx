@@ -1,6 +1,42 @@
 import * as React from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Box, CloseButton, Group, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  CloseButton,
+  Group,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import {
+  IconLayoutSidebarRightCollapse,
+  IconLayoutSidebarRightExpand,
+} from '@tabler/icons-react';
+
+export const INITIAL_DRAWER_WIDTH_PERCENT = 80;
+
+export const DrawerFullWidthToggle = React.memo<{
+  isFullWidth?: boolean;
+  onToggle: () => void;
+}>(({ isFullWidth, onToggle }) => {
+  const label = isFullWidth ? 'Collapse panel width' : 'Expand panel width';
+  return (
+    <Tooltip label={label} position="bottom">
+      <ActionIcon
+        variant="subtle"
+        size="sm"
+        onClick={onToggle}
+        aria-label={label}
+      >
+        {isFullWidth ? (
+          <IconLayoutSidebarRightCollapse size={16} />
+        ) : (
+          <IconLayoutSidebarRightExpand size={16} />
+        )}
+      </ActionIcon>
+    </Tooltip>
+  );
+});
 
 export const DrawerHeader = React.memo<{
   header?: React.ReactNode;

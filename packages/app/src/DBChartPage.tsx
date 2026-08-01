@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { parseAsJson, useQueryState } from 'nuqs';
@@ -29,11 +29,14 @@ import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useChartAssistant } from '@/hooks/ai';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
+
+import OnboardingModal from './components/OnboardingModal';
 
 // Autocomplete can focus on column/map keys
 
@@ -59,7 +62,7 @@ function AIAssistant({
     'ai-assistant-alert-dismissed',
     false,
   );
-  const { control, setValue, handleSubmit } = useForm<{
+  const { control, handleSubmit } = useForm<{
     text: string;
     source: string;
   }>({
@@ -147,12 +150,7 @@ function AIAssistant({
   return (
     <Box mb="sm">
       <Group gap="md" align="center" mb="sm">
-        <Button
-          onClick={() => setOpened(o => !o)}
-          size="xs"
-          variant="subtle"
-          color="gray"
-        >
+        <Button onClick={() => setOpened(o => !o)} size="xs" variant="subtle">
           <Group gap="xs">
             {opened ? (
               <IconChevronUp size={14} />
@@ -164,7 +162,7 @@ function AIAssistant({
         </Button>
         <Pill size="xs">Experimental</Pill>
       </Group>
-      <Collapse in={opened}>
+      <Collapse expanded={opened}>
         {opened && (
           // eslint-disable-next-line react-hooks/refs
           <form onSubmit={handleSubmit(onSubmit)}>
@@ -221,7 +219,7 @@ function DBChartExplorerPage() {
   const { data: sources } = useSources();
   const { data: me } = api.useMe();
 
-  const [chartConfig, setChartConfig] = useQueryState(
+  const [rawChartConfig, setChartConfig] = useQueryState(
     'config',
     parseAsJson<SavedChartConfig>().withDefault({
       ...DEFAULT_CHART_CONFIG,
@@ -230,11 +228,20 @@ function DBChartExplorerPage() {
     }),
   );
 
+  // `config.source` accepts a source name as well as a source ID. Resolve to a source object here.
+  const { source: paramSource } = useResolvedSourceParam(rawChartConfig.source);
+
+  const chartConfig = useMemo(() => {
+    if (!rawChartConfig.source) return rawChartConfig;
+    return { ...rawChartConfig, source: paramSource?.id ?? '' };
+  }, [rawChartConfig, paramSource?.id]);
+
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
         <title>Chart Explorer - {brandName}</title>
       </Head>
+      <OnboardingModal />
       <AIAssistant
         setConfig={setChartConfig}
         onTimeRangeSelect={onTimeRangeSelect}
@@ -253,6 +260,7 @@ function DBChartExplorerPage() {
         onTimeRangeSearch={onSearch}
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
+        autoRun
       />
     </Box>
   );

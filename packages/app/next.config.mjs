@@ -1,5 +1,5 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import { readFileSync } from 'fs';
+import { copyFileSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -12,6 +12,32 @@ const packageJson = JSON.parse(
 );
 const { version } = packageJson;
 
+// Copy CHANGELOG.md into public/ so the in-app "What's new" viewer can fetch it
+// as a static asset. Done here (rather than a package.json pre-script) because
+// Yarn 4 does not run arbitrary pre/post lifecycle scripts; next.config is
+// evaluated by both `next dev` (Turbopack) and `next build` (Webpack), so this
+// runs in every build mode. The ClickStack static export additionally needs
+// `.md` allow-listed in scripts/prepare-clickhouse-build-export.js, and the
+// Docker builder stages must COPY the file in (see the Dockerfiles).
+try {
+  copyFileSync(
+    join(__dirname, 'CHANGELOG.md'),
+    join(__dirname, 'public', 'CHANGELOG.md'),
+  );
+} catch (err) {
+  // Fail loudly during a production build: a missing CHANGELOG.md there means
+  // the shipped image would silently render "Unable to load" for every user.
+  // Stay non-fatal otherwise — `next start` re-evaluates this config at runtime
+  // where the source file is absent but public/CHANGELOG.md already exists from
+  // the build stage, and dev tolerates its absence.
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    throw new Error(
+      `Failed to copy CHANGELOG.md into public/ during build: ${err.message}`,
+    );
+  }
+  console.warn('Could not copy CHANGELOG.md into public/:', err.message);
+}
+
 // Support legacy consumers of next-runtime-env that expect this value under window.__ENV
 process.env.NEXT_PUBLIC_APP_VERSION = version;
 
@@ -20,6 +46,9 @@ configureRuntimeEnv();
 const basePath = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH;
 
 const nextConfig = {
+  // Allow overriding the build/dev output directory to avoid lock conflicts
+  // when running dev and E2E simultaneously (e.g. NEXT_DIST_DIR=.next-e2e)
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   reactCompiler: true,
   basePath: basePath,
   env: {
@@ -34,23 +63,43 @@ const nextConfig = {
     '@opentelemetry/auto-instrumentations-node',
     '@hyperdx/node-opentelemetry',
     '@hyperdx/instrumentation-sentry-node',
+    // Outside of Vercel preview deployments, the `/api/[...all]` catch-all
+    // proxies to a separately-deployed API service and never imports the
+    // `@hyperdx/api` package at runtime. Mark it (and its subpaths) as a
+    // CommonJS external so production app builds (Docker fullstack image,
+    // standalone Next output) stay byte-for-byte equivalent to today and
+    // do not pull in passport-saml, mongoose, AWS SDK, etc.
+    ...(process.env.HDX_PREVIEW_INLINE_API !== 'true' ? ['@hyperdx/api'] : []),
   ],
   typescript: {
     tsconfigPath: 'tsconfig.build.json',
   },
-  // NOTE: Using Webpack instead of Turbopack (Next.js 16 default)
+  // Dev uses Turbopack; production build uses Webpack (--webpack).
   // Reason: Turbopack has CSS module parsing issues with nested :global syntax
   // used in styles/SearchPage.module.scss and other SCSS files.
-  // The --webpack flag is added to dev and build scripts in package.json.
-  // TODO: Re-evaluate when Turbopack CSS module support improves
-  // Ignore otel pkgs warnings
-  // https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
+  // TODO: single bundler when Turbopack CSS is solid.
+  // Ignore otel warnings (Webpack): https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
   webpack: (
     config,
     { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack },
   ) => {
     if (isServer) {
       config.ignoreWarnings = [{ module: /opentelemetry/ }];
+
+      if (process.env.HDX_PREVIEW_INLINE_API !== 'true') {
+        config.externals = [
+          ...(config.externals ?? []),
+          ({ request }, callback) => {
+            if (
+              request === '@hyperdx/api' ||
+              request?.startsWith?.('@hyperdx/api/')
+            ) {
+              return callback(null, `commonjs ${request}`);
+            }
+            return callback();
+          },
+        ];
+      }
     }
     return config;
   },
@@ -63,6 +112,9 @@ const nextConfig = {
             key: 'X-Frame-Options',
             value: 'DENY',
           },
+          ...(process.env.NEXT_PUBLIC_NOINDEX === 'true'
+            ? [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]
+            : []),
         ],
       },
     ];

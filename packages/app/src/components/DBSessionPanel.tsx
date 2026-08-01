@@ -4,6 +4,7 @@ import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
 import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
+import { WithClause } from '@/hooks/useRowWhere';
 import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
 
@@ -93,14 +94,14 @@ export const DBSessionPanel = ({
   dateRange,
   focusDate,
   serviceName,
-  setSubDrawerOpen,
+  onEventNavigate,
 }: {
   traceSourceId?: string;
   rumSessionId: string;
   dateRange: [Date, Date];
   focusDate: Date;
   serviceName: string;
-  setSubDrawerOpen: (open: boolean) => void;
+  onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
 }) => {
   const { data: traceSource } = useSource({
     id: traceSourceId,
@@ -136,7 +137,7 @@ export const DBSessionPanel = ({
           session={{ serviceName }}
           sessionSource={sessionSource}
           rumSessionId={rumSessionId}
-          setDrawerOpen={setSubDrawerOpen}
+          onEventNavigate={onEventNavigate}
           initialTs={focusDate.getTime()}
         />
       ) : (

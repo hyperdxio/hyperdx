@@ -1,0 +1,362 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state above threshold=5 alertValue=10 1`] = `"🚨 Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state above_exclusive threshold=5 alertValue=10 1`] = `"🚨 Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state below threshold=5 alertValue=2 1`] = `"🚨 Alert for "My Search" - 2 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state below_or_equal threshold=5 alertValue=3 1`] = `"🚨 Alert for "My Search" - 3 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state between threshold=5 alertValue=6 1`] = `"🚨 Alert for "My Search" - 6 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state equal threshold=5 alertValue=5 1`] = `"🚨 Alert for "My Search" - 5 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state not_between threshold=5 alertValue=12 1`] = `"🚨 Alert for "My Search" - 12 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts ALERT state not_equal threshold=5 alertValue=10 1`] = `"🚨 Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) above threshold=5 okValue=3 1`] = `"✅ Alert for "My Search" - 3 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) above_exclusive threshold=5 okValue=3 1`] = `"✅ Alert for "My Search" - 3 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) below threshold=5 okValue=10 1`] = `"✅ Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) below_or_equal threshold=5 okValue=10 1`] = `"✅ Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) between threshold=5 okValue=10 1`] = `"✅ Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) equal threshold=5 okValue=10 1`] = `"✅ Alert for "My Search" - 10 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) not_between threshold=5 okValue=6 1`] = `"✅ Alert for "My Search" - 6 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `"✅ Alert for "My Search" - 5 lines found"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state above threshold=5 alertValue=10 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10 meets or exceeds 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state above_exclusive threshold=5 alertValue=10 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10 exceeds 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state below threshold=5 alertValue=2 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 2 falls below 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state below_or_equal threshold=5 alertValue=3 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 3 falls to or below 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state between threshold=5 alertValue=6 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 6 falls between 5 and 7"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state decimal threshold 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10.1 meets or exceeds 1.5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state equal threshold=5 alertValue=5 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 equals 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state integer threshold rounds value 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 11 meets or exceeds 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state not_between threshold=5 alertValue=12 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 12 falls outside 5 and 7"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state not_equal threshold=5 alertValue=10 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10 does not equal 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) above threshold=5 okValue=3 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 3 falls below 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) above_exclusive threshold=5 okValue=3 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 3 falls to or below 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) below threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 meets or exceeds 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) below_or_equal threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 exceeds 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) between threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 falls outside 5 and 7"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) equal threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 does not equal 5"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) not_between threshold=5 okValue=6 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 6 falls between 5 and 7"`;
+
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 5 equals 5"`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state above threshold=5 alertValue=10 1`] = `
+"
+10 lines found, which meets or exceeds the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state above_exclusive threshold=5 alertValue=10 1`] = `
+"
+10 lines found, which exceeds the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state below threshold=5 alertValue=2 1`] = `
+"
+2 lines found, which falls below the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state below_or_equal threshold=5 alertValue=3 1`] = `
+"
+3 lines found, which falls to or below the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state between threshold=5 alertValue=6 1`] = `
+"
+6 lines found, which falls between the threshold of 5 and 7 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state equal threshold=5 alertValue=5 1`] = `
+"
+5 lines found, which equals the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state not_between threshold=5 alertValue=12 1`] = `
+"
+12 lines found, which falls outside the threshold of 5 and 7 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state not_equal threshold=5 alertValue=10 1`] = `
+"
+10 lines found, which does not equal the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts ALERT state with group 1`] = `
+"Group: "http"
+10 lines found, which meets or exceeds the threshold of 5 lines
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+
+\`\`\`
+"2023-03-17 22:14:01","error","Failed to connect to database"
+"2023-03-17 22:13:45","error","Connection timeout after 30s"
+"2023-03-17 22:12:30","error","Retry limit exceeded"
+\`\`\`"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) above threshold=5 okValue=3 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) above_exclusive threshold=5 okValue=3 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) below threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) below_or_equal threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) between threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) equal threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) not_between threshold=5 okValue=6 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate saved search alerts OK state (resolved) with group 1`] = `
+"Group: "http" - The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state above threshold=5 alertValue=10 1`] = `
+"
+10 meets or exceeds 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state above_exclusive threshold=5 alertValue=10 1`] = `
+"
+10 exceeds 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state below threshold=5 alertValue=2 1`] = `
+"
+2 falls below 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state below_or_equal threshold=5 alertValue=3 1`] = `
+"
+3 falls to or below 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state between threshold=5 alertValue=6 1`] = `
+"
+6 falls between 5 and 7
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state decimal threshold 1`] = `
+"
+10.1 meets or exceeds 1.5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state equal threshold=5 alertValue=5 1`] = `
+"
+5 equals 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state integer threshold rounds value 1`] = `
+"
+11 meets or exceeds 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state not_between threshold=5 alertValue=12 1`] = `
+"
+12 falls outside 5 and 7
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state not_equal threshold=5 alertValue=10 1`] = `
+"
+10 does not equal 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts ALERT state with group 1`] = `
+"Group: "us-east-1"
+10 meets or exceeds 5
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) above threshold=5 okValue=3 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) above_exclusive threshold=5 okValue=3 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) below threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) below_or_equal threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) between threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) equal threshold=5 okValue=10 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) not_between threshold=5 okValue=6 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `
+"The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;
+
+exports[`renderAlertTemplate tile alerts OK state (resolved) with group 1`] = `
+"Group: "us-east-1" - The alert has been resolved.
+Time Range (UTC): [Mar 17 10:10:00 PM - Mar 17 10:15:00 PM)
+"
+`;

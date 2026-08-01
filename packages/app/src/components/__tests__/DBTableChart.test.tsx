@@ -1,17 +1,21 @@
 import React from 'react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import DBTableChart from '@/components/DBTableChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import { Table } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useSource } from '@/source';
-
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import DBTableChart from '../DBTableChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useOffsetPaginatedQuery', () => ({
   __esModule: true,
   default: jest.fn(),
+}));
+
+jest.mock('next/router', () => ({
+  useRouter: jest.fn(),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -24,6 +28,19 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
+  useSources: jest.fn().mockReturnValue({ data: [] }),
+  useChartNumberFormats: jest
+    .fn()
+    .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
+}));
+
+jest.mock('@/HDXMultiSeriesTableChart', () => ({
+  __esModule: true,
+  Table: jest.fn(() => null),
+}));
+
+jest.mock('@/hooks/useOnClickLinkBuilder', () => ({
+  useOnClickLinkBuilder: jest.fn().mockReturnValue(null),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
@@ -147,6 +164,243 @@ describe('DBTableChart', () => {
       alignedEndDate,
     ]);
     expect(dateRangeIndicatorCall.mvGranularity).toBe('1 minute');
+  });
+
+  describe('groupByColumnsOnLeft', () => {
+    // Emulates how the ClickHouse query returns rows for a builder table chart:
+    // series columns are produced before groupBy columns.
+    beforeEach(() => {
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        data: {
+          data: [
+            {
+              Count: 10,
+              AvgDuration: 42,
+              ServiceName: 'web',
+              SpanName: 'GET /',
+            },
+          ],
+          meta: [],
+          chSql: { sql: '', params: {} },
+          window: {
+            startTime: new Date(),
+            endTime: new Date(),
+            windowIndex: 0,
+            direction: 'DESC' as const,
+          },
+        },
+        fetchNextPage: jest.fn(),
+        hasNextPage: false,
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      } as any);
+    });
+
+    const configWithGroupBy = {
+      ...baseTestConfig,
+      select: [
+        { aggFn: 'count' as const, valueExpression: '', alias: 'Count' },
+        {
+          aggFn: 'avg' as const,
+          valueExpression: 'Duration',
+          alias: 'AvgDuration',
+        },
+      ],
+      groupBy: 'ServiceName, SpanName',
+    };
+
+    it('preserves the row key order (series, then groupBy) by default', () => {
+      renderWithMantine(<DBTableChart config={configWithGroupBy} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => c.dataKey)).toEqual([
+        'Count',
+        'AvgDuration',
+        'ServiceName',
+        'SpanName',
+      ]);
+    });
+
+    it('moves groupBy columns to the left when groupByColumnsOnLeft is true', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={{ ...configWithGroupBy, groupByColumnsOnLeft: true }}
+        />,
+      );
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => c.dataKey)).toEqual([
+        'ServiceName',
+        'SpanName',
+        'Count',
+        'AvgDuration',
+      ]);
+    });
+
+    it('treats ratio configs as a single series column when moving groupBy columns left', () => {
+      // With seriesReturnType === 'ratio' and two selects, ClickHouse returns a
+      // single computed column for the ratio — not one column per select. The
+      // row shape reflects this: 1 series column followed by the groupBy
+      // columns.
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        data: {
+          data: [
+            {
+              'divide(count(), count())': 0.5,
+              ServiceName: 'web',
+              SpanName: 'GET /',
+            },
+          ],
+          meta: [],
+          chSql: { sql: '', params: {} },
+          window: {
+            startTime: new Date(),
+            endTime: new Date(),
+            windowIndex: 0,
+            direction: 'DESC' as const,
+          },
+        },
+        fetchNextPage: jest.fn(),
+        hasNextPage: false,
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      } as any);
+
+      const ratioConfig = {
+        ...baseTestConfig,
+        select: [
+          { aggFn: 'count' as const, valueExpression: '', alias: 'Numerator' },
+          {
+            aggFn: 'count' as const,
+            valueExpression: '',
+            alias: 'Denominator',
+          },
+        ],
+        groupBy: 'ServiceName, SpanName',
+        seriesReturnType: 'ratio' as const,
+        groupByColumnsOnLeft: true,
+      };
+
+      renderWithMantine(<DBTableChart config={ratioConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => c.dataKey)).toEqual([
+        'ServiceName',
+        'SpanName',
+        'divide(count(), count())',
+      ]);
+    });
+
+    it('does not reorder columns for raw SQL configs even when the flag is set', () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        sqlTemplate: 'SELECT Count, AvgDuration, ServiceName, SpanName FROM t',
+        groupByColumnsOnLeft: true,
+      };
+
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        data: {
+          data: [
+            {
+              Count: 10,
+              AvgDuration: 42,
+              ServiceName: 'web',
+              SpanName: 'GET /',
+            },
+          ],
+          meta: [],
+          chSql: { sql: '', params: {} },
+          window: {
+            startTime: new Date(),
+            endTime: new Date(),
+            windowIndex: 0,
+            direction: 'DESC' as const,
+          },
+        },
+        fetchNextPage: jest.fn(),
+        hasNextPage: false,
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      } as any);
+
+      renderWithMantine(<DBTableChart config={rawSqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => c.dataKey)).toEqual([
+        'Count',
+        'AvgDuration',
+        'ServiceName',
+        'SpanName',
+      ]);
+    });
+  });
+
+  describe('alternateRowBackground', () => {
+    const builderConfig = {
+      ...baseTestConfig,
+      select: [
+        { aggFn: 'count' as const, valueExpression: '', alias: 'Count' },
+      ],
+    };
+
+    it('threads alternateRowBackground to the Table for builder configs', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={{ ...builderConfig, alternateRowBackground: true }}
+        />,
+      );
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(true);
+    });
+
+    it('passes alternateRowBackground=false when the builder config omits it', () => {
+      renderWithMantine(<DBTableChart config={builderConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(false);
+    });
+
+    it('threads alternateRowBackground to the Table for raw SQL configs', () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        sqlTemplate: 'SELECT count() AS Count FROM t',
+        alternateRowBackground: true,
+      };
+
+      renderWithMantine(<DBTableChart config={rawSqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(true);
+    });
+
+    it('passes alternateRowBackground=false when a raw SQL config omits it', () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        sqlTemplate: 'SELECT count() AS Count FROM t',
+      };
+
+      renderWithMantine(<DBTableChart config={rawSqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(false);
+    });
   });
 
   it('does not render DateRangeIndicator when MV optimization has no optimized date range', () => {

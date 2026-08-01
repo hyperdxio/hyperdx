@@ -1,4 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
@@ -8,6 +9,8 @@ import {
   AILineTableResponse,
   AssistantLineTableConfigSchema,
   ChartConfigWithDateRange,
+  pickSampleWeightExpressionProps,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import type { LanguageModel } from 'ai';
 import * as chrono from 'chrono-node';
@@ -16,6 +19,7 @@ import z from 'zod';
 
 import * as config from '@/config';
 import { ISource } from '@/models/source';
+import { parseJSON } from '@/utils/common';
 import { Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 
@@ -60,14 +64,11 @@ export function getAIModel(): LanguageModel {
       return getAnthropicModel();
 
     case 'openai':
-      throw new Error(
-        `Provider '${provider}' is not yet supported. Currently only 'anthropic' is available. ` +
-          'Support for additional providers can be added in the future.',
-      );
+      return getOpenAIModel();
 
     default:
       throw new Error(
-        `Unknown AI provider: ${provider}. Currently supported: anthropic`,
+        `Unknown AI provider: ${provider}. Currently supported: anthropic, openai`,
       );
   }
 }
@@ -191,7 +192,7 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
   return parsedDate;
 }
 
-export function parseTimeRangeInput(
+function parseTimeRangeInput(
   str: string,
   isUTC: boolean = false,
 ): [Date | null, Date | null] {
@@ -217,62 +218,6 @@ export function parseTimeRangeInput(
   }
 }
 
-export const LIVE_TAIL_TIME_QUERY = 'Live Tail';
-
-export const RELATIVE_TIME_OPTIONS: ([string, string] | 'divider')[] = [
-  // ['Last 15 seconds', '15s'],
-  // ['Last 30 seconds', '30s'],
-  // 'divider',
-  ['Last 1 minute', '1m'],
-  ['Last 5 minutes', '5m'],
-  ['Last 15 minutes', '15m'],
-  ['Last 30 minutes', '30m'],
-  ['Last 45 minutes', '45m'],
-  'divider',
-  ['Last 1 hour', '1h'],
-  ['Last 3 hours', '3h'],
-  ['Last 6 hours', '6h'],
-  ['Last 12 hours', '12h'],
-  'divider',
-  ['Last 1 days', '1d'],
-  ['Last 2 days', '2d'],
-  ['Last 7 days', '7d'],
-  ['Last 14 days', '14d'],
-  ['Last 30 days', '30d'],
-];
-
-export const DURATION_OPTIONS = [
-  '30s',
-  '1m',
-  '5m',
-  '15m',
-  '30m',
-  '1h',
-  '3h',
-  '6h',
-  '12h',
-];
-
-export const DURATIONS: Record<string, any> = {
-  '30s': { seconds: 30 },
-  '1m': { minutes: 1 },
-  '5m': { minutes: 5 },
-  '15m': { minutes: 15 },
-  '30m': { minutes: 30 },
-  '1h': { hours: 1 },
-  '3h': { hours: 3 },
-  '6h': { hours: 6 },
-  '12h': { hours: 12 },
-};
-
-export const dateParser = (input?: string) => {
-  if (!input) {
-    return null;
-  }
-  const parsed = chrono.casual.parse(input)[0];
-  return normalizeParsedDate(parsed?.start);
-};
-
 // TODO: Dedup from DBSearchPageFilters
 function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
   return tableMetadata?.primary_key?.includes(key);
@@ -280,7 +225,7 @@ function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
 
 // TODO: Dedup w/ app/src/utils.ts
 // Date formatting
-export const mergePath = (path: string[], jsonColumns: string[] = []) => {
+const mergePath = (path: string[], jsonColumns: string[] = []) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
     return key;
@@ -328,6 +273,7 @@ export function getChartConfigFromResolvedConfig(
     connection: source.connection.toString(),
     groupBy: resObject.groupBy,
     timestampValueExpression: source.timestampValueExpression,
+    ...pickSampleWeightExpressionProps(source),
     dateRange: [dateRange[0].toString(), dateRange[1].toString()],
     markdown: resObject.markdown,
     granularity: 'auto',
@@ -366,4 +312,37 @@ function getAnthropicModel(): LanguageModel {
   const modelName = config.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';
 
   return anthropic(modelName);
+}
+
+/**
+ * Configure OpenAI-compatible model using the Responses API (/v1/responses).
+ */
+function getOpenAIModel(): LanguageModel {
+  const apiKey = config.AI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('No API key defined for OpenAI provider. Set AI_API_KEY.');
+  }
+
+  if (!config.AI_MODEL_NAME) {
+    throw new Error(
+      'No model name configured for OpenAI provider. Set AI_MODEL_NAME ' +
+        '(e.g. "gpt-4o", "claude-sonnet-4-5-20250929" for LiteLLM proxies).',
+    );
+  }
+
+  const headers: Record<string, string> = config.AI_REQUEST_HEADERS
+    ? parseJSON<Record<string, string>>(
+        config.AI_REQUEST_HEADERS,
+        'AI_REQUEST_HEADERS',
+      )
+    : {};
+
+  const openai = createOpenAI({
+    apiKey,
+    ...(config.AI_BASE_URL && { baseURL: config.AI_BASE_URL }),
+    ...(Object.keys(headers).length > 0 && { headers }),
+  });
+
+  return openai.responses(config.AI_MODEL_NAME);
 }

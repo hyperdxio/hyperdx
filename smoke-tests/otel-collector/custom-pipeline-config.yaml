@@ -1,0 +1,27 @@
+# Smoke test fixture for HDX-4090: swap the default memory_limiter and batch
+# processors with user-defined alternatives via CUSTOM_OTELCOL_CONFIG_FILE.
+#
+# The collector loads this file AFTER docker/otel-collector/config.yaml and
+# docker/otel-collector/config.standalone.yaml. Because the standalone config
+# no longer sets `processors:` on each pipeline (those live in config.yaml,
+# which loads first), the pipeline `processors:` lists declared here win the
+# merge cleanly.
+processors:
+  memory_limiter/custom:
+    check_interval: 5s
+    limit_percentage: 75
+    spike_limit_percentage: 25
+  batch/lowlatency:
+    send_batch_size: 1000
+    send_batch_max_size: 2000
+    timeout: 100ms
+service:
+  pipelines:
+    traces:
+      processors: [memory_limiter/custom, batch/lowlatency]
+    metrics:
+      processors: [memory_limiter/custom, batch/lowlatency]
+    logs/out-default:
+      processors: [memory_limiter/custom, transform, batch/lowlatency]
+    logs/out-rrweb:
+      processors: [memory_limiter/custom, batch/lowlatency]

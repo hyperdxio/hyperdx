@@ -1,8 +1,20 @@
 import { splitAndTrimWithBracket } from './core/utils';
-import { renderQueryParam } from './rawSqlParams';
+import { RawSqlQueryParam, renderQueryParam } from './rawSqlParams';
+import {
+  MetricsDataType,
+  MetricsDataTypeSchema,
+  RawSqlChartConfig,
+} from './types';
 
-function expectArgs(macroName: string, args: string[], expected: number) {
-  if (args.length !== expected) {
+function expectArgs(
+  macroName: string,
+  args: string[],
+  minArgs: number,
+  maxArgs: number,
+) {
+  if (args.length < minArgs || args.length > maxArgs) {
+    const expected =
+      minArgs === maxArgs ? `${minArgs}` : `${minArgs}-${maxArgs}`;
     throw new Error(
       `Macro '${macroName}' expects ${expected} argument(s), but got ${args.length}`,
     );
@@ -10,10 +22,11 @@ function expectArgs(macroName: string, args: string[], expected: number) {
 }
 
 // Helpers to render ClickHouse time conversions using query params
-const startMs = () => renderQueryParam('startDateMilliseconds');
-const endMs = () => renderQueryParam('endDateMilliseconds');
-const intervalS = () => renderQueryParam('intervalSeconds');
-const intervalMs = () => renderQueryParam('intervalMilliseconds');
+const startMs = () => renderQueryParam(RawSqlQueryParam.startDateMilliseconds);
+const endMs = () => renderQueryParam(RawSqlQueryParam.endDateMilliseconds);
+const intervalS = () => renderQueryParam(RawSqlQueryParam.intervalSeconds);
+const intervalMs = () =>
+  renderQueryParam(RawSqlQueryParam.intervalMilliseconds);
 
 const timeToDate = (msParam: string) =>
   `toDate(fromUnixTimestamp64Milli(${msParam}))`;
@@ -24,63 +37,72 @@ const timeToDateTime64 = (msParam: string) =>
 
 type Macro = {
   name: string;
-  argCount: number;
+  minArgs: number;
+  maxArgs: number;
   replace: (args: string[]) => string;
 };
 
 const MACROS: Macro[] = [
   {
     name: 'fromTime',
-    argCount: 0,
+    minArgs: 0,
+    maxArgs: 0,
     replace: () => timeToDateTime(startMs()),
   },
   {
     name: 'toTime',
-    argCount: 0,
+    minArgs: 0,
+    maxArgs: 0,
     replace: () => timeToDateTime(endMs()),
   },
   {
     name: 'fromTime_ms',
-    argCount: 0,
+    minArgs: 0,
+    maxArgs: 0,
     replace: () => timeToDateTime64(startMs()),
   },
   {
     name: 'toTime_ms',
-    argCount: 0,
+    minArgs: 0,
+    maxArgs: 0,
     replace: () => timeToDateTime64(endMs()),
   },
   {
     name: 'timeFilter',
-    argCount: 1,
+    minArgs: 1,
+    maxArgs: 1,
     replace: (args: string[]) => {
-      expectArgs('timeFilter', args, 1);
+      expectArgs('timeFilter', args, 1, 1);
       const [col] = args;
       return `${col} >= ${timeToDateTime(startMs())} AND ${col} <= ${timeToDateTime(endMs())}`;
     },
   },
   {
     name: 'timeFilter_ms',
-    argCount: 1,
+    minArgs: 1,
+    maxArgs: 1,
     replace: (args: string[]) => {
-      expectArgs('timeFilter_ms', args, 1);
+      expectArgs('timeFilter_ms', args, 1, 1);
       const [col] = args;
       return `${col} >= ${timeToDateTime64(startMs())} AND ${col} <= ${timeToDateTime64(endMs())}`;
     },
   },
   {
     name: 'dateFilter',
-    argCount: 1,
+    minArgs: 1,
+    maxArgs: 1,
     replace: (args: string[]) => {
-      expectArgs('dateFilter', args, 1);
+      expectArgs('dateFilter', args, 1, 1);
       const [col] = args;
       return `${col} >= ${timeToDate(startMs())} AND ${col} <= ${timeToDate(endMs())}`;
     },
   },
   {
     name: 'dateTimeFilter',
-    argCount: 2,
+    minArgs: 2,
+    maxArgs: 2,
     replace: (args: string[]) => {
-      expectArgs('dateTimeFilter', args, 2);
+      expectArgs('dateTimeFilter', args, 2, 2);
       const [dateCol, timeCol] = args;
       const dateFilter = `(${dateCol} >= ${timeToDate(startMs())} AND ${dateCol} <= ${timeToDate(endMs())})`;
       const timeFilter = `(${timeCol} >= ${timeToDateTime(startMs())} AND ${timeCol} <= ${timeToDateTime(endMs())})`;
@@ -89,9 +111,10 @@ const MACROS: Macro[] = [
   },
   {
     name: 'dt',
-    argCount: 2,
+    minArgs: 2,
+    maxArgs: 2,
     replace: (args: string[]) => {
-      expectArgs('dt', args, 2);
+      expectArgs('dt', args, 2, 2);
       const [dateCol, timeCol] = args;
       const dateFilter = `(${dateCol} >= ${timeToDate(startMs())} AND ${dateCol} <= ${timeToDate(endMs())})`;
       const timeFilter = `(${timeCol} >= ${timeToDateTime(startMs())} AND ${timeCol} <= ${timeToDateTime(endMs())})`;
@@ -100,34 +123,84 @@ const MACROS: Macro[] = [
   },
   {
     name: 'timeInterval',
-    argCount: 1,
+    minArgs: 1,
+    maxArgs: 1,
     replace: (args: string[]) => {
-      expectArgs('timeInterval', args, 1);
+      expectArgs('timeInterval', args, 1, 1);
       const [col] = args;
       return `toStartOfInterval(toDateTime(${col}), INTERVAL ${intervalS()} second)`;
     },
   },
   {
     name: 'timeInterval_ms',
-    argCount: 1,
+    minArgs: 1,
+    maxArgs: 1,
     replace: (args: string[]) => {
-      expectArgs('timeInterval_ms', args, 1);
+      expectArgs('timeInterval_ms', args, 1, 1);
       const [col] = args;
       return `toStartOfInterval(toDateTime64(${col}, 3), INTERVAL ${intervalMs()} millisecond)`;
     },
   },
   {
     name: 'interval_s',
-    argCount: 0,
+    minArgs: 0,
+    maxArgs: 0,
     replace: () => intervalS(),
   },
 ];
 
 /** Macro metadata for autocomplete suggestions */
 export const MACRO_SUGGESTIONS = [
-  ...MACROS.map(({ name, argCount }) => ({ name, argCount })),
-  { name: 'filters', argCount: 0 },
+  ...MACROS.map(({ name, minArgs, maxArgs }) => ({ name, minArgs, maxArgs })),
+  { name: 'filters', minArgs: 0, maxArgs: 0 },
+  { name: 'sourceTable', minArgs: 0, maxArgs: 1 },
+  ...Object.values(MetricsDataType).map(type => ({
+    name: `sourceTable(${type})`,
+    minArgs: 0,
+    maxArgs: 0,
+  })),
 ];
+
+/**
+ * Macros whose expansion depends on the chart's
+ * source being configured. With no source:
+ *  - `$__filters` cannot resolve dashboard filters against the source's
+ *    columns and falls back to `(1=1)`, so the filters are silently dropped.
+ *  - `$__sourceTable` throws at render time ("requires a source to be
+ *    selected"), so the query fails outright.
+ *
+ * Every other macro only needs the dashboard time range / interval and takes
+ * its column as an argument, so it does not require a source.
+ */
+export const SOURCE_DEPENDENT_MACROS = ['filters', 'sourceTable'] as const;
+
+/**
+ * Time-range macros. Any single one binds a raw
+ * SQL query to the dashboard/query time range, so the presence of *any* of
+ * these satisfies a time-range check — callers should test them as a set
+ * rather than requiring a specific one.
+ */
+export const TIME_RANGE_MACROS = [
+  'timeFilter',
+  'timeFilter_ms',
+  'dateFilter',
+  'dateTimeFilter',
+  'dt',
+  'fromTime',
+  'toTime',
+  'fromTime_ms',
+  'toTime_ms',
+] as const;
+
+/**
+ * Time-bucketing macros. Only relevant to time-series
+ * (line/bar) charts, where they align buckets to the requested granularity.
+ */
+export const INTERVAL_MACROS = [
+  'timeInterval',
+  'timeInterval_ms',
+  'interval_s',
+] as const;
 
 type MacroMatch = {
   full: string;
@@ -164,6 +237,32 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
   return { args, length: closeParenIndex + 1 };
 }
 
+/**
+ * True if the SQL contains at least one occurrence of the `$__<name>` macro.
+ */
+export function hasMacro(sql: string, name: string): boolean {
+  return findMacros(sql, name).length > 0;
+}
+
+/**
+ * Which of SOURCE_DEPENDENT_MACROS are actually referenced in the given SQL.
+ * Shared by callers that need to warn/error when those macros are used
+ * without a source to resolve them against.
+ */
+export function getSourceDependentMacrosUsed(
+  sqlTemplate: string,
+): (typeof SOURCE_DEPENDENT_MACROS)[number][] {
+  return SOURCE_DEPENDENT_MACROS.filter(macro => hasMacro(sqlTemplate, macro));
+}
+
+/**
+ * Argument count for each `$__sourceTable(...)` usage in the SQL — 0 for a
+ * bare `$__sourceTable`, 1 for `$__sourceTable(<metricType>)`.
+ */
+export function getSourceTableMacroArgCounts(sqlTemplate: string): number[] {
+  return findMacros(sqlTemplate, 'sourceTable').map(match => match.args.length);
+}
+
 function findMacros(input: string, name: string): MacroMatch[] {
   // eslint-disable-next-line security/detect-non-literal-regexp
   const pattern = new RegExp(`\\$__${name}\\b`, 'g');
@@ -187,15 +286,69 @@ function findMacros(input: string, name: string): MacroMatch[] {
 const NO_FILTERS = '(1=1 /** no filters applied */)';
 
 export function replaceMacros(
-  sqlTemplate: string,
+  chartConfig: Pick<RawSqlChartConfig, 'sqlTemplate' | 'from' | 'metricTables'>,
   filtersSQL?: string,
 ): string {
+  const { from, metricTables } = chartConfig;
+
   const allMacros: Macro[] = [
     ...MACROS,
     {
       name: 'filters',
-      argCount: 0,
+      minArgs: 0,
+      maxArgs: 0,
       replace: () => filtersSQL || NO_FILTERS,
+    },
+    {
+      name: 'sourceTable',
+      minArgs: 0,
+      maxArgs: 1,
+      replace: (args: string[]) => {
+        expectArgs('sourceTable', args, 0, 1);
+        if (!from) {
+          throw new Error(
+            "Macro '$__sourceTable' requires a source to be selected",
+          );
+        }
+
+        if (args.length === 0 && metricTables) {
+          throw new Error(
+            "Macro '$__sourceTable(metricType)' requires a metricType when a metrics source is selected",
+          );
+        }
+
+        if (args.length === 0 && !from.tableName) {
+          throw new Error(
+            "Macro '$__sourceTable' requires a source with a table to be selected when no arguments are provided",
+          );
+        }
+
+        if (args.length === 0) {
+          return `\`${from.databaseName}\`.\`${from.tableName}\``;
+        }
+
+        if (!metricTables) {
+          throw new Error(
+            "Macro '$__sourceTable(metricType)' with a metric type argument requires a metrics source to be selected",
+          );
+        }
+
+        const metricsTypeParseResult = MetricsDataTypeSchema.safeParse(args[0]);
+        if (!metricsTypeParseResult.success) {
+          throw new Error(
+            `Macro '$__sourceTable(metricType)' invalid argument '${args[0]}'. Expected a valid metrics data type (${Object.values(MetricsDataType).join(', ')}).`,
+          );
+        }
+
+        const metricType = metricsTypeParseResult.data;
+        const table = metricTables[metricType];
+        if (!table) {
+          throw new Error(
+            `Macro '$__sourceTable(metricType)': No table configured for metric type '${metricType}'.`,
+          );
+        }
+        return `\`${from.databaseName}\`.\`${table}\``;
+      },
     },
   ];
 
@@ -203,7 +356,7 @@ export function replaceMacros(
     (m1, m2) => m2.name.length - m1.name.length,
   );
 
-  let sql = sqlTemplate;
+  let sql = chartConfig.sqlTemplate;
   for (const macro of sortedMacros) {
     const matches = findMacros(sql, macro.name);
 

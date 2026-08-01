@@ -6,13 +6,22 @@ import { Locator, Page } from '@playwright/test';
 
 export class KubernetesPage {
   readonly page: Page;
-  private readonly dashboardTitle: Locator;
+  /**
+   * Root of the Kubernetes dashboard, used as the "page loaded" signal in
+   * smoke tests. Asserts on the `data-testid` on `<PageLayout>` rather
+   * than visible heading text because the PageLayout migration intentionally
+   * dropped the `<Text size="xl">Kubernetes Dashboard</Text>` heading in
+   * favour of the `Dashboards / Kubernetes` breadcrumb (see PageHeader
+   * docs: "omit `title` when the toolbar has inputs"). Same convention
+   * as `SavedSearchesListPage`, `DashboardsListPage`, etc.
+   */
+  readonly pageContainer: Locator;
   private readonly namespaceFilter: Locator;
   private readonly searchInput: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.dashboardTitle = page.getByText('Kubernetes Dashboard');
+    this.pageContainer = page.getByTestId('kubernetes-dashboard-page');
     this.namespaceFilter = page.getByTestId('namespace-filter-select');
     this.searchInput = page.getByTestId('k8s-search-input');
   }
@@ -212,10 +221,6 @@ export class KubernetesPage {
   }
 
   // Getters for assertions
-
-  get title() {
-    return this.dashboardTitle;
-  }
 
   get namespace() {
     return this.namespaceFilter;

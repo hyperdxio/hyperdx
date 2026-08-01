@@ -19,7 +19,11 @@ import { IconHelpCircle, IconPencil } from '@tabler/icons-react';
 
 import api from '@/api';
 import SelectControlled from '@/components/SelectControlled';
-import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from '@/defaults';
+import {
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_QUERY_TIMEOUT,
+  DEFAULT_SEARCH_ROW_LIMIT,
+} from '@/defaults';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 type ClickhouseSettingType = 'number' | 'boolean';
@@ -34,6 +38,7 @@ interface ClickhouseSettingFormProps {
   min?: number;
   max?: number;
   displayValue?: (value: any, defaultValue?: any) => string;
+  description?: string;
 }
 
 function getFieldErrorMessage(error: unknown): string | undefined {
@@ -55,6 +60,7 @@ function ClickhouseSettingForm({
   min,
   max,
   displayValue,
+  description,
 }: ClickhouseSettingFormProps) {
   const { data: me, refetch: refetchMe } = api.useMe();
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
@@ -115,6 +121,39 @@ function ClickhouseSettingForm({
     ],
   );
 
+  const handleReset = useCallback(() => {
+    if (defaultValue == null) return;
+    updateClickhouseSettings.mutate(
+      { [settingKey]: null },
+      {
+        onError: () => {
+          notifications.show({
+            color: 'red',
+            message: `Failed to reset ${label}`,
+          });
+        },
+        onSuccess: () => {
+          notifications.show({
+            color: 'green',
+            message: `Reset ${label} to default`,
+          });
+          form.reset({ value: defaultValue });
+          refetchMe();
+          setIsEditing(false);
+        },
+      },
+    );
+  }, [
+    refetchMe,
+    updateClickhouseSettings,
+    settingKey,
+    label,
+    defaultValue,
+    form,
+  ]);
+
+  const isCustomValue = currentValue !== undefined;
+
   return (
     <Stack gap="xs" mb="md">
       <Group gap="xs">
@@ -127,6 +166,11 @@ function ClickhouseSettingForm({
           </Tooltip>
         )}
       </Group>
+      {description && (
+        <Text size="xs" c="dimmed">
+          {description}
+        </Text>
+      )}
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
@@ -209,6 +253,16 @@ function ClickhouseSettingForm({
               Change
             </Button>
           )}
+          {hasAdminAccess && isCustomValue && defaultValue != null && (
+            <Button
+              size="xs"
+              variant="subtle"
+              loading={updateClickhouseSettings.isPending}
+              onClick={handleReset}
+            >
+              Reset to default
+            </Button>
+          )}
         </Group>
       )}
     </Stack>
@@ -220,7 +274,7 @@ export default function TeamQueryConfigSection() {
   const displayValueWithUnit =
     (unit: string) => (value: any, defaultValue?: any) =>
       value === undefined || value === defaultValue
-        ? `${defaultValue.toLocaleString()} ${unit} (System Default)`
+        ? `${defaultValue.toLocaleString()} ${unit}`
         : value === 0
           ? 'Unlimited'
           : `${value.toLocaleString()} ${unit}`;
@@ -261,6 +315,18 @@ export default function TeamQueryConfigSection() {
             placeholder={`default = ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited`}
             min={0}
             displayValue={displayValueWithUnit('rows')}
+          />
+          <ClickhouseSettingForm
+            settingKey="filterKeysFetchLimit"
+            label="Filter Keys Fetch Limit"
+            tooltip="The number of filter keys to fetch when clicking 'More filters' on the search page"
+            type="number"
+            defaultValue={DEFAULT_FILTER_KEYS_FETCH_LIMIT}
+            placeholder={`default = ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
+            min={1}
+            max={1000}
+            displayValue={displayValueWithUnit('keys')}
+            description={`Default is ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
           />
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"

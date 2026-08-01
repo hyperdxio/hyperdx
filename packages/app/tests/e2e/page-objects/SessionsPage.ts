@@ -68,6 +68,27 @@ export class SessionsPage {
     await this.getFirstSessionCard().click();
   }
 
+  /**
+   * Get the session side panel (the replay drawer)
+   */
+  get sessionSidePanel() {
+    return this.page.getByTestId('session-side-panel');
+  }
+
+  /**
+   * Get all session event rows inside the replay drawer
+   */
+  getSessionEventRows() {
+    return this.page.locator('[data-testid^="session-event-row-"]');
+  }
+
+  /**
+   * Click the first session event row to open its detail panel
+   */
+  async clickFirstSessionEvent() {
+    await this.getSessionEventRows().first().click();
+  }
+
   // Getters for assertions
 
   get form() {

@@ -1,0 +1,1 @@
+SELECT SeverityText, SeverityNumber, Body FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'severity-inference' AND ResourceAttributes['test-id'] = 'from-json-level' ORDER BY (toStartOfFiveMinutes(Timestamp), Timestamp) FORMAT CSV

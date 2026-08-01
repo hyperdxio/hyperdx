@@ -1,4 +1,4 @@
-import { normalizeNoOpAlertScheduleFields } from '../alerts';
+import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
 describe('normalizeNoOpAlertScheduleFields', () => {
   it('drops no-op schedule fields for pre-migration alerts', () => {

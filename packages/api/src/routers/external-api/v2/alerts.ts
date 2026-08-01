@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { z } from 'zod';
 
 import {
+  countAlerts,
   createAlert,
   deleteAlert,
   getAlertById,
@@ -15,6 +16,11 @@ import {
   validateRequestWithEnhancedErrors as validateRequest,
 } from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+import {
+  getPagination,
+  paginationMeta,
+  paginationQuerySchema,
+} from '@/utils/pagination';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 /**
@@ -34,7 +40,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Evaluation interval.
  *     AlertThresholdType:
  *       type: string
- *       enum: [above, below]
+ *       enum: [above, below, above_exclusive, below_or_equal, equal, not_equal, between, not_between]
  *       description: Threshold comparison direction.
  *     AlertSource:
  *       type: string
@@ -42,12 +48,37 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Alert source type.
  *     AlertState:
  *       type: string
- *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED]
+ *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED, PENDING]
  *       description: Current alert state.
  *     AlertChannelType:
  *       type: string
  *       enum: [webhook]
  *       description: Channel type.
+ *     AlertErrorType:
+ *       type: string
+ *       enum: [QUERY_ERROR, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       description: Category of error recorded during alert execution.
+ *     AlertExecutionError:
+ *       type: object
+ *       description: An error recorded during a recent alert execution.
+ *       required:
+ *         - timestamp
+ *         - type
+ *         - message
+ *       properties:
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *           description: When the error occurred.
+ *           example: "2026-04-17T12:00:00.000Z"
+ *         type:
+ *           $ref: '#/components/schemas/AlertErrorType'
+ *           description: Category of the error.
+ *           example: "QUERY_ERROR"
+ *         message:
+ *           type: string
+ *           description: Human-readable error message.
+ *           example: "Query timed out after 30s"
  *     AlertSilenced:
  *       type: object
  *       description: Silencing metadata.
@@ -95,7 +126,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "65f5e4a3b9e77c001a567890"
  *         tileId:
  *           type: string
- *           description: Tile ID for tile-based alerts. May not be a Raw-SQL-based tile.
+ *           description: Tile ID for tile-based alerts. Must be a line, stacked bar, or number type tile.
  *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
  *         savedSearchId:
@@ -110,8 +141,13 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "ServiceName"
  *         threshold:
  *           type: number
- *           description: Threshold value for triggering the alert.
+ *           description: Threshold value for triggering the alert. For between and not_between threshold types, this is the lower bound.
  *           example: 100
+ *         thresholdMax:
+ *           type: number
+ *           nullable: true
+ *           description: Upper bound for between and not_between threshold types. Required when thresholdType is between or not_between, must be >= threshold.
+ *           example: 500
  *         interval:
  *           $ref: '#/components/schemas/AlertInterval'
  *           description: Evaluation interval for the alert.
@@ -149,6 +185,19 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           description: Alert message template.
  *           nullable: true
  *           example: "Test Alert Message"
+ *         note:
+ *           type: string
+ *           description: Freeform note for the alert. Supports markdown formatting.
+ *           nullable: true
+ *           minLength: 1
+ *           maxLength: 4096
+ *           example: "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
+ *         numConsecutiveWindows:
+ *           type: integer
+ *           minimum: 1
+ *           nullable: true
+ *           description: Fire the alert only after its condition has been met for this many consecutive evaluation windows. While the condition is met but fewer than this many consecutive windows have violated, the alert is in the PENDING state.
+ *           example: 3
  *
  *     AlertResponse:
  *       allOf:
@@ -171,6 +220,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *               $ref: '#/components/schemas/AlertSilenced'
  *               description: Silencing metadata.
  *               nullable: true
+ *             executionErrors:
+ *               type: array
+ *               nullable: true
+ *               description: Errors recorded during the most recent alert execution, if any.
+ *               items:
+ *                 $ref: '#/components/schemas/AlertExecutionError'
  *             createdAt:
  *               type: string
  *               nullable: true
@@ -213,12 +268,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *
  *     AlertsListResponse:
  *       type: object
+ *       required:
+ *         - data
+ *         - meta
  *       properties:
  *         data:
  *           type: array
  *           description: List of alert objects.
  *           items:
  *             $ref: '#/components/schemas/AlertResponse'
+ *         meta:
+ *           $ref: '#/components/schemas/PaginationMeta'
+ *           description: Pagination metadata for this result page.
  *
  *     EmptyResponse:
  *       type: object
@@ -267,10 +328,17 @@ const router = express.Router();
  *                     teamId: "65f5e4a3b9e77c001a345678"
  *                     tileId: "65f5e4a3b9e77c001a901234"
  *                     dashboardId: "65f5e4a3b9e77c001a567890"
+ *                     numConsecutiveWindows: 3
  *                     createdAt: "2023-03-15T10:20:30.000Z"
  *                     updatedAt: "2023-03-15T14:25:10.000Z"
  *       '401':
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
  *         content:
  *           application/json:
  *             schema:
@@ -293,13 +361,13 @@ router.get(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const alert = await getAlertById(req.params.id, teamId);
 
       if (alert == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Alert not found' });
       }
 
       return res.json({
@@ -316,9 +384,31 @@ router.get(
  * /api/v2/alerts:
  *   get:
  *     summary: List Alerts
- *     description: Retrieves a list of all alerts for the authenticated team
+ *     description: >-
+ *       Retrieves alerts for the authenticated team (paginated). Results are
+ *       capped at `limit` (default and maximum 1000). When more records exist
+ *       than are returned, `meta.total` exceeds `data.length`; clients with
+ *       large collections must page with `limit`/`offset` to retrieve them all.
  *     operationId: listAlerts
  *     tags: [Alerts]
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 1000
+ *         description: Maximum number of alerts to return.
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of alerts to skip before returning results.
  *     responses:
  *       '200':
  *         description: Successfully retrieved alerts
@@ -345,6 +435,10 @@ router.get(
  *                       dashboardId: "65f5e4a3b9e77c001a567890"
  *                       createdAt: "2023-01-01T00:00:00.000Z"
  *                       updatedAt: "2023-01-01T00:00:00.000Z"
+ *                   meta:
+ *                     total: 1
+ *                     limit: 1000
+ *                     offset: 0
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -353,23 +447,41 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.get(
+  '/',
+  processRequest({ query: paginationQuerySchema }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const { limit, offset } = getPagination(req.query);
+      const [alerts, total] = await Promise.all([
+        getAlerts(teamId, { limit, offset }),
+        countAlerts(teamId),
+      ]);
+
+      // Surface the full count at the HTTP layer too, so a client that reads
+      // headers but not the `meta` body can still detect truncation.
+      res.set('X-Total-Count', String(total));
+      return res.json({
+        data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
+        meta: paginationMeta({ limit, offset }, total, 'alerts'),
+      });
+    } catch (e) {
+      next(e);
     }
-
-    const alerts = await getAlerts(teamId);
-
-    return res.json({
-      data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 /**
  * @openapi
@@ -400,6 +512,7 @@ router.get('/', async (req, res, next) => {
  *                   webhookId: "65f5e4a3b9e77c001a789012"
  *                 name: "Error Spike Alert"
  *                 message: "Error rate has exceeded 100 in the last hour"
+ *                 numConsecutiveWindows: 3
  *     responses:
  *       '200':
  *         description: Successfully created alert
@@ -409,6 +522,12 @@ router.get('/', async (req, res, next) => {
  *               $ref: '#/components/schemas/AlertResponseEnvelope'
  *       '401':
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
  *         content:
  *           application/json:
  *             schema:
@@ -429,7 +548,7 @@ router.post(
     const teamId = req.user?.team;
     const userId = req.user?._id;
     if (teamId == null || userId == null) {
-      return res.sendStatus(403);
+      return res.status(403).json({ message: 'Forbidden' });
     }
     try {
       const alertInput = req.body;
@@ -496,6 +615,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -522,7 +647,7 @@ router.put(
       const teamId = req.user?.team;
 
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
       const { id } = req.params;
 
@@ -532,7 +657,7 @@ router.put(
       const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Alert not found' });
       }
 
       res.json({
@@ -574,6 +699,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -593,11 +724,14 @@ router.delete(
       const teamId = req.user?.team;
       const { id: alertId } = req.params;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
-      await deleteAlert(alertId, teamId);
-      res.sendStatus(200);
+      const { deletedCount } = await deleteAlert(alertId, teamId);
+      if (deletedCount === 0) {
+        return res.status(404).json({ message: 'Alert not found' });
+      }
+      res.json({});
     } catch (e) {
       next(e);
     }

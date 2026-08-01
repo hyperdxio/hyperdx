@@ -6,26 +6,83 @@
 # Install dependencies and setup hooks
 yarn setup
 
-# Start full development stack (Docker + local services)
-yarn dev
+# Start full development stack (auto-assigns unique ports per worktree)
+yarn dev        # or equivalently: make dev
 ```
 
 ## Key Development Scripts
 
-- `yarn app:dev`: Start API, frontend, alerts task, and common-utils in watch
-  mode
+- `yarn dev` / `make dev`: Start full dev stack with worktree-isolated ports. A
+  dev portal at http://localhost:9900 auto-starts showing all running stacks.
+- `yarn dev:down` / `make dev-down`: Stop the dev stack for the current worktree
+- `make dev-portal`: Start the dev portal manually (auto-started by `yarn dev`)
 - `yarn lint`: Run linting across all packages
-- `yarn dev:int`: Run integration tests in watch mode
 - `yarn dev:unit`: Run unit tests in watch mode (per package)
-- `yarn test:e2e`: Run Playwright E2E tests (in `packages/app`)
-- `yarn test:e2e:ci`: Run Playwright E2E tests in CI Docker environment (in
-  `packages/app`)
 
 ## Environment Configuration
 
 - `.env.development`: Development environment variables
 - Docker Compose manages ClickHouse, MongoDB, OTel Collector
 - Hot reload enabled for all services in development
+
+## Worktree Isolation (Multi-Agent / Multi-Developer)
+
+When multiple git worktrees need to run the dev stack simultaneously (e.g.
+multiple agents or developers working in parallel), use `make dev` instead of
+`yarn dev`. This automatically assigns unique ports per worktree.
+
+### How It Works
+
+1. A deterministic slot (0-99) is computed from the worktree directory name (via
+   `cksum`)
+2. Each service gets a unique port: `base + slot` (see table below)
+3. Docker Compose runs with a unique project name (`hdx-dev-<slot>`)
+4. Volume paths include the slot to prevent data corruption between worktrees
+
+### Dev Port Mapping (base + slot)
+
+Ports are allocated in the 30100-31199 range to avoid conflicts with CI
+integration tests (14320-40098) and E2E tests (20320-21399).
+
+| Service           | Base Port | Range         | Env Variable                  |
+| ----------------- | --------- | ------------- | ----------------------------- |
+| API server        | 30100     | 30100 - 30199 | `HYPERDX_API_PORT`            |
+| App (Next.js)     | 30200     | 30200 - 30299 | `HYPERDX_APP_PORT`            |
+| OpAMP             | 30300     | 30300 - 30399 | `HYPERDX_OPAMP_PORT`          |
+| MongoDB           | 30400     | 30400 - 30499 | `HDX_DEV_MONGO_PORT`          |
+| ClickHouse HTTP   | 30500     | 30500 - 30599 | `HDX_DEV_CH_HTTP_PORT`        |
+| ClickHouse Native | 30600     | 30600 - 30699 | `HDX_DEV_CH_NATIVE_PORT`      |
+| OTel health       | 30700     | 30700 - 30799 | `HDX_DEV_OTEL_HEALTH_PORT`    |
+| OTel gRPC         | 30800     | 30800 - 30899 | `HDX_DEV_OTEL_GRPC_PORT`      |
+| OTel HTTP         | 30900     | 30900 - 30999 | `HDX_DEV_OTEL_HTTP_PORT`      |
+| OTel metrics      | 31000     | 31000 - 31099 | `HDX_DEV_OTEL_METRICS_PORT`   |
+| OTel JSON HTTP    | 31100     | 31100 - 31199 | `HDX_DEV_OTEL_JSON_HTTP_PORT` |
+
+### Dev Portal
+
+The dev portal is a centralized web dashboard that discovers all running
+worktree stacks by inspecting Docker container labels and slot files.
+
+```bash
+# Start the portal (runs on fixed port 9900)
+make dev-portal
+
+# Open in browser
+open http://localhost:9900
+```
+
+The portal auto-refreshes every 3 seconds and shows each worktree's:
+
+- Branch name and slot number
+- All services with status (running/stopped) and clickable port links
+- Separate cards for each active worktree
+
+### Overriding the Slot
+
+```bash
+# Use a specific slot instead of the auto-computed one
+HDX_DEV_SLOT=5 make dev
+```
 
 ## Testing Strategy
 
@@ -87,6 +144,56 @@ Port mapping (base + slot):
 - Includes all necessary services (ClickHouse, MongoDB, OTel Collector)
 - Tests run against real database instances for accurate integration testing
 
+### E2E Testing
+
+E2E tests use the same slot-based isolation pattern as integration tests, with
+their own dedicated port range (20320-21399) so they can run simultaneously with
+both the dev stack and CI integration tests.
+
+E2E port mapping (base + slot):
+
+| Service           | Base Port | Range         | Env Variable             |
+| ----------------- | --------- | ------------- | ------------------------ |
+| OpAMP             | 20320     | 20320 - 20419 | `HDX_E2E_OPAMP_PORT`     |
+| ClickHouse HTTP   | 20500     | 20500 - 20599 | `HDX_E2E_CH_PORT`        |
+| ClickHouse Native | 20600     | 20600 - 20699 | `HDX_E2E_CH_NATIVE_PORT` |
+| API server        | 21000     | 21000 - 21099 | `HDX_E2E_API_PORT`       |
+| MongoDB           | 21100     | 21100 - 21199 | `HDX_E2E_MONGO_PORT`     |
+| App (local)       | 21200     | 21200 - 21299 | `HDX_E2E_APP_LOCAL_PORT` |
+| App (fullstack)   | 21300     | 21300 - 21399 | `HDX_E2E_APP_PORT`       |
+
+```bash
+# Run all E2E tests
+make e2e
+
+# Run a specific test file (dev mode: hot reload, containers kept running)
+make dev-e2e FILE=navigation
+
+# Run a specific test by grep pattern
+make dev-e2e FILE=navigation GREP="help menu"
+
+# Grep across all files
+make dev-e2e GREP="should navigate"
+
+# Open HTML report after tests finish (screenshots, traces, step-by-step)
+make dev-e2e FILE=navigation REPORT=1
+
+# Or call the script directly for more control
+./scripts/test-e2e.sh --ui --last-failed
+
+# Override the slot manually
+HDX_E2E_SLOT=5 ./scripts/test-e2e.sh
+```
+
+- A deterministic slot (0-99) is computed from the worktree directory name
+- Each slot gets its own Docker Compose project name (`e2e-<slot>`) and port
+  range
+- The slot and assigned ports are printed when E2E tests start
+
+**Port range safety:** E2E has its own dedicated port range (20320-21399) that
+does not overlap with CI integration tests (14320-40098) or the dev stack
+(30100-31199), so all three can run simultaneously from the same worktree.
+
 ## Common Development Tasks
 
 ### Adding New Features
@@ -140,3 +247,61 @@ yarn run lint
 - **Pages**: `packages/app/pages/`
 - **Components**: `packages/app/src/`
 - **Shared Utils**: `packages/common-utils/src/`
+
+## Vercel Preview Deployments (Inline API)
+
+The `hyperdx-private` Vercel project deploys the `@hyperdx/app` Next.js app
+for preview environments. Normally `/api/*` requests proxy to a separately
+deployed API service (`SERVER_URL`). For PR previews we instead **inline the
+entire Express API** into the Next.js serverless function so a single Vercel
+deployment serves both the app and the API.
+
+### How it works
+
+1. `packages/api/src/serverless.ts` exposes the Express app from
+   `api-app.ts` as a stateless `(req, res) => Promise<void>` handler. It
+   lazily connects to MongoDB on the first invocation and caches the
+   connection across warm invocations.
+2. `packages/app/pages/api/[...all].ts` branches on the
+   `HDX_PREVIEW_INLINE_API` env var. When `true`, it `require()`s the
+   compiled serverless handler and dispatches directly. Otherwise it falls
+   back to the existing http-proxy-middleware path used by Docker/standalone
+   builds.
+3. `packages/app/next.config.mjs` adds a webpack `externals` rule that marks
+   `@hyperdx/api` as a CommonJS external **unless** `HDX_PREVIEW_INLINE_API`
+   is `true`. This keeps production app builds (Docker fullstack image,
+   standalone Next output) byte-for-byte equivalent to before — they never
+   bundle passport-saml, mongoose, AWS SDK, etc.
+4. `vercel.json` declares the repo-root build commands so Vercel builds
+   `common-utils` → `api` → `app` in order.
+
+### Required Vercel project env vars (Preview scope only)
+
+| Key | Notes |
+|---|---|
+| `HDX_PREVIEW_INLINE_API` | `true` — turns on the inline path |
+| `MONGO_URI` | Preview MongoDB connection string |
+| `EXPRESS_SESSION_SECRET` | Random 32+ char string |
+| `DISABLED_AUTH_METHODS` | `google,saml` (avoids per-preview OAuth callback URL config) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL_NAME` | Optional, only if AI features should work |
+| `FRONTEND_URL` | Optional. Leave unset to use host-only cookies on the preview URL |
+
+Production env vars on the same project must leave `HDX_PREVIEW_INLINE_API`
+unset (or `false`) so production deployments keep using the proxy path.
+
+### Limitations
+
+- **No background tasks.** Scheduled jobs (`packages/api/src/tasks/`,
+  including `CheckAlertTask`) are not run in preview deployments.
+- **No alerts.** Alert evaluation depends on the cron task runner.
+- **No OPAMP server.** The OPAMP control-plane server (`APP_TYPE=opamp`) is
+  not started in preview. The serverless entrypoint asserts
+  `APP_TYPE=api` and refuses to boot otherwise.
+- **Function size.** The bundled function should stay under Vercel's 50 MB
+  unzipped limit. If it grows, mark heavy deps (`@aws-sdk/*`,
+  `@node-saml/passport-saml`, AI SDKs) as `serverExternalPackages` in
+  `next.config.mjs`.
+- **Cold-start latency.** First request after idle pays ~500–1500 ms for
+  the initial Mongo connection.
+- **Shared preview MongoDB.** Unless you partition by database name, all
+  preview deployments share the same Mongo state.

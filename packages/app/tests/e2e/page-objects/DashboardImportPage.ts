@@ -1,0 +1,163 @@
+/**
+ * DashboardImportPage - Page object for dashboard template browsing and import
+ * Covers the /dashboards/templates page and the /dashboards/import page
+ */
+import { Locator, Page } from '@playwright/test';
+
+/**
+ * Mapping type labels rendered in the Step 2 table's "Mapping Type" column.
+ * Each row is keyed by (tile/filter name, mapping type).
+ */
+export type MappingType =
+  | 'Data Source'
+  | 'Data Connection'
+  | 'On Click - Search Source'
+  | 'On Click - Dashboard'
+  | 'Applies to Sources';
+
+export class DashboardImportPage {
+  readonly page: Page;
+  readonly templatesPageContainer: Locator;
+  readonly mappingStepHeading: Locator;
+  readonly dashboardNameInput: Locator;
+  readonly finishImportButton: Locator;
+  readonly fileUploadDropzone: Locator;
+  readonly fileUploadInput: Locator;
+  readonly templateNotFoundText: Locator;
+  readonly browseAvailableTemplatesLink: Locator;
+  readonly importErrorTitle: Locator;
+  readonly showErrorDetailsButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.templatesPageContainer = page.getByTestId('dashboard-templates-page');
+    this.mappingStepHeading = page.getByText('Step 2: Map Data');
+    this.dashboardNameInput = page.getByLabel('Dashboard Name');
+    this.finishImportButton = page.getByRole('button', {
+      name: 'Finish Import',
+    });
+    this.fileUploadDropzone = page.getByText('Drag and drop a JSON file here', {
+      exact: false,
+    });
+    this.fileUploadInput = page.locator('input[type="file"]');
+    this.templateNotFoundText = page.getByText(
+      "Oops! We couldn't find that template.",
+    );
+    this.browseAvailableTemplatesLink = page.getByRole('link', {
+      name: 'browsing available templates',
+    });
+    this.importErrorTitle = page.getByText('Failed to Import Dashboard');
+    this.showErrorDetailsButton = page.getByRole('button', {
+      name: 'Show Details',
+    });
+  }
+
+  async uploadDashboardFile(content: string, filename = 'dashboard.json') {
+    await this.fileUploadInput.setInputFiles({
+      name: filename,
+      mimeType: 'application/json',
+      buffer: Buffer.from(content),
+    });
+  }
+
+  async gotoTemplates() {
+    await this.page.goto('/dashboards/templates', { waitUntil: 'networkidle' });
+  }
+
+  async gotoImport(templateId?: string) {
+    const url = templateId
+      ? `/dashboards/import?template=${templateId}`
+      : '/dashboards/import';
+    await this.page.goto(url, { waitUntil: 'networkidle' });
+  }
+
+  getTemplateImportButton(templateId: string) {
+    return this.page.getByTestId(`import-template-${templateId}`);
+  }
+
+  async clickImportTemplate(templateId: string) {
+    await this.getTemplateImportButton(templateId).click();
+    await this.page.waitForURL(`**/dashboards/import?template=${templateId}`);
+  }
+
+  /**
+   * Upload a JSON template file via the dropzone's hidden file input.
+   */
+  async uploadTemplateFile(filePath: string) {
+    await this.page.locator('input[type="file"]').setInputFiles(filePath);
+  }
+
+  getSourceMappingSelect(index = 0) {
+    return this.page.getByPlaceholder('Select a source').nth(index);
+  }
+
+  async selectSourceMapping(sourceName: string, index = 0) {
+    await this.getSourceMappingSelect(index).click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
+  /**
+   * Locate the Step 2 mapping row for (inputName, mappingType). The row
+   * structure is: [Tile/Filter name, Mapping Type, From, To].
+   */
+  getMappingRow(inputName: string, mappingType: MappingType) {
+    return this.page
+      .locator('tbody tr')
+      .filter({ hasText: inputName })
+      .filter({ hasText: mappingType });
+  }
+
+  /**
+   * Select a value in the "To" column of a mapping row. Pass the exact
+   * option name (source / connection / dashboard name).
+   */
+  async selectMapping(
+    inputName: string,
+    mappingType: MappingType,
+    optionName: string,
+  ) {
+    const row = this.getMappingRow(inputName, mappingType);
+    const placeholder =
+      mappingType === 'Data Connection'
+        ? 'Select a connection'
+        : mappingType === 'On Click - Dashboard'
+          ? 'Select a dashboard'
+          : mappingType === 'Applies to Sources'
+            ? 'Select sources'
+            : 'Select a source';
+    await row.getByPlaceholder(placeholder).click();
+    await this.page
+      .getByRole('option', { name: optionName, exact: true })
+      .click();
+    if (mappingType === 'Applies to Sources') {
+      // Multiselect — close the dropdown so it doesn't intercept future clicks.
+      await this.page.keyboard.press('Escape');
+    }
+  }
+
+  getImportSuccessNotification() {
+    return this.page.getByText('Import Successful!');
+  }
+
+  /** The non-blocking warning shown when imported saved filter values have invalid conditions. */
+  getSavedFilterValuesWarning() {
+    return this.page.getByTestId('import-warning-saved-filter-values');
+  }
+
+  /** The non-blocking warning shown when imported dashboard filters have invalid value queries. */
+  getFilterQueriesWarning() {
+    return this.page.getByTestId('import-warning-filter-queries');
+  }
+
+  /** The non-blocking warning shown when the imported dashboard's saved query is invalid. */
+  getSavedQueryWarning() {
+    return this.page.getByTestId('import-warning-saved-query');
+  }
+
+  /** Expand the "Show Details" section of one of the import warning/error blocks. */
+  async showDetails(warning: Locator) {
+    await warning.getByRole('button', { name: 'Show Details' }).click();
+  }
+}

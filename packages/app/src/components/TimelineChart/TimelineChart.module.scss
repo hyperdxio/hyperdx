@@ -1,20 +1,197 @@
+.timelineViewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+}
+
+.timelineContainer {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  isolation: isolate;
+}
+
+.timelineScroller {
+  position: relative;
+}
+
+.timelineCorner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  background: var(--color-bg-body);
+  z-index: 3;
+}
+
 .timelineRow {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   cursor: pointer;
 
   &:hover {
     background-color: var(--color-bg-highlighted);
+
+    .labelContent {
+      background-color: var(--color-bg-highlighted);
+    }
   }
 }
 
 .timelineRowActive {
   background-color: var(--color-bg-highlighted);
   border-radius: var(--mantine-radius-xs);
+
+  .labelContent {
+    background-color: var(--color-bg-highlighted);
+  }
 }
 
 .labelContainer {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-color: var(--color-bg-body);
+}
+
+.labelContent {
+  width: 100%;
+  height: 100%;
+  padding-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-right: 8px;
+}
+
+.eventsContainer {
+  flex: 1;
   position: relative;
+
+  // Own stacking context so a span-event marker's high z-index (the diamonds)
+  // stays contained within the events column and cannot paint over the sticky
+  // label column (which sits above this column at z-index 2).
+  isolation: isolate;
+}
+
+// Duration (+ span body on hover) rendered just outside the bar. Positioned by
+// TimelineChartRowEvents on whichever side has more room.
+.barDetail {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+// Span body text is hidden by default and only revealed while the row is
+// hovered or active, so it never competes with the always-on duration label.
+.barDetailBody {
+  display: none;
+  color: var(--color-text-muted);
+}
+
+.timelineRow:hover .barDetailBody,
+.timelineRowActive .barDetailBody {
+  display: inline;
+}
+
+.resizeHandleContainer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+}
+
+.mouseCursorWrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.xAxis {
+  position: sticky;
+  top: 0;
+  height: 24px;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--color-bg-body);
+}
+
+// Full-height grid lines layer. Zero-height + sticky top so the lines track the
+// viewport (matching the label header), with no z-index so they paint behind
+// the rows while the header (z-index: 1) stays above them.
+.xAxisGrid {
+  position: sticky;
+  top: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.xAxisInner {
+  display: flex;
+  align-items: center;
+}
+
+// Top-align the grid lines so they start at the viewport top and extend down,
+// rather than being vertically centered in the zero-height grid layer.
+.xAxisGridInner {
+  display: flex;
+  align-items: flex-start;
+}
+
+// Tick children are created/measured imperatively by TimelineXAxis.tsx
+// (it reaches in via firstElementChild). Don't add other element children.
+.xAxisTicks {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+}
+
+.xAxisTickLabel {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.5);
+}
+
+.mouseCursorRow {
+  display: flex;
+}
+
+.mouseCursorEventsColumn {
+  flex: 1;
+  overflow: hidden;
+}
+
+.mouseCursor {
+  will-change: transform;
+}
+
+.mouseCursorOverlay {
+  height: 0;
+  top: 12px;
+  position: relative;
+  will-change: transform;
+}
+
+.mouseCursorLabel {
+  padding: 0.5rem;
+  border-radius: var(--mantine-radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+}
+
+.mouseCursorLine {
+  width: 1px;
+  background: var(--color-bg-neutral);
 }

@@ -1,0 +1,121 @@
+{
+  "scenario": "segmented-regression",
+  "agentPrompt": "API error rate has gone up in the last 10 minutes for some users. Find the segment(s) where the regression is concentrated and what's going wrong.",
+  "expected": {
+    "affectedService": "api-server",
+    "segmentAttributeA": "tenant.tier",
+    "segmentValueA": "enterprise",
+    "segmentAttributeB": "cache.hit",
+    "segmentValueB": "false",
+    "anomalyWindowMinutesAgo": 10,
+    "errorRateInSegment": 0.12,
+    "errorRateBaseline": 0.005,
+    "errorBodyPattern": "schema mismatch in enterprise_v2_response",
+    "errorType": "FallbackHandlerError",
+    "rootCauseHint": "newly deployed enterprise-only cache-miss fallback path has a schema mismatch — only fires when tier=enterprise AND cache.hit=false"
+  },
+  "distractors": [
+    {
+      "kind": "background uniform 5xx",
+      "approxRate": 0.005,
+      "whyNotRootCause": "Uniform 0.5% error rate across all segments and time — normal background noise, NOT the regression."
+    },
+    {
+      "kind": "concurrent recommendation-service incident",
+      "service": "recommendation-service",
+      "windowMinutesAgo": [12, 0],
+      "approxCount": 220,
+      "errorMessage": "rec.compute timed out: upstream cf-feed unreachable",
+      "whyNotRootCause": "Concurrent unrelated 502 burst on a different service. Tempting because it overlaps in time, but the prompt is about api-server (the customer-facing tier) and the affected traces have no recommendation-service span."
+    },
+    {
+      "kind": "non-anomaly enterprise errors",
+      "approxRate": 0.005,
+      "tierFilter": "enterprise",
+      "whyNotRootCause": "Enterprise tier has the same 0.5% baseline error rate as other tiers OUTSIDE the cache-miss path. Blaming enterprise on its own (without the cache axis) is incomplete — enterprise + cache.hit=true errors at baseline."
+    },
+    {
+      "kind": "non-anomaly cache-miss errors",
+      "approxRate": 0.005,
+      "cacheFilter": "false",
+      "whyNotRootCause": "Cache misses on non-enterprise tiers error at the same 0.5% baseline. Blaming cache misses on their own (without the tier axis) is incomplete — pro/free + cache.hit=false errors at baseline."
+    }
+  ],
+  "anomalyAttributes": {
+    "spanAttributes": {
+      "tenant.tier": "enterprise",
+      "cache.hit": "false",
+      "http.status_code": "500",
+      "error.type": "FallbackHandlerError"
+    }
+  },
+  "rubric": {
+    "programmatic": [
+      ["names_affected_service", 1, "api-server"],
+      ["names_tenant_segment", 2, "(tenant\\.?tier|enterprise)"],
+      [
+        "names_cache_segment",
+        2,
+        "(cache\\.?(hit|miss)|cache hit:?\\s*false|cache miss|miss(es)?)"
+      ],
+      [
+        "names_both_axes_combined",
+        3,
+        "(enterprise[^.\\n]{0,80}?(cache|miss)|cache[^.\\n]{0,40}?miss[^.\\n]{0,80}?enterprise|tier\\s*=\\s*['\"]?enterprise['\"]?[^.\\n]{0,80}?cache|enterprise[^.\\n]{0,40}?AND[^.\\n]{0,40}?(cache|hit\\s*=\\s*false|miss))"
+      ],
+      [
+        "names_error_pattern",
+        1,
+        "(schema mismatch|enterprise_v2|FallbackHandlerError|fallback (handler|path))"
+      ],
+      [
+        "false_blame_global",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\b(global|api-server (alone|generally)|all (tiers|users|traffic)|service[- ]wide)",
+        true
+      ],
+      [
+        "false_blame_tier_only",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\benterprise[^.\\n]{0,40}?(tier|customers|tenants?)(?![^.\\n]{0,200}?(cache|miss|hit\\s*=\\s*false))",
+        true
+      ],
+      [
+        "false_blame_cache_only",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bcache[ \\-]?(miss(es)?|lookup|hit\\s*=\\s*false)(?![^.\\n]{0,200}?(enterprise|tier))",
+        true
+      ],
+      [
+        "false_blame_recommendation",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\brecommendation-service",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer correctly identify the affected segment as the INTERSECTION of `tenant.tier=enterprise` AND `cache.hit=false` on `api-server`? Identifying only ONE axis (just the tier OR just the cache state) is a correctness failure — the bug only fires on the intersection, and quoting an aggregate over a single axis (which dilutes the signal) misses the actual problem."
+        },
+        {
+          "id": "completeness",
+          "weight": 2,
+          "description": "Did the answer (a) note the rough magnitude (e.g. ~12% error rate in the affected segment vs ~0.5% baseline), (b) reference the specific error signature (schema mismatch / enterprise_v2 / FallbackHandlerError or the fallback handler path), and (c) explain why neither single-axis aggregation reveals the issue?"
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Did the answer rule out the distractors? Specifically: (a) the concurrent recommendation-service incident is on a different service and unrelated. (b) Enterprise-tier alone is NOT the cause — enterprise + cache.hit=true errors at the baseline rate. (c) Cache misses alone are NOT the cause — pro/free + cache.hit=false error at baseline. (d) The global api-server error rate is dominated by baseline noise; the regression is invisible without segmenting. Mistaking any of these for the root cause is a calibration failure."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Was the answer concise, well-structured, and free of filler or unnecessary speculation?"
+        }
+      ]
+    }
+  }
+}

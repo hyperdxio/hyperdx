@@ -21,13 +21,11 @@ export const TimelineSpanEventMarker = memo(function ({
   height: number;
 }) {
   const formatTime = useFormatTime();
-  // Calculate marker position as percentage within the span bar (0-100%)
   const spanDuration = eventEnd - eventStart;
   const markerOffsetFromStart = marker.timestamp - eventStart;
   const markerPosition =
     spanDuration > 0 ? (markerOffsetFromStart / spanDuration) * 100 : 0;
 
-  // Format attributes for tooltip
   const attributeEntries = Object.entries(marker.attributes);
   const tooltipContent = (
     <div>
@@ -83,7 +81,6 @@ export const TimelineSpanEventMarker = memo(function ({
         onMouseEnter={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
-        {/* Diamond shape marker */}
         <div
           style={{
             width: 8,
@@ -94,7 +91,6 @@ export const TimelineSpanEventMarker = memo(function ({
             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
           }}
         />
-        {/* Vertical line extending above and below */}
         <div
           style={{
             position: 'absolute',

@@ -14,7 +14,7 @@ type DatabaseSelectProps = {
   connectionId: string | undefined;
 };
 
-export default function DatabaseSelect({
+function DatabaseSelect({
   database,
   setDatabase,
   connectionId,
@@ -41,7 +41,7 @@ export default function DatabaseSelect({
       maxDropdownHeight={280}
       data={data}
       disabled={isDatabasesLoading}
-      comboboxProps={{ withinPortal: false }}
+      comboboxProps={{ withinPortal: true }}
       value={database}
       onChange={v => setDatabase(v ?? undefined)}
       onBlur={onBlur}

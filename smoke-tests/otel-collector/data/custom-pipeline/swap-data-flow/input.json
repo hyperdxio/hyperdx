@@ -1,0 +1,35 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "custom-pipeline"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "swap-data-flow"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "log emitted through memory_limiter/custom + batch/lowlatency"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

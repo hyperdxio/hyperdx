@@ -1,15 +1,40 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
+import {
+  buildSavedSearchNavigationUrl,
+  getDefaultSourceId,
+  useDefaultOrderBy,
+} from '@/DBSearchPage';
+import * as metadataModule from '@/hooks/useMetadata';
 import * as sourceModule from '@/source';
-
-import { useDefaultOrderBy } from '../DBSearchPage';
-import * as metadataModule from '../hooks/useMetadata';
 
 // Mock the dependencies
 jest.mock('@/layout', () => ({
   withAppNav: (component: any) => component,
 }));
+
+describe('buildSavedSearchNavigationUrl', () => {
+  it('drops saved-search query state when the source uses the default relative range', () => {
+    expect(
+      buildSavedSearchNavigationUrl(
+        '/clickstack',
+        'saved-search-id',
+        '?where=service%3Aapi&orderBy=timestamp',
+      ),
+    ).toBe('/clickstack/search/saved-search-id');
+  });
+
+  it('keeps an absolute range out of live-tail mode', () => {
+    expect(
+      buildSavedSearchNavigationUrl(
+        '/clickstack',
+        'saved-search-id',
+        '?from=100&to=200&isLive=false&where=service%3Aapi&orderBy=timestamp',
+      ),
+    ).toBe('/clickstack/search/saved-search-id?from=100&to=200&isLive=false');
+  });
+});
 
 describe('useDefaultOrderBy', () => {
   beforeEach(() => {
@@ -28,32 +53,28 @@ describe('useDefaultOrderBy', () => {
           expected: 'Timestamp DESC',
         },
         {
-          // Traces Table
           sortingKey: 'ServiceName, SpanName, toDateTime(Timestamp)',
-          expected: 'Timestamp DESC',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
         },
         {
-          // Optimized Traces Table
           sortingKey:
             'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
-          expected: '(toStartOfHour(Timestamp), toDateTime(Timestamp)) DESC',
+          expected:
+            '(toStartOfHour(Timestamp), toDateTime(Timestamp), Timestamp) DESC',
         },
         {
-          // Unsupported for now as it's not a great sort key, want to just
-          // use default behavior for this
-          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
-          expected: 'Timestamp DESC',
-        },
-        {
-          // Unsupported prefix sort key
-          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
-          expected: 'Timestamp DESC',
-        },
-        {
-          // Inverted sort key order, we should not try to optimize this
           sortingKey:
-            'ServiceName, toDateTime(Timestamp), SeverityText, toStartOfHour(Timestamp)',
-          expected: 'Timestamp DESC',
+            'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
+          expected:
+            '(toStartOfHour(Timestamp), toDateTime(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
+          expected: '(toDateTime(Timestamp), Timestamp) DESC',
         },
         {
           sortingKey: 'toStartOfHour(Timestamp), other_column, Timestamp',
@@ -71,14 +92,14 @@ describe('useDefaultOrderBy', () => {
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp(Timestamp)',
           expected:
-            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp)) DESC',
+            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp), Timestamp) DESC',
         },
         {
           // test variation of toUnixTimestamp
           sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
           expected:
-            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp)) DESC',
+            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp), Timestamp) DESC',
         },
         {
           sortingKey:
@@ -89,6 +110,24 @@ describe('useDefaultOrderBy', () => {
         {
           sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
           timestampValueExpression: 'Timestamp, toStartOfMinute(Timestamp)',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status',
+          timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
           expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
         },
         {
@@ -103,7 +142,6 @@ describe('useDefaultOrderBy', () => {
         },
         {
           sortingKey: 'Timestamp',
-          displayedTimestampValueExpression: 'Timestamp',
           expected: 'Timestamp DESC',
         },
         {
@@ -141,20 +179,16 @@ describe('useDefaultOrderBy', () => {
         {
           sortingKey: 'ServiceName, TimestampTime, Timestamp',
           timestampValueExpression: 'TimestampTime, Timestamp',
-          displayedTimestampValueExpression: 'Timestamp',
           expected: '(TimestampTime, Timestamp) DESC',
         },
         {
           sortingKey: 'ServiceName, TimestampTime, Timestamp',
           timestampValueExpression: 'Timestamp, TimestampTime',
-          displayedTimestampValueExpression: 'Timestamp',
-          expected: 'Timestamp DESC',
+          expected: '(TimestampTime, Timestamp) DESC',
         },
         {
-          sortingKey: '',
-          timestampValueExpression: 'Timestamp, TimestampTime',
-          displayedTimestampValueExpression: '',
-          expected: 'Timestamp DESC',
+          sortingKey: 'ServiceName, TimestampTime, Timestamp',
+          expected: '(TimestampTime, Timestamp) DESC',
         },
       ];
       for (const testCase of testCases) {
@@ -379,5 +413,59 @@ describe('useDefaultOrderBy', () => {
 
       expect(result.current).toBe('timestamp2 DESC');
     });
+  });
+});
+
+describe('getDefaultSourceId', () => {
+  it('returns "" when sources is undefined', () => {
+    expect(getDefaultSourceId(undefined, undefined)).toBe('');
+  });
+
+  it('returns "" when sources is empty', () => {
+    expect(getDefaultSourceId([], undefined)).toBe('');
+  });
+
+  it('returns "" when every source is disabled', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: true },
+    ];
+    expect(getDefaultSourceId(sources, 'a')).toBe('');
+  });
+
+  it('returns the last-selected source when it is enabled', () => {
+    const sources = [
+      { id: 'a', disabled: false },
+      { id: 'b', disabled: false },
+      { id: 'c' }, // disabled is undefined => treated as enabled
+    ];
+    expect(getDefaultSourceId(sources, 'b')).toBe('b');
+    expect(getDefaultSourceId(sources, 'c')).toBe('c');
+  });
+
+  it('falls back to the first enabled source when last-selected is disabled', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: false },
+      { id: 'c', disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, 'a')).toBe('b');
+  });
+
+  it('falls back to the first enabled source when last-selected is unknown', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, 'unknown-id')).toBe('b');
+  });
+
+  it('returns the first enabled source when last-selected is undefined and the list is mixed', () => {
+    const sources = [
+      { id: 'a', disabled: true },
+      { id: 'b', disabled: false },
+      { id: 'c', disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('b');
   });
 });

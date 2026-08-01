@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
@@ -18,8 +19,9 @@ import {
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
-  Box,
+  Breadcrumbs,
   Card,
   Flex,
   Grid,
@@ -39,7 +41,9 @@ import {
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { useVirtualList } from '@/hooks/useVirtualList';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -47,17 +51,19 @@ import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
 import OnboardingModal from './components/OnboardingModal';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useJsonColumns } from './hooks/useMetadata';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { NOW } from './config';
 import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
@@ -953,7 +959,8 @@ const findSource = (
     s =>
       (kind === undefined || s.kind === kind) &&
       (id === undefined || s.id === id) &&
-      (connection === undefined || s.connection === connection),
+      (connection === undefined || s.connection === connection) &&
+      !s.disabled,
   );
 };
 
@@ -1006,7 +1013,8 @@ export const resolveSourceIds = (
     (s): s is TLogSource =>
       s.kind === SourceKind.Log &&
       !!s.metricSourceId &&
-      !!findSource(sources, { id: s.metricSourceId }),
+      !!findSource(sources, { id: s.metricSourceId }) &&
+      !s.disabled,
   );
 
   if (logSourceWithMetricSource) {
@@ -1040,14 +1048,32 @@ export const resolveSourceIds = (
 };
 
 function KubernetesDashboardPage() {
+  const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
 
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
   const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
+  // Both params accept a source name as well as a source ID. Resolve them before
+  // `resolveSourceIds` so its correlation only ever works with real IDs, and so a
+  // param that names nothing is treated as absent (i.e. it gets the correlated
+  // default) rather than echoed through to a blank dashboard.
+  const { source: logParamSource } = useResolvedSourceParam(_logSourceId, {
+    kinds: [SourceKind.Log],
+  });
+  const { source: metricParamSource } = useResolvedSourceParam(
+    _metricSourceId,
+    { kinds: [SourceKind.Metric] },
+  );
+
   const { logSourceId, metricSourceId } = useMemo(
-    () => resolveSourceIds(_logSourceId, _metricSourceId, sources),
-    [_logSourceId, _metricSourceId, sources],
+    () =>
+      resolveSourceIds(
+        logParamSource?.id ?? null,
+        metricParamSource?.id ?? null,
+        sources,
+      ),
+    [logParamSource?.id, metricParamSource?.id, sources],
   );
 
   const { data: logSource } = useSource({
@@ -1090,7 +1116,16 @@ function KubernetesDashboardPage() {
     if (watchedLogSourceId === prevLogSourceIdRef.current) {
       return;
     }
+    // The form is fed from the derived IDs, so it catches up to them on load
+    // (the params resolve one render later). That is not a user pick: acting on
+    // it writes the *sibling* param, which feeds back through the derivation into
+    // this effect — a loop, plus correlation notices nobody asked for.
+    const isCatchingUpToConfig =
+      !!watchedLogSourceId && watchedLogSourceId === logSourceId;
     prevLogSourceIdRef.current = watchedLogSourceId;
+    if (isCatchingUpToConfig) {
+      return;
+    }
 
     setLogSourceId(watchedLogSourceId ?? null);
 
@@ -1126,6 +1161,7 @@ function KubernetesDashboardPage() {
   }, [
     watchedLogSourceId,
     watchedMetricSourceId,
+    logSourceId,
     sources,
     setLogSourceId,
     setMetricSourceId,
@@ -1136,7 +1172,13 @@ function KubernetesDashboardPage() {
     if (watchedMetricSourceId === prevMetricSourceIdRef.current) {
       return;
     }
+    // See the log source effect: converging on the derived ID is not a pick.
+    const isCatchingUpToConfig =
+      !!watchedMetricSourceId && watchedMetricSourceId === metricSourceId;
     prevMetricSourceIdRef.current = watchedMetricSourceId;
+    if (isCatchingUpToConfig) {
+      return;
+    }
 
     setMetricSourceId(watchedMetricSourceId ?? null);
 
@@ -1172,6 +1214,7 @@ function KubernetesDashboardPage() {
   }, [
     watchedMetricSourceId,
     watchedLogSourceId,
+    metricSourceId,
     sources,
     setMetricSourceId,
     setLogSourceId,
@@ -1180,6 +1223,10 @@ function KubernetesDashboardPage() {
   const [activeTab, setActiveTab] = useQueryState('tab', {
     defaultValue: 'pods',
   });
+
+  const [isLogSchemaPreviewOpen, setIsLogSchemaPreviewOpen] = useState(false);
+  const [isMetricSchemaPreviewOpen, setIsMetricSchemaPreviewOpen] =
+    useState(false);
 
   const [searchQuery, setSearchQuery] = useQueryState('q', {
     defaultValue: '',
@@ -1243,8 +1290,95 @@ function KubernetesDashboardPage() {
     };
   }, [isLoadingJsonColumns, logSource, logSourceJsonColumns]);
 
-  return (
-    <Box data-testid="kubernetes-dashboard-page" p="sm">
+  const headerLeading = (
+    <Group gap="xs">
+      <SourceSelectControlled
+        name="logSourceId"
+        control={control}
+        allowedSourceKinds={[SourceKind.Log]}
+        size="xs"
+        allowDeselect={false}
+        onSchemaPreview={() => setIsLogSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(logSource)}
+      />
+      <SourceSchemaPreview
+        source={logSource}
+        controlled
+        open={isLogSchemaPreviewOpen}
+        onClose={() => setIsLogSchemaPreviewOpen(false)}
+      />
+      <SourceSelectControlled
+        name="metricSourceId"
+        control={control}
+        allowedSourceKinds={[SourceKind.Metric]}
+        size="xs"
+        allowDeselect={false}
+        onSchemaPreview={() => setIsMetricSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(metricSource)}
+      />
+      <SourceSchemaPreview
+        source={metricSource}
+        controlled
+        open={isMetricSchemaPreviewOpen}
+        onClose={() => setIsMetricSchemaPreviewOpen(false)}
+      />
+    </Group>
+  );
+
+  const headerActions = (
+    <Group gap="xs">
+      <form
+        data-testid="kubernetes-time-form"
+        onSubmit={e => {
+          e.preventDefault();
+          onSearch(displayedTimeInputValue);
+          return false;
+        }}
+      >
+        <TimePicker
+          data-testid="kubernetes-time-picker"
+          inputValue={displayedTimeInputValue}
+          setInputValue={setDisplayedTimeInputValue}
+          onSearch={onSearch}
+        />
+      </form>
+      <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+        <ActionIcon
+          onClick={refresh}
+          loading={manualRefreshCooloff}
+          disabled={manualRefreshCooloff}
+          variant="secondary"
+          title="Refresh dashboard"
+          aria-label="Refresh dashboard"
+          size="lg"
+        >
+          <IconRefresh size={18} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+
+  const pageBreadcrumbs = (
+    <Breadcrumbs fz="sm">
+      <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+        Dashboards
+      </Anchor>
+      <Text fz="sm" c="dimmed">
+        Kubernetes
+      </Text>
+    </Breadcrumbs>
+  );
+
+  // Extracted for the same reason as `headerLeading` / `headerActions` /
+  // `pageBreadcrumbs` above: keeps the `<PageLayout>` return shallow and
+  // prevents the ~380-line tab/chart tree below from being wrapped in
+  // an extra indentation level, which would otherwise force the deeply
+  // nested `convertV1ChartConfigToV2({...})` calls to wrap further.
+  const dashboardBody = (
+    <>
+      <Head>
+        <title>Kubernetes Dashboard – {brandName}</title>
+      </Head>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
@@ -1264,62 +1398,6 @@ function KubernetesDashboardPage() {
           logSource={logSource}
         />
       )}
-      <Group justify="space-between">
-        <Group>
-          <Text size="xl">Kubernetes Dashboard</Text>
-          <SourceSelectControlled
-            name="logSourceId"
-            control={control}
-            allowedSourceKinds={[SourceKind.Log]}
-            size="xs"
-            allowDeselect={false}
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={logSource} variant="text" />
-            }
-          />
-          <SourceSelectControlled
-            name="metricSourceId"
-            control={control}
-            allowedSourceKinds={[SourceKind.Metric]}
-            size="xs"
-            allowDeselect={false}
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={metricSource} variant="text" />
-            }
-          />
-        </Group>
-
-        <Group gap="xs">
-          <form
-            data-testid="kubernetes-time-form"
-            onSubmit={e => {
-              e.preventDefault();
-              onSearch(displayedTimeInputValue);
-              return false;
-            }}
-          >
-            <TimePicker
-              data-testid="kubernetes-time-picker"
-              inputValue={displayedTimeInputValue}
-              setInputValue={setDisplayedTimeInputValue}
-              onSearch={onSearch}
-            />
-          </form>
-          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-            <ActionIcon
-              onClick={refresh}
-              loading={manualRefreshCooloff}
-              disabled={manualRefreshCooloff}
-              variant="secondary"
-              title="Refresh dashboard"
-              aria-label="Refresh dashboard"
-              size="lg"
-            >
-              <IconRefresh size={18} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </Group>
       {metricSource && (
         <KubernetesFilters
           dateRange={dateRange}
@@ -1658,7 +1736,18 @@ function KubernetesDashboardPage() {
           <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
         </div>
       </Tabs>
-    </Box>
+    </>
+  );
+
+  return (
+    <PageLayout
+      data-testid="kubernetes-dashboard-page"
+      breadcrumbs={pageBreadcrumbs}
+      leading={headerLeading}
+      actions={headerActions}
+      padded
+      content={dashboardBody}
+    />
   );
 }
 

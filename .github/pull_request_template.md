@@ -18,12 +18,26 @@ Omit this section if the PR does not contain any UI changes.
 | :----- | :---- |
 |        |       |
 
-### How to test locally or on Vercel
+### How to test on Vercel preview
 
 <!--
-List clear, reproducible steps to validate this change, either locally or on Vercel.
-Include any setup needed, such as feature flags, env vars, seed data, or migrations.
+This section is consumed by the UI preview smoke-test agent
+(.github/workflows/ui-preview-smoke.yml). For PRs touching packages/app,
+fill it in carefully — the agent executes these steps verbatim against
+the Vercel preview build (LOCAL_MODE, demo ClickHouse pre-configured).
+
+Format:
+  - Preview routes: comma-separated paths to open (e.g. /search, /chart).
+  - Steps: numbered imperative actions, one per line. Reference UI elements
+    by visible text or data-testid. The last step on each route should be
+    an assertion ("Verify ...", "Confirm ...").
+  - Skip this section (leave blank or write "N/A — non-UI change") if the
+    PR does not change anything user-visible.
 -->
+
+**Preview routes:** <!-- e.g. /chart, /dashboards/[id] -->
+
+**Steps:**
 
 1.
 2.

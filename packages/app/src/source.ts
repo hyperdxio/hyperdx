@@ -1,20 +1,28 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
+  ColumnMetaType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { inferGranularityFromMVSelect } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  BuilderSavedChartConfig,
+  ChartConfigWithOptTimestamp,
   MetricsDataType,
+  NumberFormat,
   SourceKind,
   SourceSchema,
   TLogSource,
   TMetricSource,
+  TPromqlSource,
   TSessionSource,
   TSource,
   TSourceNoId,
@@ -40,10 +48,14 @@ export const SESSION_TABLE_EXPRESSIONS = {
   implicitColumnExpression: 'Body',
 } as const;
 
-export const JSON_SESSION_TABLE_EXPRESSIONS = {
+const JSON_SESSION_TABLE_EXPRESSIONS = {
   ...SESSION_TABLE_EXPRESSIONS,
   timestampValueExpression: 'Timestamp',
 } as const;
+
+export function getSourceValidationNotificationId(sourceId: string) {
+  return `source-validation-${sourceId}`;
+}
 
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
@@ -69,13 +81,24 @@ export function getDisplayedTimestampValueExpression(eventModel: TSource) {
 export function getEventBody(eventModel: TSource) {
   let expression: string | undefined;
   if (eventModel.kind === SourceKind.Trace) {
-    expression = eventModel.spanNameExpression ?? undefined;
+    expression = eventModel.spanNameExpression || undefined;
   } else if (eventModel.kind === SourceKind.Log) {
     expression =
-      eventModel.bodyExpression ?? eventModel.implicitColumnExpression;
+      eventModel.bodyExpression || eventModel.implicitColumnExpression;
   }
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0];
+}
+
+/**
+ * Check if a select string is a single expression (valid as a pattern body
+ * expression) rather than a multi-column list (stale
+ * `defaultTableSelectExpression`). Uses bracket-aware comma splitting so
+ * expressions like `COALESCE(SpanName, Body)` are correctly treated as a
+ * single expression.
+ */
+export function isSingleExpression(select: string): boolean {
+  return splitAndTrimWithBracket(select).length <= 1;
 }
 
 // This function is for supporting legacy sources, which did not require this field.
@@ -109,6 +132,7 @@ export function useSources() {
             .map(issue => issue.path.join('.'))
             .join(', ');
           notifications.show({
+            id: getSourceValidationNotificationId(source.id),
             color: 'yellow',
             title: `Source "${source.name}" has validation issues`,
             message: React.createElement(
@@ -252,7 +276,8 @@ type InferredSourceConfig =
   | TStrippedSource<TLogSource>
   | TStrippedSource<TTraceSource>
   | TStrippedSource<TMetricSource>
-  | TStrippedSource<TSessionSource>;
+  | TStrippedSource<TSessionSource>
+  | TStrippedSource<TPromqlSource>;
 
 export async function inferTableSourceConfig({
   databaseName,
@@ -295,6 +320,10 @@ export async function inferTableSourceConfig({
       : {}),
     kind,
   };
+
+  if (kind === SourceKind.Promql) {
+    return baseConfig as TStrippedSource<TPromqlSource>;
+  }
 
   if (kind === SourceKind.Session) {
     const isSessionSchema =
@@ -340,6 +369,43 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
+  // Check if span Links column is available
+  const hasSpanLinks = columns.some(col => col.name === 'Links.TraceId');
+
+  // Check if metadata rollup tables exist and, if so, infer the bucketing
+  // granularity from the key-rollup view's `as_select`
+  const rollupMeta =
+    isOtelLogSchema || isOtelSpanSchema
+      ? await (async () => {
+          const [keyMeta, kvMeta] = await Promise.all([
+            metadata.getTableMetadata({
+              databaseName,
+              tableName: `${tableName}_key_rollup_15m`,
+              connectionId,
+            }),
+            metadata.getTableMetadata({
+              databaseName,
+              tableName: `${tableName}_kv_rollup_15m`,
+              connectionId,
+            }),
+          ]);
+          return kvMeta != null ? { keyMeta, kvMeta } : undefined;
+        })()
+      : undefined;
+
+  const metadataMVsConfig = rollupMeta
+    ? {
+        metadataMaterializedViews: {
+          kvRollupTable: `${tableName}_kv_rollup_15m`,
+          // Fall back to '15 minute' to preserve the prior default when the
+          // MV's `as_select` doesn't contain a recognized bucketing function.
+          granularity:
+            inferGranularityFromMVSelect(rollupMeta.kvMeta.as_select) ??
+            '15 minute',
+        },
+      }
+    : {};
+
   return {
     ...baseConfig,
     ...(isOtelLogSchema
@@ -357,6 +423,7 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
 
           severityTextExpression: 'SeverityText',
+          ...metadataMVsConfig,
         }
       : {}),
     ...(isOtelSpanSchema
@@ -379,6 +446,8 @@ export async function inferTableSourceConfig({
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
           ...(hasSpanEvents ? { spanEventsValueExpression: 'Events' } : {}),
+          ...(hasSpanLinks ? { spanLinksValueExpression: 'Links' } : {}),
+          ...metadataMVsConfig,
         }
       : {}),
   };
@@ -390,6 +459,207 @@ export function getDurationMsExpression(source: TTraceSource) {
 
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
+}
+
+// Aggregate functions whose output preserves the unit of the input value.
+// count and count_distinct produce dimensionless counts and should not
+// inherit the duration format.
+const DURATION_PRESERVING_AGG_FNS = new Set([
+  'avg',
+  'min',
+  'max',
+  'sum',
+  'any',
+  'last_value',
+  'quantile',
+  'quantileMerge',
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+  'heatmap',
+  'histogram',
+  'histogramMerge',
+]);
+
+function isDurationPreservingAggFn(aggFn: string | undefined): boolean {
+  if (!aggFn) return true; // no aggFn means raw expression — preserve unit
+  // Handle combinator forms like "avgIf", "quantileIfState"
+  const baseFn = aggFn.replace(/If(State|Merge)?$/, '');
+  return DURATION_PRESERVING_AGG_FNS.has(baseFn);
+}
+
+/**
+ * Returns a NumberFormat for duration display if the given select expressions
+ * exactly matches a trace source's durationExpression. Returns undefined if
+ * no match is detected.
+ *
+ * Only applies when the aggregate function preserves the unit of the input
+ * (e.g. avg, min, max, sum, p95). Functions like count and count_distinct
+ * produce dimensionless values and are skipped.
+ *
+ * Uses exact match only — the duration expression can be arbitrary SQL,
+ * so substring or regex matching would be fragile.
+ */
+export function getTraceDurationNumberFormat(
+  source: TSource | undefined,
+  selectExpression: { valueExpression?: string; aggFn?: string },
+): NumberFormat | undefined {
+  if (!source || source.kind !== SourceKind.Trace || !source.durationExpression)
+    return undefined;
+
+  const durationExpr = source.durationExpression;
+  const precision = source.durationPrecision ?? 9;
+
+  if (!selectExpression.valueExpression) return undefined;
+  if (!isDurationPreservingAggFn(selectExpression.aggFn)) return undefined;
+
+  if (selectExpression.valueExpression === durationExpr) {
+    return {
+      output: 'duration',
+      factor: Math.pow(10, -precision),
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Gets the first series-specific number format from the config's select expressions, if any.
+ *
+ * The priority is as follows:
+ * 1. The first series-specific numberFormat defined in the config's series, if any
+ * 2. The first inferred duration-type format, when aggregating Duration values from a trace source
+ */
+export function getFirstSeriesNumberFormat(
+  selectItems: Exclude<BuilderSavedChartConfig['select'], string | undefined>,
+  source: TSource | undefined,
+) {
+  for (const series of selectItems) {
+    if (series.numberFormat) {
+      return series.numberFormat;
+    }
+  }
+
+  for (const series of selectItems) {
+    const format = getTraceDurationNumberFormat(source, series);
+    if (format) {
+      return format;
+    }
+  }
+}
+
+/** Get the number format to use for a single-series chart type. */
+export function useSingleSeriesNumberFormat(
+  config: ChartConfigWithOptTimestamp,
+) {
+  const { data: source } = useSource({ id: config.source });
+
+  return useMemo(() => {
+    if (
+      isBuilderChartConfig(config) &&
+      Array.isArray(config.select) &&
+      config.select.length > 0
+    ) {
+      if (config.select[0].numberFormat) {
+        return config.select[0].numberFormat;
+      }
+
+      if (config.numberFormat) {
+        return config.numberFormat;
+      }
+
+      return getTraceDurationNumberFormat(source, config.select[0]);
+    }
+
+    return config.numberFormat;
+  }, [source, config]);
+}
+
+interface ResolvedNumberFormats {
+  /** A map from result column name to resolved number format, if any. */
+  formatByColumn: Map<string, NumberFormat>;
+  /** The chart-wide number format if present, or the first series-specific number format */
+  chartFormat?: NumberFormat;
+}
+
+/**
+ * Returns the number formats to use when formatting chart series values.
+ *
+ * The chart-wide number format is determined with the following priorities:
+ * - The config's numberFormat field, if any
+ * - The first series-specific numberFormat defined in the config's select expressions, if any
+ * - The inferred duration format from the first duration-type series, if any
+ *
+ * The series-specific number format for each result column is determined with the following priorities:
+ * - The series' numberFormat defined in the config, if present
+ * - The config's top-level numberFormat, if present
+ * - The inferred duration-type format, when selecting Duration values
+ *
+ * The series-specific formats are returned in a map from result column name (from `meta`) to number format.
+ * These mappings are only available when meta is provided. Any series which does not have a format in the
+ * map should fall back to the config's number format.
+ */
+export function useChartNumberFormats(
+  config: ChartConfigWithOptTimestamp,
+  meta?: ColumnMetaType[],
+): ResolvedNumberFormats {
+  const { data: source } = useSource({ id: config.source });
+
+  return useMemo(() => {
+    // The chart-wide number format does not depend on meta, so that it can be
+    // resolved without querying. Further, it prioritizes the config's numberFormat
+    // over series-specific formats, so that the user can specify the y-axis format
+    // for charts with multiple series-specific formats.
+    const chartFormat =
+      config.numberFormat ??
+      (isBuilderChartConfig(config) && Array.isArray(config.select)
+        ? getFirstSeriesNumberFormat(config.select, source)
+        : undefined);
+
+    // meta must be provided to map result column names (from meta) to number formats
+    if (!meta) {
+      return { formatByColumn: new Map(), chartFormat };
+    }
+
+    // For Raw-SQL or string-based select configs, series-specific formats are not available
+    if (!isBuilderChartConfig(config) || !Array.isArray(config.select)) {
+      return { formatByColumn: new Map(), chartFormat };
+    }
+
+    // Ratio-based configs have exactly two series, which
+    // are merged into the first result column.
+    if (isRatioChartConfig(config.select, config)) {
+      const effectiveNumberFormat =
+        config.select[0]?.numberFormat ??
+        config.select[1]?.numberFormat ??
+        config.numberFormat;
+      const formatByColumn =
+        meta[0] && effectiveNumberFormat
+          ? new Map([[meta[0].name, effectiveNumberFormat]])
+          : new Map();
+      return { formatByColumn, chartFormat };
+    }
+
+    // The series-specific number format is mapped to the query meta's column
+    // name by index - the assumption is that query result columns are in
+    // the order that they exist in the config's select.
+    const allColumns = meta.map(column => column.name);
+    const formatByColumn = new Map();
+    for (let i = 0; i < config.select.length; i++) {
+      const series = config.select[i];
+      const key = allColumns[i];
+      const effectiveNumberFormat =
+        series.numberFormat ??
+        config.numberFormat ??
+        getTraceDurationNumberFormat(source, series);
+      if (effectiveNumberFormat) {
+        formatByColumn.set(key, effectiveNumberFormat);
+      }
+    }
+
+    return { formatByColumn, chartFormat };
+  }, [source, meta, config]);
 }
 
 // defined in https://github.com/open-telemetry/opentelemetry-proto/blob/cfbf9357c03bf4ac150a3ab3bcbe4cc4ed087362/opentelemetry/proto/metrics/v1/metrics.proto

@@ -134,6 +134,7 @@ async function addOtelDemoSources({
       statusCodeExpression: 'StatusCode',
       statusMessageExpression: 'StatusMessage',
       spanEventsValueExpression: 'Events',
+      spanLinksValueExpression: 'Links',
       highlightedTraceAttributeExpressions:
         traceSourceHighlightedTraceAttributes,
       materializedViews: traceSourceMaterializedViews,
@@ -597,11 +598,10 @@ function OnboardingModalComponent({
     try {
       if (sources) {
         for (const source of sources) {
-          // Clean out old demo sources. All new ones use the otel_v2 database
+          // Clean out ALL existing demo and ClickPy sources to avoid duplicates
           if (
-            source.connection === 'local' &&
-            source.name.startsWith('Demo') &&
-            source.from.databaseName !== 'otel_v2'
+            source.name.startsWith('Demo') ||
+            source.name.startsWith('ClickPy')
           ) {
             await deleteSourceMutation.mutateAsync({
               id: source.id,
@@ -609,26 +609,30 @@ function OnboardingModalComponent({
           }
         }
       }
-      let createdConnectionId = '';
-      await createConnectionMutation.mutateAsync(
-        {
-          connection: {
-            name: 'Demo',
-            host: 'https://sql-clickhouse.clickhouse.com',
-            username: 'otel_demo',
-            password: '',
+      // Reuse existing demo connection if available, otherwise create one
+      const existingDemoConnection = connections?.find(c => c.name === 'Demo');
+      let createdConnectionId = existingDemoConnection?.id ?? '';
+      if (!existingDemoConnection) {
+        await createConnectionMutation.mutateAsync(
+          {
+            connection: {
+              name: 'Demo',
+              host: 'https://sql-clickhouse.clickhouse.com',
+              username: 'otel_demo',
+              password: '',
+            },
           },
-        },
-        {
-          onSuccess(data) {
-            createdConnectionId = data.id;
+          {
+            onSuccess(data) {
+              createdConnectionId = data.id;
+            },
+            onError(error) {
+              console.error('Failed to create demo connection: ', error);
+              return;
+            },
           },
-          onError(error) {
-            console.error('Failed to create demo connection: ', error);
-            return;
-          },
-        },
-      );
+        );
+      }
 
       await addOtelDemoSources({
         connectionId: createdConnectionId,
@@ -741,6 +745,7 @@ function OnboardingModalComponent({
     }
   }, [
     brandName,
+    connections,
     createSourceMutation,
     createConnectionMutation,
     updateSourceMutation,

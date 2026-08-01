@@ -39,6 +39,28 @@ bats hdx-1453-auto-parse-json.bats
 - `test_helpers/` - Utility functions for the tests
 - `docker-compose.yaml` - Docker Compose configuration for the test environment
 
+### Signals covered
+
+The suite exercises all three OTLP signal types against the standalone
+collector config (`docker/otel-collector/config.standalone.yaml`):
+
+- **logs** - severity inference/normalization, JSON auto-parse, JSON-schema
+  exporter, compat-schema (old ClickHouse), custom-pipeline processor swap, and
+  the `routing/logs` connector that splits rrweb (session replay) logs into
+  `hyperdx_sessions` from ordinary logs in `otel_logs`.
+- **traces** - the `traces` pipeline into `otel_traces` (`traces.bats`).
+- **metrics** - the `metrics` pipeline into `otel_metrics_gauge`
+  (`metrics.bats`).
+
+### Test helpers
+
+- `emit_otel_data <endpoint> <testdir> [signal]` - POSTs `<testdir>/input.json`
+  to `/v1/<signal>`. `signal` is `logs` (default), `traces`, or `metrics`.
+- `wait_for_rows <ch_port> <count_query> [max_attempts]` - polls a ClickHouse
+  count query until it returns a non-zero result (or the attempt budget is
+  exhausted). Prefer this over a fixed `sleep` after emitting data: it is both
+  faster (returns as soon as rows land) and less flaky under load.
+
 The test suite uses Bats' `setup_suite` and `teardown_suite` hooks to initialize
 the environment only once, regardless of how many test files are run. This
 optimizes test execution by:

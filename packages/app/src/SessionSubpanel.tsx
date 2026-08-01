@@ -2,13 +2,12 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
-  SearchCondition,
+  pickSampleWeightExpressionProps,
   SearchConditionLanguage,
   TSessionSource,
   TTraceSource,
@@ -18,7 +17,6 @@ import {
   Button,
   Divider,
   Group,
-  Portal,
   SegmentedControl,
   Tooltip,
 } from '@mantine/core';
@@ -32,7 +30,6 @@ import {
   IconToggleRight,
 } from '@tabler/icons-react';
 
-import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 
 import SearchWhereInput from './components/SearchInput/SearchWhereInput';
@@ -43,7 +40,7 @@ import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';
 import { formatmmss, useLocalStorage, usePrevious } from './utils';
 
-import styles from '../styles/SessionSubpanelV2.module.scss';
+import styles from '@styles/SessionSubpanelV2.module.scss';
 
 const MemoPlaybar = memo(Playbar);
 
@@ -149,12 +146,12 @@ function useSessionChartConfigs({
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:>299 
-      OR ${traceSource.eventAttributesExpression}.component:"error" 
-      OR ${traceSource.spanNameExpression}:"routeChange" 
-      OR ${traceSource.spanNameExpression}:"documentLoad" 
-      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
-      OR ScopeName:"custom-action" 
+      ${traceSource.eventAttributesExpression}.http.status_code:>299
+      OR ${traceSource.eventAttributesExpression}.component:"error"
+      OR ${traceSource.spanNameExpression}:"routeChange"
+      OR ${traceSource.spanNameExpression}:"documentLoad"
+      OR ${traceSource.spanNameExpression}:"intercom.onShow"
+      OR ScopeName:"custom-action"
     )`,
     }),
     [traceSource, rumSessionId],
@@ -166,13 +163,13 @@ function useSessionChartConfigs({
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:* 
-      OR ${traceSource.eventAttributesExpression}.component:"console" 
-      OR ${traceSource.eventAttributesExpression}.component:"error" 
-      OR ${traceSource.spanNameExpression}:"routeChange" 
-      OR ${traceSource.spanNameExpression}:"documentLoad" 
-      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
-      OR ScopeName:"custom-action" 
+      ${traceSource.eventAttributesExpression}.http.status_code:*
+      OR ${traceSource.eventAttributesExpression}.component:"console"
+      OR ${traceSource.eventAttributesExpression}.component:"error"
+      OR ${traceSource.spanNameExpression}:"routeChange"
+      OR ${traceSource.spanNameExpression}:"documentLoad"
+      OR ${traceSource.spanNameExpression}:"intercom.onShow"
+      OR ScopeName:"custom-action"
     )`,
     };
   }, [traceSource, rumSessionId, getTraceSourceFieldExpression]);
@@ -188,6 +185,8 @@ function useSessionChartConfigs({
       where,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
+      useTextIndexForImplicitColumn: traceSource.useTextIndexForImplicitColumn,
+      ...pickSampleWeightExpressionProps(traceSource),
       connection: traceSource.connection,
       orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {
@@ -233,41 +232,25 @@ export default function SessionSubpanel({
   traceSource,
   sessionSource,
   session,
-  onPropertyAddClick,
-  generateChartUrl,
-  generateSearchUrl,
-  setDrawerOpen,
   rumSessionId,
   start,
   end,
   initialTs,
-  where,
   whereLanguage = 'lucene',
   onLanguageChange,
+  onEventNavigate,
 }: {
   traceSource: TTraceSource;
   sessionSource: TSessionSource;
   session: { serviceName: string };
-  generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
-  generateChartUrl?: (config: {
-    aggFn: string;
-    field: string;
-    groupBy: string[];
-  }) => string;
-
-  onPropertyAddClick?: (name: string, value: string) => void;
-  setDrawerOpen: (open: boolean) => void;
   rumSessionId: string;
   start: Date;
   end: Date;
   initialTs?: number;
-  where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
+  onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
 }) {
-  const [rowId, setRowId] = useState<string | undefined>(undefined);
-  const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
-
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
     parseAsInteger.withOptions({ history: 'replace' }),
@@ -439,11 +422,9 @@ export default function SessionSubpanel({
   );
   const onSessionEventClick = useCallback(
     (rowWhere: RowWhereResult) => {
-      setDrawerOpen(true);
-      setRowId(rowWhere.where);
-      setAliasWith(rowWhere.aliasWith);
+      onEventNavigate?.(rowWhere.where, rowWhere.aliasWith);
     },
-    [setDrawerOpen, setRowId, setAliasWith],
+    [onEventNavigate],
   );
   const onSessionEventTimeClick = useCallback(
     (ts: number) => {
@@ -462,19 +443,6 @@ export default function SessionSubpanel({
 
   return (
     <div className={styles.wrapper}>
-      {rowId != null && traceSource && (
-        <Portal>
-          <DBRowSidePanel
-            source={traceSource}
-            rowId={rowId}
-            aliasWith={aliasWith}
-            onClose={() => {
-              setDrawerOpen(false);
-              setRowId(undefined);
-            }}
-          />
-        </Portal>
-      )}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>
         <div className={styles.eventListHeader}>
           <form

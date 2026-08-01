@@ -1,4 +1,3 @@
-import { ChSql } from './clickhouse';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -23,7 +22,14 @@ const getIntervalSeconds = (config: RawSqlChartConfig & Partial<DateRange>) => {
   return convertGranularityToSeconds(effectiveGranularity);
 };
 
-export const QUERY_PARAMS: Record<string, QueryParamDefinition> = {
+export enum RawSqlQueryParam {
+  startDateMilliseconds = 'startDateMilliseconds',
+  endDateMilliseconds = 'endDateMilliseconds',
+  intervalSeconds = 'intervalSeconds',
+  intervalMilliseconds = 'intervalMilliseconds',
+}
+
+export const QUERY_PARAMS: Record<RawSqlQueryParam, QueryParamDefinition> = {
   startDateMilliseconds: {
     name: 'startDateMilliseconds',
     type: 'Int64',
@@ -78,6 +84,10 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
   ],
+  [DisplayType.Bar]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
   [DisplayType.Number]: [
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
@@ -85,13 +95,14 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
   [DisplayType.Search]: [],
   [DisplayType.Heatmap]: [],
   [DisplayType.Markdown]: [],
+  [DisplayType.EventPatterns]: [],
 };
 
 const TIME_CHART_EXAMPLE_SQL = `SELECT
   toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} second) AS ts, -- (Timestamp column)
   ServiceName,                                                                     -- (Group name column)
   count()                                                                          -- (Series value column)
-FROM otel_logs
+FROM $__sourceTable
 WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
   AND $__filters
@@ -106,10 +117,12 @@ export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.StackedBar]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.Table]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Pie]: DATE_RANGE_WHERE_EXAMPLE_SQL,
+  [DisplayType.Bar]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Number]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
+  [DisplayType.EventPatterns]: '',
 };
 
 export function renderQueryParam(name: keyof typeof QUERY_PARAMS): string {

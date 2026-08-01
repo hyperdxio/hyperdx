@@ -1,20 +1,33 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartPaletteTokenSchema,
+  ColorCondition,
+  NumericUnit,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
-import { MetricsDataType, NumberFormat } from '../types';
-import * as utils from '../utils';
+import { MetricsDataType, NumberFormat } from '@/types';
+import * as utils from '@/utils';
 import {
+  COLORS,
+  evaluateColorCondition,
   formatAttributeClause,
+  formatDurationMs,
+  formatDurationMsCompact,
   formatNumber,
   getAllMetricTables,
+  getColorFromCSSToken,
   getMetricTableName,
   mapKeyBy,
+  mergePath,
   orderByStringToSortingState,
+  parseTimestampToMs,
+  resolveConditionalColor,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
-} from '../utils';
+} from '@/utils';
 
 describe('formatAttributeClause', () => {
   it('should format SQL attribute clause correctly', () => {
@@ -357,6 +370,68 @@ describe('formatNumber', () => {
     });
   });
 
+  describe('duration format', () => {
+    it('formats seconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(30.41, format)).toBe('30.41s');
+      expect(formatNumber(0.045, format)).toBe('45ms');
+      expect(formatNumber(3661, format)).toBe('1.02h');
+    });
+
+    it('formats milliseconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 0.001,
+      };
+      expect(formatNumber(30410, format)).toBe('30.41s');
+      expect(formatNumber(45, format)).toBe('45ms');
+    });
+
+    it('formats nanoseconds input as adaptive duration', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 0.000000001,
+      };
+      expect(formatNumber(30410000000, format)).toBe('30.41s');
+      expect(formatNumber(45000000, format)).toBe('45ms');
+      expect(formatNumber(500, format)).toBe('0.5µs');
+    });
+
+    it('handles zero value', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(0, format)).toBe('0ms');
+    });
+
+    it('defaults factor to 1 (seconds) when not specified', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+      };
+      expect(formatNumber(1.5, format)).toBe('1.5s');
+    });
+
+    it('formats sub-millisecond values as microseconds', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(0.0003, format)).toBe('300µs');
+    });
+
+    it('formats large values as hours', () => {
+      const format: NumberFormat = {
+        output: 'duration',
+        factor: 1,
+      };
+      expect(formatNumber(7200, format)).toBe('2h');
+    });
+  });
+
   describe('unit handling', () => {
     it('appends unit to formatted number', () => {
       const format: NumberFormat = {
@@ -377,6 +452,209 @@ describe('formatNumber', () => {
     });
   });
 
+  describe('numericUnit with data output (byte)', () => {
+    it('formats with fixed unit suffix', () => {
+      expect(
+        formatNumber(500, {
+          output: 'byte',
+          numericUnit: NumericUnit.Kibibytes,
+        }),
+      ).toBe('500 KiB');
+      expect(
+        formatNumber(500, {
+          output: 'byte',
+          numericUnit: NumericUnit.Megabytes,
+          mantissa: 1,
+        }),
+      ).toBe('500.0 MB');
+    });
+
+    it('auto-scales IEC bytes', () => {
+      expect(
+        formatNumber(0, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('0 B');
+      expect(
+        formatNumber(1024, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('1 KiB');
+      expect(
+        formatNumber(1048576, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+          mantissa: 2,
+        }),
+      ).toBe('1.00 MiB');
+    });
+
+    it('auto-scales SI bytes', () => {
+      expect(
+        formatNumber(1000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesSI,
+        }),
+      ).toBe('1 KB');
+      expect(
+        formatNumber(1000000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesSI,
+        }),
+      ).toBe('1 MB');
+    });
+
+    it('auto-scales IEC bits', () => {
+      expect(
+        formatNumber(1024, {
+          output: 'byte',
+          numericUnit: NumericUnit.BitsIEC,
+        }),
+      ).toBe('1 Kibit');
+    });
+
+    it('auto-scales SI bits', () => {
+      expect(
+        formatNumber(1000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BitsSI,
+        }),
+      ).toBe('1 Kbit');
+    });
+
+    it('handles negative values in auto-scale', () => {
+      expect(
+        formatNumber(-1024, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('-1 KiB');
+      expect(
+        formatNumber(-1500000, {
+          output: 'byte',
+          numericUnit: NumericUnit.BytesSI,
+          mantissa: 2,
+        }),
+      ).toBe('-1.50 MB');
+    });
+
+    it('falls back to numbro for byte output without numericUnit', () => {
+      // Without numericUnit, the legacy numbro byte formatting is used
+      expect(formatNumber(1024, { output: 'byte', decimalBytes: false })).toBe(
+        '1 KB',
+      );
+    });
+  });
+
+  describe('numericUnit with data_rate output', () => {
+    it('formats fixed data rate units', () => {
+      expect(
+        formatNumber(42, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.PacketsSec,
+        }),
+      ).toBe('42 pkt/s');
+      expect(
+        formatNumber(100, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.KilobytesSec,
+          mantissa: 1,
+        }),
+      ).toBe('100.0 KB/s');
+    });
+
+    it('auto-scales data rate (IEC bytes/s)', () => {
+      expect(
+        formatNumber(1024, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BytesSecIEC,
+        }),
+      ).toBe('1 KiB/s');
+    });
+
+    it('auto-scales data rate (SI bits/s)', () => {
+      expect(
+        formatNumber(1000, {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BitsSecSI,
+        }),
+      ).toBe('1 Kbit/s');
+    });
+
+    it('falls back to plain toFixed for data_rate without numericUnit', () => {
+      expect(formatNumber(1234.567, { output: 'data_rate', mantissa: 2 })).toBe(
+        '1234.57',
+      );
+    });
+
+    it('handles string-type numeric values', () => {
+      expect(
+        formatNumber('500', {
+          output: 'byte',
+          numericUnit: NumericUnit.Kibibytes,
+        }),
+      ).toBe('500 KiB');
+
+      expect(
+        formatNumber('1024', {
+          output: 'data_rate',
+          numericUnit: NumericUnit.BytesSecIEC,
+        }),
+      ).toBe('1 KiB/s');
+    });
+  });
+
+  describe('numericUnit with throughput output', () => {
+    it('formats fixed throughput units', () => {
+      expect(
+        formatNumber(100, {
+          output: 'throughput',
+          numericUnit: NumericUnit.Rps,
+        }),
+      ).toBe('100 rps');
+      expect(
+        formatNumber(50, {
+          output: 'throughput',
+          numericUnit: NumericUnit.Iops,
+        }),
+      ).toBe('50 iops');
+      expect(
+        formatNumber(200, {
+          output: 'throughput',
+          numericUnit: NumericUnit.Opm,
+          mantissa: 1,
+        }),
+      ).toBe('200.0 opm');
+    });
+
+    it('falls back to plain toFixed for throughput without numericUnit', () => {
+      expect(formatNumber(9999, { output: 'throughput' })).toBe('9999');
+    });
+  });
+
+  describe('numericUnit ignored for non-data outputs', () => {
+    it('ignores numericUnit for number output', () => {
+      // numericUnit is only checked for byte/data_rate/throughput
+      expect(
+        formatNumber(1024, {
+          output: 'number',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('1024');
+    });
+
+    it('ignores numericUnit for percent output', () => {
+      expect(
+        formatNumber(0.5, {
+          output: 'percent',
+          numericUnit: NumericUnit.BytesIEC,
+        }),
+      ).toBe('50%');
+    });
+  });
+
   describe('NaN handling', () => {
     it('returns "N/A" for NaN without options', () => {
       expect(formatNumber(NaN)).toBe('N/A');
@@ -384,14 +662,55 @@ describe('formatNumber', () => {
     });
 
     it('returns a string unchanged if a number cannot be parsed from it', () => {
-      // @ts-expect-error not passing a number
       expect(formatNumber('not a number')).toBe('not a number');
 
       expect(
-        // @ts-expect-error not passing a number
         formatNumber('not a number', { output: 'number', mantissa: 2 }),
       ).toBe('not a number');
     });
+  });
+});
+
+describe('formatDurationMs', () => {
+  it('formats zero', () => {
+    expect(formatDurationMs(0)).toBe('0ms');
+  });
+
+  it('formats microseconds', () => {
+    expect(formatDurationMs(0.5)).toBe('500µs');
+    expect(formatDurationMs(0.003)).toBe('3µs');
+    expect(formatDurationMs(0.01)).toBe('10µs');
+  });
+
+  it('formats milliseconds', () => {
+    expect(formatDurationMs(1)).toBe('1ms');
+    expect(formatDurationMs(45)).toBe('45ms');
+    expect(formatDurationMs(999)).toBe('999ms');
+    expect(formatDurationMs(5.5)).toBe('5.5ms');
+  });
+
+  it('formats seconds', () => {
+    expect(formatDurationMs(1000)).toBe('1s');
+    expect(formatDurationMs(1500)).toBe('1.5s');
+    expect(formatDurationMs(30410)).toBe('30.41s');
+  });
+
+  it('formats minutes', () => {
+    expect(formatDurationMs(60000)).toBe('1min');
+    expect(formatDurationMs(90000)).toBe('1.5min');
+  });
+
+  it('formats hours', () => {
+    expect(formatDurationMs(3600000)).toBe('1h');
+    expect(formatDurationMs(7200000)).toBe('2h');
+  });
+
+  it('handles negative values', () => {
+    expect(formatDurationMs(-1500)).toBe('-1.5s');
+  });
+
+  it('handles sub-microsecond precision', () => {
+    expect(formatDurationMs(0.0005)).toBe('0.5µs');
   });
 });
 
@@ -814,5 +1133,568 @@ describe('mapKeyBy', () => {
     const result = mapKeyBy(data, 'id');
     expect(result.size).toBe(1);
     expect(result.get('a')).toBe(data.at(1));
+  });
+});
+
+describe('parseTimestampToMs', () => {
+  it('returns integer ms when there are no sub-millisecond digits', () => {
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000000000Z');
+    expect(result).toBe(new Date('2024-01-01T00:00:01.000Z').getTime());
+  });
+
+  it('preserves sub-millisecond precision as a fractional ms', () => {
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
+  it('preserves whole-millisecond component when sub-ms digits are also present', () => {
+    const base = new Date('2024-01-01T00:00:01.500Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.500500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
+  it('handles max sub-millisecond value (999 µs + 999 ns)', () => {
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000999999Z');
+    expect(result).toBeCloseTo(base + 0.999999, 3);
+  });
+
+  it('orders two timestamps within the same millisecond correctly', () => {
+    const earlier = parseTimestampToMs('2024-01-01T00:00:01.000400000Z');
+    const later = parseTimestampToMs('2024-01-01T00:00:01.000800000Z');
+    expect(earlier).toBeLessThan(later);
+  });
+});
+
+describe('formatDurationMsCompact', () => {
+  it('returns 0 for zero', () => {
+    expect(formatDurationMsCompact(0)).toBe('0');
+  });
+
+  it('formats negative values', () => {
+    expect(formatDurationMsCompact(-5)).toBe('-5ms');
+  });
+
+  it('formats nanoseconds (< 0.001 ms)', () => {
+    expect(formatDurationMsCompact(0.0005)).toBe('500ns');
+    expect(formatDurationMsCompact(0.00012)).toBe('120ns');
+  });
+
+  it('formats microseconds (< 1 ms)', () => {
+    expect(formatDurationMsCompact(0.005)).toBe('5µs');
+    expect(formatDurationMsCompact(0.5)).toBe('500µs');
+    expect(formatDurationMsCompact(0.123)).toBe('123µs');
+  });
+
+  it('formats milliseconds (< 1000 ms)', () => {
+    expect(formatDurationMsCompact(5)).toBe('5ms');
+    expect(formatDurationMsCompact(5.67)).toBe('5.7ms');
+    expect(formatDurationMsCompact(100)).toBe('100ms');
+    expect(formatDurationMsCompact(999)).toBe('999ms');
+  });
+
+  it('formats seconds (< 2 min)', () => {
+    expect(formatDurationMsCompact(1000)).toBe('1s');
+    expect(formatDurationMsCompact(5432)).toBe('5.43s');
+    expect(formatDurationMsCompact(60_000)).toBe('60s');
+    expect(formatDurationMsCompact(119_999)).toBe('120s');
+  });
+
+  it('formats minutes (< 1 hour)', () => {
+    expect(formatDurationMsCompact(120_000)).toBe('2m');
+    expect(formatDurationMsCompact(300_000)).toBe('5m');
+    expect(formatDurationMsCompact(3_599_999)).toBe('60m');
+  });
+
+  it('formats hours (>= 1 hour)', () => {
+    expect(formatDurationMsCompact(3_600_000)).toBe('1h');
+    expect(formatDurationMsCompact(7_200_000)).toBe('2h');
+  });
+});
+
+describe('mergePath', () => {
+  describe('default (Array / unknown column)', () => {
+    it('returns the bare key for a single-segment path', () => {
+      expect(mergePath(['Body'])).toBe('Body');
+    });
+
+    it('numeric sub-segment becomes 1-based array index', () => {
+      // ClickHouse arrays are 1-based but flattened data uses 0-based indices.
+      expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
+      expect(mergePath(['SomeArray', '4'])).toBe('SomeArray[5]');
+    });
+
+    it('non-numeric sub-segment becomes string-key subscript', () => {
+      expect(mergePath(['SomeColumn', 'service.name'])).toBe(
+        "SomeColumn['service.name']",
+      );
+    });
+
+    it('mixed numeric and string segments chain', () => {
+      expect(mergePath(['Outer', '1', 'inner'])).toBe("Outer[2]['inner']");
+    });
+  });
+
+  describe('JSON column', () => {
+    it('emits dotted backtick-quoted accessor', () => {
+      expect(mergePath(['BodyJson', 'service', 'name'], ['BodyJson'])).toBe(
+        'BodyJson.`service`.`name`',
+      );
+    });
+  });
+
+  describe('Map column (HDX-4369)', () => {
+    // Failing reproducer from the issue body: on a Map(String, String), a
+    // numeric-looking sub-key must NOT collapse into array-index syntax.
+    // ClickHouse rejects `LogAttributes[2]` against a Map column with
+    // "Illegal types of arguments: Map(String, String), UInt8 for function
+    // arrayElement". The fix adds a `mapColumns` parameter that forces the
+    // bracketed string-key form regardless of whether the key parses as a
+    // non-negative integer.
+    it('numeric sub-key on a Map renders as string subscript, not array index', () => {
+      const result = mergePath(['LogAttributes', '1'], [], ['LogAttributes']);
+      expect(result).not.toBe('LogAttributes[2]');
+      expect(result).not.toMatch(/\[\d+\]$/);
+      expect(result).toBe("LogAttributes['1']");
+    });
+
+    it('non-numeric Map sub-key keeps string subscript (unchanged)', () => {
+      expect(
+        mergePath(['LogAttributes', 'service.name'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['service.name']");
+    });
+
+    it('multi-segment Map path chains string subscripts', () => {
+      expect(
+        mergePath(['LogAttributes', '1', 'foo'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['1']['foo']");
+    });
+
+    it('Array column with numeric key still uses array-index syntax', () => {
+      // Inverse case: keep existing behavior for non-Map parents.
+      expect(mergePath(['SomeArray', '1'], [], ['LogAttributes'])).toBe(
+        'SomeArray[2]',
+      );
+    });
+
+    it('JSON column wins over Map column when both lists contain the key', () => {
+      // Caller can't currently configure the same column as both; the order
+      // is deterministic if they did.
+      expect(mergePath(['Body', '1'], ['Body'], ['Body'])).toBe('Body.`1`');
+    });
+  });
+
+  describe('SQL escaping of single quotes and backslashes', () => {
+    // Keys can contain user-controlled characters (Map sub-keys carry
+    // arbitrary text). An unescaped single quote produces malformed SQL like
+    // `Map['it's']`, which ClickHouse parses as the broken token sequence
+    // `Map['it']s']`. Backslash must escape first so the quote-escape
+    // backslash is not itself doubled.
+    it('escapes single quotes in Map sub-keys', () => {
+      expect(mergePath(['LogAttributes', "it's"], [], ['LogAttributes'])).toBe(
+        "LogAttributes['it\\'s']",
+      );
+    });
+
+    it('escapes backslashes in Map sub-keys', () => {
+      expect(
+        mergePath(['LogAttributes', 'back\\slash'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['back\\\\slash']");
+    });
+
+    it('escapes a key containing both a backslash and a quote', () => {
+      expect(
+        mergePath(['LogAttributes', "a\\b'c"], [], ['LogAttributes']),
+      ).toBe("LogAttributes['a\\\\b\\'c']");
+    });
+
+    it('escapes single quotes in default-branch string subscripts', () => {
+      // The default Array / unknown column branch also takes string-key
+      // subscripts when the segment is non-numeric. Same escape applies.
+      expect(mergePath(['SomeColumn', "it's"])).toBe("SomeColumn['it\\'s']");
+    });
+
+    it('leaves numeric segments untouched in the default branch', () => {
+      // Numeric path collapses to bracketed integer index; escape is a
+      // no-op because Number.isInteger(asNumber) succeeds. Sanity check.
+      expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
+    });
+  });
+});
+
+describe('getColorFromCSSToken', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns the categorical hex directly from CATEGORICAL_HEX_BY_TOKEN without reading CSS', () => {
+    // Categorical tokens are unified across themes, so the resolver
+    // intentionally skips getComputedStyle to avoid a per-series
+    // layout read. A CSS-var override has no effect on the returned
+    // value (and shouldn't be relied upon by JS callers).
+    const getComputedStyleSpy = jest
+      .spyOn(global, 'getComputedStyle')
+      .mockReturnValue({
+        getPropertyValue: () => '#should-be-ignored',
+      } as unknown as CSSStyleDeclaration);
+
+    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
+    expect(getComputedStyleSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns the CSS variable value for semantic tokens when provided', () => {
+    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: (name: string) =>
+        name === '--color-chart-success' ? '#theme-green' : '',
+    } as unknown as CSSStyleDeclaration);
+
+    expect(getColorFromCSSToken('chart-success')).toBe('#theme-green');
+  });
+
+  it('falls back to SEMANTIC_CHART_PALETTE when getComputedStyle throws for semantic tokens', () => {
+    jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
+      throw new Error('getComputedStyle unavailable');
+    });
+
+    // Defaults to HyperDX in jsdom because the document has no
+    // theme-clickstack class.
+    expect(getColorFromCSSToken('chart-success')).toBe('#3ca951');
+    expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
+    expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
+  });
+
+  it('returns the canonical hex for every categorical token in CATEGORICAL_PALETTE_TOKENS', () => {
+    utils.CATEGORICAL_PALETTE_TOKENS.forEach((token, i) => {
+      expect(getColorFromCSSToken(token)).toBe(COLORS[i]);
+    });
+  });
+
+  it('schema rejects legacy chart-1..10; render-time consumers rely on resolveChartPaletteToken instead', () => {
+    // The schema is deliberately strict (no `z.preprocess`) so that
+    // its `z.input` type matches its `z.output` type — otherwise
+    // `validateRequest` in the API would infer `req.body.tiles[i]
+    // .config.color` as `unknown`. Legacy migration for stored
+    // configs from #2265 happens at fetch time via
+    // `normalizeDashboardTileColors` and at render time via
+    // `resolveChartPaletteToken`.
+    expect(() => ChartPaletteTokenSchema.parse('chart-1')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('chart-10')).toThrow();
+  });
+});
+
+// ─── evaluateColorCondition ───────────────────────────────────────────────────
+
+describe('evaluateColorCondition', () => {
+  describe('numeric ordered operators', () => {
+    it('gt: returns true when value > rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'gt',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(11, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(false);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+    });
+
+    it('gte: returns true when value >= rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'gte',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(11, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+    });
+
+    it('lt: returns true when value < rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'lt',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(9, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(false);
+    });
+
+    it('lte: returns true when value <= rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'lte',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(true);
+      expect(evaluateColorCondition(11, rule)).toBe(false);
+    });
+
+    it('numeric operators return false for string values', () => {
+      const rule: ColorCondition = {
+        operator: 'gt',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('15', rule)).toBe(false);
+    });
+  });
+
+  describe('between operator', () => {
+    it('returns true when value is within [lo, hi]', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(50, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(100, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+      expect(evaluateColorCondition(101, rule)).toBe(false);
+    });
+
+    it('handles inverted range (first > second) by normalising to [lo, hi]', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [100, 10],
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(50, rule)).toBe(true);
+      expect(evaluateColorCondition(5, rule)).toBe(false);
+    });
+
+    it('returns false for string values', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('50', rule)).toBe(false);
+    });
+  });
+
+  describe('eq / neq operators', () => {
+    it('eq: returns true on strict equality (number)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: 5,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(5, rule)).toBe(true);
+      expect(evaluateColorCondition(6, rule)).toBe(false);
+    });
+
+    it('eq: returns true on strict equality (string)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: 'CRIT',
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('CRIT', rule)).toBe(true);
+      expect(evaluateColorCondition('crit', rule)).toBe(false);
+    });
+
+    it('eq: cross-type mismatch returns false ("5" vs 5)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: '5',
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(5, rule)).toBe(false);
+    });
+
+    it('neq: returns true when value differs', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 0,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(1, rule)).toBe(true);
+      expect(evaluateColorCondition(0, rule)).toBe(false);
+    });
+
+    it('neq: cross-type mismatch returns false (number vs string)', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 'none',
+        color: 'chart-blue',
+      };
+      // Without the typeof guard, `42 !== 'none'` is true, which would make
+      // the rule match every numeric value. Guarding keeps the docstring
+      // contract: cross-type mismatches return false.
+      expect(evaluateColorCondition(42, rule)).toBe(false);
+    });
+
+    it('neq: cross-type mismatch returns false (string vs number)', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 42,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('none', rule)).toBe(false);
+    });
+  });
+
+  describe('string operators', () => {
+    it('contains: returns true when string includes value', () => {
+      const rule: ColorCondition = {
+        operator: 'contains',
+        value: 'error',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('fatal error occurred', rule)).toBe(true);
+      expect(evaluateColorCondition('warning', rule)).toBe(false);
+    });
+
+    it('contains: returns false for number values', () => {
+      const rule: ColorCondition = {
+        operator: 'contains',
+        value: 'error',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition(42, rule)).toBe(false);
+    });
+
+    it('startsWith: matches prefix', () => {
+      const rule: ColorCondition = {
+        operator: 'startsWith',
+        value: 'ERR',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('ERR_500', rule)).toBe(true);
+      expect(evaluateColorCondition('WARN_ERR', rule)).toBe(false);
+    });
+
+    it('endsWith: matches suffix', () => {
+      const rule: ColorCondition = {
+        operator: 'endsWith',
+        value: 'CRIT',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('ALERT_CRIT', rule)).toBe(true);
+      expect(evaluateColorCondition('CRIT_OK', rule)).toBe(false);
+    });
+
+    it('regex: matches valid pattern', () => {
+      const rule: ColorCondition = {
+        operator: 'regex',
+        value: '^err.*',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('error123', rule)).toBe(true);
+      expect(evaluateColorCondition('warning', rule)).toBe(false);
+    });
+
+    it('regex: bad pattern returns false without throwing', () => {
+      const rule = {
+        operator: 'regex' as const,
+        value: '[invalid',
+        color: 'chart-error' as const,
+      };
+      expect(() => evaluateColorCondition('test', rule)).not.toThrow();
+      expect(evaluateColorCondition('test', rule)).toBe(false);
+    });
+  });
+});
+
+// ─── resolveConditionalColor ──────────────────────────────────────────────────
+
+describe('resolveConditionalColor', () => {
+  it('returns fallback when rules is undefined', () => {
+    expect(resolveConditionalColor(50, undefined, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when rules is empty', () => {
+    expect(resolveConditionalColor(50, [], 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when value is null', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 0, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(null, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when value is undefined', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 0, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(undefined, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns the matching rule color when one rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(200, rules, 'chart-success')).toBe(
+      'chart-warning',
+    );
+  });
+
+  it('returns the LAST matching rule color (last-match-wins)', () => {
+    // value 1000: both rules match; last (chart-error) wins
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    expect(resolveConditionalColor(1000, rules, 'chart-success')).toBe(
+      'chart-error',
+    );
+  });
+
+  it('returns fallback when no rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    // value 50: no rule matches, return fallback
+    expect(resolveConditionalColor(50, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('covers the DBNumberChart success/warning/error scenario', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    // 50 → no match → static color
+    expect(resolveConditionalColor(50, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+    // 200 → rule 1 matches, rule 2 doesn't → chart-warning
+    expect(resolveConditionalColor(200, rules, 'chart-success')).toBe(
+      'chart-warning',
+    );
+    // 1000 → both match → last match = chart-error
+    expect(resolveConditionalColor(1000, rules, 'chart-success')).toBe(
+      'chart-error',
+    );
+  });
+
+  it('string rules do not match numeric values', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'contains', value: 'err', color: 'chart-error' },
+    ];
+    // numeric value, string rule: no match
+    expect(resolveConditionalColor(42, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns undefined fallback when fallback is undefined and no rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(50, rules, undefined)).toBeUndefined();
   });
 });

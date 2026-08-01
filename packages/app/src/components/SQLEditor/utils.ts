@@ -3,8 +3,9 @@ import {
   Completion,
   CompletionContext,
 } from '@codemirror/autocomplete';
-import { sql } from '@codemirror/lang-sql';
 import { EditorView } from '@uiw/react-codemirror';
+
+import { clickhouseSql } from '@/utils/codeMirror';
 
 import {
   AGGREGATE_FUNCTIONS,
@@ -19,21 +20,41 @@ export type SQLCompletion = {
   type?: string;
 };
 
+// Characters that form SQL identifiers in our editor: word chars, dots,
+// single quotes, brackets, $, {, }, and : — to support expressions like
+// `ResourceAttributes['service.name']`, `$__dateFilter`, `{name:Type}`.
+const IDENTIFIER_CHAR = "[\\w.'[\\]${}:]";
+const IDENTIFIER_BEFORE = new RegExp(`${IDENTIFIER_CHAR}+`);
+const IDENTIFIER_AFTER = new RegExp(`^${IDENTIFIER_CHAR}+`);
+const IDENTIFIER_VALID_FOR = new RegExp(`^${IDENTIFIER_CHAR}*$`);
+
 /**
  * Creates a custom CodeMirror completion source for SQL identifiers (column names, table
  * names, functions, etc.) that inserts them verbatim, without quoting.
  */
-function createIdentifierCompletionSource(completions: Completion[]) {
+export function createIdentifierCompletionSource(completions: Completion[]) {
   return (context: CompletionContext) => {
-    // Match word characters, dots, single quotes, brackets, $, {, }, and :
-    // to support identifiers like `ResourceAttributes['service.name']`,
-    // macros like `$__dateFilter`, and query params like `{name:Type}`
-    const prefix = context.matchBefore(/[\w.'[\]${}:]+/);
+    const prefix = context.matchBefore(IDENTIFIER_BEFORE);
     if (!prefix && !context.explicit) return null;
+
+    // Suppress suggestions after AS keyword since the user is typing a custom alias
+    const textBefore = context.state.doc
+      .sliceString(0, prefix?.from ?? context.pos)
+      .trimEnd();
+    if (/\bAS$/i.test(textBefore)) return null;
+
+    // Look forward from cursor to include trailing identifier characters
+    // (e.g. the `']` in `ResourceAttributes['host.']`) so accepting a
+    // suggestion replaces the entire identifier, not just up to the cursor.
+    const docText = context.state.doc.sliceString(context.pos);
+    const suffix = docText.match(IDENTIFIER_AFTER);
+    const to = suffix ? context.pos + suffix[0].length : context.pos;
+
     return {
       from: prefix?.from ?? context.pos,
+      to,
       options: completions,
-      validFor: /^[\w.'[\]${}:]*$/,
+      validFor: IDENTIFIER_VALID_FOR,
     };
   };
 }
@@ -76,7 +97,7 @@ export const createCodeMirrorSqlDialect = ({
 
   return [
     // SQL language for syntax highlighting (completions are overridden below)
-    sql({ upperCaseKeywords: true }),
+    clickhouseSql({ upperCaseKeywords: true }),
     // Override built-in SQL completions with our custom source
     autocompletion({
       override: [createIdentifierCompletionSource(completions)],

@@ -1,5 +1,8 @@
+import { ColumnMeta } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 import {
   isUnsupportedCountFunction,
+  optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
   tryConvertConfigToMaterializedViewSelect,
   tryOptimizeConfigWithMaterializedView,
@@ -13,9 +16,6 @@ import {
   SourceKind,
   TLogSource,
 } from '@/types';
-
-import { ColumnMeta } from '..';
-import { ClickhouseClient } from '../node';
 
 describe('materializedViews', () => {
   const metadata: Metadata = {
@@ -42,6 +42,12 @@ describe('materializedViews', () => {
       };
       return columns[column];
     }),
+    // These fixtures use plain identifiers, which render to themselves.
+    renderKeyExpressions: jest
+      .fn()
+      .mockImplementation(({ keys }: { keys: string[] }) =>
+        Promise.resolve(new Map(keys.map(k => [k, k]))),
+      ),
   } as unknown as Metadata;
 
   const MV_CONFIG_METRIC_ROLLUP_1M: MaterializedViewConfiguration = {
@@ -277,6 +283,112 @@ describe('materializedViews', () => {
           {
             valueExpression: 'quantile__Duration',
             aggFn: 'quantileMerge',
+            level: 0.95,
+          },
+        ],
+        timestampValueExpression: 'Timestamp',
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should normalize a quantiles AggregateFunction to quantileMerge', async () => {
+      const quantilesMetadata: Metadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          if (column === 'quantile__Duration') {
+            return {
+              type: 'AggregateFunction(quantiles(0.9, 0.95), UInt64)',
+            } as unknown as ColumnMeta;
+          }
+          return undefined;
+        }),
+      } as unknown as Metadata;
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'quantile',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        quantilesMetadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'quantile__Duration',
+            aggFn: 'quantileMerge',
+            level: 0.95,
+          },
+        ],
+        timestampValueExpression: 'Timestamp',
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should normalize a quantilesTDigest AggregateFunction to quantileTDigestMerge', async () => {
+      const quantilesTDigestMetadata: Metadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          if (column === 'quantile__Duration') {
+            return {
+              type: 'AggregateFunction(quantilesTDigest(0.9, 0.95), UInt64)',
+            } as unknown as ColumnMeta;
+          }
+          return undefined;
+        }),
+      } as unknown as Metadata;
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'quantile',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        quantilesTDigestMetadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'quantile__Duration',
+            aggFn: 'quantileTDigestMerge',
             level: 0.95,
           },
         ],
@@ -2437,6 +2549,124 @@ describe('materializedViews', () => {
 
       // Keys should be from the MV
       expect(result[0].keys).toEqual(['environment', 'service']);
+    });
+  });
+
+  describe('optimizeFacetedKeyValuesConfig', () => {
+    const mockClickHouseClient = {
+      testChartConfigValidity: jest.fn(),
+    } as unknown as jest.Mocked<ClickhouseClient>;
+
+    const facetedChartConfig: ChartConfigWithOptDateRange = {
+      from: { databaseName: 'default', tableName: 'otel_spans' },
+      select: '',
+      where: '',
+      connection: 'test-connection',
+    };
+
+    const facetedSource = {
+      kind: SourceKind.Log,
+      from: { databaseName: 'default', tableName: 'otel_spans' },
+      materializedViews: [MV_CONFIG_METRIC_ROLLUP_1M],
+    } as TLogSource;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 1000,
+        error: undefined,
+      });
+    });
+
+    it('routes to a covering MV and EXPLAINs the faceted select', async () => {
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName', 'StatusCode'],
+        keyConditions: [
+          undefined,
+          { ServiceName: { included: new Set(['x']), excluded: new Set() } },
+        ],
+        source: facetedSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      // The faceted query runs against the rollup, using its timestamp column.
+      expect(result.from).toEqual({
+        databaseName: 'default',
+        tableName: 'metrics_rollup_1m',
+      });
+      expect(result.timestampValueExpression).toBe('Timestamp');
+      // Validation used groupUniqArrayIf only for the constrained key.
+      expect(mockClickHouseClient.testChartConfigValidity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            from: { databaseName: 'default', tableName: 'metrics_rollup_1m' },
+            select:
+              "groupUniqArray(1)(ServiceName) AS param0, groupUniqArrayIf(1)(StatusCode, (ServiceName IN ('x'))) AS param1",
+          }),
+        }),
+      );
+    });
+
+    it('falls back to the raw table when a key is not an MV dimension', async () => {
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName', 'NotADimension'],
+        keyConditions: [
+          undefined,
+          { ServiceName: { included: new Set(['x']), excluded: new Set() } },
+        ],
+        source: facetedSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toBe(facetedChartConfig);
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the raw table when the MV EXPLAIN is invalid', async () => {
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: false,
+        error: '',
+      });
+
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName', 'StatusCode'],
+        keyConditions: [
+          undefined,
+          { ServiceName: { included: new Set(['x']), excluded: new Set() } },
+        ],
+        source: facetedSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toBe(facetedChartConfig);
+    });
+
+    it('returns the raw table for a source without materialized views', async () => {
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName'],
+        keyConditions: [undefined],
+        source: {
+          kind: SourceKind.Log,
+          from: { databaseName: 'default', tableName: 'otel_spans' },
+        } as TLogSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toBe(facetedChartConfig);
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
     });
   });
 });

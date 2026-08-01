@@ -16,7 +16,7 @@ export type HighlightedAttribute = {
 };
 
 export function DBHighlightedAttributesList({
-  attributes = [],
+  attributes,
 }: {
   attributes: HighlightedAttribute[];
 }) {

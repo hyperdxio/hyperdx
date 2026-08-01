@@ -1,0 +1,366 @@
+import { FilterState, filtersToQuery } from '@/filters';
+import type {
+  Filter,
+  OnClick,
+  OnClickDashboard,
+  OnClickExternal,
+  OnClickFilterTemplate,
+  OnClickSearch,
+} from '@/types';
+
+import {
+  LinkTemplateError,
+  MissingTemplateVariableError,
+  renderLinkTemplate,
+  renderUrlTemplate,
+  validateTemplate,
+} from './linkTemplate';
+
+export type LinkBuildResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string };
+
+function renderOrError(
+  template: string,
+  rowData: Record<string, unknown>,
+  options?: { encodeValues?: boolean },
+): { ok: true; value: string } | { ok: false; error: string } {
+  try {
+    const value = options?.encodeValues
+      ? renderUrlTemplate(template, rowData)
+      : renderLinkTemplate(template, rowData);
+    return { ok: true, value };
+  } catch (err) {
+    const message =
+      err instanceof MissingTemplateVariableError
+        ? `Row has no column '${err.variable}'`
+        : err instanceof LinkTemplateError
+          ? err.message
+          : String(err);
+    return {
+      ok: false,
+      error: message,
+    };
+  }
+}
+
+/**
+ * Render the filter entries into `{expression} IN (v1, v2, ...)` SQL
+ * conditions. Entries that share the same `filter` expression are merged
+ * into a single IN clause so the destination sees all requested values.
+ * Expressions appear in the URL in order of first occurrence; values within
+ * a group retain their input order.
+ */
+function renderFilterTemplates(
+  templates: OnClickFilterTemplate[] | undefined,
+  row: Record<string, unknown>,
+): { ok: true; filters: Filter[] } | { ok: false; error: string } {
+  if (!templates || templates.length === 0) return { ok: true, filters: [] };
+
+  const state: FilterState = {};
+  for (const template of templates) {
+    const rendered = renderOrError(template.template, row);
+    if (!rendered.ok) return rendered;
+
+    if (state[template.expression]) {
+      state[template.expression].included.add(rendered.value);
+    } else {
+      state[template.expression] = {
+        included: new Set([rendered.value]),
+        excluded: new Set(),
+      };
+    }
+  }
+
+  return { ok: true, filters: filtersToQuery(state) };
+}
+
+/**
+ * Render an OnClickSearch to a URL.
+ */
+export function renderOnClickSearch({
+  onClick,
+  row,
+  sourceIds,
+  sourceIdsByName,
+  dateRange,
+}: {
+  onClick: OnClickSearch;
+  row: Record<string, unknown>;
+  sourceIds: Set<string>;
+  sourceIdsByName: Map<string, string[]>;
+  dateRange: [Date, Date];
+}): LinkBuildResult {
+  let sourceId;
+  if (onClick.target.mode === 'id') {
+    if (!sourceIds.has(onClick.target.id)) {
+      return {
+        ok: false,
+        error: `Could not find source with ID '${onClick.target.id}'`,
+      };
+    }
+    sourceId = onClick.target.id;
+  } else {
+    // Render the source name template
+    const sourceNameRenderResult = renderOrError(onClick.target.template, row);
+    if (!sourceNameRenderResult.ok) return sourceNameRenderResult;
+
+    // Find the matching source's ID
+    const sourceName = sourceNameRenderResult.value.trim();
+    if (sourceName === '') {
+      return {
+        ok: false,
+        error: 'Source name is empty',
+      };
+    }
+
+    const matchedSourceIds = sourceIdsByName.get(sourceName) ?? [];
+    if (matchedSourceIds.length === 0) {
+      return {
+        ok: false,
+        error: `Could not find source '${sourceName}'`,
+      };
+    }
+    if (matchedSourceIds.length > 1) {
+      return {
+        ok: false,
+        error: `Multiple sources named '${sourceName}' — source names must be unique to use them in a link`,
+      };
+    }
+    sourceId = matchedSourceIds[0];
+  }
+
+  let where = '';
+  if (onClick.whereTemplate) {
+    const whereResult = renderOrError(onClick.whereTemplate, row);
+    if (!whereResult.ok) return whereResult;
+    where = whereResult.value;
+  }
+
+  const params = new URLSearchParams({
+    source: sourceId,
+    where: encodeURIComponent(where),
+    whereLanguage: onClick.whereLanguage ?? 'lucene',
+    isLive: 'false',
+    from: String(dateRange[0].getTime()),
+    to: String(dateRange[1].getTime()),
+  });
+
+  const filterRenderResult = renderFilterTemplates(onClick.filters, row);
+  if (!filterRenderResult.ok) return filterRenderResult;
+
+  if (filterRenderResult.filters.length > 0) {
+    params.set(
+      'filters',
+      encodeURIComponent(JSON.stringify(filterRenderResult.filters)),
+    );
+  }
+
+  return { ok: true, url: `/search?${params.toString()}` };
+}
+
+/**
+ * Render an OnClickDashboard to a /dashboards URL, or returns an error if rendering fails.
+ */
+export function renderOnClickDashboard({
+  onClick,
+  row,
+  dashboardIds,
+  dashboardIdsByName,
+  dateRange,
+}: {
+  onClick: OnClickDashboard;
+  row: Record<string, unknown>;
+  dashboardIds: Set<string>;
+  dashboardIdsByName: Map<string, string[]>;
+  dateRange: [Date, Date];
+}): LinkBuildResult {
+  let dashboardId;
+  if (onClick.target.mode === 'id') {
+    if (!dashboardIds.has(onClick.target.id)) {
+      return {
+        ok: false,
+        error: `Could not find dashboard with ID '${onClick.target.id}'`,
+      };
+    }
+    dashboardId = onClick.target.id;
+  } else {
+    // Render the dashboard name template
+    const dashboardNameRenderResult = renderOrError(
+      onClick.target.template,
+      row,
+    );
+    if (!dashboardNameRenderResult.ok) return dashboardNameRenderResult;
+
+    // Find the matching dashboard's ID
+    const dashboardName = dashboardNameRenderResult.value.trim();
+    if (dashboardName === '') {
+      return {
+        ok: false,
+        error: 'Dashboard name is empty',
+      };
+    }
+
+    const matchedDashboardIds = dashboardIdsByName.get(dashboardName) ?? [];
+    if (matchedDashboardIds.length === 0) {
+      return {
+        ok: false,
+        error: `Could not find dashboard '${dashboardName}'`,
+      };
+    }
+    if (matchedDashboardIds.length > 1) {
+      return {
+        ok: false,
+        error: `Multiple dashboards named '${dashboardName}' — dashboard names must be unique to use them in a link`,
+      };
+    }
+    dashboardId = matchedDashboardIds[0];
+  }
+
+  // Render the dashboard's global WHERE condition, if any
+  let where = '';
+  if (onClick.whereTemplate) {
+    const whereResult = renderOrError(onClick.whereTemplate, row);
+    if (!whereResult.ok) return whereResult;
+    where = whereResult.value;
+  }
+
+  const params = new URLSearchParams({
+    where: encodeURIComponent(where),
+    whereLanguage: onClick.whereLanguage ?? 'lucene',
+    from: String(dateRange[0].getTime()),
+    to: String(dateRange[1].getTime()),
+  });
+
+  const filterRenderResult = renderFilterTemplates(onClick.filters, row);
+  if (!filterRenderResult.ok) return filterRenderResult;
+
+  if (filterRenderResult.filters.length > 0) {
+    params.set(
+      'filters',
+      encodeURIComponent(JSON.stringify(filterRenderResult.filters)),
+    );
+  }
+
+  return { ok: true, url: `/dashboards/${dashboardId}?${params.toString()}` };
+}
+
+/**
+ * Only absolute http(s) URLs are allowed for external link-outs. This blocks
+ * dangerous schemes (e.g. `javascript:`, `data:`, `vbscript:`) that could
+ * execute when rendered into an anchor's `href`, and rejects relative URLs
+ * that would resolve against the HyperDX origin (those should use the search /
+ * dashboard variants instead).
+ */
+function isAllowedExternalUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+}
+
+/**
+ * Render an OnClickExternal to an absolute external URL, or return an error if
+ * rendering fails or the rendered value is not a safe http(s) URL.
+ */
+export function renderOnClickExternal({
+  onClick,
+  row,
+}: {
+  onClick: OnClickExternal;
+  row: Record<string, unknown>;
+}): LinkBuildResult {
+  const rendered = renderOrError(onClick.urlTemplate, row, {
+    encodeValues: true,
+  });
+  if (!rendered.ok) return rendered;
+
+  const url = rendered.value.trim();
+  if (url === '') {
+    return { ok: false, error: 'External link URL is empty' };
+  }
+  if (!isAllowedExternalUrl(url)) {
+    return {
+      ok: false,
+      error: `External link must be an absolute http(s) URL, got '${url}'`,
+    };
+  }
+
+  return { ok: true, url };
+}
+
+/**
+ * Build a one-line, row-independent description of an OnClick action,
+ * suitable for a hover hint shown before the user commits to the click.
+ *
+ * Returns one of four shapes:
+ * - `Search <SourceName>` when targeting a known source by ID.
+ * - `Open in search` when targeting a source by template, or when the
+ *   ID does not resolve to a known source.
+ * - `Open dashboard "<Name>"` when targeting a known dashboard by ID.
+ * - `Open dashboard` when targeting a dashboard by template, or when
+ *   the ID does not resolve to a known dashboard.
+ *
+ * Template-mode targets resolve a different name per row (the name
+ * is itself templated); the generic verb form keeps the hint stable
+ * across rows. Per-row scope preview belongs to a separate hint
+ * surface and is not the responsibility of this helper.
+ */
+export function describeOnClick({
+  onClick,
+  sourceNamesById,
+  dashboardNamesById,
+}: {
+  onClick: OnClick;
+  sourceNamesById: Map<string, string>;
+  dashboardNamesById: Map<string, string>;
+}): string {
+  if (onClick.type === 'search') {
+    if (onClick.target.mode === 'id') {
+      const name = sourceNamesById.get(onClick.target.id);
+      if (name) return `Search ${name}`;
+    }
+    return 'Open in search';
+  }
+  if (onClick.type === 'dashboard') {
+    if (onClick.target.mode === 'id') {
+      const name = dashboardNamesById.get(onClick.target.id);
+      if (name) return `Open dashboard "${name}"`;
+    }
+    return 'Open dashboard';
+  }
+  if (onClick.type === 'external') {
+    return 'Open external link';
+  }
+  // Exhaustiveness check: adding a new OnClickSchema variant must
+  // also extend describeOnClick.
+  const _exhaustive: never = onClick;
+  return _exhaustive;
+}
+
+/** Throws if the given OnClick includes a template with invalid syntax */
+export function validateOnClickTemplate(onClick: OnClick) {
+  if (onClick.type === 'external') {
+    validateTemplate(onClick.urlTemplate);
+    return;
+  }
+
+  if (onClick.target.mode === 'template') {
+    validateTemplate(onClick.target.template);
+  }
+
+  if (onClick.filters) {
+    for (const filter of onClick.filters) {
+      if (filter.kind === 'expressionTemplate') {
+        validateTemplate(filter.template);
+      }
+    }
+  }
+
+  if (onClick.whereTemplate) {
+    validateTemplate(onClick.whereTemplate);
+  }
+}

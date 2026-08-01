@@ -1,3 +1,7 @@
+import {
+  displayTypeSupportsRawSqlAlerts,
+  validateRawSqlForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
@@ -5,13 +9,7 @@ import ms from 'ms';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
-import Alert, {
-  AlertChannel,
-  AlertInterval,
-  AlertSource,
-  AlertThresholdType,
-  IAlert,
-} from '@/models/alert';
+import Alert, { AlertSource, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
@@ -20,34 +18,23 @@ import { Api400Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
-export type AlertInput = {
+export type AlertInput = Omit<
+  IAlert,
+  | 'id'
+  | 'scheduleStartAt'
+  | 'savedSearchId'
+  | 'createdAt'
+  | 'createdBy'
+  | 'updatedAt'
+  | 'team'
+  | 'state'
+> & {
   id?: string;
-  source?: AlertSource;
-  channel: AlertChannel;
-  interval: AlertInterval;
-  scheduleOffsetMinutes?: number;
+  // Replace the Date-type fields from IAlert
   scheduleStartAt?: string | null;
-  thresholdType: AlertThresholdType;
-  threshold: number;
-
-  // Message template
-  name?: string | null;
-  message?: string | null;
-
-  // Log alerts
-  groupBy?: string;
+  // Replace the ObjectId-type fields from IAlert
   savedSearchId?: string;
-
-  // Chart alerts
   dashboardId?: string;
-  tileId?: string;
-
-  // Silenced
-  silenced?: {
-    by?: ObjectId;
-    at: Date;
-    until: Date;
-  };
 };
 
 const validateObjectId = (id: string | undefined, message: string) => {
@@ -82,7 +69,18 @@ export const validateAlertInput = async (
     }
 
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
-      throw new Api400Error('Cannot create an alert on a raw SQL tile');
+      if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
+        throw new Api400Error(
+          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      const { errors } = validateRawSqlForAlert(tile.config);
+      if (errors.length > 0) {
+        throw new Api400Error(
+          `Raw SQL alert query is invalid: ${errors.join(', ')}`,
+        );
+      }
     }
   }
 
@@ -140,15 +138,16 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     }),
     source: alert.source,
     threshold: alert.threshold,
+    thresholdMax: alert.thresholdMax,
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 
     // Message template
-    // If they're undefined/null, set it to null so we clear out the field
-    // due to mongoose behavior:
+    // Coerce undefined to null so Mongoose clears the field on update.
     // https://mongoosejs.com/docs/migrating_to_6.html#removed-omitundefined
-    name: alert.name == null ? null : alert.name,
-    message: alert.message == null ? null : alert.message,
+    name: alert.name ?? null,
+    message: alert.message ?? null,
+    note: alert.note ?? null,
 
     // Log alerts
     savedSearch: alert.savedSearchId as unknown as ObjectId,
@@ -156,6 +155,9 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     // Chart alerts
     dashboard: alert.dashboardId as unknown as ObjectId,
     tileId: alert.tileId,
+
+    // Multi-window alerting
+    numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
   };
 };
 
@@ -189,8 +191,20 @@ export const updateAlert = async (
   );
 };
 
-export const getAlerts = async (teamId: ObjectId) => {
-  return Alert.find({ team: teamId });
+export const getAlerts = async (
+  teamId: ObjectId,
+  { limit, offset }: { limit: number; offset: number },
+) => {
+  // Sort by _id so skip/offset paging is stable across requests (MongoDB does
+  // not guarantee natural order between separate find() calls).
+  return Alert.find({ team: teamId })
+    .sort({ _id: 1 })
+    .skip(offset)
+    .limit(limit);
+};
+
+export const countAlerts = async (teamId: ObjectId) => {
+  return Alert.countDocuments({ team: teamId });
 };
 
 export const getAlertById = async (
@@ -203,12 +217,14 @@ export const getAlertById = async (
   });
 };
 
-export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
+export const getTeamDashboardAlertsByDashboardAndTile = async (
+  teamId: ObjectId,
+) => {
   const alerts = await Alert.find({
     source: AlertSource.TILE,
     team: teamId,
   }).populate('createdBy', 'email name');
-  return groupBy(alerts, 'tileId');
+  return groupBy(alerts, a => `${a.dashboard?.toString()}:${a.tileId}`);
 };
 
 export const getDashboardAlertsByTile = async (
@@ -276,6 +292,20 @@ export const deleteSavedSearchAlerts = async (
 
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
+    savedSearch: ISavedSearch;
+    dashboard: IDashboard;
+    createdBy?: IUser;
+    silenced?: IAlert['silenced'] & {
+      by: IUser;
+    };
+  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+};
+
+export const getAlertEnhanced = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId,
+) => {
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
     savedSearch: ISavedSearch;
     dashboard: IDashboard;
     createdBy?: IUser;

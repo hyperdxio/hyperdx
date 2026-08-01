@@ -10,7 +10,7 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   });
 
   test('should load kubernetes dashboard', async () => {
-    await expect(k8sPage.title).toBeVisible();
+    await expect(k8sPage.pageContainer).toBeVisible();
   });
 
   test('should show pod details', async () => {
@@ -151,9 +151,7 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   });
 
   test.describe('Pods Table Sorting', () => {
-    // Currently the data sources all have 0 restarts, so this test fails.
-    // eslint-disable-next-line playwright/no-skipped-test
-    test.skip('should sort by restarts column', async () => {
+    test('should sort by restarts column', async () => {
       const podsTable = k8sPage.getPodsTable();
       await expect(podsTable.locator('tbody tr').first()).toBeVisible();
 

@@ -1,89 +1,18 @@
 import { enableMapSet } from 'immer';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import { act, renderHook } from '@testing-library/react';
 
 import {
   areFiltersEqual,
-  filtersToQuery,
   parseQuery,
   useSearchPageFilterState,
-} from '../searchFilters';
+} from '@/searchFilters';
 
 enableMapSet();
 
+type ConditionFilter = { type: 'sql' | 'lucene'; condition: string };
+
 describe('searchFilters', () => {
-  describe('filtersToQuery', () => {
-    it('should return empty string when no filters', () => {
-      const filters = {};
-      expect(filtersToQuery(filters)).toEqual([]);
-    });
-
-    it('should return query for one filter', () => {
-      const filters = {
-        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
-      };
-      expect(filtersToQuery(filters)).toEqual([
-        { type: 'sql', condition: "a IN ('b')" },
-      ]);
-    });
-
-    it('should return query for multiple filters', () => {
-      const filters = {
-        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
-        c: {
-          included: new Set<string>(['d', 'x']),
-          excluded: new Set<string>(),
-        },
-      };
-      expect(filtersToQuery(filters)).toEqual([
-        { type: 'sql', condition: "a IN ('b')" },
-        { type: 'sql', condition: "c IN ('d', 'x')" },
-      ]);
-    });
-
-    it('should handle excluded values', () => {
-      const filters = {
-        a: {
-          included: new Set<string>(['b']),
-          excluded: new Set<string>(['c']),
-        },
-      };
-      expect(filtersToQuery(filters)).toEqual([
-        { type: 'sql', condition: "a IN ('b')" },
-        { type: 'sql', condition: "a NOT IN ('c')" },
-      ]);
-    });
-
-    it('should wrap keys with toString() when specified', () => {
-      const filters = {
-        'json.key': {
-          included: new Set<string>(['value']),
-          excluded: new Set<string>(['other value']),
-        },
-      };
-      expect(filtersToQuery(filters, { stringifyKeys: true })).toEqual([
-        { type: 'sql', condition: "toString(json.key) IN ('value')" },
-        { type: 'sql', condition: "toString(json.key) NOT IN ('other value')" },
-      ]);
-    });
-
-    it('should should handle boolean filter values', () => {
-      const filters = {
-        isRootSpan: {
-          included: new Set<string | boolean>([true]),
-          excluded: new Set<string | boolean>([]),
-        },
-        another_column: {
-          included: new Set<string | boolean>([]),
-          excluded: new Set<string | boolean>([true, false]),
-        },
-      };
-      expect(filtersToQuery(filters)).toEqual([
-        { type: 'sql', condition: 'isRootSpan IN (true)' },
-        { type: 'sql', condition: 'another_column NOT IN (true, false)' },
-      ]);
-    });
-  });
-
   describe('parseQuery', () => {
     it('empty query', () => {
       const result = parseQuery([]);
@@ -315,6 +244,234 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('parses IN clauses when values contain = character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('key=value')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['key=value']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain > character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('x > y')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['x > y']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain < character', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('<html>')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['<html>']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain OR text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('true OR false')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['true OR false']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('still skips real comparison operators outside quotes', () => {
+      const result = parseQuery([
+        { type: 'sql', condition: `status_code = 200` },
+        { type: 'sql', condition: `duration > 1000` },
+        { type: 'sql', condition: `count < 5` },
+        {
+          type: 'sql',
+          condition: `level IN ('error') OR severity IN ('high')`,
+        },
+      ]);
+      expect(result.filters).toEqual({});
+    });
+
+    it('extracts IN clause from AND condition with quoted = in non-IN part', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `SpanName = 'test=value' AND SpanKind IN ('Server')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        SpanKind: {
+          included: new Set(['Server']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain BETWEEN text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('I AM BETWEEN THE HEDGES AND I LOVE IT HERE')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['I AM BETWEEN THE HEDGES AND I LOVE IT HERE']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('still parses real BETWEEN conditions correctly', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `duration BETWEEN 100 AND 500`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 100, max: 500 },
+        },
+      });
+    });
+
+    it('parses IN clauses when values contain NOT IN text', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('this is NOT IN scope')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['this is NOT IN scope']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles values with single quotes (SQL-escaped)', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message IN ('my ''filter'' key')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(["my 'filter' key"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles excluded values with single quotes', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message NOT IN ('it''s a test')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(),
+          excluded: new Set(["it's a test"]),
+        },
+      });
+    });
+
+    it('handles multiple values where some contain single quotes', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `message IN ('normal value', 'it''s quoted', 'another ''one''')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(['normal value', "it's quoted", "another 'one'"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles SQL-escaped quotes with operators inside', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('value with '' = special')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(["value with ' = special"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('handles values with single quotes in AND conditions', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `status = 'active' AND message IN ('it''s here')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        message: {
+          included: new Set(["it's here"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('does not split AND-joined condition on AND inside quoted string', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `Body IN ('foo AND bar') AND level IN ('info')`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        Body: {
+          included: new Set(['foo AND bar']),
+          excluded: new Set(),
+        },
+        level: {
+          included: new Set(['info']),
+          excluded: new Set(),
+        },
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {
@@ -389,6 +546,283 @@ describe('searchFilters', () => {
     });
   });
 
+  describe('round-trip: filtersToQuery -> parseQuery with quotes', () => {
+    it('round-trips values containing single quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>(["my 'filter' key"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set(["my 'filter' key"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips mixed values with and without quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>([
+            'normal',
+            "it's a test",
+            "value with 'multiple' quotes",
+          ]),
+          excluded: new Set<string | boolean>(["don't exclude"]),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set([
+            'normal',
+            "it's a test",
+            "value with 'multiple' quotes",
+          ]),
+          excluded: new Set(["don't exclude"]),
+        },
+      });
+    });
+
+    it('round-trips values containing backslashes (Windows paths)', () => {
+      const originalFilters = {
+        FilePath: {
+          included: new Set<string | boolean>(['C:\\path\\file']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        FilePath: {
+          included: new Set(['C:\\path\\file']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips values containing both backslashes and single quotes', () => {
+      const originalFilters = {
+        message: {
+          included: new Set<string | boolean>(["O\\'Malley"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters);
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        message: {
+          included: new Set(["O\\'Malley"]),
+          excluded: new Set(),
+        },
+      });
+    });
+  });
+
+  describe('round-trip: DateTime columns', () => {
+    const dateTimeColumns = new Map<string, string>([
+      ['Timestamp', 'DateTime64(9)'],
+      ['TimestampTime', 'DateTime'],
+    ]);
+
+    it('round-trips an excluded DateTime value (no areFiltersEqual reset)', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([
+            '2026-06-16T15:35:16.731000000Z',
+          ]),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['2026-06-16T15:35:16.731000000Z']),
+        },
+      });
+    });
+
+    it('round-trips an included DateTime value with multiple entries', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(['2026-06-16', '2026-06-17']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(['2026-06-16', '2026-06-17']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parseQuery unwraps the DateTime wrapper independently of the producer', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition:
+            "Timestamp NOT IN (parseDateTime64BestEffort('a', 9), parseDateTime64BestEffort('b', 9))",
+        },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['a', 'b']),
+        },
+      });
+    });
+
+    it('unwraps the DateTime part of a compound AND condition', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition:
+            "ServiceName IN ('api') AND Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16', 9))",
+        },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        ServiceName: {
+          included: new Set(['api']),
+          excluded: new Set(),
+        },
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['2026-06-16']),
+        },
+      });
+    });
+
+    it('round-trips a DateTime value containing the wrapper suffix', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(["a', 9)b"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(["a', 9)b"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips a plain DateTime column (parseDateTimeBestEffort wrapper)', () => {
+      const originalFilters = {
+        TimestampTime: {
+          included: new Set<string | boolean>(['2026-06-17T11:56:41Z']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      // Sanity: produces the DateTime (non-64) wrapper.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
+      );
+
+      expect(parseQuery(query).filters).toEqual({
+        TimestampTime: {
+          included: new Set(['2026-06-17T11:56:41Z']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parseQuery unwraps parseDateTimeBestEffort and toDate wrappers', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition: "TimestampTime IN (parseDateTimeBestEffort('a'))",
+        },
+        { type: 'sql', condition: "day NOT IN (toDate('2026-06-17'))" },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        TimestampTime: { included: new Set(['a']), excluded: new Set() },
+        day: { included: new Set(), excluded: new Set(['2026-06-17']) },
+      });
+    });
+
+    // The map key can be a query-result column name that isn't a table column:
+    // an alias (`TimestampTime AS time`) or a computed expression
+    // (`toDate(TimestampTime)`). These only become filterable correctly when the
+    // type map is sourced from the result set rather than the table schema.
+    it('wraps and round-trips an aliased DateTime column', () => {
+      const aliasColumns = new Map<string, string>([['time', 'DateTime64(9)']]);
+      const originalFilters = {
+        time: {
+          included: new Set<string | boolean>(['2026-06-18T10:33:55Z']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, {
+        dateTimeColumns: aliasColumns,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "time IN (parseDateTime64BestEffort('2026-06-18T10:33:55Z', 9))",
+      );
+
+      expect(parseQuery(query).filters).toEqual({
+        time: {
+          included: new Set(['2026-06-18T10:33:55Z']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('wraps a computed DateTime expression with the type-matched function', () => {
+      const exprColumns = new Map<string, string>([
+        ['toDate(TimestampTime)', 'Date'],
+      ]);
+      const originalFilters = {
+        'toDate(TimestampTime)': {
+          included: new Set<string | boolean>(['2026-06-18']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, {
+        dateTimeColumns: exprColumns,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "toDate(TimestampTime) IN (toDate('2026-06-18'))",
+      );
+    });
+  });
+
   describe('useSearchPageFilterState', () => {
     const onFilterChange = jest.fn();
 
@@ -397,6 +831,7 @@ describe('searchFilters', () => {
         useSearchPageFilterState({
           searchQuery: [],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -417,6 +852,50 @@ describe('searchFilters', () => {
       ]);
     });
 
+    it('setOnlyFilters applies all filters in a single onFilterChange emit', () => {
+      onFilterChange.mockClear();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          knownColumns: new Set(),
+        }),
+      );
+
+      act(() => {
+        result.current.setOnlyFilters([
+          { property: 'service', value: 'app' },
+          { property: 'level', value: 'error' },
+        ]);
+      });
+
+      // Batched: a single re-query, not one per property.
+      expect(onFilterChange).toHaveBeenCalledTimes(1);
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        { type: 'sql', condition: "service IN ('app')" },
+        { type: 'sql', condition: "level IN ('error')" },
+      ]);
+    });
+
+    it('setOnlyFilters replaces any existing values for the given property', () => {
+      onFilterChange.mockClear();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [{ type: 'sql', condition: `level IN ('info', 'ok')` }],
+          onFilterChange,
+          knownColumns: new Set(),
+        }),
+      );
+
+      act(() => {
+        result.current.setOnlyFilters([{ property: 'level', value: 'error' }]);
+      });
+
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        { type: 'sql', condition: "level IN ('error')" },
+      ]);
+    });
+
     it('updating filter query', () => {
       const { result } = renderHook(() =>
         useSearchPageFilterState({
@@ -426,6 +905,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level IN ('info', 'ok')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -450,6 +930,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level IN ('info', 'ok')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -472,6 +953,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level IN ('info', 'ok')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -496,6 +978,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level NOT IN ('error')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -507,6 +990,130 @@ describe('searchFilters', () => {
         { type: 'sql', condition: `service IN ('app')` },
         { type: 'sql', condition: `level IN ('info')` }, // Should only have the included value, no excluded values
       ]);
+    });
+
+    describe('retainFiltersByColumns', () => {
+      it('returns [] and does not touch URL when filter state is empty', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [],
+            onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
+          }),
+        );
+
+        let dropped: string[] = ['unset'];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName']),
+          );
+        });
+
+        expect(dropped).toEqual([]);
+        expect(onFilterChangeLocal).not.toHaveBeenCalled();
+      });
+
+      it('keeps filters whose root column exists on the new source', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'SeverityText:"error"' },
+            ],
+            onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
+          }),
+        );
+
+        let dropped: string[] = ['unset'];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName', 'SeverityText', 'Timestamp']),
+          );
+        });
+
+        expect(dropped).toEqual([]);
+        // Nothing dropped → no URL update fires.
+        expect(onFilterChangeLocal).not.toHaveBeenCalled();
+      });
+
+      it('keeps nested JSON/Map keys when the root column exists', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              {
+                type: 'lucene',
+                condition: 'LogAttributes.user:"123"',
+              },
+            ],
+            onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
+          }),
+        );
+
+        let dropped: string[] = ['unset'];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['LogAttributes']),
+          );
+        });
+
+        expect(dropped).toEqual([]);
+        expect(onFilterChangeLocal).not.toHaveBeenCalled();
+      });
+
+      it('drops filters whose root column is missing and returns their keys', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'sql', condition: `OldColumn IN ('x')` },
+              { type: 'sql', condition: `AnotherGone IN ('y')` },
+            ],
+            onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
+          }),
+        );
+
+        let dropped: string[] = [];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName']),
+          );
+        });
+
+        expect(dropped.sort()).toEqual(['AnotherGone', 'OldColumn']);
+        expect(onFilterChangeLocal).toHaveBeenLastCalledWith([]);
+      });
+
+      it('keeps matching filters and drops the rest in mixed input', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'sql', condition: `ServiceName IN ('app')` },
+              { type: 'sql', condition: `Body IN ('oops')` },
+            ],
+            onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
+          }),
+        );
+
+        let dropped: string[] = [];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName', 'Timestamp']),
+          );
+        });
+
+        expect(dropped).toEqual(['Body']);
+        expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
+          { type: 'sql', condition: `ServiceName IN ('app')` },
+        ]);
+      });
     });
   });
 });

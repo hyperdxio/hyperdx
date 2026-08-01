@@ -1,19 +1,26 @@
-import { ALERT_INTERVAL_TO_MINUTES } from '@hyperdx/common-utils/dist/types';
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertErrorType,
+  AlertThresholdType,
+} from '@hyperdx/common-utils/dist/types';
+export { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 import Team from './team';
-
-export enum AlertThresholdType {
-  ABOVE = 'above',
-  BELOW = 'below',
-}
 
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+  PENDING = 'PENDING',
+}
+
+export interface IAlertError {
+  timestamp: Date;
+  type: AlertErrorType;
+  message: string;
 }
 
 // follow 'ms' pkg formats
@@ -51,12 +58,17 @@ export interface IAlert {
   state: AlertState;
   team: ObjectId;
   threshold: number;
+  /** The upper bound for BETWEEN and NOT BETWEEN threshold types */
+  thresholdMax?: number;
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
   // Message template
   name?: string | null;
   message?: string | null;
+
+  // Freeform note (supports markdown)
+  note?: string | null;
 
   // SavedSearch alerts
   groupBy?: string;
@@ -72,6 +84,12 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // Multi-window alerting: fire only after N violations in M consecutive windows
+  numConsecutiveWindows?: number | null;
+
+  // Errors recorded during the most recent execution
+  executionErrors?: IAlertError[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,6 +101,10 @@ const AlertSchema = new Schema<IAlert>(
     threshold: {
       type: Number,
       required: true,
+    },
+    thresholdMax: {
+      type: Number,
+      required: false,
     },
     thresholdType: {
       type: String,
@@ -146,6 +168,10 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
     },
+    note: {
+      type: String,
+      required: false,
+    },
 
     // Log alerts
     savedSearch: {
@@ -168,6 +194,11 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
     },
+    numConsecutiveWindows: {
+      type: Number,
+      required: false,
+      min: 1,
+    },
     silenced: {
       required: false,
       type: {
@@ -187,11 +218,31 @@ const AlertSchema = new Schema<IAlert>(
         required: false,
       },
     },
+    executionErrors: {
+      type: [
+        {
+          _id: false,
+          timestamp: { type: Date, required: true },
+          type: {
+            type: String,
+            enum: AlertErrorType,
+            required: true,
+          },
+          message: { type: String, required: true },
+        },
+      ],
+      required: false,
+      default: undefined,
+    },
   },
   {
     timestamps: true,
     toJSON: { virtuals: true },
   },
 );
+
+// Team-scoped list/count queries (e.g. external API pagination) filter on team
+// and sort by _id. Compound so the sort is index-covered (no in-memory sort).
+AlertSchema.index({ team: 1, _id: 1 });
 
 export default mongoose.model<IAlert>('Alert', AlertSchema);

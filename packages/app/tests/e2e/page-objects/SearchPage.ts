@@ -2,7 +2,7 @@
  * SearchPage - Page object for the /search page
  * Encapsulates all interactions with the search interface
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
@@ -11,6 +11,7 @@ import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModa
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
+import { dismissSqlAutocomplete } from '../utils/locators';
 
 type SaveSearchModalProps = {
   update: boolean;
@@ -23,6 +24,7 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
+  readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -53,6 +55,9 @@ export class SearchPage {
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
+    this.savedSearchNameTitle = page.locator(
+      '[data-testid="saved-search-name"]',
+    );
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -61,7 +66,7 @@ export class SearchPage {
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
     const whereLanguageSwitch = page.getByTestId('where-language-switch');
-    this.languageSelect = whereLanguageSwitch.getByRole('textbox', {
+    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
       name: 'Query language',
     });
     this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
@@ -69,12 +74,24 @@ export class SearchPage {
     this.sourceSelector = page.getByTestId('source-selector');
   }
 
-  get createNewSourceItem() {
-    return this.page.getByRole('option', { name: 'Create New Source' });
+  get sourceActionsMenu() {
+    return this.page.getByTestId('source-actions-menu');
   }
 
-  get editSourcesItem() {
-    return this.page.getByRole('option', { name: 'Edit Sources' });
+  get createNewSourceItem() {
+    return this.page.getByRole('menuitem', { name: 'Create new source' });
+  }
+
+  get editSourceItem() {
+    return this.page.getByRole('menuitem', { name: 'Edit source' });
+  }
+
+  get manageSourcesItem() {
+    return this.page.getByRole('menuitem', { name: 'Manage sources' });
+  }
+
+  get viewSchemaItem() {
+    return this.page.getByRole('menuitem', { name: 'View schema' });
   }
 
   /**
@@ -94,8 +111,8 @@ export class SearchPage {
   }
 
   async openEditSourceModal() {
-    await this.sourceSelector.click();
-    await this.editSourcesItem.click();
+    await this.sourceActionsMenu.click();
+    await this.editSourceItem.click();
   }
 
   async sourceModalShowOptionalFields() {
@@ -107,15 +124,32 @@ export class SearchPage {
     }
   }
 
+  async saveSourceForm() {
+    await this.page.getByRole('button', { name: 'Save Source' }).click();
+  }
+
   /**
    * Perform a search with the given query
    */
   async performSearch(query: string) {
     await this.searchInput.fill(query);
+    await this.page.keyboard.press('Escape');
     await this.searchButton.click();
     await this.page.waitForLoadState('networkidle');
     // Wait for new results to populate
     await this.table.waitForRowsToPopulate();
+  }
+
+  /**
+   * Open a log row that carries trace context (a non-empty TraceId) so the side
+   * panel renders the cross-source "View Trace" action.
+   */
+  async openTraceLinkedLogRow(traceId: string = 'trace-0') {
+    await this.timePicker.selectRelativeTime('Last 1 days');
+    await this.performSearch(`TraceId:"${traceId}"`);
+    await expect(this.table.firstRow).toBeVisible();
+    await this.table.clickFirstRow();
+    await expect(this.sidePanel.tabs).toBeVisible();
   }
 
   /**
@@ -187,6 +221,18 @@ export class SearchPage {
   }
 
   /**
+   * Click "Save as New Search" from the action bar menu on an existing saved search.
+   * Opens the save search modal in "create" mode for duplicating the current search.
+   */
+  async clickSaveAsNew() {
+    // Click the action bar menu trigger (three dots icon next to the saved search name)
+    await this.page.getByTestId('search-page-action-bar').click();
+    await this.page
+      .getByRole('menuitem', { name: 'Save as New Search' })
+      .click();
+  }
+
+  /**
    * Open the alerts creation modal for the current saved search
    */
   async openAlertsModal() {
@@ -202,6 +248,15 @@ export class SearchPage {
    */
   getSearchResultsTable() {
     return this.page.locator('[data-testid="search-results-table"]');
+  }
+
+  /**
+   * Locator for the results table's error state (rendered by ChartErrorState
+   * when the underlying ClickHouse query fails). Assert `toHaveCount(0)` to
+   * confirm the results loaded without error.
+   */
+  getTableError() {
+    return this.page.getByText(/Error loading/i);
   }
 
   /**
@@ -224,7 +279,13 @@ export class SearchPage {
   async setCustomSELECT(selectStatement: string) {
     const selectEditor = this.getSELECTEditor();
     await selectEditor.click({ clickCount: 3 }); // Select all
-    await this.page.keyboard.type(selectStatement);
+    // Insert atomically rather than per-keystroke: under load CodeMirror can
+    // drop individual keys from keyboard.type (e.g. "Timestamp" -> "Timstamp"),
+    // which then gets faithfully saved and fails later assertions.
+    await this.page.keyboard.insertText(selectStatement);
+    // Dismiss the autocomplete popup so it can't linger and overlay the next
+    // control (e.g. the Save Search button).
+    await dismissSqlAutocomplete(this.page);
   }
 
   /**
@@ -278,6 +339,18 @@ export class SearchPage {
     await this.page.mouse.up();
   }
 
+  /**
+   * Returns a locator for the yellow Mantine notification shown when one or
+   * more sidebar filters are dropped because they don't exist on the newly
+   * selected source's schema.
+   *
+   * The message format from DBSearchPage.tsx:
+   *   "N filter(s) didn't apply to this source and was/were removed."
+   */
+  getDroppedFiltersToast() {
+    return this.page.getByText(/filter.* didn't apply to this source/i);
+  }
+
   // Getters for assertions in spec files
 
   get form() {
@@ -314,5 +387,14 @@ export class SearchPage {
 
   get otherSources() {
     return this.page.getByRole('option', { selected: false });
+  }
+
+  get totalCountText() {
+    return this.page.getByTestId('search-total-count');
+  }
+
+  async waitForTotalCountLoaded(timeout = 15_000) {
+    await expect(this.totalCountText).toBeVisible({ timeout });
+    await expect(this.totalCountText).not.toContainText('···', { timeout });
   }
 }

@@ -1,0 +1,324 @@
+{
+  "version": "0.1.0",
+  "name": "Python Runtime Metrics",
+  "description": "CPU utilization, memory usage, GC collections, and thread count for Python applications with the OTel Runtime Metrics instrumentation",
+  "tags": ["OTel Runtime Metrics"],
+  "tiles": [
+    {
+      "id": "b028c5",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "Memory RSS",
+        "source": "Metrics",
+        "displayType": "number",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        },
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "metricName": "process.memory.usage"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "c847ba",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "number",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        },
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "gauge",
+            "metricName": "process.cpu.utilization"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "c02ef1",
+      "x": 12,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "GC Collections",
+        "source": "Metrics",
+        "displayType": "number",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        },
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "metricName": "cpython.gc.collections"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "f0634b",
+      "x": 18,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "GC Leaks",
+        "source": "Metrics",
+        "displayType": "number",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        },
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "metricName": "cpython.gc.uncollectable_objects"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "9adc01",
+      "x": 0,
+      "y": 4,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Memory Usage",
+        "source": "Metrics",
+        "displayType": "line",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        },
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "metricName": "process.memory.usage"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "3a5843",
+      "x": 12,
+      "y": 4,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Utilization",
+        "source": "Metrics",
+        "displayType": "line",
+        "numberFormat": {
+          "output": "percent",
+          "mantissa": 1
+        },
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "gauge",
+            "metricName": "process.cpu.utilization"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "be51d5",
+      "x": 0,
+      "y": 11,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "GC Collections (rate)",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "gc_count",
+            "metricName": "cpython.gc.collections"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "421240",
+      "x": 12,
+      "y": 11,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Collected vs Uncollectable Objects",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "collected",
+            "metricName": "cpython.gc.collected_objects"
+          },
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "leaks (uncollectable)",
+            "metricName": "cpython.gc.uncollectable_objects"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    },
+    {
+      "id": "50a6fb",
+      "x": 0,
+      "y": 18,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "CPU Seconds Used",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "metricName": "process.cpu.time"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": ""
+      }
+    },
+    {
+      "id": "d72a48",
+      "x": 12,
+      "y": 18,
+      "w": 12,
+      "h": 7,
+      "config": {
+        "name": "Threads & Context Switches",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "avg",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "gauge",
+            "alias": "threads",
+            "metricName": "process.thread.count"
+          },
+          {
+            "aggFn": "sum",
+            "aggConditionLanguage": "lucene",
+            "valueExpression": "Value",
+            "metricType": "sum",
+            "isDelta": true,
+            "alias": "ctx switches",
+            "metricName": "process.context_switches"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql"
+      }
+    }
+  ],
+  "filters": [
+    {
+      "id": "svc-filter-001",
+      "type": "QUERY_EXPRESSION",
+      "name": "ServiceName",
+      "expression": "ServiceName",
+      "source": "Metrics",
+      "sourceMetricType": "gauge",
+      "where": "ResourceAttributes.telemetry.sdk.language:\"python\"",
+      "whereLanguage": "lucene"
+    }
+  ],
+  "containers": []
+}

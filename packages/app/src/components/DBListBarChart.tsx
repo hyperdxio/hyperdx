@@ -1,21 +1,22 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { omit } from 'lodash';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
-import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
+import { Box, Flex, HoverCard, Text } from '@mantine/core';
 
 import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
+import { useChartNumberFormats, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { omit } from '@/utils';
 import { formatNumber, semanticKeyedColor } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 function ListItem({
   title,
@@ -180,10 +181,11 @@ export default function DBListBarChart({
   enabled,
   valueColumn,
   groupColumn,
-  hiddenSeries = [],
+  hiddenSeries,
   title,
   toolbarItems,
   showMVOptimizationIndicator = true,
+  errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
@@ -197,6 +199,7 @@ export default function DBListBarChart({
   title?: React.ReactNode;
   toolbarItems?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -213,6 +216,8 @@ export default function DBListBarChart({
 
   const { data: source } = useSource({ id: config.source });
 
+  const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -220,13 +225,13 @@ export default function DBListBarChart({
     }
 
     return Object.keys(rows?.[0])
-      .filter(key => !hiddenSeries.includes(key))
+      .filter(key => !hiddenSeries?.includes(key))
       .map(key => ({
         dataKey: key,
         displayName: key,
-        numberFormat: config.numberFormat,
+        numberFormat: formatByColumn.get(key) ?? queriedConfig.numberFormat,
       }));
-  }, [config.numberFormat, data, hiddenSeries]);
+  }, [data?.data, formatByColumn, hiddenSeries, queriedConfig.numberFormat]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -271,32 +276,7 @@ export default function DBListBarChart({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.

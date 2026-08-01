@@ -1,151 +1,379 @@
-import {
-  memo,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import cx from 'classnames';
 import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import { useDrag } from '@/hooks/useDrag';
+import {
+  TimelineMouseCursor,
+  type TimelineMouseCursorHandle,
+} from '@/components/TimelineChart/TimelineMouseCursor';
+import {
+  TimelineXAxis,
+  type TimelineXAxisHandle,
+} from '@/components/TimelineChart/TimelineXAxis';
+import useResizable from '@/hooks/useResizable';
 import { useStableCallback } from '@/hooks/useStableCallback';
-
-import useResizable from '../../hooks/useResizable';
-import { usePrevious } from '../../utils';
 
 import {
   TimelineChartRowEvents,
   type TTimelineEvent,
 } from './TimelineChartRowEvents';
-import { TimelineCursor } from './TimelineCursor';
-import { TimelineMouseCursor } from './TimelineMouseCursor';
-import { TimelineXAxis } from './TimelineXAxis';
+import { getMaxEventValue } from './utils';
 
-import resizeStyles from '../../../styles/ResizablePanel.module.scss';
 import styles from './TimelineChart.module.scss';
+import resizeStyles from '@styles/ResizablePanel.module.scss';
 
 type Row = {
-  id: string;
-  label: React.ReactNode;
   events: TTimelineEvent[];
-  style?: any;
-  type?: string;
-  className?: string;
+  id: string;
   isActive?: boolean;
+  label: React.ReactNode;
+  type?: string;
 };
 
-type Cursor = {
-  id: string;
-  start: number;
-  color: string;
+/**
+ * Imperative bridge between the scroll-based zoom/pan model owned by
+ * TimelineChart and the TimelineMinimap (which renders above the controls row,
+ * outside this component). The minimap reads the current viewport via
+ * getState(), reflects live scroll/zoom changes via subscribe(), and drives
+ * zoom/pan through zoomToRange/panToOffset/reset.
+ *
+ * All fractions are in [0, 1] over the events timeline (the label column is
+ * excluded from the events area, matching how spans are positioned).
+ */
+export type TimelineViewportState = {
+  // Current zoom scale (>= 1; 1 = fully zoomed out).
+  scale: number;
+  // Fraction of the timeline scrolled past the left edge of the events area.
+  offsetFrac: number;
+  // Fraction of the timeline currently visible in the events area.
+  viewportWidthFrac: number;
+};
+
+export type TimelineViewportController = {
+  getState: () => TimelineViewportState;
+  // Subscribe to scroll/zoom changes (rAF-throttled). Returns an unsubscribe.
+  subscribe: (cb: () => void) => () => void;
+  // Zoom so the events area shows exactly [startFrac, endFrac].
+  zoomToRange: (startFrac: number, endFrac: number) => void;
+  // Pan (at the current scale) so the events area's left edge is at offsetFrac.
+  panToOffset: (offsetFrac: number) => void;
+  // Return to the fully zoomed-out view.
+  reset: () => void;
 };
 
 type TimelineChartProps = {
-  rows: Row[];
-  cursors?: Cursor[];
-  rowHeight: number;
-  onEventClick?: (e: Row) => void;
+  initialScrollRowIndex: number;
   labelWidth: number;
-  className?: string;
-  style?: any;
-  initialScrollRowIndex?: number;
+  maxHeight: number;
+  rowHeight: number;
+  rows: Row[];
+  onEventClick: (e: Row) => void;
+  onReady?: (controller: TimelineViewportController) => void;
 };
 
-export const TimelineChart = memo(function ({
-  rows,
-  cursors,
-  rowHeight,
-  onEventClick,
-  labelWidth: initialLabelWidth,
-  className,
-  style,
-  initialScrollRowIndex,
-}: TimelineChartProps) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState(0);
-  const [cursorXPerc, setCursorXPerc] = useState(0);
+// Smallest selectable viewport width as a timeline fraction. Guards against
+// divide-by-zero / runaway scale when brushing or resizing to a tiny range.
+const MIN_VIEWPORT_FRAC = 0.02;
 
-  const prevScale = usePrevious(scale);
+const axisHeight = 24;
+const rowsMarginTop = 32;
+const maxScale = 100;
+
+export const TimelineChart = memo(function (props: TimelineChartProps) {
+  const {
+    initialScrollRowIndex,
+    labelWidth: initialLabelWidth,
+    maxHeight,
+    rowHeight,
+    rows,
+    onEventClick,
+    onReady,
+  } = props;
+
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
+
   const { size: labelWidthPercent, startResize } = useResizable(
     initialWidthPercent,
     'left',
   );
 
-  const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
-
-  const timelineRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    if (prevScale != null && prevScale != scale) {
-      setOffset(offset => {
-        const newScale = scale;
-
-        // we try to calculate the new offset we need to keep the cursor's
-        // abs % the same between current scale and new scale
-        // cursor abs % = cursorTime/maxVal = offset / 100 + xPerc / scale
-        const boundedCursorXPerc = Math.max(Math.min(cursorXPerc, 1), 0);
-        const newOffset =
-          offset +
-          (100 * boundedCursorXPerc) / prevScale -
-          (100 * boundedCursorXPerc) / newScale;
-
-        return Math.min(Math.max(newOffset, 0), 100 - 100 / scale);
-      });
-    }
-  }, [scale, prevScale, cursorXPerc]);
-
-  const onDragMove = useStableCallback(({ movementX }: PointerEvent) => {
-    setOffset(v =>
-      Math.min(Math.max(v - movementX * (0.125 / scale), 0), 100 - 100 / scale),
-    );
-  });
-
-  const dragHandlers = useMemo(
-    () => ({
-      onDragStart: () => {
-        if (timelineRef.current) {
-          timelineRef.current.style.userSelect = 'none';
-        }
-      },
-
-      onDragEnd: () => {
-        if (timelineRef.current) {
-          timelineRef.current.style.userSelect = 'auto';
-        }
-      },
-
-      onDragMove,
-    }),
-    [onDragMove],
+  const labelWidth = useMemo(
+    () => (labelWidthPercent / 100) * window.innerWidth,
+    [labelWidthPercent],
   );
 
-  const onPointerDown = useDrag(dragHandlers);
+  // Mirrored into a ref synchronously during render so handlers wrapped in
+  // useStableCallback (which sync via useLayoutEffect) cannot read a stale
+  // value if a wheel/scroll event fires before the layout-effect tick. A
+  // useLayoutEffect mirror would have the same gap we are trying to close.
+  const labelWidthRef = useRef(labelWidth);
+
+  labelWidthRef.current = labelWidth;
+
+  const timelineRef = useRef<HTMLDivElement>(null);
+  // Ref instead of state — height changes during a panel-resize drag would
+  // otherwise re-render the virtualizer (and recreate every visible row's
+  // inline onClick closure) for what's purely a cosmetic cursor-line height.
+  // Children read it imperatively inside their `recompute` calls.
+  const timelineHeightRef = useRef(0);
+
+  const scaleRef = useRef(1);
+  const timelineScrollerRef = useRef<HTMLDivElement>(null);
+  const xAxisHandleRef = useRef<TimelineXAxisHandle>(null);
+  const mouseCursorHandleRef = useRef<TimelineMouseCursorHandle>(null);
+
+  useLayoutEffect(() => {
+    const element = timelineRef.current;
+    if (element == null) return;
+
+    timelineHeightRef.current = element.getBoundingClientRect().height;
+    xAxisHandleRef.current?.recompute();
+    mouseCursorHandleRef.current?.recompute();
+
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (entry == null) return;
+      timelineHeightRef.current = entry.contentRect.height;
+      xAxisHandleRef.current?.recompute();
+      mouseCursorHandleRef.current?.recompute();
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => timelineRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 5,
+  });
+
+  const initialScrolledRef = useRef(false);
+
+  useEffect(() => {
+    initialScrolledRef.current = false;
+  }, [initialScrollRowIndex]);
+
+  useEffect(() => {
+    if (!initialScrolledRef.current && initialScrollRowIndex >= 0) {
+      initialScrolledRef.current = true;
+      rowVirtualizer.scrollToIndex(initialScrollRowIndex, {
+        align: 'center',
+      });
+    }
+  }, [initialScrollRowIndex, rowVirtualizer]);
+
+  const maxVal = useMemo(() => getMaxEventValue(rows), [rows]);
+
+  // Subscribers (the minimap) notified on scroll/zoom so they can re-read the
+  // viewport. rAF-throttled so native scroll bursts collapse to one read.
+  const subscribersRef = useRef<Set<() => void>>(new Set());
+  const notifyRafRef = useRef<number | null>(null);
+
+  const notifyViewport = useStableCallback(() => {
+    if (notifyRafRef.current != null) return;
+    notifyRafRef.current = requestAnimationFrame(() => {
+      notifyRafRef.current = null;
+      subscribersRef.current.forEach(cb => cb());
+    });
+  });
+
+  // Low-level commit shared by wheel-zoom and the minimap: set the scale, the
+  // scroller width, and the scroll position, then re-layout the axis/cursor and
+  // notify viewport subscribers. The browser clamps scrollLeft to a valid range.
+  const commitViewport = useStableCallback(
+    (newScale: number, newScrollLeft: number) => {
+      const container = timelineRef.current;
+      const scroller = timelineScrollerRef.current;
+      if (!container || !scroller) return;
+
+      const clamped = Math.min(Math.max(newScale, 1), maxScale);
+      scaleRef.current = clamped;
+      scroller.style.width = `${100 * clamped}%`;
+      container.scrollLeft = newScrollLeft;
+
+      xAxisHandleRef.current?.recompute();
+      mouseCursorHandleRef.current?.recompute();
+      notifyViewport();
+    },
+  );
+
+  const getViewportState = useStableCallback((): TimelineViewportState => {
+    const container = timelineRef.current;
+    const scale = scaleRef.current;
+    const clientW = container?.clientWidth ?? 1;
+    const labelW = labelWidthRef.current;
+    // Events area width at the current scale; matches the geometry used by
+    // flushWheel (scroller width is 100*scale% of the container).
+    const eventsW = Math.max(1, clientW * scale - labelW);
+    const offsetFrac = container ? container.scrollLeft / eventsW : 0;
+    const viewportWidthFrac = Math.min(1, (clientW - labelW) / eventsW);
+    return { scale, offsetFrac, viewportWidthFrac };
+  });
+
+  const zoomToRange = useStableCallback(
+    (startFrac: number, endFrac: number) => {
+      const container = timelineRef.current;
+      if (!container) return;
+      const clientW = container.clientWidth;
+      const labelW = labelWidthRef.current;
+      const widthFrac = Math.max(endFrac - startFrac, MIN_VIEWPORT_FRAC);
+      // Invert viewportWidthFrac = (W - labelW) / (W*scale - labelW).
+      const newScale = (labelW + (clientW - labelW) / widthFrac) / clientW;
+      const clamped = Math.min(Math.max(newScale, 1), maxScale);
+      const eventsWNew = Math.max(1, clientW * clamped - labelW);
+      commitViewport(clamped, startFrac * eventsWNew);
+    },
+  );
+
+  const panToOffset = useStableCallback((offsetFrac: number) => {
+    const container = timelineRef.current;
+    if (!container) return;
+    const clientW = container.clientWidth;
+    const labelW = labelWidthRef.current;
+    const eventsW = Math.max(1, clientW * scaleRef.current - labelW);
+    commitViewport(scaleRef.current, offsetFrac * eventsW);
+  });
+
+  const resetViewport = useStableCallback(() => {
+    commitViewport(1, 0);
+  });
+
+  const subscribeViewport = useStableCallback((cb: () => void) => {
+    subscribersRef.current.add(cb);
+    return () => {
+      subscribersRef.current.delete(cb);
+    };
+  });
+
+  // Stable controller object created once; methods are stable (useStableCallback).
+  const controllerRef = useRef<TimelineViewportController | null>(null);
+  if (controllerRef.current == null) {
+    controllerRef.current = {
+      getState: getViewportState,
+      subscribe: subscribeViewport,
+      zoomToRange,
+      panToOffset,
+      reset: resetViewport,
+    };
+  }
+
+  useEffect(() => {
+    if (controllerRef.current != null) {
+      onReady?.(controllerRef.current);
+    }
+  }, [onReady]);
+
+  // Native horizontal scroll (trackpad / scrollbar) pans the events area; keep
+  // the minimap viewport rectangle in sync.
+  useEffect(() => {
+    const element = timelineRef.current;
+    if (element == null) return;
+    const onScroll = () => notifyViewport();
+    element.addEventListener('scroll', onScroll, { passive: true });
+    return () => element.removeEventListener('scroll', onScroll);
+  }, [notifyViewport]);
+
+  // Re-notify subscribers when the label column is resized, because the
+  // events-area width fraction changes even though scale and scrollLeft don't.
+  // Without this the minimap viewport rect keeps stale offset/width fractions
+  // until the next scroll or wheel-zoom.
+  useEffect(() => {
+    notifyViewport();
+  }, [labelWidth, notifyViewport]);
+
+  useEffect(() => {
+    return () => {
+      if (notifyRafRef.current != null) {
+        cancelAnimationFrame(notifyRafRef.current);
+        notifyRafRef.current = null;
+      }
+    };
+  }, []);
+
+  // Wheel deltas accumulate into a pending state and the zoom commit runs
+  // once per frame via rAF, so a fast scroll in one frame collapses to a
+  // single read+write pass rather than thrashing layout per delta.
+  const wheelStateRef = useRef<{
+    pendingDelta: number;
+    pendingClientX: number;
+    rafId: number | null;
+  }>({ pendingDelta: 0, pendingClientX: 0, rafId: null });
+
+  const flushWheel = useStableCallback(() => {
+    const state = wheelStateRef.current;
+    state.rafId = null;
+
+    const delta = state.pendingDelta;
+    const cursorClientX = state.pendingClientX;
+    state.pendingDelta = 0;
+
+    if (delta === 0) {
+      return;
+    }
+
+    const container = timelineRef.current;
+    const scroller = timelineScrollerRef.current;
+
+    if (!container || !scroller) {
+      return;
+    }
+
+    const oldScale = scaleRef.current;
+    const newScale = Math.min(Math.max(oldScale + -delta * 0.01, 1), maxScale);
+
+    if (newScale === oldScale) {
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+
+    const clientW = container.clientWidth;
+    const labelW = labelWidthRef.current;
+
+    const eventsWOld = Math.max(1, clientW * oldScale - labelW);
+    const eventsWNew = Math.max(1, clientW * newScale - labelW);
+
+    // Clamp cursor to the events area so hovering the label column anchors
+    // the zoom at the events-area left edge instead of going negative.
+    const cursorPx = Math.min(
+      Math.max(0, cursorClientX - rect.left - labelW),
+      eventsWOld,
+    );
+
+    const fraction = (container.scrollLeft + cursorPx) / eventsWOld;
+
+    // Keep the cursor anchored to the same timeline fraction across the zoom.
+    commitViewport(newScale, fraction * eventsWNew - cursorPx);
+  });
 
   const onWheel = useStableCallback((e: WheelEvent) => {
-    const { deltaX, deltaY, metaKey, ctrlKey } = e;
+    const { deltaY, metaKey, ctrlKey, clientX } = e;
 
-    if (metaKey || ctrlKey) {
-      e.preventDefault();
-      setScale(v => Math.max(v + -deltaY * 0.01, 1));
+    if (!(metaKey || ctrlKey)) {
+      return;
     }
 
-    if (deltaX !== 0) {
-      e.preventDefault();
-    }
+    e.preventDefault();
 
-    setOffset(v =>
-      Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
-    );
+    const state = wheelStateRef.current;
+    state.pendingDelta += deltaY;
+    state.pendingClientX = clientX;
+
+    if (state.rafId != null) {
+      return;
+    }
+    state.rafId = requestAnimationFrame(flushWheel);
   });
 
   useEffect(() => {
     const element = timelineRef.current;
 
     if (element != null) {
+      // `passive: false` because we call e.preventDefault() to suppress
+      // page scroll when zooming with cmd/ctrl + wheel.
       element.addEventListener('wheel', onWheel, { passive: false });
 
       return () => {
@@ -154,154 +382,120 @@ export const TimelineChart = memo(function ({
     }
   }, [onWheel]);
 
-  const maxVal = useMemo(() => {
-    let max = 0;
-    for (const row of rows) {
-      for (const event of row.events) {
-        max = Math.max(max, event.end);
-      }
-    }
-    return max * 1.1; // add 10% padding
-  }, [rows]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => timelineRef.current,
-    estimateSize: () => rowHeight,
-    overscan: 5,
-  });
-  const items = rowVirtualizer.getVirtualItems();
-
-  const TIMELINE_AXIS_HEIGHT = 32;
-
-  const [initialScrolled, setInitialScrolled] = useState(false);
   useEffect(() => {
-    if (
-      initialScrollRowIndex != null &&
-      !initialScrolled &&
-      initialScrollRowIndex >= 0
-    ) {
-      setInitialScrolled(true);
-      rowVirtualizer.scrollToIndex(initialScrollRowIndex, {
-        align: 'center',
-      });
-    }
-  }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
+    const state = wheelStateRef.current;
+    return () => {
+      if (state.rafId != null) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+      }
+    };
+  }, []);
+
+  const handleRowClick = useStableCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const id = e.currentTarget.dataset.id;
+      if (id == null) return;
+      const row = rows.find(r => r.id === id);
+      if (row == null) return;
+      onEventClick(row);
+    },
+  );
 
   return (
-    <>
+    <Flex h={maxHeight} mah={maxHeight} direction="column">
       <Flex justify="end" mb="sm">
         <Text>
           <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
         </Text>
       </Flex>
-      <div
-        style={{
-          position: 'relative',
-          overscrollBehaviorX: 'contain',
-          ...style,
-        }}
-        className={className}
-        ref={timelineRef}
-        onPointerDown={onPointerDown}
-      >
-        {(cursors ?? ([] as const)).map(cursor => {
-          const xPerc = (cursor.start / maxVal - offset / 100) * scale;
-          return (
-            <TimelineCursor
-              key={cursor.id}
-              xPerc={xPerc}
-              height={
-                timelineRef.current?.getBoundingClientRect().height ?? 300
-              }
-              labelWidth={labelWidth}
-              color={cursor.color}
-            />
-          );
-        })}
-        <TimelineMouseCursor
-          containerRef={timelineRef}
-          maxVal={maxVal}
-          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-          labelWidth={labelWidth}
-          scale={scale}
-          offset={offset}
-          xPerc={cursorXPerc}
-          setXPerc={setCursorXPerc}
-        />
-        <TimelineXAxis
-          maxVal={maxVal}
-          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-          labelWidth={labelWidth}
-          scale={scale}
-          offset={offset}
-        />
 
-        <div
-          style={{
-            height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
+      <div className={styles.timelineViewport}>
+        <div className={styles.timelineContainer} ref={timelineRef}>
           <div
+            ref={timelineScrollerRef}
+            className={styles.timelineScroller}
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${items?.[0]?.start ?? 0}px)`,
+              height: `${rowVirtualizer.getTotalSize() + axisHeight + rowsMarginTop}px`,
             }}
           >
+            <TimelineXAxis
+              ref={xAxisHandleRef}
+              maxVal={maxVal}
+              heightRef={timelineHeightRef}
+              labelWidth={labelWidth}
+            />
+
+            <div
+              aria-hidden
+              className={styles.timelineCorner}
+              style={{
+                width: labelWidth,
+                height: `${axisHeight + rowsMarginTop}px`,
+                marginTop: `-${axisHeight + rowsMarginTop}px`,
+              }}
+            />
+
             {rowVirtualizer.getVirtualItems().map(virtualRow => {
               const row = rows[virtualRow.index];
+              const top = virtualRow.start + axisHeight + rowsMarginTop;
 
               return (
                 <div
-                  onClick={() => onEventClick?.(row)}
                   key={virtualRow.index}
                   data-index={virtualRow.index}
+                  data-id={row.id}
                   ref={rowVirtualizer.measureElement}
-                  className={`${cx(
-                    'd-flex align-items-center overflow-hidden',
-                    row.className,
-                    styles.timelineRow,
-                    row.isActive && styles.timelineRowActive,
-                  )}`}
-                  style={row.style}
+                  className={cx(styles.timelineRow, {
+                    [styles.timelineRowActive]: row.isActive,
+                  })}
+                  style={{ top }}
+                  onClick={handleRowClick}
                 >
                   <div
                     className={styles.labelContainer}
-                    style={{
-                      width: labelWidth,
-                      minWidth: labelWidth,
-                    }}
+                    style={{ width: labelWidth }}
                   >
-                    {row.label}
-                    <div
-                      className={resizeStyles.resizeHandle}
-                      onMouseDown={startResize}
-                      onPointerDown={e => {
-                        // so it doesn't trigger drag start in useDrag
-                        e.stopPropagation();
-                      }}
-                      style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+                    <div className={styles.labelContent}>{row.label}</div>
+                  </div>
+
+                  <div
+                    className={styles.eventsContainer}
+                    style={{ height: `${virtualRow.size}px` }}
+                  >
+                    <TimelineChartRowEvents
+                      events={row.events}
+                      height={rowHeight}
+                      maxVal={maxVal}
                     />
                   </div>
-                  <TimelineChartRowEvents
-                    events={row.events}
-                    height={rowHeight}
-                    maxVal={maxVal}
-                    scale={scale}
-                    offset={offset}
-                  />
                 </div>
               );
             })}
           </div>
         </div>
+
+        <div
+          className={styles.resizeHandleContainer}
+          style={{ transform: `translateX(${labelWidth}px)` }}
+        >
+          <div
+            className={resizeStyles.resizeHandle}
+            onMouseDown={startResize}
+            style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+          />
+        </div>
+
+        <TimelineMouseCursor
+          ref={mouseCursorHandleRef}
+          containerRef={timelineRef}
+          maxVal={maxVal}
+          heightRef={timelineHeightRef}
+          labelWidth={labelWidth}
+          scaleRef={scaleRef}
+        />
       </div>
-    </>
+    </Flex>
   );
 });
 

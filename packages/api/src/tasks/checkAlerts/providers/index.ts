@@ -3,17 +3,16 @@ import { Tile } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 
 import { ObjectId } from '@/models';
-import { IAlert } from '@/models/alert';
+import { IAlert, IAlertError } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { IConnection } from '@/models/connection';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { AggregatedAlertHistory } from '@/tasks/checkAlerts';
 import DefaultAlertProvider from '@/tasks/checkAlerts/providers/default';
 import logger from '@/utils/logger';
-
-import { AggregatedAlertHistory } from '..';
 
 export enum AlertTaskType {
   SAVED_SEARCH,
@@ -32,15 +31,19 @@ export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 // the are required when the type is set accordingly.
 export type AlertDetails = {
   alert: IAlert;
-  source: ISource;
   previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId||group -> history for group-by alerts
+  // For multi-window alerts (numConsecutiveWindows > 1): the recent per-group
+  // history (alertId||group -> histories, newest-first).
+  recentHistoryMap?: Map<string, AggregatedAlertHistory[]>;
 } & (
   | {
       taskType: AlertTaskType.SAVED_SEARCH;
+      source: ISource;
       savedSearch: Omit<ISavedSearch, 'source'>;
     }
   | {
       taskType: AlertTaskType.TILE;
+      source?: ISource;
       tile: Tile;
       dashboard: IDashboard;
     }
@@ -72,14 +75,27 @@ export interface AlertProvider {
     endTime: Date;
     granularity: string;
     startTime: Date;
+    tileId?: string;
   }): string;
 
   /**
    * Save the given AlertHistory records and update the associated alert's state.
    * Uses Promise.allSettled to handle partial failures gracefully.
    * The alert state is determined from successfully saved histories, or falls back to all histories if all saves fail.
+   * Also replaces the alert's `executionErrors` field with the provided errors from the current execution.
    */
-  updateAlertState(alertId: string, histories: IAlertHistory[]): Promise<void>;
+  updateAlertState(
+    alertId: string,
+    histories: IAlertHistory[],
+    errors: IAlertError[],
+  ): Promise<void>;
+
+  /**
+   * Replace the alert's `executionErrors` field without changing state or creating history.
+   * Use this when an error prevents the normal state/history update from running
+   * (e.g. a ClickHouse query error).
+   */
+  recordAlertErrors(alertId: string, errors: IAlertError[]): Promise<void>;
 
   /** Fetch all webhooks for the given team, returning a map of webhook ID to webhook */
   getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;

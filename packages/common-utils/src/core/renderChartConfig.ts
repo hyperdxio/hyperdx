@@ -3,7 +3,11 @@ import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { translateHistogram } from '@/core/histogram';
+import {
+  GROUP_ALIAS,
+  translateExponentialHistogram,
+  translateHistogram,
+} from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
@@ -13,11 +17,21 @@ import {
   joinQuerySettings,
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
+  pickBucketTimestampColumn,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+  isRawSqlChartConfig,
+} from '@/guards';
 import { replaceMacros } from '@/macros';
-import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import {
+  buildTextIndexInfoLookup,
+  CustomSchemaSQLSerializerV2,
+  SearchQueryBuilder,
+  TextIndexInfoLookup,
+} from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
@@ -32,12 +46,12 @@ import {
   DateRange,
   DisplayType,
   MetricsDataType,
+  PromqlChartConfig,
   QuerySettings,
   RawSqlChartConfig,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
-  SelectSQLStatement,
   SortSpecificationList,
   SqlAstFilter,
   SQLInterval,
@@ -65,16 +79,11 @@ type ColumnRef = SQLParser.ColumnRef & {
   }[];
 };
 
-function determineTableName(select: SelectSQLStatement): string {
-  if ('metricTables' in select.from) {
-    return select.from.tableName;
-  }
-
-  return '';
-}
-
 const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
+
+// Maximum number of distinct groups shown in a time chart when using 'increase' with a groupBy.
+const INCREASE_MAX_NUM_GROUPS = 20;
 
 export function isUsingGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRange,
@@ -84,18 +93,21 @@ export function isUsingGroupBy(
   return chartConfig.groupBy != null && chartConfig.groupBy.length > 0;
 }
 
-export function isUsingGranularity(
-  chartConfig: BuilderChartConfigWithOptDateRange,
-): chartConfig is Omit<
-  Omit<Omit<BuilderChartConfigWithDateRange, 'granularity'>, 'dateRange'>,
-  'timestampValueExpression'
-> & {
-  granularity: NonNullable<BuilderChartConfigWithDateRange['granularity']>;
-  dateRange: NonNullable<BuilderChartConfigWithDateRange['dateRange']>;
-  timestampValueExpression: NonNullable<
-    BuilderChartConfigWithDateRange['timestampValueExpression']
-  >;
-} {
+export function isUsingGranularity<
+  T extends BuilderChartConfigWithOptDateRange,
+>(
+  chartConfig: T,
+): chartConfig is T &
+  Omit<
+    Omit<Omit<BuilderChartConfigWithDateRange, 'granularity'>, 'dateRange'>,
+    'timestampValueExpression'
+  > & {
+    granularity: NonNullable<BuilderChartConfigWithDateRange['granularity']>;
+    dateRange: NonNullable<BuilderChartConfigWithDateRange['dateRange']>;
+    timestampValueExpression: NonNullable<
+      BuilderChartConfigWithDateRange['timestampValueExpression']
+    >;
+  } {
   return (
     chartConfig.timestampValueExpression != null &&
     chartConfig.granularity != null
@@ -121,9 +133,11 @@ export const setChartSelectsAlias = (
         ...s,
         alias:
           s.alias ||
-          (s.isDelta
-            ? `${s.aggFn}(delta(${s.metricName}))`
-            : `${s.aggFn}(${s.metricName})`), // use an alias if one isn't already set
+          (s.aggFn === 'increase'
+            ? `increase(${s.metricName})`
+            : s.isDelta
+              ? `${s.aggFn}(delta(${s.metricName}))`
+              : `${s.aggFn}(${s.metricName})`), // use an alias if one isn't already set
       })),
     };
   }
@@ -150,8 +164,12 @@ export const splitChartConfigs = (
     return _configs;
   }
 
-  if (isRawSqlChartConfig(config) || isBuilderChartConfig(config)) {
-    return [config]; // narrowed to BuilderChartConfig or RawSqlChartConfig, assignable to RawSqlChartConfigEx
+  if (
+    isRawSqlChartConfig(config) ||
+    isPromqlChartConfig(config) ||
+    isBuilderChartConfig(config)
+  ) {
+    return [config];
   }
 
   throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
@@ -315,8 +333,165 @@ const fastifySQL = ({
     traverse(ast.where);
 
     return parser.sqlify(ast);
-  } catch (e) {
+  } catch {
     return rawSQL;
+  }
+};
+
+function generateHasSqlForKvItemsColumn(
+  column: string,
+  key: string,
+  separator: string,
+  value: string,
+): string {
+  return SqlString.format('has(??, concat(?, ?, ?))', [
+    column,
+    key,
+    separator,
+    value,
+  ]);
+}
+
+export const rewriteSqlFilterWithKvItems = (
+  condition: string,
+  textIndexInfoLookup: TextIndexInfoLookup,
+): string => {
+  if (textIndexInfoLookup.size === 0) return condition;
+  try {
+    const parser = new SQLParser.Parser();
+    const prefix = 'SELECT 1 FROM `t` WHERE ';
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const ast = parser.astify(`${prefix}${condition}`, {
+      database: 'Postgresql',
+    }) as SQLParser.Select;
+
+    const tryOptimize = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+    ): void => {
+      if (!('operator' in node)) return;
+      const op = String(node.operator ?? '').toUpperCase();
+      if (op !== '=' && op !== 'IN') return;
+      const left = node.left;
+      if (
+        left?.type !== 'column_ref' ||
+        ('column' in left && typeof left.column === 'string')
+      ) {
+        return;
+      }
+      const mapColumn = left['column']?.expr?.value;
+      const arrIdx = left['array_index'];
+      if (
+        typeof mapColumn !== 'string' ||
+        !Array.isArray(arrIdx) ||
+        arrIdx.length !== 1
+      ) {
+        return;
+      }
+      const idxNode = arrIdx[0]?.index;
+      if (
+        idxNode?.type !== 'single_quote_string' ||
+        typeof idxNode.value !== 'string'
+      ) {
+        return;
+      }
+      const mapKey: string = idxNode.value;
+      const info = textIndexInfoLookup.get(mapColumn)?.kv;
+      if (!info) return;
+
+      let values: string[];
+      if (op === '=') {
+        const right = node.right;
+        if (
+          right?.type !== 'single_quote_string' ||
+          typeof right.value !== 'string'
+        ) {
+          return;
+        }
+        values = [right.value];
+      } else {
+        const right = node.right;
+        if (right?.type !== 'expr_list' || !Array.isArray(right.value)) return;
+        const collected: string[] = [];
+        for (const item of right.value) {
+          if (
+            item?.type !== 'single_quote_string' ||
+            typeof item.value !== 'string'
+          ) {
+            return;
+          }
+          collected.push(item.value);
+        }
+        values = collected;
+      }
+      // Bail on empty values: `Map['k']='' ` also matches absent keys because
+      // Map(String, String)'s subscript default is '', which `has(items, 'k=')`
+      // alone does not preserve. Same rationale for empty entries in IN lists.
+      if (values.length === 0 || values.some(v => v === '')) return;
+
+      let replacement: string;
+      if (values.length === 1) {
+        replacement = generateHasSqlForKvItemsColumn(
+          info.columnName,
+          mapKey,
+          info.separator,
+          values[0],
+        );
+      } else if (info.useHasAny) {
+        // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
+        // column in a single call.
+        replacement = `hasAny(${SqlString.format('??', [
+          info.columnName,
+        ])}, array(${values
+          .map(v =>
+            SqlString.format('concat(?, ?, ?)', [mapKey, info.separator, v]),
+          )
+          .join(', ')}))`;
+      } else {
+        // Backport branches (26.2/26.3/26.4) support `has` but not `hasAny` over
+        // the items column, so we fall back to a chain of `has(...) OR ...`.
+        replacement = `(${values
+          .map(v =>
+            generateHasSqlForKvItemsColumn(
+              info.columnName,
+              mapKey,
+              info.separator,
+              v,
+            ),
+          )
+          .join(' OR ')})`;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
+      const replAst = parser.astify(`${prefix}${replacement}`, {
+        database: 'Postgresql',
+      }) as SQLParser.Select;
+      const newWhere = replAst.where;
+      if (newWhere == null) return;
+      for (const k of Object.keys(node)) delete node[k];
+      Object.assign(node, newWhere);
+    };
+
+    const traverse = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
+    ): void => {
+      if (node == null) return;
+      if (node.type === 'binary_expr') {
+        if ('left' in node) {
+          traverse(node.left);
+        }
+        if ('right' in node) {
+          traverse(node.right);
+        }
+        tryOptimize(node);
+      } else if (node.type === 'expr_list' && Array.isArray(node.value)) {
+        node.value.forEach(traverse);
+      }
+    };
+    traverse(ast.where);
+
+    return parser.sqlify(ast).slice(prefix.length);
+  } catch {
+    return condition;
   }
 };
 
@@ -325,11 +500,13 @@ const aggFnExpr = ({
   expr,
   level,
   where,
+  sampleWeightExpression,
 }: {
   fn: AggregateFunction | AggregateFunctionWithCombinators;
   expr?: string;
   level?: number;
   where?: string;
+  sampleWeightExpression?: string;
 }) => {
   const isAny = fn === 'any';
   const isNone = fn === 'none';
@@ -369,6 +546,79 @@ const aggFnExpr = ({
     return chSql`${fn}(${unsafeExpr}${
       isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''
     })`;
+  }
+
+  // Sample-weighted aggregations: when sampleWeightExpression is set,
+  // each row carries a weight (defaults to 1 for unsampled spans).
+  // Corrected formulas account for upstream sampling (1-in-N).
+  // The greatest(..., 1) ensures unsampled rows (missing/empty/zero)
+  // are counted at weight 1 rather than dropped.
+  if (
+    sampleWeightExpression &&
+    !fn.endsWith('Merge') &&
+    !fn.endsWith('State')
+  ) {
+    const sampleWeightExpr = `greatest(toUInt64OrZero(toString(${sampleWeightExpression})), 1)`;
+    const w = { UNSAFE_RAW_SQL: sampleWeightExpr };
+
+    if (fn === 'count') {
+      return isWhereUsed
+        ? chSql`sumIf(${w}, ${{ UNSAFE_RAW_SQL: where }})`
+        : chSql`sum(${w})`;
+    }
+
+    if (fn === 'none') {
+      return chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
+    }
+
+    if (expr != null) {
+      if (fn === 'count_distinct' || fn === 'min' || fn === 'max') {
+        // These cannot be corrected for sampling; pass through unchanged
+        if (fn === 'count_distinct') {
+          return chSql`count${isWhereUsed ? 'If' : ''}(DISTINCT ${{
+            UNSAFE_RAW_SQL: expr,
+          }}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: where }}` : ''})`;
+        }
+        return chSql`${{ UNSAFE_RAW_SQL: fn }}${isWhereUsed ? 'If' : ''}(
+          ${unsafeExpr}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}` : ''}
+        )`;
+      }
+
+      if (fn === 'avg') {
+        const weightedVal = {
+          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
+        };
+        const nullCheck = `${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
+        if (isWhereUsed) {
+          const cond = { UNSAFE_RAW_SQL: `${where} AND ${nullCheck}` };
+          return chSql`sumIf(${weightedVal}, ${cond}) / nullIf(sumIf(${w}, ${cond}), 0)`;
+        }
+        return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: nullCheck }}) / nullIf(sumIf(${w}, ${{ UNSAFE_RAW_SQL: nullCheck }}), 0)`;
+      }
+
+      if (fn === 'sum') {
+        const weightedVal = {
+          UNSAFE_RAW_SQL: `${unsafeExpr.UNSAFE_RAW_SQL} * ${sampleWeightExpr}`,
+        };
+        if (isWhereUsed) {
+          return chSql`sumIf(${weightedVal}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+        }
+        return chSql`sum(${weightedVal})`;
+      }
+
+      if (level != null && fn.startsWith('quantile')) {
+        const levelStr = Number.isFinite(level) ? `${level}` : '0';
+        const weightArg = {
+          UNSAFE_RAW_SQL: `toUInt32(${sampleWeightExpr})`,
+        };
+        if (isWhereUsed) {
+          return chSql`quantileTDigestWeightedIf(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+        }
+        return chSql`quantileTDigestWeighted(${{ UNSAFE_RAW_SQL: levelStr }})(${unsafeExpr}, ${weightArg})`;
+      }
+
+      // For any other fn (last_value, any, etc.), fall through to default
+    }
   }
 
   if (fn === 'count') {
@@ -416,6 +666,13 @@ const aggFnExpr = ({
   }
 };
 
+export function isRatioChartConfig(
+  selectList: SelectList,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+): boolean {
+  return chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
+}
+
 async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -445,20 +702,24 @@ async function renderSelectList(
     // ignore
   }
 
-  const isRatio =
-    chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
+  const isRatio = isRatioChartConfig(selectList, chartConfig);
 
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
-      const whereClause = await renderWhereExpression({
-        condition: select.aggCondition ?? '',
-        from: chartConfig.from,
-        language: select.aggConditionLanguage ?? 'lucene',
-        implicitColumnExpression: chartConfig.implicitColumnExpression,
-        metadata,
-        connectionId: chartConfig.connection,
-        with: chartConfig.with,
-      });
+      const whereClause = isNonEmptyWhereExpr(select.aggCondition)
+        ? await renderWhereExpression({
+            condition: select.aggCondition ?? '',
+            from: chartConfig.from,
+            language: select.aggConditionLanguage ?? 'lucene',
+            implicitColumnExpression: chartConfig.implicitColumnExpression,
+            bodyExpression: chartConfig.bodyExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
+            metadata,
+            connectionId: chartConfig.connection,
+            with: chartConfig.with,
+          })
+        : chSql``;
 
       let expr: ChSql;
       if (select.aggFn == null) {
@@ -469,6 +730,9 @@ async function renderSelectList(
                 from: chartConfig.from,
                 language: 'lucene',
                 implicitColumnExpression: chartConfig.implicitColumnExpression,
+                bodyExpression: chartConfig.bodyExpression,
+                useTextIndexForImplicitColumn:
+                  chartConfig.useTextIndexForImplicitColumn,
                 metadata,
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
@@ -484,12 +748,14 @@ async function renderSelectList(
           // @ts-expect-error (TS doesn't know that we've already checked for quantile)
           level: select.level,
           where: whereClause.sql,
+          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       } else {
         expr = aggFnExpr({
           fn: select.aggFn,
           expr: select.valueExpression,
           where: whereClause.sql,
+          sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       }
 
@@ -530,17 +796,36 @@ function renderSortSpecificationList(
 function timeBucketExpr({
   interval,
   timestampValueExpression,
+  bucketTimestampValueExpression,
   dateRange,
   alias = FIXED_TIME_BUCKET_EXPR_ALIAS,
+  isRenderingRawSqlTemplate,
 }: {
   interval: SQLInterval | 'auto';
   timestampValueExpression: string;
+  /**
+   * Pre-resolved single column for the bucket. Threaded down from
+   * `renderChartConfig` via `pickBucketTimestampColumn`. When absent we
+   * fall back to the first token of `timestampValueExpression` so existing
+   * single-column sources keep working.
+   */
+  bucketTimestampValueExpression?: string;
   dateRange?: [Date, Date];
   alias?: string;
+  isRenderingRawSqlTemplate?: boolean;
 }) {
   const unsafeTimestampValueExpression = {
-    UNSAFE_RAW_SQL: getFirstTimestampValueExpression(timestampValueExpression),
+    UNSAFE_RAW_SQL:
+      bucketTimestampValueExpression ??
+      getFirstTimestampValueExpression(timestampValueExpression),
   };
+
+  if (isRenderingRawSqlTemplate) {
+    return chSql`$__timeInterval(${unsafeTimestampValueExpression}) AS \`${{
+      UNSAFE_RAW_SQL: alias,
+    }}\``;
+  }
+
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
       interval === 'auto' && Array.isArray(dateRange)
@@ -559,6 +844,7 @@ export async function timeFilterExpr({
   dateRange,
   dateRangeEndInclusive,
   dateRangeStartInclusive,
+  isRenderingRawSqlTemplate,
   includedDataInterval,
   metadata,
   tableName,
@@ -570,6 +856,7 @@ export async function timeFilterExpr({
   dateRange: [Date, Date];
   dateRangeEndInclusive: boolean;
   dateRangeStartInclusive: boolean;
+  isRenderingRawSqlTemplate?: boolean;
   includedDataInterval?: string;
   metadata: Metadata;
   tableName: string;
@@ -609,44 +896,72 @@ export async function timeFilterExpr({
       // timestamp comparison must also have the same function
       const toStartOf = parseToStartOfFunction(col);
 
-      const columnMeta =
-        withClauses?.length || toStartOf
-          ? null
-          : await metadata.getColumn({
-              databaseName,
-              tableName,
-              column: col,
-              connectionId,
-            });
+      // Detect toDate(...) wrapper expressions
+      const isToDateExpr = /^toDate\s*\(/.test(col);
+
+      // Skip the column-metadata lookup when:
+      //   - the FROM references a CTE alias (no real base table to DESCRIBE), or
+      //   - the expression isn't a bare column name (wrapped in toStartOf/toDate).
+      // A subquery CTE alone is not enough — when `databaseName` is set, `col` still
+      // references a real base-table column whose type (e.g. Date) we need to know
+      // to generate a correct time filter.
+      const skipColumnLookup =
+        (hasSubqueryCte(withClauses) && !databaseName) ||
+        !!toStartOf ||
+        isToDateExpr;
+
+      const columnMeta = skipColumnLookup
+        ? null
+        : await metadata.getColumn({
+            databaseName,
+            tableName,
+            column: col,
+            connectionId,
+          });
 
       const unsafeTimestampValueExpression = {
         UNSAFE_RAW_SQL: col,
       };
 
-      if (columnMeta == null && !withClauses?.length && !toStartOf) {
+      if (columnMeta == null && !skipColumnLookup) {
         console.warn(
           `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
         );
       }
 
-      const startTimeCond = includedDataInterval
-        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
-        : toStartOf
-          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: startTime }})${toStartOf.formattedRemainingArgs})`
+      const rawStartBound = isRenderingRawSqlTemplate
+        ? includedDataInterval
+          ? chSql`toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second`
+          : chSql`$__fromTime_ms`
+        : includedDataInterval
+          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
 
-      const endTimeCond = includedDataInterval
-        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
-        : toStartOf
-          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
+      const rawEndBound = isRenderingRawSqlTemplate
+        ? includedDataInterval
+          ? chSql`toStartOfInterval($__toTime_ms, INTERVAL $__interval_s second) + INTERVAL $__interval_s second`
+          : chSql`$__toTime_ms`
+        : includedDataInterval
+          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
-      // toStartOf* filters must stay inclusive — strict < on a rounded value drops a whole interval
-      const startOp = dateRangeStartInclusive || toStartOf ? '>=' : '>';
-      const endOp = dateRangeEndInclusive || toStartOf ? '<=' : '<';
+      const startTimeCond = toStartOf
+        ? chSql`${toStartOf.function}(${rawStartBound}${toStartOf.formattedRemainingArgs})`
+        : rawStartBound;
 
-      // If it's a date type
-      if (columnMeta?.type === 'Date') {
+      const endTimeCond = toStartOf
+        ? chSql`${toStartOf.function}(${rawEndBound}${toStartOf.formattedRemainingArgs})`
+        : rawEndBound;
+
+      const isDateType = columnMeta?.type === 'Date' || isToDateExpr;
+
+      // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
+      const startOp =
+        dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
+      const endOp =
+        dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
+
+      if (isDateType) {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
@@ -681,7 +996,10 @@ async function renderSelect(
       ? timeBucketExpr({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          bucketTimestampValueExpression:
+            chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
+          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
         })
       : [],
   );
@@ -689,9 +1007,24 @@ async function renderSelect(
 
 function renderFrom({
   from,
+  isRenderingRawSqlTemplate,
+  metricType,
 }: {
   from: BuilderChartConfigWithDateRange['from'];
+  isRenderingRawSqlTemplate?: boolean;
+  /** Value passed to $__sourceTable(MetricType) when rendering a metric query as a SQL template */
+  metricType?: MetricsDataType;
 }): ChSql {
+  if (isRenderingRawSqlTemplate) {
+    if (metricType != null) {
+      return chSql`$__sourceTable(${{ UNSAFE_RAW_SQL: metricType }})`;
+    }
+    // The $__sourceTable macro only stands in for the real source table. A
+    // FROM with no database is a CTE reference, so render it literally.
+    if (from.databaseName !== '') {
+      return chSql`$__sourceTable`;
+    }
+  }
   return concatChSql(
     '.',
     chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
@@ -707,6 +1040,8 @@ async function renderWhereExpressionStr({
   metadata,
   from,
   implicitColumnExpression,
+  bodyExpression,
+  useTextIndexForImplicitColumn,
   connectionId,
   with: withClauses,
 }: {
@@ -715,6 +1050,8 @@ async function renderWhereExpressionStr({
   metadata: Metadata;
   from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
+  bodyExpression?: string;
+  useTextIndexForImplicitColumn?: BuilderChartConfigWithDateRange['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
 }): Promise<string> {
@@ -725,6 +1062,8 @@ async function renderWhereExpressionStr({
       databaseName: from.databaseName,
       tableName: from.tableName,
       implicitColumnExpression,
+      bodyExpression,
+      useTextIndexForImplicitColumn,
       connectionId: connectionId,
     });
     const builder = new SearchQueryBuilder(condition, serializer);
@@ -783,6 +1122,9 @@ async function renderWhere(
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        bodyExpression: chartConfig.bodyExpression,
+        useTextIndexForImplicitColumn:
+          chartConfig.useTextIndexForImplicitColumn,
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
@@ -808,6 +1150,9 @@ async function renderWhere(
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
+              bodyExpression: chartConfig.bodyExpression,
+              useTextIndexForImplicitColumn:
+                chartConfig.useTextIndexForImplicitColumn,
               metadata,
               connectionId: chartConfig.connection,
               with: chartConfig.with,
@@ -819,6 +1164,21 @@ async function renderWhere(
     ).filter(v => v !== null) as ChSql[];
   }
 
+  const hasSqlFilter =
+    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
+  const textIndexInfoLookup: TextIndexInfoLookup =
+    hasSqlFilter &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildTextIndexInfoLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
       if (filter.type === 'sql_ast') {
@@ -828,12 +1188,19 @@ async function renderWhere(
           ')',
         );
       } else if (filter.type === 'lucene' || filter.type === 'sql') {
+        const condition =
+          filter.type === 'sql'
+            ? rewriteSqlFilterWithKvItems(filter.condition, textIndexInfoLookup)
+            : filter.condition;
         return wrapChSqlIfNotEmpty(
           await renderWhereExpression({
-            condition: filter.condition,
+            condition,
             from: chartConfig.from,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            bodyExpression: chartConfig.bodyExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
             metadata,
             connectionId: chartConfig.connection,
             with: chartConfig.with,
@@ -856,6 +1223,7 @@ async function renderWhere(
           dateRange: chartConfig.dateRange,
           dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
           dateRangeEndInclusive: chartConfig.dateRangeEndInclusive ?? true,
+          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
           metadata,
           connectionId: chartConfig.connection,
           databaseName: chartConfig.from.databaseName,
@@ -875,11 +1243,18 @@ async function renderWhere(
       '(',
       ')',
     ),
+    // $__filters expands (at query time) to the dashboard filters, which
+    // reference columns of the real source table. Only emit it when this WHERE
+    // targets that source table (indicated by a non-empty databaseName).
+    chartConfig.isRenderingRawSqlTemplate &&
+      chartConfig.from.databaseName !== ''
+      ? chSql`$__filters`
+      : [],
   );
 }
 
 async function renderGroupBy(
-  chartConfig: BuilderChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
   return concatChSql(
@@ -891,10 +1266,123 @@ async function renderGroupBy(
       ? timeBucketExpr({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          bucketTimestampValueExpression:
+            chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
+          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
         })
       : [],
   );
+}
+
+async function renderSeriesLimitCte(
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+  {
+    from,
+    where,
+    groupBy,
+  }: { from: ChSql; where: ChSql; groupBy: ChSql | undefined },
+): Promise<{ cte: ChSql; predicate: ChSql } | undefined> {
+  const { seriesLimit } = chartConfig;
+  if (
+    seriesLimit == null ||
+    !isUsingGroupBy(chartConfig) ||
+    !isUsingGranularity(chartConfig) ||
+    chartConfig.selectGroupBy === false ||
+    // Skip CTE/metric sources (no real table to re-scan) and string selects.
+    !chartConfig.from?.databaseName ||
+    !chartConfig.from?.tableName ||
+    !Array.isArray(chartConfig.select) ||
+    chartConfig.select.length === 0 ||
+    groupBy == null
+  ) {
+    return undefined;
+  }
+
+  // When the query was chunked into time windows, rank over the shared
+  // range the caller pinned (the newest window) instead of each chunk's own
+  // window — otherwise each chunk keeps its own top-N and the union across
+  // chunks exceeds N. Inclusivity is normalized so all chunks emit an
+  // identical CTE (non-first windows set dateRangeEndInclusive=false).
+  const cteConfig = chartConfig.seriesLimitDateRange
+    ? {
+        ...chartConfig,
+        dateRange: chartConfig.seriesLimitDateRange,
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: true,
+      }
+    : undefined;
+  // groupBy is re-rendered (not reused) because timeBucketExpr derives the
+  // bucket size from dateRange when granularity is 'auto'.
+  const [cteWhere = where, cteGroupBy = groupBy] = cteConfig
+    ? await Promise.all([
+        renderWhere(cteConfig, metadata),
+        renderGroupBy(cteConfig, metadata),
+      ])
+    : [];
+
+  // One ChSql per group-by column (groupBy may be an array or a comma-separated
+  // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
+  // inside Map['a,b']; the per-column null filter below needs them separated.
+  let groupByCols: ChSql[];
+  if (typeof chartConfig.groupBy === 'string') {
+    groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
+      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+    );
+  } else {
+    // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
+    // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
+    const rendered = await renderSelectList(
+      chartConfig.groupBy.map(col => ({ ...col, alias: undefined })),
+      chartConfig,
+      metadata,
+    );
+    groupByCols = Array.isArray(rendered) ? rendered : [rendered];
+  }
+  const groupByTuple = concatChSql(',', groupByCols);
+
+  // Rank by the chart's first aggregate (alias stripped — we add our own).
+  const firstSelect = chartConfig.select[0];
+  const rankSelectList =
+    typeof firstSelect === 'string'
+      ? firstSelect
+      : [{ ...firstSelect, alias: undefined }];
+  const rankRendered = await renderSelectList(
+    rankSelectList,
+    chartConfig,
+    metadata,
+  );
+  const rankValue = Array.isArray(rankRendered)
+    ? rankRendered[0]
+    : rankRendered;
+
+  // Drop NULL components only (no-op on non-nullable columns).
+  const groupByNotNullFilter = concatChSql(
+    ' AND ',
+    groupByCols.map(g => chSql`${g} IS NOT NULL`),
+  );
+  const innerWhere = cteWhere.sql
+    ? concatChSql(' AND ', cteWhere, groupByNotNullFilter)
+    : groupByNotNullFilter;
+
+  // Per-(group, bucket) aggregate, then max per group, keeping the top N.
+  const cte = chSql`\`__hdx_series_limit\` AS (
+    SELECT \`group\`
+    FROM (
+      SELECT tuple(${groupByTuple}) AS \`group\`, ${rankValue} AS \`__hdx_series_rank\`
+      FROM ${from}
+      WHERE ${innerWhere}
+      GROUP BY ${cteGroupBy}
+    )
+    GROUP BY \`group\`
+    ORDER BY max(\`__hdx_series_rank\`) DESC, \`group\`
+    LIMIT ${{ Int32: seriesLimit }}
+  )`;
+
+  const predicate = chSql`tuple(${groupByTuple}) IN (SELECT \`group\` FROM \`__hdx_series_limit\`)`;
+
+  return { cte, predicate };
 }
 
 async function renderHaving(
@@ -910,6 +1398,8 @@ async function renderHaving(
     from: chartConfig.from,
     language: chartConfig.havingLanguage ?? 'sql',
     implicitColumnExpression: chartConfig.implicitColumnExpression,
+    bodyExpression: chartConfig.bodyExpression,
+    useTextIndexForImplicitColumn: chartConfig.useTextIndexForImplicitColumn,
     metadata,
     connectionId: chartConfig.connection,
     with: chartConfig.with,
@@ -917,7 +1407,7 @@ async function renderHaving(
 }
 
 function renderOrderBy(
-  chartConfig: BuilderChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
 ): ChSql | undefined {
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
 
@@ -931,7 +1421,10 @@ function renderOrderBy(
       ? timeBucketExpr({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          bucketTimestampValueExpression:
+            chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
+          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
         })
       : [],
     chartConfig.orderBy != null
@@ -972,6 +1465,24 @@ function renderSettings(
 type InternalChartFields = {
   includedDataInterval?: string;
   settings?: ChSql;
+  /**
+   * Pre-resolved single column from the (possibly multi-column)
+   * `timestampValueExpression`, used for the time-bucket and time-math
+   * expressions only. Resolved once at the top of `renderChartConfig` via
+   * `pickBucketTimestampColumn` so the bucket isn't pinned to a Date-typed
+   * partition column when a higher-precision DateTime column is also listed.
+   *
+   * Closes HDX-4371. The WHERE clause keeps using the multi-column form so
+   * partition pruning via the Date column continues to work.
+   */
+  bucketTimestampValueExpression?: string;
+  /**
+   * Emit raw-SQL-template macros ($__fromTime_ms, $__toTime_ms,
+   * $__timeInterval, $__sourceTable, $__filters) instead of bound
+   * date/interval/table values, so the result can be used as an editable
+   * `sqlTemplate`.
+   */
+  isRenderingRawSqlTemplate?: boolean;
 };
 
 type BuilderChartConfigWithOptDateRangeEx = BuilderChartConfigWithOptDateRange &
@@ -981,9 +1492,14 @@ type RawSqlChartConfigEx = RawSqlChartConfig &
   Partial<DateRange> &
   InternalChartFields;
 
+type PromqlChartConfigEx = PromqlChartConfig &
+  Partial<DateRange> &
+  InternalChartFields;
+
 export type ChartConfigWithOptDateRangeEx =
   | BuilderChartConfigWithOptDateRangeEx
-  | RawSqlChartConfigEx;
+  | RawSqlChartConfigEx
+  | PromqlChartConfigEx;
 
 async function renderWith(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -1092,7 +1608,7 @@ function renderFill(
 }
 
 function renderDeltaExpression(
-  chartConfig: BuilderChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   valueExpression: string,
 ) {
   const interval =
@@ -1101,8 +1617,21 @@ function renderDeltaExpression(
       : chartConfig.granularity;
   const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
 
-  const valueDiff = `(argMax(${valueExpression}, ${chartConfig.timestampValueExpression}) - argMin(${valueExpression}, ${chartConfig.timestampValueExpression}))`;
-  const timeDiffInSeconds = `date_diff('second', min(toDateTime(${chartConfig.timestampValueExpression})), max(toDateTime(${chartConfig.timestampValueExpression})))`;
+  // Use the pre-resolved bucket column for time math too. If
+  // `chartConfig.timestampValueExpression` lists multiple columns (the
+  // LogHouse `"EventDate, EventTime"` pattern), feeding it directly to
+  // `argMin`/`argMax`/`min`/`max` would emit invalid SQL like
+  // `argMax(value, EventDate, EventTime)`. Picking the highest-precision
+  // DateTime token via `bucketTimestampValueExpression` keeps the SQL
+  // valid and the math correct.
+  const timeExpr =
+    chartConfig.bucketTimestampValueExpression ??
+    getFirstTimestampValueExpression(
+      chartConfig.timestampValueExpression ?? '',
+    );
+
+  const valueDiff = `(argMax(${valueExpression}, ${timeExpr}) - argMin(${valueExpression}, ${timeExpr}))`;
+  const timeDiffInSeconds = `date_diff('second', min(toDateTime(${timeExpr})), max(toDateTime(${timeExpr})))`;
 
   // Prevent division by zero, if timeDiffInSeconds is 0, return 0
   // The delta is extrapolated to the bucket interval, to match prometheus delta() behavior
@@ -1119,12 +1648,35 @@ async function translateMetricChartConfig(
   }
 
   // assumes all the selects are from a single metric type, for now
-  const { select, from, filters, where, ...restChartConfig } = chartConfig;
+  const { select, from, filters, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
 
   const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+
+  // 'increase' is only valid for Sum metrics.
+  if (_select.aggFn === 'increase' && metricType !== MetricsDataType.Sum) {
+    throw new Error(
+      `aggFn 'increase' is only supported for Sum (counter) metrics (got metricType=${metricType})`,
+    );
+  }
+
+  const isExponentialHistogram =
+    metricType === MetricsDataType.ExponentialHistogram &&
+    metricName &&
+    MetricsDataType.ExponentialHistogram in metricTables &&
+    metricTables[MetricsDataType.ExponentialHistogram];
+  const isHistogram =
+    metricType === MetricsDataType.Histogram &&
+    metricName &&
+    MetricsDataType.Histogram in metricTables &&
+    metricTables[MetricsDataType.Histogram];
+
+  // AttributesHash is computed inline with a variadic cityHash64 call
+  // (HDX-4466). This works for both Map(LowCardinality(String), String) and
+  // JSON attribute columns, so no schema detection round-trip is needed.
+
   if (
     metricType === MetricsDataType.Gauge &&
     metricName &&
@@ -1137,8 +1689,11 @@ async function translateMetricChartConfig(
       timestampValueExpression:
         chartConfig.timestampValueExpression ||
         DEFAULT_METRIC_TABLE_TIME_COLUMN,
+      bucketTimestampValueExpression:
+        chartConfig.bucketTimestampValueExpression,
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
+      isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
     });
 
     const where = await renderWhere(
@@ -1171,8 +1726,8 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
-            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Gauge })}
             WHERE ${where}
           `,
         },
@@ -1224,14 +1779,15 @@ async function translateMetricChartConfig(
     metricTables[MetricsDataType.Sum]
   ) {
     const timeBucketCol = '__hdx_time_bucket2';
-    const valueHighCol = '`__hdx_value_high`';
-    const valueHighPrevCol = '`__hdx_value_high_prev`';
     const timeExpr = timeBucketExpr({
       interval: chartConfig.granularity || 'auto',
       timestampValueExpression:
         chartConfig.timestampValueExpression || 'TimeUnix',
+      bucketTimestampValueExpression:
+        chartConfig.bucketTimestampValueExpression,
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
+      isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
     });
 
     // Render the where clause to limit data selection on the source CTE but also search forward/back one
@@ -1267,89 +1823,211 @@ async function translateMetricChartConfig(
      *
      * Note, IsMonotonic = 0, has Cumulative agg temporality
      */
-    return {
-      ...restChartConfig,
-      with: [
-        {
-          name: 'Source',
-          sql: chSql`
+    const sumWith: NonNullable<BuilderChartConfigWithOptDateRangeEx['with']> = [
+      {
+        // Source: per-raw-row counter delta (Rate) and cumulative value (Sum)
+        // for each (AttributesHash, TimeUnix) point. On the first row of each
+        // series partition, lagInFrame returns NULL; `Value - NULL` is NULL,
+        // and `greatest(NULL, 0)` resolves to 0 — so Rate is 0 (contributing
+        // nothing to the bucket sum) rather than leaking the cumulative value.
+        //
+        // Counter-reset handling: `greatest(..., 0)` clamps negative deltas
+        // (counter resets/decreases) to 0. This differs from the Prometheus
+        // convention where a reset is treated as `current_value` (assuming
+        // the counter restarted from 0). The clamping approach under-reports
+        // the increase in the bucket immediately after a reset, but avoids
+        // injecting the full post-reset value as a spike.
+        name: 'Source',
+        sql: chSql`
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                  IF(AggregationTemporality = 1,
-                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    IF(IsMonotonic = 0, 
-                      Value,
-                      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-                    )
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
+                  IF(
+                    AggregationTemporality = 1,
+                    Value, -- DELTA: Value is already the per-interval increase
+                    greatest(Value - lagInFrame(toNullable(Value), 1, NULL) OVER (PARTITION BY AttributesHash ORDER BY TimeUnix), 0)
                   ) AS Rate,
-                  IF(AggregationTemporality = 1, Rate, Value) AS Sum
-                FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
+                  IF(
+                    AggregationTemporality = 1,
+                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+                    Value
+                  ) AS Sum
+                FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Sum })}
                 WHERE ${where}`,
-        },
-        {
-          name: 'Bucketed',
-          sql: chSql`
+      },
+      {
+        // Bucketed: one row per (AttributesHash, bucket). The aggregation is
+        // wrapped in an inner subquery so ClickHouse exposes Rate/Sum as plain
+        // columns; without the wrapper, outer `sum(Rate)` would lexically
+        // expand to the rejected `sum(sum(Source.Rate))`.
+        name: 'Bucketed',
+        sql: chSql`
             SELECT
-              ${timeExpr},
+              \`${timeBucketCol}\`,
               AttributesHash,
-              last_value(Source.Rate) AS ${valueHighCol},
-              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
-              IF(IsMonotonic = 1, ${valueHighCol} - ${valueHighPrevCol}, ${valueHighCol}) AS Rate,
-              last_value(Source.Sum) AS Sum,
-              any(ResourceAttributes) AS ResourceAttributes,
-              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-              any(ScopeName) AS ScopeName,
-              any(ScopeVersion) AS ScopeVersion,
-              any(ScopeAttributes) AS ScopeAttributes,
-              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-              any(ServiceName) AS ServiceName,
-              any(MetricName) AS MetricName,
-              any(MetricDescription) AS MetricDescription,
-              any(MetricUnit) AS MetricUnit,
-              any(Attributes) AS Attributes,
-              any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags,
-              any(AggregationTemporality) AS AggregationTemporality,
-              any(IsMonotonic) AS IsMonotonic
-            FROM Source
-            GROUP BY AttributesHash, \`${timeBucketCol}\`
-            ORDER BY AttributesHash, \`${timeBucketCol}\`
+              Rate,
+              Sum,
+              ResourceAttributes,
+              ResourceSchemaUrl,
+              ScopeName,
+              ScopeVersion,
+              ScopeAttributes,
+              ScopeDroppedAttrCount,
+              ScopeSchemaUrl,
+              ServiceName,
+              MetricName,
+              MetricDescription,
+              MetricUnit,
+              Attributes,
+              StartTimeUnix,
+              Flags,
+              AggregationTemporality,
+              IsMonotonic
+            FROM (
+              SELECT
+                ${timeExpr},
+                AttributesHash,
+                -- Per-bucket increase: sum of raw per-row deltas. NULL
+                -- Source.Rate (first row of each partition) is ignored by sum().
+                sum(Source.Rate) AS Rate,
+                -- Last cumulative reading in the bucket (by time), used by
+                -- the no-aggFn last_value(Sum) outer projection. argMax is
+                -- deterministic w.r.t. TimeUnix ordering unlike last_value
+                -- which in a GROUP BY context is anyLast (order-dependent).
+                argMax(Source.Sum, TimeUnix) AS Sum,
+                any(ResourceAttributes) AS ResourceAttributes,
+                any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+                any(ScopeName) AS ScopeName,
+                any(ScopeVersion) AS ScopeVersion,
+                any(ScopeAttributes) AS ScopeAttributes,
+                any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+                any(ScopeSchemaUrl) AS ScopeSchemaUrl,
+                any(ServiceName) AS ServiceName,
+                any(MetricName) AS MetricName,
+                any(MetricDescription) AS MetricDescription,
+                any(MetricUnit) AS MetricUnit,
+                any(Attributes) AS Attributes,
+                any(StartTimeUnix) AS StartTimeUnix,
+                any(Flags) AS Flags,
+                any(AggregationTemporality) AS AggregationTemporality,
+                any(IsMonotonic) AS IsMonotonic
+              FROM Source
+              GROUP BY AttributesHash, \`${timeBucketCol}\`
+              ORDER BY AttributesHash, \`${timeBucketCol}\`
+            )
           `,
-        },
-      ],
+      },
+    ];
+
+    // For aggFn='increase' + groupBy, restrict the outer query to the top N
+    // groups (mirrors v1's MAX_NUM_GROUPS). Ranking is done in a separate
+    // CTE rather than a window, since ClickHouse can't reference a
+    // window-aggregate inside another window's ORDER BY.
+    const shouldApplyIncreaseGroupLimit =
+      _select.aggFn === 'increase' && isUsingGroupBy(chartConfig);
+
+    let outerWhere: string = '';
+
+    if (shouldApplyIncreaseGroupLimit) {
+      // Render the user's groupBy against the Bucketed CTE so column
+      // references resolve to the CTE's projection.
+      const groupByForRank = await renderSelectList(
+        chartConfig.groupBy!,
+        {
+          ...chartConfig,
+          from: { databaseName: '', tableName: 'Bucketed' },
+          with: sumWith,
+        } as BuilderChartConfigWithOptDateRangeEx,
+        metadata,
+      );
+      const groupBySql = concatChSql(',', groupByForRank);
+
+      // Exclude rows where any groupBy column is NULL/empty so they don't
+      // collapse into a single dominating '-' series.
+      const groupByEmptyFilter = concatChSql(
+        ' AND ',
+        (Array.isArray(groupByForRank) ? groupByForRank : [groupByForRank]).map(
+          g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
+        ),
+      );
+
+      // Rank by max-per-bucket summed Rate so a group that spikes in one
+      // bucket still makes the top N. tuple() wraps multi-column groupBys
+      // into a single comparable column.
+      sumWith.push({
+        name: 'TopGroups',
+        sql: chSql`
+            SELECT \`group\`
+            FROM (
+              SELECT
+                tuple(${groupBySql}) AS \`group\`,
+                sum(Rate) AS \`bucket_value\`
+              FROM Bucketed
+              WHERE ${groupByEmptyFilter}
+              GROUP BY \`group\`, \`${timeBucketCol}\`
+            )
+            GROUP BY \`group\`
+            ORDER BY max(\`bucket_value\`) DESC, \`group\`
+            LIMIT ${{ Int32: INCREASE_MAX_NUM_GROUPS }}
+          `,
+      });
+
+      // Safety: groupBySql is built from metric groupBy expressions which are
+      // always simple column references (UNSAFE_RAW_SQL). Verify no parameterized
+      // values leaked through — if they did, .sql would contain param placeholders
+      // but the string-based outer WHERE would lose the param bindings.
+      if (Object.keys(groupBySql.params).length > 0) {
+        throw new Error(
+          'increase + groupBy: unexpected parameterized groupBy expressions',
+        );
+      }
+      outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
+    }
+
+    return {
+      ...restChartConfig,
+      with: sumWith,
       select: [
-        // HDX-1543: If the chart config query asks for an aggregation, the use the computed rate value, otherwise
-        // use the underlying summed value. The alias field appears before the spread so user defined aliases will
-        // take precedent over our generic value.
-        _select.aggFn
+        // HDX-1543: aggFn => use computed rate; no aggFn => use raw cumulative.
+        // For 'increase', sum Rate across sub-series that share the user's
+        // groupBy (e.g. groupBy teamName while rows also vary by customerId).
+        _select.aggFn === 'increase'
           ? {
               alias: 'Value',
               ..._select,
+              aggFn: 'sum',
               valueExpression: 'Rate',
               aggCondition: '',
             }
-          : {
-              alias: 'Value',
-              ..._select,
-              valueExpression: 'last_value(Sum)',
-              aggCondition: '',
-            },
+          : _select.aggFn
+            ? {
+                alias: 'Value',
+                ..._select,
+                valueExpression: 'Rate',
+                aggCondition: '',
+              }
+            : {
+                alias: 'Value',
+                ..._select,
+                valueExpression: 'last_value(Sum)',
+                aggCondition: '',
+              },
       ],
       from: {
         databaseName: '',
         tableName: 'Bucketed',
       },
-      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      // outerWhere is only set when restricting to top-N groups; otherwise
+      // cleared since the upstream CTE already applied the user's where.
+      // Force SQL parsing because outerWhere is raw SQL referencing
+      // TopGroups; the user's whereLanguage may be Lucene.
+      where: outerWhere,
+      whereLanguage: shouldApplyIncreaseGroupLimit
+        ? 'sql'
+        : restChartConfig.whereLanguage,
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
-  } else if (
-    metricType === MetricsDataType.Histogram &&
-    metricName &&
-    MetricsDataType.Histogram in metricTables &&
-    metricTables[MetricsDataType.Histogram]
-  ) {
+  } else if (isHistogram || isExponentialHistogram) {
     const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
@@ -1357,12 +2035,12 @@ async function translateMetricChartConfig(
     // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
     // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
     // a reasonable value on the ends of the series.
-
     const cteChartConfig = {
       ...chartConfig,
       from: {
         ...from,
-        tableName: metricTables[MetricsDataType.Histogram],
+        // eslint-disable-next-line security/detect-object-injection
+        tableName: metricTables[metricType],
       },
       filters: [
         ...(filters ?? []),
@@ -1378,13 +2056,15 @@ async function translateMetricChartConfig(
           : chartConfig.granularity,
     } satisfies BuilderChartConfigWithOptDateRangeEx;
 
-    const timeBucketSelect = isUsingGranularity(cteChartConfig)
+    const hasGranularity = isUsingGranularity(cteChartConfig);
+    const timeBucketSelect = hasGranularity
       ? timeBucketExpr({
           interval: cteChartConfig.granularity,
           timestampValueExpression: cteChartConfig.timestampValueExpression,
           dateRange: cteChartConfig.dateRange,
+          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
         })
-      : chSql``;
+      : undefined;
     const where = await renderWhere(cteChartConfig, metadata);
 
     // Time bucket grouping is being handled separately, so make sure to ignore the granularity
@@ -1397,32 +2077,46 @@ async function translateMetricChartConfig(
       );
     }
 
+    const translationInput = {
+      select: _select,
+      timeBucketSelect,
+      groupBy,
+      from: renderFrom({
+        from: {
+          ...from,
+          // eslint-disable-next-line security/detect-object-injection
+          tableName: metricTables[metricType],
+        },
+        isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+        metricType,
+      }),
+      where,
+      valueAlias,
+    };
+
     return {
       ...restChartConfig,
-      with: translateHistogram({
-        select: _select,
-        timeBucketSelect: timeBucketSelect.sql
-          ? chSql`${timeBucketSelect}`
-          : 'TimeUnix AS `__hdx_time_bucket`',
-        groupBy,
-        from: renderFrom({
-          from: {
-            ...from,
-            tableName: metricTables[MetricsDataType.Histogram],
-          },
-        }),
-        where,
-        valueAlias,
-      }),
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
+      with: isExponentialHistogram
+        ? translateExponentialHistogram(translationInput)
+        : translateHistogram(translationInput),
+      select: [
+        ...(hasGranularity ? [`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``] : []),
+        ...(groupBy ? [GROUP_ALIAS] : []),
+        `"${valueAlias}"`,
+      ].join(', '),
       from: {
         databaseName: '',
         tableName: 'metrics',
       },
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      // Timeseries queries discard padded buckets here. Non-timeseries queries
+      // scan only the visible range and have no time dimension to filter.
+      dateRange: hasGranularity ? restChartConfig.dateRange : undefined,
       groupBy: undefined,
       granularity: undefined, // time bucketing and granularity is applied at the source CTE
-      timestampValueExpression: '`__hdx_time_bucket`',
+      timestampValueExpression: hasGranularity
+        ? `\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
+        : restChartConfig.timestampValueExpression,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
   }
@@ -1446,19 +2140,30 @@ async function renderFiltersToSql(
   const conditions = (
     await Promise.all(
       chartConfig.filters.map(async filter => {
+        const hasSourceTable =
+          chartConfig.from &&
+          chartConfig.from.tableName && // tableName is falsy for metric sources
+          chartConfig.source;
+
         if (filter.type === 'sql_ast') {
           return `(${filter.left} ${filter.operator} ${filter.right})`;
+        } else if (filter.type === 'sql' && !hasSourceTable) {
+          return filter.condition.trim()
+            ? `(${filter.condition})` // Don't pass to renderWhereExpressionStr since it requires source table metadata
+            : undefined;
         } else if (
           (filter.type === 'lucene' || filter.type === 'sql') &&
           filter.condition.trim() &&
-          chartConfig.from &&
-          chartConfig.source
+          hasSourceTable
         ) {
           const condition = await renderWhereExpressionStr({
             condition: filter.condition,
-            from: chartConfig.from,
+            from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            bodyExpression: chartConfig.bodyExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
             metadata,
             connectionId: chartConfig.connection,
           });
@@ -1478,10 +2183,7 @@ export async function renderRawSqlChartConfig(
   const displayType = chartConfig.displayType ?? DisplayType.Table;
 
   const filtersSQL = await renderFiltersToSql(chartConfig, metadata);
-  const sqlWithMacrosReplaced = replaceMacros(
-    chartConfig.sqlTemplate,
-    filtersSQL,
-  );
+  const sqlWithMacrosReplaced = replaceMacros(chartConfig, filtersSQL);
 
   // eslint-disable-next-line security/detect-object-injection
   const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
@@ -1499,26 +2201,71 @@ export async function renderChartConfig(
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
+  if (isPromqlChartConfig(rawChartConfig)) {
+    // PromQL queries are executed server-side via the Prometheus API route,
+    // not via SQL generation. Return empty SQL as a no-op.
+    return { sql: '', params: {} };
+  }
   if (isRawSqlChartConfig(rawChartConfig)) {
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
-  const chartConfig = isMetricChartConfig(rawChartConfig)
+  const translatedChartConfig = isMetricChartConfig(rawChartConfig)
     ? await translateMetricChartConfig(rawChartConfig, metadata)
     : rawChartConfig;
 
-  const withClauses = await renderWith(chartConfig, metadata, querySettings);
+  // Resolve the bucket column once for the whole render. A source with
+  // `timestampValueExpression = "EventDate, EventTime"` should bucket on
+  // `EventTime` (highest-precision DateTime), not on `EventDate` (the first
+  // token). Keep the multi-column form on `timestampValueExpression` so
+  // `timeFilterExpr` can prune partitions via the Date column. HDX-4371.
+  const chartConfig: BuilderChartConfigWithOptDateRangeEx = {
+    ...translatedChartConfig,
+    bucketTimestampValueExpression:
+      translatedChartConfig.bucketTimestampValueExpression ??
+      (translatedChartConfig.timestampValueExpression &&
+      translatedChartConfig.from?.databaseName &&
+      translatedChartConfig.from?.tableName
+        ? await pickBucketTimestampColumn({
+            timestampValueExpression:
+              translatedChartConfig.timestampValueExpression,
+            metadata,
+            databaseName: translatedChartConfig.from.databaseName,
+            tableName: translatedChartConfig.from.tableName,
+            connectionId: translatedChartConfig.connection,
+          })
+        : undefined),
+  };
+
+  let withClauses = await renderWith(chartConfig, metadata, querySettings);
   const select = await renderSelect(chartConfig, metadata);
-  const from = renderFrom(chartConfig);
-  const where = await renderWhere(chartConfig, metadata);
+  const from = renderFrom({
+    from: chartConfig.from,
+    isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+  });
+  let where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
   //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
+
+  const seriesCap = await renderSeriesLimitCte(chartConfig, metadata, {
+    from,
+    where,
+    groupBy,
+  });
+  if (seriesCap) {
+    withClauses = withClauses
+      ? concatChSql(',', withClauses, seriesCap.cte)
+      : seriesCap.cte;
+    where = where.sql
+      ? concatChSql(' AND ', where, seriesCap.predicate)
+      : seriesCap.predicate;
+  }
 
   return concatChSql(' ', [
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,

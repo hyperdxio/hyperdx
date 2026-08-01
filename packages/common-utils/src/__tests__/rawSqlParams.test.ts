@@ -1,7 +1,6 @@
 import { Metadata } from '@/core/metadata';
+import { renderRawSqlChartConfig } from '@/core/renderChartConfig';
 import { DisplayType } from '@/types';
-
-import { renderRawSqlChartConfig } from '../core/renderChartConfig';
 
 const mockMetadata = {
   getColumns: jest.fn().mockResolvedValue([]),

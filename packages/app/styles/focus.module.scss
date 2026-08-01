@@ -3,3 +3,25 @@
   outline-offset: 2px;
   border-radius: var(--mantine-radius-xs);
 }
+
+// Used by the failure-row fallback <button> in the dashboard table
+// tile cell wrapper so it renders identically to the success-row
+// <Link>. Resets the user-agent button defaults (padding, font,
+// color, text-align, line-height) that the <a> doesn't carry and
+// reuses the same focus-visible ring as .focusRing.
+.cellButton {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  line-height: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.cellButton:focus-visible {
+  outline: 2px solid var(--color-outline-focus);
+  outline-offset: 2px;
+  border-radius: var(--mantine-radius-xs);
+}

@@ -7,7 +7,7 @@ import {
 import {
   getHighlightedAttributesFromData,
   isLinkableUrl,
-} from '../highlightedAttributes';
+} from '@/utils/highlightedAttributes';
 
 describe('getHighlightedAttributesFromData', () => {
   const createBasicSource = (

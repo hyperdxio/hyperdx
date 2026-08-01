@@ -26,7 +26,7 @@ export function ConnectionSelectControlled({
       allowDeselect={false}
       data={values}
       // disabled={isDatabasesLoading}
-      comboboxProps={{ withinPortal: false }}
+      comboboxProps={{ withinPortal: true }}
       searchable
       placeholder="Connection"
       leftSection={<IconServer size={16} />}

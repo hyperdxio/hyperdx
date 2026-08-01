@@ -1,7 +1,6 @@
 import React from 'react';
 import router from 'next/router';
-import { useForm, useWatch } from 'react-hook-form';
-import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -11,24 +10,29 @@ import {
   AlertSource,
   AlertThresholdType,
   Filter,
+  isRangeThresholdType,
   scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
   validateAlertScheduleOffsetMinutes,
+  validateAlertThresholdMax,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
-import { Alert as MantineAlert, TextInput } from '@mantine/core';
 import {
   Accordion,
+  Alert as MantineAlert,
   Box,
   Button,
   Group,
   LoadingOverlay,
   Modal,
+  NativeSelect,
+  NumberInput,
   Paper,
   Stack,
   Tabs,
   Text,
+  TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -51,9 +55,13 @@ import {
   normalizeNoOpAlertScheduleFields,
 } from '@/utils/alerts';
 
+import { AlertNoteField } from './components/AlertNoteField';
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
+import { AckAlert } from './components/alerts/AckAlert';
+import { AlertHistoryCardList } from './components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from './components/AlertScheduleFields';
+import { AlertStatusIcon } from './components/AlertStatusIcon';
 import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
@@ -64,13 +72,18 @@ const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
     threshold: z.number(),
+    thresholdMax: z.number().optional(),
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
+    // nullish() (not optional()): persisted alerts store this as null, which
+    // optional() would reject.
+    numConsecutiveWindows: z.number().int().min(1).nullish(),
   })
   .passthrough()
-  .superRefine(validateAlertScheduleOffsetMinutes);
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax);
 
 const AlertForm = ({
   sourceId,
@@ -112,6 +125,9 @@ const AlertForm = ({
           ...defaultValues,
           scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
           scheduleStartAt: defaultValues.scheduleStartAt ?? null,
+          // Persisted null -> undefined for the NumberInput.
+          numConsecutiveWindows:
+            defaultValues.numConsecutiveWindows ?? undefined,
         }
       : {
           interval: '5m',
@@ -124,6 +140,7 @@ const AlertForm = ({
             type: 'webhook',
             webhookId: '',
           },
+          note: null,
         },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
@@ -138,27 +155,43 @@ const AlertForm = ({
   });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
+  const thresholdMax = useWatch({ control, name: 'thresholdMax' });
+  const numConsecutiveWindows = useWatch({
+    control,
+    name: 'numConsecutiveWindows',
+  });
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
   );
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
 
+  const { data: alertData } = api.useAlert(defaultValues?.id);
+  const alert = alertData?.data;
+
   return (
     <form
       onSubmit={handleSubmit(data =>
         onSubmit(
-          normalizeNoOpAlertScheduleFields(data, defaultValues, {
-            preserveExplicitScheduleOffsetMinutes:
-              dirtyFields.scheduleOffsetMinutes === true,
-            preserveExplicitScheduleStartAt:
-              dirtyFields.scheduleStartAt === true,
-          }),
+          normalizeNoOpAlertScheduleFields(
+            // `id` is not a registered form field, so carry it from the alert
+            // this form was opened with. This binds the submission to the
+            // originally-edited alert rather than whatever the parent's alerts
+            // list happens to index at submit time.
+            { ...data, id: defaultValues?.id },
+            defaultValues,
+            {
+              preserveExplicitScheduleOffsetMinutes:
+                dirtyFields.scheduleOffsetMinutes === true,
+              preserveExplicitScheduleStartAt:
+                dirtyFields.scheduleStartAt === true,
+            },
+          ),
         ),
       )}
     >
-      <Stack gap="xs">
-        <Paper px="md" py="sm" radius="xs">
+      <Paper px="sm" py="xs" radius="xs">
+        <Stack gap="xs">
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -166,35 +199,79 @@ const AlertForm = ({
             <Text size="sm" opacity={0.7}>
               Alert when
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
-              size="xs"
-              name={`thresholdType`}
+            <Controller
               control={control}
+              name="thresholdType"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_THRESHOLD_TYPE_OPTIONS)}
+                  size="xs"
+                  {...field}
+                  onChange={e => {
+                    field.onChange(e);
+                    if (
+                      isRangeThresholdType(e.currentTarget.value) &&
+                      thresholdMax == null
+                    ) {
+                      setValue('thresholdMax', (threshold ?? 0) + 1);
+                    }
+                  }}
+                />
+              )}
             />
-            <NumberInput
-              size="xs"
-              w={80}
+            <Controller
               control={control}
-              name={`threshold`}
+              name="threshold"
+              render={({ field }) => (
+                <NumberInput size="xs" w={80} {...field} />
+              )}
             />
+            {isRangeThresholdType(thresholdType as AlertThresholdType) && (
+              <>
+                <Text size="sm" opacity={0.7}>
+                  and
+                </Text>
+                <Controller
+                  control={control}
+                  name="thresholdMax"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      size="xs"
+                      w={80}
+                      {...field}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              </>
+            )}
             <Text size="sm" opacity={0.7}>
               lines appear within
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
-              size="xs"
-              name={`interval`}
+            <Controller
               control={control}
+              name="interval"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
             <Text size="sm" opacity={0.7}>
               via
             </Text>
-            <NativeSelect
-              data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-              size="xs"
-              name={`channel.type`}
+            <Controller
               control={control}
+              name="channel.type"
+              render={({ field }) => (
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                  size="xs"
+                  {...field}
+                />
+              )}
             />
           </Group>
           <AlertScheduleFields
@@ -205,6 +282,8 @@ const AlertForm = ({
             scheduleOffsetMinutes={scheduleOffsetMinutes}
             maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
             offsetWindowLabel={`from each ${intervalLabel} window`}
+            numConsecutiveWindowsName="numConsecutiveWindows"
+            numConsecutiveWindows={numConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
@@ -217,27 +296,72 @@ const AlertForm = ({
             disableKeywordAutocomplete
             size="xs"
           />
-        </Paper>
-        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
           <AlertChannelForm control={control} type={channelType} />
+          <AlertNoteField control={control} name="note" />
+          {groupBy &&
+            (thresholdType === AlertThresholdType.BELOW ||
+              thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||
+              thresholdType === AlertThresholdType.EQUAL ||
+              thresholdType === AlertThresholdType.NOT_EQUAL) && (
+              <MantineAlert
+                icon={<IconInfoCircleFilled size={16} />}
+                color="gray"
+                py="xs"
+              >
+                <Text size="sm" opacity={0.7}>
+                  Warning: Alerts with this threshold type and a &quot;grouped
+                  by&quot; value will not alert for periods with no data for a
+                  group.
+                </Text>
+              </MantineAlert>
+            )}
+          {(thresholdType === AlertThresholdType.EQUAL ||
+            thresholdType === AlertThresholdType.NOT_EQUAL) && (
+            <MantineAlert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+            >
+              <Text size="sm" opacity={0.7}>
+                Note: Floating-point query results are not rounded during
+                equality comparison.
+              </Text>
+            </MantineAlert>
+          )}
+        </Stack>
+      </Paper>
+
+      {(defaultValues?.createdBy || alert) && (
+        <Paper px="md" py="sm" radius="xs" mt="sm">
+          <Group justify="space-between">
+            {defaultValues?.createdBy && (
+              <Box>
+                <Text size="xxs" opacity={0.5} mb={4}>
+                  Created by
+                </Text>
+                <Text size="sm" opacity={0.8}>
+                  {defaultValues.createdBy.name ||
+                    defaultValues.createdBy.email}
+                </Text>
+                {defaultValues.createdBy.name && (
+                  <Text size="xs" opacity={0.6}>
+                    {defaultValues.createdBy.email}
+                  </Text>
+                )}
+              </Box>
+            )}
+            {alert && (
+              <Group>
+                <AlertHistoryCardList alert={alert} />
+                <AckAlert alert={alert} />
+              </Group>
+            )}
+          </Group>
         </Paper>
-        {groupBy && thresholdType === AlertThresholdType.BELOW && (
-          <MantineAlert
-            icon={<IconInfoCircleFilled size={16} />}
-            bg="dark"
-            py="xs"
-          >
-            <Text size="sm" opacity={0.7}>
-              Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
-              &quot;grouped by&quot; value will not alert for periods with no
-              data for a group.
-            </Text>
-          </MantineAlert>
-        )}
-      </Stack>
+      )}
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
         <Accordion.Item value="chart">
@@ -255,28 +379,13 @@ const AlertForm = ({
                 interval={interval}
                 groupBy={groupByValue}
                 threshold={threshold}
+                thresholdMax={thresholdMax}
                 thresholdType={thresholdType}
               />
             )}
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
-
-      {defaultValues?.createdBy && (
-        <Paper px="md" py="sm" radius="xs" mt="sm">
-          <Text size="xxs" opacity={0.5} mb={4}>
-            Created by
-          </Text>
-          <Text size="sm" opacity={0.8}>
-            {defaultValues.createdBy.name || defaultValues.createdBy.email}
-          </Text>
-          {defaultValues.createdBy.name && (
-            <Text size="xs" opacity={0.6}>
-              {defaultValues.createdBy.email}
-            </Text>
-          )}
-        </Paper>
-      )}
 
       <Group mt="lg" justify="space-between" gap="xs">
         <div>
@@ -371,7 +480,7 @@ export const DBSearchPageAlertModal = ({
           filters: searchedConfig.filters ?? [],
           tags: [],
         });
-        await createAlert.mutate({
+        await createAlert.mutateAsync({
           ...data,
           source: AlertSource.SAVED_SEARCH,
           savedSearchId: result.id,
@@ -381,14 +490,17 @@ export const DBSearchPageAlertModal = ({
       } else if (id) {
         // Create new alert
         if (activeIndex === 'stage') {
-          await createAlert.mutate({
+          await createAlert.mutateAsync({
             ...data,
             source: AlertSource.SAVED_SEARCH,
             savedSearchId: id,
           });
         } else if (data.id) {
-          // Update existing alert
-          await updateAlert.mutate({
+          // Update existing alert. `data.id` is the id of the alert the form
+          // was opened with (carried through by AlertForm), not a live
+          // re-index of the alerts list, so edits always target the intended
+          // alert even if the list changes while the modal is open.
+          await updateAlert.mutateAsync({
             ...data,
             id: data.id,
             source: AlertSource.SAVED_SEARCH,
@@ -404,6 +516,7 @@ export const DBSearchPageAlertModal = ({
         });
       }
     } catch (error) {
+      console.error('Error creating/updating alert:', error);
       notifications.show({
         color: 'red',
         message: `Something went wrong. Please contact ${brandName} team.`,
@@ -416,13 +529,14 @@ export const DBSearchPageAlertModal = ({
 
   const onDelete = async (id: string) => {
     try {
-      await deleteAlert.mutate(id);
+      await deleteAlert.mutateAsync(id);
       notifications.show({
         color: 'green',
         message: 'Alert deleted!',
         autoClose: 5000,
       });
     } catch (error) {
+      console.error('Failed to delete alert:', error);
       notifications.show({
         color: 'red',
         message: `Something went wrong. Please contact ${brandName} team.`,
@@ -440,7 +554,6 @@ export const DBSearchPageAlertModal = ({
       onClose={onClose}
       size="xl"
       withCloseButton={false}
-      zIndex={9999}
     >
       <Box pos="relative">
         <LoadingOverlay
@@ -475,7 +588,9 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {getWebhookChannelIcon(alert.channel.type)} Alert {index + 1}
+                  {getWebhookChannelIcon(alert.channel.type)}
+                  Alert {index + 1}
+                  <AlertStatusIcon alerts={[alert]} />
                 </Group>
               </Tabs.Tab>
             ))}

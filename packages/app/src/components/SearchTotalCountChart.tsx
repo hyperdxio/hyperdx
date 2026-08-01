@@ -35,17 +35,18 @@ export function useSearchTotalCount(
     enableParallelQueries?: boolean;
   } = {},
 ) {
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
+
   // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
   const queriedConfig = useMemo(
     () => convertToTimeChartConfig(config),
     [config],
   );
-
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const {
     data: totalCountData,
     isLoading,
     isError,
+    error,
   } = useQueriedChartConfig(queriedConfig, {
     queryKey: [
       queryKeyPrefix,
@@ -78,6 +79,7 @@ export function useSearchTotalCount(
     totalCount,
     isLoading,
     isError,
+    error,
     isTotalCountComplete,
   };
 }
@@ -103,7 +105,7 @@ export default function SearchTotalCountChart({
   );
 
   return (
-    <Text size="xs" mb={4}>
+    <Text data-testid="search-total-count" size="xs" lh="normal">
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (

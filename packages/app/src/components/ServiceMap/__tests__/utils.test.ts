@@ -2,10 +2,19 @@ import router from 'next/router';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import {
+  deriveDisplayMetrics,
   formatApproximateNumber,
+  formatRate,
+  getMetricGradientCss,
   getNodeColors,
+  getNodeSize,
+  getRequestsPerSecond,
+  getServiceMetricValue,
   navigateToTraceSearch,
-} from '../utils';
+  rawDurationToMs,
+  SERVICE_MAP_METRIC_HUE,
+} from '@/components/ServiceMap/utils';
+import type { ServiceAggregation } from '@/hooks/useServiceMap';
 
 // Mock next/router
 jest.mock('next/router', () => ({
@@ -227,122 +236,326 @@ describe('formatApproximateNumber', () => {
   });
 });
 
+// Parses an `hsl(H S% L%)` string into numeric components for property-based
+// assertions, so tests describe the *shape* of the sequential ramp rather than
+// hardcoding tuned endpoint values.
+function parseHsl(color: string | undefined): {
+  h: number;
+  s: number;
+  l: number;
+} {
+  const match = color?.match(
+    /^hsl\((\d+(?:\.\d+)?) (\d+(?:\.\d+)?)% (\d+(?:\.\d+)?)%\)$/,
+  );
+  if (!match) {
+    throw new Error(`Not an hsl() color: ${color}`);
+  }
+  return { h: Number(match[1]), s: Number(match[2]), l: Number(match[3]) };
+}
+
 describe('getNodeColors', () => {
-  describe('background color calculation', () => {
-    it('should return light background when error percent is 0', () => {
-      const colors = getNodeColors(0, 20, false);
-      expect(colors.backgroundColor).toBe('hsl(0 0% 80%)');
+  describe('sequential ramp', () => {
+    it('goes from a light tint at zero intensity to a dark shade at max', () => {
+      const low = parseHsl(getNodeColors(0, 20, false).backgroundColor);
+      const high = parseHsl(getNodeColors(20, 20, false).backgroundColor);
+      // Light -> dark: lightness decreases, saturation increases as the metric
+      // value climbs (a proper sequential scale, not a grey->color ramp).
+      expect(high.l).toBeLessThan(low.l);
+      expect(high.s).toBeGreaterThan(low.s);
     });
 
-    it('should calculate background color based on error percentage', () => {
-      const colors = getNodeColors(10, 20, false);
-      // (10 / 20) * 100 = 50% saturation
-      expect(colors.backgroundColor).toBe('hsl(0 50% 80%)');
+    it('increases intensity monotonically with the value', () => {
+      const l0 = parseHsl(getNodeColors(0, 20, false).backgroundColor).l;
+      const l5 = parseHsl(getNodeColors(5, 20, false).backgroundColor).l;
+      const l10 = parseHsl(getNodeColors(10, 20, false).backgroundColor).l;
+      const l20 = parseHsl(getNodeColors(20, 20, false).backgroundColor).l;
+      expect(l0).toBeGreaterThanOrEqual(l5);
+      expect(l5).toBeGreaterThanOrEqual(l10);
+      expect(l10).toBeGreaterThanOrEqual(l20);
     });
 
-    it('should use full saturation when error percent equals max', () => {
-      const colors = getNodeColors(20, 20, false);
-      // (20 / 20) * 100 = 100% saturation
-      expect(colors.backgroundColor).toBe('hsl(0 100% 80%)');
+    it('caps at the max value even when the value is higher', () => {
+      expect(getNodeColors(30, 20, false)).toEqual(
+        getNodeColors(20, 20, false),
+      );
     });
 
-    it('should cap at max error rate even if actual error is higher', () => {
-      const colors = getNodeColors(30, 20, false);
-      // Math.min(20, 30) = 20, (20 / 20) * 100 = 100% saturation
-      expect(colors.backgroundColor).toBe('hsl(0 100% 80%)');
+    it('treats a non-positive max as zero intensity', () => {
+      expect(getNodeColors(5, 0, false)).toEqual(getNodeColors(0, 20, false));
     });
 
-    it('should handle very small error percentages', () => {
-      const colors = getNodeColors(0.1, 20, false);
-      // (0.1 / 20) * 100 = 0.5% saturation
-      expect(colors.backgroundColor).toBe('hsl(0 0.5% 80%)');
-    });
-
-    it('should handle when maxErrorPercent is 0', () => {
-      // This would cause division by zero, but Math results in Infinity
-      const colors = getNodeColors(5, 0, false);
-      expect(colors.backgroundColor).toContain('hsl(0');
-    });
-  });
-
-  describe('border color calculation', () => {
-    it('should return white border when node is selected', () => {
-      const colors = getNodeColors(10, 20, true);
-      expect(colors.borderColor).toBe('white');
-    });
-
-    it('should return calculated border color when not selected', () => {
-      const colors = getNodeColors(10, 20, false);
-      // (10 / 20) * 100 = 50% saturation with 40% lightness
-      expect(colors.borderColor).toBe('hsl(0 50% 40%)');
-    });
-
-    it('should return dark border for high error rates when not selected', () => {
-      const colors = getNodeColors(20, 20, false);
-      expect(colors.borderColor).toBe('hsl(0 100% 40%)');
-    });
-
-    it('should return light border for zero errors when not selected', () => {
-      const colors = getNodeColors(0, 20, false);
-      expect(colors.borderColor).toBe('hsl(0 0% 40%)');
-    });
-
-    it('should cap border color saturation like background', () => {
-      const colors = getNodeColors(30, 20, false);
-      // Should cap at 20% error rate
-      expect(colors.borderColor).toBe('hsl(0 100% 40%)');
+    it('renders the border a fixed step darker than the fill', () => {
+      const { backgroundColor, borderColor } = getNodeColors(10, 20, false);
+      expect(parseHsl(borderColor).l).toBeLessThan(parseHsl(backgroundColor).l);
+      expect(parseHsl(borderColor).h).toBe(parseHsl(backgroundColor).h);
     });
   });
 
   describe('selected state', () => {
-    it('should always use white border when selected regardless of error rate', () => {
+    it('always uses a white border when selected, regardless of value', () => {
       expect(getNodeColors(0, 20, true).borderColor).toBe('white');
-      expect(getNodeColors(5, 20, true).borderColor).toBe('white');
       expect(getNodeColors(10, 20, true).borderColor).toBe('white');
-      expect(getNodeColors(20, 20, true).borderColor).toBe('white');
       expect(getNodeColors(30, 20, true).borderColor).toBe('white');
     });
 
-    it('should still calculate background color correctly when selected', () => {
-      const colors = getNodeColors(10, 20, true);
-      expect(colors.backgroundColor).toBe('hsl(0 50% 80%)');
-      expect(colors.borderColor).toBe('white');
-    });
-  });
-
-  describe('various error percentage scenarios', () => {
-    it('should handle low error rates', () => {
-      const colors = getNodeColors(1, 20, false);
-      expect(colors.backgroundColor).toBe('hsl(0 5% 80%)');
-      expect(colors.borderColor).toBe('hsl(0 5% 40%)');
-    });
-
-    it('should handle medium error rates', () => {
-      const colors = getNodeColors(10, 20, false);
-      expect(colors.backgroundColor).toBe('hsl(0 50% 80%)');
-      expect(colors.borderColor).toBe('hsl(0 50% 40%)');
-    });
-
-    it('should handle high error rates', () => {
-      const colors = getNodeColors(18, 20, false);
-      expect(colors.backgroundColor).toBe('hsl(0 90% 80%)');
-      expect(colors.borderColor).toBe('hsl(0 90% 40%)');
+    it('still computes the fill color when selected', () => {
+      const selected = getNodeColors(10, 20, true);
+      const unselected = getNodeColors(10, 20, false);
+      expect(selected.backgroundColor).toBe(unselected.backgroundColor);
+      expect(selected.borderColor).toBe('white');
     });
   });
 
   describe('return value structure', () => {
-    it('should return an object with backgroundColor and borderColor', () => {
+    it('returns valid hsl() strings for both colors', () => {
       const colors = getNodeColors(10, 20, false);
-      expect(colors).toHaveProperty('backgroundColor');
-      expect(colors).toHaveProperty('borderColor');
-      expect(typeof colors.backgroundColor).toBe('string');
-      expect(typeof colors.borderColor).toBe('string');
+      expect(() => parseHsl(colors.backgroundColor)).not.toThrow();
+      expect(() => parseHsl(colors.borderColor)).not.toThrow();
     });
 
-    it('should return different objects for different inputs', () => {
-      const colors1 = getNodeColors(5, 20, false);
-      const colors2 = getNodeColors(10, 20, false);
-      expect(colors1).not.toEqual(colors2);
+    it('returns different colors for different inputs', () => {
+      expect(getNodeColors(5, 20, false)).not.toEqual(
+        getNodeColors(10, 20, false),
+      );
     });
+  });
+
+  describe('metric hue', () => {
+    it('defaults to the error-rate (red, hue 0) ramp', () => {
+      expect(parseHsl(getNodeColors(10, 20, false).backgroundColor).h).toBe(
+        SERVICE_MAP_METRIC_HUE.errorRate,
+      );
+    });
+
+    it('uses each metric hue for both fill and border', () => {
+      for (const metric of ['errorRate', 'latency', 'throughput'] as const) {
+        const hue = SERVICE_MAP_METRIC_HUE[metric];
+        const colors = getNodeColors(10, 20, false, metric);
+        expect(parseHsl(colors.backgroundColor).h).toBe(hue);
+        expect(parseHsl(colors.borderColor).h).toBe(hue);
+      }
+    });
+  });
+});
+
+describe('getMetricGradientCss', () => {
+  it('builds a left-to-right gradient from the ramp endpoints', () => {
+    const css = getMetricGradientCss('errorRate');
+    const stops = css.match(/hsl\([^)]+\)/g) ?? [];
+    expect(css).toContain('linear-gradient(to right,');
+    expect(stops).toHaveLength(2);
+    // Low stop is lighter than the high stop, matching the node fills.
+    expect(parseHsl(stops[0]).l).toBeGreaterThan(parseHsl(stops[1]).l);
+  });
+
+  it('uses the metric hue for both stops', () => {
+    const stops =
+      getMetricGradientCss('throughput').match(/hsl\([^)]+\)/g) ?? [];
+    expect(parseHsl(stops[0]).h).toBe(SERVICE_MAP_METRIC_HUE.throughput);
+    expect(parseHsl(stops[1]).h).toBe(SERVICE_MAP_METRIC_HUE.throughput);
+  });
+});
+
+describe('getServiceMetricValue', () => {
+  const makeService = (
+    overrides: Partial<ServiceAggregation['incomingRequests']> = {},
+    outgoingRequests = 0,
+  ): ServiceAggregation => ({
+    serviceName: 'svc',
+    incomingRequests: {
+      totalRequests: 100,
+      errorCount: 5,
+      errorPercentage: 5,
+      p50: 10,
+      p95: 40,
+      p99: 90,
+      hasLatency: true,
+      ...overrides,
+    },
+    incomingRequestsByClient: new Map(),
+    outgoingRequests,
+  });
+
+  it('returns the incoming error percentage for errorRate', () => {
+    expect(
+      getServiceMetricValue(
+        makeService({ errorPercentage: 12.5 }),
+        'errorRate',
+      ),
+    ).toBe(12.5);
+  });
+
+  it('returns the p95 latency for latency when available', () => {
+    expect(getServiceMetricValue(makeService({ p95: 42 }), 'latency')).toBe(42);
+  });
+
+  it('returns 0 latency when the source has no duration data', () => {
+    expect(
+      getServiceMetricValue(
+        makeService({ p95: 42, hasLatency: false }),
+        'latency',
+      ),
+    ).toBe(0);
+  });
+
+  it('returns total incoming + outgoing volume for throughput', () => {
+    expect(
+      getServiceMetricValue(
+        makeService({ totalRequests: 100 }, 25),
+        'throughput',
+      ),
+    ).toBe(125);
+  });
+});
+
+describe('rawDurationToMs', () => {
+  it('converts nanoseconds (precision 9) to milliseconds', () => {
+    // 1_000_000 ns = 1 ms
+    expect(rawDurationToMs(1_000_000, 9)).toBe(1);
+    expect(rawDurationToMs(2_500_000, 9)).toBe(2.5);
+  });
+
+  it('converts microseconds (precision 6) to milliseconds', () => {
+    // 1000 µs = 1 ms
+    expect(rawDurationToMs(1000, 6)).toBe(1);
+    expect(rawDurationToMs(500, 6)).toBe(0.5);
+  });
+
+  it('treats precision 3 as already-milliseconds', () => {
+    expect(rawDurationToMs(42, 3)).toBe(42);
+  });
+
+  it('scales up for precision below 3 (e.g. seconds)', () => {
+    // precision 0 = seconds: 7s -> 7000ms (divisor is 10^-3, i.e. multiply up)
+    expect(rawDurationToMs(7, 0)).toBe(7000);
+  });
+
+  it('handles zero', () => {
+    expect(rawDurationToMs(0, 9)).toBe(0);
+  });
+});
+
+describe('getRequestsPerSecond', () => {
+  const oneHour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00.000Z'),
+    new Date('2024-01-01T01:00:00.000Z'),
+  ];
+
+  it('divides total requests by the window in seconds', () => {
+    // 3600 requests over 3600s = 1/s
+    expect(getRequestsPerSecond(3600, oneHour)).toBe(1);
+    expect(getRequestsPerSecond(7200, oneHour)).toBe(2);
+  });
+
+  it('returns 0 for a zero-length window', () => {
+    const t = new Date('2024-01-01T00:00:00.000Z');
+    expect(getRequestsPerSecond(100, [t, t])).toBe(0);
+  });
+
+  it('returns 0 for an inverted window', () => {
+    expect(getRequestsPerSecond(100, [oneHour[1], oneHour[0]])).toBe(0);
+  });
+});
+
+describe('formatRate', () => {
+  it('formats sub-1/s rates with two decimals and a req/s label', () => {
+    expect(formatRate(0)).toBe('0 req/s');
+    expect(formatRate(0.2)).toBe('0.20 req/s');
+  });
+
+  it('formats 1-999/s with one decimal', () => {
+    expect(formatRate(1)).toBe('1.0 req/s');
+    expect(formatRate(3.45)).toBe('3.5 req/s');
+    expect(formatRate(999)).toBe('999.0 req/s');
+  });
+
+  it('formats >=1000/s in thousands', () => {
+    expect(formatRate(1000)).toBe('1.0k req/s');
+    expect(formatRate(12345)).toBe('12.3k req/s');
+  });
+
+  it('returns 0 req/s for non-finite or negative input', () => {
+    expect(formatRate(Infinity)).toBe('0 req/s');
+    expect(formatRate(NaN)).toBe('0 req/s');
+    expect(formatRate(-5)).toBe('0 req/s');
+  });
+});
+
+describe('getNodeSize', () => {
+  it('returns the minimum size when there is no traffic to compare', () => {
+    expect(getNodeSize(0, 0)).toBe(32);
+    expect(getNodeSize(0, 100)).toBe(32);
+  });
+
+  it('returns the maximum size for the busiest node', () => {
+    // ratio = sqrt(100/100) = 1 -> MAX
+    expect(getNodeSize(100, 100)).toBe(60);
+  });
+
+  it('scales by the square root of the request ratio', () => {
+    // sqrt(25/100) = 0.5 -> 32 + 0.5*(60-32) = 46
+    expect(getNodeSize(25, 100)).toBe(46);
+  });
+
+  it('clamps requests above the max to the max size', () => {
+    expect(getNodeSize(200, 100)).toBe(60);
+  });
+
+  it('stays within [32, 60]', () => {
+    for (const r of [1, 10, 50, 99, 100]) {
+      const size = getNodeSize(r, 100);
+      expect(size).toBeGreaterThanOrEqual(32);
+      expect(size).toBeLessThanOrEqual(60);
+    }
+  });
+});
+
+describe('deriveDisplayMetrics', () => {
+  const source = { durationPrecision: 9 } as unknown as TTraceSource;
+  const oneHour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00.000Z'),
+    new Date('2024-01-01T01:00:00.000Z'),
+  ];
+
+  it('converts percentiles to ms and computes throughput', () => {
+    const m = deriveDisplayMetrics(
+      {
+        totalRequests: 3600,
+        p50: 1_000_000,
+        p95: 5_000_000,
+        p99: 9_000_000,
+        hasLatency: true,
+      },
+      source,
+      oneHour,
+    );
+    expect(m.latencyMs).toEqual({ p50: 1, p95: 5, p99: 9 });
+    expect(m.requestsPerSecond).toBe(1);
+  });
+
+  it('omits latency when hasLatency is false', () => {
+    const m = deriveDisplayMetrics(
+      { totalRequests: 10, p50: 0, p95: 0, p99: 0, hasLatency: false },
+      source,
+      oneHour,
+    );
+    expect(m.latencyMs).toBeUndefined();
+  });
+
+  it('omits throughput for single-trace maps but keeps latency', () => {
+    const m = deriveDisplayMetrics(
+      {
+        totalRequests: 10,
+        p50: 1_000_000,
+        p95: 1_000_000,
+        p99: 1_000_000,
+        hasLatency: true,
+      },
+      source,
+      oneHour,
+      true,
+    );
+    expect(m.requestsPerSecond).toBeUndefined();
+    expect(m.latencyMs).toBeDefined();
   });
 });

@@ -1,5 +1,7 @@
+import { sanitizeUrl } from '@braintree/sanitize-url';
 import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { performance } from 'perf_hooks';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -7,8 +9,73 @@ import { CODE_VERSION } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
+import { recordOperationOutcome } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
+
+// SLO operations for the ClickHouse proxy. Both paths swallow their errors
+// (returning JSON / writing the response directly) so they never reach the API
+// error middleware — they must report their own SLIs. See
+// agent_docs/observability.md.
+const CONNECTION_TEST_OPERATION = 'clickhouse_proxy.connection_test';
+const QUERY_PROXY_OPERATION = 'clickhouse_proxy.query';
+
+/**
+ * Validates and sanitizes a URL path to prevent injection attacks.
+ * - Recursively decodes to catch double/triple encoding of ? and &
+ * - Rejects paths with encoded query string characters in pathname
+ * - Prevents protocol-based attacks (javascript:, data:, etc.)
+ * - Prevents host injection via protocol-relative URLs
+ *
+ * @param basePath - The path to validate (may include query string)
+ * @returns Sanitized path with pathname and query string
+ * @throws Error if path contains malicious patterns
+ */
+const validateAndSanitizePath = (basePath: string): string => {
+  // Extract pathname portion (before any literal ?) for encoding attack check
+  // Must be done BEFORE sanitizeUrl because it decodes percent-encoded chars
+  const firstQuestionMark = basePath.indexOf('?');
+  const rawPathname =
+    firstQuestionMark >= 0 ? basePath.slice(0, firstQuestionMark) : basePath;
+
+  // Recursively decode pathname to prevent double-encoding attacks
+  // (e.g., %253F -> %3F -> ?, %2526 -> %26 -> &)
+  let decodedPathname = rawPathname;
+  let prevDecoded = '';
+  const maxIterations = 10; // Prevent infinite loops
+  let iterations = 0;
+  while (decodedPathname !== prevDecoded && iterations < maxIterations) {
+    prevDecoded = decodedPathname;
+    try {
+      decodedPathname = decodeURIComponent(decodedPathname);
+    } catch {
+      throw new Error('Invalid pathname: malformed URL encoding');
+    }
+    iterations++;
+  }
+
+  // Validate fully-decoded pathname doesn't contain query string characters
+  if (decodedPathname.includes('?') || decodedPathname.includes('&')) {
+    throw new Error('Invalid pathname: contains query string characters');
+  }
+
+  // Sanitize URL to prevent protocol-based attacks (javascript:, data:, etc.)
+  const sanitizedPath = sanitizeUrl(basePath);
+  if (sanitizedPath === 'about:blank') {
+    throw new Error('Invalid pathname: potentially malicious URL');
+  }
+
+  // Use URL parsing to properly separate pathname from query params
+  const parsedUrl = new URL(sanitizedPath, 'http://localhost');
+
+  // Prevent host injection via protocol-relative URLs (e.g., //evil.com)
+  if (parsedUrl.hostname !== 'localhost') {
+    throw new Error('Invalid pathname: host injection attempt');
+  }
+
+  return `${parsedUrl.pathname}${parsedUrl.search}`;
+};
 
 const router = express.Router();
 
@@ -26,6 +93,20 @@ router.post(
   }),
   async (req, res) => {
     const { host, username, password } = req.body;
+
+    // Restrict to http/https to prevent file://, gopher://, etc.
+    const parsedHost = new URL(host);
+    if (parsedHost.protocol !== 'http:' && parsedHost.protocol !== 'https:') {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid protocol' });
+    }
+    const hostname = parsedHost.hostname.replace(IPV6_BRACKET_RE, '');
+    if (isPrivateIp(hostname)) {
+      return res.status(400).json({ success: false, error: 'Invalid host' });
+    }
+
+    const startedAt = performance.now();
     try {
       const result = await fetch(`${host}/?query=SELECT 1`, {
         headers: {
@@ -36,15 +117,31 @@ router.post(
       });
       // For status codes 204-399
       if (!result.ok) {
-        const errorText = await result.text();
+        recordOperationOutcome({
+          operation: CONNECTION_TEST_OPERATION,
+          outcome: 'error',
+          durationMs: performance.now() - startedAt,
+        });
+        // Do not reflect the raw response body to avoid leaking internal
+        // service responses in case of a misconfigured or SSRF host.
         return res.status(result.status).json({
           success: false,
-          error: errorText || 'Error connecting to ClickHouse server',
+          error: 'Error connecting to ClickHouse server',
         });
       }
       const data = await result.json();
+      recordOperationOutcome({
+        operation: CONNECTION_TEST_OPERATION,
+        outcome: 'success',
+        durationMs: performance.now() - startedAt,
+      });
       return res.json({ success: data === 1 });
     } catch (e: any) {
+      recordOperationOutcome({
+        operation: CONNECTION_TEST_OPERATION,
+        outcome: 'error',
+        durationMs: performance.now() - startedAt,
+      });
       // fetch returns a 400+ error and throws
       console.error(e);
       const errorMessage =
@@ -102,7 +199,7 @@ const getConnection: RequestHandler =
       };
       next();
     } catch (e) {
-      console.error('Error fetching connection info:', e);
+      console.error('Error setting up proxy hdx connection', e);
       next(e);
     }
   };
@@ -116,8 +213,12 @@ const proxyMiddleware: RequestHandler =
       return _req.method === 'GET' || _req.method === 'POST';
     },
     pathRewrite: function (path, req) {
-      // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
-      const qparams = new URLSearchParams(req.query);
+      const sanitizedPath = validateAndSanitizePath(
+        path.replace(/^\/clickhouse-proxy/, ''),
+      );
+
+      const parsedUrl = new URL(sanitizedPath, 'http://localhost');
+      const { searchParams, pathname } = parsedUrl;
 
       // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
       const hyperdxSettingPrefix = req._hdx_connection?.hyperdxSettingPrefix;
@@ -125,14 +226,13 @@ const proxyMiddleware: RequestHandler =
         const userEmail = req.user?.email;
         if (userEmail) {
           const userSettingKey = `${hyperdxSettingPrefix}${CUSTOM_SETTING_KEY_SEP}${CUSTOM_SETTING_KEY_USER_SUFFIX}`;
-          qparams.set(userSettingKey, userEmail);
+          searchParams.set(userSettingKey, userEmail);
         } else {
           logger.debug('hyperdxSettingPrefix set, no session user found');
         }
       }
 
-      const newPath = req.path.replace('^/clickhouse-proxy', '');
-      return `/${newPath}?${qparams.toString()}`;
+      return `${pathname}?${searchParams.toString()}`;
     },
     router: _req => {
       if (!_req._hdx_connection?.host) {
@@ -141,7 +241,7 @@ const proxyMiddleware: RequestHandler =
       return _req._hdx_connection.host;
     },
     on: {
-      proxyReq: (proxyReq, _req) => {
+      proxyReq: (proxyReq, _req, res) => {
         // set user-agent to the hyperdx version identifier
         proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
 
@@ -156,12 +256,40 @@ const proxyMiddleware: RequestHandler =
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
 
-        if (_req.method === 'POST') {
-          // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
-          proxyReq.write(_req.body);
+        if (_req.method !== 'POST') {
+          console.error(`Unsupported method ${_req.method}`);
+          return res.sendStatus(405);
+        }
+
+        let body = _req.body;
+        if (_req.headers['content-type'] === 'application/json') {
+          try {
+            body = JSON.stringify(body);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+
+        try {
+          proxyReq.write(body);
+        } catch (e) {
+          console.error(
+            `clickhouseProxy error writing body, body is type ${typeof body}`,
+          );
         }
       },
       proxyRes: (proxyRes, _req, res) => {
+        const startedAt = (res as Response).locals?.hdxProxyStartedAt;
+        const statusCode = proxyRes.statusCode ?? 0;
+        recordOperationOutcome({
+          operation: QUERY_PROXY_OPERATION,
+          // A response (even a 4xx/5xx from ClickHouse) means the proxy hop
+          // itself worked; outcome reflects whether ClickHouse served it.
+          outcome: statusCode < 400 ? 'success' : 'error',
+          durationMs:
+            typeof startedAt === 'number' ? performance.now() - startedAt : 0,
+        });
+
         // since clickhouse v24, the cors headers * will be attached to the response by default
         // which will cause the browser to block the response
         if (_req.headers['access-control-request-method']) {
@@ -180,6 +308,15 @@ const proxyMiddleware: RequestHandler =
         }
       },
       error: (err, _req, _res) => {
+        const startedAt = (_res as Response).locals?.hdxProxyStartedAt;
+        recordOperationOutcome({
+          operation: QUERY_PROXY_OPERATION,
+          // No usable response from ClickHouse (connection refused, timeout,
+          // DNS failure, ...) — a hard availability failure for the proxy.
+          outcome: 'error',
+          durationMs:
+            typeof startedAt === 'number' ? performance.now() - startedAt : 0,
+        });
         console.error('Proxy error:', err);
         (_res as Response).writeHead(500, {
           'Content-Type': 'application/json',
@@ -197,7 +334,25 @@ const proxyMiddleware: RequestHandler =
     // }),
   });
 
-router.get('/*', hasConnectionId, getConnection, proxyMiddleware);
-router.post('/*', hasConnectionId, getConnection, proxyMiddleware);
+// Stamp a start time so the proxy callbacks can record query SLO latency.
+const markProxyStart: RequestHandler = (_req, res, next) => {
+  res.locals.hdxProxyStartedAt = performance.now();
+  next();
+};
+
+router.get(
+  '/*',
+  hasConnectionId,
+  getConnection,
+  markProxyStart,
+  proxyMiddleware,
+);
+router.post(
+  '/*',
+  hasConnectionId,
+  getConnection,
+  markProxyStart,
+  proxyMiddleware,
+);
 
 export default router;

@@ -1,0 +1,35 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "from-json-level-body-keyword-conflict"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "{\"time\": \"2026-05-27T16:11:46.789392+00:00\", \"level\": \"INFO\", \"msg\": \"Found a folder override annotation, placing the mimir-alertmanager-dashboard in: /tmp/dashboards/Mimir Dashboards\"}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { Slider, Tooltip } from '@mantine/core';
 import { useFormatTime } from './useFormatTime';
 import { truncateText } from './utils';
 
-import styles from '../styles/PlaybarSlider.module.scss';
+import styles from '@styles/PlaybarSlider.module.scss';
 
 export type PlaybarMarker = {
   id: string;

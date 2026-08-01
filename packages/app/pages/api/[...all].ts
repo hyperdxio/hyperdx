@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const DEFAULT_SERVER_URL = `http://127.0.0.1:${process.env.HYPERDX_API_PORT}`;
 
@@ -10,7 +10,24 @@ export const config = {
   },
 };
 
-export default (req: NextApiRequest, res: NextApiResponse) => {
+// In Vercel preview deployments we inline the entire Express API into the
+// Next.js serverless function so a single deployment serves both the app and
+// the API. In all other environments (Docker fullstack, standalone production)
+// we proxy `/api/*` to a separately-deployed API service as before.
+const isInlineApi = process.env.HDX_PREVIEW_INLINE_API === 'true';
+
+export default async (req: NextApiRequest, res: NextApiResponse) => {
+  if (isInlineApi) {
+    // Lazy require so non-preview production builds
+    const inlineApi = await import(
+      /* webpackIgnore: true */
+      /* turbopackIgnore: true */
+      '@hyperdx/api/build/serverless'
+    );
+    const handler = inlineApi.default ?? inlineApi;
+    return handler(req, res);
+  }
+
   const proxy = createProxyMiddleware({
     changeOrigin: true,
     // logger: console, // DEBUG

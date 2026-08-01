@@ -9,6 +9,7 @@ export class SavedSearchModalComponent {
   readonly page: Page;
   private readonly modal: Locator;
   private readonly nameInput: Locator;
+  private readonly savedSearchNameTitle: Locator;
   private readonly submitButton: Locator;
   private readonly addTagButton: Locator;
 
@@ -16,6 +17,9 @@ export class SavedSearchModalComponent {
     this.page = page;
     this.modal = page.locator('[data-testid="save-search-modal"]');
     this.nameInput = page.locator('[data-testid="save-search-name-input"]');
+    this.savedSearchNameTitle = page.locator(
+      '[data-testid="saved-search-name"]',
+    );
     this.submitButton = page.locator(
       '[data-testid="save-search-submit-button"]',
     );
@@ -89,6 +93,9 @@ export class SavedSearchModalComponent {
     // Start waiting for URL change BEFORE clicking submit to avoid race condition
     const urlPromise = this.page.waitForURL(/\/search\/[a-f0-9]+/, {
       timeout: 15000,
+      // Saving now uses a document navigation to avoid useQueryStates restoring
+      // stale search URL. Do not wait for unrelated resources to finish loading.
+      waitUntil: 'domcontentloaded',
     });
 
     await this.submit();
@@ -96,8 +103,8 @@ export class SavedSearchModalComponent {
     // Wait for navigation to complete
     await urlPromise;
 
-    // Wait for modal to fully close
-    await expect(this.container).toBeHidden();
+    await expect(this.savedSearchNameTitle).toBeVisible({ timeout: 5000 });
+    await expect(this.savedSearchNameTitle).toHaveText(name, { timeout: 5000 });
   }
 
   /**

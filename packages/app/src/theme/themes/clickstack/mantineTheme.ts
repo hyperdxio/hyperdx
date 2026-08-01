@@ -1,18 +1,29 @@
 import {
   ActionIcon,
+  Alert,
   Button,
+  Checkbox,
   MantineTheme,
   MantineThemeOverride,
+  Radio,
   rem,
   SegmentedControl,
   Select,
   Slider,
+  Switch,
   Tabs,
   Text,
   Tooltip,
 } from '@mantine/core';
 
-import variantClasses from '../../../../styles/variants.module.scss';
+import {
+  SEMANTIC_ALERT_VARS,
+  SEMANTIC_CONTROL_COLORS,
+  SEMANTIC_TEXT_COLORS,
+} from '@/theme/themes/semanticVariants';
+
+import componentClasses from '@/theme/themes/components.module.scss';
+import variantClasses from '@styles/variants.module.scss';
 
 /**
  * ClickStack Theme
@@ -21,12 +32,13 @@ import variantClasses from '../../../../styles/variants.module.scss';
  * Primary color: Yellow/Gold accent
  * Style: Modern, professional
  */
-export const makeTheme = ({
+const makeTheme = ({
   fontFamily = '"Inter", sans-serif',
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
+  defaultRadius: 'sm',
   fontFamily,
   primaryColor: 'yellow',
   primaryShade: 6,
@@ -104,13 +116,19 @@ export const makeTheme = ({
       },
     }),
     Slider: Slider.extend({
+      vars: () => ({
+        root: {
+          '--slider-color': 'var(--color-slider-bar)',
+        },
+      }),
       styles: {
-        bar: {
-          backgroundColor: 'var(--color-bg-brand)',
-        },
         thumb: {
-          borderColor: 'var(--color-bg-brand)',
+          backgroundColor: 'var(--color-slider-thumb)',
+          borderColor: 'var(--color-slider-thumb-border)',
         },
+      },
+      classNames: {
+        mark: componentClasses.sliderMark,
       },
     }),
     Input: {
@@ -204,12 +222,29 @@ export const makeTheme = ({
         };
       },
     },
+    Alert: Alert.extend({
+      vars: (_theme, props) => {
+        if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
+          return { root: SEMANTIC_ALERT_VARS[props.variant] };
+        }
+        return { root: {} };
+      },
+      styles: (_theme, props) => {
+        // Body text follows the semantic accent color (title/icon already do
+        // via --alert-color); Mantine otherwise forces the message to
+        // black/white.
+        if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
+          return { message: { color: 'var(--alert-color)' } };
+        }
+        return {};
+      },
+    }),
     Text: Text.extend({
-      styles: (theme, props) => {
-        if (props.variant === 'danger') {
+      styles: (_theme, props) => {
+        if (props.variant && props.variant in SEMANTIC_TEXT_COLORS) {
           return {
             root: {
-              color: 'var(--color-text-danger)',
+              color: SEMANTIC_TEXT_COLORS[props.variant],
             },
           };
         }
@@ -240,7 +275,7 @@ export const makeTheme = ({
           baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
           baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
           baseVars['--button-color'] = 'var(--color-primary-button-text)';
-          baseVars['--button-color-hover'] = 'var(--color-primary-button-text)';
+          baseVars['--button-hover-color'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {
@@ -250,10 +285,18 @@ export const makeTheme = ({
           baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
 
-        if (props.variant === 'danger') {
-          baseVars['--button-bg'] = 'var(--mantine-color-red-light)';
-          baseVars['--button-hover'] = 'var(--mantine-color-red-light-hover)';
-          baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
+        if (props.variant && props.variant in SEMANTIC_CONTROL_COLORS) {
+          const c = SEMANTIC_CONTROL_COLORS[props.variant];
+          baseVars['--button-bg'] = c.bg;
+          baseVars['--button-hover'] = c.hover;
+          baseVars['--button-color'] = c.color;
+        }
+
+        if (props.variant === 'subtle') {
+          baseVars['--button-bg'] = 'transparent';
+          baseVars['--button-hover'] = 'var(--color-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-text)';
+          baseVars['--button-bd'] = 'none';
         }
 
         if (props.variant === 'link') {
@@ -268,7 +311,7 @@ export const makeTheme = ({
       },
     }),
     SegmentedControl: SegmentedControl.extend({
-      styles: (_theme, props) => ({
+      styles: () => ({
         root: {
           background: 'var(--color-bg-field)',
         },
@@ -283,6 +326,38 @@ export const makeTheme = ({
           '--tabs-color': 'var(--color-text-brand)',
         },
       }),
+      styles: {
+        tabLabel: { textAlign: 'left' },
+      },
+    }),
+    Checkbox: Checkbox.extend({
+      vars: () => ({
+        root: {
+          '--checkbox-color': 'var(--click-global-color-accent-default)',
+          '--checkbox-icon-color':
+            'var(--click-global-color-background-default)',
+        },
+      }),
+    }),
+    Radio: Radio.extend({
+      vars: () => ({
+        root: {
+          '--radio-color': 'var(--click-global-color-accent-default)',
+          '--radio-icon-color': 'var(--click-global-color-background-default)',
+        },
+      }),
+    }),
+    Switch: Switch.extend({
+      vars: () => ({
+        root: {
+          '--switch-color': 'var(--click-global-color-accent-default)',
+        },
+      }),
+      // Note: checked-state track-label color and thumb background are
+      // overridden globally in `clickstack/_tokens.scss` via an
+      // attribute selector on the checkbox input, because Mantine
+      // forces those values via a `:checked +` sibling selector that
+      // can't be reached from this Mantine vars/styles API.
     }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {
@@ -324,10 +399,11 @@ export const makeTheme = ({
           baseVars['--ai-bd'] = '1px solid var(--color-border)';
         }
 
-        if (props.variant === 'danger') {
-          baseVars['--ai-bg'] = 'var(--mantine-color-red-light)';
-          baseVars['--ai-hover'] = 'var(--mantine-color-red-light-hover)';
-          baseVars['--ai-color'] = 'var(--mantine-color-red-light-color)';
+        if (props.variant && props.variant in SEMANTIC_CONTROL_COLORS) {
+          const c = SEMANTIC_CONTROL_COLORS[props.variant];
+          baseVars['--ai-bg'] = c.bg;
+          baseVars['--ai-hover'] = c.hover;
+          baseVars['--ai-color'] = c.color;
         }
 
         if (props.variant === 'link') {

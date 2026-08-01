@@ -1,316 +1,123 @@
 import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import cx from 'classnames';
-import type { Duration } from 'date-fns';
-import { add, formatRelative } from 'date-fns';
+import { useQueryState } from 'nuqs';
+import ReactMarkdown from 'react-markdown';
 import {
-  AlertHistory,
   AlertSource,
   AlertState,
+  isRangeThresholdType,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
+  Anchor,
   Badge,
-  Button,
+  Collapse,
   Container,
+  Flex,
   Group,
-  Menu,
+  Select,
   Stack,
-  Tooltip,
+  TextInput,
+  UnstyledButton,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconAlertTriangle,
   IconBell,
-  IconBrandSlack,
   IconChartLine,
   IconCheck,
+  IconChevronDown,
   IconChevronRight,
   IconHelpCircle,
+  IconHourglass,
   IconInfoCircleFilled,
+  IconNote,
+  IconSearch,
   IconTableRow,
 } from '@tabler/icons-react';
-import { useQueryClient } from '@tanstack/react-query';
 
-import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { AckAlert } from '@/components/alerts/AckAlert';
+import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { isAlertSilenceExpired } from './utils/alerts';
+import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
-import { FormatTime } from './useFormatTime';
 
-import styles from '../styles/AlertsPage.module.scss';
+import styles from '@styles/AlertsPage.module.scss';
 
-function AlertHistoryCard({
-  history,
-  alertUrl,
-}: {
-  history: AlertHistory;
-  alertUrl: string;
-}) {
-  const start = new Date(history.createdAt.toString());
-
-  // eslint-disable-next-line no-restricted-syntax
-  const today = React.useMemo(() => new Date(), []);
-
-  const href = React.useMemo(() => {
-    if (!alertUrl || !history.lastValues?.[0]?.startTime) return null;
-
-    // Create time window from alert creation to last recorded value
-    const to = new Date(history.createdAt).getTime();
-    const from = new Date(history.lastValues[0].startTime).getTime();
-
-    // Construct URL with time range parameters
-    const url = new URL(alertUrl, window.location.origin);
-    url.searchParams.set('from', from.toString());
-    url.searchParams.set('to', to.toString());
-    url.searchParams.set('isLive', 'false');
-
-    return url.pathname + url.search;
-  }, [history, alertUrl]);
-
-  const content = (
-    <div
-      className={cx(
-        styles.historyCard,
-        history.state === AlertState.OK ? styles.ok : styles.alarm,
-        href && styles.clickable,
-      )}
-    />
-  );
-
-  return (
-    <Tooltip
-      label={`${history.counts ?? 0} alerts ${formatRelative(start, today)}`}
-      color="dark"
-      withArrow
-    >
-      {href ? (
-        <a href={href} className={styles.historyCardLink}>
-          {content}
-        </a>
-      ) : (
-        content
-      )}
-    </Tooltip>
-  );
+function getAlertDisplayName(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
+    const tileName = tile?.config.name || 'Tile';
+    return `${alert.dashboard.name} ${tileName}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return alert.savedSearch.name;
+  }
+  return '';
 }
 
-const HISTORY_ITEMS = 18;
-
-function AckAlert({ alert }: { alert: AlertsPageItem }) {
-  const queryClient = useQueryClient();
-  const silenceAlert = api.useSilenceAlert();
-  const unsilenceAlert = api.useUnsilenceAlert();
-
-  const mutateOptions = React.useMemo(
-    () => ({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['alerts'] });
-      },
-      onError: (error: any) => {
-        const status = error?.response?.status;
-        let message = 'Failed to silence alert, please try again later.';
-
-        if (status === 404) {
-          message = 'Alert not found.';
-        } else if (status === 400) {
-          message =
-            'Invalid request. Please ensure the silence duration is valid.';
-        }
-
-        notifications.show({
-          color: 'red',
-          message,
-        });
-      },
-    }),
-    [queryClient],
-  );
-
-  const handleUnsilenceAlert = React.useCallback(() => {
-    unsilenceAlert.mutate(alert._id || '', mutateOptions);
-  }, [alert._id, mutateOptions, unsilenceAlert]);
-
-  const isNoLongerMuted = React.useMemo(() => {
-    return isAlertSilenceExpired(alert.silenced);
-  }, [alert.silenced]);
-
-  const handleSilenceAlert = React.useCallback(
-    (duration: Duration) => {
-      // eslint-disable-next-line no-restricted-syntax
-      const mutedUntil = add(new Date(), duration);
-      silenceAlert.mutate(
-        {
-          alertId: alert._id || '',
-          mutedUntil: mutedUntil.toISOString(),
-        },
-        mutateOptions,
-      );
-    },
-    [alert._id, mutateOptions, silenceAlert],
-  );
-
-  if (alert.silenced?.at) {
-    return (
-      <ErrorBoundary message="Failed to load alert acknowledgment menu">
-        <Menu>
-          <Menu.Target>
-            <Button
-              size="compact-sm"
-              variant="primary"
-              color={
-                isNoLongerMuted
-                  ? 'var(--color-bg-warning)'
-                  : 'var(--color-bg-success)'
-              }
-              leftSection={<IconBell size={16} />}
-            >
-              Ack&apos;d
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Label py={6}>
-              Acknowledged{' '}
-              {alert.silenced?.by ? (
-                <>
-                  by <strong>{alert.silenced?.by}</strong>
-                </>
-              ) : null}{' '}
-              on <br />
-              <FormatTime value={alert.silenced?.at} />
-              .<br />
-            </Menu.Label>
-
-            <Menu.Label py={6}>
-              {isNoLongerMuted ? (
-                'Alert resumed.'
-              ) : (
-                <>
-                  Resumes <FormatTime value={alert.silenced.until} />.
-                </>
-              )}
-            </Menu.Label>
-            <Menu.Item
-              lh="1"
-              py={8}
-              color="orange"
-              onClick={handleUnsilenceAlert}
-              disabled={unsilenceAlert.isPending}
-            >
-              {isNoLongerMuted ? 'Unacknowledge' : 'Resume alert'}
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </ErrorBoundary>
-    );
-  }
-
-  if (alert.state === 'ALERT') {
-    return (
-      <ErrorBoundary message="Failed to load alert acknowledgment menu">
-        <Menu disabled={silenceAlert.isPending}>
-          <Menu.Target>
-            <Button size="compact-sm" variant="secondary">
-              Ack
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Label lh="1" py={6}>
-              Acknowledge and silence for
-            </Menu.Label>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  minutes: 30,
-                })
-              }
-            >
-              30 minutes
-            </Menu.Item>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  hours: 1,
-                })
-              }
-            >
-              1 hour
-            </Menu.Item>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  hours: 6,
-                })
-              }
-            >
-              6 hours
-            </Menu.Item>
-            <Menu.Item
-              lh="1"
-              py={8}
-              onClick={() =>
-                handleSilenceAlert({
-                  hours: 24,
-                })
-              }
-            >
-              24 hours
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </ErrorBoundary>
-    );
-  }
-
-  return null;
+function getAlertTags(alert: AlertsPageItem): string[] {
+  return alert.dashboard?.tags ?? alert.savedSearch?.tags ?? [];
 }
 
-function AlertHistoryCardList({
-  history,
-  alertUrl,
-}: {
-  history: AlertHistory[];
-  alertUrl: string;
-}) {
-  const items = React.useMemo(() => {
-    if (history.length < HISTORY_ITEMS) {
-      return history;
-    }
-    return history.slice(0, HISTORY_ITEMS);
-  }, [history]);
+function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
+  if (!alert.createdBy) return undefined;
+  return alert.createdBy.name || alert.createdBy.email;
+}
 
-  const paddingItems = React.useMemo(() => {
-    if (history.length > HISTORY_ITEMS) {
-      return [];
-    }
-    return new Array(HISTORY_ITEMS - history.length).fill(null);
-  }, [history]);
+function AlertNote({ note }: { note: string }) {
+  const [opened, { toggle }] = useDisclosure(false);
 
   return (
-    <div className={styles.historyCardWrapper}>
-      {paddingItems.map((_, index) => (
-        <Tooltip label="No data" withArrow key={index}>
-          <div className={styles.historyCard} />
-        </Tooltip>
-      ))}
-      {items
-        .slice()
-        .reverse()
-        .map((history, index) => (
-          <AlertHistoryCard key={index} history={history} alertUrl={alertUrl} />
-        ))}
+    <div>
+      <UnstyledButton data-testid="alert-note-section" onClick={toggle} mt={4}>
+        <Group gap={4}>
+          <IconChevronDown
+            size={12}
+            style={{
+              transform: opened ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform 200ms',
+            }}
+          />
+          <IconNote size={14} opacity={0.5} />
+          <span className="fs-8" style={{ opacity: 0.6 }}>
+            Note
+          </span>
+        </Group>
+      </UnstyledButton>
+      <Collapse expanded={opened}>
+        <div
+          className="hdx-markdown fs-8 mt-1"
+          style={{ opacity: 0.8, paddingLeft: 20 }}
+          data-testid="alert-note-content"
+        >
+          {opened && (
+            <ReactMarkdown
+              components={{
+                a: props => (
+                  <a
+                    {...props}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                  />
+                ),
+                img: props => (
+                  <img {...props} referrerPolicy="no-referrer" loading="lazy" />
+                ),
+              }}
+            >
+              {note}
+            </ReactMarkdown>
+          )}
+        </div>
+      </Collapse>
     </div>
   );
 }
@@ -362,10 +169,19 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   })();
 
   const alertType = React.useMemo(() => {
+    const thresholdLabel =
+      TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
+      alert.thresholdType;
     return (
       <>
-        If value is {alert.thresholdType === 'above' ? 'over' : 'under'}{' '}
+        If value {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
+        {isRangeThresholdType(alert.thresholdType) && (
+          <>
+            {' '}
+            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
+          </>
+        )}
         <span>&middot;</span>
       </>
     );
@@ -396,6 +212,11 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         {alert.state === AlertState.ALERT && (
           <Badge variant="light" color="red">
             Alert
+          </Badge>
+        )}
+        {alert.state === AlertState.PENDING && (
+          <Badge variant="light" color="orange">
+            Pending
           </Badge>
         )}
         {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
@@ -431,11 +252,21 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               </>
             )}
           </div>
+          {getAlertTags(alert).length > 0 && (
+            <Group gap={4}>
+              {getAlertTags(alert).map(tag => (
+                <Badge key={tag} variant="light" color="gray" size="xs">
+                  {tag}
+                </Badge>
+              ))}
+            </Group>
+          )}
+          {alert.note && <AlertNote note={alert.note} />}
         </Stack>
       </Group>
 
       <Group>
-        <AlertHistoryCardList history={alert.history} alertUrl={alertUrl} />
+        <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
       </Group>
     </div>
@@ -444,6 +275,9 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
 
 function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
   const alarmAlerts = alerts.filter(alert => alert.state === AlertState.ALERT);
+  const pendingAlerts = alerts.filter(
+    alert => alert.state === AlertState.PENDING,
+  );
   const okData = alerts.filter(alert => alert.state === AlertState.OK);
 
   return (
@@ -453,8 +287,18 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           <Group className={styles.sectionHeader}>
             <IconAlertTriangle size={14} /> Triggered
           </Group>
-          {alarmAlerts.map((alert, index) => (
-            <AlertDetails key={index} alert={alert} />
+          {alarmAlerts.map(alert => (
+            <AlertDetails key={alert._id} alert={alert} />
+          ))}
+        </div>
+      )}
+      {pendingAlerts.length > 0 && (
+        <div>
+          <Group className={styles.sectionHeader}>
+            <IconHourglass size={14} /> Pending
+          </Group>
+          {pendingAlerts.map(alert => (
+            <AlertDetails key={alert._id} alert={alert} />
           ))}
         </div>
       )}
@@ -463,10 +307,15 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           <IconCheck size={14} /> OK
         </Group>
         {okData.length === 0 && (
-          <div className="text-center my-4 fs-8">No alerts</div>
+          <EmptyState
+            variant="card"
+            icon={<IconBell size={32} />}
+            title="No alerts"
+            description="All alerts in OK state will appear here."
+          />
         )}
-        {okData.map((alert, index) => (
-          <AlertDetails key={index} alert={alert} />
+        {okData.map(alert => (
+          <AlertDetails key={alert._id} alert={alert} />
         ))}
       </div>
     </div>
@@ -479,42 +328,149 @@ export default function AlertsPage() {
 
   const alerts = React.useMemo(() => data?.data || [], [data?.data]);
 
+  const [search, setSearch] = useQueryState('search');
+  const [tagFilter, setTagFilter] = useQueryState('tag');
+  const [creatorFilter, setCreatorFilter] = useQueryState('creator');
+
+  const allTags = React.useMemo(() => {
+    const tags = new Set<string>();
+    alerts.forEach(a => getAlertTags(a).forEach(t => tags.add(t)));
+    return Array.from(tags).sort();
+  }, [alerts]);
+
+  const allCreators = React.useMemo(() => {
+    const creators = new Set<string>();
+    alerts.forEach(a => {
+      const label = getAlertCreatorLabel(a);
+      if (label) creators.add(label);
+    });
+    return Array.from(creators).sort();
+  }, [alerts]);
+
+  const filteredAlerts = React.useMemo(() => {
+    let result = alerts;
+    if (tagFilter) {
+      result = result.filter(a => getAlertTags(a).includes(tagFilter));
+    }
+    if (creatorFilter) {
+      result = result.filter(a => getAlertCreatorLabel(a) === creatorFilter);
+    }
+    if (search?.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        a =>
+          getAlertDisplayName(a).toLowerCase().includes(q) ||
+          getAlertTags(a).some(t => t.toLowerCase().includes(q)),
+      );
+    }
+    return result;
+  }, [alerts, search, tagFilter, creatorFilter]);
+
+  const hasFilters = !!(search?.trim() || tagFilter || creatorFilter);
+
   return (
-    <div data-testid="alerts-page" className="AlertsPage">
+    <div
+      data-testid="alerts-page"
+      className="AlertsPage"
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Head>
         <title>Alerts - {brandName}</title>
       </Head>
-      <PageHeader>Alerts</PageHeader>
-      <div className="my-4">
-        <Container maw={1500}>
-          <Alert
-            icon={<IconInfoCircleFilled size={16} />}
-            color="gray"
-            py="xs"
-            mt="md"
-          >
-            Alerts can be{' '}
-            <a
-              href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
-              target="_blank"
-              rel="noopener noreferrer"
+      <PageHeader title="Alerts" />
+      <div className="my-4" style={{ flex: 1 }}>
+        {isLoading ? (
+          <div className="text-center my-4 fs-8">Loading...</div>
+        ) : isError ? (
+          <div className="text-center my-4 fs-8">Error</div>
+        ) : alerts?.length ? (
+          <Container maw={1500}>
+            <Alert
+              icon={<IconInfoCircleFilled size={16} />}
+              color="gray"
+              py="xs"
+              mt="md"
             >
-              created
-            </a>{' '}
-            from dashboard charts and saved searches.
-          </Alert>
-          {isLoading ? (
-            <div className="text-center my-4 fs-8">Loading...</div>
-          ) : isError ? (
-            <div className="text-center my-4 fs-8">Error</div>
-          ) : alerts?.length ? (
-            <>
-              <AlertCardList alerts={alerts} />
-            </>
-          ) : (
-            <div className="text-center my-4 fs-8">No alerts created yet</div>
-          )}
-        </Container>
+              Alerts can be{' '}
+              <a
+                href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                created
+              </a>{' '}
+              from dashboard charts and saved searches.
+            </Alert>
+            <Flex align="center" mt="md" gap="sm" data-testid="alerts-filters">
+              <TextInput
+                placeholder="Search by name"
+                leftSection={<IconSearch size={16} />}
+                value={search ?? ''}
+                onChange={e => setSearch(e.currentTarget.value || null)}
+                style={{ flex: 1, maxWidth: 400 }}
+                miw={100}
+                data-testid="alerts-search-input"
+              />
+              {allTags.length > 0 && (
+                <Select
+                  placeholder="Filter by tag"
+                  data={allTags}
+                  value={tagFilter}
+                  onChange={v => setTagFilter(v)}
+                  clearable
+                  searchable
+                  style={{ maxWidth: 200 }}
+                  data-testid="alerts-tag-filter"
+                />
+              )}
+              {allCreators.length > 0 && (
+                <Select
+                  placeholder="Filter by creator"
+                  data={allCreators}
+                  value={creatorFilter}
+                  onChange={v => setCreatorFilter(v)}
+                  clearable
+                  searchable
+                  style={{ maxWidth: 250 }}
+                  data-testid="alerts-creator-filter"
+                />
+              )}
+            </Flex>
+            {filteredAlerts.length > 0 ? (
+              <AlertCardList alerts={filteredAlerts} />
+            ) : (
+              <EmptyState
+                variant="card"
+                icon={<IconBell size={32} />}
+                title={hasFilters ? 'No matching alerts' : 'No alerts'}
+                description={
+                  hasFilters
+                    ? 'Try adjusting your search or filters.'
+                    : 'All alerts in OK state will appear here.'
+                }
+              />
+            )}
+          </Container>
+        ) : (
+          <EmptyState
+            h="100%"
+            icon={<IconBell size={32} />}
+            title="No alerts created yet"
+            description={
+              <>
+                Alerts can be created from{' '}
+                <Anchor component={Link} href="/dashboards">
+                  dashboard charts
+                </Anchor>{' '}
+                and{' '}
+                <Anchor component={Link} href="/search">
+                  saved searches
+                </Anchor>
+                .
+              </>
+            }
+          />
+        )}
       </div>
     </div>
   );

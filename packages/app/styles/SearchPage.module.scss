@@ -14,28 +14,26 @@
   overflow: hidden;
   z-index: 3; // higher z-index to be above other elements
 
-  :global {
-    .mantine-TextInput-wrapper {
-      background-color: transparent;
-    }
+  :global(.mantine-TextInput-wrapper) {
+    background-color: transparent;
+  }
 
-    .mantine-TextInput-input {
-      height: 20px;
-      min-height: 20px;
-      background-color: transparent;
-      color: var(--color-text-secondary);
-      font-size: var(--mantine-font-size-xs);
+  :global(.mantine-TextInput-input) {
+    height: 20px;
+    min-height: 20px;
+    background-color: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--mantine-font-size-xs);
+  }
 
-      &::placeholder {
-        color: var(--color-text-muted);
-        font-weight: bold;
-      }
+  :global(.mantine-TextInput-input::placeholder) {
+    color: var(--color-text-muted);
+    font-weight: bold;
+  }
 
-      &:focus {
-        border: none;
-        outline: none;
-      }
-    }
+  :global(.mantine-TextInput-input:focus) {
+    border: none;
+    outline: none;
   }
 }
 

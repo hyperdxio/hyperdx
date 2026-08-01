@@ -2,11 +2,13 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
   packages: write
   pull-requests: write
   actions: read
+  id-token: write
 jobs:
   check_changesets:
     name: Check Changesets
@@ -16,18 +18,52 @@ jobs:
         ${{ steps.changesets.outputs.hasChangesets }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          # Fetch existing tags so `changeset tag` (run via `yarn release`)
+          # skips packages whose current version is already tagged. With the
+          # default shallow, tag-less checkout it re-creates ALL package tags
+          # locally, and the changesets action's `git push origin <tag>` is
+          # rejected for any package that didn't bump in this release (tags
+          # are annotated, so even same-commit re-pushes are rejected).
+          # See the 2.30.1 release failure (run 29261242580).
+          fetch-depth: 0
+          fetch-tags: true
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
+          # Note: Do NOT set registry-url here — it creates a NODE_AUTH_TOKEN
+          # that conflicts with npm OIDC trusted publishing
+      # npm OIDC trusted publishing requires npm >= 11.5.1 client-side. Node 22
+      # LTS ships npm 10.x, which has no OIDC code path and falls back to
+      # NODE_AUTH_TOKEN, failing ENEEDAUTH.
+      - name: Upgrade npm for OIDC trusted publishing
+        # Pin to 11.x (not @latest): OIDC only needs npm >= 11.5.1, and floating
+        # tags drag in majors that raise the node floor / lack a stable GA and
+        # break CI. 11.x supports node 22.9+.
+        #
+        # NOTE: this bootstraps via the node-bundled npm, so the .nvmrc node
+        # version must ship a working npm. Node 22.22.2's bundled npm 10.9.7 has
+        # a broken module tree (missing promise-retry) and crashes here — see
+        # actions/runner-images#13883. 22.23.1 bundles npm 10.9.8, which works.
+        # Keep .nvmrc off 22.22.2.
+        run: npm install -g npm@11
+      - name: Configure npm registry
+        run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
         run: yarn install
+      # Build @hyperdx/common-utils before changesets publish runs.
+      # @hyperdx/cli's `prepublishOnly` runs `yarn build` (tsup), which bundles
+      # imports from `@hyperdx/common-utils/dist/*`. Without this step those
+      # paths fail to resolve and the npm publish for @hyperdx/cli is skipped
+      # while the GitHub release/tag still succeeds. See HDX-4075.
+      - name: Build common-utils
+        run: make ci-build
       - name: Create Release Pull Request or Publish to npm
         if: always()
-        continue-on-error: true
         id: changesets
         uses: changesets/action@v1
         with:
@@ -38,7 +74,7 @@ jobs:
         env:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
   # ---------------------------------------------------------------------------
   # Check if version already published (skip-if-exists)
@@ -53,7 +89,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -93,7 +129,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -129,7 +165,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -173,7 +209,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -217,7 +253,7 @@ jobs:
       app_was_pushed: 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -260,7 +296,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -299,13 +335,36 @@ jobs:
           cache-from: type=gha,scope=local-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=local-${{ matrix.arch }}
 
+  # Boot the freshly built amd64 Local image and push one OTLP log end-to-end
+  # into ClickHouse before we publish the multi-arch manifest. Gates publishing
+  # on the artefact actually running, not just building. Reuses the per-arch tag
+  # the build job already pushed (same reference the publish job merges below).
+  smoke-local:
+    name: Smoke Test Local Image
+    needs: [check_version, build-local]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Smoke test built image
+        run: |
+          scripts/ci/smoke-all-in-one.sh "${{ env.LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-amd64"
+
   publish-local:
     name: Publish Local Manifest
-    needs: [check_version, build-local]
+    needs: [check_version, build-local, smoke-local]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -349,7 +408,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -388,13 +447,43 @@ jobs:
           cache-from: type=gha,scope=all-in-one-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=all-in-one-${{ matrix.arch }}
 
+  # Boot the freshly built amd64 All-in-One (auth) image and assert it comes up
+  # healthy with ClickHouse answering, before we publish the multi-arch manifest.
+  # Health-only (not full OTLP ingest): the auth image gates ingestion behind an
+  # INGESTION_API_KEY, so its collector never opens a keyless OTLP receiver — a
+  # canary push would always fail. Gates publishing on the artefact actually
+  # booting, not just building. Reuses the per-arch tag the build job already
+  # pushed (same reference the publish job merges below).
+  smoke-all-in-one:
+    name: Smoke Test All-in-One Image
+    needs: [check_version, build-all-in-one]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      # The auth all-in-one image gates ingestion behind an INGESTION_API_KEY
+      # bootstrap, so its bundled collector never opens a keyless OTLP receiver
+      # — a canary POST can't land. Health-only mode asserts the app is healthy
+      # and ClickHouse is up, which is the runnable check this artefact supports.
+      - name: Smoke test built image
+        run: |
+          scripts/ci/smoke-all-in-one.sh "${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-amd64" --health-only
+
   publish-all-in-one:
     name: Publish All-in-One Manifest
-    needs: [check_version, build-all-in-one]
+    needs: [check_version, build-all-in-one, smoke-all-in-one]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -419,6 +508,139 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
+  # CLI – compile standalone binaries and upload as GitHub Release assets
+  # npm publishing is handled by changesets in the check_changesets job above.
+  # This job only compiles platform-specific binaries and creates a GH Release.
+  # ---------------------------------------------------------------------------
+  release-cli:
+    name: Release CLI Binaries
+    needs: [check_changesets, check_version]
+    if: needs.check_version.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.11'
+      - name: Install dependencies
+        run: yarn install
+      - name: Build common-utils
+        run: make ci-build
+      - name: Get CLI version
+        id: cli_version
+        run: |
+          CLI_VERSION=$(node -p "require('./packages/cli/package.json').version")
+          echo "version=${CLI_VERSION}" >> $GITHUB_OUTPUT
+          echo "CLI version: ${CLI_VERSION}"
+      - name: Check if CLI release already exists
+        id: check_cli_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "cli-v${{ steps.cli_version.outputs.version }}" > /dev/null 2>&1; then
+            echo "Release cli-v${{ steps.cli_version.outputs.version }} already exists. Skipping."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release does not exist. Proceeding."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Compile CLI binaries
+        if: steps.check_cli_release.outputs.exists == 'false'
+        working-directory: packages/cli
+        run: |
+          yarn compile:linux
+          yarn compile:macos
+          yarn compile:macos-x64
+      - name: Build release notes
+        if: steps.check_cli_release.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.cli_version.outputs.version }}"
+          CHANGELOG="packages/cli/CHANGELOG.md"
+
+          # Extract the section for this version from CHANGELOG.md
+          # Grab everything between "## $VERSION" and the next "## " heading
+          NOTES=""
+          if [ -f "$CHANGELOG" ]; then
+            NOTES=$(awk -v ver="## ${VERSION}" '
+              $0 == ver { found=1; next }
+              found && /^## / { exit }
+              found { print }
+            ' "$CHANGELOG")
+          fi
+
+          # Write the combined release body
+          {
+            echo "## @hyperdx/cli v${VERSION}"
+            echo ""
+            if [ -n "$NOTES" ]; then
+              echo "$NOTES"
+              echo ""
+              echo "---"
+              echo ""
+            fi
+            cat <<'INSTALL'
+          ### Installation
+
+          **npm (recommended):**
+          ```bash
+          npm install -g @hyperdx/cli
+          ```
+
+          **Or run directly with npx:**
+          ```bash
+          npx @hyperdx/cli tui -s <your-hyperdx-api-url>
+          ```
+
+          **Manual download (standalone binary, no Node.js required):**
+          ```bash
+          # macOS Apple Silicon
+          INSTALL
+            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-darwin-arm64 -o hdx"
+            echo "# macOS Intel"
+            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-darwin-x64 -o hdx"
+            echo "# Linux x64"
+            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-linux-x64 -o hdx"
+            cat <<'USAGE'
+
+          chmod +x hdx && sudo mv hdx /usr/local/bin/
+          ```
+
+          ### Usage
+
+          ```bash
+          hdx auth login -s <your-hyperdx-api-url>
+          hdx tui
+          ```
+          USAGE
+          } > /tmp/cli-release-notes.md
+
+          echo "--- Generated release notes ---"
+          cat /tmp/cli-release-notes.md
+      - name: Create GitHub Release
+        if: steps.check_cli_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        with:
+          tag_name: cli-v${{ steps.cli_version.outputs.version }}
+          name: '@hyperdx/cli v${{ steps.cli_version.outputs.version }}'
+          body_path: /tmp/cli-release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            packages/cli/dist/hdx-linux-x64
+            packages/cli/dist/hdx-darwin-arm64
+            packages/cli/dist/hdx-darwin-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
   # Downstream notifications
   # ---------------------------------------------------------------------------
   notify_helm_charts:
@@ -437,11 +659,11 @@ jobs:
       needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify Helm-Charts Downstream
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
@@ -477,7 +699,7 @@ jobs:
     #   needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Get Downstream App Installation Token
@@ -488,7 +710,7 @@ jobs:
           private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
           owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
       - name: Notify CH Downstream
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
@@ -520,11 +742,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify ClickHouse/clickhouse-clickstack Downstream
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
@@ -542,6 +764,86 @@ jobs:
               }
             });
 
+  # ---------------------------------------------------------------------------
+  # Failure notification
+  # ---------------------------------------------------------------------------
+  slack-notify-failure:
+    needs:
+      [
+        check_changesets,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
+        release-cli,
+        notify_helm_charts,
+        notify_ch,
+        notify_clickhouse_clickstack,
+      ]
+    runs-on: ubuntu-24.04
+    if: failure()
+    steps:
+      - name: Get failed steps
+        id: get_failed_steps
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+
+            const failedSteps = data.jobs
+              .filter(job => job.conclusion === 'failure')
+              .flatMap(job => {
+                const stepNames = (job.steps ?? [])
+                  .filter(step => step.conclusion === 'failure')
+                  .map(step => `${job.name} → ${step.name}`);
+                return stepNames.length > 0 ? stepNames : [`${job.name} → (unknown step)`];
+              })
+              .join(', ');
+
+            core.setOutput('failed_steps', failedSteps || 'unknown');
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: repo,workflow
+          custom_payload: |
+            {
+              "text": "Release workflow failed!",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {
+                    "title": "Failed step(s)",
+                    "value": "${{ steps.get_failed_steps.outputs.failed_steps }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>",
+                    "short": false
+                  },
+                  {
+                    "title": "Actor",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Run",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>",
+                    "short": true
+                  }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_ENG_NOTIFS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   otel-cicd-action:
     if: always()
     name: OpenTelemetry Export Trace
@@ -553,9 +855,11 @@ jobs:
         publish-otel-collector,
         publish-local,
         publish-all-in-one,
+        release-cli,
         notify_helm_charts,
         notify_ch,
         notify_clickhouse_clickstack,
+        slack-notify-failure,
       ]
     steps:
       - name: Export workflow

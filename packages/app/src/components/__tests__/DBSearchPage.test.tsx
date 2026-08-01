@@ -1,4 +1,4 @@
-import { getDefaultSourceId } from '../../DBSearchPage';
+import { getDefaultSourceId } from '@/DBSearchPage';
 
 describe('getDefaultSourceId', () => {
   it('returns empty string if sources is undefined', () => {

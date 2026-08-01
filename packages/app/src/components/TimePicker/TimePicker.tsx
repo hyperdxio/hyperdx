@@ -43,13 +43,38 @@ const modeAtom = atomWithStorage<TimePickerMode>(
   TimePickerMode.Range,
 );
 
-const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
+const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
-const DateInputCmp = (props: DateInputProps) => (
+/** Ensure a value is a Date object (Mantine v9 DateInput returns strings). */
+const toDate = (v: Date | string | null): Date | null =>
+  v == null ? null : v instanceof Date ? v : new Date(v);
+
+/**
+ * Wrapper around Mantine v9 DateInput that bridges the Date ↔ string gap.
+ * Mantine v9 DateInput expects/emits string values, but the TimePickerForm
+ * stores Date objects (used by date-fns). This wrapper converts in both
+ * directions: value (Date → string) and onChange (string → Date).
+ *
+ * `withTime` is required: by default DateInput strips the time part and
+ * normalizes values to midnight, even when `valueFormat` includes time
+ * tokens. Setting `withTime` preserves HH:mm:ss so manually-typed times
+ * survive blur/commit.
+ */
+type DateInputCmpProps = Omit<DateInputProps, 'value' | 'onChange'> & {
+  value?: Date | null;
+  onChange?: (value: Date | null) => void;
+};
+
+const DateInputCmp = ({
+  value,
+  onChange: onChangeProp,
+  ...props
+}: DateInputCmpProps) => (
   <DateInput
     size="xs"
     highlightToday
+    withTime
     placeholder={DATE_INPUT_PLACEHOLDER}
     valueFormat={DATE_INPUT_FORMAT}
     variant="filled"
@@ -60,6 +85,8 @@ const DateInputCmp = (props: DateInputProps) => (
       }
     }}
     {...props}
+    value={value instanceof Date ? value.toISOString() : (value ?? null)}
+    onChange={v => onChangeProp?.(toDate(v))}
   />
 );
 
@@ -78,6 +105,8 @@ const TimePickerComponent = ({
   showLive = false,
   isLiveMode = false,
   defaultRelativeTimeMode = false,
+  width = 350,
+  size = 'sm',
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
@@ -87,6 +116,8 @@ const TimePickerComponent = ({
   showLive?: boolean;
   isLiveMode?: boolean;
   defaultRelativeTimeMode?: boolean;
+  width?: number | string;
+  size?: 'xs' | 'sm';
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -174,7 +205,8 @@ const TimePickerComponent = ({
     if (!form.isValid() || !opened) {
       return;
     }
-    const { startDate, endDate } = form.values;
+    const startDate = toDate(form.values.startDate);
+    const endDate = toDate(form.values.endDate);
     if (mode === TimePickerMode.Range) {
       handleSearch([startDate, endDate]);
       close();
@@ -192,7 +224,8 @@ const TimePickerComponent = ({
 
   const handleMove = React.useCallback(
     (d: Duration) => {
-      const { startDate, endDate } = form.values;
+      const startDate = toDate(form.values.startDate);
+      const endDate = toDate(form.values.endDate);
       const from = startDate && add(startDate, d);
       const to = endDate && add(endDate, d);
       handleSearch([from, to]);
@@ -201,6 +234,23 @@ const TimePickerComponent = ({
   );
 
   const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
+  // Promote the toggle into relative mode when the URL-derived
+  // `defaultRelativeTimeMode` prop becomes true (e.g. after a reload while a
+  // non-default live interval is active). Previously `isRelative` was only
+  // seeded at mount, so this case left the picker in absolute mode even though
+  // the URL described a relative range.
+  //
+  // We intentionally only force the toggle ON, never OFF. The prop is a lossy
+  // signal — it is false both for "absolute mode" and for "relative mode at
+  // the default live-tail interval" (e.g. Live Tail / Last 15 minutes), so
+  // syncing it back to false would incorrectly drop the user out of relative
+  // mode whenever they pick the default interval. Turning relative mode off is
+  // left to the user's explicit toggle.
+  React.useEffect(() => {
+    if (defaultRelativeTimeMode) {
+      setIsRelative(true);
+    }
+  }, [defaultRelativeTimeMode]);
   // Must be state to ensure rerenders occur when ref changes
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
   const dateComponentPopoverProps = useMemo(
@@ -247,8 +297,8 @@ const TimePickerComponent = ({
           onChange={event => onChange(event.currentTarget.value)}
           onClick={toggle}
           placeholder="Time Range"
-          size="sm"
-          w={350}
+          size={size}
+          w={width}
           onKeyDown={e => {
             if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
               onSubmit?.(e.target.value);
@@ -366,15 +416,12 @@ const TimePickerComponent = ({
                     form.values.startDate &&
                     form.values.endDate
                   ) {
+                    const start = toDate(form.values.startDate)!;
+                    const end = toDate(form.values.endDate)!;
                     const midpoint = new Date(
-                      (form.values.startDate.getTime() +
-                        form.values.endDate.getTime()) /
-                        2,
+                      (start.getTime() + end.getTime()) / 2,
                     );
-                    const halfRangeMs =
-                      (form.values.endDate.getTime() -
-                        form.values.startDate.getTime()) /
-                      2;
+                    const halfRangeMs = (end.getTime() - start.getTime()) / 2;
 
                     // Find the closest duration option
                     const halfRangeMinutes = halfRangeMs / (1000 * 60);

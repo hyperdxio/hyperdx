@@ -4,7 +4,7 @@ import type { Json, JSONBlob } from './common';
 import { tryJSONStringify } from './common';
 export type KeyPath = string[];
 
-export enum AggregationTemporality {
+enum AggregationTemporality {
   Delta = 1,
   Cumulative = 2,
 }
@@ -197,21 +197,6 @@ export type VectorLog = _VectorLogFields &
     tso: number; // observed timestamp
   };
 
-export type VectorSpan = {
-  atrs: JSONBlob; // attributes
-  authorization?: string | null;
-  et: number; // end timestamp
-  hdx_platform: string;
-  hdx_token: string | null;
-  n: string; // name
-  p_id: string; // parent id
-  r: string; // raw
-  s_id: string; // span id
-  st: number; // start timestamp
-  t_id: string; // trace id
-  tso: number; // observed timestamp
-};
-
 export type VectorMetric = {
   at: number; // aggregation temporality
   authorization?: string;
@@ -302,15 +287,3 @@ class VectorRrwebParser extends ParsingInterface<VectorLog, RrwebEventModel> {
     };
   }
 }
-
-// TODO: do this on the ingestor side ?
-export const extractApiKey = (log: VectorLog | VectorSpan | VectorMetric) => {
-  if (log.authorization?.includes('Bearer')) {
-    return log.authorization.split('Bearer ')[1];
-  }
-  return log.hdx_token;
-};
-
-export const vectorLogParser = new VectorLogParser();
-export const vectorMetricParser = new VectorMetricParser();
-export const vectorRrwebParser = new VectorRrwebParser();

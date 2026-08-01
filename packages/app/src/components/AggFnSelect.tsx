@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { AGG_FNS } from '@/ChartUtils';
@@ -9,14 +10,18 @@ type AggFnValues = (typeof AGG_FNS)[number]['value'];
 type OnChangeValue =
   | { aggFn?: AggFnValues }
   | { aggFn: 'quantile'; level: number };
-export default function AggFnSelect({
+function AggFnSelect({
   value,
   defaultValue,
   onChange,
+  hideCustom,
+  metricType,
 }: {
   value: string;
   defaultValue: string;
   onChange: (value: OnChangeValue) => void;
+  hideCustom?: boolean;
+  metricType?: MetricsDataType;
 }) {
   const _onChange = useCallback(
     (value: string | null) => {
@@ -35,6 +40,15 @@ export default function AggFnSelect({
     [onChange],
   );
 
+  const options = useMemo(() => {
+    let opts = hideCustom ? AGG_FNS.filter(fn => fn.value !== 'none') : AGG_FNS;
+    // Only show 'increase' when the source is a Sum (counter) metric.
+    if (metricType !== MetricsDataType.Sum) {
+      opts = opts.filter(fn => fn.value !== 'increase');
+    }
+    return opts;
+  }, [hideCustom, metricType]);
+
   return (
     <Select
       withScrollArea={false}
@@ -42,7 +56,7 @@ export default function AggFnSelect({
       value={value}
       defaultValue={defaultValue}
       onChange={_onChange}
-      data={AGG_FNS}
+      data={options}
       data-testid="agg-fn-select"
     />
   );
@@ -52,11 +66,15 @@ export function AggFnSelectControlled({
   aggFnName,
   quantileLevelName,
   defaultValue,
+  hideCustom,
+  metricType,
   ...props
 }: {
   defaultValue: string;
   aggFnName: string;
   quantileLevelName: string;
+  hideCustom?: boolean;
+  metricType?: MetricsDataType;
 } & Omit<UseControllerProps<any>, 'name'>) {
   const {
     field: { onChange: onAggFnChange, value: aggFnValue },
@@ -96,6 +114,8 @@ export function AggFnSelectControlled({
       value={value}
       defaultValue={defaultValue}
       onChange={onChange}
+      hideCustom={hideCustom}
+      metricType={metricType}
     />
   );
 }

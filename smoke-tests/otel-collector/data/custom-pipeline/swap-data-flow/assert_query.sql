@@ -1,0 +1,1 @@
+SELECT Body FROM custom_pipeline.otel_logs WHERE ResourceAttributes['suite-id'] = 'custom-pipeline' AND ResourceAttributes['test-id'] = 'swap-data-flow' ORDER BY (toStartOfFiveMinutes(Timestamp), Timestamp) FORMAT CSV

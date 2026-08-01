@@ -23,6 +23,8 @@ Delegate to the **`playwright-test-generator`** agent (via the Agent tool). Pass
 
 The agent will drive a real browser, execute the steps live, and produce spec code that follows HyperDX conventions. Review the output before proceeding.
 
+NOTE: When there is an existing spec file covering the feature, add new tests to the existing file instead of creating a new one. This keeps related tests together and avoids fragmentation.
+
 ### 2. Test Execution
 After the generator agent writes the file, run the test:
 

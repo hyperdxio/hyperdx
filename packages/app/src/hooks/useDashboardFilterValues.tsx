@@ -2,11 +2,18 @@ import { useMemo } from 'react';
 import { pick } from 'lodash';
 import {
   GetKeyValueCall,
+  optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
+  FilterState,
+  serializeFilterState,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   BuilderChartConfigWithDateRange,
   DashboardFilter,
+  isLogSource,
+  isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQueries,
@@ -20,54 +27,124 @@ import { getMetricTableName, mapKeyBy } from '@/utils';
 
 import { useMetadataWithSettings } from './useMetadata';
 
-const filterToKey = (filter: DashboardFilter) =>
-  filter.sourceMetricType
-    ? `${filter.source}~${filter.sourceMetricType}`
-    : `${filter.source}`;
+type FilterSourceKey = {
+  sourceId: string;
+  metricType?: string;
+  where: string;
+  whereLanguage: 'sql' | 'lucene';
+};
 
-const filterFromKey = (key: string) => {
-  const [sourceId, metricType] = key.split('~');
-  return {
-    sourceId,
-    metricType,
-  };
+const filterToKey = (filter: DashboardFilter): string =>
+  JSON.stringify({
+    sourceId: filter.source,
+    metricType: filter.sourceMetricType,
+    where: filter.where ?? '',
+    whereLanguage: filter.whereLanguage ?? 'sql',
+  } satisfies FilterSourceKey);
+
+type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
+  /** filterIds[i] = array of filter IDs whose values come from keys[i] */
+  filterIds: string[][];
+  /** Per-key constraint for faceted lookups, aligned with `keys`. */
+  keyConditions?: (FilterState | undefined)[];
 };
 
 function useOptimizedKeyValuesCalls({
   filters,
   dateRange,
+  filterValues,
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
+  filterValues: FilterState;
 }) {
   const clickhouseClient = useClickhouseClient();
   const metadata = useMetadataWithSettings();
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
-  const filtersBySourceIdAndMetric = useMemo(() => {
-    const filtersBySourceIdAndMetric = new Map<string, DashboardFilter[]>();
+  // Faceted filtering: each filter's selectable values are narrowed by the
+  // CURRENT selections of its sibling filters. For every filter, collect the
+  // selections of the OTHER filters that target the same source + metric type
+  // (so the constrained columns exist in the queried table), EXCLUDING the
+  // filter's own expression (otherwise a multi-select would collapse to only
+  // its already-selected values). Passing this down as a per-key constraint
+  // lets all of a source's filters resolve in one `groupUniqArrayIf` scan
+  // instead of one query per filter.
+  //
+  // The constraint stays a FilterState rather than SQL: getKeyValues renders
+  // it against the same key expressions it puts in the SELECT, which raw SQL
+  // built here could not line up with on JSON columns.
+  const constraintByFilterId = useMemo(() => {
+    const byId = new Map<string, FilterState | undefined>();
+    for (const filter of filters) {
+      const prunedState: FilterState = {};
+      let hasSelection = false;
+      for (const sibling of filters) {
+        if (
+          sibling.source !== filter.source ||
+          sibling.sourceMetricType !== filter.sourceMetricType ||
+          // Exclude-self: FilterState is keyed by expression, so a sibling that
+          // shares this filter's expression carries this filter's own selection.
+          sibling.expression === filter.expression
+        ) {
+          continue;
+        }
+        const selection = filterValues[sibling.expression];
+        if (
+          selection &&
+          (selection.included.size > 0 ||
+            selection.excluded.size > 0 ||
+            selection.range != null)
+        ) {
+          prunedState[sibling.expression] = selection;
+          hasSelection = true;
+        }
+      }
+      byId.set(filter.id, hasSelection ? prunedState : undefined);
+    }
+    return byId;
+  }, [filters, filterValues]);
+
+  // Group filters by (source, metricType, where, whereLanguage). Every filter in
+  // a group is resolved together: an unconstrained group goes through the MV
+  // optimizer (one batched, rollup-eligible query); a constrained group runs a
+  // single faceted `groupUniqArrayIf` scan carrying a per-key condition.
+  const filtersByGroupKey = useMemo(() => {
+    const byGroupKey = new Map<string, DashboardFilter[]>();
     for (const filter of filters) {
       const key = filterToKey(filter);
-      if (!filtersBySourceIdAndMetric.has(key)) {
-        filtersBySourceIdAndMetric.set(key, [filter]);
+      const existing = byGroupKey.get(key);
+      if (existing) {
+        existing.push(filter);
       } else {
-        filtersBySourceIdAndMetric.get(key)!.push(filter);
+        byGroupKey.set(key, [filter]);
       }
     }
-    return filtersBySourceIdAndMetric;
+    return byGroupKey;
   }, [filters]);
 
-  const results: UseQueryResult<
-    GetKeyValueCall<BuilderChartConfigWithDateRange>[]
-  >[] = useQueries({
-    queries: Array.from(filtersBySourceIdAndMetric.entries())
-      .filter(([key]) =>
-        sources?.some(s => s.id === filterFromKey(key).sourceId),
+  const results: UseQueryResult<EnrichedCall[]>[] = useQueries({
+    queries: Array.from(filtersByGroupKey.values())
+      .filter(filtersInGroup =>
+        sources?.some(s => s.id === filtersInGroup[0].source),
       )
-      .map(([key, filters]) => {
-        const { sourceId, metricType } = filterFromKey(key);
+      .map(filtersInGroup => {
+        const representative = filtersInGroup[0];
+        const sourceId = representative.source;
+        const metricType = representative.sourceMetricType;
+        const where = representative.where ?? '';
+        const whereLanguage = representative.whereLanguage ?? 'sql';
         const source = sources!.find(s => s.id === sourceId)!;
-        const keys = filters.map(f => f.expression);
+        const keyExpressions = filtersInGroup.map(f => f.expression);
+        const keyConditions = filtersInGroup.map(f =>
+          constraintByFilterId.get(f.id),
+        );
+        const isFaceted = keyConditions.some(c => c != null);
+        // Sets don't survive react-query's JSON.stringify key hashing, so the
+        // key carries a serialized projection instead of the raw state.
+        const keyConditionsSignature = keyConditions.map(
+          c => c && serializeFilterState(c),
+        );
         const tableName = getMetricTableName(source, metricType) ?? '';
 
         const chartConfig: BuilderChartConfigWithDateRange = {
@@ -76,12 +153,31 @@ function useOptimizedKeyValuesCalls({
             databaseName: source.from.databaseName,
             tableName,
           },
+          implicitColumnExpression:
+            isTraceSource(source) || isLogSource(source)
+              ? source.implicitColumnExpression
+              : undefined,
+          // Logs-only body fallback for bare-text Lucene search.
+          bodyExpression: isLogSource(source)
+            ? source.bodyExpression
+            : undefined,
+          useTextIndexForImplicitColumn:
+            isTraceSource(source) || isLogSource(source)
+              ? source.useTextIndexForImplicitColumn
+              : undefined,
           dateRange,
           source: source.id,
-          where: '',
-          whereLanguage: 'sql',
+          where,
+          whereLanguage,
           select: '',
         };
+
+        const filterIdsForKeys = (keys: string[]) =>
+          keys.map(expression =>
+            filtersInGroup
+              .filter(f => f.expression === expression)
+              .map(f => f.id),
+          );
 
         return {
           queryKey: [
@@ -89,19 +185,51 @@ function useOptimizedKeyValuesCalls({
             sourceId,
             metricType,
             dateRange,
-            keys,
+            keyExpressions,
+            where,
+            whereLanguage,
+            keyConditionsSignature,
           ],
           enabled: !isLoadingSources,
           staleTime: 1000 * 60 * 5, // Cache every 5 min
-          queryFn: async ({ signal }) =>
-            await optimizeGetKeyValuesCalls({
+          queryFn: async ({ signal }): Promise<EnrichedCall[]> => {
+            // Constrained: resolve every key in one faceted scan
+            // (groupUniqArrayIf). A per-key condition can't be split across
+            // single-key MVs, but it can run against one MV whose dimensions
+            // cover every filter column (else the raw table).
+            if (isFaceted) {
+              const facetedConfig = await optimizeFacetedKeyValuesConfig({
+                chartConfig,
+                keys: keyExpressions,
+                keyConditions,
+                source,
+                clickhouseClient,
+                metadata,
+                signal,
+              });
+              return [
+                {
+                  chartConfig: facetedConfig,
+                  keys: keyExpressions,
+                  keyConditions,
+                  filterIds: filterIdsForKeys(keyExpressions),
+                },
+              ];
+            }
+            // Unconstrained: let the MV optimizer batch / route to rollups.
+            const calls = await optimizeGetKeyValuesCalls({
               chartConfig,
               source,
               clickhouseClient,
               metadata,
-              keys,
+              keys: keyExpressions,
               signal,
-            }),
+            });
+            return calls.map(call => ({
+              ...call,
+              filterIds: filterIdsForKeys(call.keys),
+            }));
+          },
         };
       }),
   });
@@ -116,9 +244,11 @@ function useOptimizedKeyValuesCalls({
 export function useDashboardFilterValues({
   filters,
   dateRange,
+  filterValues = {},
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
+  filterValues?: FilterState;
 }) {
   const metadata = useMetadataWithSettings();
   const {
@@ -128,6 +258,7 @@ export function useDashboardFilterValues({
   } = useOptimizedKeyValuesCalls({
     filters,
     dateRange,
+    filterValues,
   });
 
   const { data: sources, isLoading: isSourcesLoading } = useSources();
@@ -137,7 +268,7 @@ export function useDashboardFilterValues({
   type TQueryData = { key: string; value: string[] }[];
 
   const results: UseQueryResult<TQueryData>[] = useQueries({
-    queries: calls.map(({ chartConfig, keys }) => {
+    queries: calls.map(({ chartConfig, keys, keyConditions }) => {
       // Construct a query key prefix which will allow us to use placeholder data from the previous query for the same keys
       const queryKeyPrefix = [
         'dashboard-filter-key-values',
@@ -148,7 +279,13 @@ export function useDashboardFilterValues({
       const source = sourcesLookup.get(chartConfig.source);
 
       return {
-        queryKey: [...queryKeyPrefix, chartConfig],
+        queryKey: [
+          ...queryKeyPrefix,
+          chartConfig,
+          // Serialized: react-query hashes keys with JSON.stringify, which
+          // would flatten every distinct Set selection to `{}`.
+          keyConditions?.map(c => c && serializeFilterState(c)),
+        ],
         placeholderData: () => {
           // Use placeholder data from the most recently cached query with the same key prefix
           const cached = queryClient
@@ -170,6 +307,7 @@ export function useDashboardFilterValues({
           metadata.getKeyValues({
             chartConfig,
             keys,
+            keyConditions,
             limit: 10000,
             disableRowLimit: true,
             signal,
@@ -179,24 +317,44 @@ export function useDashboardFilterValues({
     }),
   });
 
-  const flattenedData = useMemo(
-    () =>
-      new Map(
-        results.flatMap(({ isLoading, data = [] }) => {
-          return data.map(({ key, value }) => [
-            key,
-            {
-              values: value.map(v => v.toString()),
-              isLoading,
-            },
-          ]);
-        }),
-      ),
-    [results],
-  );
+  // Map results by filter ID instead of expression so that two filters with
+  // the same expression but different sources/WHERE clauses get distinct values.
+  //
+  // We iterate over the *requested* keys (not just the returned rows) so that a
+  // filter whose query returned no rows — or failed outright — still gets an
+  // entry (with empty `values`). Without this, such filters would be missing
+  // from the map entirely, and any consumer that derives "is still loading"
+  // from the entry's absence would leave the control stuck disabled forever.
+  // Failed filter IDs are tracked separately so callers can surface a warning
+  // while keeping the control interactive.
+  const { data: flattenedData, erroredFilterIds } = useMemo(() => {
+    const map = new Map<string, { values: string[]; isLoading: boolean }>();
+    const errored = new Set<string>();
+    results.forEach((result, resultIndex) => {
+      const call = calls[resultIndex];
+      if (!call) return;
+      const { isLoading, isError, data = [] } = result;
+      const valuesByExpression = new Map<string, string[]>(
+        data.map(({ key, value }) => [key, value.map(v => v.toString())]),
+      );
+      call.keys.forEach((expression, keyIndex) => {
+        const filterIds = call.filterIds?.[keyIndex] ?? [];
+        const values = valuesByExpression.get(expression) ?? [];
+        for (const filterId of filterIds) {
+          map.set(filterId, { values, isLoading });
+          if (isError) {
+            errored.add(filterId);
+          }
+        }
+      });
+    });
+    return { data: map, erroredFilterIds: errored };
+  }, [results, calls]);
 
   return {
     data: flattenedData,
+    /** Filter IDs whose key-values query failed. */
+    erroredFilterIds,
     isLoading: isLoadingOptimizedCalls || results.every(r => r.isLoading),
     isFetching: isFetchingOptimizedCalls || results.some(r => r.isFetching),
     isError: results.some(r => r.isError),

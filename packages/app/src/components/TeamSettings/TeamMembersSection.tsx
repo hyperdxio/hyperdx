@@ -24,7 +24,6 @@ export default function TeamMembersSection() {
   const brandName = useBrandDisplayName();
   const hasAdminAccess = true;
 
-  const { data: team } = api.useTeam();
   const {
     data: members,
     isLoading: isLoadingMembers,

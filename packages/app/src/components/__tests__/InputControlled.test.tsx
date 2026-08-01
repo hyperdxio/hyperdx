@@ -1,8 +1,11 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
-import { InputControlled, PasswordInputControlled } from '../InputControlled';
+import {
+  InputControlled,
+  PasswordInputControlled,
+} from '@/components/InputControlled';
 
 // Test wrapper component that provides form context
 function TestForm({ children }: { children: React.ReactElement }) {
@@ -33,7 +36,7 @@ describe('InputControlled', () => {
   });
 
   it('handles input changes', async () => {
-    const { container } = renderWithMantine(
+    renderWithMantine(
       <TestForm>
         <InputControlled
           name="testInput"
@@ -70,7 +73,7 @@ describe('PasswordInputControlled', () => {
   });
 
   it('handles password input changes', async () => {
-    const { container } = renderWithMantine(
+    renderWithMantine(
       <TestForm>
         <PasswordInputControlled
           name="testPassword"

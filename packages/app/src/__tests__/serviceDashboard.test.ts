@@ -3,12 +3,12 @@ import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
-import * as metadataModule from '../hooks/useMetadata';
+import * as metadataModule from '@/hooks/useMetadata';
 import {
   getExpressions,
   makeCoalescedFieldsAccessQuery,
   useServiceDashboardExpressions,
-} from '../serviceDashboard';
+} from '@/serviceDashboard';
 
 function removeAllWhitespace(str: string) {
   return str.replace(/\s|\t|\n/g, '');

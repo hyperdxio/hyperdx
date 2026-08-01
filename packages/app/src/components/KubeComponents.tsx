@@ -16,9 +16,8 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { getDisplayedTimestampValueExpression } from '@/source';
-
-import { KubePhase } from '../types';
-import { FormatTime } from '../useFormatTime';
+import { KubePhase } from '@/types';
+import { FormatTime } from '@/useFormatTime';
 
 type KubeEvent = {
   id: string;
@@ -89,6 +88,9 @@ export const useV2LogBatch = <T = any,>(
           dateRange,
           timestampValueExpression: logSource.timestampValueExpression,
           implicitColumnExpression: logSource.implicitColumnExpression,
+          bodyExpression: logSource.bodyExpression,
+          useTextIndexForImplicitColumn:
+            logSource.useTextIndexForImplicitColumn,
           where,
           whereLanguage,
           connection: logSource.connection,
@@ -126,7 +128,7 @@ const renderKubeEvent = (source: TLogSource) => (event: KubeEvent) => {
     )}&source=${source.id}&from=${new Date(event.timestamp).getTime() - 1000 * 60 * 15}&to=${
       new Date(event.timestamp).getTime() + 1
     }`;
-  } catch (_) {
+  } catch {
     // ignore
   }
 
@@ -277,7 +279,7 @@ export const KubeTimeline = ({
 
   if (isLoading) {
     return (
-      <Text color="muted" ta="center">
+      <Text c="muted" ta="center">
         Loading...
       </Text>
     );
@@ -285,7 +287,7 @@ export const KubeTimeline = ({
 
   if (allPodEvents.length === 0) {
     return (
-      <Text color="muted" ta="center">
+      <Text c="muted" ta="center">
         No events
       </Text>
     );

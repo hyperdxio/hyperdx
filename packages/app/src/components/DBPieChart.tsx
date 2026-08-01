@@ -1,29 +1,17 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
-import {
-  BuilderChartConfigWithOptTimestamp,
-  RawSqlConfigWithDateRange,
-} from '@hyperdx/common-utils/dist/types';
-import { Flex } from '@mantine/core';
+import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
-import {
-  buildMVDateRangeIndicator,
-  convertToPieChartConfig,
-  formatResponseForPieChart,
-} from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { getColorProps } from '@/utils';
+import { formatNumber, truncateMiddle } from '@/utils';
 
+import {
+  CategoricalChartProps,
+  useCategoricalChart,
+} from './charts/CategoricalChart';
 import ChartContainer from './charts/ChartContainer';
-import ChartErrorState, {
-  ChartErrorStateVariant,
-} from './charts/ChartErrorState';
+import ChartErrorState from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 const PieChartTooltip = memo(
   ({
@@ -51,103 +39,69 @@ const PieChartTooltip = memo(
   },
 );
 
-export const DBPieChart = ({
-  config,
-  title,
-  enabled = true,
-  queryKeyPrefix,
-  showMVOptimizationIndicator = true,
-  toolbarPrefix,
-  toolbarSuffix,
-  errorVariant,
-}: {
-  config: BuilderChartConfigWithOptTimestamp | RawSqlConfigWithDateRange;
-  title?: React.ReactNode;
-  enabled?: boolean;
-  queryKeyPrefix?: string;
-  showMVOptimizationIndicator?: boolean;
-  toolbarPrefix?: React.ReactNode[];
-  toolbarSuffix?: React.ReactNode[];
-  errorVariant?: ChartErrorStateVariant;
-}) => {
-  const { data: source } = useSource({
-    id: config.source,
-  });
+const PieChartLegend = memo(
+  ({
+    data,
+    numberFormat,
+  }: {
+    data: { label: string; value: number; color: string }[];
+    numberFormat?: NumberFormat;
+  }) => {
+    if (!data.length) return null;
+    return (
+      <ScrollArea
+        data-testid="pie-chart-legend"
+        type="auto"
+        style={{ flexShrink: 0, maxWidth: '40%', alignSelf: 'stretch' }}
+        px="sm"
+      >
+        <Flex direction="column" gap={4}>
+          {data.map(entry => (
+            <Flex key={entry.label} align="center" gap={6} wrap="nowrap">
+              <Box
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  backgroundColor: entry.color,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed" truncate="end" title={entry.label}>
+                {truncateMiddle(entry.label, 40)}
+              </Text>
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ flexShrink: 0, marginLeft: 'auto' }}
+              >
+                {numberFormat
+                  ? formatNumber(entry.value, numberFormat)
+                  : entry.value}
+              </Text>
+            </Flex>
+          ))}
+        </Flex>
+      </ScrollArea>
+    );
+  },
+);
 
-  const queriedConfig = useMemo(() => {
-    return isBuilderChartConfig(config)
-      ? convertToPieChartConfig(config)
-      : config;
-  }, [config]);
-
-  const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
-    ? queriedConfig
-    : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
-
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
-      enabled,
-    },
-  );
-
-  const toolbarItemsMemo = useMemo(() => {
-    const allToolbarItems = [];
-
-    if (toolbarPrefix && toolbarPrefix.length > 0) {
-      allToolbarItems.push(...toolbarPrefix);
-    }
-
-    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-table-chart-mv-indicator"
-          config={builderQueriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
-    if (toolbarSuffix && toolbarSuffix.length > 0) {
-      allToolbarItems.push(...toolbarSuffix);
-    }
-
-    return allToolbarItems;
-  }, [
-    toolbarPrefix,
-    toolbarSuffix,
-    source,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-    queriedConfig,
-    builderQueriedConfig,
-  ]);
-
-  const [pieChartData, responseFormatError] = useMemo(() => {
-    if (!data) return [[], null];
-    try {
-      return [formatResponseForPieChart(data, getColorProps), null];
-    } catch (error) {
-      return [[], error instanceof Error ? error : new Error(String(error))];
-    }
-  }, [data]);
+export const DBPieChart = (props: CategoricalChartProps) => {
+  const { title, errorVariant } = props;
+  const {
+    resolvedNumberFormat,
+    toolbarItems,
+    data,
+    isLoading,
+    isError,
+    error,
+    chartData,
+    responseFormatError,
+  } = useCategoricalChart(props);
 
   return (
-    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+    <ChartContainer title={title} toolbarItems={toolbarItems}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...
@@ -166,7 +120,7 @@ export const DBPieChart = ({
           align="center"
           justify="center"
           h="100%"
-          style={{ flexGrow: 1 }}
+          style={{ flexGrow: 1, overflow: 'hidden' }}
         >
           <ResponsiveContainer
             height="100%"
@@ -177,21 +131,26 @@ export const DBPieChart = ({
               <Pie
                 cx="50%"
                 cy="50%"
-                data={pieChartData}
+                data={chartData}
                 dataKey="value"
                 fill="#8884d8"
                 nameKey="label"
-                legendType="none"
               >
-                {pieChartData.map(entry => (
+                {chartData.map(entry => (
                   <Cell key={entry.label} fill={entry.color} stroke="none" />
                 ))}
               </Pie>
               <Tooltip
-                content={<PieChartTooltip numberFormat={config.numberFormat} />}
+                content={
+                  <PieChartTooltip numberFormat={resolvedNumberFormat} />
+                }
               />
             </PieChart>
           </ResponsiveContainer>
+          <PieChartLegend
+            data={chartData}
+            numberFormat={resolvedNumberFormat}
+          />
         </Flex>
       )}
     </ChartContainer>

@@ -5,7 +5,8 @@ import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/type
 import { useQuery } from '@tanstack/react-query';
 
 import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
-import { useConfigWithPrimaryAndPartitionKey } from '@/components/DBRowTable';
+import { useConfigWithAdditionalSelect } from '@/components/DBRowTable';
+import { reconstructTemplate } from '@/components/Patterns/reconstructTemplate';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 
@@ -54,10 +55,14 @@ class Miner {
     await this.pyodide.runPythonAsync(`
 import js
 import json
+import string
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 
-${this.minerVariableName} = TemplateMiner(None, TemplateMinerConfig())
+_config = TemplateMinerConfig()
+_config.drain_extra_delimiters = list(string.punctuation)
+
+${this.minerVariableName} = TemplateMiner(None, _config)
     `);
   }
 
@@ -104,9 +109,9 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
 export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
 export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
 export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
-export const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
+const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
 
-export type SampleLog = {
+type SampleLog = {
   [PATTERN_COLUMN_ALIAS]: string;
   [TIMESTAMP_COLUMN_ALIAS]: string;
   [key: string]: any;
@@ -134,7 +139,7 @@ function usePatterns({
   statusCodeExpression?: string;
   enabled?: boolean;
 }) {
-  const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
+  const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect({
     ...config,
     // TODO: User-configurable pattern columns and non-pattern/group by columns
     select: [
@@ -152,18 +157,23 @@ function usePatterns({
     limit: { limit: samples },
   });
 
-  const { data: sampleRows, isLoading: isSampleLoading } =
-    useQueriedChartConfig(
-      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
-    );
+  const {
+    data: sampleRows,
+    isLoading: isSampleLoading,
+    error: sampleError,
+  } = useQueriedChartConfig(
+    configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
+    { enabled: configWithPrimaryAndPartitionKey != null && enabled },
+  );
 
-  const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
-    enabled,
-  });
+  const {
+    data: pyodide,
+    isLoading: isLoadingPyodide,
+    error: pyodideError,
+  } = usePyodide({ enabled });
 
   const query = useQuery({
-    queryKey: ['patterns', config],
+    queryKey: ['patterns', config, bodyValueExpression],
     queryFn: () => {
       if (configWithPrimaryAndPartitionKey == null) {
         throw new Error('Unexpected configWithPrimaryAndPartitionKey is null');
@@ -203,6 +213,7 @@ function usePatterns({
 
   return {
     ...query,
+    error: sampleError || pyodideError || query.error,
     isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
@@ -228,6 +239,7 @@ export function useGroupedPatterns({
   const {
     data: results,
     isLoading,
+    error,
     patternQueryConfig,
   } = usePatterns({
     config,
@@ -283,10 +295,16 @@ export function useGroupedPatterns({
       // return at least 1
       const count = Math.max(Math.round(rows.length * sampleMultiplier), 1);
       const lastRow = rows.at(-1);
+      const reconstructedPattern = lastRow
+        ? reconstructTemplate(
+            stripAnsi((lastRow[PATTERN_COLUMN_ALIAS] ?? '') as string),
+            (lastRow.__hdx_pattern ?? '') as string,
+          )
+        : undefined;
 
       fullPatternGroups[patternId] = {
         id: patternId,
-        pattern: lastRow?.__hdx_pattern, // last pattern is usually the most up to date templated pattern
+        pattern: reconstructedPattern, // last pattern is usually the most up to date templated pattern
         count,
         countStr: `~${count}`,
         severityText: lastRow?.[SEVERITY_TEXT_COLUMN_ALIAS], // last severitytext is usually representative of the entire pattern set
@@ -315,6 +333,7 @@ export function useGroupedPatterns({
   return {
     data: groupedResults,
     isLoading,
+    error,
     miner: results?.miner,
     sampledRowCount,
     patternQueryConfig,

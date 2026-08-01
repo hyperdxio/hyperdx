@@ -1,0 +1,25 @@
+# HyperDX worktrunk project config
+# See: https://worktrunk.dev
+#
+# This file is committed and shared with the team. It configures lifecycle
+# hooks that run when creating/switching/removing worktrees via `wt`.
+
+# ---------------------------------------------------------------------------
+# pre-start: install dependencies so app is ready to run
+# ---------------------------------------------------------------------------
+pre-start = "yarn install"
+
+# ---------------------------------------------------------------------------
+# post-start: background tasks
+# ---------------------------------------------------------------------------
+[post-start]
+env = "cp {{ primary_worktree_path }}/.env.local {{ worktree_path }}/.env.local 2>/dev/null && echo 'Copied .env.local' || true"
+
+# ---------------------------------------------------------------------------
+# post-remove: clean up all Docker resources for this worktree's slot
+# (dev stack, integration tests, E2E tests)
+# ---------------------------------------------------------------------------
+[post-remove]
+dev-down = "make dev-down 2>/dev/null || true"
+int-down = "make dev-int-down 2>/dev/null || true"
+e2e-down = "make dev-e2e-down 2>/dev/null || true"

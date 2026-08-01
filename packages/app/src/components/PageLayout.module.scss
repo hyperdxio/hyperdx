@@ -1,0 +1,22 @@
+.root {
+  background-color: var(--color-bg-body);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.fillViewport {
+  height: 100vh;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.padded {
+  padding: var(--mantine-spacing-sm);
+}

@@ -2,7 +2,7 @@ import {
   computeComparisonScore,
   computeEntropyScore,
   semanticBoost,
-} from '../deltaChartUtils';
+} from '@/components/deltaChartUtils';
 
 describe('computeComparisonScore', () => {
   it('returns 0 for empty maps', () => {

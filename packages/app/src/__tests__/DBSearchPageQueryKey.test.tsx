@@ -39,6 +39,10 @@ jest.mock('@/hooks/useChartConfig', () => ({
 
 jest.mock('@/source', () => ({
   useSource: () => ({ data: null, isLoading: false }),
+  useChartNumberFormats: () => ({
+    formatByColumn: new Map(),
+    chartFormat: undefined,
+  }),
 }));
 
 jest.mock('@/ChartUtils', () => ({
@@ -56,10 +60,7 @@ jest.mock('@/ChartUtils', () => ({
     valueColumns: [],
     isSingleValueColumn: true,
   }),
-  getPreviousDateRange: (dateRange: [Date, Date]) => [
-    new Date('2023-12-31'),
-    new Date('2024-01-01'),
-  ],
+  getPreviousDateRange: () => [new Date('2023-12-31'), new Date('2024-01-01')],
   getAlignedDateRange: (dateRange: [Date, Date]) => dateRange,
   convertToTimeChartConfig:
     jest.requireActual('@/ChartUtils').convertToTimeChartConfig,

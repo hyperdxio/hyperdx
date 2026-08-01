@@ -1,7 +1,10 @@
 import React from 'react';
 import { screen } from '@testing-library/react';
 
-import { AppNavContext, AppNavUserMenu } from '../AppNav/AppNav.components';
+import {
+  AppNavContext,
+  AppNavUserMenu,
+} from '@/components/AppNav/AppNav.components';
 
 const renderAppNavUserMenu = (userName?: string) => {
   return renderWithMantine(

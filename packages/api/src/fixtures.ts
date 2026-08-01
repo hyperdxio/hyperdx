@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
   RawSqlSavedChartConfig,
@@ -15,7 +16,7 @@ import { AlertInput } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
-import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
+import { AlertInterval, AlertSource } from '@/models/alert';
 import Server from '@/server';
 import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
@@ -61,6 +62,13 @@ export const getTestFixtureClickHouseClient = async () => {
     });
   }
   return clickhouseClient;
+};
+
+export const closeTestFixtureClickHouseClient = async () => {
+  if (clickhouseClient) {
+    await clickhouseClient.close();
+    clickhouseClient = null;
+  }
 };
 
 const healthCheck = async () => {
@@ -132,6 +140,7 @@ export const closeDB = async () => {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
   await mongooseConnection.dropDatabase();
+  await mongoose.disconnect();
 };
 
 export const clearDBCollections = async () => {
@@ -175,8 +184,8 @@ class MockServer extends Server {
     }
   }
 
-  stop() {
-    return new Promise<void>((resolve, reject) => {
+  async stop() {
+    await new Promise<void>((resolve, reject) => {
       this.appServer.close(err => {
         if (err) {
           reject(err);
@@ -187,13 +196,12 @@ class MockServer extends Server {
             reject(err);
             return;
           }
-          super
-            .shutdown()
-            .then(() => resolve())
-            .catch(err => reject(err));
+          resolve();
         });
       });
     });
+    await closeTestFixtureClickHouseClient();
+    await super.shutdown();
   }
 
   clearDBs() {
@@ -206,23 +214,28 @@ export const getServer = () => new MockServer();
 export const getAgent = (server: MockServer) =>
   request.agent(server.getHttpServer());
 
-export const getLoggedInAgent = async (server: MockServer) => {
+export const getLoggedInAgent = async (
+  server: MockServer,
+  credentials?: { email: string; password: string },
+) => {
   const agent = getAgent(server);
+  const creds = credentials ?? MOCK_USER;
 
   await agent
     .post('/register/password')
-    .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
+    .send({ ...creds, confirmPassword: creds.password })
     .expect(200);
 
-  const user = await findUserByEmail(MOCK_USER.email);
+  const user = await findUserByEmail(creds.email);
   const team = await getTeam(user?.team as any);
 
   if (team === null || user === null) {
     throw Error('team or user not found');
   }
 
-  // login app
-  await agent.post('/login/password').send(MOCK_USER).expect(302);
+  // login app — 303 See Other so the browser follows the redirect with GET
+  // (see redirectToDashboard in middleware/auth.ts).
+  await agent.post('/login/password').send(creds).expect(303);
 
   return {
     agent,
@@ -319,10 +332,19 @@ export const bulkInsertLogs = async (
   await bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
 };
 
+// ScopeAttributes and Attributes are optional so existing call sites that
+// only populate ResourceAttributes keep compiling unchanged. Omitting either
+// field drops the key from the JSONEachRow payload, and ClickHouse falls back
+// to the column default — an empty Map(LowCardinality(String), String) — so
+// the on-disk row is byte-identical to today's behaviour. New tests that need
+// to exercise the cross-scope attribute hashing (see HDX-4466) can opt in by
+// passing one or both maps explicitly.
 export const bulkInsertMetricsGauge = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -343,6 +365,8 @@ export const bulkInsertMetricsSum = async (
     IsMonotonic: boolean;
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -361,7 +385,11 @@ export const bulkInsertMetricsHistogram = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
+    ServiceName?: string;
     TimeUnix: Date;
+    Count?: number;
     BucketCounts: number[];
     ExplicitBounds: number[];
     AggregationTemporality: number;
@@ -373,6 +401,119 @@ export const bulkInsertMetricsHistogram = async (
   await bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
     metrics,
+  );
+};
+
+type ExponentialHistogramMetricPoint = {
+  TimeUnix: Date;
+  ServiceName?: string;
+  Scale?: number;
+  Count?: number;
+  Sum?: number;
+  ZeroCount?: number;
+  PositiveOffset?: number;
+  PositiveBucketCounts?: number[];
+  NegativeOffset?: number;
+  NegativeBucketCounts?: number[];
+  StartTimeUnix?: Date;
+  ResourceAttributes?: Record<string, string>;
+  ScopeAttributes?: Record<string, string>;
+  Attributes?: Record<string, string>;
+};
+
+type DenseExponentialHistogramBuckets = {
+  offset: number;
+  counts: number[];
+};
+
+const toDenseExponentialHistogramBuckets = (
+  buckets: Map<number, number>,
+): DenseExponentialHistogramBuckets => {
+  if (buckets.size === 0) {
+    return { offset: 0, counts: [] };
+  }
+
+  const indexes = [...buckets.keys()];
+  const offset = Math.min(...indexes);
+  const counts = Array(Math.max(...indexes) - offset + 1).fill(0);
+  for (const [index, count] of buckets) {
+    counts[index - offset] = count;
+  }
+  return { offset, counts };
+};
+
+export const bucketExponentialHistogramObservations = (
+  observations: number[],
+  scale = 0,
+) => {
+  if (!Number.isInteger(scale)) {
+    throw new Error('exponential histogram scale must be an integer');
+  }
+
+  const positiveBuckets = new Map<number, number>();
+  const negativeBuckets = new Map<number, number>();
+  let zeroCount = 0;
+
+  for (const observation of observations) {
+    if (!Number.isFinite(observation)) {
+      throw new Error('exponential histogram observations must be finite');
+    }
+    if (observation === 0) {
+      zeroCount += 1;
+      continue;
+    }
+
+    const buckets = observation > 0 ? positiveBuckets : negativeBuckets;
+    const index = Math.ceil(Math.log2(Math.abs(observation)) * 2 ** scale) - 1;
+    buckets.set(index, (buckets.get(index) ?? 0) + 1);
+  }
+
+  const positive = toDenseExponentialHistogramBuckets(positiveBuckets);
+  const negative = toDenseExponentialHistogramBuckets(negativeBuckets);
+  return {
+    Scale: scale,
+    Count: observations.length,
+    Sum: observations.reduce((sum, observation) => sum + observation, 0),
+    ZeroCount: zeroCount,
+    PositiveOffset: positive.offset,
+    PositiveBucketCounts: positive.counts,
+    NegativeOffset: negative.offset,
+    NegativeBucketCounts: negative.counts,
+  };
+};
+
+export const seedExponentialHistogramMetric = async ({
+  metricName,
+  points,
+  aggregationTemporality = 2,
+}: {
+  metricName: string;
+  points: ExponentialHistogramMetricPoint[];
+  aggregationTemporality?: number;
+}) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+
+  const startTimeUnix = points[0]?.StartTimeUnix ?? points[0]?.TimeUnix;
+  await bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM}`,
+    points.map(point => ({
+      MetricName: metricName,
+      ServiceName: 'test-service',
+      ResourceAttributes: {},
+      ScopeAttributes: {},
+      Attributes: {},
+      StartTimeUnix: startTimeUnix,
+      AggregationTemporality: aggregationTemporality,
+      Scale: 0,
+      ZeroCount: 0,
+      PositiveOffset: 0,
+      PositiveBucketCounts: [],
+      NegativeOffset: 0,
+      NegativeBucketCounts: [],
+      ...point,
+    })),
   );
 };
 
@@ -501,7 +642,39 @@ export const makeExternalTile = (opts?: {
   },
 });
 
-export const makeRawSqlTile = (opts?: { id?: string }): Tile => ({
+export const makeRawSqlTile = (opts?: {
+  id?: string;
+  displayType?: DisplayType;
+  sqlTemplate?: string;
+  connectionId?: string;
+}): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    configType: 'sql',
+    displayType: opts?.displayType ?? DisplayType.Line,
+    sqlTemplate: opts?.sqlTemplate ?? 'SELECT 1',
+    connection: opts?.connectionId ?? 'test-connection',
+  } satisfies RawSqlSavedChartConfig,
+});
+
+export const RAW_SQL_ALERT_TEMPLATE = [
+  'SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,',
+  ' count() AS cnt',
+  ' FROM default.otel_logs',
+  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+  ' GROUP BY ts ORDER BY ts',
+].join('');
+
+export const makeRawSqlAlertTile = (opts?: {
+  id?: string;
+  connectionId?: string;
+  sqlTemplate?: string;
+}): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
   y: 1,
@@ -510,8 +683,33 @@ export const makeRawSqlTile = (opts?: { id?: string }): Tile => ({
   config: {
     configType: 'sql',
     displayType: DisplayType.Line,
-    sqlTemplate: 'SELECT 1',
-    connection: 'test-connection',
+    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
+    connection: opts?.connectionId ?? 'test-connection',
+  } satisfies RawSqlSavedChartConfig,
+});
+
+export const RAW_SQL_NUMBER_ALERT_TEMPLATE = [
+  'SELECT count() AS cnt',
+  ' FROM default.otel_logs',
+  ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+  ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+].join('');
+
+export const makeRawSqlNumberAlertTile = (opts?: {
+  id?: string;
+  connectionId?: string;
+  sqlTemplate?: string;
+}): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    configType: 'sql',
+    displayType: DisplayType.Number,
+    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_NUMBER_ALERT_TEMPLATE,
+    connection: opts?.connectionId ?? 'test-connection',
   } satisfies RawSqlSavedChartConfig,
 });
 

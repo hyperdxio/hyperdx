@@ -2,7 +2,7 @@
  * FilterComponent - Reusable component for search filters
  * Used for applying, excluding, pinning, and searching filters
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 export class FilterComponent {
   readonly page: Page;
@@ -20,9 +20,12 @@ export class FilterComponent {
     );
     await locator.hover();
 
+    // The action buttons live in a CSS-hover-revealed overlay (display:none → flex).
+    // Use dispatchEvent so we don't depend on the hover state still being active
+    // at the moment Playwright attempts the click.
     const button = locator.getByTestId(testId);
-    await button.waitFor({ state: 'visible' });
-    await button.click();
+    await button.waitFor({ state: 'attached' });
+    await button.dispatchEvent('click');
   }
 
   /**
@@ -42,57 +45,94 @@ export class FilterComponent {
   }
 
   /**
-   * Open/expand a filter group
+   * Open/expand a filter group (toggles — may close if already open)
    */
   async openFilterGroup(filterName: string) {
     await this.getFilterGroup(filterName).click();
   }
 
   /**
-   * Get checkbox for a specific filter value
+   * Get checkbox for a specific filter value within a column
+   * @param columnName - e.g., 'ServiceName', 'SeverityText'
    * @param valueName - e.g., 'info', 'error', 'debug'
    */
-  getFilterCheckbox(valueName: string) {
-    return this.page.getByTestId(`filter-checkbox-${valueName}`);
+  getFilterCheckbox(columnName: string, valueName: string) {
+    return this.page.getByTestId(`filter-checkbox-${columnName}-${valueName}`);
   }
 
   /**
-   * Get checkbox input element
+   * Get checkbox input element within a column
    */
-  getFilterCheckboxInput(valueName: string) {
-    return this.page.getByTestId(`filter-checkbox-input-${valueName}`);
+  getFilterCheckboxInput(columnName: string, valueName: string) {
+    return this.page.getByTestId(
+      `filter-checkbox-${columnName}-${valueName}-input`,
+    );
   }
 
   /**
-   * Apply/select a filter value
+   * Apply/select a filter value.
+   *
+   * Click the checkbox *input* rather than the row wrapper. The toggle handler
+   * lives on an inner group that wraps the input, while the `filter-checkbox-*`
+   * wrapper also contains the hover-revealed action overlay (Only/Exclude/Pin).
+   * Clicking the wrapper's center can land in a dead gap once that overlay
+   * expands the row — dropping the toggle and leaving the box unchecked — and is
+   * especially fragile on narrow nested Map/JSON rows. The input sits at the
+   * row's left inside the group, so a click on it bubbles to the toggle handler
+   * regardless of row width or overlay state.
+   *
+   * Facet lists also re-render as lazily-loaded values stream in, which can
+   * remount the checkbox out from under a single click. Retry until the input
+   * actually reflects the checked state so a lost click is recovered rather than
+   * surfacing as a flaky stuck-unchecked timeout.
    */
-  async applyFilter(valueName: string) {
-    const checkbox = this.getFilterCheckbox(valueName);
-    await checkbox.click();
+  async applyFilter(columnName: string, valueName: string) {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
+    await expect(async () => {
+      if (!(await input.isChecked())) {
+        await input.scrollIntoViewIfNeeded();
+        await input.click();
+      }
+      // Selecting a value flips the checkbox from filter state synchronously, so
+      // a click that registered reflects well within this window; if it doesn't,
+      // the click was dropped by a re-render and the outer retry clicks again.
+      await expect(input).toBeChecked({ timeout: 3000 });
+    }).toPass({ timeout: 20000 });
   }
 
   /**
    * Exclude a filter value (invert the filter)
    */
-  async excludeFilter(valueName: string) {
-    const filterCheckbox = this.getFilterCheckbox(valueName);
-    await this.scrollAndClick(filterCheckbox, `filter-exclude-${valueName}`);
+  async excludeFilter(columnName: string, valueName: string) {
+    const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
+    await this.scrollAndClick(
+      filterCheckbox,
+      `filter-checkbox-${columnName}-${valueName}-exclude`,
+    );
   }
 
   /**
-   * Pin a filter value to persist it
+   * Pin a filter value personally (localStorage).
+   * Opens the PinShareMenu dropdown and clicks "Pin for me".
    */
-  async pinFilter(valueName: string) {
-    const filterCheckbox = this.getFilterCheckbox(valueName);
-    await this.scrollAndClick(filterCheckbox, `filter-pin-${valueName}`);
+  async pinFilter(columnName: string, valueName: string) {
+    const filterCheckbox = this.getFilterCheckbox(columnName, valueName);
+    await this.scrollAndClick(
+      filterCheckbox,
+      `filter-checkbox-${columnName}-${valueName}-pin`,
+    );
+    // PinShareMenu opens a dropdown — click "Pin for me"
+    await this.page
+      .getByRole('menuitem', { name: 'Pin for me' })
+      .click({ timeout: 10000 });
   }
 
   /**
    * Clear/unselect a filter
    */
-  async clearFilter(valueName: string) {
-    const input = this.getFilterCheckboxInput(valueName);
-    const checkbox = this.getFilterCheckbox(valueName);
+  async clearFilter(columnName: string, valueName: string) {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
+    const checkbox = this.getFilterCheckbox(columnName, valueName);
     await checkbox.click();
     await input.click();
   }
@@ -148,7 +188,7 @@ export class FilterComponent {
         await searchInput.waitFor({ state: 'visible', timeout: 1000 });
         // Search input is visible, return this filter name
         return filterName;
-      } catch (e) {
+      } catch {
         // Search input not visible, collapse and try next
         await filter.click();
       }
@@ -160,8 +200,11 @@ export class FilterComponent {
   /**
    * Check if filter checkbox is indeterminate (excluded state)
    */
-  async isFilterExcluded(valueName: string): Promise<boolean> {
-    const input = this.getFilterCheckboxInput(valueName);
+  async isFilterExcluded(
+    columnName: string,
+    valueName: string,
+  ): Promise<boolean> {
+    const input = this.getFilterCheckboxInput(columnName, valueName);
     const indeterminate = await input.getAttribute('data-indeterminate');
     return indeterminate === 'true';
   }
@@ -170,7 +213,9 @@ export class FilterComponent {
    * Get all filter values for a specific filter group
    */
   getFilterValues(filterGroupName: string) {
-    return this.page.getByTestId(`filter-checkbox-${filterGroupName}`);
+    return this.page.getByTestId(
+      new RegExp(`^filter-checkbox-${filterGroupName}-`),
+    );
   }
 
   /**
@@ -223,7 +268,9 @@ export class FilterComponent {
     // Wait for initial facet options to load
     const group = this.getFilterGroup(filterGroupName);
     await group
-      .locator('[data-testid^="filter-checkbox-input-"]')
+      .locator(
+        `[data-testid^="filter-checkbox-${filterGroupName}-"][data-testid$="-input"]`,
+      )
       .first()
       .waitFor({ state: 'visible', timeout: 10000 });
 
@@ -232,7 +279,7 @@ export class FilterComponent {
     const visible: string[] = [];
     for (const value of candidates) {
       if (visible.length >= count) break;
-      const input = this.getFilterCheckboxInput(value);
+      const input = this.getFilterCheckboxInput(filterGroupName, value);
       if (await input.isVisible()) visible.push(value);
     }
     if (visible.length < count) {
@@ -241,5 +288,167 @@ export class FilterComponent {
       );
     }
     return visible;
+  }
+
+  /**
+   * Click the "More filters" button to reveal all string columns. High-cardinality
+   * columns (e.g. a plain `service-name` String column) are hidden until this is
+   * clicked; LowCardinality columns and Map/JSON keys show by default. No-op if the
+   * button isn't present (already expanded, or nothing more to show).
+   */
+  async showMoreFilters(): Promise<void> {
+    const btn = this.page.getByRole('button', {
+      name: 'More filters',
+      exact: true,
+    });
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+      await this.page
+        .getByRole('button', { name: 'Less filters', exact: true })
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .catch(() => {});
+    }
+  }
+
+  /**
+   * Expand a (possibly nested) facet group so its value checkboxes are visible.
+   * `groupTestids` is the ordered chain of group test ids to expand: a single
+   * `filter-group-<name>` for a top-level column, or the `nested-filter-group-*`
+   * chain for Map/JSON keys and dotted column names (which the sidebar renders
+   * as a nested tree). Resolves once the checkbox for `sampleValue` is visible.
+   * Idempotent: a group is only clicked when its child isn't already shown.
+   */
+  async revealColumnValues(
+    groupTestids: readonly string[],
+    columnName: string,
+    sampleValue: string,
+  ): Promise<void> {
+    await this.showMoreFilters();
+    for (let i = 0; i < groupTestids.length; i++) {
+      const childTestid =
+        i < groupTestids.length - 1
+          ? groupTestids[i + 1]
+          : `filter-checkbox-${columnName}-${sampleValue}`;
+      const child = this.page.getByTestId(childTestid);
+      if (!(await child.isVisible().catch(() => false))) {
+        await this.page.getByTestId(groupTestids[i]).click();
+        await child.waitFor({ state: 'visible', timeout: 10000 });
+      }
+    }
+  }
+
+  // ---- Value distributions ----
+
+  /**
+   * The per-group "Show/Hide Distribution" toggle in a filter group header.
+   * `columnName` is the group's display name (a top-level column name, or the
+   * Map/JSON property path for a nested child) — the same value used for the
+   * group's value-checkbox test ids.
+   */
+  getDistributionToggle(columnName: string) {
+    return this.page.getByTestId(`toggle-distribution-button-${columnName}`);
+  }
+
+  /**
+   * Toggle on the value distribution for a column's filter group.
+   */
+  async showDistribution(columnName: string): Promise<void> {
+    const toggle = this.getDistributionToggle(columnName);
+    await toggle.scrollIntoViewIfNeeded();
+    await toggle.click();
+  }
+
+  /**
+   * The distribution percentage label rendered next to a value once
+   * distributions are shown (e.g. "~33%").
+   */
+  getDistributionPercentage(columnName: string, valueName: string) {
+    return this.page.getByTestId(
+      `filter-distribution-${columnName}-${valueName}`,
+    );
+  }
+
+  // ---- Column display ----
+
+  /**
+   * The per-group "Add/Remove Column" toggle in a filter group header.
+   * `columnName` is the group's display name (top-level column, or the Map/JSON
+   * property path for a nested child).
+   */
+  getColumnToggle(columnName: string) {
+    return this.page.getByTestId(`toggle-column-button-${columnName}`);
+  }
+
+  /**
+   * Click the "Add/Remove Column" toggle for a column's filter group. Adds the
+   * column to (or removes it from) the search SELECT and re-runs the query.
+   */
+  async toggleColumn(columnName: string): Promise<void> {
+    const toggle = this.getColumnToggle(columnName);
+    await toggle.scrollIntoViewIfNeeded();
+    await toggle.click();
+  }
+
+  // ---- Shared Filters ----
+
+  /**
+   * Get the shared filters section container
+   */
+  getSharedFiltersSection() {
+    return this.page.getByTestId('shared-filters-section');
+  }
+
+  /**
+   * Check if the shared filters section is visible
+   */
+  async isSharedFiltersSectionVisible(): Promise<boolean> {
+    return this.getSharedFiltersSection()
+      .isVisible()
+      .catch(() => false);
+  }
+
+  /**
+   * Pin a field (group-level pin, not a value pin).
+   * Opens the PinShareMenu on the filter group header and clicks "Pin for me".
+   */
+  async pinField(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    // The pin button is the PinShareMenu trigger inside the filter group header
+    const pinButton = group.locator('button[aria-label="Pin"]').first();
+    await pinButton.click();
+    // Click "Pin for me" in the dropdown menu
+    await this.page.getByRole('menuitem', { name: 'Pin for me' }).click();
+  }
+
+  /**
+   * Share a field with the team via the PinShareMenu dropdown.
+   */
+  async shareFieldWithTeam(filterName: string) {
+    const group = this.getFilterGroup(filterName);
+    await group.hover();
+    const pinButton = group.locator('button[aria-label="Pin"]').first();
+    await pinButton.click();
+    await this.page.getByRole('menuitem', { name: 'Share with team' }).click();
+  }
+
+  /**
+   * Unshare a field from the team via the PinShareMenu dropdown.
+   * Looks in the Shared Filters section since shared fields are moved there.
+   */
+  async unshareField(filterName: string) {
+    // Shared fields live in the Shared Filters section, not the regular list
+    const sharedSection = this.getSharedFiltersSection();
+    const group = sharedSection.getByTestId(
+      `shared-filter-group-${filterName}`,
+    );
+    await group.hover();
+    const pinButton = group
+      .locator('button[aria-label="Unpin"], button[aria-label="Pin"]')
+      .first();
+    await pinButton.click();
+    await this.page
+      .getByRole('menuitem', { name: 'Remove from Shared' })
+      .click();
   }
 }

@@ -8,7 +8,11 @@ import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
-import { getJSONColumnNames, useRowData } from './DBRowDataPanel';
+import {
+  getJSONColumnNames,
+  getMapColumnNames,
+  useRowData,
+} from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
@@ -16,6 +20,7 @@ import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -23,16 +28,21 @@ export function RowOverviewPanel({
   rowId,
   aliasWith,
   hideHeader = false,
+  flush = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
   hideHeader?: boolean;
+  // When true, drop the horizontal padding so content aligns flush with
+  // surrounding chrome (e.g. the tab bar in the trace span detail panel).
+  flush?: boolean;
   'data-testid'?: string;
 }) {
+  const contentPx = flush ? 0 : 'md';
   const { data } = useRowData({ source, rowId, aliasWith });
-  const { onPropertyAddClick, generateSearchUrl } =
+  const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
     useContext(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
@@ -52,6 +62,7 @@ export function RowOverviewPanel({
   }, [source, data]);
 
   const jsonColumns = getJSONColumnNames(data?.meta);
+  const mapColumns = getMapColumnNames(data?.meta);
 
   const eventAttributesExpr =
     source.kind === SourceKind.Log || source.kind === SourceKind.Trace
@@ -107,7 +118,7 @@ export function RowOverviewPanel({
   );
 
   const _generateSearchUrl = useCallback(
-    (query?: string, queryLanguage?: 'sql' | 'lucene') => {
+    (query?: string, queryLanguage?: 'sql' | 'lucene' | 'promql') => {
       return (
         generateSearchUrl?.({
           where: query,
@@ -148,7 +159,7 @@ export function RowOverviewPanel({
     let parsedStacktrace = stacktrace ?? '[]';
     try {
       parsedStacktrace = JSON.parse(stacktrace);
-    } catch (e) {
+    } catch {
       // do nothing
     }
 
@@ -178,6 +189,10 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
+  const hasSpanLinks = useMemo(() => {
+    return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
+  }, [firstRow?.__hdx_span_links]);
+
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -188,13 +203,18 @@ export function RowOverviewPanel({
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
-        <Box px="sm" pt="md">
+        <Box px={flush ? 0 : 'sm'} pt="md">
           <DBRowSidePanelHeader
             attributes={highlightedAttributeValues}
-            date={new Date(firstRow?.__hdx_timestamp ?? 0)}
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
+            // `getEventBody` returns undefined when neither Body Expression
+            // nor Implicit Column Expression is configured on the source.
+            // In that case suppress the body paper entirely instead of
+            // rendering an "[Empty]" placeholder.
+            bodyConfigured={mainContentColumn !== undefined}
             severityText={firstRow?.__hdx_severity_text}
+            rowData={firstRow}
           />
         </Box>
       )}
@@ -203,6 +223,7 @@ export function RowOverviewPanel({
         defaultValue={[
           'exception',
           'spanEvents',
+          'spanLinks',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -214,12 +235,12 @@ export function RowOverviewPanel({
         {isHttpRequest && (
           <Accordion.Item value="network">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 HTTP Request
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box px={contentPx}>
                 <NetworkPropertySubpanel
                   eventAttributes={flattenedEventAttributes}
                 />
@@ -231,18 +252,71 @@ export function RowOverviewPanel({
         {hasException && (
           <Accordion.Item value="exception">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Exception
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box px={contentPx}>
                 <ExceptionSubpanel
                   exceptionValues={exceptionValues}
                   breadcrumbs={[]}
                   logData={{
                     timestamp: firstRow?.__hdx_timestamp,
                   }}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {hasSpanEvents && (
+          <Accordion.Item value="spanEvents">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Span Events
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {Object.keys(topLevelAttributes).length > 0 && (
+          <Accordion.Item value="topLevelAttributes">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Top Level Attributes
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <DBRowJsonViewer
+                  data={topLevelAttributes}
+                  jsonColumns={jsonColumns}
+                  mapColumns={mapColumns}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {Object.keys(filteredEventAttributes).length > 0 && (
+          <Accordion.Item value="eventAttributes">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                {source.kind === 'log' ? 'Log' : 'Span'} Attributes
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <DBRowJsonViewer
+                  data={filteredEventAttributes}
+                  jsonColumns={jsonColumns}
+                  mapColumns={mapColumns}
                 />
               </Box>
             </Accordion.Panel>
@@ -264,78 +338,67 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {Object.keys(topLevelAttributes).length > 0 && (
-          <Accordion.Item value="topLevelAttributes">
+        {hasSpanLinks && (
+          <Accordion.Item value="spanLinks">
             <Accordion.Control>
               <Text size="sm" ps="md">
-                Top Level Attributes
+                Span Links
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
               <Box px="md">
-                <DBRowJsonViewer
-                  data={topLevelAttributes}
-                  jsonColumns={jsonColumns}
+                <SpanLinksSubpanel
+                  spanLinks={firstRow?.__hdx_span_links}
+                  onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>
             </Accordion.Panel>
           </Accordion.Item>
         )}
 
-        <Accordion.Item value="eventAttributes">
-          <Accordion.Control>
-            <Text size="sm" ps="md">
-              {source.kind === 'log' ? 'Log' : 'Span'} Attributes
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            <Box px="md">
-              <DBRowJsonViewer
-                data={filteredEventAttributes}
-                jsonColumns={jsonColumns}
-              />
-            </Box>
-          </Accordion.Panel>
-        </Accordion.Item>
-
-        <Accordion.Item value="resourceAttributes">
-          <Accordion.Control>
-            <Text size="sm" ps="md">
-              Resource Attributes
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
-              {Object.entries(resourceAttributes).map(([key, value]) => (
-                <EventTag
-                  {...(onPropertyAddClick
-                    ? {
-                        onPropertyAddClick,
-                        sqlExpression:
-                          source.resourceAttributesExpression &&
-                          jsonColumns?.includes(
-                            source.resourceAttributesExpression,
-                          )
-                            ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
-                              `toString(${source.resourceAttributesExpression}.${key})`
-                            : `${source.resourceAttributesExpression}['${key}']`,
-                      }
-                    : {
-                        onPropertyAddClick: undefined,
-                        sqlExpression: undefined,
-                      })}
-                  generateSearchUrl={
-                    generateSearchUrl ? _generateSearchUrl : undefined
-                  }
-                  displayedKey={key}
-                  name={`${source.resourceAttributesExpression}.${key}`}
-                  value={value as string}
-                  key={key}
-                />
-              ))}
-            </Flex>
-          </Accordion.Panel>
-        </Accordion.Item>
+        {Object.keys(resourceAttributes).length > 0 && (
+          <Accordion.Item value="resourceAttributes">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Resource Attributes
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Flex wrap="wrap" gap="2px" mx={contentPx} mb="lg">
+                {Object.entries(resourceAttributes).map(([key, value]) => (
+                  <EventTag
+                    {...(onPropertyAddClick
+                      ? {
+                          onPropertyAddClick,
+                          sqlExpression:
+                            'resourceAttributesExpression' in source &&
+                            source.resourceAttributesExpression &&
+                            jsonColumns?.includes(
+                              source.resourceAttributesExpression,
+                            )
+                              ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
+                                `toString(${source.resourceAttributesExpression}.${key})`
+                              : 'resourceAttributesExpression' in source
+                                ? `${source.resourceAttributesExpression}['${key}']`
+                                : '',
+                        }
+                      : {
+                          onPropertyAddClick: undefined,
+                          sqlExpression: undefined,
+                        })}
+                    generateSearchUrl={
+                      generateSearchUrl ? _generateSearchUrl : undefined
+                    }
+                    displayedKey={key}
+                    name={`${'resourceAttributesExpression' in source ? source.resourceAttributesExpression : ''}.${key}`}
+                    value={value as string}
+                    key={key}
+                  />
+                ))}
+              </Flex>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
       </Accordion>
     </div>
   );

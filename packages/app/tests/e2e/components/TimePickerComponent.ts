@@ -2,7 +2,7 @@
  * TimePickerComponent - Reusable component for time range selection
  * Used across Search, Dashboard, Logs, Traces, and other time-filtered pages
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 export class TimePickerComponent {
   readonly page: Page;
@@ -67,11 +67,63 @@ export class TimePickerComponent {
    * Clicking the input when the popover is already open would close it.
    */
   async open() {
-    const isOpen = await this.pickerPopover.isVisible();
-    if (isOpen) return;
     await this.page.waitForLoadState('networkidle');
-    await this.pickerInput.click();
+
+    // The input toggles the popover, so this method must end in a *stably
+    // open* state. The tricky cases this loop handles:
+    //  - Already open and stable → nothing to do.
+    //  - Closed → one click opens it.
+    //  - Mid-close (still visible but about to detach, e.g. right after
+    //    selectTimeInterval()'s handleRelativeSearch → close()) → an early
+    //    return here would hand back a popover that then vanishes. We instead
+    //    wait for it to settle to a stable hidden state, then click to open.
+    //  - Click swallowed by a React re-render → retry.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (await this.isPopoverStablyOpen()) return;
+
+      // Settle to a clean hidden baseline before toggling open. If it's
+      // genuinely open-and-stable the check above already returned; if it's
+      // closing, wait for hidden so our click reopens rather than re-closes.
+      await this.pickerPopover
+        .waitFor({ state: 'hidden', timeout: 2000 })
+        .catch(() => {
+          // Either already hidden or still finishing an open; the stability
+          // check at the top of the next iteration will sort it out.
+        });
+
+      // The popover is closed here, so it is safe to press Escape to dismiss
+      // any overlay that would intercept the toggle click — most importantly
+      // the search input's autocomplete dropdown ("Searching for:" portal),
+      // which renders on top of the time-picker input after typing a query
+      // (e.g. traces-workflow types "Order" then opens the picker). Escape is
+      // only pressed from this closed baseline, so it can't race a just-opened
+      // popover shut.
+      await this.page.keyboard.press('Escape');
+
+      await this.pickerInput.click();
+      if (await this.isPopoverStablyOpen()) return;
+    }
+    // Surface a clear failure if it still hasn't opened.
     await this.pickerPopover.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /**
+   * True only if the popover is visible and *stays* visible briefly afterwards
+   * — i.e. it is not in the middle of a close transition. Used by open() to
+   * avoid returning a popover that is about to detach.
+   */
+  private async isPopoverStablyOpen(): Promise<boolean> {
+    if (!(await this.pickerPopover.isVisible())) return false;
+    // A just-opened popover can be closed again by the post-apply /
+    // post-select re-render cascade (URL update + results reload). Rather than
+    // blindly sleeping to outlast it, wait for that reload's network activity
+    // to go idle — the observable end of the cascade — then confirm the
+    // popover survived. Bounded + swallowed so a perpetually-busy page (e.g.
+    // live tail) can't hang here; on timeout we simply re-check visibility.
+    await this.page
+      .waitForLoadState('networkidle', { timeout: 2000 })
+      .catch(() => {});
+    return await this.pickerPopover.isVisible();
   }
 
   /**
@@ -82,17 +134,45 @@ export class TimePickerComponent {
   }
 
   /**
-   * Toggle the relative time switch
+   * Toggle the relative time switch and wait until its checked state actually
+   * flips.
+   *
+   * Mantine renders the switch as a visually-hidden <input> whose immediate
+   * parent (`..`) is the clickable track. Clicking that toggles the switch.
+   * Immediately after the popover re-opens the track can still be settling, so
+   * a single click occasionally doesn't register — retry until the checked
+   * state changes (re-opening the popover between attempts if it closed).
    */
   async toggleRelativeTimeSwitch() {
-    // Click parent element to trigger the switch
-    await this.relativeTimeSwitch.locator('..').click({ timeout: 5000 });
+    await this.relativeTimeSwitch.waitFor({ state: 'attached', timeout: 5000 });
+    const before = await this.relativeTimeSwitch.isChecked();
+    const track = this.relativeTimeSwitch.locator('..');
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await track.click({ timeout: 5000 });
+      try {
+        await expect(this.relativeTimeSwitch).toBeChecked({
+          checked: !before,
+          timeout: 2000,
+        });
+        return;
+      } catch {
+        // Click didn't register (popover re-render); ensure it's open and retry.
+        await this.open();
+      }
+    }
+    await expect(this.relativeTimeSwitch).toBeChecked({ checked: !before });
   }
 
   /**
-   * Check if relative time mode is enabled
+   * Check if relative time mode is enabled.
+   *
+   * The relative-time switch only renders while the popover is open. Wait for
+   * it to attach before reading `isChecked()` so a closed/transitioning
+   * popover fails fast with a clear error instead of hanging until the 60s
+   * test timeout.
    */
   async isRelativeTimeEnabled(): Promise<boolean> {
+    await this.relativeTimeSwitch.waitFor({ state: 'attached', timeout: 5000 });
     return await this.relativeTimeSwitch.isChecked();
   }
 
@@ -125,15 +205,25 @@ export class TimePickerComponent {
     const intervalButton = this.pickerPopover.getByRole('button', {
       name: label,
     });
-    // Wait for the specific button to be visible before clicking.
-    // Avoid calling waitForLoadState('networkidle') here — the popover is
-    // already open from open(), and waiting for network idle can coincide
-    // with React re-renders of the popover content, causing the button to
-    // briefly detach from the DOM right before the click.
-    await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
-    // Use a longer click timeout so Playwright can retry if the element
-    // briefly detaches due to an ongoing render cycle.
-    await intervalButton.click({ timeout: 10000 });
+    // The popover content re-renders (the previously-selected option flips its
+    // Mantine variant, the whole list reconciles), which can detach the target
+    // button mid-click. A single click() with a long timeout still fails if
+    // the element it resolved goes stale during the actionability wait, so
+    // retry the visible-wait + click as a unit until it lands.
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
+        await intervalButton.click({ timeout: 5000 });
+        return;
+      } catch (error) {
+        lastError = error;
+        // The popover may have closed (e.g. a swallowed render); make sure it
+        // is open again before the next attempt.
+        await this.open();
+      }
+    }
+    throw lastError;
   }
 
   /**
@@ -169,21 +259,85 @@ export class TimePickerComponent {
   }
 
   /**
-   * Apply the selected time range
+   * Apply the selected time range.
+   *
+   * handleApply() runs the search and then closes the popover, which kicks off
+   * a re-render cascade (URL update, results reload). Wait for the popover to
+   * actually close so callers that immediately re-open it (e.g. the
+   * close/reopen regression test) start from a settled, closed state instead
+   * of racing the in-flight close.
    */
   async apply() {
     await this.pickerApplyButton.click({ timeout: 5000 });
+    await this.pickerPopover
+      .waitFor({ state: 'hidden', timeout: 5000 })
+      .catch(() => {
+        // If it never reports hidden, open()'s own settling logic will cope.
+      });
+    await this.page.waitForLoadState('networkidle').catch(() => {
+      // Network may stay busy (live tail); proceeding is safe.
+    });
   }
 
   /**
-   * Set a custom time range and apply
+   * Locator for the Start time / "Time" DateInput inside the picker popover.
+   * Both Start and End inputs share the same placeholder, so we disambiguate
+   * by ordinal. In Range mode this is the first DateInput; in Around mode
+   * the single DateInput is also the first (and only).
+   */
+  get startDateInput() {
+    return this.pickerPopover.getByPlaceholder('YYYY-MM-DD HH:mm:ss').nth(0);
+  }
+
+  /**
+   * Locator for the End time DateInput. Only present in Range mode.
+   */
+  get endDateInput() {
+    return this.pickerPopover.getByPlaceholder('YYYY-MM-DD HH:mm:ss').nth(1);
+  }
+
+  /**
+   * Switch the picker to "Time range" mode (two date inputs).
+   * Safe to call when already in Range mode (SegmentedControl is idempotent).
+   *
+   * Mantine's SegmentedControl visually hides the underlying radio inputs,
+   * so `getByRole('radio')` resolves to an element that Playwright considers
+   * not visible. Click the associated label instead — same pattern as
+   * ChartEditorComponent.switchToSqlMode().
+   */
+  async selectRangeMode() {
+    const rangeLabel = this.pickerPopover.locator(
+      '.mantine-SegmentedControl-label:has-text("Time range")',
+    );
+    await rangeLabel.waitFor({ state: 'visible', timeout: 5000 });
+    await rangeLabel.click();
+  }
+
+  /**
+   * Fill the Start time (or, in Around mode, the "Time") input with a
+   * datetime string. Uses fill() + Enter to trigger the component's blur
+   * handler, which commits the parsed value back to form state.
+   */
+  async fillStartDate(value: string) {
+    await this.startDateInput.fill(value);
+    await this.startDateInput.press('Enter');
+  }
+
+  /**
+   * Fill the End time input with a datetime string. Only valid in Range mode.
+   */
+  async fillEndDate(value: string) {
+    await this.endDateInput.fill(value);
+    await this.endDateInput.press('Enter');
+  }
+
+  /**
+   * Set a custom absolute time range via the Start/End inputs and apply.
+   * Assumes the popover is already open and relative mode is disabled.
    */
   async setCustomTimeRange(from: string, to: string) {
-    await this.open();
-    // This would need to be implemented based on actual UI
-    // Just a placeholder for the pattern
-    await this.page.getByTestId('custom-from').fill(from);
-    await this.page.getByTestId('custom-to').fill(to);
+    await this.fillStartDate(from);
+    await this.fillEndDate(to);
     await this.apply();
   }
 }

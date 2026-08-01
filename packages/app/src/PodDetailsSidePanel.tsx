@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { parseAsString, useQueryState } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
@@ -14,6 +14,7 @@ import {
   Text,
 } from '@mantine/core';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -23,7 +24,7 @@ import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
-import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import { WithClause } from '@/hooks/useRowWhere';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -31,7 +32,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import { getEventBody } from './source';
 
-import styles from '../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
@@ -41,7 +42,7 @@ const PodDetailsProperty = React.memo(
     if (!value) return null;
     return (
       <div className="pe-4">
-        <Text size="xs" color="gray">
+        <Text size="xs" c="gray">
           {label}
         </Text>
         <Text size="sm">{value}</Text>
@@ -130,14 +131,10 @@ function PodLogs({
   dateRange,
   logSource,
   where,
-  rowId,
-  onRowClick,
 }: {
   dateRange: [Date, Date];
   logSource: TLogSource;
   where: string;
-  rowId: string | null;
-  onRowClick: (rowWhere: RowWhereResult) => void;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
@@ -151,6 +148,8 @@ function PodLogs({
       whereLanguage: 'lucene' as const,
       timestampValueExpression: logSource.timestampValueExpression,
       implicitColumnExpression: logSource.implicitColumnExpression,
+      bodyExpression: logSource.bodyExpression,
+      useTextIndexForImplicitColumn: logSource.useTextIndexForImplicitColumn,
       connection: logSource.connection,
       select: [
         {
@@ -207,8 +206,6 @@ function PodLogs({
           sourceId={logSource.id}
           config={tableConfig}
           isLive={false}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Pods' }]}
           queryKeyPrefix="k8s-dashboard-pod-logs"
         />
       </Card.Section>
@@ -223,28 +220,21 @@ export default function PodDetailsSidePanel({
   logSource: TLogSource;
   metricSource: TMetricSource;
 }) {
-  const [podName, setPodName] = useQueryParam(
+  const [podName, setPodName] = useQueryState(
     'podName',
-    withDefault(StringParam, ''),
-    {
-      updateType: 'replaceIn',
-    },
+    parseAsString.withDefault(''),
   );
 
   const [rowId, setRowId] = React.useState<string | null>(null);
-  const [aliasWith, setAliasWith] = React.useState<WithClause[]>([]);
-  const handleRowClick = React.useCallback((rowWhere: RowWhereResult) => {
-    setRowId(rowWhere.where);
-    setAliasWith(rowWhere.aliasWith);
-  }, []);
+  const [aliasWith] = React.useState<WithClause[]>([]);
   const handleCloseRowSidePanel = React.useCallback(() => {
     setRowId(null);
   }, []);
 
   // If we're in a nested side panel, we need to use a higher z-index
   // TODO: This is a hack
-  const [nodeName] = useQueryParam('nodeName', StringParam);
-  const [namespaceName] = useQueryParam('namespaceName', StringParam);
+  const [nodeName] = useQueryState('nodeName', parseAsString);
+  const [namespaceName] = useQueryState('namespaceName', parseAsString);
   const isNested = !!nodeName || !!namespaceName;
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10 + (isNested ? 100 : 0);
@@ -333,7 +323,7 @@ export default function PodDetailsSidePanel({
       // If we're in a nested side panel, don't close the drawer
       return;
     }
-    setPodName(undefined);
+    setPodName(null);
   }, [rowId, setPodName]);
 
   if (!podName) {
@@ -356,125 +346,124 @@ export default function PodDetailsSidePanel({
       }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel} data-testid="k8s-pod-details-panel">
-          <DrawerHeader
-            header={`Details for ${podName}`}
-            onClose={handleClose}
-          />
-          <DrawerBody>
-            <Grid>
-              <PodDetails
-                dateRange={dateRange}
-                logSource={logSource}
-                podName={podName}
-              />
-              <Grid.Col span={6}>
-                <Card p="md" data-testid="pod-details-cpu-usage-chart">
-                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <DBTimeChart
-                      title="CPU Usage by Pod"
-                      config={convertV1ChartConfigToV2(
-                        {
-                          dateRange,
-                          granularity:
-                            convertDateRangeToGranularityString(dateRange),
-                          seriesReturnType: 'column',
-                          series: [
-                            {
-                              type: 'time',
-                              groupBy: ['k8s.pod.name'],
-                              where: metricsWhere,
-                              table: 'metrics',
-                              aggFn: 'avg',
-                              field: 'k8s.pod.cpu.utilization - Gauge',
-                              numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                            },
-                          ],
-                        },
-                        {
-                          metric: metricSource,
-                        },
-                      )}
-                      showDisplaySwitcher={false}
-                    />
-                  </Card.Section>
-                </Card>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <Card p="md" data-testid="pod-details-memory-usage-chart">
-                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <DBTimeChart
-                      title="Memory Usage"
-                      config={convertV1ChartConfigToV2(
-                        {
-                          dateRange,
-                          granularity:
-                            convertDateRangeToGranularityString(dateRange),
-                          seriesReturnType: 'column',
-                          series: [
-                            {
-                              type: 'time',
-                              groupBy: ['k8s.pod.name'],
-                              where: metricsWhere,
-                              table: 'metrics',
-                              aggFn: 'avg',
-                              field: 'k8s.pod.memory.usage - Gauge',
-                              numberFormat: K8S_MEM_NUMBER_FORMAT,
-                            },
-                          ],
-                        },
-                        {
-                          metric: metricSource,
-                        },
-                      )}
-                      showDisplaySwitcher={false}
-                    />
-                  </Card.Section>
-                </Card>
-              </Grid.Col>
-              <Grid.Col span={12}>
-                <Card p="md">
-                  <Card.Section p="md" py="xs">
-                    Latest Pod Events
-                  </Card.Section>
-                  <Card.Section>
-                    <ScrollArea
-                      viewportProps={{
-                        style: { maxHeight: CHART_HEIGHT },
-                      }}
-                    >
-                      <Box p="md" py="sm">
-                        <KubeTimeline
-                          logSource={logSource}
-                          q={`\`k8s.pod.name\`:"${podName}"`}
-                          dateRange={dateRange}
-                        />
-                      </Box>
-                    </ScrollArea>
-                  </Card.Section>
-                </Card>
-              </Grid.Col>
-              <Grid.Col span={12}>
-                <PodLogs
-                  logSource={logSource}
-                  where={logsWhere}
-                  dateRange={dateRange}
-                  rowId={rowId}
-                  onRowClick={handleRowClick}
-                />
-              </Grid.Col>
-            </Grid>
-          </DrawerBody>
-          {rowId && (
-            <DBRowSidePanel
-              source={logSource}
-              rowId={rowId}
-              aliasWith={aliasWith}
-              onClose={handleCloseRowSidePanel}
-              isNestedPanel={true}
+        <IsolatedChartSyncProvider>
+          <div className={styles.panel} data-testid="k8s-pod-details-panel">
+            <DrawerHeader
+              header={`Details for ${podName}`}
+              onClose={handleClose}
             />
-          )}
-        </div>
+            <DrawerBody>
+              <Grid>
+                <PodDetails
+                  dateRange={dateRange}
+                  logSource={logSource}
+                  podName={podName}
+                />
+                <Grid.Col span={6}>
+                  <Card p="md" data-testid="pod-details-cpu-usage-chart">
+                    <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                      <DBTimeChart
+                        title="CPU Usage by Pod"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.pod.name'],
+                                where: metricsWhere,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.pod.cpu.utilization - Gauge',
+                                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    </Card.Section>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Card p="md" data-testid="pod-details-memory-usage-chart">
+                    <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                      <DBTimeChart
+                        title="Memory Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.pod.name'],
+                                where: metricsWhere,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.pod.memory.usage - Gauge',
+                                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    </Card.Section>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  <Card p="md">
+                    <Card.Section p="md" py="xs">
+                      Latest Pod Events
+                    </Card.Section>
+                    <Card.Section>
+                      <ScrollArea
+                        viewportProps={{
+                          style: { maxHeight: CHART_HEIGHT },
+                        }}
+                      >
+                        <Box p="md" py="sm">
+                          <KubeTimeline
+                            logSource={logSource}
+                            q={`\`k8s.pod.name\`:"${podName}"`}
+                            dateRange={dateRange}
+                          />
+                        </Box>
+                      </ScrollArea>
+                    </Card.Section>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  <PodLogs
+                    logSource={logSource}
+                    where={logsWhere}
+                    dateRange={dateRange}
+                  />
+                </Grid.Col>
+              </Grid>
+            </DrawerBody>
+            {rowId && (
+              <DBRowSidePanel
+                source={logSource}
+                rowId={rowId}
+                aliasWith={aliasWith}
+                onClose={handleCloseRowSidePanel}
+              />
+            )}
+          </div>
+        </IsolatedChartSyncProvider>
       </ZIndexContext.Provider>
     </Drawer>
   );

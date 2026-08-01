@@ -41,6 +41,7 @@ export default mongoose.model<ITeam>(
       queryTimeout: Number,
       fieldMetadataDisabled: Boolean,
       parallelizeWhenPossible: Boolean,
+      filterKeysFetchLimit: Number,
     },
     {
       timestamps: true,

@@ -1,5 +1,4 @@
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -12,6 +11,8 @@ export function useExplainQuery(
   _config: ChartConfigWithOptDateRange,
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) {
+  const { enabled, ...restOptions } = options ?? {};
+
   const config = {
     ..._config,
     with: undefined,
@@ -43,7 +44,7 @@ export function useExplainQuery(
     },
     retry: false,
     staleTime: 1000 * 60,
-    enabled: !isSourceLoading,
-    ...options,
+    enabled: enabled && !isSourceLoading,
+    ...restOptions,
   });
 }

@@ -3,10 +3,12 @@ import {
   LogSourceSchema,
   MetricsDataType,
   MetricSourceSchema,
+  PromqlSourceSchema,
   QuerySettings,
   SessionSourceSchema,
   SourceKind,
   TraceSourceSchema,
+  UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import z from 'zod';
@@ -16,7 +18,7 @@ import { objectIdSchema } from '@/utils/zod';
 // ISource is a discriminated union (inherits from TSource) with team added
 // and connection widened to ObjectId | string for Mongoose.
 // Omit and & distribute over the union, preserving the discriminated structure.
-export const ISourceSchema = z.discriminatedUnion('kind', [
+const ISourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema.omit({ connection: true }).extend({
     team: objectIdSchema,
     connection: objectIdSchema.or(z.string()),
@@ -30,6 +32,10 @@ export const ISourceSchema = z.discriminatedUnion('kind', [
     connection: objectIdSchema.or(z.string()),
   }),
   MetricSourceSchema.omit({ connection: true }).extend({
+    team: objectIdSchema,
+    connection: objectIdSchema.or(z.string()),
+  }),
+  PromqlSourceSchema.omit({ connection: true }).extend({
     team: objectIdSchema,
     connection: objectIdSchema.or(z.string()),
   }),
@@ -85,6 +91,11 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
       ref: 'Connection',
     },
     name: String,
+    section: String,
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
     from: {
       databaseName: String,
       tableName: String,
@@ -133,7 +144,12 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
-    uniqueRowIdExpression: String,
+    knownColumnsListExpression: String,
+    useTextIndexForImplicitColumn: {
+      type: String,
+      enum: Object.values(UseTextIndex),
+    },
+    /** @deprecated See LogSourceSchema in @hyperdx/common-utils/types.ts. */
     tableFilterExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,
@@ -143,6 +159,14 @@ export const LogSource = Source.discriminator<ILogSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),
@@ -163,6 +187,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     parentSpanIdExpression: String,
     spanNameExpression: String,
     spanKindExpression: String,
+    sampleRateExpression: String,
     logSourceId: String,
     sessionSourceId: String,
     metricSourceId: String,
@@ -172,7 +197,13 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     resourceAttributesExpression: String,
     eventAttributesExpression: String,
     spanEventsValueExpression: String,
+    spanLinksValueExpression: String,
     implicitColumnExpression: String,
+    knownColumnsListExpression: String,
+    useTextIndexForImplicitColumn: {
+      type: String,
+      enum: Object.values(UseTextIndex),
+    },
     displayedTimestampValueExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,
@@ -182,6 +213,14 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),
@@ -202,22 +241,40 @@ export const SessionSource = Source.discriminator<ISessionSource>(
 // --------------------------
 // Metric discriminator
 // --------------------------
+// metricTables is declared as a nested Schema with `_id: false` so the
+// embedded subdoc does not auto-generate an ObjectId. Without this opt-out
+// Mongoose adds an `_id` field that leaks into MCP responses alongside
+// the queryable kind keys (gauge/sum/histogram/...).
+const MetricTablesSchema = new Schema(
+  {
+    [MetricsDataType.Gauge]: String,
+    [MetricsDataType.Histogram]: String,
+    [MetricsDataType.Sum]: String,
+    [MetricsDataType.Summary]: String,
+    [MetricsDataType.ExponentialHistogram]: String,
+  },
+  { _id: false },
+);
+
 type IMetricSource = Extract<ISource, { kind: SourceKind.Metric }>;
 export const MetricSource = Source.discriminator<IMetricSource>(
   SourceKind.Metric,
   new Schema<Extract<ISource, { kind: SourceKind.Metric }>>({
     metricTables: {
-      type: {
-        [MetricsDataType.Gauge]: String,
-        [MetricsDataType.Histogram]: String,
-        [MetricsDataType.Sum]: String,
-        [MetricsDataType.Summary]: String,
-        [MetricsDataType.ExponentialHistogram]: String,
-      },
+      type: MetricTablesSchema,
       default: undefined,
     },
     resourceAttributesExpression: String,
     serviceNameExpression: String,
     logSourceId: String,
   }),
+);
+
+// --------------------------
+// PromQL discriminator
+// --------------------------
+type IPromqlSource = Extract<ISource, { kind: SourceKind.Promql }>;
+export const PromqlSource = Source.discriminator<IPromqlSource>(
+  SourceKind.Promql,
+  new Schema<Extract<ISource, { kind: SourceKind.Promql }>>({}),
 );

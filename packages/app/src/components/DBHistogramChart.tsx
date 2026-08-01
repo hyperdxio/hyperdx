@@ -1,5 +1,6 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -9,20 +10,37 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { CategoricalChartState } from 'recharts/types/chart/types';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Code, Text } from '@mantine/core';
 
 import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { omit } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
+
+/**
+ * Normalize a chart click's `activeIndex` to a real, in-range bar index.
+ * Returns the integer index for a number or non-empty numeric string, or
+ * `undefined` for anything that resolves to no bar (null/''/negative/
+ * fractional/NaN) so the caller can clear the pin instead of pinning bar 0.
+ * Exported for unit testing.
+ */
+export function resolvePinnedBarIndex(
+  raw: number | string | null | undefined,
+): number | undefined {
+  const idx =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? Number(raw)
+        : NaN;
+  return Number.isInteger(idx) && idx >= 0 ? idx : undefined;
+}
 
 function HistogramChart({
   graphResults,
@@ -43,37 +61,21 @@ function HistogramChart({
     );
   }, [graphResults]);
 
-  const barChartRef = useRef<any>(null);
-  const activeBar = useRef<CategoricalChartState | undefined>(undefined);
+  // Index of the bar whose tooltip is "pinned" open by a click. When set, the
+  // tooltip is forced active on that bar via the controlled `active` +
+  // `defaultIndex` props below; `undefined` lets the tooltip follow hover.
+  const [pinnedIndex, setPinnedIndex] = useState<number | undefined>(undefined);
 
   useHotkeys(['esc'], () => {
-    activeBar.current = undefined;
+    setPinnedIndex(undefined);
   });
 
-  // Complete hack
-  // See: https://github.com/recharts/recharts/issues/1231#issuecomment-1237958802
-  const setChartActive = (payload: {
-    activeCoordinate?: { x: number; y: number };
-    activeLabel: any;
-    activePayload?: any[];
-  }) => {
-    if (barChartRef.current == null) return;
-
-    if (activeBar.current == null) {
-      // @ts-ignore
-      return barChartRef.current.setState({
-        isTooltipActive: false,
-      });
-    }
-
-    // @ts-ignore
-    barChartRef.current.setState({
-      isTooltipActive: true,
-      activeCoordinate: payload.activeCoordinate,
-      activeLabel: payload.activeLabel,
-      activePayload: payload.activePayload,
-    });
-  };
+  // The pin is a positional index, so clear it whenever the buckets change
+  // (e.g. a background refetch) — otherwise the pin would silently repoint to
+  // whatever bucket now occupies that index and show the wrong time range.
+  useEffect(() => {
+    setPinnedIndex(undefined);
+  }, [data]);
 
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -82,29 +84,15 @@ function HistogramChart({
         height={300}
         data={data}
         className="user-select-none cursor-crosshair"
-        ref={barChartRef}
-        onMouseMove={() => {
-          if (activeBar.current == null) return;
-
-          setChartActive({
-            activeCoordinate: activeBar.current.activeCoordinate,
-            activeLabel: activeBar.current.activeLabel,
-            activePayload: activeBar.current.activePayload,
-          });
-        }}
-        onMouseLeave={() => {
-          activeBar.current = undefined;
-        }}
-        onClick={click => {
-          activeBar.current = click;
-
-          if (click != null) {
-            setChartActive({
-              activeCoordinate: activeBar.current.activeCoordinate,
-              activeLabel: activeBar.current.activeLabel,
-              activePayload: activeBar.current.activePayload,
-            });
+        onClick={state => {
+          // Toggle the pinned tooltip on the clicked bar (click the same bar
+          // again to unpin). A click that resolves to no bar clears the pin.
+          const idx = resolvePinnedBarIndex(state?.activeIndex);
+          if (idx == null) {
+            setPinnedIndex(undefined);
+            return;
           }
+          setPinnedIndex(prev => (prev === idx ? undefined : idx));
         }}
       >
         <XAxis
@@ -137,10 +125,20 @@ function HistogramChart({
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         <Tooltip
+          // Remount when the pinned bar changes so `defaultIndex` re-seeds on a
+          // fresh instance rather than relying on it being reactive after mount.
+          key={pinnedIndex ?? 'hover'}
           content={
             <HDXHistogramChartTooltip generateSearchUrl={generateSearchUrl} />
           }
-          active
+          // When a bar is pinned, lock the tooltip to that bar: `trigger:
+          // 'click'` makes the tooltip ignore hover (which would otherwise let
+          // the tooltip drift to whatever bar the cursor grazes), and
+          // `defaultIndex` fixes it on the pinned bar. When nothing is pinned,
+          // Recharts controls the tooltip on hover as usual.
+          {...(pinnedIndex != null
+            ? { active: true, defaultIndex: pinnedIndex, trigger: 'click' }
+            : {})}
         />
         <Bar dataKey="height" stackId="a" fill="#50FA7B" />
       </BarChart>
@@ -191,22 +189,22 @@ const HDXHistogramChartTooltip = (props: any) => {
 
 export default function DBHistogramChart({
   config,
-  onSettled,
   queryKeyPrefix,
   enabled,
   title,
   toolbarPrefix,
   toolbarSuffix,
   showMVOptimizationIndicator = true,
+  errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange;
-  onSettled?: () => void;
   queryKeyPrefix?: string;
   enabled?: boolean;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -274,32 +272,7 @@ export default function DBHistogramChart({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.

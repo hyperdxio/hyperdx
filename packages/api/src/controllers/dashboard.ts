@@ -1,8 +1,9 @@
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
-  BuilderSavedChartConfig,
   DashboardWithoutIdSchema,
+  resolveChartPaletteToken,
+  SavedChartConfig,
   Tile,
+  walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import { map, partition, uniq } from 'lodash';
 import { z } from 'zod';
@@ -11,7 +12,7 @@ import {
   createOrUpdateDashboardAlerts,
   deleteDashboardAlerts,
   getDashboardAlertsByTile,
-  getTeamDashboardAlertsByTile,
+  getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
@@ -19,17 +20,41 @@ import Dashboard from '@/models/dashboard';
 
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
-    if (isBuilderSavedChartConfig(tile.config) && tile.config.alert) {
+    if (tile.config.alert) {
       acc[tile.id] = tile.config.alert;
     }
     return acc;
   }, {});
 }
 
+/**
+ * Rewrite any legacy `chart-1`..`chart-10` tile colors from #2265 in
+ * an already-serialized dashboard JSON to their hue-named equivalents
+ * before it leaves the server. Keeps the wire format on a single
+ * canonical vocabulary so non-React HTTP clients (CI scripts, stale
+ * bundle tabs during a rolling deploy, the upcoming external API
+ * surface) never have to know about the legacy values, and so a
+ * GET → unmodified PATCH round-trip on a Mongo-seeded legacy doc can
+ * never resurrect the legacy tokens through the strict server-side
+ * `ChartPaletteTokenSchema`. The React-side
+ * `normalizeDashboardTileColors` becomes redundant for the wire path
+ * after this lands but stays in place as defense in depth for
+ * `IS_LOCAL_MODE` and in-memory tile literals.
+ *
+ * Unresolvable strings (stale hexes, hand-edited values, forward-rolled
+ * future tokens) pass through untouched so the user's data is not
+ * silently dropped; the strict schema surfaces a clear error on next
+ * save.
+ */
+function healLegacyDashboardTileColors<T>(dashboard: T): T {
+  return walkRawDashboardTileColors(dashboard, current => {
+    const resolved = resolveChartPaletteToken(current);
+    return resolved ?? current;
+  }) as T;
+}
+
 type TileForAlertSync = Pick<Tile, 'id'> & {
-  config?:
-    | Pick<BuilderSavedChartConfig, 'alert'>
-    | { alert?: IAlert | AlertDocument };
+  config?: Pick<SavedChartConfig, 'alert'> | { alert?: IAlert | AlertDocument };
 };
 
 function extractTileAlertData(tiles: TileForAlertSync[]): {
@@ -55,9 +80,7 @@ async function syncDashboardAlerts(
 
   const newTilesForAlertSync: TileForAlertSync[] = newTiles.map(t => ({
     id: t.id,
-    config: isBuilderSavedChartConfig(t.config)
-      ? { alert: t.config.alert }
-      : {},
+    config: { alert: t.config.alert },
   }));
   const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
     extractTileAlertData(newTilesForAlertSync);
@@ -95,8 +118,10 @@ async function syncDashboardAlerts(
 
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
-    Dashboard.find({ team: teamId }),
-    getTeamDashboardAlertsByTile(teamId),
+    Dashboard.find({ team: teamId })
+      .populate('createdBy', 'email name')
+      .populate('updatedBy', 'email name'),
+    getTeamDashboardAlertsByDashboardAndTile(teamId),
   ]);
 
   const dashboards = _dashboards
@@ -105,26 +130,32 @@ export async function getDashboards(teamId: ObjectId) {
       ...d,
       tiles: d.tiles.map(t => ({
         ...t,
-        config: { ...t.config, alert: alerts[t.id]?.[0] },
+        config: {
+          ...t.config,
+          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
+        },
       })),
-    }));
+    }))
+    .map(healLegacyDashboardTileColors);
 
   return dashboards;
 }
 
 export async function getDashboard(dashboardId: string, teamId: ObjectId) {
   const [_dashboard, alerts] = await Promise.all([
-    Dashboard.findOne({ _id: dashboardId, team: teamId }),
+    Dashboard.findOne({ _id: dashboardId, team: teamId })
+      .populate('createdBy', 'email name')
+      .populate('updatedBy', 'email name'),
     getDashboardAlertsByTile(teamId, dashboardId),
   ]);
 
-  return {
-    ..._dashboard,
+  return healLegacyDashboardTileColors({
+    ..._dashboard?.toJSON(),
     tiles: _dashboard?.tiles.map(t => ({
       ...t,
       config: { ...t.config, alert: alerts[t.id]?.[0] },
     })),
-  };
+  });
 }
 
 export async function createDashboard(
@@ -135,6 +166,8 @@ export async function createDashboard(
   const newDashboard = await new Dashboard({
     ...dashboard,
     team: teamId,
+    createdBy: userId,
+    updatedBy: userId,
   }).save();
 
   await createOrUpdateDashboardAlerts(
@@ -177,6 +210,7 @@ export async function updateDashboard(
     {
       ...updates,
       tags: updates.tags && uniq(updates.tags),
+      updatedBy: userId,
     },
     { new: true },
   );

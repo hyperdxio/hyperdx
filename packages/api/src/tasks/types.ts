@@ -3,6 +3,7 @@ import { z } from 'zod';
 export enum TaskName {
   PING_PONG = 'ping-pong',
   CHECK_ALERTS = 'check-alerts',
+  PROVISION_DASHBOARDS = 'provision-dashboards',
 }
 
 /**
@@ -29,13 +30,21 @@ const checkAlertsTaskArgsSchema = z.object({
     .optional(),
 });
 
+const provisionDashboardsTaskArgsSchema = z.object({
+  taskName: z.literal(TaskName.PROVISION_DASHBOARDS),
+});
+
 const taskArgsSchema = z.discriminatedUnion('taskName', [
   pingTaskArgsSchema,
   checkAlertsTaskArgsSchema,
+  provisionDashboardsTaskArgsSchema,
 ]);
 
 export type PingTaskArgs = z.infer<typeof pingTaskArgsSchema>;
 export type CheckAlertsTaskArgs = z.infer<typeof checkAlertsTaskArgsSchema>;
+export type ProvisionDashboardsTaskArgs = z.infer<
+  typeof provisionDashboardsTaskArgsSchema
+>;
 export type TaskArgs = z.infer<typeof taskArgsSchema>;
 
 /**

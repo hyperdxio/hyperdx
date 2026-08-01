@@ -11,13 +11,27 @@ schema-agnostic design, and correlation across all telemetry types in one place.
 
 ## Architecture (WHAT)
 
-This is a **monorepo** with three main packages:
+This is a **monorepo** with six packages:
 
 - `packages/app` - Next.js frontend (TypeScript, Mantine UI, TanStack Query)
 - `packages/api` - Express backend (Node.js 22+, MongoDB for metadata,
-  ClickHouse for telemetry)
+  ClickHouse for telemetry). Also hosts the **MCP server**, **External API v2**,
+  and **OpAMP server** as sub-applications.
 - `packages/common-utils` - Shared TypeScript utilities for query parsing and
   validation
+- `packages/cli` - Terminal CLI and interactive TUI (`hdx`) for searching,
+  tailing, and inspecting logs and traces (Ink/React). Has its own
+  [`AGENTS.md`](packages/cli/AGENTS.md) with detailed architecture and
+  keybindings.
+- `packages/otel-collector` - Custom-built OpenTelemetry Collector (Go, OCB).
+  See its [`README.md`](packages/otel-collector/README.md) for architecture,
+  included components, and upgrade procedures.
+- `packages/hdx-eval` - AI eval framework for benchmarking MCP servers against
+  observability scenarios. Generates deterministic synthetic telemetry, spawns
+  agents, and grades with programmatic checks + LLM-as-judge. See its
+  [`README.md`](packages/hdx-eval/README.md) for setup and usage, and
+  [`agent_docs/evals.md`](agent_docs/evals.md) for the dual-slot A/B
+  comparison workflow.
 
 **Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
 MongoDB (configuration/metadata)
@@ -26,11 +40,18 @@ MongoDB (configuration/metadata)
 
 ```bash
 yarn setup          # Install dependencies
-yarn dev            # Start full stack (Docker + local services)
+yarn dev            # Start full stack with worktree-isolated ports
 ```
 
-The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
+The project uses **Yarn 4.13.0** workspaces. Docker Compose manages ClickHouse,
 MongoDB, and the OTel Collector.
+
+**This repo is multi-agent friendly.** `yarn dev`, `make dev-int`, and
+`make dev-e2e` all use slot-based port isolation so multiple worktrees can run
+dev servers, integration tests, and E2E tests simultaneously without conflicts.
+A dev portal at http://localhost:9900 auto-starts and shows all running stacks.
+See [`agent_docs/development.md`](agent_docs/development.md) for the full
+multi-worktree setup, port allocation tables, and available commands.
 
 ## Working on the Codebase (HOW)
 
@@ -42,9 +63,21 @@ directory:
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
+- `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
+  context) and the shared helpers (read when adding or changing a feature)
 
-**Tools handle formatting and linting automatically** via pre-commit hooks.
-Focus on implementation; don't manually format code.
+**Package-specific guides** (read when working on that package):
+
+- `packages/cli/AGENTS.md` - CLI/TUI architecture, keybindings, web frontend
+  alignment, key patterns
+- `packages/otel-collector/README.md` - Collector build process, included
+  components, upgrade procedures, adding custom components
+- `MCP.md` - MCP server setup and available tools (user-facing)
+
+**After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
+and lint issues across all packages. Pre-commit hooks handle this when
+committing, but if you finish edits without committing, run `yarn lint:fix`
+before stopping.
 
 ## Key Principles
 
@@ -57,6 +90,16 @@ Focus on implementation; don't manually format code.
    `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
 6. **Testing**: Tests live in `__tests__/` directories; use Jest for
    unit/integration tests
+7. **Observability**: This is an observability product - instrument new code as
+   you write it. Every team-scoped operation must carry team/user context
+   (`setBusinessContext`), and countable log events should also emit a metric.
+   For our own instrumentation we favor wide events — enrich the unit-of-work
+   span with rich, high-cardinality attributes and keep only span _names_ and
+   _metric_ attributes low-cardinality — while metrics stay first-class
+   (counters/histograms feed alerts and SLOs, and many deployments rely on
+   them). Use the shared helpers in
+   `packages/api/src/utils/instrumentation.ts`. See
+   [`agent_docs/observability.md`](agent_docs/observability.md).
 
 ## Running Tests
 
@@ -68,15 +111,16 @@ Each package has different test commands available:
 cd packages/app
 yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
-yarn test:e2e          # Run end-to-end tests
-yarn test:e2e:ci       # Run end-to-end tests in CI
 ```
 
-**packages/api** (integration tests only):
+**packages/api** (unit and integration tests):
 
 ```bash
-make dev-int-build                  # Build dependencies (run once before tests)
-make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
+cd packages/api
+yarn ci:unit                        # Run unit tests (no services needed)
+
+make dev-int-build                  # Build dependencies (run once before integration tests)
+make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs integration tests.
                                     # Ctrl-C to stop and wait for all services to tear down.
 ```
 
@@ -97,6 +141,13 @@ yarn ci:unit <path/to/test.ts>                           # Run specific test fil
 yarn ci:unit --testNamePattern="test name pattern"       # Run tests matching pattern
 ```
 
+**packages/cli** (type check only, no test suite):
+
+```bash
+cd packages/cli
+npx tsc --noEmit        # Type check
+```
+
 **Lint & type check across all packages:**
 
 ```bash
@@ -110,10 +161,15 @@ make ci-unit        # Unit tests across all packages
 # First-time setup (install Chromium browser):
 cd packages/app && yarn playwright install chromium
 
-# Run tests:
-./scripts/test-e2e.sh                                       # All E2E (full-stack)
-./scripts/test-e2e.sh --quiet <file>                        # Single file
-./scripts/test-e2e.sh --quiet <file> --grep "\"<pattern>\""  # Pattern match
+# Run all E2E tests:
+make e2e
+
+# Run a specific test file (dev mode: hot reload):
+make dev-e2e FILE=navigation                    # Match files containing "navigation"
+make dev-e2e FILE=navigation GREP="help menu"   # Also filter by test name
+make dev-e2e GREP="should navigate"             # Filter by test name across all files
+make dev-e2e FILE=navigation REPORT=1           # Open HTML report after run
+make dev-e2e-clean                               # Remove test artifacts
 ```
 
 ## Important Context
@@ -124,6 +180,35 @@ cd packages/app && yarn playwright install chromium
 - **UI library**: Mantine components are the standard (not custom UI)
 - **Database patterns**: MongoDB for metadata with Mongoose, ClickHouse for
   telemetry queries
+
+## PR Hygiene for Agent-Generated Code
+
+When using agentic tools to generate PRs, follow these practices to keep reviews
+efficient and accurate:
+
+1. **Scope PRs to a single logical change**, even if the agent can produce more
+   in one session. Smaller, focused PRs move through the review pipeline faster
+   and are easier to classify accurately.
+
+2. **Write the PR description to explain intent (the "why"), not just what
+   changed.** Reviewers need to understand the goal to catch cases where the
+   agent solved the wrong problem or made a plausible-but-wrong trade-off.
+
+3. **Name agent-generated branches with a `claude/`, `agent/`, or `ai/` prefix**
+   (e.g., `claude/add-rate-limiting`). This allows the PR triage classifier to
+   apply appropriate scrutiny and lets reviewers calibrate their attention.
+
+4. **Write or update tests alongside the implementation**, not after. Configure
+   your agent to produce tests before writing implementation code. See the
+   Testing section below for the commands to use.
+
+5. **Ensure a changeset exists before pushing a PR.** Any change to a published
+   package (`@hyperdx/app`, `@hyperdx/api`, `@hyperdx/otel-collector`, etc.) that
+   is user-facing or affects behavior must include a changeset in `.changeset/`.
+   Add one with `yarn changeset` (or create the markdown file by hand following
+   the format of existing entries), choosing the appropriate semver bump, before
+   pushing the branch. Skip only for changes that don't warrant a release (docs,
+   internal tooling, tests, CI).
 
 ## GitHub Action Workflow (when invoked via @claude)
 
@@ -172,6 +257,49 @@ formatting checks pass. Fix any issues before creating the commit.
    side to keep, or whether a change can be safely discarded, stop and ask for
    manual intervention rather than guessing. A wrong guess silently breaks
    things; asking is always cheaper than debugging later.
+
+## Cursor Cloud specific instructions
+
+### Docker requirement
+
+Docker must be installed and running before starting the dev stack or running
+integration/E2E tests. The VM update script handles `yarn install` and
+`yarn build:common-utils`, but Docker daemon startup is a prerequisite that must
+already be available.
+
+### Starting the dev stack
+
+`yarn dev` uses `sh -c` to source `scripts/dev-env.sh`, which contains
+bash-specific syntax (`BASH_SOURCE`). On systems where `/bin/sh` is `dash`
+(e.g. Ubuntu), this fails with "Bad substitution". Work around it by running
+with bash directly:
+
+```bash
+bash -c 'export PATH="/workspace/node_modules/.bin:$PATH" && source ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p "$HDX_DEV_PROJECT" -f docker-compose.dev.yml up -d && yarn app:dev'
+```
+
+Port isolation assigns a slot based on the worktree directory name. In the
+default `/workspace` directory, the slot is **76**, so services are at:
+
+- **App**: http://localhost:30276
+- **API**: http://localhost:30176
+- **ClickHouse**: http://localhost:30576
+- **MongoDB**: localhost:30476
+
+### Key commands reference
+
+See `AGENTS.md` above and `agent_docs/development.md` for the full command
+reference. Quick summary:
+
+- `make ci-lint` — lint + TypeScript type check
+- `make ci-unit` — unit tests (all packages)
+- `make dev-int FILE=<name>` — integration tests (spins up Docker services)
+- `make dev-e2e FILE=<name>` — E2E tests (Playwright)
+
+### First-time registration
+
+When the dev stack starts fresh (empty MongoDB), the app shows a registration
+page. Create any account to get started — no external auth provider is needed.
 
 ---
 

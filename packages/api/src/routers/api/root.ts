@@ -16,26 +16,12 @@ import User from '@/models/user'; // TODO -> do not import model directly
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
-import { validatePassword } from '@/utils/validators';
+import { passwordSchema, validatePassword } from '@/utils/validators';
 
 const registrationSchema = z
   .object({
     email: z.string().email(),
-    password: z
-      .string()
-      .min(12, 'Password must have at least 12 characters')
-      .refine(
-        pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
-        'Password must include both lower and upper case characters',
-      )
-      .refine(
-        pass => /\d/.test(pass),
-        'Password must include at least one number',
-      )
-      .refine(
-        pass => /[!@#$%^&*(),.?":{}|<>;\-+=]/.test(pass),
-        'Password must include at least one special character',
-      ),
+    password: passwordSchema,
     confirmPassword: z.string(),
   })
   .refine(data => data.password === data.confirmPassword, {
@@ -142,7 +128,7 @@ router.get('/logout', (req, res, next) => {
     if (err) {
       return next(err);
     }
-    res.redirect(`${config.FRONTEND_URL}/login`);
+    res.redirect(`${config.FRONTEND_REDIRECT_BASE}/login`);
   });
 });
 
@@ -154,7 +140,7 @@ router.post('/team/setup/:token', async (req, res, next) => {
 
     if (!validatePassword(password)) {
       return res.redirect(
-        `${config.FRONTEND_URL}/join-team?err=invalid&token=${token}`,
+        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&token=${token}`,
       );
     }
 
@@ -171,12 +157,12 @@ router.post('/team/setup/:token', async (req, res, next) => {
         name: teamInvite.email,
         team: teamInvite.teamId,
       }),
-      password, // TODO: validate password
+      password,
       async (err: Error, user: any) => {
         if (err) {
           logger.error({ err: serializeError(err) }, 'Team setup error');
           return res.redirect(
-            `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
+            `${config.FRONTEND_REDIRECT_BASE}/join-team?token=${token}&err=500`,
           );
         }
 

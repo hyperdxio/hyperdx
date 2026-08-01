@@ -50,27 +50,16 @@ export class Api404Error extends BaseError {
   }
 }
 
-export class Api401Error extends BaseError {
-  constructor(name: string) {
-    super(name, StatusCode.UNAUTHORIZED, true, 'Unauthorized');
-  }
-}
-
-export class Api403Error extends BaseError {
-  constructor(name: string) {
-    super(name, StatusCode.FORBIDDEN, true, 'Forbidden');
-  }
-}
-
-export class Api409Error extends BaseError {
-  constructor(name: string) {
-    super(name, StatusCode.CONFLICT, true, 'Conflict');
-  }
-}
-
 export const isOperationalError = (error: Error) => {
   if (error instanceof BaseError) {
     return error.isOperational;
   }
   return false;
 };
+
+// MongoDB duplicate-key error (unique-index violation). Used to translate a
+// racing or colliding write into a 400 instead of a generic 500.
+export const isDuplicateKeyError = (e: unknown): boolean =>
+  e != null &&
+  typeof e === 'object' &&
+  (e as { code?: unknown }).code === 11000;

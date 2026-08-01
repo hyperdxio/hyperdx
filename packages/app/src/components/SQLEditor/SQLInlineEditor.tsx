@@ -9,7 +9,6 @@ import {
   Completion,
   startCompletion,
 } from '@codemirror/autocomplete';
-import { sql } from '@codemirror/lang-sql';
 import {
   Field,
   TableConnectionChoice,
@@ -33,7 +32,9 @@ import CodeMirror, {
 
 import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
+import { clickhouseSql } from '@/utils/codeMirror';
 
 import { KEYWORDS_FOR_WHERE_OR_ORDER_BY } from './constants';
 import {
@@ -62,6 +63,12 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
+  dateRange?: [Date, Date];
+  sourceId?: string;
+  // With multiple tableConnections, offer only fields present in ALL of them
+  // (intersection) rather than the union — for an expression that must be valid
+  // against every connection, e.g. a chart-level Group By over multiple series.
+  intersectFields?: boolean;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -86,12 +93,20 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
+  dateRange,
+  sourceId,
+  intersectFields,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
     ? [tableConnection]
     : tableConnections;
-  const { data: fields } = useMultipleAllFields(_tableConnections ?? []);
+  const { data: source } = useSource({ id: sourceId });
+  const { data: fields } = useMultipleAllFields(_tableConnections ?? [], {
+    dateRange,
+    timestampValueExpression: source?.timestampValueExpression,
+    intersect: intersectFields,
+  });
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);
@@ -144,9 +159,10 @@ export default function SQLInlineEditor({
 
   const compartmentRef = useRef<Compartment>(new Compartment());
 
+  const hasNonEmptyValue = value.trim().length > 0;
+
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
-      const currentText = viewRef.state.doc.toString();
       const identifiers = [
         ...(filteredFields?.map(column => {
           if (column.path.length > 1) {
@@ -164,22 +180,23 @@ export default function SQLInlineEditor({
       });
 
       const queryHistoryList = autocompletion({
-        compareCompletions: (a: any, b: any) => {
+        compareCompletions: () => {
           return 0;
         }, // don't sort the history search
         override: [createHistoryList],
       });
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
-          currentText.length > 0 ? auto : queryHistoryList,
+          hasNonEmptyValue ? auto : queryHistoryList,
         ),
       });
     },
     [
       filteredFields,
       additionalSuggestions,
-      createHistoryList,
       disableKeywordAutocomplete,
+      createHistoryList,
+      hasNonEmptyValue,
     ],
   );
 
@@ -242,7 +259,7 @@ export default function SQLInlineEditor({
 
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
-        sql({
+        clickhouseSql({
           upperCaseKeywords: true,
         }),
       ),
@@ -294,7 +311,7 @@ export default function SQLInlineEditor({
 
   // Only apply expanded styling when multiline is enabled and focused
   const isExpanded = allowMultiline && isFocused;
-  const baseHeight = size === 'xs' ? 32 : 36;
+  const baseHeight = size === 'xs' ? 30 : 36;
 
   return (
     <div
