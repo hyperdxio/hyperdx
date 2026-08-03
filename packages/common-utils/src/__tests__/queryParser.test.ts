@@ -619,6 +619,50 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       expect(sql).toContain("concatWithSeparator(';',Body,Message)");
     });
   });
+
+  describe('LIKE metacharacters in search terms', () => {
+    const escapingCases = [
+      {
+        lucene: 'ServiceName:user_service',
+        sql: "((ServiceName ILIKE '%user\\\\_service%'))",
+      },
+      {
+        lucene: 'ServiceName:100%',
+        sql: "((ServiceName ILIKE '%100\\\\%%'))",
+      },
+      {
+        lucene: '-ServiceName:user_service',
+        sql: "((ServiceName NOT ILIKE '%user\\\\_service%'))",
+      },
+      {
+        lucene: 'LogAttributes.error_code:5_0',
+        sql: "((`LogAttributes`['error_code'] ILIKE '%5\\\\_0%' AND indexHint(mapContains(`LogAttributes`, 'error_code'))))",
+      },
+      {
+        lucene: 'ResourceAttributesJSON.error:a_b',
+        sql: "((toString(`ResourceAttributesJSON`.`error`) ILIKE '%a\\\\_b%'))",
+      },
+      {
+        lucene: 'user_*',
+        sql: "((lower(Body) LIKE lower('user\\\\_%')))",
+      },
+    ];
+
+    it.each(escapingCases)(
+      'escapes wildcards in "$lucene"',
+      async ({ lucene, sql }) => {
+        const builder = new SearchQueryBuilder(lucene, serializer);
+        expect(await builder.build()).toBe(sql);
+      },
+    );
+
+    it('escapes the LIKE fallback but leaves the tokens raw', async () => {
+      const builder = new SearchQueryBuilder('user_service', serializer);
+      expect(await builder.build()).toBe(
+        "((hasToken(lower(Body), lower('user')) AND hasToken(lower(Body), lower('service')) AND (lower(Body) LIKE lower('%user\\\\_service%'))))",
+      );
+    });
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
