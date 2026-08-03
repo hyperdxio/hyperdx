@@ -1210,6 +1210,14 @@ export const optionsToSelectData = (options: Record<string, string>) =>
   Object.entries(options).map(([value, label]) => ({ value, label }));
 
 // Helper function to format attribute clause
+function escapeSqlValueSingleQuoted(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function escapeLuceneDoubleQuoted(value: string): string {
+  return value.replace(/"/g, '\\"');
+}
+
 export function formatAttributeClause(
   column: string,
   field: string,
@@ -1217,8 +1225,19 @@ export function formatAttributeClause(
   isSql: boolean,
 ): string {
   return isSql
-    ? `${column}['${field}']='${value}'`
-    : `${column}.${field}:"${value}"`;
+    ? `${column}['${field}']='${escapeSqlValueSingleQuoted(value)}'`
+    : `${column}.${field}:"${escapeLuceneDoubleQuoted(value)}"`;
+}
+
+export function formatColumnEquals(
+  column: string,
+  value: string,
+  isSql: boolean,
+): string {
+  if (isSql) {
+    return `${column} = '${escapeSqlValueSingleQuoted(value)}'`;
+  }
+  return `${column}:"${escapeLuceneDoubleQuoted(value)}"`;
 }
 
 /**
