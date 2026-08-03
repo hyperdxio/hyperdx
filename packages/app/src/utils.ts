@@ -309,14 +309,12 @@ export function truncateText(
 
 export function formatDistanceToNowStrictShort(date: Date) {
   return formatDistanceToNowStrict(date)
-    .replace(' month', 'mo.')
-    .replace(' days', 'd')
-    .replace(' day', 'd')
-    .replace(' hours', 'h')
-    .replace(' hour', 'h')
-    .replace(' minutes', 'm')
-    .replace(' minute', 'm')
-    .replace(' seconds', 's');
+    .replace(/ seconds?$/, 's')
+    .replace(/ minutes?$/, 'm')
+    .replace(/ hours?$/, 'h')
+    .replace(/ days?$/, 'd')
+    .replace(/ months?$/, 'mo.')
+    .replace(/ years?$/, 'y');
 }
 
 export function formatmmss(milliseconds?: number) {
