@@ -209,37 +209,27 @@ const QUERY_KEY_PREFIX = 'search';
 const SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR =
   '[data-testid="search-results-panel"]';
 
-// Helper function to get the default source id. The search page can only show
-// log and trace sources, so the default must be one of those kinds — never a
-// metric/session/promql source (which would render no data and warn the user).
-// Enabled sources are preferred over disabled ones, but a disabled log/trace
-// source is still a better default than falling back to an incompatible kind.
+// Helper function to get the default source id
 export function getDefaultSourceId(
-  sources: { id: string; kind?: SourceKind; disabled?: boolean }[] | undefined,
+  sources: Pick<TSource, 'id' | 'kind' | 'disabled'>[] | undefined,
   lastSelectedSourceId: string | undefined,
 ): string {
   if (!sources || sources.length === 0) return '';
 
-  // Restrict to sources that this page can actually display. A missing kind is
-  // treated as compatible so callers passing partial data still work.
+  // Restrict to sources that this page can actually display.
   const searchableSources = sources.filter(
-    s => s.kind == null || ALLOWED_SOURCE_KINDS.includes(s.kind),
+    s => ALLOWED_SOURCE_KINDS.includes(s.kind) && !s.disabled,
   );
   if (searchableSources.length === 0) return '';
 
-  // Honor the user's last selection when it still points at an enabled,
-  // searchable source.
   if (
     lastSelectedSourceId &&
-    searchableSources.some(s => s.id === lastSelectedSourceId && !s.disabled)
+    searchableSources.some(s => s.id === lastSelectedSourceId)
   ) {
     return lastSelectedSourceId;
   }
 
-  // Prefer the first enabled source, falling back to a disabled one only when
-  // no enabled searchable source exists.
-  const firstEnabled = searchableSources.find(s => !s.disabled);
-  return (firstEnabled ?? searchableSources[0]).id;
+  return searchableSources[0].id;
 }
 
 function SourceEditModal({
