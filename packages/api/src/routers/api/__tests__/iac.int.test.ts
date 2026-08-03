@@ -268,6 +268,7 @@ describe('iac router', () => {
       sources: [],
       connections: [],
       webhooks: [],
+      truncatedTypes: [],
     });
   });
 });

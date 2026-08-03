@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import ReactMarkdown from 'react-markdown';
+import { isImportableAlert } from '@hyperdx/common-utils/dist/iac';
 import {
   AlertSource,
   AlertState,
@@ -41,9 +42,7 @@ import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import EmptyState from '@/components/EmptyState';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
-import { isImportableAlert } from '@/components/Iac/terraformSnippets';
 import { PageHeader } from '@/components/PageHeader';
-import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from '@/config';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
@@ -272,24 +271,19 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         {/* Eligibility comes from the shared predicate rather than an inline
             source check, so this and the bulk export can't diverge on which
             alerts the provider can actually model. */}
-        {IS_IAC_HELPERS_ENABLED &&
-          !IS_LOCAL_MODE &&
-          isImportableAlert(alert) && (
-            <ResourceTerraformPopover
-              resource={{
-                type: 'alert',
-                // Deliberately NOT falling back to the saved search's name.
-                // The manifest the bulk export reads carries only the alert's
-                // own name, so a fallback here would give the same alert two
-                // different Terraform addresses depending on which surface it
-                // was exported from — and Terraform would then manage the one
-                // object twice. Nameless alerts get a stable `alert_<id>`
-                // label, which is also immune to a saved-search rename.
-                id: alert._id,
-                name: alert.name ?? undefined,
-              }}
-            />
-          )}
+        {isImportableAlert(alert) && (
+          <ResourceTerraformPopover
+            resource={{
+              type: 'alert',
+              id: alert._id,
+              // No fallback to the saved search's name: the name only labels
+              // the generated block, and the manifest the bulk export reads
+              // carries the alert's own name, so a fallback here would make
+              // the two surfaces disagree about what they call this alert.
+              name: alert.name ?? undefined,
+            }}
+          />
+        )}
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
       </Group>

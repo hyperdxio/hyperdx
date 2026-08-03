@@ -333,6 +333,23 @@ describe('team router', () => {
     expect(resp2.body.data).toHaveLength(0);
   });
 
+  // The delete used to be an unscoped findByIdAndDelete, so any authenticated
+  // user could revoke another team's pending invitation given its id.
+  it('DELETE /team/invitation/:teamInviteId will not touch another team', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const otherTeamInvite = await TeamInvite.create({
+      email: 'other_team@example.com',
+      name: 'Other Team Invite',
+      teamId: new ObjectId(),
+      token: 'other_team_token',
+    });
+
+    await agent.delete(`/team/invitation/${otherTeamInvite._id}`).expect(404);
+
+    expect(await TeamInvite.findById(otherTeamInvite._id)).not.toBeNull();
+  });
+
   it('PATCH /team/apiKey', async () => {
     const { agent } = await getLoggedInAgent(server);
 

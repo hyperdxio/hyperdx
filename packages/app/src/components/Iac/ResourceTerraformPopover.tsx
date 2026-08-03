@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
+import {
+  buildImportBlock,
+  buildProviderBlock,
+  type IacResourceRef,
+} from '@hyperdx/common-utils/dist/iac';
 import { ActionIcon, Popover, Tooltip } from '@mantine/core';
 import { IconBrandTerraform } from '@tabler/icons-react';
+
+import { IS_IAC_EXPORT_ENABLED } from '@/config';
 
 import {
   TerraformHelperPanel,
   type TerraformSnippet,
 } from './TerraformHelperPanel';
-import {
-  buildImportBlock,
-  buildProviderBlock,
-  type IacResourceRef,
-} from './terraformSnippets';
 
 /**
  * Per-resource "Export to Terraform" affordance: an `import {}` block for
@@ -29,8 +31,10 @@ import {
  * through us, so importing stays safe and accurate for every resource type.
  * Everything here is derived synchronously from the ref — no fetch.
  *
- * Callers own eligibility: the provider models only saved-search alerts, so an
- * alert call site must not render this for a tile alert.
+ * Feature and local-mode gating lives here rather than at each call site, so
+ * the four surfaces that render this cannot drift on when it appears. Callers
+ * still own per-resource eligibility: the provider models only saved-search
+ * alerts, so an alert call site must not render this for a tile alert.
  */
 export default function ResourceTerraformPopover({
   resource,
@@ -45,7 +49,7 @@ export default function ResourceTerraformPopover({
 
   const snippets = useMemo<TerraformSnippet[]>(() => {
     // Nothing is built until the popover is opened, which can only happen
-    // client-side. `buildProviderBlock` reads `window.location.origin`, and
+    // client-side. The provider block needs `window.location.origin`, and
     // this component renders inside a list row on the alerts page — computing
     // it during render would throw under both Next output modes, including the
     // ClickStack static export, where that failure is a build-time crash.
@@ -62,7 +66,7 @@ export default function ResourceTerraformPopover({
         // consumes, so it works in a fresh project — and matches what the
         // bulk export writes, so both surfaces produce the same artefact.
         label: 'Import block',
-        hint: 'Add to your Terraform project, then run `terraform plan -generate-config-out=generated.tf` and review before applying. The address is derived from this resource’s current name — if you rename it later, keep the old address or add a `moved` block, or Terraform will manage the object twice.',
+        hint: 'Add to your Terraform project, then run `terraform plan -generate-config-out=generated.tf` and review before applying. The address is derived from this resource’s id, so it survives a rename in HyperDX.',
         snippet: buildImportBlock({ type, id, name }),
       },
       {
@@ -76,6 +80,9 @@ export default function ResourceTerraformPopover({
       },
     ];
   }, [opened, type, id, name]);
+
+  // After the hooks, so the early return cannot change hook order.
+  if (!IS_IAC_EXPORT_ENABLED) return null;
 
   return (
     <Popover

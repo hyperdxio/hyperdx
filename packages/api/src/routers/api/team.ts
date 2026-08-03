@@ -26,6 +26,7 @@ import {
   findUserByEmail,
   findUsersByTeam,
 } from '@/controllers/user';
+import { getNonNullUserWithTeam } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
 import { sendJson } from '@/utils/serialization';
 import { objectIdSchema } from '@/utils/zod';
@@ -228,8 +229,17 @@ router.delete(
   async (req, res, next) => {
     try {
       const id = req.params.id;
+      // Throws rather than reading `req.user?.team` directly. BSON drops an
+      // undefined value from the filter entirely, so a teamless caller would
+      // turn the scoped delete below back into the unscoped one this guard
+      // exists to prevent — any authenticated user revoking any team's
+      // pending invitation given its id.
+      const { teamId } = getNonNullUserWithTeam(req);
 
-      await TeamInvite.findByIdAndDelete(id);
+      const deleted = await TeamInvite.findOneAndDelete({ _id: id, teamId });
+      if (deleted == null) {
+        return res.sendStatus(404);
+      }
 
       return res.json({ message: 'TeamInvite deleted' });
     } catch (e) {

@@ -32,7 +32,7 @@ export interface IConnection {
    *  Nothing in this OSS repo sets it yet; it exists so a Cloud control plane
    *  can mark its own records. Until something populates it, IaC export
    *  treats every connection as reference-only (see collectImportableResources
-   *  in packages/app/src/components/Iac/terraformSnippets.ts). */
+   *  in packages/common-utils/src/iac.ts). */
   platformProvisioned?: boolean;
 }
 
@@ -64,5 +64,7 @@ export default mongoose.model<IConnection>(
       timestamps: true,
       toJSON: { virtuals: true },
     },
-  ),
+    // Every team-scoped listing (IaC import manifest, GET /connections) filters
+    // on `team` alone; without this they collection-scan across every team.
+  ).index({ team: 1, _id: 1 }),
 );

@@ -3,7 +3,6 @@ import {
   getPinoTransport,
 } from '@hyperdx/node-opentelemetry';
 import type { Request, Response } from 'express';
-import type { IncomingMessage } from 'http';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
 
@@ -76,6 +75,25 @@ const TOKEN_PATH_RE = /\/(ext\/silence-alert|team\/setup)\/[^/?#]+/g;
 export const scrubUrlTokens = (url: string): string =>
   url.replace(TOKEN_PATH_RE, '/$1/[REDACTED]');
 
+// pino-http wraps a user-supplied `req` serializer with
+// `wrapRequestSerializer` (its `wrapSerializers` option defaults to true), so
+// what arrives here is already the output of `pino.stdSerializers.req`, not the
+// raw IncomingMessage. Running the std serializer over it a second time would
+// look for `remoteAddress`/`remotePort` on a `socket` that no longer exists and
+// drop the client IP and port from every request log line.
+//
+// Mutating in place rather than spreading: the wrapper builds a fresh object
+// per call, and this keeps the prototype's non-enumerable `raw` back-reference
+// that a spread would lose.
+export const scrubbedRequestSerializer = (
+  req: pino.SerializedRequest,
+): pino.SerializedRequest => {
+  if (req.url) {
+    req.url = scrubUrlTokens(req.url);
+  }
+  return req;
+};
+
 const logger = pino({
   level: MAX_LEVEL,
   transport: getTransport(),
@@ -118,15 +136,7 @@ export const expressLogger = pinoHttp({
         },
       }
     : {
-        serializers: {
-          // Wraps the default rather than replacing it, so header redaction
-          // and every other standard field are preserved — only the URL is
-          // scrubbed.
-          req: (req: IncomingMessage) => {
-            const serialised = pino.stdSerializers.req(req);
-            return { ...serialised, url: scrubUrlTokens(serialised.url) };
-          },
-        },
+        serializers: { req: scrubbedRequestSerializer },
       }),
 });
 

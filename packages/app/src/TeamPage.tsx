@@ -28,7 +28,7 @@ import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
-import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from './config';
+import { IS_IAC_EXPORT_ENABLED } from './config';
 import { withAppNav } from './layout';
 
 type TeamTab = {
@@ -146,7 +146,7 @@ export default function TeamPage() {
           id: 'team-api-agents-mcp-server',
           content: <McpServerSection />,
         },
-        ...(IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE
+        ...(IS_IAC_EXPORT_ENABLED
           ? [
               {
                 id: 'team-api-agents-iac',

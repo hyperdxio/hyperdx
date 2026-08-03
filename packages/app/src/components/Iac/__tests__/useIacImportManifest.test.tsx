@@ -38,6 +38,7 @@ const VALID = {
   sources: [],
   connections: [],
   webhooks: [],
+  truncatedTypes: [],
 };
 
 describe('useIacImportManifest', () => {

@@ -39,6 +39,7 @@ import {
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
+import { isImportableDashboard } from '@hyperdx/common-utils/dist/iac';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
@@ -131,7 +132,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
-import { IS_IAC_HELPERS_ENABLED, IS_LOCAL_MODE } from '@/config';
 import {
   Dashboard,
   type Tile,
@@ -2616,23 +2616,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Button>
         </Tags>
       )}
-      {/* Provisioned dashboards are machine-managed by ProvisionDashboardsTask,
-          whose name-keyed upsert overwrites tiles/tags/filters wholesale. Two
-          managers for one object is a fight nobody wins, so they are not
-          offered for import — matching the bulk manifest, which filters them
-          out server-side. */}
-      {IS_IAC_HELPERS_ENABLED &&
-        !IS_LOCAL_MODE &&
-        dashboard?.id &&
-        !dashboard.provisioned && (
-          <ResourceTerraformPopover
-            resource={{
-              type: 'dashboard',
-              id: dashboard.id,
-              name: dashboard.name,
-            }}
-          />
-        )}
+      {/* Shared predicate, not an inline `!provisioned` check, so this and the
+          bulk manifest cannot disagree about which dashboards are eligible. */}
+      {dashboard?.id && isImportableDashboard(dashboard) && (
+        <ResourceTerraformPopover
+          resource={{
+            type: 'dashboard',
+            id: dashboard.id,
+            name: dashboard.name,
+          }}
+        />
+      )}
       {/* local dashboards cant be "deleted" */}
       <Menu width={250}>
         <Menu.Target>

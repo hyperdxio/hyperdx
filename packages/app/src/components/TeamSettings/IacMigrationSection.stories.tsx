@@ -35,6 +35,7 @@ const meta = {
               { id: '655b1b7d9143aa1b1b73f4fa', name: 'Local ClickHouse' },
             ],
             webhooks: [],
+            truncatedTypes: [],
           }),
         ),
       ],

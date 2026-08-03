@@ -2298,8 +2298,8 @@ export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
 
 // IaC (Terraform) export
 //
-// Shared so `GET /iac/import-manifest` and the frontend generators in
-// packages/app/src/components/Iac cannot drift apart. Every listing is
+// Shared so `GET /iac/import-manifest` and the generators in
+// packages/common-utils/src/iac.ts cannot drift apart. Every listing is
 // id + name only — the endpoint deliberately projects nothing heavier.
 const IacManifestEntrySchema = z.object({
   id: z.string(),
@@ -2326,6 +2326,13 @@ export const IacImportManifestSchema = z.object({
     }),
   ),
   webhooks: z.array(IacManifestEntrySchema),
+  // Manifest keys whose listing hit IAC_MANIFEST_LIMIT, so the export for
+  // those types is partial. Per-type rather than one global boolean: warning
+  // that the file is incomplete because of a type the user did not tick is a
+  // false alarm. Defaulted so a response predating the field still parses —
+  // app and API ship in one image, but a multi-replica rolling deploy can
+  // briefly serve a new bundle against an old API.
+  truncatedTypes: z.array(z.string()).default([]),
 });
 
 export type IacImportManifest = z.infer<typeof IacImportManifestSchema>;

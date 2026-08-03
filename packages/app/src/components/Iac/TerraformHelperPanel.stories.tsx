@@ -1,8 +1,11 @@
 import React from 'react';
+import {
+  buildImportBlock,
+  buildProviderBlock,
+} from '@hyperdx/common-utils/dist/iac';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { TerraformHelperPanel } from './TerraformHelperPanel';
-import { buildImportBlock, buildProviderBlock } from './terraformSnippets';
 
 const meta = {
   title: 'Components/Iac/TerraformHelperPanel',

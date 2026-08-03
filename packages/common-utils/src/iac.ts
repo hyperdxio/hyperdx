@@ -1,17 +1,25 @@
-import {
-  AlertSource,
-  type IacImportManifest,
-} from '@hyperdx/common-utils/dist/types';
+import { AlertSource, type IacImportManifest } from './types';
 
 //
 // Single source of truth for everything HyperDX asserts about the ClickHouse
 // Terraform provider (github.com/ClickHouse/terraform-provider-clickhouse).
 // When the provider changes, this file and its tests are the only places to
 // update.
+//
+// Framework-free and dependency-free on purpose: it lives here rather than in
+// packages/app so the API (and anything agent-facing built on it) can produce
+// the same artefact a human gets from the UI.
 
 const TERRAFORM_PROVIDER_SOURCE = 'ClickHouse/clickhouse';
 // First provider version shipping the ClickStack (HyperDX) resources.
 const TERRAFORM_PROVIDER_VERSION_CONSTRAINT = '>= 3.22.0';
+// `import {}` blocks and `-generate-config-out` both landed in Terraform 1.5.
+// Without this, an older CLI fails with a syntax error instead of saying so.
+const TERRAFORM_VERSION_CONSTRAINT = '>= 1.5.0';
+
+// Per-type ceiling the manifest endpoint applies to each listing. Shared so
+// the server that enforces it and the UI copy that explains it cannot drift.
+export const IAC_MANIFEST_LIMIT = 1000;
 
 export type IacResourceType =
   | 'dashboard'
@@ -21,7 +29,7 @@ export type IacResourceType =
   | 'connection'
   | 'webhook';
 
-const TERRAFORM_RESOURCE_TYPES: Record<IacResourceType, string> = {
+export const TERRAFORM_RESOURCE_TYPES: Record<IacResourceType, string> = {
   dashboard: 'clickhouse_clickstack_dashboard',
   alert: 'clickhouse_clickstack_alert',
   saved_search: 'clickhouse_clickstack_saved_search',
@@ -36,13 +44,13 @@ export type IacResourceRef = {
   name?: string;
 };
 
-// The manifest contract lives in common-utils so this module and the router
-// that serves it (packages/api/src/routers/api/iac.ts) cannot drift.
+// The manifest contract lives in ./types so this module and the router that
+// serves it (packages/api/src/routers/api/iac.ts) cannot drift.
 export type { IacImportManifest };
 
 // `name` is optional throughout: it is a plain (non-required) String on the
 // Connection/Source/SavedSearch schemas, so the manifest can legitimately
-// carry an entry without one. `terraformResourceLabel` falls back to the type.
+// carry an entry without one.
 export type IacConnectionRef = IacImportManifest['connections'][number];
 
 /**
@@ -68,24 +76,53 @@ export function isImportableAlert(alert: {
   );
 }
 
-export function terraformResourceLabel({
-  type,
-  id,
-  name,
-}: IacResourceRef): string {
-  const slug = (name ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 48);
-  const base =
-    slug && /^[a-z]/.test(slug) ? slug : `${type}_${slug}`.replace(/_+$/, '');
-  // Short id suffix keeps labels unique when two resources share a name.
-  return `${base}_${id.slice(-5)}`;
+/**
+ * Provisioned dashboards are machine-managed by ProvisionDashboardsTask, whose
+ * name-keyed upsert overwrites tiles, tags, and filters wholesale — two
+ * managers for one object is a fight nobody wins. The bulk manifest filters
+ * them out server-side (`provisioned: { $ne: true }`); this is the same rule
+ * for the per-dashboard surface, so the two cannot disagree.
+ */
+export function isImportableDashboard(dashboard: {
+  provisioned?: boolean;
+}): boolean {
+  return !dashboard.provisioned;
+}
+
+/**
+ * Terraform addresses are derived from the id, never the name.
+ *
+ * A name-derived address changes when someone renames the resource in HyperDX,
+ * and re-exporting then emits a new address for an object Terraform already
+ * tracks — which it plans as a destroy of the old one. Ids are immutable and
+ * unique, so `<type>_<id>` is both stable across renames and collision-free
+ * between two same-type resources that share a name. The human-readable name
+ * goes in a comment above each block instead.
+ *
+ * ObjectIds are 24 hex characters and can start with a digit, which Terraform
+ * rejects as an identifier; the type prefix covers that. The character filter
+ * is belt-and-braces — ids reaching here are always ObjectId hex.
+ */
+export function terraformResourceLabel({ type, id }: IacResourceRef): string {
+  return `${type}_${id.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+}
+
+/**
+ * Names are user-controlled and land in generated HCL, so a newline would end
+ * the comment and let the rest of the name become a directive. Collapse all
+ * whitespace, drop the other control characters, and cap the length.
+ */
+function commentSafeName(name: string | undefined): string | undefined {
+  // \s covers the line terminators; the explicit range covers the remaining
+  // C0 controls and DEL, which \s does not.
+  // eslint-disable-next-line no-control-regex
+  const safe = name?.replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim();
+  return safe ? safe.slice(0, 120) : undefined;
 }
 
 export function buildImportBlock(ref: IacResourceRef): string {
-  return `import {
+  const name = commentSafeName(ref.name);
+  return `${name ? `# ${name}\n` : ''}import {
   to = ${TERRAFORM_RESOURCE_TYPES[ref.type]}.${terraformResourceLabel(ref)}
   id = "${ref.id}"
 }`;
@@ -93,6 +130,7 @@ export function buildImportBlock(ref: IacResourceRef): string {
 
 export function buildProviderBlock(endpoint: string): string {
   return `terraform {
+  required_version = "${TERRAFORM_VERSION_CONSTRAINT}"
   required_providers {
     clickhouse = {
       source  = "${TERRAFORM_PROVIDER_SOURCE}"
@@ -113,10 +151,11 @@ provider "clickhouse" {
 // Cloud the provider cannot manage them. Only a connection the server marks
 // explicitly self-managed becomes an import block instead.
 function buildConnectionLocalsBlock(connections: IacConnectionRef[]): string {
-  const lines = connections.map(
-    c =>
-      `  ${terraformResourceLabel({ type: 'connection', id: c.id, name: c.name })}_id = "${c.id}"`,
-  );
+  const lines = connections.flatMap(c => {
+    const name = commentSafeName(c.name);
+    const label = terraformResourceLabel({ type: 'connection', id: c.id });
+    return [...(name ? [`  # ${name}`] : []), `  ${label}_id = "${c.id}"`];
+  });
   return `# These connections are either platform-provisioned or of unrecorded
 # provenance, so Terraform cannot manage them. Reference them by id instead.
 locals {
@@ -158,10 +197,9 @@ export function buildImportFile({
 #   resources are alpha and do not model every HyperDX feature — PromQL tiles
 #   in particular have no representation. A dashboard's configuration is
 #   written back whole, so applying a config that omits something deletes it.
-# * Resource addresses below are derived from each resource's current name.
-#   Renaming a resource in HyperDX and re-exporting produces a different
-#   address, which Terraform reads as destroy-and-recreate. Add a "moved"
-#   block, or edit the address back, if you rename something later.
+# * Resource addresses below are derived from each resource's id, so they
+#   survive a rename in HyperDX. The name in the comment above each block is
+#   a label for humans only.
 # * ClickStack resources in the provider are in alpha; behaviour may change
 #   between provider versions.
 
@@ -175,10 +213,10 @@ export function collectImportableResources(
 ): {
   resources: IacResourceRef[];
   connectionLocals: IacConnectionRef[];
-  skippedTileAlerts: number;
+  skippedAlerts: number;
 } {
   const resources: IacResourceRef[] = [];
-  let skippedTileAlerts = 0;
+  let skippedAlerts = 0;
 
   // Dispatched explicitly rather than looping a {type, key} table. The table
   // form could not tie a resource type to its manifest key, so a mispaired
@@ -201,7 +239,7 @@ export function collectImportableResources(
   if (selectedTypes.includes('alert')) {
     for (const alert of manifest.alerts) {
       if (!isImportableAlert(alert)) {
-        skippedTileAlerts += 1;
+        skippedAlerts += 1;
         continue;
       }
       resources.push({ type: 'alert', id: alert.id, name: alert.name });
@@ -235,5 +273,5 @@ export function collectImportableResources(
     }
   }
 
-  return { resources, connectionLocals, skippedTileAlerts };
+  return { resources, connectionLocals, skippedAlerts };
 }

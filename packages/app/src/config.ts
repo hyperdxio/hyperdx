@@ -66,4 +66,11 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
-export const IS_IAC_HELPERS_ENABLED = true;
+// Not exported: IS_IAC_EXPORT_ENABLED below is the only gate callers should
+// read. Leaving the raw flag importable re-opens the "forgot the local-mode
+// check" mistake that folding the two together was meant to close.
+const IS_IAC_HELPERS_ENABLED = true;
+// Local mode has no API server behind it, so there is nothing for the
+// Terraform provider to talk to. Single definition — the alerts, dashboard,
+// search, and team-settings surfaces all read this one constant.
+export const IS_IAC_EXPORT_ENABLED = IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE;
