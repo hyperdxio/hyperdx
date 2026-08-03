@@ -253,11 +253,17 @@ export const createOrUpdateDashboardAlerts = async (
         source: AlertSource.TILE,
         team: teamId,
       };
+      const alertInput = {
+        ...alert,
+        source: AlertSource.TILE,
+        dashboardId: dashboardId.toString(),
+        tileId,
+      };
       const oldAlert = await Alert.findOne(filter);
       const alertValues =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alert)
-          : makeAlert(alert, userId);
+          ? makeAlert(alertInput)
+          : makeAlert(alertInput, userId);
 
       return await Alert.findOneAndUpdate(filter, alertValues, {
         new: true,
