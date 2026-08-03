@@ -4,6 +4,7 @@ import ky from 'ky-universal';
 import type {
   Alert,
   AlertApiResponse,
+  AlertEvaluationsApiResponse,
   AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   InstallationApiResponse,
@@ -22,7 +23,7 @@ import type {
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
 } from '@hyperdx/common-utils/dist/types';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import { getLocalDashboardTags } from './dashboard';
@@ -216,6 +217,37 @@ const api = {
           searchParams: { startTime, endTime },
         }).json<AlertHistoryRangeApiResponse>(),
       enabled: enabled && alertId != null,
+    });
+  },
+  getAlertEvaluationsQueryKey: (alertId: string | undefined, limit?: number) =>
+    ['alertEvaluations', alertId, limit] as const,
+  // Paginated evaluation history for the alert detail page: one entry per
+  // evaluation window (newest first), including errors recorded for it.
+  // Older pages are keyed off the last window's createdAt (`before`).
+  useAlertEvaluations(
+    alertId: string | undefined,
+    { limit }: { limit?: number } = {},
+  ) {
+    return useInfiniteQuery({
+      queryKey: api.getAlertEvaluationsQueryKey(alertId, limit),
+      queryFn: ({ pageParam }) =>
+        hdxServer(`alerts/${alertId}/evaluations`, {
+          method: 'GET',
+          searchParams: {
+            ...(limit != null && { limit }),
+            ...(pageParam != null && { before: pageParam }),
+          },
+        }).json<AlertEvaluationsApiResponse>(),
+      initialPageParam: undefined as number | undefined,
+      getNextPageParam: lastPage => {
+        if (!lastPage.hasMore || lastPage.data.length === 0) {
+          return undefined;
+        }
+        return new Date(
+          lastPage.data[lastPage.data.length - 1].createdAt,
+        ).getTime();
+      },
+      enabled: alertId != null,
     });
   },
   useServices() {
