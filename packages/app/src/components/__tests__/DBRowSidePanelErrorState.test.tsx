@@ -75,12 +75,12 @@ describe('DBRowSidePanelErrorState', () => {
 
     expect(
       screen.getByText(
-        /Couldn't load the full row from a Distributed or Merge table/i,
+        /Failed to load row details from distributed or merge table/i,
       ),
     ).toBeTruthy();
     // Explains WHY HyperDX issues SELECT * in the first place.
     expect(
-      screen.getByText(/To show every field for a row, HyperDX loads/i),
+      screen.getByText(/To show every field for this row, HyperDX loads/i),
     ).toBeTruthy();
     expect(screen.getByText('Edit source settings')).toBeTruthy();
   });
@@ -111,7 +111,7 @@ describe('DBRowSidePanelErrorState', () => {
 
     expect(
       screen.queryByText(
-        /Couldn't load the full row from a Distributed or Merge table/i,
+        /Failed to load row details from distributed or merge table/i,
       ),
     ).toBeNull();
   });
@@ -125,7 +125,7 @@ describe('DBRowSidePanelErrorState', () => {
 
     expect(
       screen.queryByText(
-        /Couldn't load the full row from a Distributed or Merge table/i,
+        /Failed to load row details from distributed or merge table/i,
       ),
     ).toBeNull();
   });

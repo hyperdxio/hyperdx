@@ -15,6 +15,7 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
 import { useTableMetadata } from '@/hooks/useMetadata';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
 import { SQLPreview } from './ChartSQLPreview';
@@ -33,13 +34,14 @@ function KnownColumnsListHint({
   onEditClick?: () => void;
   source: TSource;
 }) {
+  const brand = useBrandDisplayName();
   const hasKnownColumnsList =
     (isLogSource(source) || isTraceSource(source)) &&
     !!source.knownColumnsListExpression;
 
   const message = hasKnownColumnsList ? (
     <>
-      To show every field for a row, HyperDX loads the full row using the{' '}
+      To show every field for a row, {brand} loads the full row using the{' '}
       <b>Known Columns List</b> configured on this source (instead of a{' '}
       <SelectStar /> query). This likely failed because the list references a
       column that doesn&apos;t exist in every target table of the Distributed or
@@ -48,14 +50,12 @@ function KnownColumnsListHint({
     </>
   ) : (
     <>
-      To show every field for a row, HyperDX loads the full row with a{' '}
-      <SelectStar /> query. This <SelectStar /> failed because this source
-      targets a Distributed or Merge table whose underlying tables don&apos;t
-      all share the same columns — a column declared by the parent table is
-      missing from at least one target table. To fix this, set a{' '}
-      <b>Known Columns List</b> on this source (a list of columns that exist in
-      every target table); HyperDX will select those columns instead of{' '}
-      <SelectStar />.
+      To show every field for this row, {brand} loads the full row with a{' '}
+      <SelectStar /> query. This failed because a column declared by the parent
+      (distributed) table is missing from at least one target table. To fix
+      this, set a <b>Known Columns List</b> on this source, specifying a list of
+      columns that every target table has. When set, {brand} will select those
+      columns instead of <SelectStar />.
     </>
   );
 
@@ -63,7 +63,8 @@ function KnownColumnsListHint({
     <Alert
       color="yellow"
       icon={<IconAlertTriangle size={16} />}
-      title="Couldn't load the full row from a Distributed or Merge table"
+      title="Failed to load row details from distributed or merge table"
+      data-testid="known-columns-list-hint"
     >
       <Stack gap="xs" align="start">
         <Text size="sm">{message}</Text>
@@ -95,7 +96,7 @@ export function DBRowSidePanelErrorState({
     isMissingColumnError(error) && !!tableMetadata?.isPointerTable;
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" data-testid="row-error-state">
       <Text>Error loading row data</Text>
 
       {showHint && (
