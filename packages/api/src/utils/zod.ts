@@ -268,12 +268,7 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
-    // Caps the number of series rendered (top-N by value). Maps to the
-    // internal `seriesLimit` on the builder config. Named `seriesLimit`
-    // (not `limit`, as on pie/bar) to match the internal field and the
-    // time-series semantic: for pie/bar `limit` caps categories, here it
-    // caps series.
-    seriesLimit: z.number().int().positive().optional(),
+    seriesLimit: z.number().int().positive().max(500).optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -288,8 +283,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
 const externalDashboardBarChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('stacked_bar'),
-    // See `externalDashboardLineChartConfigSchema.seriesLimit`.
-    seriesLimit: z.number().int().positive().optional(),
+    seriesLimit: z.number().int().positive().max(500).optional(),
   });
 
 const externalDashboardBarRawSqlChartConfigSchema =

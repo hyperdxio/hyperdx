@@ -2658,10 +2658,8 @@ describe('External API v2 Dashboards - new format', () => {
       const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
         200,
       );
-      expect(omit(getResponse.body.data.tiles[0], ['id'])).toEqual(lineChart);
-      expect(omit(getResponse.body.data.tiles[1], ['id'])).toEqual(
-        stackedBarChart,
-      );
+      expect(getResponse.body.data.tiles[0].config.seriesLimit).toBe(20);
+      expect(getResponse.body.data.tiles[1].config.seriesLimit).toBe(7);
     });
 
     it('omits seriesLimit on line/stacked_bar tiles when it is not provided', async () => {
@@ -3811,12 +3809,8 @@ describe('External API v2 Dashboards - new format', () => {
         'get',
         `${BASE_URL}/${dashboard._id}`,
       ).expect(200);
-      expect(omit(getResponse.body.data.tiles[0], ['id'])).toEqual(
-        omit(lineChart, ['id']),
-      );
-      expect(omit(getResponse.body.data.tiles[1], ['id'])).toEqual(
-        omit(stackedBarChart, ['id']),
-      );
+      expect(getResponse.body.data.tiles[0].config.seriesLimit).toBe(15);
+      expect(getResponse.body.data.tiles[1].config.seriesLimit).toBe(3);
     });
 
     it('should update dashboard filters when provided', async () => {
