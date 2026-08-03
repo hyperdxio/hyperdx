@@ -15,7 +15,6 @@ import {
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
-  ChartPaletteToken,
   ColorCondition,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,

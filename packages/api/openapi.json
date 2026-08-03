@@ -1645,8 +1645,8 @@
           },
           "seriesLimit": {
             "type": "number",
-            "max": 500,
-            "description": "Maximum number of series rendered (top-N by value). Omit for no limit."
+            "description": "Maximum number of series rendered (top-N by value). Omit for no limit.",
+            "example": 5
           }
         }
       },
@@ -1708,8 +1708,8 @@
           },
           "seriesLimit": {
             "type": "number",
-            "max": 500,
-            "description": "Maximum number of series rendered (top-N by value). Omit for no limit."
+            "description": "Maximum number of series rendered (top-N by value). Omit for no limit.",
+            "example": 5
           }
         }
       },

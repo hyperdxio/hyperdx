@@ -631,8 +631,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           default: false
  *         seriesLimit:
  *           type: number
- *           max: 500
  *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           example: 5
  *
  *     BarBuilderChartConfig:
  *       type: object
@@ -682,8 +682,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         seriesLimit:
  *           type: number
- *           max: 500
  *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           example: 5
  *
  *     TableBuilderChartConfig:
  *       type: object
