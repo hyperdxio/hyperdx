@@ -2593,6 +2593,111 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('persists seriesLimit on line and stacked_bar tiles through create and get', async () => {
+      // Regression test for HDX-4988: seriesLimit was silently dropped on
+      // line/stacked_bar tiles. Exercises both the input-schema acceptance
+      // and the internal<->external conversion round-trip.
+      const lineChart: ExternalDashboardTile = {
+        name: 'Line with series limit',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          seriesLimit: 20,
+        },
+      };
+
+      const stackedBarChart: ExternalDashboardTile = {
+        name: 'Stacked bar with series limit',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'stacked_bar',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          seriesLimit: 7,
+        },
+      };
+
+      // Act: create the dashboard
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with series limits',
+          tiles: [lineChart, stackedBarChart],
+        })
+        .expect(200);
+
+      // Assert: create response echoes the seriesLimit back
+      expect(createResponse.body.data.tiles[0].config.seriesLimit).toBe(20);
+      expect(createResponse.body.data.tiles[1].config.seriesLimit).toBe(7);
+
+      // Assert: the seriesLimit survives a round-trip through persistence (GET)
+      const { id } = createResponse.body.data;
+      const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
+        200,
+      );
+      expect(omit(getResponse.body.data.tiles[0], ['id'])).toEqual(lineChart);
+      expect(omit(getResponse.body.data.tiles[1], ['id'])).toEqual(
+        stackedBarChart,
+      );
+    });
+
+    it('omits seriesLimit on line/stacked_bar tiles when it is not provided', async () => {
+      const lineChart: ExternalDashboardTile = {
+        name: 'Line without series limit',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard without series limit',
+          tiles: [lineChart],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty(
+        'seriesLimit',
+      );
+    });
+
     it('omits orderBy on pie/bar tiles when it is not provided', async () => {
       const pieChart: ExternalDashboardTile = {
         name: 'Pie without order',
@@ -3640,6 +3745,77 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body.message).toContain(
         'savedQueryLanguage cannot be null when savedQuery is provided',
+      );
+    });
+
+    it('persists seriesLimit on line and stacked_bar tiles through update and get', async () => {
+      // Regression test for HDX-4988: the save path must not drop
+      // seriesLimit on line/stacked_bar tiles.
+      const dashboard = await createTestDashboard();
+      const lineChart: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Line with series limit',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          seriesLimit: 15,
+        },
+      };
+      const stackedBarChart: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Stacked bar with series limit',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'stacked_bar',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          seriesLimit: 3,
+        },
+      };
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Dashboard with series limits',
+          tiles: [lineChart, stackedBarChart],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config.seriesLimit).toBe(15);
+      expect(response.body.data.tiles[1].config.seriesLimit).toBe(3);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(omit(getResponse.body.data.tiles[0], ['id'])).toEqual(
+        omit(lineChart, ['id']),
+      );
+      expect(omit(getResponse.body.data.tiles[1], ['id'])).toEqual(
+        omit(stackedBarChart, ['id']),
       );
     });
 

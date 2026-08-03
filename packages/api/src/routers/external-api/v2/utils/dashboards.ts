@@ -300,6 +300,9 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
+        // `seriesLimit` is nullish internally (cleared to `null`); coalesce
+        // to undefined so a disabled limit is omitted from the response.
+        seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.StackedBar:
       return {
@@ -316,6 +319,7 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Number:
       return {
@@ -703,6 +707,8 @@ export function convertToInternalTileConfig(
           where: '',
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
+          // `_.omitBy(_.isNil)` below drops it when absent.
+          seriesLimit: externalConfig.seriesLimit,
           name,
         } satisfies BuilderSavedChartConfig;
         break;
