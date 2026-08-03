@@ -150,11 +150,11 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     note: alert.note ?? null,
 
     // Log alerts
-    savedSearch: alert.savedSearchId as unknown as ObjectId,
-    groupBy: alert.groupBy,
+    savedSearch: (alert.savedSearchId ?? null) as unknown as ObjectId,
+    groupBy: alert.groupBy ?? null,
     // Chart alerts
-    dashboard: alert.dashboardId as unknown as ObjectId,
-    tileId: alert.tileId,
+    dashboard: (alert.dashboardId ?? null) as unknown as ObjectId,
+    tileId: alert.tileId ?? null,
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,

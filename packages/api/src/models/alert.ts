@@ -71,12 +71,12 @@ export interface IAlert {
   note?: string | null;
 
   // SavedSearch alerts
-  groupBy?: string;
-  savedSearch?: ObjectId;
+  groupBy?: string | null;
+  savedSearch?: ObjectId | null;
 
   // Tile alerts
-  dashboard?: ObjectId;
-  tileId?: string;
+  dashboard?: ObjectId | null;
+  tileId?: string | null;
 
   // Silenced
   silenced?: {

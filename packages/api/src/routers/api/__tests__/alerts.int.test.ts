@@ -3,6 +3,7 @@ import {
   AlertThresholdType,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import mongoose from 'mongoose';
 
 import {
   getLoggedInAgent,
@@ -17,6 +18,7 @@ import {
 } from '@/fixtures';
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
+import { SavedSearch } from '@/models/savedSearch';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -174,6 +176,73 @@ describe('alerts router', () => {
         }),
       )
       .expect(404);
+  });
+
+  it('clears source-specific references when updating an alert source', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const tileId = dashboard.body.tiles[0].id;
+    const savedSearch = await SavedSearch.create({
+      name: 'Test Saved Search',
+      source: new mongoose.Types.ObjectId(),
+      team: team._id,
+    });
+    const staleAlert = await Alert.create({
+      team: team._id,
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.TILE,
+      savedSearch: new mongoose.Types.ObjectId(),
+      groupBy: 'service.name',
+      dashboard: dashboard.body.id,
+      tileId,
+    });
+
+    await agent
+      .put(`/alerts/${staleAlert._id.toString()}`)
+      .send({
+        channel: staleAlert.channel,
+        interval: staleAlert.interval,
+        threshold: staleAlert.threshold,
+        thresholdType: staleAlert.thresholdType,
+        source: AlertSource.SAVED_SEARCH,
+        savedSearchId: savedSearch._id.toString(),
+      })
+      .expect(200);
+
+    let updatedAlert = await Alert.findById(staleAlert._id);
+    expect(updatedAlert?.savedSearch?.toString()).toBe(
+      savedSearch._id.toString(),
+    );
+    expect(updatedAlert?.groupBy).toBeNull();
+    expect(updatedAlert?.dashboard).toBeNull();
+    expect(updatedAlert?.tileId).toBeNull();
+
+    await agent
+      .put(`/alerts/${staleAlert._id.toString()}`)
+      .send({
+        channel: staleAlert.channel,
+        interval: staleAlert.interval,
+        threshold: staleAlert.threshold,
+        thresholdType: staleAlert.thresholdType,
+        source: AlertSource.TILE,
+        dashboardId: dashboard.body.id,
+        tileId,
+      })
+      .expect(200);
+
+    updatedAlert = await Alert.findById(staleAlert._id);
+    expect(updatedAlert?.savedSearch).toBeNull();
+    expect(updatedAlert?.groupBy).toBeNull();
+    expect(updatedAlert?.dashboard?.toString()).toBe(dashboard.body.id);
+    expect(updatedAlert?.tileId).toBe(tileId);
   });
 
   it('round-trips note through create, update, and clear', async () => {

@@ -81,13 +81,13 @@ const formatAlertResponse = (
       'thresholdType',
       'state',
       'source',
-      'tileId',
       'note',
       'createdAt',
       'updatedAt',
       'executionErrors',
       'numConsecutiveWindows',
     ]),
+    ...(alert.tileId != null && { tileId: alert.tileId }),
   };
 };
 
