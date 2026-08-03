@@ -14,6 +14,7 @@ import {
   Drawer,
   Group,
   NumberInput,
+  SegmentedControl,
   Stack,
   Text,
 } from '@mantine/core';
@@ -32,6 +33,7 @@ import {
 import { ColorSwatchInput } from './ColorSwatchInput';
 import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
+import SelectControlled from './SelectControlled';
 
 export type ChartConfigDisplaySettings = Pick<
   ChartConfigWithDateRange,
@@ -43,6 +45,9 @@ export type ChartConfigDisplaySettings = Pick<
   | 'color'
   | 'colorRules'
   | 'backgroundChart'
+  | 'showLegend'
+  | 'tooltipMode'
+  | 'lineInterpolation'
 > & {
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
@@ -102,6 +107,11 @@ function applyDefaultSettings(
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
+    // Line/area time-chart controls. Defaults match the renderer's fallbacks:
+    // legend on, tooltip mode auto (density-driven), smooth interpolation.
+    showLegend: settings.showLegend ?? true,
+    tooltipMode: settings.tooltipMode ?? 'auto',
+    lineInterpolation: settings.lineInterpolation ?? 'monotone',
   };
 }
 
@@ -180,6 +190,12 @@ export default function ChartDisplaySettingsDrawer({
 
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+
+  // Legend / tooltip / line-style controls apply to line/area time charts
+  // (DisplayType.Line renders as an area chart). Stacked bars keep the full
+  // tooltip and have no line curve, so this section is Line-only, mirroring the
+  // other displayType-gated sections below.
+  const showLineChartOptions = displayType === DisplayType.Line;
 
   // The series-limit CTE is only emitted for builder group-by time charts;
   // raw SQL configs author their own LIMIT logic directly.
@@ -284,6 +300,57 @@ export default function ChartDisplaySettingsDrawer({
                 />
               </Box>
             )}
+            <Divider />
+          </>
+        )}
+
+        {showLineChartOptions && (
+          <>
+            <CheckBoxControlled
+              control={control}
+              name="showLegend"
+              size="xs"
+              label="Show Legend"
+            />
+            <Box>
+              <SelectControlled
+                control={control}
+                name="tooltipMode"
+                size="xs"
+                label="Hover Tooltip"
+                description="How the hover tooltip lists series. Auto shows a single series on dense charts and the full list otherwise."
+                allowDeselect={false}
+                comboboxProps={{ withinPortal: false }}
+                data={[
+                  { label: 'Auto', value: 'auto' },
+                  { label: 'Single series', value: 'single' },
+                  { label: 'All series', value: 'all' },
+                  { label: 'Hidden', value: 'hidden' },
+                ]}
+              />
+            </Box>
+            <Box>
+              <Text size="xs" c="dimmed" mb={4}>
+                Line Style
+              </Text>
+              <Controller
+                control={control}
+                name="lineInterpolation"
+                render={({ field: { onChange, value } }) => (
+                  <SegmentedControl
+                    size="xs"
+                    fullWidth
+                    value={value ?? 'monotone'}
+                    onChange={onChange}
+                    data={[
+                      { label: 'Linear', value: 'linear' },
+                      { label: 'Smooth', value: 'monotone' },
+                      { label: 'Step', value: 'step' },
+                    ]}
+                  />
+                )}
+              />
+            </Box>
             <Divider />
           </>
         )}

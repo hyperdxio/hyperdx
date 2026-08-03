@@ -840,7 +840,11 @@ function DBTimeChartComponent({
             referenceLines={referenceLines}
             annotations={annotations}
             setIsClickActive={setPinnedPayload}
-            showLegend={showLegend}
+            // The tile config can hide the legend via Display Settings. Combine
+            // it with the context prop (AND) so a surface that never shows a
+            // legend (e.g. compact search charts passing showLegend={false})
+            // still wins, and existing tiles (config unset) are unchanged.
+            showLegend={showLegend && (queriedConfig.showLegend ?? true)}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             selectedSeriesNames={selectedSeriesSet}
@@ -848,6 +852,8 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            tooltipMode={queriedConfig.tooltipMode}
+            lineInterpolation={queriedConfig.lineInterpolation}
           />
         </>
       )}

@@ -14,6 +14,7 @@ import {
   collectMemoChartGradientHexes,
   getVisibleLineData,
   HARD_LINES_LIMIT,
+  resolveEffectiveTooltipMode,
   resolveTooltipMode,
   selectTooltipRows,
 } from '@/HDXMultiSeriesTimeChart';
@@ -395,5 +396,54 @@ describe('resolveTooltipMode', () => {
     // The caller passes the drawn count, so a dense chart narrowed by the
     // legend to a handful of series shows the full comparison again.
     expect(resolveTooltipMode(DisplayType.Line, 3)).toBe('all');
+  });
+});
+
+// A tile can pin an explicit tooltip mode in Display Settings, which overrides
+// the density-based default. 'auto' (or an unset setting) keeps the adaptive
+// behavior. Pins that precedence so the two never get crossed.
+describe('resolveEffectiveTooltipMode', () => {
+  it('honors an explicit mode over the density default', () => {
+    // Sparse chart would auto-resolve to 'all'; an explicit 'single' wins.
+    expect(resolveEffectiveTooltipMode('single', DisplayType.Line, 2)).toBe(
+      'single',
+    );
+    // Dense chart would auto-resolve to 'single'; an explicit 'all' wins.
+    expect(resolveEffectiveTooltipMode('all', DisplayType.Line, 50)).toBe(
+      'all',
+    );
+    // 'hidden' has no auto equivalent; it only comes from an explicit setting.
+    expect(resolveEffectiveTooltipMode('hidden', DisplayType.Line, 2)).toBe(
+      'hidden',
+    );
+  });
+
+  it("falls back to the density default when the setting is 'auto'", () => {
+    expect(resolveEffectiveTooltipMode('auto', DisplayType.Line, 50)).toBe(
+      'single',
+    );
+    expect(resolveEffectiveTooltipMode('auto', DisplayType.Line, 2)).toBe(
+      'all',
+    );
+  });
+
+  it('falls back to the density default when the setting is unset', () => {
+    expect(resolveEffectiveTooltipMode(undefined, DisplayType.Line, 50)).toBe(
+      'single',
+    );
+    expect(resolveEffectiveTooltipMode(undefined, DisplayType.Line, 2)).toBe(
+      'all',
+    );
+  });
+
+  it('still forces the full tooltip for stacked bars under auto', () => {
+    // Stacked bars ignore the density collapse; auto must keep that.
+    expect(
+      resolveEffectiveTooltipMode('auto', DisplayType.StackedBar, 50),
+    ).toBe('all');
+    // But an explicit 'hidden' setting still overrides even a stacked bar.
+    expect(
+      resolveEffectiveTooltipMode('hidden', DisplayType.StackedBar, 50),
+    ).toBe('hidden');
   });
 });

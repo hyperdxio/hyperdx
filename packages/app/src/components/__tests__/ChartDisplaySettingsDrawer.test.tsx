@@ -563,4 +563,153 @@ describe('ChartDisplaySettingsDrawer', () => {
       });
     });
   });
+
+  describe('line/area display settings', () => {
+    // Mantine's Select scrolls the active option into view on open; jsdom has
+    // no scrollIntoView, so stub it for the dropdown interaction.
+    beforeAll(() => {
+      window.HTMLElement.prototype.scrollIntoView = jest.fn();
+    });
+
+    it('shows the legend / tooltip / line-style controls for line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /show legend/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: /hover tooltip/i }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Line Style')).toBeInTheDocument();
+      expect(
+        screen.getByRole('radio', { name: /smooth/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the controls for stacked bar charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.StackedBar}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /show legend/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Line Style')).not.toBeInTheDocument();
+    });
+
+    it('does not show the controls for table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /show legend/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('defaults to legend on, tooltip auto, smooth interpolation', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /show legend/i }),
+      ).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        showLegend: true,
+        tooltipMode: 'auto',
+        lineInterpolation: 'monotone',
+      });
+    });
+
+    it('emits showLegend = false when unchecked and applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('checkbox', { name: /show legend/i }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({ showLegend: false });
+    });
+
+    it('emits the chosen line interpolation when applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByText('Step'));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        lineInterpolation: 'step',
+      });
+    });
+
+    it('reflects a persisted tooltip mode and preserves it on apply', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          settings={{ tooltipMode: 'single' } as ChartConfigDisplaySettings}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      // The control shows the persisted value (the Select input renders the
+      // option's label as its value).
+      expect(
+        screen.getByRole('combobox', { name: /hover tooltip/i }),
+      ).toHaveValue('Single series');
+
+      // Applying without touching it keeps the value. The changed-value path is
+      // the same `...rest` spread proven by the Show Legend and Line Style
+      // cases above; the override semantics are unit-tested in
+      // resolveEffectiveTooltipMode.
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        tooltipMode: 'single',
+      });
+    });
+  });
 });

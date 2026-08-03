@@ -457,3 +457,98 @@ describe('alternateRowBackground on saved chart configs', () => {
     expect(parsed).toMatchObject({ alternateRowBackground: true });
   });
 });
+
+describe('line/area display settings on saved chart configs', () => {
+  // showLegend / tooltipMode / lineInterpolation live on SharedChartSettingsSchema
+  // so builder, raw SQL, and PromQL saved configs all carry them. They are
+  // optional, so existing tiles (which never set them) still parse unchanged.
+
+  const builderBase = {
+    source: 'test-source',
+    timestampValueExpression: 'Timestamp',
+    displayType: 'line',
+    select: [{ aggFn: 'count', valueExpression: '', alias: 'Count' }],
+    where: '',
+  };
+  const rawSqlBase = {
+    configType: 'sql' as const,
+    sqlTemplate: 'SELECT count() AS Count, toStartOfMinute(Timestamp) AS ts',
+    connection: 'test-connection',
+    displayType: 'line',
+  };
+  const promqlBase = {
+    configType: 'promql' as const,
+    promqlExpression: 'up',
+    connection: 'test-connection',
+    displayType: 'line',
+  };
+
+  it('retains the three settings on a builder line saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      ...builderBase,
+      showLegend: false,
+      tooltipMode: 'single',
+      lineInterpolation: 'step',
+    });
+
+    expect(parsed).toMatchObject({
+      showLegend: false,
+      tooltipMode: 'single',
+      lineInterpolation: 'step',
+    });
+  });
+
+  it('retains the three settings on a raw SQL line saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      ...rawSqlBase,
+      showLegend: true,
+      tooltipMode: 'all',
+      lineInterpolation: 'linear',
+    });
+
+    expect(parsed).toMatchObject({
+      showLegend: true,
+      tooltipMode: 'all',
+      lineInterpolation: 'linear',
+    });
+  });
+
+  it('retains the three settings on a PromQL line saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      ...promqlBase,
+      tooltipMode: 'hidden',
+      lineInterpolation: 'monotone',
+    });
+
+    expect(parsed).toMatchObject({
+      tooltipMode: 'hidden',
+      lineInterpolation: 'monotone',
+    });
+  });
+
+  it('parses a config that omits all three (they are optional)', () => {
+    const parsed = SavedChartConfigSchema.parse(builderBase);
+
+    expect(parsed).not.toHaveProperty('showLegend');
+    expect(parsed).not.toHaveProperty('tooltipMode');
+    expect(parsed).not.toHaveProperty('lineInterpolation');
+  });
+
+  it('rejects a tooltipMode outside the enum', () => {
+    expect(
+      SavedChartConfigSchema.safeParse({
+        ...builderBase,
+        tooltipMode: 'nearest',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a lineInterpolation outside the enum', () => {
+    expect(
+      SavedChartConfigSchema.safeParse({
+        ...builderBase,
+        lineInterpolation: 'smooth',
+      }).success,
+    ).toBe(false);
+  });
+});
