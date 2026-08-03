@@ -450,6 +450,24 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       sql: "(NOT (hasToken(lower(Body), lower('red'))) AND NOT (hasToken(lower(Body), lower('blue'))))",
       english: 'NOT event has whole word red AND NOT event has whole word blue',
     },
+    {
+      lucene: 'http://a.com http://b.com',
+      sql: "((hasToken(lower(Body), lower('http')) AND hasToken(lower(Body), lower('a')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%http://a.com%'))) AND (hasToken(lower(Body), lower('http')) AND hasToken(lower(Body), lower('b')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%http://b.com%'))))",
+      english:
+        'event has whole word http://a.com AND event has whole word http://b.com',
+    },
+    {
+      lucene: 'https://a.com https://b.com',
+      sql: "((hasToken(lower(Body), lower('https')) AND hasToken(lower(Body), lower('a')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%https://a.com%'))) AND (hasToken(lower(Body), lower('https')) AND hasToken(lower(Body), lower('b')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%https://b.com%'))))",
+      english:
+        'event has whole word https://a.com AND event has whole word https://b.com',
+    },
+    {
+      lucene: 'localhost:3000 localhost:4000',
+      sql: "((hasToken(lower(Body), lower('localhost')) AND hasToken(lower(Body), lower('3000')) AND (lower(Body) LIKE lower('%localhost:3000%'))) AND (hasToken(lower(Body), lower('localhost')) AND hasToken(lower(Body), lower('4000')) AND (lower(Body) LIKE lower('%localhost:4000%'))))",
+      english:
+        'event has whole word localhost:3000 AND event has whole word localhost:4000',
+    },
   ];
 
   it.each(testCases)(
