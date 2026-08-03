@@ -1237,6 +1237,23 @@ const SharedChartSettingsSchema = z.object({
   // types ignore the field. Off by default, so existing tiles are unchanged.
   // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
   alternateRowBackground: z.boolean().optional(),
+  // Line/area time-chart display controls, gated in the UI on
+  // `displayType === DisplayType.Line` and read by the renderer only (the
+  // app's DBTimeChart -> HDXMultiSeriesTimeChart path). All optional, so
+  // existing tiles are unchanged and other display types ignore them. The v2
+  // external API builds tile config by explicit per-displayType construction
+  // (routers/external-api/v2/utils/dashboards.ts), so these are NOT part of
+  // the external contract until added there in a follow-up.
+  //
+  // Whether the chart's series legend is drawn.
+  showLegend: z.boolean().optional(),
+  // Hover tooltip behavior. 'auto' (or unset) derives the mode from the chart's
+  // density; the explicit values override that (see resolveTooltipMode and
+  // resolveEffectiveTooltipMode in HDXMultiSeriesTimeChart).
+  tooltipMode: z.enum(['auto', 'single', 'all', 'hidden']).optional(),
+  // Curve interpolation for the drawn series. Defaults to 'monotone' (smooth)
+  // at render when unset.
+  lineInterpolation: z.enum(['linear', 'monotone', 'step']).optional(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:

@@ -276,6 +276,9 @@ export default function EditTimeChartForm({
     color,
     colorRules,
     backgroundChart,
+    showLegend,
+    tooltipMode,
+    lineInterpolation,
   ] = useWatch({
     control,
     name: [
@@ -290,6 +293,9 @@ export default function EditTimeChartForm({
       'color',
       'colorRules',
       'backgroundChart',
+      'showLegend',
+      'tooltipMode',
+      'lineInterpolation',
     ],
   });
 
@@ -320,6 +326,9 @@ export default function EditTimeChartForm({
       color,
       colorRules,
       backgroundChart,
+      showLegend,
+      tooltipMode,
+      lineInterpolation,
     }),
     [
       alignDateRangeToGranularity,
@@ -333,6 +342,9 @@ export default function EditTimeChartForm({
       color,
       colorRules,
       backgroundChart,
+      showLegend,
+      tooltipMode,
+      lineInterpolation,
     ],
   );
 
@@ -633,6 +645,9 @@ export default function EditTimeChartForm({
         color,
         colorRules,
         backgroundChart,
+        showLegend,
+        tooltipMode,
+        lineInterpolation,
       }: ChartConfigDisplaySettings,
       isDirty: boolean,
     ) => {
@@ -655,6 +670,9 @@ export default function EditTimeChartForm({
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
+      setValue('showLegend', showLegend);
+      setValue('tooltipMode', tooltipMode);
+      setValue('lineInterpolation', lineInterpolation);
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {

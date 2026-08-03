@@ -66,6 +66,15 @@ const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 
 type TooltipMode = 'single' | 'all' | 'hidden';
 
+// The persisted hover-tooltip setting from the tile config. 'auto' defers to
+// the density-based default (resolveTooltipMode); the other values are the
+// explicit TooltipMode overrides.
+export type TooltipModeSetting = 'auto' | TooltipMode;
+
+// Curve interpolation for the drawn series, matching Recharts' `type`. Persisted
+// on the tile config; defaults to 'monotone' (smooth) when unset.
+export type LineInterpolation = 'linear' | 'monotone' | 'step';
+
 // Above this many visible series the hover tooltip collapses to just the series
 // under the cursor: a list of dozens of rows is unreadable and never the one
 // being pointed at. At or below it, the full sorted list stays useful.
@@ -190,6 +199,22 @@ export function resolveTooltipMode(
   return visibleSeriesCount > SINGLE_SERIES_TOOLTIP_THRESHOLD
     ? 'single'
     : 'all';
+}
+
+/**
+ * The tooltip mode a chart actually renders with, folding the persisted tile
+ * setting over the density-based default. An explicit setting ('single' /
+ * 'all' / 'hidden') always wins; 'auto' (or an unset setting) falls back to
+ * `resolveTooltipMode`, so a tile keeps its adaptive behavior unless the user
+ * pins a mode in Display Settings.
+ */
+export function resolveEffectiveTooltipMode(
+  setting: TooltipModeSetting | undefined,
+  displayType: DisplayType | undefined,
+  visibleSeriesCount: number,
+): TooltipMode {
+  if (setting != null && setting !== 'auto') return setting;
+  return resolveTooltipMode(displayType, visibleSeriesCount);
 }
 
 /**
@@ -826,6 +851,8 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
+  tooltipMode: tooltipModeSetting,
+  lineInterpolation = 'monotone',
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -859,6 +886,13 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
+  /**
+   * Persisted hover-tooltip setting from the tile config. 'auto' (or unset)
+   * derives the mode from the chart's density; the explicit values override it.
+   */
+  tooltipMode?: TooltipModeSetting;
+  /** Curve interpolation for the drawn series. Defaults to 'monotone' (smooth). */
+  lineInterpolation?: LineInterpolation;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -928,8 +962,14 @@ export const MemoChart = memo(function MemoChart({
 
   // Dense line/area charts collapse the hover tooltip to the series under the
   // cursor; small charts and stacked bars keep the full list. Derived from the
-  // drawn series so legend filtering restores the full tooltip.
-  const tooltipMode = resolveTooltipMode(displayType, visibleLineData.length);
+  // drawn series so legend filtering restores the full tooltip. A tile can pin
+  // an explicit mode via Display Settings (tooltipModeSetting), which overrides
+  // this density-based default.
+  const tooltipMode = resolveEffectiveTooltipMode(
+    tooltipModeSetting,
+    displayType,
+    visibleLineData.length,
+  );
 
   // The series to emphasize: the line nearest the cursor. Cheap to recompute;
   // drives the overlay + the dim-others CSS class only, never the base lines.
@@ -974,7 +1014,7 @@ export const MemoChart = memo(function MemoChart({
         <Area
           key={key}
           dataKey={key}
-          type="monotone"
+          type={lineInterpolation}
           stroke={color}
           fillOpacity={1}
           activeDot={<CaptureActiveDot onCapture={captureActivePointY} />}
@@ -990,7 +1030,14 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [visibleLineData, displayType, id, isHovered, captureActivePointY]);
+  }, [
+    visibleLineData,
+    displayType,
+    id,
+    isHovered,
+    captureActivePointY,
+    lineInterpolation,
+  ]);
 
   // The emphasized series redrawn thick and on top. recharts paints graphical
   // items in mount order and ignores a reorder of existing children, so an
@@ -1008,7 +1055,7 @@ export const MemoChart = memo(function MemoChart({
         key="__hdx_emphasis_overlay__"
         className="hdx-emphasis-overlay"
         dataKey={emphasizedKey}
-        type="monotone"
+        type={lineInterpolation}
         stroke={ld.color}
         strokeWidth={2.5}
         strokeOpacity={1}
@@ -1021,7 +1068,7 @@ export const MemoChart = memo(function MemoChart({
         name={getSeriesDisplayName(ld)}
       />
     );
-  }, [emphasizedKey, visibleLineData, displayType]);
+  }, [emphasizedKey, visibleLineData, displayType, lineInterpolation]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
