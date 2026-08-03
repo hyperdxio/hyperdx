@@ -373,11 +373,13 @@ const convertToExternalTileChartConfig = (
           'having',
           'numberFormat',
           'groupByColumnsOnLeft',
-          'alternateRowBackground',
           'onClick',
         ]),
         displayType: config.displayType,
         sourceId,
+        // Explicit property (not via `pick`) so a future rename is a compile
+        // error rather than a silent runtime drop; matches the raw SQL arm.
+        alternateRowBackground: config.alternateRowBackground,
         asRatio:
           config.seriesReturnType === 'ratio' &&
           Array.isArray(config.select) &&

@@ -2685,6 +2685,57 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('omits alternateRowBackground on a raw SQL table tile when not provided, and persists explicit false', async () => {
+      const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const tableNoStripe: ExternalDashboardTile = {
+        name: 'Raw SQL table without stripe setting',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+        },
+      };
+
+      const tableStripeOff: ExternalDashboardTile = {
+        name: 'Raw SQL table with stripe explicitly off',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+          alternateRowBackground: false,
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard raw SQL table stripe defaults',
+          tiles: [tableNoStripe, tableStripeOff],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[1].config.alternateRowBackground).toBe(
+        false,
+      );
+    });
+
     // Schema-level rejections that exercise pure Zod constraints
     // (discriminated-union absence, `min(1)` on valueExpression, and
     // `length(1)` on the select array). The non-Trace-source case
