@@ -425,12 +425,47 @@ describe('getDefaultSourceId', () => {
     expect(getDefaultSourceId([], undefined)).toBe('');
   });
 
-  it('returns "" when every source is disabled', () => {
+  it('returns "" when there is no searchable (log/trace) source', () => {
+    const sources = [
+      { id: 'a', kind: SourceKind.Metric },
+      { id: 'b', kind: SourceKind.Session },
+    ];
+    expect(getDefaultSourceId(sources, 'a')).toBe('');
+  });
+
+  it('falls back to a disabled searchable source when none are enabled', () => {
     const sources = [
       { id: 'a', disabled: true },
       { id: 'b', disabled: true },
     ];
-    expect(getDefaultSourceId(sources, 'a')).toBe('');
+    expect(getDefaultSourceId(sources, 'a')).toBe('a');
+  });
+
+  it('skips metric/session sources and defaults to the first log/trace source', () => {
+    const sources = [
+      { id: 'metrics', kind: SourceKind.Metric },
+      { id: 'sessions', kind: SourceKind.Session },
+      { id: 'logs', kind: SourceKind.Log },
+      { id: 'traces', kind: SourceKind.Trace },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('logs');
+  });
+
+  it('prefers an enabled log/trace source over an earlier disabled one', () => {
+    const sources = [
+      { id: 'metrics', kind: SourceKind.Metric },
+      { id: 'logs', kind: SourceKind.Log, disabled: true },
+      { id: 'traces', kind: SourceKind.Trace, disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('traces');
+  });
+
+  it('ignores a last-selected source of an incompatible kind', () => {
+    const sources = [
+      { id: 'metrics', kind: SourceKind.Metric },
+      { id: 'logs', kind: SourceKind.Log },
+    ];
+    expect(getDefaultSourceId(sources, 'metrics')).toBe('logs');
   });
 
   it('returns the last-selected source when it is enabled', () => {
