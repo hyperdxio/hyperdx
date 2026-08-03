@@ -216,6 +216,13 @@ describe('dashboard router', () => {
     );
   });
 
+  it('returns 404 when patching a missing dashboard', async () => {
+    await agent
+      .patch(`/dashboards/${new mongoose.Types.ObjectId()}`)
+      .send({ name: 'Missing Dashboard' })
+      .expect(404);
+  });
+
   it('can delete a dashboard', async () => {
     const dashboard = await agent
       .post('/dashboards')
