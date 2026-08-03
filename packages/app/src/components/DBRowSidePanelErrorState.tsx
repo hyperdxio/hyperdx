@@ -19,6 +19,12 @@ import { useTableMetadata } from '@/hooks/useMetadata';
 import { TableSourceForm } from './Sources/SourceForm';
 import { SQLPreview } from './ChartSQLPreview';
 
+const SelectStar = () => (
+  <Text span ff="monospace">
+    SELECT *
+  </Text>
+);
+
 /** A hint to the user that setting the Known Columns List may resolve SELECT * failures on Distributed or Merge tables */
 function KnownColumnsListHint({
   onEditClick,
@@ -33,23 +39,23 @@ function KnownColumnsListHint({
 
   const message = hasKnownColumnsList ? (
     <>
-      This query may have failed due to an invalid <b>Known Columns List</b>{' '}
-      configuration. Check the <b>Known Columns List</b> for this source and
-      ensure that it references valid columns that exist in all target tables of
-      the Distributed or Merge table.
+      To show every field for a row, HyperDX loads the full row using the{' '}
+      <b>Known Columns List</b> configured on this source (instead of a{' '}
+      <SelectStar /> query). This likely failed because the list references a
+      column that doesn&apos;t exist in every target table of the Distributed or
+      Merge table. Update the <b>Known Columns List</b> so it only includes
+      columns present in all target tables.
     </>
   ) : (
     <>
-      This query may have failed due to a{' '}
-      <Text span ff="monospace">
-        SELECT *
-      </Text>{' '}
-      query on a Distributed table that declares columns missing in one or more
-      of its target tables. If this is the case, the{' '}
-      <Text span ff="monospace">
-        SELECT *
-      </Text>{' '}
-      can be overridden by setting a <b>Known Columns List</b> for this source.
+      To show every field for a row, HyperDX loads the full row with a{' '}
+      <SelectStar /> query. This <SelectStar /> failed because this source
+      targets a Distributed or Merge table whose underlying tables don&apos;t
+      all share the same columns — a column declared by the parent table is
+      missing from at least one target table. To fix this, set a{' '}
+      <b>Known Columns List</b> on this source (a list of columns that exist in
+      every target table); HyperDX will select those columns instead of{' '}
+      <SelectStar />.
     </>
   );
 
@@ -57,7 +63,7 @@ function KnownColumnsListHint({
     <Alert
       color="yellow"
       icon={<IconAlertTriangle size={16} />}
-      title="SELECT * failure on Distributed or Merge table"
+      title="Couldn't load the full row from a Distributed or Merge table"
     >
       <Stack gap="xs" align="start">
         <Text size="sm">{message}</Text>
