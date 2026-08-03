@@ -69,6 +69,16 @@ describe('parseAsJsonEncoded', () => {
       expect(jsonParser.parse(raw)).toEqual([{ key: 'hello world' }]);
     });
 
+    it.each(['%2F', '%20', '%25'])(
+      'preserves literal %s text in legacy JSON',
+      sequence => {
+        const raw = JSON.stringify([{ query: `path${sequence}segment` }]);
+        expect(jsonParser.parse(raw)).toEqual([
+          { query: `path${sequence}segment` },
+        ]);
+      },
+    );
+
     it('returns null for malformed JSON after successful URI decode', () => {
       // A valid percent-sequence that decodes to something that is not JSON.
       expect(jsonParser.parse('not-json')).toBeNull();
