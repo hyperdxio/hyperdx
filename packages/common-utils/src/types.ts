@@ -597,6 +597,13 @@ export const isRangeThresholdType = (type: string): boolean =>
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
+  /**
+   * Only used on AlertHistory records (never on the alert itself): marks an
+   * evaluation window whose evaluation or notification failed. ERROR history
+   * rows are excluded from alert scheduling/backfill computations so the
+   * failed window is still retried.
+   */
+  ERROR = 'ERROR',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
   PENDING = 'PENDING',
@@ -604,6 +611,8 @@ export enum AlertState {
 
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
+  /** The alert query did not complete within the evaluation timeout. */
+  QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
@@ -804,6 +813,8 @@ export const AlertHistorySchema = z.object({
   createdAt: z.string(),
   lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
   state: z.nativeEnum(AlertState),
+  /** Errors recorded for this evaluation window (query/webhook failures). */
+  errors: z.array(AlertErrorSchema).optional(),
 });
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
@@ -2103,6 +2114,7 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  groupBy: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),
   note: alertNoteSchema,
@@ -2169,6 +2181,18 @@ export const AlertHistoryRangeApiResponseSchema = z.object({
 
 export type AlertHistoryRangeApiResponse = z.infer<
   typeof AlertHistoryRangeApiResponseSchema
+>;
+
+// Paginated evaluation history for the alert detail page. Each entry is one
+// evaluation window (newest first), including any errors recorded for it.
+export const AlertEvaluationsApiResponseSchema = z.object({
+  data: z.array(AlertHistorySchema),
+  /** True when older evaluation windows exist beyond the returned page. */
+  hasMore: z.boolean(),
+});
+
+export type AlertEvaluationsApiResponse = z.infer<
+  typeof AlertEvaluationsApiResponseSchema
 >;
 
 // Webhooks

@@ -43,6 +43,17 @@
     background-color: var(--color-bg-warning);
   }
 
+  // Errored evaluation: striped red so it reads as "bad" but is visually
+  // distinct from a solid firing (alarm) segment.
+  &.error {
+    background-color: var(--color-bg-danger);
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent 0 2px,
+      rgb(0 0 0 / 45%) 2px 4px
+    );
+  }
+
   &.clickable {
     cursor: pointer;
   }

@@ -6,7 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 
-import { AlertState } from '@/models/alert';
+import { AlertState, IAlertError } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 
 // Max parallel per-alert queries to avoid overwhelming the DB connection pool
@@ -17,6 +17,7 @@ type GroupedAlertHistory = {
   states: string[];
   counts: number;
   lastValues: IAlertHistory['lastValues'][];
+  errors: IAlertError[][];
 };
 
 function groupStateToOverallState(states: string[]): AlertState {
@@ -28,42 +29,89 @@ function groupStateToOverallState(states: string[]): AlertState {
     return AlertState.PENDING;
   }
 
+  // An evaluation window that neither fired nor was pending, but recorded an
+  // error (query failure, or a notification failure on an OK window), is
+  // surfaced as ERROR.
+  if (states.includes(AlertState.ERROR)) {
+    return AlertState.ERROR;
+  }
+
   return AlertState.OK;
+}
+
+/** Dedupe errors by type+message, keeping the most recent occurrence. */
+function dedupeErrors(errors: IAlertError[]): IAlertError[] {
+  const map = new Map<string, IAlertError>();
+  for (const error of errors) {
+    const key = `${error.type}||${error.message}`;
+    const existing = map.get(key);
+    if (!existing || error.timestamp > existing.timestamp) {
+      map.set(key, error);
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+  );
 }
 
 function mapGroupedHistories(
   groupedHistories: GroupedAlertHistory[],
 ): Omit<IAlertHistory, 'alert'>[] {
-  return groupedHistories.map(group => ({
-    createdAt: group._id,
-    state: groupStateToOverallState(group.states),
-    counts: group.counts,
-    lastValues: group.lastValues
-      .flat()
-      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime()),
-  }));
+  return groupedHistories.map(group => {
+    // $push skips documents where the field is missing, but be defensive
+    // about nulls in case of engine differences (e.g. DocumentDB).
+    const errors = dedupeErrors(
+      (group.errors ?? []).flat().filter((e): e is IAlertError => e != null),
+    );
+    return {
+      createdAt: group._id,
+      state: groupStateToOverallState(group.states),
+      counts: group.counts,
+      lastValues: group.lastValues
+        .flat()
+        .sort((a, b) => a.startTime.getTime() - b.startTime.getTime()),
+      ...(errors.length > 0 && { errors }),
+    };
+  });
 }
 
 /**
  * Gets the most recent alert histories for a given alert ID,
- * limiting to the given number of entries.
+ * limiting to the given number of entries. Results are one entry per
+ * evaluation window (grouped by createdAt), newest first.
+ *
+ * When `before` is provided, only windows strictly older than it are
+ * returned — used to paginate the alert detail page's evaluation history.
  */
 export async function getRecentAlertHistories({
   alertId,
   interval,
   limit,
+  before,
 }: {
   alertId: ObjectId;
   interval: AlertInterval;
   limit: number;
+  before?: Date;
 }): Promise<Omit<IAlertHistory, 'alert'>[]> {
-  const lookbackMs = limit * ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
+  // One extra interval of slack so a window sitting exactly `limit` intervals
+  // back (the newest window is up to one interval old) isn't cut off by the
+  // lookback bound.
+  const lookbackMs =
+    (limit + 1) * ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
+  const endTime = before ?? new Date();
+  const createdAt: Record<string, Date> = {
+    $gte: new Date(endTime.getTime() - lookbackMs),
+  };
+  if (before != null) {
+    createdAt.$lt = before;
+  }
 
   const groupedHistories = await AlertHistory.aggregate<GroupedAlertHistory>([
     {
       $match: {
         alert: new ObjectId(alertId),
-        createdAt: { $gte: new Date(Date.now() - lookbackMs) },
+        createdAt,
       },
     },
     { $sort: { createdAt: -1 } },
@@ -78,6 +126,9 @@ export async function getRecentAlertHistories({
         },
         lastValues: {
           $push: '$lastValues',
+        },
+        errors: {
+          $push: '$errors',
         },
       },
     },
@@ -153,13 +204,16 @@ export async function getAlertTransitionsInRange({
   const intervalMs = ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
   const lookbackStart = new Date(startTime.getTime() - intervalMs);
 
-  // Only the per-window state is needed to detect crossings.
+  // Only the per-window state is needed to detect crossings. ERROR rows are
+  // failed evaluations, not state observations — excluding them prevents a
+  // query failure mid-firing from drawing a false recovery annotation.
   const windows = await AlertHistory.aggregate<{ _id: Date; states: string[] }>(
     [
       {
         $match: {
           alert: new ObjectId(alertId),
           createdAt: { $gte: lookbackStart, $lte: endTime },
+          state: { $ne: AlertState.ERROR },
         },
       },
       { $group: { _id: '$createdAt', states: { $push: '$state' } } },

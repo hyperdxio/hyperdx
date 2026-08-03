@@ -368,6 +368,163 @@ describe('alertHistory controller', () => {
       expect(histories[0].state).toBe(AlertState.ALERT);
       expect(histories[0].counts).toBe(5);
     });
+
+    it('surfaces ERROR windows with their recorded errors', async () => {
+      const team = await Team.create({ name: 'Test Team' });
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 100,
+        interval: '5m',
+        channel: { type: null },
+      });
+
+      const errorWindow = new Date(Date.now() - 60000);
+      const okWindow = new Date(Date.now() - 120000);
+      const errorTimestamp = new Date(Date.now() - 55000);
+
+      await AlertHistory.create({
+        alert: alert._id,
+        createdAt: errorWindow,
+        state: AlertState.ERROR,
+        counts: 0,
+        lastValues: [],
+        errors: [
+          {
+            timestamp: errorTimestamp,
+            type: 'QUERY_TIMEOUT',
+            message: 'Alert query did not complete within the 300s timeout',
+          },
+        ],
+      });
+      await AlertHistory.create({
+        alert: alert._id,
+        createdAt: okWindow,
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: okWindow, count: 0 }],
+      });
+
+      const histories = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        limit: 10,
+      });
+
+      expect(histories).toHaveLength(2);
+      expect(histories[0].state).toBe(AlertState.ERROR);
+      expect(histories[0].errors).toHaveLength(1);
+      expect(histories[0].errors![0].type).toBe('QUERY_TIMEOUT');
+      expect(histories[0].errors![0].message).toContain('300s timeout');
+      expect(histories[1].state).toBe(AlertState.OK);
+      expect(histories[1].errors).toBeUndefined();
+    });
+
+    it('lets ALERT/PENDING outrank ERROR within a grouped window, but ERROR outrank OK', async () => {
+      const team = await Team.create({ name: 'Test Team' });
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 100,
+        interval: '5m',
+        channel: { type: null },
+      });
+
+      const alertWindow = new Date(Date.now() - 60000);
+      const okWindow = new Date(Date.now() - 120000);
+      const makeError = () => ({
+        timestamp: new Date(),
+        type: 'WEBHOOK_ERROR',
+        message: 'Failed to send webhook notification.',
+      });
+
+      // Window that fired AND recorded a notification error → shows ALERT
+      await AlertHistory.create({
+        alert: alert._id,
+        createdAt: alertWindow,
+        state: AlertState.ALERT,
+        counts: 2,
+        lastValues: [{ startTime: alertWindow, count: 2 }],
+      });
+      await AlertHistory.create({
+        alert: alert._id,
+        createdAt: alertWindow,
+        state: AlertState.ERROR,
+        counts: 0,
+        lastValues: [],
+        errors: [makeError()],
+      });
+
+      // Window that was OK but the resolve notification failed → shows ERROR
+      await AlertHistory.create({
+        alert: alert._id,
+        createdAt: okWindow,
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: okWindow, count: 0 }],
+      });
+      await AlertHistory.create({
+        alert: alert._id,
+        createdAt: okWindow,
+        state: AlertState.ERROR,
+        counts: 0,
+        lastValues: [],
+        errors: [makeError()],
+      });
+
+      const histories = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        limit: 10,
+      });
+
+      expect(histories).toHaveLength(2);
+      expect(histories[0].state).toBe(AlertState.ALERT);
+      // Errors from the ERROR row are still surfaced on the merged window
+      expect(histories[0].errors).toHaveLength(1);
+      expect(histories[1].state).toBe(AlertState.ERROR);
+      expect(histories[1].errors).toHaveLength(1);
+    });
+
+    it('paginates older windows with the before cursor', async () => {
+      const team = await Team.create({ name: 'Test Team' });
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 100,
+        interval: '5m',
+        channel: { type: null },
+      });
+
+      const windows = [1, 2, 3, 4].map(
+        i => new Date(Date.now() - i * 5 * 60000),
+      );
+      for (const createdAt of windows) {
+        await AlertHistory.create({
+          alert: alert._id,
+          createdAt,
+          state: AlertState.OK,
+          counts: 0,
+          lastValues: [{ startTime: createdAt, count: 0 }],
+        });
+      }
+
+      const firstPage = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        limit: 2,
+      });
+      expect(firstPage).toHaveLength(2);
+      expect(firstPage[0].createdAt).toEqual(windows[0]);
+      expect(firstPage[1].createdAt).toEqual(windows[1]);
+
+      const secondPage = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        limit: 2,
+        before: firstPage[1].createdAt,
+      });
+      expect(secondPage).toHaveLength(2);
+      expect(secondPage[0].createdAt).toEqual(windows[2]);
+      expect(secondPage[1].createdAt).toEqual(windows[3]);
+    });
   });
 
   describe('getRecentAlertHistoriesBatch', () => {
@@ -701,6 +858,30 @@ describe('alertHistory controller', () => {
       ]);
       expect(transitions[0].createdAt).toBe(t(20).toISOString());
       expect(transitions[1].createdAt).toBe(t(15).toISOString());
+    });
+
+    it('ignores ERROR windows so a failed evaluation mid-firing is not a recovery', async () => {
+      const alert = await createAlert();
+      await createHistory(alert._id, t(30), AlertState.OK, 0);
+      await createHistory(alert._id, t(25), AlertState.ALERT, 3);
+      // Evaluation failed mid-episode — must not read as a recovery + refire
+      await createHistory(alert._id, t(20), AlertState.ERROR, 0);
+      await createHistory(alert._id, t(15), AlertState.ALERT, 4);
+      await createHistory(alert._id, t(10), AlertState.OK, 0);
+
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime: t(40),
+        endTime: t(0),
+      });
+
+      expect(transitions.map(tr => tr.state)).toEqual([
+        AlertState.ALERT,
+        AlertState.OK,
+      ]);
+      expect(transitions[0].createdAt).toBe(t(25).toISOString());
+      expect(transitions[1].createdAt).toBe(t(10).toISOString());
     });
 
     it('only considers history for the specified alert', async () => {

@@ -413,12 +413,55 @@ export default class DefaultAlertProvider implements AlertProvider {
       { _id: new mongoose.Types.ObjectId(alertId) },
       { $set: { state: finalState, executionErrors: errors } },
     );
+
+    // Notification (e.g. webhook) failures happened during this evaluation:
+    // record them as an ERROR history row alongside the normal rows so the
+    // failure is visible in the alert's evaluation history. All histories in
+    // one execution share the same createdAt (the evaluation window start).
+    const evaluationWindowStart = histories[0]?.createdAt;
+    if (errors.length > 0 && evaluationWindowStart != null) {
+      await this.upsertErrorHistory(alertId, evaluationWindowStart, errors);
+    }
   }
 
-  async recordAlertErrors(alertId: string, errors: IAlertError[]) {
+  async recordAlertErrors(
+    alertId: string,
+    errors: IAlertError[],
+    evaluationWindowStart?: Date,
+  ) {
     await Alert.updateOne(
       { _id: new mongoose.Types.ObjectId(alertId) },
       { $set: { executionErrors: errors } },
+    );
+
+    if (evaluationWindowStart != null) {
+      await this.upsertErrorHistory(alertId, evaluationWindowStart, errors);
+    }
+  }
+
+  /**
+   * Upsert the ERROR-state history row for the given evaluation window.
+   * Keyed on {alert, createdAt, state} so retries within the same window
+   * update a single row instead of accumulating one row per tick — a
+   * permanently failing 1d alert produces one error row per day, not one per
+   * minute. Rows expire with the collection's existing TTL index.
+   */
+  private async upsertErrorHistory(
+    alertId: string,
+    evaluationWindowStart: Date,
+    errors: IAlertError[],
+  ) {
+    await AlertHistory.updateOne(
+      {
+        alert: new mongoose.Types.ObjectId(alertId),
+        createdAt: evaluationWindowStart,
+        state: AlertState.ERROR,
+      },
+      {
+        $set: { errors },
+        $setOnInsert: { counts: 0, lastValues: [] },
+      },
+      { upsert: true },
     );
   }
 

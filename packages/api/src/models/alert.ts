@@ -12,6 +12,13 @@ import Team from './team';
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
+  /**
+   * Only used on AlertHistory records (never on the alert itself): marks an
+   * evaluation window whose evaluation or notification failed. ERROR history
+   * rows are excluded from alert scheduling/backfill computations so the
+   * failed window is still retried.
+   */
+  ERROR = 'ERROR',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
   PENDING = 'PENDING',

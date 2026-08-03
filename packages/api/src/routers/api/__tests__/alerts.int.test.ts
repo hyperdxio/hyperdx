@@ -1028,6 +1028,125 @@ describe('alerts router', () => {
     });
   });
 
+  describe('GET /alerts/:id/evaluations', () => {
+    const createTileAlert = async (): Promise<string> => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      return String(alert.body.data._id);
+    };
+
+    it('returns evaluation windows newest-first, including error windows', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      const at = (minsAgo: number) => new Date(now - minsAgo * 60_000);
+
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(10),
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: at(10), count: 0 }],
+      });
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(5),
+        state: AlertState.ERROR,
+        counts: 0,
+        lastValues: [],
+        errors: [
+          {
+            timestamp: at(4),
+            type: AlertErrorType.QUERY_TIMEOUT,
+            message: 'Alert query did not complete within the 300s timeout',
+          },
+        ],
+      });
+
+      const res = await agent.get(`/alerts/${alertId}/evaluations`).expect(200);
+
+      expect(res.body.hasMore).toBe(false);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0].state).toBe(AlertState.ERROR);
+      expect(res.body.data[0].createdAt).toBe(at(5).toISOString());
+      expect(res.body.data[0].errors).toHaveLength(1);
+      expect(res.body.data[0].errors[0].type).toBe(
+        AlertErrorType.QUERY_TIMEOUT,
+      );
+      expect(res.body.data[1].state).toBe(AlertState.OK);
+    });
+
+    it('paginates with limit + before and reports hasMore', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      // Windows aligned to the alert interval cadence (5m apart)
+      const windows = [5, 10, 15].map(
+        minsAgo => new Date(now - minsAgo * 60_000),
+      );
+      for (const createdAt of windows) {
+        await AlertHistory.create({
+          alert: alertId,
+          createdAt,
+          state: AlertState.OK,
+          counts: 0,
+          lastValues: [{ startTime: createdAt, count: 0 }],
+        });
+      }
+
+      const firstPage = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ limit: 2 })
+        .expect(200);
+      expect(firstPage.body.data).toHaveLength(2);
+      expect(firstPage.body.hasMore).toBe(true);
+      expect(firstPage.body.data[0].createdAt).toBe(windows[0].toISOString());
+
+      const secondPage = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({
+          limit: 2,
+          before: new Date(firstPage.body.data[1].createdAt).getTime(),
+        })
+        .expect(200);
+      expect(secondPage.body.data).toHaveLength(1);
+      expect(secondPage.body.hasMore).toBe(false);
+      expect(secondPage.body.data[0].createdAt).toBe(windows[2].toISOString());
+    });
+
+    it('rejects an out-of-range limit', async () => {
+      const alertId = await createTileAlert();
+      await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ limit: 10_000 })
+        .expect(400);
+    });
+
+    it('returns 404 for an unknown alert id', async () => {
+      await agent.get(`/alerts/${randomMongoId()}/evaluations`).expect(404);
+    });
+
+    it("returns 404 for another team's alert", async () => {
+      const otherTeamAlert = await Alert.create({
+        team: randomMongoId(),
+        threshold: 1,
+        interval: '5m',
+        channel: { type: null },
+      });
+      await agent.get(`/alerts/${otherTeamAlert._id}/evaluations`).expect(404);
+    });
+  });
+
   describe('errors propagation', () => {
     it('returns the errors field on a single alert response', async () => {
       const dashboard = await agent

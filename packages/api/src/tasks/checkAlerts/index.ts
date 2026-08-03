@@ -57,6 +57,8 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import {
+  isClientTimeoutOrAbortError,
+  isQueryTimeoutError,
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
   WebhookRedirectError,
 } from '@/tasks/checkAlerts/errors';
@@ -213,6 +215,29 @@ const getErrorMessage = (e: unknown): string => {
     return e.message;
   }
   return String(e);
+};
+
+const QUERY_TIMEOUT_RETRY_NOTE =
+  'The evaluation is retried on every check, but the alert will not fire until the query completes in time.';
+
+/**
+ * Build the IAlertError for a failed alert query, classifying timeouts
+ * (client request timeout/abort, server-side TIMEOUT_EXCEEDED, socket
+ * timeouts) separately from other query errors so the message is actionable.
+ */
+export const makeQueryAlertError = (
+  e: unknown,
+  requestTimeoutMs: number,
+): IAlertError => {
+  if (!isQueryTimeoutError(e)) {
+    return makeAlertError(AlertErrorType.QUERY_ERROR, getErrorMessage(e));
+  }
+  // For the client's own request timeout we know the configured limit; for
+  // server-side timeouts the original ClickHouse message carries the limit.
+  const message = isClientTimeoutOrAbortError(e)
+    ? `Alert query did not complete within the ${Math.round(requestTimeoutMs / 1000)}s evaluation timeout. ${QUERY_TIMEOUT_RETRY_NOTE}`
+    : `Alert query timed out before completing: ${getErrorMessage(e)}. ${QUERY_TIMEOUT_RETRY_NOTE}`;
+  return makeAlertError(AlertErrorType.QUERY_TIMEOUT, message);
 };
 
 // Most webhook errors show a hardcoded message to avoid leaking sensitive request details in the UI.
@@ -797,6 +822,9 @@ export const processAlert = async (
   // availability SLIs cover every real evaluation regardless of exit point.
   const evalStartedAt = performance.now();
   let evalOutcome: OperationOutcome | 'skipped' = 'success';
+  // Scheduled start of the window being evaluated. Hoisted so the catch
+  // blocks can attribute error history records to the correct window.
+  let evaluationWindowStart: Date | undefined;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -838,6 +866,7 @@ export const processAlert = async (
       scheduleOffsetMinutes,
       scheduleStartAt,
     );
+    evaluationWindowStart = nowInMinsRoundDown;
     const hasGroupBy = alertHasGroupBy(details);
 
     // Check if we should skip this alert check based on last evaluation time
@@ -985,17 +1014,32 @@ export const processAlert = async (
         attributes: { alert_source: alert.source ?? 'unknown' },
       });
       evalOutcome = 'error';
-      alertQueryFailuresCounter.add(1);
+      const alertError = makeQueryAlertError(
+        e,
+        clickhouseClient.requestTimeoutMs,
+      );
+      alertQueryFailuresCounter.add(1, {
+        error_type:
+          alertError.type === AlertErrorType.QUERY_TIMEOUT
+            ? 'timeout'
+            : 'error',
+      });
       logger.error(
         {
           alertId: alert.id,
+          errorType: alertError.type,
           error: serializeError(e),
         },
         'Alert query failed, skipping state/history update',
       );
-      await alertProvider.recordAlertErrors(alert.id, [
-        makeAlertError(AlertErrorType.QUERY_ERROR, getErrorMessage(e)),
-      ]);
+      // Record the error on the alert and as an ERROR history row for this
+      // window. ERROR rows are excluded from the due-ness gate and date-range
+      // computation, so the failed window is still retried/backfilled.
+      await alertProvider.recordAlertErrors(
+        alert.id,
+        [alertError],
+        nowInMinsRoundDown,
+      );
       return;
     }
 
@@ -1433,9 +1477,11 @@ export const processAlert = async (
         ? AlertErrorType.INVALID_ALERT
         : AlertErrorType.UNKNOWN;
     try {
-      await alertProvider.recordAlertErrors(alert.id, [
-        makeAlertError(type, message),
-      ]);
+      await alertProvider.recordAlertErrors(
+        alert.id,
+        [makeAlertError(type, message)],
+        evaluationWindowStart,
+      );
     } catch (recordErr) {
       logger.error(
         {
@@ -1507,6 +1553,10 @@ export const getPreviousAlertHistories = async (
             $match: {
               alert: id,
               createdAt: { $lte: now, $gte: lookbackDate },
+              // ERROR rows record failed evaluations; they must not count as
+              // "window evaluated" or the failed window would never be
+              // retried/backfilled.
+              state: { $ne: AlertState.ERROR },
             },
           },
           // With a single alert value, the compound index {alert: 1, group: 1, createdAt: -1}
@@ -1605,6 +1655,9 @@ export const getConsecutiveWindowHistories = async (
             $match: {
               alert: id,
               createdAt: { $gte: earliestAllowedTime, $lt: windowStart },
+              // Failed evaluations (ERROR rows) are not evaluated windows and
+              // must not affect consecutive-window counting.
+              state: { $ne: AlertState.ERROR },
             },
           },
           { $sort: { alert: 1, group: 1, createdAt: -1 } },

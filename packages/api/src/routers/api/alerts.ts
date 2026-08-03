@@ -1,5 +1,6 @@
 import type {
   AlertApiResponse,
+  AlertEvaluationsApiResponse,
   AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   AlertsPageItem,
@@ -82,6 +83,7 @@ const formatAlertResponse = (
       'state',
       'source',
       'tileId',
+      'groupBy',
       'note',
       'createdAt',
       'updatedAt',
@@ -149,6 +151,63 @@ router.get(
       const data = formatAlertResponse(alert, history);
 
       sendJson(res, { data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+// Paginated evaluation history for the alert detail page: one entry per
+// evaluation window (grouped across group-by groups), newest first, including
+// any errors recorded for the window. `before` (epoch ms) pages to older
+// windows. Note: /:id/history (below) returns firing transitions for chart
+// annotations, which is a different shape.
+const MAX_EVALUATIONS_LIMIT = 200;
+const DEFAULT_EVALUATIONS_LIMIT = 100;
+type AlertEvaluationsExpRes = express.Response<AlertEvaluationsApiResponse>;
+router.get(
+  '/:id/evaluations',
+  processRequest({
+    params: z.object({ id: objectIdSchema }),
+    query: z.object({
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_EVALUATIONS_LIMIT)
+        .default(DEFAULT_EVALUATIONS_LIMIT),
+      before: z.coerce.number().int().positive().optional(),
+    }),
+  }),
+  async (req, res: AlertEvaluationsExpRes, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      // Scope to the caller's team (404 for alerts they can't see).
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        return res.sendStatus(404);
+      }
+
+      // zod applies the default at runtime, but the middleware types the
+      // parsed query with the input (pre-default) shape.
+      const limit = req.query.limit ?? DEFAULT_EVALUATIONS_LIMIT;
+      const { before } = req.query;
+      // Fetch one extra window to detect whether older pages exist.
+      const histories = await getRecentAlertHistories({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+        limit: limit + 1,
+        before: before != null ? new Date(before) : undefined,
+      });
+
+      sendJson(res, {
+        data: histories.slice(0, limit),
+        hasMore: histories.length > limit,
+      });
     } catch (e) {
       next(e);
     }

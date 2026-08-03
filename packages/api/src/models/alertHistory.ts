@@ -1,7 +1,8 @@
+import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import ms from 'ms';
 
-import { AlertState } from '@/models/alert';
+import { AlertState, IAlertError } from '@/models/alert';
 
 import type { ObjectId } from '.';
 
@@ -13,6 +14,12 @@ export interface IAlertHistory {
   lastValues: { startTime: Date; count: number }[];
   group?: string; // For group-by alerts, stores the group identifier
   fired?: boolean;
+  /**
+   * Errors recorded for this evaluation window. Present on ERROR-state rows
+   * (query/processing failures where no normal history is written) and on
+   * the ERROR row created alongside normal rows when notifications fail.
+   */
+  errors?: IAlertError[];
 }
 
 const AlertHistorySchema = new Schema<IAlertHistory>({
@@ -49,6 +56,22 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
   fired: {
     type: Boolean,
     required: false,
+  },
+  errors: {
+    type: [
+      {
+        _id: false,
+        timestamp: { type: Date, required: true },
+        type: {
+          type: String,
+          enum: AlertErrorType,
+          required: true,
+        },
+        message: { type: String, required: true },
+      },
+    ],
+    required: false,
+    default: undefined,
   },
 });
 

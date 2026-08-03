@@ -56,7 +56,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Channel type.
  *     AlertErrorType:
  *       type: string
- *       enum: [QUERY_ERROR, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       enum: [QUERY_ERROR, QUERY_TIMEOUT, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
  *       description: Category of error recorded during alert execution.
  *     AlertExecutionError:
  *       type: object
