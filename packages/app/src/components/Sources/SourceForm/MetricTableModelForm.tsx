@@ -21,7 +21,11 @@ import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
 
-export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+export function MetricTableModelForm({
+  control,
+  setValue,
+  hasExistingMetricTables = false,
+}: TableModelProps) {
   const brandName = useBrandDisplayName();
   const { data: team } = api.useTeam();
   const isMetricsSeriesTableEnabled = !!team?.isMetricsSeriesTableEnabled;
@@ -138,6 +142,11 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
   // new db/connection, then never re-fires for that pair. No clearing of old
   // values — switching databases naturally empties the dropdowns since the
   // new table list won't contain the old names.
+  //
+  // Skipped entirely when editing a saved source that already has metric
+  // tables configured: inferring the missing tables there would silently
+  // populate the form with values that aren't actually persisted, hiding the
+  // fact that a table is unsaved until the user clicks Save Source.
   const { data: tablesData } = useTablesDirect(
     { database: databaseName, connectionId: connectionId ?? '' },
     { enabled: !!databaseName && !!connectionId },
@@ -146,6 +155,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
   const lastAutofillKeyRef = useRef('');
 
   useEffect(() => {
+    if (hasExistingMetricTables) return; // never infer over a saved source
     const key = `${databaseName}:${connectionId}`;
     if (key === lastAutofillKeyRef.current) return; // already ran for this db
 
@@ -230,6 +240,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
     connectionId,
     metadata,
     isMetricsSeriesTableEnabled,
+    hasExistingMetricTables,
   ]);
 
   return (
@@ -251,6 +262,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
               database={databaseName}
               control={control}
               name={`metricTables.${metricType.toLowerCase()}`}
+              testId={`metric-table-select-${metricType.toLowerCase()}`}
             />
           </FormRow>
         ))}

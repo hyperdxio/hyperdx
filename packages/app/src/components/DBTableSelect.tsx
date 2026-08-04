@@ -19,6 +19,7 @@ function DBTableSelect({
   size,
   inputRef,
   connectionId,
+  testId,
 }: {
   database: string | undefined;
   connectionId: string | undefined;
@@ -28,6 +29,7 @@ function DBTableSelect({
   inputRef?: React.Ref<HTMLInputElement>;
   name?: string;
   size?: string;
+  testId?: string;
 }) {
   const { data: tables, isLoading: isTablesLoading } = useTablesDirect(
     { database: database ?? '', connectionId: connectionId ?? '' },
@@ -68,6 +70,7 @@ function DBTableSelect({
         ref={inputRef}
         size={size}
         className="flex-grow-1"
+        data-testid={testId}
       />
       <SourceManagementMenu
         hasSelection={!!table}
@@ -87,11 +90,13 @@ function DBTableSelect({
 export function DBTableSelectControlled({
   database,
   connectionId,
+  testId,
   ...props
 }: {
   database?: string;
   size?: string;
   connectionId: string | undefined;
+  testId?: string;
 } & UseControllerProps<any>) {
   const { field } = useController(props);
 
@@ -100,6 +105,7 @@ export function DBTableSelectControlled({
       {...props}
       database={database}
       connectionId={connectionId}
+      testId={testId}
       table={field.value}
       setTable={field.onChange}
       onBlur={field.onBlur} // notify when input is touched/blur

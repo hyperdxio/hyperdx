@@ -147,6 +147,19 @@
       "logSourceId": "E2E Logs"
     },
     {
+      "id": "E2E Metrics Partial",
+      "kind": "metric",
+      "name": "E2E Metrics Partial",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "" },
+      "timestampValueExpression": "TimeUnix",
+      "serviceNameExpression": "ServiceName",
+      "metricTables": {
+        "gauge": "e2e_otel_metrics_gauge"
+      },
+      "resourceAttributesExpression": "ResourceAttributes"
+    },
+    {
       "id": "E2E Sessions",
       "kind": "session",
       "name": "E2E Sessions",

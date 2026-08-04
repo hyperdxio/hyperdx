@@ -1,6 +1,10 @@
 export const DEFAULT_SESSIONS_SOURCE_NAME = 'E2E Sessions';
 export const DEFAULT_TRACES_SOURCE_NAME = 'E2E Traces';
 export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
+// Metric source with only the gauge table configured (sum/histogram/etc left
+// empty), used to verify the source form does NOT infer the missing tables
+// when the saved source already has metric tables defined.
+export const PARTIAL_METRICS_SOURCE_NAME = 'E2E Metrics Partial';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
 
 // Log source deliberately left without a correlated metric source, so tests can

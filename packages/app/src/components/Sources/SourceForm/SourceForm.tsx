@@ -228,6 +228,22 @@ export function TableSourceForm({
     defaultValue: source?.kind || SourceKind.Log,
   });
 
+  // Whether the saved source already has at least one metric table configured.
+  // Derived from the persisted source (not the live form values) so that
+  // schema-inference autofill can be suppressed and never silently populate
+  // tables that aren't actually saved. See MetricTableModelForm.
+  const hasExistingMetricTables = useMemo(() => {
+    if (!source || source.kind !== SourceKind.Metric) return false;
+    const metricTables = (source as { metricTables?: Record<string, unknown> })
+      .metricTables;
+    return Boolean(
+      metricTables &&
+        Object.values(metricTables).some(
+          value => typeof value === 'string' && value.length > 0,
+        ),
+    );
+  }, [source]);
+
   const createSource = useCreateSource();
   const updateSource = useUpdateSource();
   const deleteSource = useDeleteSource();
@@ -728,7 +744,12 @@ export function TableSourceForm({
           </Button>
         </FormRow>
       </Stack>
-      <TableModelForm control={control} setValue={setValue} kind={kind} />
+      <TableModelForm
+        control={control}
+        setValue={setValue}
+        kind={kind}
+        hasExistingMetricTables={hasExistingMetricTables}
+      />
       <Group justify="flex-end" mt="lg">
         {onCancel && (
           <Button variant="secondary" onClick={onCancel} size="xs">

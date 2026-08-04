@@ -1,3 +1,4 @@
+import { SourceFormComponent } from '../components/SourceFormComponent';
 import { SearchPage } from '../page-objects/SearchPage';
 import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
@@ -7,7 +8,9 @@ import {
   DEFAULT_SESSIONS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
   E2E_METRICS_GAUGE_TABLE,
+  E2E_METRICS_SUM_TABLE,
   METADATA_MV_LOGS_SOURCE_NAME,
+  PARTIAL_METRICS_SOURCE_NAME,
 } from '../utils/constants';
 import { setTeamFlag } from '../utils/db-helpers';
 
@@ -237,6 +240,70 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
           },
         });
       }
+    },
+  );
+
+  test(
+    'auto-infers and populates metric tables for a brand new source',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      const sourceForm = new SourceFormComponent(page);
+
+      // Open the "Configure New Source" modal and switch to the metrics kind.
+      await searchPage.openCreateSourceModal();
+      await searchPage.selectSourceKind('OTEL Metrics');
+
+      // A brand-new source has no metric tables, so once the default
+      // database's table list loads the form should infer and auto-populate
+      // the metric tables it recognizes. The gauge and sum tables exist in
+      // the seeded E2E ClickHouse database, so both get filled in.
+      await sourceForm.waitForMetricAutoDetectSuccess();
+
+      await expect(sourceForm.getMetricTableInput('gauge')).toHaveValue(
+        E2E_METRICS_GAUGE_TABLE,
+      );
+      await expect(sourceForm.getMetricTableInput('sum')).toHaveValue(
+        E2E_METRICS_SUM_TABLE,
+      );
+
+      // Close without saving to avoid persisting a throwaway source.
+      await page.keyboard.press('Escape');
+    },
+  );
+
+  test(
+    'does not infer missing metric tables when editing a source that already has tables',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      const sourceForm = new SourceFormComponent(page);
+
+      // 'E2E Metrics Partial' is saved with only the gauge table configured;
+      // sum (and the rest) are intentionally left empty.
+      await searchPage.selectSource(PARTIAL_METRICS_SOURCE_NAME);
+      await searchPage.openEditSourceModal();
+
+      // Form hydrates from the saved source: gauge is set, sum is empty.
+      await expect(sourceForm.getMetricTableInput('gauge')).toHaveValue(
+        E2E_METRICS_GAUGE_TABLE,
+      );
+      await expect(sourceForm.getMetricTableInput('sum')).toHaveValue('');
+
+      // Open the sum dropdown to confirm the ClickHouse table list has loaded
+      // and that the sum table IS a valid inference candidate — i.e. without
+      // the guard the form WOULD auto-fill it. (Clicking also waits for the
+      // select to become enabled once tables have loaded.)
+      await sourceForm.openMetricTableDropdown('sum');
+      await expect(
+        sourceForm.getTableOption(E2E_METRICS_SUM_TABLE),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+
+      // The guard suppresses inference for a source that already has tables:
+      // no auto-detect notification fires and the sum table stays unset,
+      // making the "unsaved/missing" state visible instead of silently
+      // filling it in.
+      await expect(sourceForm.getMetricAutoDetectNotification()).toHaveCount(0);
+      await expect(sourceForm.getMetricTableInput('sum')).toHaveValue('');
     },
   );
 

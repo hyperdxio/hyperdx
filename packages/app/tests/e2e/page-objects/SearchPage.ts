@@ -115,6 +115,19 @@ export class SearchPage {
     await this.editSourceItem.click();
   }
 
+  async openCreateSourceModal() {
+    await this.sourceActionsMenu.click();
+    await this.createNewSourceItem.click();
+  }
+
+  /**
+   * Select a source data type in the source form by its radio label
+   * (e.g. 'Log', 'Trace', 'OTEL Metrics').
+   */
+  async selectSourceKind(radioLabel: string) {
+    await this.page.getByLabel(radioLabel, { exact: true }).click();
+  }
+
   async sourceModalShowOptionalFields() {
     const optionalFieldsButton = this.page.getByText(
       'Configure Optional Fields',
