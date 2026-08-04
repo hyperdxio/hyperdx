@@ -1,21 +1,21 @@
 ---
-"@hyperdx/common-utils": patch
-"@hyperdx/api": patch
-"@hyperdx/app": patch
+'@hyperdx/common-utils': patch
+'@hyperdx/api': patch
+'@hyperdx/app': patch
 ---
 
 fix: route per-query SQL debug logging through an injectable logger (#2416)
 
-`BaseClickhouseClient.logDebugQuery` dumped raw SQL to the console on every
-ClickHouse query, unconditionally and outside the pino logger, flooding API
-logs (and, via the browser SDK's consoleCapture, telemetry) with query spam.
+`BaseClickhouseClient` dumped raw SQL to the console on every ClickHouse query,
+unconditionally and outside the pino logger, flooding API logs with query spam.
 
-Query logging is now silent by default and routed through an optional
-per-client `customLogger` on `ClickhouseClientOptions` (the `Logger` interface
-from `@clickhouse/client-common`). The app enables it in dev builds and in
-local mode, where queries hit ClickHouse directly and the devtools console is
-the only place to see them; anywhere else, pass a `customLogger` at the client
-you're debugging.
+Query logging now goes through an optional per-client `customLogger` on
+`ClickhouseClientOptions`, logged at `debug`, and is silent when no logger is
+passed. The API injects a pino-backed logger, so query logging follows the
+existing `HYPERDX_LOG_LEVEL` setting instead of writing to `console.debug`. The
+browser client defaults to a console logger, so query SQL stays visible in
+devtools in all builds.
 
-`@hyperdx/api` is bumped without source changes: it bundles common-utils, so
-its released images stop emitting the per-query dump.
+The API's log level now defaults to `info` (was `debug`), so SQL logging is
+silent in production unless `HYPERDX_LOG_LEVEL=debug` is set. Dev and CI env
+files already pin their levels explicitly and are unaffected.

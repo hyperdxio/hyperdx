@@ -9,6 +9,7 @@ import { createClient } from '@clickhouse/client-web';
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
+  DefaultLogger,
   QueryInputs,
 } from './index';
 
@@ -70,7 +71,8 @@ export const testLocalConnection = async ({
 
 export class ClickhouseClient extends BaseClickhouseClient {
   constructor(options: ClickhouseClientOptions) {
-    super(options);
+    // Log queries to devtools by default so SQL stays inspectable in all builds
+    super({ customLogger: new DefaultLogger(), ...options });
   }
 
   // This subclass always builds a web client, so narrow the base class's
