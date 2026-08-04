@@ -59,9 +59,8 @@ USER ${USER_UID}:${USER_GID}
 COPY --from=supervisor --chmod=755 /usr/local/bin/opampsupervisor /opampsupervisor
 COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 
-# Copy entrypoint and log tail wrapper scripts
+# Copy entrypoint script
 COPY --chmod=755 docker/otel-collector/entrypoint.sh /entrypoint.sh
-COPY --chmod=755 docker/otel-collector/log-tailer.sh /log-tailer.sh
 
 ## dev ##############################################################################################
 FROM base AS dev
