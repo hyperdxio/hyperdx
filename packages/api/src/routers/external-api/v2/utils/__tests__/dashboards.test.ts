@@ -407,36 +407,41 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
   describe.each([DisplayType.Line, DisplayType.StackedBar])(
     'seriesLimit serialization for %s tiles',
     displayType => {
-      function makeSeriesLimitTile(seriesLimit: number | null) {
-        return makeTile({
-          id: 'series-limit-tile',
-          config: {
-            displayType,
-            source: new mongoose.Types.ObjectId().toString(),
-            name: 'Series limit tile',
-            select: [{ aggFn: 'count', valueExpression: '' }],
-            where: '',
-            seriesLimit,
-          } as any,
+      function readSeriesLimit(seriesLimit: number | null): unknown {
+        const doc = makeDoc({
+          tiles: [
+            makeTile({
+              id: 'series-limit-tile',
+              config: {
+                displayType,
+                source: new mongoose.Types.ObjectId().toString(),
+                name: 'Series limit tile',
+                select: [{ aggFn: 'count', valueExpression: '' }],
+                where: '',
+                seriesLimit,
+              },
+            }),
+          ],
         });
+        // Round-trip through JSON to observe what the wire body actually
+        // carries: `undefined` fields are dropped, so an omitted seriesLimit
+        // reads back as `undefined` here.
+        const wire = JSON.parse(
+          JSON.stringify(convertToExternalDashboard(doc)),
+        );
+        return wire.tiles[0].config.seriesLimit;
       }
 
       it('emits seriesLimit as absent when stored as 0 (unlimited)', () => {
-        const doc = makeDoc({ tiles: [makeSeriesLimitTile(0)] });
-        const ext = convertToExternalDashboard(doc);
-        expect((ext.tiles[0].config as any).seriesLimit).toBeUndefined();
+        expect(readSeriesLimit(0)).toBeUndefined();
       });
 
       it('emits seriesLimit as absent when stored as null', () => {
-        const doc = makeDoc({ tiles: [makeSeriesLimitTile(null)] });
-        const ext = convertToExternalDashboard(doc);
-        expect((ext.tiles[0].config as any).seriesLimit).toBeUndefined();
+        expect(readSeriesLimit(null)).toBeUndefined();
       });
 
       it('passes a positive seriesLimit through unchanged', () => {
-        const doc = makeDoc({ tiles: [makeSeriesLimitTile(25)] });
-        const ext = convertToExternalDashboard(doc);
-        expect((ext.tiles[0].config as any).seriesLimit).toBe(25);
+        expect(readSeriesLimit(25)).toBe(25);
       });
     },
   );
