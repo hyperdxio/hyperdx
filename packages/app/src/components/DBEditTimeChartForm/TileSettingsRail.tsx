@@ -47,6 +47,7 @@ export default function TileSettingsRail({
       data-testid={dataTestId}
       role="region"
       aria-labelledby={titleId}
+      className="bg-sunken"
       style={{
         flexShrink: 0,
         // Cap the rail but yield to the editor column on narrow viewports (it

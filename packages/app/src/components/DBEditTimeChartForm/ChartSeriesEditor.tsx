@@ -14,7 +14,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Divider,
+  Box,
   Flex,
   Group,
   Menu,
@@ -246,131 +246,139 @@ export function ChartSeriesEditor({
   const canRemove = (index ?? -1) > 0 || length > 1;
 
   return (
-    <>
-      <Divider
-        label={
-          <Group gap="xs" wrap="nowrap">
-            <Tooltip label={expanded ? 'Collapse series' : 'Expand series'}>
+    <Box
+      mt="sm"
+      p="sm"
+      data-testid="series-card"
+      style={{
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--mantine-radius-md)',
+        background: 'var(--color-bg-surface)',
+      }}
+    >
+      <Group gap="xs" wrap="nowrap">
+        <Tooltip label={expanded ? 'Collapse series' : 'Expand series'}>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="xs"
+            onClick={() => setExpanded(e => !e)}
+            aria-label={expanded ? 'Collapse series' : 'Expand series'}
+            aria-expanded={expanded}
+            data-testid="series-expand-toggle"
+          >
+            {expanded ? (
+              <IconChevronDown size={14} />
+            ) : (
+              <IconChevronRight size={14} />
+            )}
+          </ActionIcon>
+        </Tooltip>
+
+        <Text size="sm" fw={500} className="text-nowrap">
+          {`Series ${index + 1}`}
+        </Text>
+
+        {!expanded && (
+          <UnstyledButton
+            onClick={() => setExpanded(true)}
+            style={{ overflow: 'hidden' }}
+          >
+            <Text size="xs" c="dimmed" truncate="end" maw={260}>
+              {summary}
+            </Text>
+          </UnstyledButton>
+        )}
+
+        <Box style={{ flex: 1 }} />
+
+        <Text size="xxs">Alias</Text>
+        <div style={{ width: 150 }}>
+          <TextInputControlled
+            name={`${namePrefix}alias`}
+            control={control}
+            placeholder="Series alias"
+            onChange={() => onSubmit()}
+            size="xs"
+            data-testid="series-alias-input"
+          />
+        </div>
+
+        <SeriesFormatPopover
+          numberFormat={seriesNumberFormat}
+          onChange={format => {
+            setValue(`${namePrefix}numberFormat`, format.numberFormat);
+            onSubmit();
+          }}
+        />
+
+        {showColor && (
+          <SeriesColorPopover
+            color={seriesColor}
+            colorRules={seriesColorRules}
+            onChange={next => {
+              setValue(`${namePrefix}color`, next.color);
+              setValue(`${namePrefix}colorRules`, next.colorRules);
+              onSubmit();
+            }}
+          />
+        )}
+
+        <Menu position="bottom-end" withinPortal>
+          <Menu.Target>
+            <Tooltip label="Series actions">
               <ActionIcon
                 variant="subtle"
                 color="gray"
                 size="xs"
-                onClick={() => setExpanded(e => !e)}
-                aria-label={expanded ? 'Collapse series' : 'Expand series'}
-                aria-expanded={expanded}
-                data-testid="series-expand-toggle"
+                aria-label="Series actions"
+                data-testid="series-actions-menu"
               >
-                {expanded ? (
-                  <IconChevronDown size={14} />
-                ) : (
-                  <IconChevronRight size={14} />
-                )}
+                <IconDotsVertical size={14} />
               </ActionIcon>
             </Tooltip>
-
-            <Text size="xxs">Alias</Text>
-            <div style={{ width: 150 }}>
-              <TextInputControlled
-                name={`${namePrefix}alias`}
-                control={control}
-                placeholder="Series alias"
-                onChange={() => onSubmit()}
-                size="xs"
-                data-testid="series-alias-input"
-              />
-            </div>
-
-            {!expanded && (
-              <UnstyledButton
-                onClick={() => setExpanded(true)}
-                style={{ overflow: 'hidden' }}
+          </Menu.Target>
+          <Menu.Dropdown>
+            {canMoveUp && (
+              <Menu.Item
+                leftSection={<IconArrowUp size={14} />}
+                onClick={() => onSwapSeries(index, index - 1)}
               >
-                <Text size="xs" c="dimmed" truncate="end" maw={260}>
-                  {summary}
-                </Text>
-              </UnstyledButton>
+                Move up
+              </Menu.Item>
             )}
-
-            <SeriesFormatPopover
-              numberFormat={seriesNumberFormat}
-              onChange={format => {
-                setValue(`${namePrefix}numberFormat`, format.numberFormat);
-                onSubmit();
-              }}
-            />
-
-            {showColor && (
-              <SeriesColorPopover
-                color={seriesColor}
-                colorRules={seriesColorRules}
-                onChange={next => {
-                  setValue(`${namePrefix}color`, next.color);
-                  setValue(`${namePrefix}colorRules`, next.colorRules);
-                  onSubmit();
-                }}
-              />
+            {canMoveDown && (
+              <Menu.Item
+                leftSection={<IconArrowDown size={14} />}
+                onClick={() => onSwapSeries(index, index + 1)}
+              >
+                Move down
+              </Menu.Item>
             )}
-
-            <Menu position="bottom-end" withinPortal>
-              <Menu.Target>
-                <Tooltip label="Series actions">
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="xs"
-                    aria-label="Series actions"
-                    data-testid="series-actions-menu"
-                  >
-                    <IconDotsVertical size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {canMoveUp && (
-                  <Menu.Item
-                    leftSection={<IconArrowUp size={14} />}
-                    onClick={() => onSwapSeries(index, index - 1)}
-                  >
-                    Move up
-                  </Menu.Item>
-                )}
-                {canMoveDown && (
-                  <Menu.Item
-                    leftSection={<IconArrowDown size={14} />}
-                    onClick={() => onSwapSeries(index, index + 1)}
-                  >
-                    Move down
-                  </Menu.Item>
-                )}
-                {showDuplicate && (
-                  <Menu.Item
-                    leftSection={<IconCopy size={14} />}
-                    onClick={() => onDuplicateSeries(index)}
-                    data-testid="series-duplicate-button"
-                  >
-                    Duplicate series
-                  </Menu.Item>
-                )}
-                {canRemove && (
-                  <Menu.Item
-                    color="red"
-                    leftSection={<IconTrash size={14} />}
-                    onClick={() => onRemoveSeries(index)}
-                  >
-                    Remove series
-                  </Menu.Item>
-                )}
-              </Menu.Dropdown>
-            </Menu>
-          </Group>
-        }
-        labelPosition="right"
-        mb={8}
-        mt="sm"
-      />
+            {showDuplicate && (
+              <Menu.Item
+                leftSection={<IconCopy size={14} />}
+                onClick={() => onDuplicateSeries(index)}
+                data-testid="series-duplicate-button"
+              >
+                Duplicate series
+              </Menu.Item>
+            )}
+            {canRemove && (
+              <Menu.Item
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={() => onRemoveSeries(index)}
+              >
+                Remove series
+              </Menu.Item>
+            )}
+          </Menu.Dropdown>
+        </Menu>
+      </Group>
       {expanded && (
         <>
-          <Flex gap="sm" mt="xs" align="start">
+          <Flex gap="sm" mt="sm" align="start">
             <div
               style={{
                 minWidth: 200,
@@ -526,6 +534,6 @@ export function ChartSeriesEditor({
             )}
         </>
       )}
-    </>
+    </Box>
   );
 }

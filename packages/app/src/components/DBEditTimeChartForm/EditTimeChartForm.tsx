@@ -22,13 +22,16 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
+  Button,
   Divider,
   Flex,
   SegmentedControl,
   Tabs,
   Text,
   Textarea,
+  Tooltip,
 } from '@mantine/core';
 import { useIsomorphicEffect, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -42,6 +45,7 @@ import {
   IconMarkdown,
   IconNumbers,
   IconTable,
+  IconX,
 } from '@tabler/icons-react';
 
 import { getPreviousDateRange } from '@/ChartUtils';
@@ -856,6 +860,32 @@ export default function EditTimeChartForm({
     [tableSource],
   );
 
+  // The builder controls (ChartEditorControls) render only when not in
+  // markdown / PromQL / raw-SQL mode. In the dashboard drawer they own the
+  // shared Row 1 (Data Source + mode toggle + Run), so gate that hoisting here.
+  const builderControlsShown =
+    activeTab !== 'markdown' && !isPromqlInput && !isRawSqlInput;
+
+  const configTypeSegmentedControl = isRawSqlDisplayType(displayType) ? (
+    <Controller
+      control={control}
+      name="configType"
+      render={({ field: { onChange, value } }) => (
+        <SegmentedControl
+          value={value ?? 'builder'}
+          onChange={onChange}
+          data={[
+            { label: 'Builder', value: 'builder' },
+            { label: 'SQL', value: 'sql' },
+            ...(IS_PROMQL_ENABLED
+              ? [{ label: 'PromQL', value: 'promql' }]
+              : []),
+          ]}
+        />
+      )}
+    />
+  ) : null;
+
   return (
     <div
       ref={setParentRef}
@@ -866,12 +896,82 @@ export default function EditTimeChartForm({
           : undefined
       }
     >
+      {/* Widget title header. Docks the tile name into a top bar (next to a
+          close button) instead of an inline "Chart Name" field, matching the
+          Add Widget Editor design. Only rendered in the dashboard drawer; Chart
+          Explorer keeps the inline title below. */}
+      {isDashboardForm && (
+        <Flex
+          align="center"
+          gap="sm"
+          px="md"
+          py="sm"
+          style={{
+            flexShrink: 0,
+            borderBottom: '1px solid var(--color-border)',
+          }}
+        >
+          {onClose && (
+            <Tooltip label="Close" position="bottom">
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                onClick={onClose}
+                aria-label="Close widget editor"
+                data-testid="widget-editor-close-button"
+              >
+                <IconX size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <InputControlled
+            name="name"
+            control={control}
+            type="text"
+            placeholder="Untitled widget"
+            data-testid="chart-name-input"
+            w={260}
+          />
+          <Box style={{ flex: 1 }} />
+          {onClose != null && (
+            <Button
+              variant="subtle"
+              color="dark"
+              onClick={onClose}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+          )}
+          {onSave != null && (
+            <Button
+              data-testid="chart-save-button"
+              loading={isSaving}
+              variant="primary"
+              onClick={handleSubmit(handleSave)}
+            >
+              Save
+            </Button>
+          )}
+        </Flex>
+      )}
       {/* Full-width display-type tab bar. Kept above the editor + Display
-          Settings row so the tabs never wrap when the panel is open. */}
+          Settings row so the tabs never wrap when the panel is open. In the
+          dashboard drawer it becomes a sunken-gray bar with a bottom border,
+          matching the Add Widget Editor design. */}
       <Box
+        className={isDashboardForm ? 'bg-sunken' : undefined}
         px={isDashboardForm ? 'md' : undefined}
-        pt={isDashboardForm ? 'md' : undefined}
-        style={isDashboardForm ? { flexShrink: 0 } : undefined}
+        pt={isDashboardForm ? 'xs' : undefined}
+        pb={isDashboardForm ? 'xs' : undefined}
+        style={
+          isDashboardForm
+            ? {
+                flexShrink: 0,
+                borderBottom: '1px solid var(--color-border)',
+              }
+            : undefined
+        }
       >
         <Controller
           control={control}
@@ -955,9 +1055,6 @@ export default function EditTimeChartForm({
         style={isDashboardForm ? { flex: 1, minHeight: 0 } : undefined}
       >
         <Box
-          pt="md"
-          px={isDashboardForm ? 'md' : undefined}
-          pb={isDashboardForm ? 'md' : undefined}
           style={{
             flex: 1,
             // Floor the editor column when a panel can dock beside it so a
@@ -969,145 +1066,170 @@ export default function EditTimeChartForm({
               : {}),
           }}
         >
-          <ErrorBoundary>
-            <Flex align="center" gap="sm" mb="sm">
-              <Text size="sm" className="text-nowrap">
-                Chart Name
-              </Text>
-              <InputControlled
-                name="name"
-                control={control}
-                flex={1}
-                type="text"
-                placeholder="My Chart Name"
-                data-testid="chart-name-input"
-              />
-              {isRawSqlDisplayType(displayType) && (
-                <Controller
-                  control={control}
-                  name="configType"
-                  render={({ field: { onChange, value } }) => (
-                    <SegmentedControl
-                      value={value ?? 'builder'}
-                      onChange={onChange}
-                      data={[
-                        { label: 'Builder', value: 'builder' },
-                        { label: 'SQL', value: 'sql' },
-                        ...(IS_PROMQL_ENABLED
-                          ? [{ label: 'PromQL', value: 'promql' }]
-                          : []),
-                      ]}
+          {/* Query builder region. In the dashboard drawer this is a sunken-gray
+              block with a bottom border that separates the query controls from
+              the white preview region below (Add Widget Editor design). */}
+          <Box
+            className={isDashboardForm ? 'bg-sunken' : undefined}
+            pt="md"
+            px={isDashboardForm ? 'md' : undefined}
+            pb={isDashboardForm ? 'md' : undefined}
+            style={
+              isDashboardForm
+                ? { borderBottom: '1px solid var(--color-border)' }
+                : undefined
+            }
+          >
+            <ErrorBoundary>
+              {isDashboardForm ? (
+                // Title lives in the header bar and, in builder mode, the mode
+                // toggle lives inline in the Data Source row. Only SQL / PromQL
+                // modes surface the toggle here (right-aligned) since their
+                // editors don't host it.
+                !builderControlsShown &&
+                configTypeSegmentedControl && (
+                  <>
+                    <Flex justify="flex-end" mb="sm">
+                      {configTypeSegmentedControl}
+                    </Flex>
+                    <Divider my="md" />
+                  </>
+                )
+              ) : (
+                <>
+                  <Flex align="center" gap="sm" mb="sm">
+                    <Text size="sm" className="text-nowrap">
+                      Chart Name
+                    </Text>
+                    <InputControlled
+                      name="name"
+                      control={control}
+                      flex={1}
+                      type="text"
+                      placeholder="My Chart Name"
+                      data-testid="chart-name-input"
                     />
-                  )}
-                />
+                    {configTypeSegmentedControl}
+                  </Flex>
+                  <Divider my="md" />
+                </>
               )}
-            </Flex>
-            <Divider my="md" />
-            {activeTab === 'markdown' ? (
-              <div>
-                <Textarea
-                  {...register('markdown')}
-                  label="Markdown content"
-                  placeholder="Markdown"
-                  mb="md"
-                  styles={{
-                    input: {
-                      minHeight: 200,
-                    },
-                  }}
-                />
-                <Box p="md" mb="md">
-                  <HDXMarkdownChart
-                    config={{
-                      markdown: markdown || 'Preview',
+              {activeTab === 'markdown' ? (
+                <div>
+                  <Textarea
+                    {...register('markdown')}
+                    label="Markdown content"
+                    placeholder="Markdown"
+                    mb="md"
+                    styles={{
+                      input: {
+                        minHeight: 200,
+                      },
                     }}
                   />
-                </Box>
-              </div>
-            ) : isPromqlInput ? (
-              <PromqlChartEditor
+                  <Box p="md" mb="md">
+                    <HDXMarkdownChart
+                      config={{
+                        markdown: markdown || 'Preview',
+                      }}
+                    />
+                  </Box>
+                </div>
+              ) : isPromqlInput ? (
+                <PromqlChartEditor
+                  control={control}
+                  onSubmit={onSubmit}
+                  onOpenDisplaySettings={openDisplaySettings}
+                />
+              ) : isRawSqlInput ? (
+                <RawSqlChartEditor
+                  control={control}
+                  setValue={setValue}
+                  onOpenDisplaySettings={openDisplaySettings}
+                  onOpenRowClick={openRowClick}
+                  onSubmit={onSubmit}
+                  isDashboardForm={isDashboardForm}
+                  alert={alert}
+                  dashboardId={dashboardId}
+                />
+              ) : (
+                <ChartEditorControls
+                  control={control}
+                  setValue={setValue}
+                  clearErrors={clearErrors}
+                  errors={errors}
+                  fields={fields}
+                  append={append}
+                  removeSeries={removeSeries}
+                  swapSeries={swapSeries}
+                  duplicateSeries={duplicateSeries}
+                  tableSource={tableSource}
+                  tableConnection={tableConnection}
+                  databaseName={databaseName}
+                  tableName={tableName}
+                  dateRange={dateRange}
+                  select={select}
+                  displayType={displayType}
+                  activeTab={activeTab}
+                  seriesReturnType={seriesReturnType}
+                  ratioMode={ratioMode}
+                  alert={alert}
+                  isRawSqlInput={isRawSqlInput}
+                  dashboardId={dashboardId}
+                  parentRef={parentRef}
+                  chartConfigForExplanations={chartConfigForExplanations}
+                  onSubmit={onSubmit}
+                  openDisplaySettings={openDisplaySettings}
+                  openHeatmapSettings={openHeatmapSettings}
+                  openRowClick={openRowClick}
+                  isDashboardForm={isDashboardForm}
+                  configTypeControl={configTypeSegmentedControl}
+                />
+              )}
+              <ChartActionBar
                 control={control}
-                onSubmit={onSubmit}
-                onOpenDisplaySettings={openDisplaySettings}
-              />
-            ) : isRawSqlInput ? (
-              <RawSqlChartEditor
-                control={control}
-                setValue={setValue}
-                onOpenDisplaySettings={openDisplaySettings}
-                onOpenRowClick={openRowClick}
-                onSubmit={onSubmit}
+                handleSubmit={handleSubmit}
                 isDashboardForm={isDashboardForm}
-                alert={alert}
-                dashboardId={dashboardId}
-              />
-            ) : (
-              <ChartEditorControls
-                control={control}
-                setValue={setValue}
-                clearErrors={clearErrors}
-                errors={errors}
-                fields={fields}
-                append={append}
-                removeSeries={removeSeries}
-                swapSeries={swapSeries}
-                duplicateSeries={duplicateSeries}
-                tableSource={tableSource}
+                hideRunButton={isDashboardForm && builderControlsShown}
                 tableConnection={tableConnection}
-                databaseName={databaseName}
-                tableName={tableName}
-                dateRange={dateRange}
-                select={select}
-                displayType={displayType}
                 activeTab={activeTab}
-                seriesReturnType={seriesReturnType}
-                ratioMode={ratioMode}
-                alert={alert}
                 isRawSqlInput={isRawSqlInput}
                 dashboardId={dashboardId}
                 parentRef={parentRef}
-                chartConfigForExplanations={chartConfigForExplanations}
+                groupBy={groupBy}
                 onSubmit={onSubmit}
-                openDisplaySettings={openDisplaySettings}
-                openHeatmapSettings={openHeatmapSettings}
-                openRowClick={openRowClick}
+                handleSave={handleSave}
+                onSave={onSave}
+                onClose={onClose}
+                isSaving={isSaving}
+                displayedTimeInputValue={displayedTimeInputValue}
+                setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+                onTimeRangeSearch={onTimeRangeSearch}
+                setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
               />
-            )}
-            <ChartActionBar
-              control={control}
-              handleSubmit={handleSubmit}
-              tableConnection={tableConnection}
+            </ErrorBoundary>
+          </Box>
+          {/* Preview region — white surface below the query builder. */}
+          <Box
+            px={isDashboardForm ? 'md' : undefined}
+            py={isDashboardForm ? 'md' : undefined}
+          >
+            <ChartPreviewPanel
+              queriedConfig={queriedConfig}
+              tableSource={tableSource}
+              dateRange={dateRange}
               activeTab={activeTab}
-              isRawSqlInput={isRawSqlInput}
-              dashboardId={dashboardId}
-              parentRef={parentRef}
-              groupBy={groupBy}
+              alert={alert}
+              sourceId={sourceId}
+              onTimeRangeSelect={onTimeRangeSelect}
+              chartConfigForExplanations={chartConfigForExplanations}
+              showGeneratedSql={showGeneratedSql}
+              showSampleEvents={showSampleEvents}
+              dbTimeChartConfig={dbTimeChartConfig}
+              setValue={(name, value) => setValue(name, value)}
               onSubmit={onSubmit}
-              handleSave={handleSave}
-              onSave={onSave}
-              onClose={onClose}
-              isSaving={isSaving}
-              displayedTimeInputValue={displayedTimeInputValue}
-              setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-              onTimeRangeSearch={onTimeRangeSearch}
-              setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
             />
-          </ErrorBoundary>
-          <ChartPreviewPanel
-            queriedConfig={queriedConfig}
-            tableSource={tableSource}
-            dateRange={dateRange}
-            activeTab={activeTab}
-            alert={alert}
-            sourceId={sourceId}
-            onTimeRangeSelect={onTimeRangeSelect}
-            chartConfigForExplanations={chartConfigForExplanations}
-            showGeneratedSql={showGeneratedSql}
-            showSampleEvents={showSampleEvents}
-            dbTimeChartConfig={dbTimeChartConfig}
-            setValue={(name, value) => setValue(name, value)}
-            onSubmit={onSubmit}
-          />
+          </Box>
         </Box>
         {railSection != null && railSections.length > 0 && (
           <TileSettingsRail

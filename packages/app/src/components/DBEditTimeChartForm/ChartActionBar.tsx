@@ -32,6 +32,16 @@ type ChartActionBarProps = {
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
   setSaveToDashboardModalOpen: (open: boolean) => void;
+  /**
+   * In the dashboard drawer the Save/Cancel buttons are lifted into the top
+   * header bar, so they're hidden here to avoid duplicating them.
+   */
+  isDashboardForm?: boolean;
+  /**
+   * When the Run button has been hoisted into the query builder's Data Source
+   * row (dashboard builder view), hide the one here to avoid duplicating it.
+   */
+  hideRunButton?: boolean;
 };
 
 export function ChartActionBar({
@@ -52,11 +62,13 @@ export function ChartActionBar({
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
   setSaveToDashboardModalOpen,
+  isDashboardForm = false,
+  hideRunButton = false,
 }: ChartActionBarProps) {
   return (
     <Flex justify="space-between" mt="sm">
       <Flex gap="sm">
-        {onSave != null && (
+        {!isDashboardForm && onSave != null && (
           <Button
             data-testid="chart-save-button"
             loading={isSaving}
@@ -66,7 +78,7 @@ export function ChartActionBar({
             Save
           </Button>
         )}
-        {onClose != null && (
+        {!isDashboardForm && onClose != null && (
           <Button
             variant="subtle"
             color="dark"
@@ -114,7 +126,7 @@ export function ChartActionBar({
         {activeTab === 'time' && (
           <GranularityPickerControlled control={control} name="granularity" />
         )}
-        {activeTab !== 'markdown' && (
+        {activeTab !== 'markdown' && !hideRunButton && (
           <Button
             data-testid="chart-run-query-button"
             variant="primary"

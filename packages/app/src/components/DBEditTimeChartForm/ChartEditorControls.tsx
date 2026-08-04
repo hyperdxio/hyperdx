@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
@@ -18,8 +18,8 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
-import { IconBell, IconCirclePlus } from '@tabler/icons-react';
+import { Box, Button, Flex, Group, Switch, Text } from '@mantine/core';
+import { IconBell, IconCirclePlus, IconPlayerPlay } from '@tabler/icons-react';
 
 import {
   ChartEditorFormState,
@@ -71,6 +71,13 @@ type ChartEditorControlsProps = {
   openDisplaySettings: () => void;
   openHeatmapSettings: () => void;
   openRowClick: () => void;
+  /**
+   * Dashboard drawer only: the Builder/SQL/PromQL mode toggle and the Run
+   * button are hoisted into the Data Source row (Row 1) to match the Add Widget
+   * Editor design. Chart Explorer keeps them in their original positions.
+   */
+  isDashboardForm?: boolean;
+  configTypeControl?: ReactNode;
 };
 
 export function ChartEditorControls({
@@ -102,6 +109,8 @@ export function ChartEditorControls({
   openDisplaySettings,
   openHeatmapSettings,
   openRowClick,
+  isDashboardForm = false,
+  configTypeControl,
 }: ChartEditorControlsProps) {
   const canAddSeries =
     displayType !== DisplayType.Pie &&
@@ -129,8 +138,8 @@ export function ChartEditorControls({
 
   return (
     <>
-      <Flex mb="md" align="center" justify="space-between">
-        <Group>
+      <Flex mb="md" align="center" justify="space-between" gap="sm">
+        <Group gap="sm">
           <Text pe="md" size="sm">
             Data Source
           </Text>
@@ -153,8 +162,9 @@ export function ChartEditorControls({
             open={isSourceSchemaPreviewOpen}
             onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
+          {isDashboardForm && configTypeControl}
         </Group>
-        <Group>
+        <Group gap="sm">
           {tableSource &&
             activeTab !== 'search' &&
             activeTab !== 'heatmap' &&
@@ -166,6 +176,17 @@ export function ChartEditorControls({
                 config={chartConfigForExplanations}
               />
             )}
+          {isDashboardForm && (
+            <Button
+              data-testid="chart-run-query-button"
+              variant="primary"
+              onClick={() => onSubmit()}
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
+            >
+              Run
+            </Button>
+          )}
         </Group>
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
@@ -248,12 +269,12 @@ export function ChartEditorControls({
           ))}
           {fields.length > 1 && displayType !== DisplayType.Number && (
             <>
-              <Divider mt="md" mb="sm" />
               <div
                 className="gap-2 align-items-center"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  marginTop: 'var(--mantine-spacing-md)',
                 }}
               >
                 <div>
@@ -304,8 +325,7 @@ export function ChartEditorControls({
               </div>
             </>
           )}
-          <Divider mt="md" mb="sm" />
-          <Flex mt={4} align="center" justify="space-between">
+          <Flex mt="md" align="center" justify="space-between">
             <Group gap="xs">
               {canAddSeries && (
                 <Button
