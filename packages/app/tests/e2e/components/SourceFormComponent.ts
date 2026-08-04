@@ -51,6 +51,25 @@ export class SourceFormComponent {
     return this.page.getByRole('option', { name: tableName, exact: true });
   }
 
+  // --- Database selector ------------------------------------------------
+
+  /**
+   * The form's Database Select. This is the visible combobox (named after its
+   * placeholder); the `from.databaseName` input Mantine renders alongside it is
+   * hidden, so it can be read but not clicked.
+   */
+  getDatabaseSelect(): Locator {
+    return this.page.getByRole('combobox', { name: 'Database' });
+  }
+
+  /** Pick a database from the Database dropdown, as a user would. */
+  async selectDatabase(databaseName: string): Promise<void> {
+    await this.getDatabaseSelect().click();
+    await this.page
+      .getByRole('option', { name: databaseName, exact: true })
+      .click();
+  }
+
   /**
    * Notification shown when the metrics source form auto-detects (infers)
    * metric tables from the selected database's schema.

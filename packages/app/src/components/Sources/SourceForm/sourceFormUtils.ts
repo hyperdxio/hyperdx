@@ -18,3 +18,13 @@ export function distinctSections(sources: TSource[] | undefined): string[] {
   }
   return [...sections].sort((a, b) => a.localeCompare(b));
 }
+
+/**
+ * Identity of a database + connection pair.
+ */
+export function metricTablesScopeKey(
+  databaseName: string | undefined,
+  connectionId: string | undefined,
+): string {
+  return `${databaseName}:${connectionId}`;
+}

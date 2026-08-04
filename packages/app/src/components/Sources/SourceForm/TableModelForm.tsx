@@ -18,12 +18,12 @@ export function TableModelForm({
   control,
   setValue,
   kind,
-  hasExistingMetricTables,
+  savedMetricTablesKey,
 }: {
   control: Control<TSource>;
   setValue: UseFormSetValue<TSource>;
   kind: SourceKind;
-  hasExistingMetricTables?: boolean;
+  savedMetricTablesKey?: string;
 }) {
   switch (kind) {
     case SourceKind.Log:
@@ -37,7 +37,7 @@ export function TableModelForm({
         <MetricTableModelForm
           control={control}
           setValue={setValue}
-          hasExistingMetricTables={hasExistingMetricTables}
+          savedMetricTablesKey={savedMetricTablesKey}
         />
       );
     case SourceKind.Promql:

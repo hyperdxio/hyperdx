@@ -10,6 +10,9 @@ if [ "$BETA_CH_OTEL_JSON_SCHEMA_ENABLED" = "true" ]; then
 fi
 
 DATABASE=${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE:-default}
+# Second database used by the metric-table inference tests; keep in sync with
+# E2E_ALT_METRICS_DATABASE in packages/app/tests/e2e/utils/constants.ts.
+ALT_METRICS_DATABASE=e2e_alt_metrics
 
 clickhouse client -n <<EOFSQL
 CREATE DATABASE IF NOT EXISTS ${DATABASE};
@@ -241,6 +244,20 @@ PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 TTL toDate(TimeUnix) + toIntervalDay(30)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+-- A second database holding its own OTEL metric tables, so E2E tests can
+-- switch a metrics source's Database dropdown to a different database and
+-- assert that table inference re-runs for the newly selected one. Structures
+-- are copied from the tables above so the tables pass the source form's
+-- metric-schema validation. Left empty — the inference these tables exercise
+-- reads schemas, not rows.
+CREATE DATABASE IF NOT EXISTS ${ALT_METRICS_DATABASE};
+
+CREATE TABLE IF NOT EXISTS ${ALT_METRICS_DATABASE}.alt_otel_metrics_gauge
+AS ${DATABASE}.e2e_otel_metrics_gauge;
+
+CREATE TABLE IF NOT EXISTS ${ALT_METRICS_DATABASE}.alt_otel_metrics_sum
+AS ${DATABASE}.e2e_otel_metrics_sum;
 
 -- Materialized view rollup for traces, used by E2E tests covering MV
 -- acceleration. The target table pre-aggregates Duration over 1-minute

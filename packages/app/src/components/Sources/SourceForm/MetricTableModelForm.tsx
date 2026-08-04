@@ -19,12 +19,13 @@ import {
 
 import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
+import { metricTablesScopeKey } from './sourceFormUtils';
 import { TableModelProps } from './types';
 
 export function MetricTableModelForm({
   control,
   setValue,
-  hasExistingMetricTables = false,
+  savedMetricTablesKey,
 }: TableModelProps) {
   const brandName = useBrandDisplayName();
   const { data: team } = api.useTeam();
@@ -143,10 +144,12 @@ export function MetricTableModelForm({
   // values — switching databases naturally empties the dropdowns since the
   // new table list won't contain the old names.
   //
-  // Skipped entirely when editing a saved source that already has metric
-  // tables configured: inferring the missing tables there would silently
-  // populate the form with values that aren't actually persisted, hiding the
-  // fact that a table is unsaved until the user clicks Save Source.
+  // Skipped for the db/connection pair a saved source's metric tables were
+  // persisted with: inferring the missing tables there would silently populate
+  // the form with values that aren't actually persisted, hiding the fact that a
+  // table is unsaved until the user clicks Save Source. Pointing the form at
+  // another database or connection is a fresh pair, so inference resumes —
+  // there are no saved tables to be confused with for that pair.
   const { data: tablesData } = useTablesDirect(
     { database: databaseName, connectionId: connectionId ?? '' },
     { enabled: !!databaseName && !!connectionId },
@@ -155,8 +158,8 @@ export function MetricTableModelForm({
   const lastAutofillKeyRef = useRef('');
 
   useEffect(() => {
-    if (hasExistingMetricTables) return; // never infer over a saved source
-    const key = `${databaseName}:${connectionId}`;
+    const key = metricTablesScopeKey(databaseName, connectionId);
+    if (key === savedMetricTablesKey) return; // don't infer over saved tables
     if (key === lastAutofillKeyRef.current) return; // already ran for this db
 
     const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
@@ -240,7 +243,7 @@ export function MetricTableModelForm({
     connectionId,
     metadata,
     isMetricsSeriesTableEnabled,
-    hasExistingMetricTables,
+    savedMetricTablesKey,
   ]);
 
   return (

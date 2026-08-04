@@ -51,6 +51,12 @@ export const E2E_TRACES_MV_TABLE = 'e2e_otel_traces_1m';
 export const E2E_SESSIONS_TABLE = 'e2e_hyperdx_sessions';
 export const E2E_METRICS_GAUGE_TABLE = 'e2e_otel_metrics_gauge';
 export const E2E_METRICS_SUM_TABLE = 'e2e_otel_metrics_sum';
+// A second database with its own OTEL metric tables (structure copied from the
+// ones above, no rows), so tests can switch a metrics source to a different
+// database and assert table inference re-runs there.
+export const E2E_ALT_METRICS_DATABASE = 'e2e_alt_metrics';
+export const E2E_ALT_METRICS_GAUGE_TABLE = 'alt_otel_metrics_gauge';
+export const E2E_ALT_METRICS_SUM_TABLE = 'alt_otel_metrics_sum';
 // Table backing the INTERESTING_FILTER_KEYS_SOURCE_NAME source. Created in
 // `docker/clickhouse/local/init-db-e2e.sh` and seeded in `seed-clickhouse.ts`.
 export const E2E_INTERESTING_FILTER_KEYS_TABLE =

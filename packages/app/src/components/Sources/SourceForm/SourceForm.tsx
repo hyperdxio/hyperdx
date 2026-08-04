@@ -68,7 +68,7 @@ import {
   setCorrelationFieldValue,
 } from './correlationFields';
 import { FormRow } from './FormRow';
-import { distinctSections } from './sourceFormUtils';
+import { distinctSections, metricTablesScopeKey } from './sourceFormUtils';
 import { TableModelForm } from './TableModelForm';
 
 export function TableSourceForm({
@@ -228,20 +228,24 @@ export function TableSourceForm({
     defaultValue: source?.kind || SourceKind.Log,
   });
 
-  // Whether the saved source already has at least one metric table configured.
-  // Derived from the persisted source (not the live form values) so that
-  // schema-inference autofill can be suppressed and never silently populate
-  // tables that aren't actually saved. See MetricTableModelForm.
-  const hasExistingMetricTables = useMemo(() => {
-    if (!source || source.kind !== SourceKind.Metric) return false;
-    const metricTables = (source as { metricTables?: Record<string, unknown> })
-      .metricTables;
-    return Boolean(
+  // The database+connection pair the saved source's metric tables belong to,
+  // set only when that source already has at least one metric table
+  // configured. Derived from the persisted source (not the live form values)
+  // so schema-inference autofill can be suppressed for that pair and never
+  // silently populate tables that aren't actually saved — while still
+  // inferring once the user points the form at a different database or
+  // connection.
+  const savedMetricTablesKey = useMemo(() => {
+    if (!source || source.kind !== SourceKind.Metric) return undefined;
+    const metricTables = source.metricTables;
+    const hasExistingMetricTables = Boolean(
       metricTables &&
         Object.values(metricTables).some(
           value => typeof value === 'string' && value.length > 0,
         ),
     );
+    if (!hasExistingMetricTables) return undefined;
+    return metricTablesScopeKey(source.from?.databaseName, source.connection);
   }, [source]);
 
   const createSource = useCreateSource();
@@ -748,7 +752,7 @@ export function TableSourceForm({
         control={control}
         setValue={setValue}
         kind={kind}
-        hasExistingMetricTables={hasExistingMetricTables}
+        savedMetricTablesKey={savedMetricTablesKey}
       />
       <Group justify="flex-end" mt="lg">
         {onCancel && (

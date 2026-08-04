@@ -8,6 +8,8 @@ import {
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_SESSIONS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
+  E2E_ALT_METRICS_DATABASE,
+  E2E_ALT_METRICS_SUM_TABLE,
   E2E_METRICS_GAUGE_TABLE,
   E2E_METRICS_SUM_TABLE,
   METADATA_MV_LOGS_SOURCE_NAME,
@@ -308,6 +310,45 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
       // filling it in.
       await expect(sourceForm.getMetricAutoDetectNotification()).toHaveCount(0);
       await expect(sourceForm.getMetricTableInput('sum')).toHaveValue('');
+    },
+  );
+
+  test(
+    'infers metric tables again after switching an existing source to another database',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      const sourcesListPage = new SourcesListPage(page);
+      const sourceForm = new SourceFormComponent(page);
+
+      // Same starting point as the test above: 'E2E Metrics Partial' is saved
+      // against the `default` database with only the gauge table configured,
+      // and inference is suppressed for that database.
+      await sourcesListPage.goto();
+      await sourcesListPage.expandSource(PARTIAL_METRICS_SOURCE_NAME);
+
+      await expect(sourceForm.getMetricTableInput('gauge')).toHaveValue(
+        E2E_METRICS_GAUGE_TABLE,
+      );
+      await expect(sourceForm.getMetricTableInput('sum')).toHaveValue('');
+      await expect(sourceForm.getMetricAutoDetectNotification()).toHaveCount(0);
+
+      // Point the form at a different database. The saved tables belong to
+      // `default`, so nothing here can be confused with them — inference must
+      // resume and fill the empty sum table from the new database's schema.
+      await sourceForm.selectDatabase(E2E_ALT_METRICS_DATABASE);
+
+      await sourceForm.waitForMetricAutoDetectSuccess();
+      await expect(sourceForm.getMetricTableInput('sum')).toHaveValue(
+        E2E_ALT_METRICS_SUM_TABLE,
+      );
+
+      // Inference only fills empty fields, so gauge keeps the value it was
+      // hydrated with rather than being replaced by the new database's gauge
+      // table. Nothing is saved: the form is left without clicking Save, so
+      // the shared fixture source keeps its persisted configuration.
+      await expect(sourceForm.getMetricTableInput('gauge')).toHaveValue(
+        E2E_METRICS_GAUGE_TABLE,
+      );
     },
   );
 
