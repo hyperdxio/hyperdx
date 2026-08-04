@@ -12,6 +12,7 @@ import {
   makeRawSqlAlertTile,
   makeRawSqlNumberAlertTile,
   makeRawSqlTile,
+  makeSavedSearchAlertInput,
   makeTile,
   randomMongoId,
   RAW_SQL_ALERT_TEMPLATE,
@@ -176,6 +177,40 @@ describe('alerts router', () => {
         }),
       )
       .expect(404);
+  });
+
+  it('can update an ungrouped saved-search alert returned with null groupBy', async () => {
+    const savedSearch = await SavedSearch.create({
+      name: 'Test Saved Search',
+      source: new mongoose.Types.ObjectId(),
+      team: team._id,
+    });
+    const created = await agent
+      .post('/alerts')
+      .send(
+        makeSavedSearchAlertInput({
+          savedSearchId: savedSearch._id.toString(),
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    expect(created.body.data.groupBy).toBeNull();
+
+    const updated = await agent
+      .put(`/alerts/${created.body.data._id}`)
+      .send({
+        ...makeSavedSearchAlertInput({
+          savedSearchId: savedSearch._id.toString(),
+          webhookId: webhook._id.toString(),
+        }),
+        groupBy: created.body.data.groupBy,
+        interval: '5m',
+      })
+      .expect(200);
+
+    expect(updated.body.data.interval).toBe('5m');
+    expect(updated.body.data.groupBy).toBeNull();
   });
 
   it('clears source-specific references when updating an alert source', async () => {
