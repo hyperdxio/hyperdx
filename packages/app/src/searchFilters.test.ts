@@ -259,4 +259,31 @@ describe('replaceFiltersInWhereClause', () => {
       'host:"b"',
     );
   });
+
+  it('wraps OR residual in parens before appending AND facet (Lucene OR semantics)', () => {
+    // When the residual (non-facet content) contains a top-level OR, appending
+    // new facet clauses with AND would change semantics without parenthesization.
+    // e.g. `error OR warn` residual + `level:"error"` → `(error OR warn) AND level:"error"`
+    // not `error OR warn AND level:"error"` (which parses as `error OR (warn AND level:"error")`)
+    const where = 'error OR warn';
+    // No facet fields in this query, so replace with a fresh level filter.
+    // The residual `error OR warn` must be wrapped in parens.
+    const filters: Filter[] = [{ type: 'sql', condition: "level IN ('error')" }];
+    const result = replaceFiltersInWhereClause(
+      where,
+      'lucene',
+      filters,
+      new Set(),
+    );
+    expect(result).toBe('(error  OR warn) AND level:"error"');
+  });
+
+  it('replaces lowercase sql facet (case-insensitive detection)', () => {
+    // lowercase `in` should still be recognised as a facet and replaced
+    const where = "host in ('a') AND foo = 1";
+    const filters: Filter[] = [{ type: 'sql', condition: "host IN ('b')" }];
+    expect(replaceFiltersInWhereClause(where, 'sql', filters, new Set())).toBe(
+      "foo = 1 AND host IN ('b')",
+    );
+  });
 });

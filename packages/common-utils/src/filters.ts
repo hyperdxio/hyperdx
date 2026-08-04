@@ -432,6 +432,24 @@ function renderNode(
 }
 
 /**
+ * Returns true when the Lucene text contains a top-level OR operator (i.e. an
+ * OR that is not inside parentheses). Used to decide whether the residual must
+ * be wrapped in parens before joining it with AND — without the wrapping,
+ * `a OR b AND c:"v"` would be mis-parsed as `a OR (b AND c:"v")`.
+ */
+function hasTopLevelOr(text: string): boolean {
+  let parenDepth = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') { parenDepth++; continue; }
+    if (text[i] === ')') { parenDepth--; continue; }
+    if (parenDepth === 0 && text.slice(i, i + 4).toUpperCase() === ' OR ') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Replace the facet clauses in a Lucene `where` clause with a new FilterState.
  *
  * Only clauses matching the facet grammar (quoted `field:"v"`, `-field:"v"`,
@@ -470,7 +488,13 @@ function replaceLuceneFacetClauses(
   const trimmedResidual = residual.trim();
   if (!trimmedResidual) return newClauses;
   if (!newClauses) return trimmedResidual;
-  return `${trimmedResidual} AND ${newClauses}`;
+  // If the residual contains a top-level OR operator it must be parenthesized
+  // before joining with AND, otherwise `a OR b AND c:"v"` would be parsed as
+  // `a OR (b AND c:"v")` — narrowing the OR branch incorrectly.
+  const safeResidual = hasTopLevelOr(residual)
+    ? `(${trimmedResidual})`
+    : trimmedResidual;
+  return `${safeResidual} AND ${newClauses}`;
 }
 
 /**
@@ -576,22 +600,29 @@ function replaceSqlFacetClauses(
   if (!clean) return emit();
 
   const kept: string[] = [];
+  // Build the set of clean keys being written so we only drop conjuncts whose
+  // field is being replaced — not every parseable facet in the where clause.
+  const replacedKeys = new Set(Object.keys(newState));
+
   for (const conjunct of splitSqlConjuncts(clean)) {
     if (!conjunct.trim()) continue;
+    const upper = conjunct.toUpperCase();
     const isFacet =
-      conjunct.includes(' IN (') ||
-      conjunct.includes(' NOT IN (') ||
-      conjunct.includes(' BETWEEN ');
+      upper.includes(' IN (') ||
+      upper.includes(' NOT IN (') ||
+      upper.includes(' BETWEEN ');
     if (!isFacet) {
       kept.push(conjunct);
       continue;
     }
     const filter: Filter = { type: 'sql', condition: conjunct };
-    // Facet conjuncts are re-emitted from newState, so a conjunct that parses
-    // as a single renderable facet is dropped. Compound conditions and
-    // unparseable conjuncts are preserved.
+    // Only drop this conjunct if it maps to a field we are replacing.
+    // Compound conditions and unparseable conjuncts are always preserved.
     if (isRenderablePinnedFilter(filter)) {
-      continue;
+      const parsedKey = Object.keys(parseQuery([filter]).filters)[0];
+      if (parsedKey !== undefined && replacedKeys.has(parsedKey)) {
+        continue; // will be re-emitted from newState
+      }
     }
     kept.push(conjunct);
   }
