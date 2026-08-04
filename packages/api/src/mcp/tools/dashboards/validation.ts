@@ -5,6 +5,7 @@ import {
   TIME_RANGE_MACROS,
 } from '@hyperdx/common-utils/dist/macros';
 
+import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
 import {
   isConfigTile,
   isRawSqlExternalTileConfig,
@@ -65,6 +66,70 @@ export function getRawSqlMissingSourceError(
     '(call clickstack_list_sources to find it), or remove the macro if the query reads ' +
     `from multiple tables: ${list}`
   );
+}
+
+/**
+ * Validate the metric aggregation constraints of every builder tile's select
+ * items, reusing the same `getMetricSelectIssues` rules the query and
+ * save/patch tools apply at input time. This is the guard for tiles that were
+ * persisted BEFORE those rules existed, or through non-MCP paths (REST/UI/
+ * legacy) — e.g. a histogram metric with aggFn "avg"/"sum"/"min"/"max", which
+ * the ClickHouse renderer cannot translate.
+ *
+ * Only metric select items (those carrying a `metricType`) are inspected;
+ * log/trace items, raw SQL tiles, heatmaps, and string-`select` tiles are
+ * skipped. Returns one human-readable error per offending item, or an empty
+ * array when all tiles are valid.
+ */
+export function getMetricTileAggFnErrors(
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const errors: string[] = [];
+  tiles.forEach((tile, index) => {
+    if (!isConfigTile(tile) || isRawSqlExternalTileConfig(tile.config)) {
+      return;
+    }
+    // Builder tiles (line/stacked_bar/table/number/pie/bar) carry an array of
+    // structured select items. Search/event_patterns use a string `select` and
+    // heatmaps use a single object without an aggFn — neither is a metric
+    // aggregation, so `Array.isArray` filters them out.
+    const select = (tile.config as { select?: unknown }).select;
+    if (!Array.isArray(select)) {
+      return;
+    }
+    const label = tile.name?.trim() || `tile #${index + 1}`;
+    select.forEach((rawItem, selectIndex) => {
+      if (!rawItem || typeof rawItem !== 'object') {
+        return;
+      }
+      const item = rawItem as Record<string, unknown>;
+      // Only metric select items can violate metric-kind aggFn rules.
+      if (typeof item.metricType !== 'string') {
+        return;
+      }
+      const issues = getMetricSelectIssues({
+        aggFn: typeof item.aggFn === 'string' ? item.aggFn : undefined,
+        metricType: item.metricType,
+        metricName:
+          typeof item.metricName === 'string' ? item.metricName : undefined,
+        // The external tile schema stores the Prometheus-style gauge delta as
+        // `periodAggFn: 'delta'`; map it back to the `isDelta` flag the shared
+        // validator understands.
+        isDelta: item.periodAggFn === 'delta',
+        level: typeof item.level === 'number' ? item.level : undefined,
+        valueExpression:
+          typeof item.valueExpression === 'string'
+            ? item.valueExpression
+            : undefined,
+      });
+      for (const issue of issues) {
+        errors.push(
+          `${label} select[${selectIndex}].${issue.path.join('.')}: ${issue.message}`,
+        );
+      }
+    });
+  });
+  return errors;
 }
 
 /** Raw SQL display types that plot a value over time. */

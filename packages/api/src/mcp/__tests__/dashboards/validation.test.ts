@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 import { mcpTilesParam } from '@/mcp/tools/dashboards/schemas';
 import {
+  getMetricTileAggFnErrors,
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
   getRawSqlTilesMissingRequiredSource,
@@ -65,6 +66,171 @@ function makeSqlTile(overrides: {
     },
   } as ExternalDashboardTileWithId;
 }
+
+function makeBuilderTile(
+  select: Record<string, unknown>[],
+  overrides: { name?: string; displayType?: string } = {},
+): ExternalDashboardTileWithId {
+  return {
+    id: 'builder-tile',
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 4,
+    name: overrides.name ?? 'Builder Tile',
+    config: {
+      displayType: overrides.displayType ?? 'line',
+      sourceId,
+      select,
+    },
+  } as unknown as ExternalDashboardTileWithId;
+}
+
+describe('getMetricTileAggFnErrors', () => {
+  it('flags a histogram metric using an unsupported aggFn (avg)', () => {
+    const errors = getMetricTileAggFnErrors([
+      makeBuilderTile(
+        [
+          {
+            aggFn: 'avg',
+            metricType: 'histogram',
+            metricName: 'http.server.duration',
+            valueExpression: 'Value',
+          },
+        ],
+        { name: 'Bad Histogram' },
+      ),
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('Bad Histogram');
+    expect(errors[0]).toContain('select[0].aggFn');
+    expect(errors[0]).toContain('Histogram metrics only support');
+  });
+
+  it('flags an exponential histogram metric using sum', () => {
+    const errors = getMetricTileAggFnErrors([
+      makeBuilderTile([
+        {
+          aggFn: 'sum',
+          metricType: 'exponential histogram',
+          metricName: 'http.server.duration',
+          valueExpression: 'Value',
+        },
+      ]),
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('Exponential histogram metrics only support');
+  });
+
+  it('accepts a histogram metric using quantile with a level', () => {
+    expect(
+      getMetricTileAggFnErrors([
+        makeBuilderTile([
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            metricType: 'histogram',
+            metricName: 'http.server.duration',
+            valueExpression: 'Value',
+          },
+        ]),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('accepts a histogram metric using count', () => {
+    expect(
+      getMetricTileAggFnErrors([
+        makeBuilderTile([
+          {
+            aggFn: 'count',
+            metricType: 'histogram',
+            metricName: 'http.server.duration',
+          },
+        ]),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('accepts a gauge metric using avg', () => {
+    expect(
+      getMetricTileAggFnErrors([
+        makeBuilderTile([
+          {
+            aggFn: 'avg',
+            metricType: 'gauge',
+            metricName: 'system.memory.usage',
+            valueExpression: 'Value',
+          },
+        ]),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('ignores non-metric (log/trace) select items', () => {
+    expect(
+      getMetricTileAggFnErrors([
+        makeBuilderTile([
+          { aggFn: 'avg', valueExpression: 'Duration', where: '' },
+        ]),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('ignores raw SQL tiles', () => {
+    expect(
+      getMetricTileAggFnErrors([
+        makeSqlTile({
+          sqlTemplate: 'SELECT avg(Value) FROM otel_metrics_histogram',
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('falls back to a positional label when the tile has no name', () => {
+    const errors = getMetricTileAggFnErrors([
+      makeBuilderTile(
+        [
+          {
+            aggFn: 'max',
+            metricType: 'histogram',
+            metricName: 'http.server.duration',
+            valueExpression: 'Value',
+          },
+        ],
+        { name: '' },
+      ),
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('tile #1');
+  });
+
+  it('collects errors across multiple select items and tiles', () => {
+    const errors = getMetricTileAggFnErrors([
+      makeBuilderTile(
+        [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            metricType: 'histogram',
+            metricName: 'ok.metric',
+            valueExpression: 'Value',
+          },
+          {
+            aggFn: 'min',
+            metricType: 'histogram',
+            metricName: 'bad.metric',
+            valueExpression: 'Value',
+          },
+        ],
+        { name: 'Mixed' },
+      ),
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('Mixed');
+    expect(errors[0]).toContain('select[1].aggFn');
+  });
+});
 
 describe('getRawSqlTilesMissingRequiredSource', () => {
   it('flags a raw SQL tile that uses $__filters without a sourceId', () => {

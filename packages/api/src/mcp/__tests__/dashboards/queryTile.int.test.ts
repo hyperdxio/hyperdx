@@ -10,7 +10,9 @@ import {
   seedExponentialHistogramMetric,
 } from '@/fixtures';
 import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
+import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
+import { convertToInternalTileConfig } from '@/routers/external-api/v2/utils/dashboards';
 
 import { setupDashboardTests } from './setup';
 
@@ -184,6 +186,64 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     });
 
     expect(result.isError).toBeFalsy();
+  });
+
+  it('rejects a persisted histogram tile that uses an unsupported aggFn', async () => {
+    // Seed a tile directly (bypassing MCP save-time validation) to mimic a
+    // tile created via REST/UI/legacy before histogram aggFn rules existed:
+    // a histogram metric aggregated with "avg", which the renderer cannot
+    // translate. clickstack_query_tile must reject it with an actionable
+    // error instead of surfacing an opaque ClickHouse render failure.
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+      metricTables: {
+        [MetricsDataType.Histogram.toLowerCase()]:
+          DEFAULT_METRICS_TABLE.HISTOGRAM,
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: ctx.connection._id,
+      name: 'Legacy Histogram Metrics',
+    });
+
+    const internalTile = convertToInternalTileConfig({
+      id: 'legacy-histogram-avg',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      name: 'Legacy Histogram Avg',
+      config: {
+        displayType: 'line',
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: MetricsDataType.Histogram,
+            metricName: 'histogram.legacy',
+            valueExpression: 'Value',
+            where: '',
+          },
+        ],
+      },
+    });
+
+    const dashboard = await new Dashboard({
+      name: 'Legacy Histogram Dashboard',
+      tiles: [internalTile],
+      team: ctx.team._id,
+    }).save();
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard._id.toString(),
+      tileId: 'legacy-histogram-avg',
+      startTime: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      endTime: new Date().toISOString(),
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('Histogram metrics only support');
   });
 
   // Regression: a metric source rendered as a categorical (bar/pie) tile with a

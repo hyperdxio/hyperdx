@@ -7,7 +7,10 @@ import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
-import { getRawSqlTileMacroWarnings } from './validation';
+import {
+  getMetricTileAggFnErrors,
+  getRawSqlTileMacroWarnings,
+} from './validation';
 
 export function registerQueryTile({
   context,
@@ -66,6 +69,16 @@ export function registerQueryTile({
         return mcpUserError(
           `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => t.id).join(', ')}`,
         );
+      }
+
+      // Guard against executing a tile whose persisted metric config uses an
+      // aggFn its metric kind does not support (e.g. avg/sum/min/max on a
+      // histogram). Such tiles can exist when created outside MCP validation
+      // (REST/UI/legacy); running them would surface an opaque ClickHouse
+      // render error instead of an actionable message.
+      const metricAggFnErrors = getMetricTileAggFnErrors([tile]);
+      if (metricAggFnErrors.length > 0) {
+        return mcpUserError(metricAggFnErrors.join('\n'));
       }
 
       const result = await runConfigTile(
