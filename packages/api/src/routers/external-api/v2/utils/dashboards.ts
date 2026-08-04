@@ -16,7 +16,6 @@ import {
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
-  ChartPaletteToken,
   ColorCondition,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
@@ -301,6 +300,7 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
+        seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.StackedBar:
       return {
@@ -317,6 +317,7 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Number:
       return {
@@ -714,6 +715,7 @@ export function convertToInternalTileConfig(
           where: '',
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
+          seriesLimit: externalConfig.seriesLimit,
           name,
         } satisfies BuilderSavedChartConfig;
         break;

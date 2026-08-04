@@ -127,6 +127,55 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('returns 404 when updating an alert that does not exist', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    await agent
+      .put(`/alerts/${randomMongoId()}`)
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(404);
+  });
+
+  it("returns 404 when updating another team's alert", async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const otherTeamAlert = await Alert.create({
+      team: randomMongoId(),
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.TILE,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+    });
+
+    await agent
+      .put(`/alerts/${otherTeamAlert._id.toString()}`)
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(404);
+  });
+
   it('round-trips note through create, update, and clear', async () => {
     const dashboard = await agent
       .post('/dashboards')

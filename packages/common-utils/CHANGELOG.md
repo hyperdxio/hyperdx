@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.24.1
+
+### Patch Changes
+
+- fa1a0687: feat: Warn on missing params/macros in SQL Editor
+
 ## 0.24.0
 
 ### Minor Changes

@@ -1,6 +1,9 @@
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 
-import { matchMetricTables } from '@/utils/metricTableAutofill';
+import {
+  matchMetricTables,
+  matchSeriesTable,
+} from '@/utils/metricTableAutofill';
 
 const empty: Partial<Record<MetricsDataType, string>> = {};
 
@@ -170,5 +173,47 @@ describe('matchMetricTables', () => {
       [MetricsDataType.Summary]: 'otel_metrics_summary',
       [MetricsDataType.ExponentialHistogram]: 'otel_metrics_exp_histogram',
     });
+  });
+});
+
+describe('matchSeriesTable', () => {
+  it('returns undefined when no tables match', () => {
+    expect(matchSeriesTable(['events', 'users', 'logs'], undefined)).toBe(
+      undefined,
+    );
+  });
+
+  it('returns undefined for an empty table list', () => {
+    expect(matchSeriesTable([], undefined)).toBe(undefined);
+  });
+
+  it('matches standard otel_metrics_ prefixed series table', () => {
+    expect(matchSeriesTable(['otel_metrics_series'], undefined)).toBe(
+      'otel_metrics_series',
+    );
+  });
+
+  it('matches hyphen-separated suffix', () => {
+    expect(matchSeriesTable(['app-series'], undefined)).toBe('app-series');
+  });
+
+  it('prefers otel_metrics_ prefixed table over custom name', () => {
+    const tables = ['custom_series', 'otel_metrics_series'];
+    expect(matchSeriesTable(tables, undefined)).toBe('otel_metrics_series');
+  });
+
+  it('prefers shorter name when no otel_metrics_ prefix', () => {
+    const tables = ['long_prefix_app_series', 'app_series'];
+    expect(matchSeriesTable(tables, undefined)).toBe('app_series');
+  });
+
+  it('does not overwrite an existing value', () => {
+    expect(matchSeriesTable(['otel_metrics_series'], 'user_picked_table')).toBe(
+      undefined,
+    );
+  });
+
+  it('matches case-insensitively', () => {
+    expect(matchSeriesTable(['MyApp_Series'], undefined)).toBe('MyApp_Series');
   });
 });

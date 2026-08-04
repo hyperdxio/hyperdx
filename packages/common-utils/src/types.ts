@@ -1711,6 +1711,7 @@ export const TeamSchema = z
     apiKey: z.string(),
     hookId: z.string(),
     collectorAuthenticationEnforced: z.boolean(),
+    isMetricsSeriesTableEnabled: z.boolean(),
   })
   .merge(TeamClickHouseSettingsSchema);
 
@@ -1921,6 +1922,8 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   // Optional fields for metrics
   serviceNameExpression: z.string().optional(),
   logSourceId: z.string().optional(),
+  // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
+  seriesTable: z.string().optional(),
 });
 
 // PromQL source form schema
@@ -2222,6 +2225,7 @@ export const TeamApiResponseSchema = z.object({
   apiKey: z.string(),
   name: z.string(),
   createdAt: z.string(),
+  isMetricsSeriesTableEnabled: z.boolean(),
 });
 
 export type TeamApiResponse = z.infer<typeof TeamApiResponseSchema>;
