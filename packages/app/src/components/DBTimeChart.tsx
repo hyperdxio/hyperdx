@@ -411,8 +411,15 @@ function DBTimeChartComponent({
     delete shape.dateRange;
     delete shape.granularity;
     delete shape.dateRangeEndInclusive;
-    return JSON.stringify(shape);
-  }, [queriedConfig]);
+    // Builder configs normalize both `0` and null seriesLimit to `undefined`,
+    // which JSON.stringify drops — so a null<->0 edit wouldn't change the shape
+    // and the reset effect below wouldn't fire. Fold in the raw value so the
+    // two states serialize differently.
+    return JSON.stringify({
+      shape,
+      rawSeriesLimit: config.seriesLimit ?? null,
+    });
+  }, [queriedConfig, config.seriesLimit]);
 
   // Determine whether the config can be optimized with an MV, to drive the MV
   // optimization indicator and the MV-derived date-range indicator in the
@@ -863,7 +870,10 @@ function DBTimeChartComponent({
           key="db-time-chart-hidden-series-indicator"
           hiddenSeriesCount={hiddenSeriesCount}
           renderedSeriesCount={lineData.length}
-          onLoadAll={() => setShowAllSeries(true)}
+          // Only offer "load all" while still capped. Once it's on, the cap is
+          // already lifted to MAX_LOADABLE_TIME_CHART_SERIES; a larger result
+          // stays partly hidden but clicking again is a no-op, so go passive.
+          onLoadAll={showAllSeries ? undefined : () => setShowAllSeries(true)}
         />,
       );
     }
@@ -888,6 +898,7 @@ function DBTimeChartComponent({
     queriedConfig,
     hiddenSeriesCount,
     lineData.length,
+    showAllSeries,
   ]);
 
   return (

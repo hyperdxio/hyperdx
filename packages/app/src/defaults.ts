@@ -36,17 +36,23 @@ export const MAX_LOADABLE_TIME_CHART_SERIES = 5000;
 
 /**
  * Resolve the effective client-side render cap from a tile's `seriesLimit`
- * (see SharedChartSettingsSchema): null/undefined → the default cap, 0 →
- * unlimited (Infinity), a positive N → N.
+ * (see SharedChartSettingsSchema): null/undefined → the default cap, exactly 0 →
+ * unlimited (Infinity), a positive integer N → N. Anything else (NaN, negative,
+ * non-integer — possible via the Mixed Mongo field or unvalidated form state)
+ * falls back to the default cap so a bad value can't silently disable the guard.
  */
 export function resolveRenderedSeriesCap(
   seriesLimit: number | null | undefined,
 ): number {
-  if (seriesLimit == null) {
-    return MAX_RENDERED_TIME_CHART_SERIES;
-  }
-  if (seriesLimit <= 0) {
+  if (seriesLimit === 0) {
     return Number.POSITIVE_INFINITY;
+  }
+  if (
+    seriesLimit == null ||
+    !Number.isInteger(seriesLimit) ||
+    seriesLimit < 0
+  ) {
+    return MAX_RENDERED_TIME_CHART_SERIES;
   }
   return seriesLimit;
 }

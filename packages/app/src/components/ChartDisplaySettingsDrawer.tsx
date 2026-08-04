@@ -46,12 +46,12 @@ export type ChartConfigDisplaySettings = Pick<
 > & {
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
-  // Per-tile cap on the number of series fetched. On group-by time charts it
-  // drives the __hdx_series_limit CTE; on pie/bar builder charts it becomes a
-  // plain SQL LIMIT.
-  // null/undefined = disabled (every series is fetched). The editor clears to
-  // `null` (not `undefined`) so the cleared state survives JSON
-  // round-tripping through the URL query state.
+  // Per-tile series cap. On builder group-by/pie/bar charts it's a fetch cap
+  // (the __hdx_series_limit CTE / a SQL LIMIT); on raw SQL time charts it's a
+  // client-side render cap only. Three-state: null/undefined = default cap,
+  // 0 = unlimited, positive N = top N. See SharedChartSettingsSchema.seriesLimit
+  // for the authoritative semantics. The editor clears to `null` (not
+  // `undefined`) so the cleared state survives JSON round-tripping via the URL.
   seriesLimit?: number | null;
 };
 

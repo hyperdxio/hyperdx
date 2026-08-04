@@ -26,10 +26,10 @@ export default function HiddenSeriesIndicator({
   const label =
     `This query returned ${total.toLocaleString()} series. ` +
     `${hiddenSeriesCount.toLocaleString()} low-value series were hidden to keep the page responsive; ` +
-    `showing the top ${renderedSeriesCount.toLocaleString()} by peak value.` +
+    `showing the top ${renderedSeriesCount.toLocaleString()} by peak value. ` +
     (onLoadAll
-      ? ` Click to load all ${total.toLocaleString()} (may be slow).`
-      : ' Add a stricter GROUP BY, a WHERE filter, or a series limit to reduce cardinality.');
+      ? `Click to load all ${total.toLocaleString()} (may be slow).`
+      : 'Add a stricter GROUP BY, a WHERE filter, or a series limit to reduce cardinality.');
 
   const icon = (
     <IconAlertTriangle size={16} color="var(--color-warning, #f0a020)" />
@@ -40,6 +40,9 @@ export default function HiddenSeriesIndicator({
       {onLoadAll ? (
         <UnstyledButton
           onClick={onLoadAll}
+          // Toolbar sits in react-grid-layout's drag subtree; stop propagation
+          // (as ChartContainer does) so a click doesn't start a tile drag.
+          onMouseDown={e => e.stopPropagation()}
           aria-label={`Load all ${total.toLocaleString()} series`}
           display="flex"
         >

@@ -788,41 +788,72 @@ export function formatResponseForTimeChart({
   // Cap materialized series to protect browser memory: high-cardinality
   // group-bys (esp. raw SQL, which has no server-side limit) can return tens of
   // thousands of series while only a handful are drawn. Keep the top `maxSeries`
-  // by peak value; drop and count the rest.
+  // by peak value; drop and count the rest. The cap counts LOGICAL series
+  // (grouped by `currentPeriodKey`) so a comparison chart's current/previous
+  // pair is kept or dropped together, not orphaned by a flat entry-list slice.
   let hiddenSeriesCount = 0;
-  if (sortedLineData.length > maxSeries) {
-    hiddenSeriesCount = sortedLineData.length - maxSeries;
 
-    // Peak absolute value per series across all buckets (single pass).
-    const peakByKey = new Map<string, number>();
+  // dataKey -> logical series key, so the peak scan (which sees only bucket
+  // cell keys) can attribute values to a group.
+  const groupKeyByDataKey = new Map<string, string>();
+  const logicalSeriesKeys: string[] = [];
+  const seenLogicalKeys = new Set<string>();
+  for (const line of sortedLineData) {
+    groupKeyByDataKey.set(line.dataKey, line.currentPeriodKey);
+    if (!seenLogicalKeys.has(line.currentPeriodKey)) {
+      seenLogicalKeys.add(line.currentPeriodKey);
+      logicalSeriesKeys.push(line.currentPeriodKey);
+    }
+  }
+
+  if (logicalSeriesKeys.length > maxSeries) {
+    hiddenSeriesCount = logicalSeriesKeys.length - maxSeries;
+
+    // Peak absolute value per logical series. Iterate only each bucket's
+    // populated cells so sparse results cost O(populated cells), not
+    // O(buckets * series).
+    const peakByGroup = new Map<string, number>();
     for (const tsBucket of tsBucketMap.values()) {
-      for (const line of sortedLineData) {
-        const raw = tsBucket[line.dataKey];
-        if (typeof raw === 'number' && Number.isFinite(raw)) {
-          const mag = Math.abs(raw);
-          const prev = peakByKey.get(line.dataKey);
-          if (prev == null || mag > prev) {
-            peakByKey.set(line.dataKey, mag);
-          }
+      for (const [key, raw] of Object.entries(tsBucket)) {
+        if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+          continue;
+        }
+        const groupKey = groupKeyByDataKey.get(key);
+        if (groupKey == null) {
+          continue;
+        }
+        const mag = Math.abs(raw);
+        const prev = peakByGroup.get(groupKey);
+        if (prev == null || mag > prev) {
+          peakByGroup.set(groupKey, mag);
         }
       }
     }
 
     // Sort by peak desc; index tiebreak keeps the log-level color ordering.
-    const keptKeys = new Set(
-      sortedLineData
-        .map((line, index) => ({ line, index }))
+    const keptGroups = new Set(
+      logicalSeriesKeys
+        .map((groupKey, index) => ({ groupKey, index }))
         .sort((a, b) => {
           const diff =
-            (peakByKey.get(b.line.dataKey) ?? 0) -
-            (peakByKey.get(a.line.dataKey) ?? 0);
+            (peakByGroup.get(b.groupKey) ?? 0) -
+            (peakByGroup.get(a.groupKey) ?? 0);
           return diff !== 0 ? diff : a.index - b.index;
         })
         .slice(0, maxSeries)
-        .map(({ line }) => line.dataKey),
+        .map(({ groupKey }) => groupKey),
     );
 
-    sortedLineData = sortedLineData.filter(line => keptKeys.has(line.dataKey));
+    // Keep every entry (current + previous) whose logical series survives.
+    const keptKeys = new Set(
+      sortedLineData
+        .filter(line => keptGroups.has(line.currentPeriodKey))
+        .map(line => line.dataKey),
+    );
+
+    sortedLineData = sortedLineData.filter(line =>
+      keptGroups.has(line.currentPeriodKey),
+    );
 
     // Prune dropped keys from every bucket so graphResults stays small.
     for (const tsBucket of tsBucketMap.values()) {

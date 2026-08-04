@@ -923,6 +923,56 @@ describe('ChartUtils', () => {
       expect(keptKeys.has('g1')).toBe(true);
       expect(keptKeys.has('g2')).toBe(false);
     });
+
+    it('caps by logical series so comparison pairs are kept together', () => {
+      // Comparison mode: each group yields a current + previous-period entry
+      // that share a currentPeriodKey. Capping to 2 must keep 2 *logical*
+      // series (4 entries: 2 current + 2 previous), not slice the flat 6-entry
+      // list down to 2 and orphan a current line from its dashed partner.
+      const PREVIOUS_SUFFIX = ' (previous)';
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      const bucket = '2025-11-26T11:12:00Z';
+      // g2 has the lowest peak, so it is the logical series that gets dropped.
+      const currentData = [
+        { value: 30, group: 'g0', __hdx_time_bucket: bucket },
+        { value: 20, group: 'g1', __hdx_time_bucket: bucket },
+        { value: 10, group: 'g2', __hdx_time_bucket: bucket },
+      ];
+      const previousData = [
+        { value: 29, group: 'g0', __hdx_time_bucket: bucket },
+        { value: 19, group: 'g1', __hdx_time_bucket: bucket },
+        { value: 9, group: 'g2', __hdx_time_bucket: bucket },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data: currentData, meta },
+        previousPeriodResponse: { data: previousData, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: 2,
+      });
+
+      // One logical series (g2 and its previous twin) is hidden.
+      expect(actual.hiddenSeriesCount).toBe(1);
+
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      // Both kept logical series retain BOTH halves of the pair.
+      expect(keptKeys.has('g0')).toBe(true);
+      expect(keptKeys.has(`g0${PREVIOUS_SUFFIX}`)).toBe(true);
+      expect(keptKeys.has('g1')).toBe(true);
+      expect(keptKeys.has(`g1${PREVIOUS_SUFFIX}`)).toBe(true);
+      // The dropped logical series is gone entirely (no orphaned half).
+      expect(keptKeys.has('g2')).toBe(false);
+      expect(keptKeys.has(`g2${PREVIOUS_SUFFIX}`)).toBe(false);
+    });
   });
 
   describe('resolveRenderedSeriesCap', () => {
@@ -941,6 +991,18 @@ describe('ChartUtils', () => {
 
     it('returns the value for a positive limit', () => {
       expect(resolveRenderedSeriesCap(25)).toBe(25);
+    });
+
+    it('falls back to the default cap for malformed values (never disables the guard)', () => {
+      // Zod blocks these on persist, but Mixed Mongo storage + unvalidated form
+      // state can still reach here. None must resolve to Infinity (unlimited).
+      expect(resolveRenderedSeriesCap(NaN)).toBe(
+        MAX_RENDERED_TIME_CHART_SERIES,
+      );
+      expect(resolveRenderedSeriesCap(-5)).toBe(MAX_RENDERED_TIME_CHART_SERIES);
+      expect(resolveRenderedSeriesCap(12.5)).toBe(
+        MAX_RENDERED_TIME_CHART_SERIES,
+      );
     });
   });
 

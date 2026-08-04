@@ -12,6 +12,7 @@ import {
   decodeSeriesGroupFilters,
 } from '@/components/DBTimeChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import { MAX_LOADABLE_TIME_CHART_SERIES } from '@/defaults';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
@@ -354,6 +355,48 @@ describe('DBTimeChart', () => {
       expect(
         screen.queryByRole('button', { name: /load all .* series/i }),
       ).not.toBeInTheDocument();
+    });
+
+    it('goes passive (non-clickable) after load-all when the result still exceeds the load-all bound', async () => {
+      // A result larger than MAX_LOADABLE_TIME_CHART_SERIES (5000): after
+      // clicking "load all", the cap is lifted to the bound but series remain
+      // hidden. Clicking again could not reveal more (showAllSeries is already
+      // true), so the indicator must drop its onLoadAll action rather than
+      // render a button that no-ops.
+      const user = userEvent.setup();
+      const BIG_GROUP_COUNT = MAX_LOADABLE_TIME_CHART_SERIES + 100;
+      const bigData = Array.from({ length: BIG_GROUP_COUNT }, (_, i) => ({
+        timestamp: 1704067200,
+        value: i + 1,
+        group: `g${i}`,
+      }));
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: bigData,
+          meta: highCardinalityMeta,
+          rows: BIG_GROUP_COUNT,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+
+      renderWithMantine(<DBTimeChart config={groupByConfig} />);
+
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      await user.click(loadAllButton);
+
+      // Series are still hidden (result > bound), but the affordance is now a
+      // passive warning icon, not a clickable button.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
     });
   });
 
