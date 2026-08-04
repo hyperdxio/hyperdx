@@ -667,6 +667,14 @@ const aggFnExpr = ({
   }
 };
 
+/**
+ * Whether ratio mode applies to a chart's SELECT list: exactly two value
+ * expressions, merged into `divide(a, b)`.
+ *
+ * Only ever call this with the chart's `select`. It infers "is a ratio" partly
+ * from the list's length, so handing it any other two-element list (a `groupBy`,
+ * say) reports a false positive.
+ */
 export function isRatioChartConfig(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -674,10 +682,22 @@ export function isRatioChartConfig(
   return chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
 }
 
+type RenderSelectListOptions = {
+  /**
+   * Whether ratio mode may merge this list into a single `divide(a, b)`.
+   *
+   * True only where the list is the chart's *select value* list. A `groupBy` list must
+   * always pass `false`: a ratio chart grouped by exactly two columns would
+   * otherwise render `divide(ServiceName, Region)` into the GROUP BY clause.
+   */
+  mergeRatio: boolean;
+};
+
 async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
+  { mergeRatio }: RenderSelectListOptions,
 ) {
   if (typeof selectList === 'string') {
     return chSql`${{ UNSAFE_RAW_SQL: selectList }}`;
@@ -703,7 +723,7 @@ async function renderSelectList(
     // ignore
   }
 
-  const isRatio = isRatioChartConfig(selectList, chartConfig);
+  const isRatio = mergeRatio && isRatioChartConfig(selectList, chartConfig);
 
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
@@ -991,9 +1011,13 @@ async function renderSelect(
   // TODO: clean up these await mess
   return concatChSql(
     ',',
-    await renderSelectList(chartConfig.select, chartConfig, metadata),
+    await renderSelectList(chartConfig.select, chartConfig, metadata, {
+      mergeRatio: true,
+    }),
     isIncludingGroupBy && chartConfig.selectGroupBy !== false
-      ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata)
+      ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
+          mergeRatio: false,
+        })
       : [],
     isIncludingTimeBucket
       ? timeBucketExpr({
@@ -1263,7 +1287,9 @@ async function renderGroupBy(
   return concatChSql(
     ',',
     isUsingGroupBy(chartConfig)
-      ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata)
+      ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
+          mergeRatio: false,
+        })
       : [],
     isUsingGranularity(chartConfig)
       ? timeBucketExpr({
@@ -1340,25 +1366,38 @@ async function renderSeriesLimitCte(
       chartConfig.groupBy.map(col => ({ ...col, alias: undefined })),
       chartConfig,
       metadata,
+      { mergeRatio: false },
     );
     groupByCols = Array.isArray(rendered) ? rendered : [rendered];
   }
   const groupByTuple = concatChSql(',', groupByCols);
 
-  // Rank by the chart's first aggregate (alias stripped — we add our own).
-  const firstSelect = chartConfig.select[0];
-  const rankSelectList =
-    typeof firstSelect === 'string'
-      ? firstSelect
-      : [{ ...firstSelect, alias: undefined }];
+  // Rank by the value the chart actually plots, so "top N" means top N by what
+  // the user sees. The whole select list is passed (not just select[0]) because
+  // renderSelectList collapses a two-select ratio config into `divide(a, b)`;
+  // for every other config it returns one entry per select and the first is the
+  // same expression as ranking on select[0] alone. Aliases are stripped because
+  // expressions are interpolated bare, and in ratio mode they land inside `divide(...)`
+  // where a trailing `AS "alias"` is a syntax error.
   const rankRendered = await renderSelectList(
-    rankSelectList,
+    chartConfig.select.map(col => ({ ...col, alias: undefined })),
     chartConfig,
     metadata,
+    { mergeRatio: true },
   );
   const rankValue = Array.isArray(rankRendered)
     ? rankRendered[0]
     : rankRendered;
+
+  // A ratio rank is `divide(a, b)`, so a bucket where the denominator happens to
+  // be 0 yields ±inf (and 0/0 yields NaN). Those are not rare - they occur whenever
+  // there is a numerator row but no denominator row. ClickHouse sorts inf above every
+  // real number, so an unguarded `max()` would hand the top-N slots to whichever
+  // groups happened to hit a sparse bucket, pushing out genuinely high-ratio series.
+  const rankIsRatio = isRatioChartConfig(chartConfig.select, chartConfig);
+  const rankOrderBy = rankIsRatio
+    ? chSql`max(if(isFinite(\`__hdx_series_rank\`), \`__hdx_series_rank\`, -inf))`
+    : chSql`max(\`__hdx_series_rank\`)`;
 
   // Drop NULL components only (no-op on non-nullable columns).
   const groupByNotNullFilter = concatChSql(
@@ -1379,7 +1418,7 @@ async function renderSeriesLimitCte(
       GROUP BY ${cteGroupBy}
     )
     GROUP BY \`group\`
-    ORDER BY max(\`__hdx_series_rank\`) DESC, \`group\`
+    ORDER BY ${rankOrderBy} DESC, \`group\`
     LIMIT ${{ Int32: seriesLimit }}
   )`;
 
@@ -1942,6 +1981,7 @@ async function translateMetricChartConfig(
           with: sumWith,
         } as BuilderChartConfigWithOptDateRangeEx,
         metadata,
+        { mergeRatio: false },
       );
       const groupBySql = concatChSql(',', groupByForRank);
 
@@ -2076,7 +2116,9 @@ async function translateMetricChartConfig(
     if (isUsingGroupBy(chartConfig)) {
       groupBy = concatChSql(
         ',',
-        await renderSelectList(chartConfig.groupBy, chartConfig, metadata),
+        await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
+          mergeRatio: false,
+        }),
       );
     }
 
