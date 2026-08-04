@@ -13,11 +13,11 @@
  * - Demo ClickHouse (remote) for telemetry data (logs, traces, metrics, K8s)
  */
 
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
+import { runMongoshScript } from './utils/db-helpers';
 import { seedClickHouse } from './seed-clickhouse';
 
 // Configuration constants
@@ -57,36 +57,6 @@ export const SEEDED_ERROR_ALERT = {
   errorMessage:
     'ClickHouse returned 500: DB::Exception: Timeout exceeded: elapsed 30s, maximum: 30s while executing query.',
 };
-
-/**
- * Run a mongosh script against the e2e MongoDB container by piping the script
- * through stdin. Using stdin (rather than `--eval "<...>"`) avoids having to
- * escape quotes in the script body, so callers can pass multi-line JavaScript
- * with string literals verbatim.
- *
- * Throws if the docker-compose file can't be found (meaning we're not running
- * in the expected Docker-backed e2e environment).
- */
-function runMongoshScript(script: string): string {
-  const dockerComposeFile = path.join(__dirname, 'docker-compose.yml');
-  if (!fs.existsSync(dockerComposeFile)) {
-    throw new Error(
-      `docker-compose.yml not found at ${dockerComposeFile} — e2e Docker stack unavailable`,
-    );
-  }
-
-  const e2eSlot = process.env.HDX_E2E_SLOT || '0';
-  const e2eProject = `e2e-${e2eSlot}`;
-
-  return execSync(
-    `docker compose -p ${e2eProject} -f "${dockerComposeFile}" exec -T db mongosh --quiet`,
-    {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      input: script,
-    },
-  );
-}
 
 /**
  * Clears the MongoDB database to ensure a clean slate for tests
