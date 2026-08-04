@@ -1,5 +1,7 @@
-import type { Socket } from 'net';
+import { IncomingMessage, ServerResponse } from 'http';
+import { Socket } from 'net';
 import pino from 'pino';
+import pinoHttp from 'pino-http';
 import { Writable } from 'stream';
 
 import {
@@ -98,14 +100,23 @@ describe('scrubUrlTokens', () => {
  * and silently drop the client IP from every production request log.
  */
 describe('scrubbedRequestSerializer', () => {
-  const rawRequest = () =>
-    ({
-      id: 'req-1',
-      method: 'GET',
-      url: '/api/ext/silence-alert/super-secret-token?ack=1',
-      headers: { authorization: 'Bearer x' },
-      socket: { remoteAddress: '203.0.113.7', remotePort: 51234 } as Socket,
-    }) as unknown as Parameters<typeof pino.stdSerializers.req>[0];
+  // A real IncomingMessage over a real Socket rather than a cast object
+  // literal: the point of this test is that the std serializer resolves the
+  // client address off the socket, so a hand-shaped stand-in could satisfy the
+  // assertions while diverging from what pino actually receives.
+  // remoteAddress/remotePort are prototype getters on Socket, hence
+  // defineProperty rather than assignment.
+  const rawRequest = () => {
+    const socket = new Socket();
+    Object.defineProperty(socket, 'remoteAddress', { value: '203.0.113.7' });
+    Object.defineProperty(socket, 'remotePort', { value: 51234 });
+
+    const req = new IncomingMessage(socket);
+    req.method = 'GET';
+    req.url = '/api/ext/silence-alert/super-secret-token?ack=1';
+    req.headers = { authorization: 'Bearer x' };
+    return req;
+  };
 
   it('scrubs the URL without dropping the client address', () => {
     const out = scrubbedRequestSerializer(
@@ -117,5 +128,68 @@ describe('scrubbedRequestSerializer', () => {
     expect(out.remotePort).toBe(51234);
     expect(out.method).toBe('GET');
     expect(out.headers).toEqual({ authorization: 'Bearer x' });
+  });
+});
+
+/**
+ * The three pieces above are each tested in isolation, but the thing that
+ * actually ships is their composition: pino's `redact` paths, pino-http's
+ * `wrapRequestSerializer`, and `scrubbedRequestSerializer`. That combination is
+ * never exercised elsewhere — the production serializer branch is selected only
+ * when `!IS_DEV && !IS_CI`, and `IS_CI` is true under Jest — so a change to any
+ * one of them could drop a credential into stdout with every other test still
+ * green. Build the real thing and read the bytes.
+ */
+describe('production log line', () => {
+  function captureRequestLog(req: IncomingMessage): string {
+    let out = '';
+    const sink = new Writable({
+      write(chunk, _enc, cb) {
+        out += chunk.toString();
+        cb();
+      },
+    });
+    // Mirrors the production wiring in logger.ts: same redact config, same
+    // serializer, and pino-http's default wrapSerializers behaviour.
+    const logger = pino(
+      { redact: { paths: REDACTED_PATHS, censor: '[REDACTED]' } },
+      sink,
+    );
+    const middleware = pinoHttp({
+      logger,
+      serializers: { req: scrubbedRequestSerializer },
+    });
+
+    const res = new ServerResponse(req);
+    middleware(req, res);
+    res.setHeader('set-cookie', 'connect.sid=rotated-session');
+    res.statusCode = 200;
+    res.emit('finish');
+
+    return out;
+  }
+
+  it('emits no plaintext credential and no URL token', () => {
+    const socket = new Socket();
+    Object.defineProperty(socket, 'remoteAddress', { value: '203.0.113.7' });
+    const req = new IncomingMessage(socket);
+    req.method = 'GET';
+    req.url = '/api/ext/silence-alert/super-secret-token';
+    req.headers = {
+      authorization: 'Bearer super-secret-key',
+      cookie: 'connect.sid=secret-session',
+      'user-agent': 'jest',
+    };
+
+    const out = captureRequestLog(req);
+
+    expect(out).not.toContain('super-secret-key');
+    expect(out).not.toContain('secret-session');
+    expect(out).not.toContain('rotated-session');
+    expect(out).not.toContain('super-secret-token');
+    expect(out).toContain('[REDACTED]');
+    // Still a useful log line: the non-credential parts survive.
+    expect(out).toContain('jest');
+    expect(out).toContain('203.0.113.7');
   });
 });

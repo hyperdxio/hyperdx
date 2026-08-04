@@ -21,21 +21,48 @@ import {
 import { IconDownload } from '@tabler/icons-react';
 
 import { useIacImportManifest } from '@/components/Iac/useIacImportManifest';
+import { BASE_PATH } from '@/config';
 import { downloadTextFile } from '@/utils/downloadFile';
 
-const RESOURCE_TYPE_OPTIONS: {
-  type: IacResourceType;
-  label: string;
-  // The listing keys only — `truncatedTypes` is metadata, not a resource array.
-  key: Exclude<keyof IacImportManifest, 'truncatedTypes'>;
-}[] = [
-  { type: 'dashboard', label: 'Dashboards', key: 'dashboards' },
-  { type: 'alert', label: 'Alerts', key: 'alerts' },
-  { type: 'saved_search', label: 'Saved searches', key: 'savedSearches' },
-  { type: 'source', label: 'Sources', key: 'sources' },
-  { type: 'connection', label: 'Connections', key: 'connections' },
-  { type: 'webhook', label: 'Webhooks', key: 'webhooks' },
+// Keyed by IacResourceType rather than a plain array, so adding a seventh
+// provider resource type fails to compile here instead of shipping a type that
+// is silently unexportable from Team Settings.
+const RESOURCE_TYPE_OPTIONS: Record<
+  IacResourceType,
+  {
+    label: string;
+    // The listing keys only — `truncatedTypes` is metadata, not a resource array.
+    key: Exclude<keyof IacImportManifest, 'truncatedTypes'>;
+  }
+> = {
+  dashboard: { label: 'Dashboards', key: 'dashboards' },
+  alert: { label: 'Alerts', key: 'alerts' },
+  saved_search: { label: 'Saved searches', key: 'savedSearches' },
+  source: { label: 'Sources', key: 'sources' },
+  connection: { label: 'Connections', key: 'connections' },
+  webhook: { label: 'Webhooks', key: 'webhooks' },
+};
+
+// Display order for the checkbox list. Separate from the map above so the map
+// stays exhaustiveness-checked.
+const RESOURCE_TYPE_ORDER: IacResourceType[] = [
+  'dashboard',
+  'alert',
+  'saved_search',
+  'source',
+  'connection',
+  'webhook',
 ];
+
+const truncatedLabels = (
+  truncatedTypes: string[],
+  selected: IacResourceType[],
+) =>
+  RESOURCE_TYPE_ORDER.filter(
+    type =>
+      selected.includes(type) &&
+      truncatedTypes.includes(RESOURCE_TYPE_OPTIONS[type].key),
+  ).map(type => RESOURCE_TYPE_OPTIONS[type].label.toLowerCase());
 
 /**
  * Renders the "Export to Terraform" section on the Team Settings page
@@ -57,11 +84,12 @@ export default function IacMigrationSection() {
     'saved_search',
   ]);
 
-  // Labels of the ticked types whose listing the server capped.
-  const truncatedSelected = RESOURCE_TYPE_OPTIONS.filter(
-    opt =>
-      selected.includes(opt.type) && manifest?.truncatedTypes.includes(opt.key),
-  ).map(opt => opt.label.toLowerCase());
+  // Banner copy, from the cached manifest. The downloaded file gets its own
+  // check off the refetched payload — see onDownload.
+  const truncatedSelected = truncatedLabels(
+    manifest?.truncatedTypes ?? [],
+    selected,
+  );
 
   const { resources, connectionLocals, skippedAlerts } = useMemo(
     () =>
@@ -87,9 +115,15 @@ export default function IacMigrationSection() {
 
     downloadTextFile(
       buildImportFile({
-        endpoint: `${window.location.origin}/api`,
+        // Includes the deployment path prefix — `window.location.origin` alone
+        // drops it, and the API is served under the same prefix as the UI.
+        endpoint: `${window.location.origin}${BASE_PATH}/api`,
         resources: freshSelection.resources,
         connectionLocals: freshSelection.connectionLocals,
+        // From the refetched payload, not the banner's cached one: a listing
+        // that only became truncated on this refetch would otherwise save a
+        // partial file carrying no indication that it is partial.
+        truncatedTypes: truncatedLabels(result.data.truncatedTypes, selected),
       }),
       'hyperdx-import.tf',
     );
@@ -114,24 +148,27 @@ export default function IacMigrationSection() {
           to generate resource configuration using the ClickHouse provider.
         </Text>
         <Stack gap="xs" mb="md">
-          {RESOURCE_TYPE_OPTIONS.map(opt => (
-            <Checkbox
-              key={opt.type}
-              label={`${opt.label} (${manifest?.[opt.key]?.length ?? 0})`}
-              description={
-                opt.type === 'connection'
-                  ? 'Exported as reference-only locals — connections are platform-managed on ClickHouse Cloud'
-                  : undefined
-              }
-              checked={selected.includes(opt.type)}
-              onChange={e => {
-                const checked = e.currentTarget.checked;
-                setSelected(s =>
-                  checked ? [...s, opt.type] : s.filter(t => t !== opt.type),
-                );
-              }}
-            />
-          ))}
+          {RESOURCE_TYPE_ORDER.map(type => {
+            const opt = RESOURCE_TYPE_OPTIONS[type];
+            return (
+              <Checkbox
+                key={type}
+                label={`${opt.label} (${manifest?.[opt.key]?.length ?? 0})`}
+                description={
+                  type === 'connection'
+                    ? 'Exported as reference-only locals — connections are platform-managed on ClickHouse Cloud'
+                    : undefined
+                }
+                checked={selected.includes(type)}
+                onChange={e => {
+                  const checked = e.currentTarget.checked;
+                  setSelected(s =>
+                    checked ? [...s, type] : s.filter(t => t !== type),
+                  );
+                }}
+              />
+            );
+          })}
         </Stack>
         {/* Without this, a failed fetch is indistinguishable from a team that
             genuinely has nothing to export — every count reads "(0)". */}

@@ -2,6 +2,7 @@ import {
   buildImportBlock,
   buildImportFile,
   collectImportableResources,
+  IAC_MANIFEST_LIMIT,
   type IacImportManifest,
   type IacResourceType,
   isImportableAlert,
@@ -173,6 +174,40 @@ describe('name sanitisation', () => {
   });
 });
 
+// `id` is the only manifest value reaching executable HCL, inside a quoted
+// string where a `"` would close the literal. The label is filtered and the
+// name is confined to a comment, so this is the remaining sink.
+describe('resource id validation', () => {
+  it.each([
+    'a"; provider "null" {} #',
+    '../../etc/passwd',
+    '655b1b7d9143aa1b1b73f4f',
+    '655b1b7d9143aa1b1b73f4f4x',
+    'ZZZb1b7d9143aa1b1b73f4f4',
+    '',
+  ])('refuses to emit an import block for id %p', badId => {
+    expect(() => buildImportBlock({ type: 'alert', id: badId })).toThrow(
+      /non-ObjectId id/,
+    );
+  });
+
+  it('refuses to emit a connection local for a bad id', () => {
+    expect(() =>
+      buildImportFile({
+        endpoint: 'https://hyperdx.example.com/api',
+        resources: [],
+        connectionLocals: [{ id: 'not-an-objectid', name: 'Sneaky' }],
+      }),
+    ).toThrow(/non-ObjectId id/);
+  });
+
+  it('accepts ObjectId hex in either case', () => {
+    expect(() =>
+      buildImportBlock({ type: 'alert', id: ID.toUpperCase() }),
+    ).not.toThrow();
+  });
+});
+
 describe('buildImportFile', () => {
   it('contains the provider block, import blocks, and generate-config instructions', () => {
     const otherId = 'a55b1b7d9143aa1b1b73f4f4';
@@ -188,9 +223,12 @@ describe('buildImportFile', () => {
     // `import {}` and -generate-config-out both need Terraform 1.5+; without
     // the constraint an older CLI fails with a syntax error instead.
     expect(file).toContain('required_version = ">= 1.5.0"');
-    expect(file).toContain(
-      'clickstack_endpoint = "https://hyperdx.example.com/api"',
-    );
+    // The endpoint is a variable, not a baked literal: its default comes from
+    // the browser that generated the file, which may not resolve from wherever
+    // Terraform runs.
+    expect(file).toContain('variable "clickstack_endpoint"');
+    expect(file).toContain('default     = "https://hyperdx.example.com/api"');
+    expect(file).toContain('clickstack_endpoint = var.clickstack_endpoint');
     expect(file).toContain('CLICKSTACK_API_KEY');
     expect(file).toContain(
       `to = clickhouse_clickstack_dashboard.dashboard_${ID}`,
@@ -218,6 +256,41 @@ describe('buildImportFile', () => {
 
     expect(addresses).toHaveLength(2);
     expect(new Set(addresses).size).toBe(2);
+  });
+
+  // A second export re-emits everything, so two of these files in one module
+  // collide on duplicate `to` addresses and Terraform rejects the whole plan.
+  it('warns that re-exporting is not additive', () => {
+    const file = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
+    });
+
+    expect(file).toContain('does NOT produce an additive file');
+    expect(file).toContain('duplicate "to" addresses');
+  });
+
+  // The .tf is what gets committed and read later, so a partial export has to
+  // say so in the file itself, not only in the UI that generated it.
+  it('marks the file partial when a listing was capped', () => {
+    const file = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
+      truncatedTypes: ['dashboards', 'alerts'],
+    });
+
+    expect(file).toContain('PARTIAL EXPORT');
+    expect(file).toContain('dashboards, alerts');
+    expect(file).toContain(String(IAC_MANIFEST_LIMIT));
+  });
+
+  it('omits the partial-export marker when nothing was capped', () => {
+    const file = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
+    });
+
+    expect(file).not.toContain('PARTIAL EXPORT');
   });
 
   it('explains that addresses survive a rename, and warns about whole-body writes', () => {

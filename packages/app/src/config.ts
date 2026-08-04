@@ -54,6 +54,11 @@ export const IS_LOCAL_MODE = //true;
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
+// Deployment path prefix, mirroring `basePath` in next.config.mjs. Needed
+// anywhere an absolute URL is built for something outside the browser to call:
+// `window.location.origin` alone drops the prefix, and the API is served under
+// the same one as the UI.
+export const BASE_PATH = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH ?? '';
 export const IS_NOINDEX = process.env.NEXT_PUBLIC_NOINDEX === 'true';
 
 /** Time captured at module load, use this a stable fallback/default time value instead of Date.now() defined in each React component file */

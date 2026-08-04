@@ -2302,7 +2302,11 @@ export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
 // packages/common-utils/src/iac.ts cannot drift apart. Every listing is
 // id + name only — the endpoint deliberately projects nothing heavier.
 const IacManifestEntrySchema = z.object({
-  id: z.string(),
+  // Constrained, not a bare string: `id` is the only manifest value that
+  // reaches generated HCL inside a quoted string literal, and the client parse
+  // is what the export treats as its trust boundary. See assertResourceId in
+  // ./iac.ts, which enforces the same shape at the emit sink.
+  id: z.string().regex(/^[0-9a-fA-F]{24}$/),
   name: z.string().optional(),
 });
 

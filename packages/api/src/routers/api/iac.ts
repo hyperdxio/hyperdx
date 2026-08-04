@@ -30,12 +30,20 @@ const manifestTruncations = getCounter(
   },
 );
 
-// Bounds a find without touching its result type. Only limit/maxTimeMS are
-// wrapped — both return the same Query — so `.lean()` stays on the concrete
-// model. Typing the whole chain instead collapses Source's discriminated
-// union into its first member.
+// Bounds a find without touching its result type. Only sort/limit/maxTimeMS
+// are wrapped — all three return the same Query — so `.lean()` stays on the
+// concrete model. Typing the whole chain instead collapses Source's
+// discriminated union into its first member.
+//
+// The sort is what makes a capped listing meaningful: without it, *which*
+// IAC_MANIFEST_LIMIT rows come back is planner-dependent and can differ
+// between two calls, so a large team could get a different arbitrary subset
+// each export. `{ team: 1, _id: 1 }` covers this ordering on every model here.
 const bounded = <T extends Query<unknown, unknown>>(query: T): T =>
-  query.limit(IAC_MANIFEST_LIMIT + 1).maxTimeMS(IAC_MANIFEST_MAX_TIME_MS) as T;
+  query
+    .sort({ _id: 1 })
+    .limit(IAC_MANIFEST_LIMIT + 1)
+    .maxTimeMS(IAC_MANIFEST_MAX_TIME_MS) as T;
 
 /**
  * Each find asks for one row more than the ceiling, so a full page is
