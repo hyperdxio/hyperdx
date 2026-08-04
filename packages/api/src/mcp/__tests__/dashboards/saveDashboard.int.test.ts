@@ -942,15 +942,19 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         displayType: 'line' as const,
         sourceId,
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        groupBy: 'SpanName',
         numberFormat,
         compareToPreviousPeriod: true,
         fitYAxisToData: true,
+        seriesLimit: 5,
       };
       const barConfig = {
         displayType: 'stacked_bar' as const,
         sourceId,
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        groupBy: 'SpanName',
         numberFormat,
+        seriesLimit: 3,
       };
       const tableConfig = {
         displayType: 'table' as const,
