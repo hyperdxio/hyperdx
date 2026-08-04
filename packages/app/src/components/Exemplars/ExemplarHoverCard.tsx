@@ -15,6 +15,12 @@ type ExemplarHoverCardProps = {
   isLoading: boolean;
   /** Whether an exemplar trace source is configured for this chart. */
   traceSourceConfigured: boolean;
+  /**
+   * The trace lookup could not run or failed — a misconfigured source kind or a
+   * query error. Distinct from "no rows": both used to read as "not found",
+   * blaming the data for a problem that is not the data's.
+   */
+  traceLookupFailed?: boolean;
   /** Chart's number format, so the exemplar's value reads like the y-axis. */
   numberFormat?: NumberFormat;
   /**
@@ -37,6 +43,7 @@ export function ExemplarHoverCard({
   meta,
   isLoading,
   traceSourceConfigured,
+  traceLookupFailed = false,
   numberFormat,
   pinned = false,
   onClose,
@@ -132,6 +139,11 @@ export function ExemplarHoverCard({
           ) : isLoading ? (
             <Text size="xs" c="dimmed">
               Loading trace…
+            </Text>
+          ) : traceLookupFailed ? (
+            <Text size="xs" c="dimmed">
+              Trace details could not be loaded. Check the exemplar trace source
+              is a trace source and the query succeeded.
             </Text>
           ) : meta ? (
             <Stack gap={2}>

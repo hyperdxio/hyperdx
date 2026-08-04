@@ -69,6 +69,17 @@ describe('ExemplarHoverCard', () => {
     expect(getByText(/Value:/).textContent).toContain('ms');
   });
 
+  it('distinguishes a failed trace lookup from a missing trace', () => {
+    // Both used to read "Trace not found in source", blaming the data for a
+    // misconfigured source kind or a query error.
+    const { getByText, queryByText } = renderWithMantine(
+      <ExemplarHoverCard {...props} traceSourceConfigured traceLookupFailed />,
+    );
+    expect(getByText(/could not be loaded/)).toBeInTheDocument();
+    expect(queryByText(/Trace not found/)).toBeNull();
+    expect(getByText(/Value:/).textContent).toContain('1234.5');
+  });
+
   it('renders nothing when no marker is hovered', () => {
     const { queryByText } = renderWithMantine(
       <ExemplarHoverCard {...props} hovered={null} />,

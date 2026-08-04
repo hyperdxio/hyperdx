@@ -11,7 +11,11 @@ const mockFetch = global.fetch as jest.Mock;
 // actually reads: `status`, `headers.get()`, and a web `ReadableStream` body.
 // Returned as `Response` so callers can hand it straight to `mockResolvedValue`
 // without an `as any` at every site — the proxy only touches the fields below.
-function fakeUpstreamResponse(payload: unknown, status = 200): Response {
+function fakeUpstreamResponse(
+  payload: unknown,
+  status = 200,
+  contentType = 'application/json',
+): Response {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));
@@ -21,7 +25,7 @@ function fakeUpstreamResponse(payload: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
-    headers: new Headers({ 'content-type': 'application/json' }),
+    headers: new Headers({ 'content-type': contentType }),
     body,
     text: jest.fn().mockResolvedValue(JSON.stringify(payload)),
     json: jest.fn().mockResolvedValue(payload),
@@ -111,6 +115,59 @@ describe('prometheus router', () => {
         status: 'error',
         error: 'Connection not found',
       });
+    });
+
+    // The connection host is member-configured, so its response body is untrusted
+    // output on our own origin: /api/* is same-origin-proxied by the app and the
+    // session cookie is sameSite lax. A text/html body forwarded verbatim would
+    // render as script here.
+    it('never forwards a non-JSON upstream content-type, and always sends nosniff', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(
+          '<script>alert(document.cookie)</script>',
+          200,
+          'text/html',
+        ),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.headers['content-type']).not.toContain('text/html');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('passes a JSON upstream content-type through unchanged', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({ status: 'success', data: [] }, 200),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
     });
 
     it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {

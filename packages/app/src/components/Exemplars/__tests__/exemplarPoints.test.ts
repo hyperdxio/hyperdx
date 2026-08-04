@@ -238,6 +238,38 @@ describe('computeExemplarPoints', () => {
   });
 });
 
+describe('computeExemplarPoints window split threshold', () => {
+  // The split reserved a quarter of the budget for 2-sigma companions, but it also
+  // GATED on that reduced number — so 12 populated buckets at the default budget of
+  // 12 rendered 9 markers and left three buckets bare.
+  it('emits one marker per bucket when the buckets fit the budget', () => {
+    const exemplars: Exemplar[] = Array.from({ length: 12 }, (_, i) => ({
+      timestamp: i * 60_000,
+      value: 100 + i,
+      traceId: `t${i}`,
+    }));
+    const points = computeExemplarPoints(exemplars, {
+      maxExemplars: 12,
+      granularity: '1 minute',
+    });
+    expect(points).toHaveLength(12);
+  });
+
+  it('still splits when the buckets outnumber the budget', () => {
+    const exemplars: Exemplar[] = Array.from({ length: 40 }, (_, i) => ({
+      timestamp: i * 60_000,
+      value: 100 + i,
+      traceId: `t${i}`,
+    }));
+    const points = computeExemplarPoints(exemplars, {
+      maxExemplars: 12,
+      granularity: '1 minute',
+    });
+    expect(points.length).toBeLessThanOrEqual(12);
+    expect(points.length).toBeGreaterThan(1);
+  });
+});
+
 describe('computeExemplarYBounds', () => {
   it('uses both numeric domain bounds when the axis is fitted to data', () => {
     expect(computeExemplarYBounds([120, 480], 400)).toEqual({

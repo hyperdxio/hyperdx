@@ -116,6 +116,7 @@ export const MemoChart = memo(function MemoChart({
   onExemplarSelect,
   pinnedExemplarKey = null,
   onExemplarPinEnd,
+  onExemplarsDropped,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -167,6 +168,8 @@ export const MemoChart = memo(function MemoChart({
   pinnedExemplarKey?: string | null;
   /** Invoked when the pinned marker is no longer in the rendered set. */
   onExemplarPinEnd?: () => void;
+  /** How many markers the render-layer clamps dropped; see useExemplarMarkers. */
+  onExemplarsDropped?: (count: number) => void;
 }) {
   const rawId = useId();
   const id = rawId.replace(/:/g, '');
@@ -458,6 +461,7 @@ export const MemoChart = memo(function MemoChart({
     onExemplarHoverEnd,
     onExemplarSelect,
     onExemplarPinEnd,
+    onExemplarsDropped,
     suppressNextClickRef,
   });
 

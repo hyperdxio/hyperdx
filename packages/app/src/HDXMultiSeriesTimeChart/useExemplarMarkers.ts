@@ -29,6 +29,14 @@ type UseExemplarMarkersArgs = {
   onExemplarSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
   onExemplarPinEnd?: () => void;
   /**
+   * How many markers the clamps dropped this render. Reported because the drop
+   * happens in the render layer, below the fetch-layer notice machinery — without
+   * this an overlay can empty itself with nothing on screen explaining why. The
+   * common cause is a fitted y-axis floor above the markers' values, which a
+   * legend selection alone is enough to produce.
+   */
+  onExemplarsDropped?: (count: number) => void;
+  /**
    * Set by the chart's brush-zoom so the synthetic click that follows mouseup can
    * be swallowed. Owned by the chart, not this hook: the zoom and the marker
    * layer are the only two consumers and they must agree on a single flag.
@@ -57,6 +65,7 @@ export function useExemplarMarkers({
   onExemplarHoverEnd,
   onExemplarSelect,
   onExemplarPinEnd,
+  onExemplarsDropped,
   suppressNextClickRef,
 }: UseExemplarMarkersArgs) {
   // While the cursor is over an exemplar marker, the exemplar hover card owns
@@ -106,7 +115,10 @@ export function useExemplarMarkers({
   // evenly across the range and bucketed at the chart's own granularity so each
   // marker sits in the bucket of the point it explains — see
   // computeExemplarPoints. maxExemplars <= 0 means "unlimited" (deduped only).
-  const exemplarPoints = useMemo(() => {
+  // The memo returns the dropped count alongside the points rather than stashing it
+  // in a ref: writing a ref during render is exactly what it looks like, a side
+  // effect in the render phase.
+  const { exemplarPoints, droppedCount } = useMemo(() => {
     const bucketSeconds = convertGranularityToSeconds(granularity);
     const points = computeExemplarPoints(exemplars, {
       maxExemplars,
@@ -125,8 +137,16 @@ export function useExemplarMarkers({
       if (y == null) continue;
       placed.push({ ...p, x, y });
     }
-    return placed;
+    return {
+      exemplarPoints: placed,
+      droppedCount: points.length - placed.length,
+    };
   }, [exemplars, maxExemplars, granularity, xAxisDomain, exemplarYBounds]);
+
+  // Reported from an effect, not the memo, so this never sets state during render.
+  useEffect(() => {
+    onExemplarsDropped?.(droppedCount);
+  }, [droppedCount, onExemplarsDropped]);
 
   // If a refetch/re-thinning drops the hovered marker from the rendered set, its
   // <g> unmounts without a mouseleave. Reset the hover here (against the actual

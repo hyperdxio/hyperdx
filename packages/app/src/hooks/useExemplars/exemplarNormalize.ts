@@ -19,8 +19,15 @@ const SPAN_ID_LABELS = ['span_id', 'spanID', 'spanId', 'span.id'];
  * line per bucket, and treating those as one series would render markers that
  * belong to no drawn line.
  */
+// Whitespace-tolerant, matching isPromqlExemplarEligible. A literal substring
+// test disagreed with the eligibility gate about `histogram_quantile (0.95, ...)`:
+// the toggle allowed it, this kept `le` in the group key, and the overlay came
+// back suppressed with a notice telling the user to aggregate to a single line
+// they already had.
+const HISTOGRAM_QUANTILE_CALL = /\bhistogram_quantile\s*\(/;
+
 function collapsesHistogramBuckets(expression: string | undefined): boolean {
-  return !!expression && expression.includes('histogram_quantile(');
+  return !!expression && HISTOGRAM_QUANTILE_CALL.test(expression);
 }
 
 function pick(labels: Record<string, string>, keys: string[]) {

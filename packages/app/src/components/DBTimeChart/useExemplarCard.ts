@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Router from 'next/router';
 import {
   ChartConfigWithDateRange,
+  DisplayType,
   Exemplar,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -41,10 +43,17 @@ function exemplarTraceWindow(timestampMs: number): [number, number] {
 export function useExemplarCard({
   queriedConfig,
   source,
+  displayType,
   plottedSeriesCount,
 }: {
   queriedConfig: ChartConfigWithDateRange;
   source: TSource | undefined;
+  /**
+   * Swapping this remounts the whole recharts subtree (Area vs Bar are different
+   * element types), so every ExemplarDot unmounts with no mouseleave and any open
+   * card would be left over markers that no longer exist.
+   */
+  displayType: DisplayType | undefined;
   /** Series the chart actually draws; see useExemplars for why it matters. */
   plottedSeriesCount?: number;
 }) {
@@ -63,7 +72,7 @@ export function useExemplarCard({
   // they surface as a toolbar indicator rather than replacing the chart. The
   // upstream message is preferred over the generic fallback because the API
   // phrases these actionably (e.g. "narrow the chart's time range").
-  const exemplarNotice = isExemplarsError
+  const fetchNotice = isExemplarsError
     ? (exemplarsError ??
       'Exemplars could not be loaded for this chart. The metric table may not carry Exemplars.* columns, or the Prometheus endpoint rejected the query.')
     : exemplarsDropped === 'multiple-series'
@@ -162,8 +171,24 @@ export function useExemplarCard({
     if (pinnedRangeRef.current !== rangeKey) {
       pinnedRangeRef.current = null;
       setPinnedExemplar(null);
+      // The hover card too: its position was captured at mouseenter, and a marker
+      // that slides out from under a stationary cursor fires no mouseleave — so the
+      // card would sit at stale coordinates and keep the series tooltip suppressed
+      // until the pointer happened to move.
+      setHoveredExemplar(null);
     }
   }, [pinnedExemplar, rangeKey]);
+
+  // Clear both cards before the chart subtree remounts on a display-type switch.
+  useEffect(() => {
+    setPinnedExemplar(null);
+    setHoveredExemplar(null);
+  }, [displayType]);
+
+  // Markers dropped by the render-layer clamps. Reported up from MemoChart because
+  // the drop happens after the fetch, so the fetch-layer `dropped` reason cannot
+  // see it and the overlay would otherwise thin out with no explanation.
+  const [clampDroppedCount, setClampDroppedCount] = useState(0);
 
   // Escape closes the pinned card, matching the rest of the app's overlays.
   useEffect(() => {
@@ -175,8 +200,22 @@ export function useExemplarCard({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [pinnedExemplar]);
 
-  const { data: hoveredTraceMeta, isLoading: isHoveredTraceMetaLoading } =
-    useExemplarTraceMeta(activeExemplar?.exemplar.traceId, exemplarTraceSource);
+  const {
+    data: hoveredTraceMeta,
+    isLoading: isHoveredTraceMetaLoading,
+    isError: isHoveredTraceMetaError,
+  } = useExemplarTraceMeta(
+    activeExemplar?.exemplar.traceId,
+    exemplarTraceSource,
+  );
+
+  // A configured trace source that isn't actually a Trace kind never runs a query,
+  // so it looks identical to "no rows" — as does a failed query. Both used to read
+  // as "Trace not found in source", blaming the data for a misconfiguration or an
+  // error.
+  const traceLookupFailed =
+    isHoveredTraceMetaError ||
+    (!!exemplarTraceSource && exemplarTraceSource.kind !== SourceKind.Trace);
 
   const navigateToExemplarTrace = useCallback(
     (exemplar: Exemplar) => {
@@ -221,9 +260,19 @@ export function useExemplarCard({
     [cancelClose],
   );
 
+  // The fetch-layer reason wins; a thinned overlay is the lesser problem and its
+  // note only appears when nothing worse is wrong.
+  const exemplarNotice =
+    fetchNotice ??
+    (clampDroppedCount > 0
+      ? `${clampDroppedCount} exemplar marker${clampDroppedCount === 1 ? '' : 's'} fall outside the chart's plotted range and are not drawn. A fitted y-axis floor (which a legend selection alone can produce) sits above them, or they belong to a different time window.`
+      : null);
+
   return {
     exemplars,
     exemplarNotice,
+    reportClampDropped: setClampDroppedCount,
+    traceLookupFailed,
     exemplarTraceSource,
     exemplarTraceSourceId,
     activeExemplar,

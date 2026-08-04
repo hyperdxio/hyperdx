@@ -221,8 +221,22 @@ async function proxyToPrometheus(
   }
 
   res.status(upstreamResp.status);
+
+  // The connection host is member-configured, so its response is untrusted output
+  // on our own origin: the app same-origin-proxies /api/*, and the session cookie
+  // is sameSite lax. Forwarding the upstream content-type verbatim would let a
+  // text/html body render as script here. Send nosniff unconditionally and pass
+  // the content-type through only when it is JSON; anything else is relabelled,
+  // which keeps a genuine Prometheus error body readable while making a hostile
+  // one inert.
+  res.setHeader('x-content-type-options', 'nosniff');
   const contentType = upstreamResp.headers.get('content-type');
-  if (contentType) res.setHeader('content-type', contentType);
+  res.setHeader(
+    'content-type',
+    contentType && /^application\/(json|[\w.+-]+\+json)\b/i.test(contentType)
+      ? contentType
+      : 'application/json',
+  );
 
   if (!upstreamResp.body) {
     res.end();

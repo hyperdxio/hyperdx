@@ -283,12 +283,25 @@ function DBTimeChartComponent({
     previousPeriodOffsetSeconds,
   ]);
 
+  // To enable backward compatibility, allow non-controlled usage of displayType
+  const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
+
+  const displayType = useMemo(() => {
+    if (setDisplayType) {
+      return displayTypeProp;
+    } else {
+      return displayTypeLocal;
+    }
+  }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+
   // Exemplar overlay: data plus the hover/pin card state machine. See
   // useExemplarCard — the chart coordinates with it below because its drill-down
   // tooltip and the exemplar card are mutually exclusive.
   const {
     exemplars,
     exemplarNotice,
+    reportClampDropped,
+    traceLookupFailed,
     exemplarTraceSource,
     activeExemplar,
     pinnedExemplar,
@@ -304,6 +317,7 @@ function DBTimeChartComponent({
   } = useExemplarCard({
     queriedConfig,
     source,
+    displayType,
     // Rendered series count, so a multi-line chart cannot be given markers that
     // belong to an unknown line. Taken from the main query's own result — the
     // exemplar response can't answer it, since Prometheus returns only series
@@ -316,17 +330,6 @@ function DBTimeChartComponent({
     // which they already had. The markers belong to the solid current line.
     plottedSeriesCount: lineData.filter(ld => !ld.isDashed).length,
   });
-
-  // To enable backward compatibility, allow non-controlled usage of displayType
-  const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
-
-  const displayType = useMemo(() => {
-    if (setDisplayType) {
-      return displayTypeProp;
-    } else {
-      return displayTypeLocal;
-    }
-  }, [displayTypeLocal, displayTypeProp, setDisplayType]);
 
   const handleSetDisplayType = useCallback(
     (type: DisplayType) => {
@@ -497,6 +500,7 @@ function DBTimeChartComponent({
             meta={hoveredTraceMeta ?? undefined}
             isLoading={isHoveredTraceMetaLoading}
             traceSourceConfigured={!!exemplarTraceSource}
+            traceLookupFailed={traceLookupFailed}
             numberFormat={axisNumberFormat}
             pinned={pinnedExemplar != null}
             onClose={unpinExemplarCard}
@@ -534,6 +538,7 @@ function DBTimeChartComponent({
             onExemplarSelect={pinExemplarCard}
             pinnedExemplarKey={pinnedExemplarKey}
             onExemplarPinEnd={unpinExemplarCard}
+            onExemplarsDropped={reportClampDropped}
           />
         </>
       )}

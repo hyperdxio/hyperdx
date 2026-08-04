@@ -123,15 +123,17 @@ export function computeExemplarPoints(
   // companions below. Filling one window per slot would exhaust the budget on
   // rank 0 and the spread sampling would never render a second marker — the max
   // envelope this function exists to avoid.
-  // ponytail: when no bucket has a companion those reserved slots go unused
-  // (9 markers instead of 12). The budget is a ceiling, not a quota; add a
-  // top-up pass if the sparser coverage ever reads as missing data.
+  //
+  // Two different thresholds, which is the point. The split only happens when the
+  // buckets genuinely outnumber the budget; gating it on windowCount instead meant
+  // 12 populated buckets at the default budget of 12 rendered 9 markers and left
+  // three buckets bare, which is not "more buckets than the marker budget".
   const windowCount = Math.max(1, Math.ceil(maxExemplars * 0.75));
   const ordered = Array.from(buckets.values()).sort(
     (a, b) => a.bucket - b.bucket,
   );
   const chosen =
-    ordered.length <= windowCount
+    ordered.length <= maxExemplars
       ? ordered
       : Array.from({ length: windowCount }, (_, i) =>
           ordered

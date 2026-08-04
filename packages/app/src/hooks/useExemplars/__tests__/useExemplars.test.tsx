@@ -324,6 +324,32 @@ describe('normalizePrometheusExemplars', () => {
     expect(exemplars.map(e => e.traceId)).toEqual(['a', 'b']);
   });
 
+  it('treats `histogram_quantile (` with a space as collapsing buckets', () => {
+    // isPromqlExemplarEligible allows whitespace before the paren, so a literal
+    // substring test here disagreed with it about one expression: the toggle
+    // allowed it, `le` stayed in the group key, and the overlay came back
+    // suppressed telling the user to aggregate to a single line they already had.
+    const { exemplars, dropped } = normalizePrometheusExemplars(
+      [
+        {
+          seriesLabels: { __name__: 'http_latency_bucket', le: '0.1' },
+          exemplars: [
+            { labels: { trace_id: 'a' }, value: '0.09', timestamp: 1700000000 },
+          ],
+        },
+        {
+          seriesLabels: { __name__: 'http_latency_bucket', le: '0.5' },
+          exemplars: [
+            { labels: { trace_id: 'b' }, value: '0.4', timestamp: 1700000001 },
+          ],
+        },
+      ],
+      'histogram_quantile (0.95, sum(rate(http_latency_bucket[5m])) by (le))',
+    );
+    expect(dropped).toBeUndefined();
+    expect(exemplars.map(e => e.traceId)).toEqual(['a', 'b']);
+  });
+
   it('rejects exemplars whose value or timestamp is not finite', () => {
     // ExemplarSchema is `.finite()` on both: a NaN timestamp collapses every
     // affected exemplar into one bucket and emits a NaN SVG coordinate.
