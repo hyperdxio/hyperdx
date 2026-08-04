@@ -158,7 +158,7 @@ describe('BaseClickhouseClient.logQuery', () => {
       customLogger,
     });
     logQuery(client, 'SELECT 1 FROM system.one');
-    expect(customLogger.trace).toHaveBeenCalledWith({
+    expect(customLogger.debug).toHaveBeenCalledWith({
       module: 'clickhouse',
       message: 'Sending query',
       args: { sql: 'SELECT 1 FROM system.one' },
@@ -172,7 +172,7 @@ describe('BaseClickhouseClient.logQuery', () => {
       customLogger,
     });
     logQuery(client, 'SELECT {id:Int32}', { id: 5 });
-    expect(customLogger.trace).toHaveBeenCalledWith({
+    expect(customLogger.debug).toHaveBeenCalledWith({
       module: 'clickhouse',
       message: 'Sending query',
       args: { sql: 'SELECT 5' },

@@ -700,7 +700,7 @@ export abstract class BaseClickhouseClient {
       debugSql = query;
     }
 
-    this.customLogger.trace({
+    this.customLogger.debug({
       module: 'clickhouse',
       message: 'Sending query',
       args: { sql: debugSql },
