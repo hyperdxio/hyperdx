@@ -118,6 +118,8 @@ jest.mock('@/searchFilters', () => ({
     setFilterValue: jest.fn(),
     clearAllFilters: jest.fn(),
   }),
+  whereToFilters: () => [],
+  replaceFiltersInWhereClause: (where: string) => where,
 }));
 
 jest.mock('@/hooks/useChartConfig', () => ({

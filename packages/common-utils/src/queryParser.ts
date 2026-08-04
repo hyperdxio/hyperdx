@@ -14,6 +14,7 @@ import {
   isClickHouseVersionAtLeast,
   supportsDirectReadMap,
 } from '@/core/clickhouseVersion';
+import { dateTimeValueExpr } from '@/core/dateTimeValue';
 import {
   Metadata,
   parseKeyPath,
@@ -37,7 +38,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-function decodeSpecialTokens(query: string): string {
+export function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
@@ -65,17 +66,21 @@ function normalizeChExpression(expr: string): string {
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
-function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
+export function isNodeTerm(
+  node: lucene.Node | lucene.AST,
+): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
 }
 
-function isNodeRangedTerm(
+export function isNodeRangedTerm(
   node: lucene.Node | lucene.AST,
 ): node is lucene.NodeRangedTerm {
   return 'inclusive' in node && node.inclusive != null;
 }
 
-function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
+export function isBinaryAST(
+  ast: lucene.AST | lucene.Node,
+): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
@@ -85,7 +90,7 @@ function hasStart(
   return 'start' in ast && !!ast.start;
 }
 
-function isLeftOnlyAST(
+export function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
   return (
@@ -407,6 +412,7 @@ export abstract class SQLSerializer implements Serializer {
   ): Promise<{
     column?: string;
     columnJSON?: { string: string; number: string };
+    columnType?: string;
     propertyType?: JSDataType;
     isArray?: boolean;
     found: boolean;
@@ -446,6 +452,7 @@ export abstract class SQLSerializer implements Serializer {
     const {
       column,
       columnJSON,
+      columnType,
       found,
       propertyType,
       isArray,
@@ -495,6 +502,19 @@ export abstract class SQLSerializer implements Serializer {
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
         : '';
+
+    // DateTime / DateTime64 / Date columns can't be compared against a bare
+    // string literal in ClickHouse, so wrap the value in the same parse/convert
+    // expression the SQL filter emitter uses (`dateTimeValueExpr`). Without
+    // this, an exact-match quoted term (e.g. `Timestamp:"2026-06-16T...Z"`)
+    // renders `Timestamp = '2026-06-16T...Z'`, which ClickHouse rejects.
+    if (columnType != null && /\b(?:DateTime64?|Date32?)\b/.test(columnType)) {
+      return SqlString.format(
+        `(${column} ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        [SqlString.raw(dateTimeValueExpr(columnType, SqlString.escape(term)))],
+      );
+    }
+
     if (propertyType === JSDataType.Bool) {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
@@ -713,7 +733,7 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, found, mapKeyIndexExpression, isArray } =
+    const { column, columnType, found, mapKeyIndexExpression, isArray } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
@@ -727,6 +747,17 @@ export abstract class SQLSerializer implements Serializer {
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
         : '';
+
+    // Date columns need parse/convert-wrapped bounds, mirroring dateTimeValueExpr.
+    if (columnType != null && /\b(?:DateTime64?|Date32?)\b/.test(columnType)) {
+      return SqlString.format(
+        `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
+        [
+          SqlString.raw(dateTimeValueExpr(columnType, SqlString.escape(start))),
+          SqlString.raw(dateTimeValueExpr(columnType, SqlString.escape(end))),
+        ],
+      );
+    }
     return SqlString.format(
       `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
       [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
@@ -1868,6 +1899,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     return {
       column: expression.columnExpression,
       columnJSON: expression?.columnExpressionJSON,
+      columnType: expression.columnType,
       propertyType: type ?? undefined,
       isArray,
       found: expression.found,
@@ -1888,9 +1920,14 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  let isNegatedField = node.field[0] === '-';
   const isImplicitField = node.field === IMPLICIT_FIELD;
+  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
+  // Decode special-token placeholders the emitter inserted in the field name
+  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
+  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
+  // still match.
+  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  let isNegatedField = node.field[0] === '-';
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1992,7 +2029,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: fieldWithoutNegation,
+      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),

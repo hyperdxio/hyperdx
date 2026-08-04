@@ -62,7 +62,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it('getColumnForField', async () => {
     const field1 = 'ResourceAttributesJSON.test';
     const res1 = await serializer.getColumnForField(field1, {});
-    expect(res1).toEqual({
+    expect(res1).toMatchObject({
       column: '',
       columnJSON: {
         number:
@@ -75,7 +75,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     });
     const field2 = 'ResourceAttributesJSON.test.nest';
     const res2 = await serializer.getColumnForField(field2, {});
-    expect(res2).toEqual({
+    expect(res2).toMatchObject({
       column: '',
       columnJSON: {
         number:
@@ -1776,7 +1776,7 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
   it('getColumnForField', async () => {
     const field1 = 'Events.Name';
     const res1 = await serializer.getColumnForField(field1, {});
-    expect(res1).toEqual({
+    expect(res1).toMatchObject({
       column: 'Events.Name',
       found: true,
       propertyType: JSDataType.String,
@@ -1785,7 +1785,7 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
 
     const field2 = 'Events.Count';
     const res2 = await serializer.getColumnForField(field2, {});
-    expect(res2).toEqual({
+    expect(res2).toMatchObject({
       column: 'Events.Count',
       found: true,
       propertyType: JSDataType.Number,
@@ -1794,7 +1794,7 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
 
     const field3 = 'Events.IsAvailable';
     const res3 = await serializer.getColumnForField(field3, {});
-    expect(res3).toEqual({
+    expect(res3).toMatchObject({
       column: 'Events.IsAvailable',
       found: true,
       propertyType: JSDataType.Bool,

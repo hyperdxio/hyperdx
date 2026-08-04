@@ -116,7 +116,11 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
-import { useSearchPageFilterState } from '@/searchFilters';
+import {
+  replaceFiltersInWhereClause,
+  useSearchPageFilterState,
+  whereToFilters,
+} from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
@@ -1263,18 +1267,15 @@ export function DBSearchPage() {
 
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
-    handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
-        setSearchedConfig({
-          select,
-          where,
-          whereLanguage,
-          source,
-          filters,
-          orderBy,
-        });
-      },
-    )();
+    handleSubmit(({ select, where, whereLanguage, source, orderBy }) => {
+      setSearchedConfig({
+        select,
+        where,
+        whereLanguage,
+        source,
+        orderBy,
+      });
+    })();
     setPatternColumn(draftPatternColumn || null);
     // clear query errors
     setQueryErrors({});
@@ -1289,13 +1290,6 @@ export function DBSearchPage() {
   ]);
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
-  const handleSetFilters = useCallback(
-    (filters: Filter[]) => {
-      setValue('filters', filters);
-      debouncedSubmit();
-    },
-    [debouncedSubmit, setValue],
-  );
 
   // Top-level column names for the active source, used to quote
   // filter keys that contain special characters.
@@ -1343,13 +1337,90 @@ export function DBSearchPage() {
   const { dateTimeColumns, onResolvedColumnsChange } =
     useResolvedDateTimeColumns(inputSourceColumns);
 
-  const filters = useWatch({ name: 'filters', control });
+  // The `where` clause is the canonical representation of the query. The
+  // sidebar's FilterState is derived from it (via `whereToFilters`) and sidebar
+  // toggles rewrite it in place (via `replaceFiltersInWhereClause`), so the
+  // filter sidebar and the query text can never drift apart.
+  const inputWhere = useWatch({ name: 'where', control });
+  const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
+  const searchQuery = useMemo(
+    () =>
+      whereToFilters(
+        inputWhere,
+        inputWhereLanguage ?? 'lucene',
+        knownColumns,
+        dateTimeColumns,
+      ),
+    [inputWhere, inputWhereLanguage, knownColumns, dateTimeColumns],
+  );
+
+  // Sidebar filter mutations arrive as the canonical SQL `Filter[]` the hook
+  // emits; rewrite the facet clauses of the live `where` text to match and
+  // drop the separate `filters` param entirely.
+  const handleSetFilters = useCallback(
+    (filters: Filter[]) => {
+      const newWhere = replaceFiltersInWhereClause(
+        inputWhere,
+        inputWhereLanguage ?? 'lucene',
+        filters,
+        knownColumns,
+        dateTimeColumns,
+      );
+      setValue('where', newWhere);
+      debouncedSubmit();
+    },
+    [
+      debouncedSubmit,
+      setValue,
+      inputWhere,
+      inputWhereLanguage,
+      knownColumns,
+      dateTimeColumns,
+    ],
+  );
+
   const searchFilters = useSearchPageFilterState({
-    searchQuery: filters ?? undefined,
+    searchQuery,
     onFilterChange: handleSetFilters,
     dateTimeColumns,
     knownColumns,
   });
+
+  // One-time migration: legacy `filters` params (URL, saved search) move into
+  // the `where` clause, now the canonical representation. Gated on the source's
+  // columns being known so date columns and special-character keys emit
+  // correctly, then `filters` is cleared so the page stops persisting it.
+  useEffect(() => {
+    const { filters: legacyFilters, where, whereLanguage } = searchedConfig;
+    if (!legacyFilters?.length || !inputSourceColumns) return;
+    try {
+      const migratedWhere = replaceFiltersInWhereClause(
+        where ?? '',
+        (whereLanguage as 'sql' | 'lucene') ?? 'lucene',
+        legacyFilters,
+        knownColumns,
+        dateTimeColumns,
+      );
+      if (migratedWhere !== (where ?? '')) {
+        setSearchedConfig({ where: migratedWhere, filters: [] });
+      } else if (where) {
+        // Filters were already represented in the where text — just stop
+        // persisting the redundant param.
+        setSearchedConfig({ filters: [] });
+      }
+    } catch (e) {
+      console.error('Failed to migrate legacy filters into where clause', e);
+    }
+    // Runs when a legacy filters-bearing config is present; the emit depends on
+    // columns loading so re-check when they arrive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    searchedConfig.filters,
+    searchedConfig.where,
+    searchedConfig.whereLanguage,
+    inputSourceColumns,
+    setSearchedConfig,
+  ]);
 
   useEffect(() => {
     // If the user changes the source dropdown, reset the select and orderby fields
@@ -1493,8 +1564,6 @@ export function DBSearchPage() {
       : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
-  const inputWhere = useWatch({ name: 'where', control });
-  const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
   // query suggestion for 'where' if error
   const whereSuggestions = useSqlSuggestions({
     input: inputWhere,
@@ -1712,7 +1781,6 @@ export function DBSearchPage() {
       } else {
         qParams.append('select', searchedConfig.select || '');
         qParams.append('where', where || searchedConfig.where || '');
-        qParams.append('filters', JSON.stringify(searchedConfig.filters ?? []));
         qParams.append('source', searchedSource?.id || '');
       }
 
@@ -1720,7 +1788,6 @@ export function DBSearchPage() {
     },
     [
       interval,
-      searchedConfig.filters,
       searchedConfig.select,
       searchedConfig.where,
       searchedSource?.id,

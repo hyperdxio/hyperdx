@@ -2,7 +2,12 @@ import { enableMapSet } from 'immer';
 import { Filter } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
-import { parseQuery, useSearchPageFilterState } from '@/searchFilters';
+import {
+  parseQuery,
+  replaceFiltersInWhereClause,
+  useSearchPageFilterState,
+  whereToFilters,
+} from '@/searchFilters';
 
 // Filter state stores values in Sets; the app enables immer's MapSet plugin at
 // startup, but this isolated hook test must enable it explicitly.
@@ -190,5 +195,68 @@ describe('canonical key escaping at the persistence boundary', () => {
         'a',
       ]);
     });
+  });
+});
+
+describe('whereToFilters', () => {
+  it('derives SQL filters from a lucene where clause', () => {
+    expect(whereToFilters('host:"a"', 'lucene', new Set())).toEqual([
+      { type: 'sql', condition: "host IN ('a')" },
+    ]);
+  });
+
+  it('derives SQL filters from a sql where clause', () => {
+    expect(whereToFilters("host IN ('a', 'b')", 'sql', new Set())).toEqual([
+      { type: 'sql', condition: "host IN ('a', 'b')" },
+    ]);
+  });
+
+  it('projects only facet clauses, dropping free text', () => {
+    expect(whereToFilters('error 404 host:"a"', 'lucene', new Set())).toEqual([
+      { type: 'sql', condition: "host IN ('a')" },
+    ]);
+  });
+
+  it('quotes special-character columns via knownColumns', () => {
+    expect(
+      whereToFilters('service-name:"a"', 'lucene', new Set(['service-name'])),
+    ).toEqual([{ type: 'sql', condition: "`service-name` IN ('a')" }]);
+  });
+
+  it('emits map sub-keys in canonical bracket form', () => {
+    expect(
+      whereToFilters(
+        'LogAttributes.host.name:"x"',
+        'lucene',
+        new Set(['LogAttributes']),
+      ),
+    ).toEqual([
+      { type: 'sql', condition: "LogAttributes['host.name'] IN ('x')" },
+    ]);
+  });
+});
+
+describe('replaceFiltersInWhereClause', () => {
+  it('rewrites a lucene facet clause while preserving free text', () => {
+    const where = 'host:"a" AND error';
+    const filters: Filter[] = [{ type: 'sql', condition: "host IN ('b')" }];
+    expect(
+      replaceFiltersInWhereClause(where, 'lucene', filters, new Set()),
+    ).toBe('error AND host:"b"');
+  });
+
+  it('rewrites a sql facet conjunct while preserving other conjuncts', () => {
+    const where = "host IN ('a') AND foo = 1";
+    const filters: Filter[] = [{ type: 'sql', condition: "host IN ('b')" }];
+    expect(replaceFiltersInWhereClause(where, 'sql', filters, new Set())).toBe(
+      "foo = 1 AND host IN ('b')",
+    );
+  });
+
+  it('emits a fresh clause when the where is empty', () => {
+    const filters: Filter[] = [{ type: 'sql', condition: "host IN ('b')" }];
+    expect(replaceFiltersInWhereClause('', 'lucene', filters, new Set())).toBe(
+      'host:"b"',
+    );
   });
 });
