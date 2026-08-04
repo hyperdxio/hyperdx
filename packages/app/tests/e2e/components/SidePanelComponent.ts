@@ -36,6 +36,22 @@ export class SidePanelComponent {
   }
 
   /**
+   * The row-level error state shown when the full row data query fails.
+   */
+  get errorState() {
+    return this.panelContainer.getByTestId('row-error-state');
+  }
+
+  /**
+   * The "Known Columns List" hint rendered inside the error state when the
+   * failure looks like a `SELECT *` against a Distributed/Merge table whose
+   * target tables have mismatched columns.
+   */
+  get knownColumnsListHint() {
+    return this.panelContainer.getByTestId('known-columns-list-hint');
+  }
+
+  /**
    * Get a specific tab by name
    * Usage in spec: await expect(sidePanel.getTab('overview')).toBeVisible()
    */
