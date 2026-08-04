@@ -21,6 +21,13 @@ type UseChartScalesArgs = {
   graphResults: Record<string, unknown>[];
   lineData: LineData[];
   selectedSeriesNames: Set<string> | undefined;
+  /**
+   * Whether any exemplar marker could draw. visibleSeriesMax exists only to give
+   * the exemplar clamp an upper bound, and computing it is an O(rows x series)
+   * pass — which every time chart in the app was paying even with the overlay
+   * switched off for the whole deployment.
+   */
+  hasExemplars: boolean;
 };
 
 /**
@@ -43,6 +50,7 @@ export function useChartScales({
   graphResults,
   lineData,
   selectedSeriesNames,
+  hasExemplars,
 }: UseChartScalesArgs) {
   // Max value across the visible series. Used as the exemplar clamp's upper
   // bound when the y-axis domain is 'auto', so a single slow-trace outlier (which
@@ -50,6 +58,7 @@ export function useChartScales({
   // the marker pins to the top of the series range while its hover card still
   // shows the true duration. See computeExemplarYBounds.
   const visibleSeriesMax = useMemo(() => {
+    if (!hasExemplars) return 0;
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
     let max = -Infinity;
     graphResults.forEach(dataPoint => {
@@ -64,7 +73,7 @@ export function useChartScales({
       });
     });
     return max;
-  }, [graphResults, lineData, selectedSeriesNames]);
+  }, [hasExemplars, graphResults, lineData, selectedSeriesNames]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
@@ -169,7 +178,6 @@ export function useChartScales({
   }, [annotations, xAxisDomain]);
 
   return {
-    visibleSeriesMax,
     yAxisDomain,
     exemplarYBounds,
     xAxisDomain,

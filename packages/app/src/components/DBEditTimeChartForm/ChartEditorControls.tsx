@@ -148,6 +148,7 @@ export function ChartEditorControls({
       seriesCount: fields.length,
       seriesReturnType,
       metricType: series[0]?.metricType,
+      aggFn: series[0]?.aggFn,
       hasGroupBy,
     });
   const canShowExemplars = IS_EXEMPLARS_ENABLED && isExemplarShape;

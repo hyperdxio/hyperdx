@@ -30,11 +30,7 @@ import { useChartSyncId } from '@/chartSync';
 import { findNearestSeriesKey, LineData } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { toViewportPoint } from '@/components/charts/ChartTooltip';
-import {
-  clampExemplarX,
-  clampExemplarY,
-  ExemplarDot,
-} from '@/components/Exemplars';
+import { ExemplarDot } from '@/components/Exemplars';
 import type { NumberFormat } from '@/types';
 import { useFormatTime } from '@/useFormatTime';
 import { COLORS, formatNumber } from '@/utils';
@@ -287,6 +283,7 @@ export const MemoChart = memo(function MemoChart({
       graphResults,
       lineData,
       selectedSeriesNames,
+      hasExemplars: !!exemplars?.length,
     });
 
   const [containerWidth, setContainerWidth] = useState(0);
@@ -455,6 +452,8 @@ export const MemoChart = memo(function MemoChart({
     maxExemplars,
     granularity,
     pinnedExemplarKey,
+    xAxisDomain,
+    exemplarYBounds,
     onExemplarHover,
     onExemplarHoverEnd,
     onExemplarSelect,
@@ -729,10 +728,14 @@ export const MemoChart = memo(function MemoChart({
           {exemplarPoints.map(p => (
             <ReferenceDot
               key={p.key}
-              // Pinned into the rendered x-domain — see clampExemplarX.
-              x={clampExemplarX(p.x, xAxisDomain)}
-              // Pinned into the rendered y-domain — see exemplarYBounds.
-              y={clampExemplarY(p.y, exemplarYBounds)}
+              // Already placed inside the x-domain by useExemplarMarkers, which
+              // also drops markers that belong to a different window.
+              x={p.x}
+              // Already placed inside the y-range by useExemplarMarkers.
+              y={p.y}
+              // Stated rather than assumed: both clamps exist because the default
+              // is "discard", and recharts 3 landed here recently.
+              ifOverflow="discard"
               shape={
                 <ExemplarDot
                   exemplar={p.exemplar}

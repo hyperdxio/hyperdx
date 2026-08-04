@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Exemplar } from '@hyperdx/common-utils/dist/types';
+import { Exemplar, NumberFormat } from '@hyperdx/common-utils/dist/types';
 import { Button, CloseButton, Group, Paper, Stack, Text } from '@mantine/core';
 
 import type { PositionedExemplar } from '@/components/Exemplars/exemplarPoints';
 import type { ExemplarTraceMeta } from '@/hooks/useExemplars';
+import { useFormatTime } from '@/useFormatTime';
+import { formatNumber } from '@/utils';
 
 type ExemplarHoverCardProps = {
   /** The hovered exemplar plus its on-screen position; null hides the card. */
@@ -13,6 +15,8 @@ type ExemplarHoverCardProps = {
   isLoading: boolean;
   /** Whether an exemplar trace source is configured for this chart. */
   traceSourceConfigured: boolean;
+  /** Chart's number format, so the exemplar's value reads like the y-axis. */
+  numberFormat?: NumberFormat;
   /**
    * Clicking a marker pins the card open: it stops following the cursor and
    * only closes via `onClose` (or a click elsewhere on the chart).
@@ -33,12 +37,14 @@ export function ExemplarHoverCard({
   meta,
   isLoading,
   traceSourceConfigured,
+  numberFormat,
   pinned = false,
   onClose,
   onInspect,
   onMouseEnter,
   onMouseLeave,
 }: ExemplarHoverCardProps) {
+  const formatTime = useFormatTime();
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -103,6 +109,21 @@ export function ExemplarHoverCard({
               )}
             </Group>
           </Group>
+          {/*
+            The exemplar's own value and time, always shown. The marker's drawn
+            position is not trustworthy on its own: clampExemplarY pins it into
+            the y-domain and clampExemplarX into the x-domain, so a marker can sit
+            up to a bucket away in time and at the axis edge in value. These two
+            rows are what make that trade-off honest, which is why they render
+            here rather than inside the trace-source branch below — a chart with
+            no trace source configured still needs them.
+          */}
+          <Stack gap={2}>
+            <Text size="xs">
+              Value: {formatNumber(exemplar.value, numberFormat)}
+            </Text>
+            <Text size="xs">Time: {formatTime(exemplar.timestamp)}</Text>
+          </Stack>
           {!traceSourceConfigured ? (
             <Text size="xs" c="dimmed">
               Set an exemplar trace source in the chart editor to see trace

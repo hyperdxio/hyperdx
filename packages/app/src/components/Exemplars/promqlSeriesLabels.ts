@@ -57,14 +57,25 @@ const parseLabelList = (clause: string) =>
 const sameLabels = (a: Set<string>, b: Set<string>) =>
   a.size === b.size && [...a].every(l => b.has(l));
 
+/** A bare PromQL label name. Anything else in a `by`/`without` list is not one. */
+const LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 /**
- * Strip string literals so a label *value* containing `by (`, `without (`, or an
- * operator cannot be read as syntax — e.g. `{job="sum by (le)"}` or
- * `{path="/a+b"}`. Replaced with `""` rather than removed so adjacent tokens do
- * not run together.
+ * Strip string literals and comments so their contents cannot be read as syntax —
+ * e.g. `{job="sum by (le)"}` or `{path="/a+b"}`. Replaced with `""` rather than
+ * removed so adjacent tokens do not run together.
+ *
+ * Backticks are PromQL raw strings and `#` starts a comment; both were missed
+ * before, which let either hide a clause or an operator from the checks below.
  */
 function stripStringLiterals(expression: string): string {
-  return expression.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+  // Strings first, comments second. A `#` is only a comment OUTSIDE a string, so
+  // stripping comments first truncates at a `#` inside a label value (a URL
+  // fragment, say) and eats the rest of the expression — including any `by (...)`
+  // clause, which silently suppresses the overlay.
+  return expression
+    .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""')
+    .replace(/#[^\n]*/g, '');
 }
 
 /**
@@ -100,13 +111,27 @@ export function promqlSeriesLabelRule(
   // clause belongs to.
   if (byClauses.length > 0 && withoutClauses.length > 0) return ALL;
 
-  // Remove the clause text before checking for operators, so the `/` in a rate
-  // interval or a label list never reads as division.
-  const withoutClauseText = src
+  // Remove everything that can legitimately contain an operator character before
+  // testing for a top-level operator. Label matchers matter most: `!=` and `=~`
+  // are ordinary matcher syntax, so leaving `{code!="200"}` in would read as a
+  // comparison and suppress the overlay on a query that does aggregate to one
+  // line.
+  const operatorCandidate = src
     .replace(BY_CLAUSE, '')
     .replace(WITHOUT_CLAUSE, '')
+    .replace(/\{[^}]*\}/g, '') // label matchers: {code!="200"}
     .replace(/\[[^\]]*\]/g, ''); // range selectors: [5m], [1h:5m]
-  if (BINARY_OPERATOR.test(withoutClauseText)) return ALL;
+  if (BINARY_OPERATOR.test(operatorCandidate)) return ALL;
+
+  // A clause entry that is not a bare label name means we misread the expression
+  // (a quoted name, say, which stripStringLiterals has already rewritten to `""`).
+  // Keeping it would build a key that matches no real label, collapsing every raw
+  // series into one group and slipping past the multiple-series guard — the exact
+  // fail-open this module promises not to have.
+  const allBare = [...byClauses, ...withoutClauses]
+    .flat()
+    .every(l => LABEL_NAME.test(l));
+  if (!allBare) return ALL;
 
   if (byClauses.length > 0) {
     const sets = byClauses.map(l => new Set(l));

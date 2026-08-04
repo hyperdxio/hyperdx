@@ -5,15 +5,25 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
 
-import { computeExemplarPoints } from '@/components/Exemplars';
+import {
+  clampExemplarX,
+  clampExemplarY,
+  computeExemplarPoints,
+  type ExemplarYBounds,
+} from '@/components/Exemplars';
 
 type UseExemplarMarkersArgs = {
   exemplars: Exemplar[] | undefined;
   maxExemplars: number;
   granularity: string;
   pinnedExemplarKey: string | null;
+  /** Rendered x-domain, so out-of-window markers are dropped, not dragged in. */
+  xAxisDomain: [number, number];
+  /** Rendered y-range; a marker below the floor is dropped, not raised onto it. */
+  exemplarYBounds: ExemplarYBounds;
   onExemplarHover?: (exemplar: Exemplar, cx: number, cy: number) => void;
   onExemplarHoverEnd?: () => void;
   onExemplarSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
@@ -41,6 +51,8 @@ export function useExemplarMarkers({
   maxExemplars,
   granularity,
   pinnedExemplarKey,
+  xAxisDomain,
+  exemplarYBounds,
   onExemplarHover,
   onExemplarHoverEnd,
   onExemplarSelect,
@@ -94,10 +106,27 @@ export function useExemplarMarkers({
   // evenly across the range and bucketed at the chart's own granularity so each
   // marker sits in the bucket of the point it explains — see
   // computeExemplarPoints. maxExemplars <= 0 means "unlimited" (deduped only).
-  const exemplarPoints = useMemo(
-    () => computeExemplarPoints(exemplars, { maxExemplars, granularity }),
-    [exemplars, maxExemplars, granularity],
-  );
+  const exemplarPoints = useMemo(() => {
+    const bucketSeconds = convertGranularityToSeconds(granularity);
+    const points = computeExemplarPoints(exemplars, {
+      maxExemplars,
+      granularity,
+    });
+    const placed: typeof points = [];
+    for (const p of points) {
+      // null from either clamp => there is no honest place to draw this marker:
+      // a different window (see clampExemplarX) or below the rendered floor (see
+      // clampExemplarY). Dropping here, rather than at render, keeps the reset
+      // effects below keyed on what is actually drawn — otherwise a card could
+      // stay open pointing at a marker recharts never rendered.
+      const x = clampExemplarX(p.x, xAxisDomain, bucketSeconds);
+      if (x == null) continue;
+      const y = clampExemplarY(p.y, exemplarYBounds);
+      if (y == null) continue;
+      placed.push({ ...p, x, y });
+    }
+    return placed;
+  }, [exemplars, maxExemplars, granularity, xAxisDomain, exemplarYBounds]);
 
   // If a refetch/re-thinning drops the hovered marker from the rendered set, its
   // <g> unmounts without a mouseleave. Reset the hover here (against the actual

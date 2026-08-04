@@ -2365,10 +2365,27 @@ export function exemplarScanBucketing(
  * The chart-editor toggle and the SQL renderer both delegate here so they can't
  * drift apart.
  */
+// Aggregations whose result is on the same scale as a single observation, and so
+// share an axis with `Exemplars.Value`. A quantile, average, min or max of
+// durations is itself a duration; a count is a number of observations and a sum is
+// their total, both of which put the axis in a different unit — a duration marker
+// clamped into a count domain reads as a real point on that scale. `none` is the
+// raw value, so it qualifies.
+const EXEMPLAR_COMPATIBLE_AGG_FNS = new Set([
+  'avg',
+  'max',
+  'min',
+  'quantile',
+  'last_value',
+  'any',
+  'none',
+]);
+
 export function isExemplarEligible({
   seriesCount,
   seriesReturnType,
   metricType,
+  aggFn,
   hasGroupBy,
 }: {
   seriesCount: number;
@@ -2381,6 +2398,12 @@ export function isExemplarEligible({
   // Callers must pass a common-utils MetricsDataType value (lowercase
   // 'histogram'); a legacy-enum value would compile but never match.
   metricType?: string;
+  /**
+   * The series' aggregation. `string` for the same tsup reason as `metricType`.
+   * Undefined is treated as ineligible: a caller that cannot say what it plots
+   * cannot promise the axis is a duration.
+   */
+  aggFn?: string;
   hasGroupBy: boolean;
 }): boolean {
   return (
@@ -2388,6 +2411,8 @@ export function isExemplarEligible({
     seriesReturnType !== 'ratio' &&
     (metricType === MetricsDataType.Histogram ||
       metricType === MetricsDataType.ExponentialHistogram) &&
+    aggFn != null &&
+    EXEMPLAR_COMPATIBLE_AGG_FNS.has(aggFn) &&
     !hasGroupBy
   );
 }
@@ -2473,12 +2498,16 @@ export async function renderMetricExemplarsChartConfig(
     isRawSqlChartConfig(chartConfig) ||
     isPromqlChartConfig(chartConfig) ||
     !isMetricChartConfig(chartConfig) ||
-    !Array.isArray(chartConfig.select)
+    !Array.isArray(chartConfig.select) ||
+    // Without a range, renderWhere emits no time predicate and this becomes a
+    // whole-table ARRAY JOIN plus sort, bounded only by the trailing LIMIT. The
+    // PromQL branch already refuses this case; match it.
+    chartConfig.dateRange == null
   ) {
     return null;
   }
   const { metricTables, select } = chartConfig;
-  const { metricType, metricName, metricNameSql } = select[0] ?? {};
+  const { metricType, metricName, metricNameSql, aggFn } = select[0] ?? {};
   // Shared eligibility rule (single, non-ratio, non-grouped histogram series) —
   // see isExemplarEligible. A Group By in particular would pool exemplars from
   // every group into one unattributable set.
@@ -2487,6 +2516,7 @@ export async function renderMetricExemplarsChartConfig(
       seriesCount: select.length,
       seriesReturnType: chartConfig.seriesReturnType,
       metricType,
+      aggFn,
       hasGroupBy: isUsingGroupBy(chartConfig),
     })
   ) {
@@ -2502,8 +2532,49 @@ export async function renderMetricExemplarsChartConfig(
   // the metric-name predicate alongside the user filters, then let renderWhere
   // assemble the time filter + filters exactly as the main query does. The
   // guards above narrow chartConfig to the metric builder config, so no cast.
+  // Bucket the scan so every part of the range gets a fair shot at a marker.
+  // 'auto' is resolved here rather than left to timeBucketExpr so the bucket
+  // column and the per-bucket limit agree on the same width.
+  const granularity: SQLInterval =
+    chartConfig.granularity && chartConfig.granularity !== 'auto'
+      ? chartConfig.granularity
+      : chartConfig.dateRange
+        ? convertDateRangeToGranularityString(chartConfig.dateRange)
+        : '1 minute';
+  const { interval, perBucket } = exemplarScanBucketing(
+    granularity,
+    chartConfig.dateRange,
+  );
+  // How far an exemplar's own timestamp can trail its data point is the metric's
+  // collection interval, which we don't know here. The chart's granularity is a
+  // proxy, not the same thing — and on a short window it resolves to 15s or 30s,
+  // finer than a typical scrape, which would leave the newest exemplars out of
+  // reach again. So take the larger of the granularity and a one-minute floor.
+  // The exact ex_TimeUnix bound below plus `LIMIT n BY bucket` trim the overshoot,
+  // so erring wide is close to free. The derived bucket width is deliberately not
+  // used: exemplarScanBucketing can stretch it to many minutes on a multi-day
+  // range, which over-fetches for no benefit.
+  const COLLECTION_INTERVAL_FLOOR_MS = 60_000;
+  const collectionIntervalMs = Math.max(
+    convertGranularityToSeconds(granularity) * 1000,
+    COLLECTION_INTERVAL_FLOOR_MS,
+  );
+
+  const [rangeStart, rangeEnd] = chartConfig.dateRange;
+
+  // renderWhere bounds the *row's* TimeUnix, but the value we project and bucket
+  // is the ARRAY JOINed `ex_TimeUnix`. Those are not the same instant: an
+  // exemplar is attached to the data point that covers it, so its own timestamp
+  // falls in the collection interval *before* that row's. So the row bound is
+  // widened forward by one interval — otherwise an exemplar inside the window
+  // whose data point lands just after it is never returned — and the exact
+  // window is then applied to `ex_TimeUnix` below, which also drops the
+  // pre-window exemplars the widened row bound now lets through.
+  const rowBoundEnd = new Date(rangeEnd.getTime() + collectionIntervalMs);
+
   const whereConfig: BuilderChartConfigWithOptDateRangeEx = {
     ...chartConfig,
+    dateRange: [rangeStart, rowBoundEnd],
     from: { ...chartConfig.from, tableName: table },
     timestampValueExpression:
       chartConfig.timestampValueExpression || DEFAULT_METRIC_TABLE_TIME_COLUMN,
@@ -2522,19 +2593,6 @@ export async function renderMetricExemplarsChartConfig(
   // surface traces from other metrics. AND it separately from the user filters.
   const metricNameCondition = createMetricNameFilter(metricName, metricNameSql);
 
-  // Bucket the scan so every part of the range gets a fair shot at a marker.
-  // 'auto' is resolved here rather than left to timeBucketExpr so the bucket
-  // column and the per-bucket limit agree on the same width.
-  const granularity: SQLInterval =
-    chartConfig.granularity && chartConfig.granularity !== 'auto'
-      ? chartConfig.granularity
-      : chartConfig.dateRange
-        ? convertDateRangeToGranularityString(chartConfig.dateRange)
-        : '1 minute';
-  const { interval, perBucket } = exemplarScanBucketing(
-    granularity,
-    chartConfig.dateRange,
-  );
   const bucketExpr = timeBucketExpr({
     interval,
     timestampValueExpression: 'ex_TimeUnix',
@@ -2555,7 +2613,7 @@ export async function renderMetricExemplarsChartConfig(
       \`Exemplars.Value\` AS ex_Value,
       \`Exemplars.TraceId\` AS ex_TraceId,
       \`Exemplars.SpanId\` AS ex_SpanId`,
-    chSql`WHERE ${where.sql ? where : chSql`1 = 1`} AND (${metricNameCondition}) AND notEmpty(ex_TraceId)`,
+    chSql`WHERE ${where.sql ? where : chSql`1 = 1`} AND (${metricNameCondition}) AND notEmpty(ex_TraceId) AND ex_TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: rangeStart.getTime() }}) AND ex_TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: rangeEnd.getTime() }})`,
     // Within a bucket the slowest traces are the interesting ones; across
     // buckets we want coverage, so the per-bucket limit — not the value order —
     // is what bounds the result set. exemplarScanBucketing keeps

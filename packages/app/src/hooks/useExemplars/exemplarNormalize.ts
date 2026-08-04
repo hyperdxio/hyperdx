@@ -117,10 +117,15 @@ export function normalizePrometheusExemplars(
   }
   // Exemplars are a single-series feature today: their y-position is the trace's
   // own value on the chart's shared axis, so markers from multiple series can't
-  // be attributed or coloured yet. Drop the overlay rather than render ambiguous
-  // markers. Metric name is checked separately from the label key because it is
-  // excluded from that key — two different metrics carrying no other labels
-  // would both produce an empty key and merge.
+  // be attributed or coloured yet.
+  //
+  // This payload check catches an exemplar response that spans several series or
+  // metrics. It is NOT sufficient on its own: Prometheus only returns series that
+  // carry a sampled exemplar, so it answers "how many series had exemplars", not
+  // "how many lines does the chart draw". The caller supplies the rendered series
+  // count for that — see useExemplars. Metric name is counted separately from the
+  // label key because it is excluded from that key, so two metrics with no other
+  // labels would both produce an empty key and merge.
   if (seenSeries.size > 1 || seenMetrics.size > 1) {
     return { exemplars: [], dropped: 'multiple-series' };
   }
@@ -154,7 +159,15 @@ export function capExemplarsPerBucket(
   const bucketMs = rangeMs / EXEMPLAR_QUERY_LIMIT;
   const byBucket = new Map<number, Exemplar[]>();
   for (const ex of sorted) {
-    const bucket = Math.floor((ex.timestamp - start.getTime()) / bucketMs);
+    // Clamped to the last bucket. An inclusive range puts a timestamp exactly on
+    // `end` at index EXEMPLAR_QUERY_LIMIT — one past the last bucket — giving 201
+    // buckets, which drove `perBucket` to 1 and pushed the total over the budget.
+    // The trailing slice then trimmed a *time-sorted* list, so the exemplar it
+    // dropped was the newest one, at the chart's right-hand edge.
+    const bucket = Math.min(
+      EXEMPLAR_QUERY_LIMIT - 1,
+      Math.max(0, Math.floor((ex.timestamp - start.getTime()) / bucketMs)),
+    );
     const inBucket = byBucket.get(bucket);
     if (inBucket) inBucket.push(ex);
     else byBucket.set(bucket, [ex]);
@@ -163,15 +176,21 @@ export function capExemplarsPerBucket(
     1,
     Math.floor(EXEMPLAR_QUERY_LIMIT / byBucket.size),
   );
-  return Array.from(byBucket.keys())
-    .sort((a, b) => a - b)
-    .flatMap(k =>
-      [...byBucket.get(k)!]
-        .sort((a, b) => b.value - a.value)
-        .slice(0, perBucket),
-    )
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(0, EXEMPLAR_QUERY_LIMIT);
+  return (
+    Array.from(byBucket.keys())
+      .sort((a, b) => a - b)
+      .flatMap(k =>
+        [...byBucket.get(k)!]
+          .sort((a, b) => b.value - a.value)
+          .slice(0, perBucket),
+      )
+      // buckets <= LIMIT after the clamp above, and perBucket = floor(LIMIT/buckets),
+      // so buckets * perBucket <= LIMIT: the slice is a backstop that no longer has
+      // anything to drop. Chronological order is restored last, after the budget is
+      // already satisfied, so it can never decide *which* exemplars survive.
+      .slice(0, EXEMPLAR_QUERY_LIMIT)
+      .sort((a, b) => a.timestamp - b.timestamp)
+  );
 }
 
 /**

@@ -3522,6 +3522,7 @@ describe('isExemplarEligible', () => {
     seriesCount: 1,
     seriesReturnType: 'column' as const,
     metricType: MetricsDataType.Histogram,
+    aggFn: 'quantile',
     hasGroupBy: false,
   };
 
@@ -3557,6 +3558,29 @@ describe('isExemplarEligible', () => {
     expect(isExemplarEligible({ ...eligible, metricType: undefined })).toBe(
       false,
     );
+  });
+
+  it('rejects aggregations that leave the axis in another unit', () => {
+    // A count of observations or their sum is not on the same scale as one
+    // observation, so a duration marker clamped into that domain reads as a real
+    // point on it — the failure the PromQL path already guards against.
+    expect(isExemplarEligible({ ...eligible, aggFn: 'count' })).toBe(false);
+    expect(isExemplarEligible({ ...eligible, aggFn: 'sum' })).toBe(false);
+    expect(isExemplarEligible({ ...eligible, aggFn: 'count_distinct' })).toBe(
+      false,
+    );
+    expect(isExemplarEligible({ ...eligible, aggFn: 'increase' })).toBe(false);
+  });
+
+  it('accepts aggregations that stay on the observation scale', () => {
+    for (const aggFn of ['avg', 'max', 'min', 'quantile', 'none']) {
+      expect(isExemplarEligible({ ...eligible, aggFn })).toBe(true);
+    }
+  });
+
+  it('rejects a missing aggregation', () => {
+    // A caller that cannot say what it plots cannot promise a duration axis.
+    expect(isExemplarEligible({ ...eligible, aggFn: undefined })).toBe(false);
   });
 
   it('rejects a differently-cased metric type', () => {
@@ -3768,6 +3792,60 @@ describe('renderMetricExemplarsChartConfig', () => {
     // Drops empty trace ids and caps the result set
     expect(sql).toContain('notEmpty(ex_TraceId)');
     expect(sql).toContain(`LIMIT ${EXEMPLAR_QUERY_LIMIT}`);
+  });
+
+  // renderWhere bounds the row's TimeUnix, but the projected and bucketed value is
+  // the ARRAY JOINed ex_TimeUnix, and an exemplar's own timestamp falls in the
+  // collection interval before its data point's. Without an explicit ex_TimeUnix
+  // bound the scan returned pre-window exemplars and missed in-window ones whose
+  // data point landed just after the range end.
+  it('bounds the ARRAY JOINed exemplar time, not just the row time', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      histogramConfig,
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+
+    const start = new Date('2025-02-12').getTime();
+    const end = new Date('2025-02-14').getTime();
+    expect(sql).toContain(`ex_TimeUnix >= fromUnixTimestamp64Milli(${start})`);
+    expect(sql).toContain(`ex_TimeUnix <= fromUnixTimestamp64Milli(${end})`);
+  });
+
+  it('widens the row-level bound past the range end by one interval', async () => {
+    // So an exemplar inside the window whose data point lands just after it is
+    // still reachable; the exact ex_TimeUnix bound above then trims the overshoot.
+    const generated = await renderMetricExemplarsChartConfig(
+      histogramConfig,
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    // 1-minute granularity, so the row bound ends 60s after the range end.
+    const widened = new Date('2025-02-14').getTime() + 60_000;
+    expect(sql).toContain(`TimeUnix <= fromUnixTimestamp64Milli(${widened})`);
+  });
+
+  it('floors the row-bound widening at one minute on a fine granularity', async () => {
+    // A short window resolves to a 15s or 30s granularity, finer than a typical
+    // scrape — widening by that much would leave the newest exemplars out of reach
+    // again, which is the whole point of the widening.
+    const generated = await renderMetricExemplarsChartConfig(
+      { ...histogramConfig, granularity: '15 second' },
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    const widened = new Date('2025-02-14').getTime() + 60_000;
+    expect(sql).toContain(`TimeUnix <= fromUnixTimestamp64Milli(${widened})`);
+  });
+
+  it('returns null without a date range', async () => {
+    // renderWhere emits no time predicate then, leaving a whole-table ARRAY JOIN.
+    const { dateRange: _dropped, ...noRange } = histogramConfig;
+    const generated = await renderMetricExemplarsChartConfig(
+      noRange as typeof histogramConfig,
+      mockMetadata,
+    );
+    expect(generated).toBeNull();
   });
 
   it('spends the row budget per time bucket, not on the slowest traces overall', async () => {

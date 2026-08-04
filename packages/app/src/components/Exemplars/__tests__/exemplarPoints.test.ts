@@ -275,10 +275,15 @@ describe('clampExemplarY', () => {
     expect(clampExemplarY(9000, { min: 0, max: 400 })).toBe(400);
   });
 
-  it('lifts a marker below a fitted axis floor up to the floor', () => {
-    // The regression this guards: fitYAxisToData puts the floor above an
-    // individual duration when the series is a high quantile.
-    expect(clampExemplarY(12, { min: 120, max: 480 })).toBe(120);
+  it('drops a marker below a fitted axis floor rather than raising it', () => {
+    // fitYAxisToData puts the floor at the data's own minimum, which can sit well
+    // above a fast request. Raising that marker to the floor would draw it level
+    // with the slowest points — the opposite of the truth — so it is not drawn.
+    expect(clampExemplarY(12, { min: 120, max: 480 })).toBeNull();
+  });
+
+  it('keeps a marker exactly on the floor', () => {
+    expect(clampExemplarY(120, { min: 120, max: 480 })).toBe(120);
   });
 
   it('leaves an in-domain value untouched', () => {
@@ -296,33 +301,53 @@ describe('clampExemplarY', () => {
 });
 
 describe('clampExemplarX', () => {
+  const domain: [number, number] = [1_700_000_000, 1_700_000_060];
+  const bucket = 60; // one granularity, in chart time units (seconds)
+
   // The domain's upper bound is the last *bucket start* when
   // dateRangeEndInclusive is false, so an exemplar inside that final bucket sits
   // past it and recharts' ifOverflow="discard" drops it — losing the newest
   // window, which is the one a live investigation is watching.
-  it('pins a marker past the domain end onto the last bucket', () => {
-    expect(clampExemplarX(1_700_000_120, [1_700_000_000, 1_700_000_060])).toBe(
-      1_700_000_060,
-    );
+  it('nudges a marker inside the final partial bucket onto the last bucket', () => {
+    expect(clampExemplarX(1_700_000_090, domain, bucket)).toBe(1_700_000_060);
   });
 
-  it('pins a marker before the domain start onto the first bucket', () => {
-    expect(clampExemplarX(1_699_999_900, [1_700_000_000, 1_700_000_060])).toBe(
-      1_700_000_000,
-    );
+  it('nudges a marker just before the domain start onto the first bucket', () => {
+    expect(clampExemplarX(1_699_999_970, domain, bucket)).toBe(1_700_000_000);
   });
 
   it('leaves an in-domain marker exactly where it is', () => {
-    expect(clampExemplarX(1_700_000_030, [1_700_000_000, 1_700_000_060])).toBe(
-      1_700_000_030,
-    );
+    expect(clampExemplarX(1_700_000_030, domain, bucket)).toBe(1_700_000_030);
+  });
+
+  // The regression this guards: placeholderData deliberately keeps the previous
+  // range's exemplars across a range change, so a zoom hands this markers from a
+  // wider window. Dragging those to the axis edge would draw real, clickable
+  // traces on buckets they never occurred in.
+  it('drops a marker more than one bucket past the domain end', () => {
+    expect(clampExemplarX(1_700_000_600, domain, bucket)).toBeNull();
+  });
+
+  it('drops a marker more than one bucket before the domain start', () => {
+    expect(clampExemplarX(1_699_999_000, domain, bucket)).toBeNull();
+  });
+
+  it('keeps the boundary case exactly one bucket out', () => {
+    expect(clampExemplarX(1_700_000_120, domain, bucket)).toBe(1_700_000_060);
+    expect(clampExemplarX(1_699_999_940, domain, bucket)).toBe(1_700_000_000);
+  });
+
+  it('treats a non-finite bucket width as zero tolerance', () => {
+    // An unparseable granularity must not widen the window silently.
+    expect(clampExemplarX(1_700_000_061, domain, NaN)).toBeNull();
+    expect(clampExemplarX(1_700_000_030, domain, NaN)).toBe(1_700_000_030);
   });
 
   it('leaves x untouched for a degenerate or inverted domain', () => {
     // Better an occasionally-discarded marker than one pinned to a meaningless
     // position — same rule as clampExemplarY.
-    expect(clampExemplarX(42, [NaN, 100])).toBe(42);
-    expect(clampExemplarX(42, [100, NaN])).toBe(42);
-    expect(clampExemplarX(42, [100, 0])).toBe(42);
+    expect(clampExemplarX(42, [NaN, 100], bucket)).toBe(42);
+    expect(clampExemplarX(42, [100, NaN], bucket)).toBe(42);
+    expect(clampExemplarX(42, [100, 0], bucket)).toBe(42);
   });
 });

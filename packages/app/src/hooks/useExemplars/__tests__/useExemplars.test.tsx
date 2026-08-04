@@ -10,7 +10,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { prometheusApi } from '@/api';
 import { useClickhouseClient } from '@/clickhouse';
@@ -358,6 +358,27 @@ describe('capExemplarsPerBucket', () => {
     traceId: `t-${offsetMs}-${value}`,
   });
 
+  // The regression this guards: an inclusive range put a timestamp exactly on
+  // `end` one bucket past the last, giving 201 buckets. perBucket floored to 1,
+  // the total exceeded the budget, and the trailing slice trimmed a time-sorted
+  // list — so the exemplar it dropped was the newest, at the chart's right edge.
+  it('keeps the newest exemplar when the range is inclusive', () => {
+    const rangeMs = end.getTime() - start.getTime();
+    const many: Exemplar[] = [];
+    for (let i = 0; i <= EXEMPLAR_QUERY_LIMIT; i++) {
+      many.push(at(Math.round((i * rangeMs) / EXEMPLAR_QUERY_LIMIT), i));
+    }
+    const newest = many[many.length - 1];
+    const capped = capExemplarsPerBucket(many, start, end);
+
+    expect(capped.length).toBeLessThanOrEqual(EXEMPLAR_QUERY_LIMIT);
+    expect(capped.map(e => e.traceId)).toContain(newest.traceId);
+    // And the result is still chronological for the render layer.
+    expect(capped.map(e => e.timestamp)).toEqual(
+      [...capped.map(e => e.timestamp)].sort((a, b) => a - b),
+    );
+  });
+
   it('returns the set untouched when it is already within the limit', () => {
     const few = [at(0, 1), at(1000, 2)];
     expect(capExemplarsPerBucket(few, start, end)).toBe(few);
@@ -470,46 +491,155 @@ describe('useExemplars', () => {
   });
 
   describe('gating', () => {
-    it('does not fetch when the chart has not opted in', async () => {
-      const { result } = renderHook(
-        () =>
-          useExemplars(
-            { ...histogramConfig, enableExemplars: undefined },
-            metricSource,
-          ),
-        { wrapper },
-      );
+    // These assert that NO query is issued. A synchronous assertion on the first
+    // render proves nothing: `exemplars` is [] because data is undefined, and the
+    // fetch sits behind an await either way — the whole block passed with the
+    // `enabled` gate hardcoded to true. So every case now flushes the microtask
+    // queue first, and a control case proves the harness does fetch when it should.
+    const flush = () => act(async () => {});
+
+    const renderGated = async (
+      config: Parameters<typeof useExemplars>[0],
+      source: Parameters<typeof useExemplars>[1],
+    ) => {
+      const rendered = renderHook(() => useExemplars(config, source), {
+        wrapper,
+      });
+      await flush();
+      return rendered;
+    };
+
+    it('fetches when nothing gates it (control for the cases below)', async () => {
+      const { result } = await renderGated(histogramConfig, metricSource);
+      expect(mockQuery).toHaveBeenCalled();
       expect(result.current.exemplars).toEqual([]);
+    });
+
+    it('does not fetch when the chart has not opted in', async () => {
+      await renderGated(
+        { ...histogramConfig, enableExemplars: undefined },
+        metricSource,
+      );
       expect(mockQuery).not.toHaveBeenCalled();
+      expect(mockQueryExemplars).not.toHaveBeenCalled();
     });
 
     it('does not fetch while the deployment feature flag is off', async () => {
       isExemplarsEnabled = false;
-      const { result } = renderHook(
-        () => useExemplars(histogramConfig, metricSource),
-        { wrapper },
-      );
-      expect(result.current.exemplars).toEqual([]);
+      await renderGated(histogramConfig, metricSource);
       expect(mockQuery).not.toHaveBeenCalled();
+      expect(mockQueryExemplars).not.toHaveBeenCalled();
     });
 
     it('does not fetch for source kinds that cannot produce exemplars', async () => {
-      const { result } = renderHook(
-        () =>
-          useExemplars(histogramConfig, { kind: SourceKind.Log } as TSource),
-        { wrapper },
-      );
-      expect(result.current.exemplars).toEqual([]);
+      await renderGated(histogramConfig, {
+        kind: SourceKind.Log,
+      } as TSource);
       expect(mockQuery).not.toHaveBeenCalled();
+      expect(mockQueryExemplars).not.toHaveBeenCalled();
     });
 
     it('does not fetch without a source', async () => {
-      const { result } = renderHook(
-        () => useExemplars(histogramConfig, undefined),
+      await renderGated(histogramConfig, undefined);
+      expect(mockQuery).not.toHaveBeenCalled();
+      expect(mockQueryExemplars).not.toHaveBeenCalled();
+    });
+
+    it('does not fetch for a PromQL expression that plots no duration', async () => {
+      // promqlEligible was only ever fed an eligible expression, so the guard that
+      // stops duration markers landing on a requests/sec axis went unexercised.
+      await renderGated(
+        {
+          ...promqlConfig,
+          promqlExpression: 'rate(http_requests_total[5m])',
+        } as typeof promqlConfig,
+        promqlSource,
+      );
+      expect(mockQueryExemplars).not.toHaveBeenCalled();
+    });
+
+    it('drops the overlay when the chart draws more than one series', async () => {
+      // The rendered series count comes from the main query, not the exemplar
+      // payload — a multi-line chart must not get markers of unknown provenance.
+      // Must wait for real data: asserting [] before the query settles is true
+      // whatever the count is, which is how the first version of this test
+      // certified nothing.
+      mockQuery.mockResolvedValue({
+        json: async () => ({
+          data: [{ timestamp: '1700000000000', value: '1', traceId: 'a' }],
+        }),
+      });
+
+      const single = renderHook(
+        () => useExemplars(histogramConfig, metricSource, 1),
         { wrapper },
       );
+      await waitFor(() =>
+        expect(single.result.current.exemplars).toHaveLength(1),
+      );
+
+      const many = renderHook(
+        () => useExemplars(histogramConfig, metricSource, 3),
+        { wrapper },
+      );
+      await waitFor(() => expect(many.result.current.isLoading).toBe(false));
+      expect(many.result.current.exemplars).toEqual([]);
+      expect(many.result.current.dropped).toBe('multiple-series');
+    });
+  });
+
+  // placeholderData is scoped to the same chart on purpose: TanStack keeps its
+  // last-defined data on the observer, which outlives a key change, so an
+  // unscoped `prev => prev` hands the PREVIOUS metric's exemplars — real,
+  // clickable trace ids — to the new chart while isLoading and isError both say
+  // settled. Nothing exercised that comparison, so its removal was silent.
+  describe('placeholder scoping across key changes', () => {
+    const rows = (traceId: string) => ({
+      json: async () => ({
+        data: [{ timestamp: '1700000000000', value: '1', traceId }],
+      }),
+    });
+
+    it('keeps the overlay across a range-only change', async () => {
+      mockQuery.mockResolvedValue(rows('from-first-range'));
+      const { result, rerender } = renderHook(
+        ({ config }) => useExemplars(config, metricSource),
+        { wrapper, initialProps: { config: histogramConfig } },
+      );
+      await waitFor(() => expect(result.current.exemplars).toHaveLength(1));
+
+      // Same chart, later window: the markers should survive the refetch.
+      mockQuery.mockImplementation(() => new Promise(() => {}));
+      rerender({
+        config: {
+          ...histogramConfig,
+          dateRange: [
+            new Date('2025-02-12T01:00:00Z'),
+            new Date('2025-02-12T02:00:00Z'),
+          ],
+        } as typeof histogramConfig,
+      });
+      expect(result.current.exemplars).toHaveLength(1);
+    });
+
+    it('blanks the overlay when the chart itself changes', async () => {
+      mockQuery.mockResolvedValue(rows('from-first-metric'));
+      const { result, rerender } = renderHook(
+        ({ config }) => useExemplars(config, metricSource),
+        { wrapper, initialProps: { config: histogramConfig } },
+      );
+      await waitFor(() => expect(result.current.exemplars).toHaveLength(1));
+
+      // A different chart (its filter changed, so it plots different data): the
+      // previous chart's traces must not be shown here.
+      mockQuery.mockImplementation(() => new Promise(() => {}));
+      rerender({
+        config: {
+          ...histogramConfig,
+          where: "ServiceName = 'a-different-service'",
+        },
+      });
       expect(result.current.exemplars).toEqual([]);
-      expect(mockQuery).not.toHaveBeenCalled();
     });
   });
 

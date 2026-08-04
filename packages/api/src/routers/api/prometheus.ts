@@ -514,6 +514,36 @@ const queryHandler: express.RequestHandler = async (req, res) => {
 router.get('/query', queryHandler);
 router.post('/query', queryHandler);
 
+/**
+ * Resolve the exemplar window a /query_exemplars request should be proxied with.
+ *
+ * Returns either the bounded window or the reason it is unusable, so the handler
+ * stays a thin translation to HTTP and this logic can be tested without a route.
+ * Over-wide windows are narrowed rather than rejected: a 30d dashboard range is an
+ * ordinary request, and Prometheus keeps exemplars in a small recent buffer, so
+ * the older part has nothing to return anyway.
+ */
+export function resolveExemplarWindow(
+  rawStart: string | undefined,
+  rawEnd: string | undefined,
+  maxWindowSec = PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
+): { start: number; end: number } | { error: string } {
+  const parse = (v: string | undefined) => {
+    if (v == null || v === '') return NaN;
+    try {
+      return parseTimestamp(v);
+    } catch {
+      return NaN;
+    }
+  };
+  const start = parse(rawStart);
+  const end = parse(rawEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return { error: 'invalid or missing start/end parameters' };
+  }
+  return { start: Math.max(start, end - maxWindowSec), end };
+}
+
 // --------------------------
 // GET|POST /query_exemplars
 // --------------------------
@@ -577,39 +607,19 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
       //
       // parseTimestamp throws on a missing/unparseable value; a bad client param
       // is a 400, not an upstream error, so it is resolved here, not in the catch.
-      const parseOrNaN = (v: string | undefined) => {
-        if (v == null || v === '') return NaN;
-        try {
-          return parseTimestamp(v);
-        } catch {
-          return NaN;
-        }
-      };
-      const start = parseOrNaN(params.start);
-      const end = parseOrNaN(params.end);
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+      const window = resolveExemplarWindow(params.start, params.end);
+      if ('error' in window) {
         return res.status(400).json({
           status: 'error',
           errorType: 'bad_data',
-          error: 'invalid or missing start/end parameters',
+          error: window.error,
         });
       }
-      // Narrow rather than reject an over-wide window. A 14d or 30d dashboard
-      // range is a perfectly ordinary request, and a 400 here would surface as the
-      // chart's "exemplars could not be loaded" indicator on a healthy chart.
-      // Nothing is lost by narrowing: Prometheus keeps exemplars in a small
-      // circular buffer of recent data, so the older part of a wide window has no
-      // exemplars to return anyway. The reject path above stays for genuinely
-      // invalid input.
-      const boundedStart = Math.max(
-        start,
-        end - PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
-      );
 
       const status = await proxyToPrometheus(
         connection.host,
         '/api/v1/query_exemplars',
-        { ...params, start: String(boundedStart) },
+        { ...params, start: String(window.start) },
         res,
       );
       recordProxyOutcome(status, 'query_exemplars', backend);

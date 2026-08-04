@@ -175,13 +175,18 @@ export function computeExemplarPoints(
 export type ExemplarYBounds = { min: number; max: number };
 
 /**
- * Derive the marker clamp range from the y-axis domain the chart actually
+ * Derive the y range a marker may be drawn in, from the domain the chart actually
  * renders. A recharts `ReferenceDot` defaults to `ifOverflow="discard"`, so a
- * marker outside the domain simply vanishes — which cuts both ways: an outlier
- * above the series max would stretch the axis (crushing the line flat) or be
- * dropped, and a `fitYAxisToData` floor can sit *above* a marker's value
- * (routine when the series is a high quantile and exemplars are individual
- * durations), silently emptying the overlay.
+ * marker outside the domain vanishes with no explanation.
+ *
+ * The two bounds are used differently by clampExemplarY, which is where the
+ * reasoning lives: `max` is a ceiling markers are pinned to, `min` is a threshold
+ * below which they are dropped. `min` is NOT a lift target — raising a fast
+ * request to a fitted floor would draw it level with the slowest ones.
+ *
+ * Note `min` goes numeric on more than "Fit Y Axis to Data": useChartScales also
+ * fits the floor whenever a legend selection is active, so isolating one series
+ * can start dropping below-floor markers too.
  *
  * `'auto'` bounds are resolved by recharts against the series data, so the
  * series max is in-domain by construction and 0 is a safe floor for the
@@ -201,35 +206,65 @@ export function computeExemplarYBounds(
 }
 
 /**
- * Pin an exemplar's value inside `bounds` so recharts keeps drawing it. The
- * hover card still reports the exemplar's true value. Degenerate bounds (no
- * numeric data yet, or inverted) leave the value untouched — better an
- * occasionally-discarded marker than one pinned to a meaningless height.
+ * Place an exemplar's value inside `bounds` so recharts keeps drawing it, or
+ * return null to drop it.
+ *
+ * The two directions are not equivalent, so they are handled differently.
+ *
+ * Above `max`: pinned to the top. An outlier can be many times the plotted
+ * quantile, and letting it set the axis would flatten the series into a line at
+ * the bottom. A marker at the ceiling reads as "at least this high", and the
+ * hover card carries the real number.
+ *
+ * Below `min`: dropped. With `fitYAxisToData` the floor is the data's own
+ * minimum, so it can sit well above a fast request — and raising that marker to
+ * the floor would draw it level with the slowest points, saying the opposite of
+ * the truth. There is no honest position for it on this axis, so it is not drawn.
+ *
+ * Degenerate bounds (no numeric data yet, or inverted) leave the value untouched.
  */
-export function clampExemplarY(y: number, bounds: ExemplarYBounds): number {
+export function clampExemplarY(
+  y: number,
+  bounds: ExemplarYBounds,
+): number | null {
   const { min, max } = bounds;
   if (!Number.isFinite(max) || !Number.isFinite(min) || min > max) return y;
-  return Math.min(Math.max(y, min), max);
+  if (y < min) return null;
+  return Math.min(y, max);
 }
 
 /**
- * Pin an exemplar's x (chart time units) inside the rendered x-domain, for the
- * same reason as the y clamp: `ReferenceDot` defaults to `ifOverflow="discard"`,
- * so a marker outside the domain silently vanishes.
+ * Place an exemplar's x (chart time units) inside the rendered x-domain, or
+ * return null to drop it.
  *
- * This matters at the right-hand edge. When `dateRangeEndInclusive` is false the
- * domain's upper bound is the *last bucket start*, so an exemplar occurring
- * inside that final bucket sits past the bound and disappears — losing the newest
- * window, which is the one a live investigation is watching. Clamping puts the
- * marker on the boundary of the bucket whose series point it explains.
+ * `ReferenceDot` defaults to `ifOverflow="discard"`, so a marker outside the
+ * domain silently vanishes. That loses the newest window: when
+ * `dateRangeEndInclusive` is false the domain's upper bound is the *last bucket
+ * start*, so an exemplar occurring inside that final bucket sits past the bound
+ * and disappears — the window a live investigation is watching. Nudging it onto
+ * the boundary of the bucket whose series point it explains fixes that.
  *
- * The tradeoff, deliberately taken: a clamped marker's rendered x no longer
- * states exactly when the trace occurred. The hover card reports the true
- * timestamp, and a marker pinned at the edge beats one that isn't drawn at all.
- * Degenerate or inverted domains leave x untouched.
+ * But only within one bucket. Anything further out is not an edge case, it is a
+ * marker that belongs to a different window: `placeholderData` deliberately keeps
+ * the previous range's exemplars across a range change, so a zoom hands this
+ * function markers from the old, wider window. Pulling those to the axis edge
+ * would draw real, clickable traces on buckets they did not occur in, with
+ * nothing on screen saying so. Dropping them is the honest answer — the overlay
+ * refills when the new range's query lands.
+ *
+ * `bucketSeconds` is the tolerance, in the chart's own time units. Degenerate or
+ * inverted domains leave x untouched.
  */
-export function clampExemplarX(x: number, domain: [number, number]): number {
+export function clampExemplarX(
+  x: number,
+  domain: [number, number],
+  bucketSeconds: number,
+): number | null {
   const [min, max] = domain;
   if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return x;
+  const tolerance = Number.isFinite(bucketSeconds)
+    ? Math.max(0, bucketSeconds)
+    : 0;
+  if (x < min - tolerance || x > max + tolerance) return null;
   return Math.min(Math.max(x, min), max);
 }

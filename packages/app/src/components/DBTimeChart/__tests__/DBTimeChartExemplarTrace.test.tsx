@@ -188,9 +188,21 @@ describe('DBTimeChart exemplar trace wiring', () => {
         cardProps().onInspect?.(exemplar);
       });
 
-      expect(mockRouterPush).toHaveBeenCalledWith(
-        '/search?source=explicit-traces&traceId=abc123',
-      );
+      // A window around the exemplar is required, not cosmetic: without from/to
+      // the search page falls back to the last 14 days, so a marker on a
+      // dashboard pinned to an older absolute range opened an empty trace view.
+      const [url] = mockRouterPush.mock.calls[0] as [string];
+      const params = new URLSearchParams(url.split('?')[1]);
+      expect(params.get('source')).toBe('explicit-traces');
+      expect(params.get('traceId')).toBe('abc123');
+      // Assert presence explicitly: Number(null) is 0, so a missing `from` would
+      // otherwise satisfy the range comparison below.
+      expect(params.has('from')).toBe(true);
+      expect(params.has('to')).toBe(true);
+      const from = Number(params.get('from'));
+      const to = Number(params.get('to'));
+      expect(from).toBeLessThan(exemplar.timestamp);
+      expect(to).toBeGreaterThan(exemplar.timestamp);
     });
 
     it('falls back to the standalone trace page without a trace source', () => {

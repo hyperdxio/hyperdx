@@ -220,26 +220,6 @@ function DBTimeChartComponent({
     id: sourceId || config.source,
   });
 
-  // Exemplar overlay: data plus the hover/pin card state machine. See
-  // useExemplarCard — the chart coordinates with it below because its drill-down
-  // tooltip and the exemplar card are mutually exclusive.
-  const {
-    exemplars,
-    exemplarNotice,
-    exemplarTraceSource,
-    activeExemplar,
-    pinnedExemplar,
-    pinnedExemplarKey,
-    hoveredTraceMeta,
-    isHoveredTraceMetaLoading,
-    openExemplarCard,
-    scheduleCloseExemplarCard,
-    cancelClose: cancelExemplarCardClose,
-    pin: pinExemplarCardState,
-    unpin: unpinExemplarCard,
-    navigateToExemplarTrace,
-  } = useExemplarCard({ queriedConfig, source });
-
   const { formatByColumn, chartFormat: axisNumberFormat } =
     useChartNumberFormats(queriedConfig, data?.meta);
 
@@ -302,6 +282,40 @@ function DBTimeChartComponent({
     hiddenSeries,
     previousPeriodOffsetSeconds,
   ]);
+
+  // Exemplar overlay: data plus the hover/pin card state machine. See
+  // useExemplarCard — the chart coordinates with it below because its drill-down
+  // tooltip and the exemplar card are mutually exclusive.
+  const {
+    exemplars,
+    exemplarNotice,
+    exemplarTraceSource,
+    activeExemplar,
+    pinnedExemplar,
+    pinnedExemplarKey,
+    hoveredTraceMeta,
+    isHoveredTraceMetaLoading,
+    openExemplarCard,
+    scheduleCloseExemplarCard,
+    cancelClose: cancelExemplarCardClose,
+    pin: pinExemplarCardState,
+    unpin: unpinExemplarCard,
+    navigateToExemplarTrace,
+  } = useExemplarCard({
+    queriedConfig,
+    source,
+    // Rendered series count, so a multi-line chart cannot be given markers that
+    // belong to an unknown line. Taken from the main query's own result — the
+    // exemplar response can't answer it, since Prometheus returns only series
+    // that carry a sampled exemplar. This is why the hook is called here rather
+    // than beside the other data hooks: it needs lineData.
+    // Current-period lines only. The previous-period comparison lands in the same
+    // lineData (flagged isDashed), so counting it made a single-metric chart with
+    // "Compare to Previous Period" ticked look like two series: every marker
+    // vanished behind a notice telling the user to aggregate to a single line,
+    // which they already had. The markers belong to the solid current line.
+    plottedSeriesCount: lineData.filter(ld => !ld.isDashed).length,
+  });
 
   // To enable backward compatibility, allow non-controlled usage of displayType
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
@@ -483,6 +497,7 @@ function DBTimeChartComponent({
             meta={hoveredTraceMeta ?? undefined}
             isLoading={isHoveredTraceMetaLoading}
             traceSourceConfigured={!!exemplarTraceSource}
+            numberFormat={axisNumberFormat}
             pinned={pinnedExemplar != null}
             onClose={unpinExemplarCard}
             onInspect={navigateToExemplarTrace}

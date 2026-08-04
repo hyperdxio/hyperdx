@@ -110,6 +110,56 @@ describe('promqlSeriesLabelRule', () => {
     ).toEqual(['le']);
   });
 
+  // A label matcher is not a comparison. Leaving `!=` in the operator test made a
+  // routine matcher suppress the overlay on a query that does aggregate to one
+  // line — reported as a P2 fail-closed.
+  it('does not read a label matcher as a top-level operator', () => {
+    expect(
+      distinguishing(
+        'histogram_quantile(0.95, sum(rate(http_latency_bucket{code!="200"}) by (le)))',
+        ['le', 'instance'],
+      ),
+    ).toEqual(['le']);
+    expect(
+      distinguishing('sum(rate(x{path=~"/api/.*",code!="200"}[5m])) by (le)', [
+        'le',
+        'instance',
+      ]),
+    ).toEqual(['le']);
+  });
+
+  // The opposite direction: a clause entry that is not a bare label name means we
+  // misread the expression, and building a key from it would match no real label
+  // and collapse every series into one group — the fail-open the module forbids.
+  it('bails out when a clause entry is not a bare label name', () => {
+    expect(
+      promqlSeriesLabelRule(
+        'histogram_quantile(0.95, sum(rate(x_bucket[5m])) by ("le"))',
+      ),
+    ).toEqual({ mode: 'all' });
+    expect(promqlSeriesLabelRule('sum(rate(x[5m])) by (`le`)')).toEqual({
+      mode: 'all',
+    });
+  });
+
+  it('does not treat a `#` inside a label value as a comment', () => {
+    // Regression: stripping comments before strings truncated the expression at a
+    // URL fragment and ate the `by (le)` clause, suppressing the overlay.
+    expect(
+      distinguishing(
+        'histogram_quantile(0.95, sum(rate(x_bucket{path="/v1#frag"}[5m])) by (le))',
+        ['le', 'instance'],
+      ),
+    ).toEqual(['le']);
+  });
+
+  it('ignores a comment that would otherwise hide a clause', () => {
+    // `#` starts a PromQL comment; a `by (...)` inside one is not real syntax.
+    expect(promqlSeriesLabelRule('sum(rate(x[5m])) # by (le)')).toEqual({
+      mode: 'all',
+    });
+  });
+
   it('is fully distinguishing for an empty or missing expression', () => {
     expect(promqlSeriesLabelRule(undefined)).toEqual({ mode: 'all' });
     expect(promqlSeriesLabelRule('')).toEqual({ mode: 'all' });

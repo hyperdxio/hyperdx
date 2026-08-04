@@ -8,7 +8,23 @@ import {
 
 import { type PositionedExemplar } from '@/components/Exemplars';
 import { useExemplars, useExemplarTraceMeta } from '@/hooks/useExemplars';
+import { quantizeEnd, quantizeStart } from '@/hooks/useExemplars/quantize';
 import { useSource } from '@/source';
+
+/**
+ * Half-width of the window the Inspect deep link opens around an exemplar. Wide
+ * enough to absorb clock skew between the metric pipeline and the trace store,
+ * narrow enough that the trace is not buried among unrelated ones.
+ */
+const EXEMPLAR_TRACE_WINDOW_MS = 5 * 60 * 1000;
+
+/** Epoch-ms [from, to] bracketing an exemplar, for the search page's range. */
+function exemplarTraceWindow(timestampMs: number): [number, number] {
+  return [
+    timestampMs - EXEMPLAR_TRACE_WINDOW_MS,
+    timestampMs + EXEMPLAR_TRACE_WINDOW_MS,
+  ];
+}
 
 /**
  * Owns the exemplar overlay's data and its hover/pin card state for one chart.
@@ -25,9 +41,12 @@ import { useSource } from '@/source';
 export function useExemplarCard({
   queriedConfig,
   source,
+  plottedSeriesCount,
 }: {
   queriedConfig: ChartConfigWithDateRange;
   source: TSource | undefined;
+  /** Series the chart actually draws; see useExemplars for why it matters. */
+  plottedSeriesCount?: number;
 }) {
   // Exemplar overlay is configured per-chart via `enableExemplars` (set in the
   // chart editor next to "As Ratio"), not a runtime toolbar toggle. The hook is
@@ -37,7 +56,7 @@ export function useExemplarCard({
     isError: isExemplarsError,
     error: exemplarsError,
     dropped: exemplarsDropped,
-  } = useExemplars(queriedConfig, source);
+  } = useExemplars(queriedConfig, source, plottedSeriesCount);
 
   // A failed or suppressed exemplar scan otherwise looks exactly like "no
   // exemplars in this range". Both are non-fatal — the chart itself is fine — so
@@ -112,6 +131,40 @@ export function useExemplarCard({
     ? `exemplar-${pinnedExemplar.exemplar.traceId}-${pinnedExemplar.exemplar.timestamp}`
     : null;
 
+  // The pinned card is positioned from the marker's pixel coordinates at click
+  // time, so anything that moves the markers leaves it beside the wrong diamond.
+  // The existing guard only fires when the pinned marker leaves the rendered set;
+  // a live-tail tick, zoom, or rescale that *keeps* the marker slides it out from
+  // under the card. Unpin on a range change instead of trying to re-derive the
+  // position: the coordinates are only known inside the SVG shape, and a card
+  // that closes is better than one pointing at someone else's trace.
+  //
+  // The card also shows the exemplar's own value and time, so a user who had it
+  // open still saw which exemplar it described.
+  //
+  // Quantised to the same bucket the exemplar query key uses, so a live-tail tick
+  // — which advances dateRange every second — counts as the same view and does not
+  // yank the card away a moment after the user clicked it. A real zoom or range
+  // switch crosses the bucket and still unpins.
+  const pinnedRangeRef = useRef<string | null>(null);
+  const rangeKey = queriedConfig.dateRange
+    ? `${quantizeStart(queriedConfig.dateRange[0])}-${quantizeEnd(queriedConfig.dateRange[1])}`
+    : 'none';
+  useEffect(() => {
+    if (!pinnedExemplar) {
+      pinnedRangeRef.current = null;
+      return;
+    }
+    if (pinnedRangeRef.current == null) {
+      pinnedRangeRef.current = rangeKey;
+      return;
+    }
+    if (pinnedRangeRef.current !== rangeKey) {
+      pinnedRangeRef.current = null;
+      setPinnedExemplar(null);
+    }
+  }, [pinnedExemplar, rangeKey]);
+
   // Escape closes the pinned card, matching the rest of the app's overlays.
   useEffect(() => {
     if (!pinnedExemplar) return;
@@ -131,6 +184,14 @@ export function useExemplarCard({
         const params = new URLSearchParams();
         params.set('source', exemplarTraceSourceId);
         params.set('traceId', exemplar.traceId);
+        // Carry a window around the exemplar. Without from/to the search page
+        // falls back to the last 14 days (getDefaultDirectTraceDateRange), so a
+        // marker on a dashboard pinned to an older absolute range opened an empty
+        // trace view. The exemplar's own timestamp is the one thing we know for
+        // certain about where to look.
+        const [from, to] = exemplarTraceWindow(exemplar.timestamp);
+        params.set('from', String(from));
+        params.set('to', String(to));
         Router.push(`/search?${params.toString()}`);
       } else {
         Router.push(`/trace/${encodeURIComponent(exemplar.traceId)}`);
