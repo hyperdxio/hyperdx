@@ -80,6 +80,9 @@ jest.mock('@/components/MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );
 jest.mock('@/components/charts/DateRangeIndicator', () => jest.fn(() => null));
+jest.mock('@/components/charts/ChartSeriesTooltip', () => ({
+  ChartSeriesTooltip: () => <div data-testid="series-tooltip" />,
+}));
 
 /** Latest props the stubbed chart / card were rendered with. */
 function lastProps<P>(calls: [P][], what: string): P {
@@ -218,5 +221,65 @@ describe('DBTimeChart exemplar pin lifecycle', () => {
     });
 
     expect(cardProps().hovered?.exemplar.traceId).toBe(exemplar.traceId);
+  });
+
+  // The drill-down tooltip and the exemplar card share `dismissPinned`, and main's
+  // capture-phase mousedown listener is a new caller of it. mousedown fires before
+  // click, so pinning a marker while the tooltip is open runs dismissPinned first
+  // and pinExemplarCard second. Nothing asserted that ordering, so a regression in
+  // it would have passed the whole suite.
+  describe('outside-click dismissal (ported from #2748)', () => {
+    const openTooltip = () =>
+      act(() => {
+        callback(
+          chartProps().setIsClickActive,
+          'setIsClickActive',
+        )({
+          viewportX: 10,
+          viewportY: 20,
+          activeLabel: '1704067200',
+          activePayload: [
+            { dataKey: 'count', name: 'count', value: 1 },
+          ] as never,
+        });
+      });
+
+    it('dismisses the drill-down tooltip on a real outside mousedown', () => {
+      const { queryByTestId } = renderWithMantine(
+        <DBTimeChart config={config} />,
+      );
+      openTooltip();
+      expect(queryByTestId('series-tooltip')).not.toBeNull();
+
+      act(() => {
+        document.dispatchEvent(
+          new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+        );
+      });
+
+      expect(queryByTestId('series-tooltip')).toBeNull();
+    });
+
+    it('leaves the exemplar pin intact when a marker click also dismisses the tooltip', () => {
+      const { queryByTestId } = renderWithMantine(
+        <DBTimeChart config={config} />,
+      );
+      openTooltip();
+
+      // Real event order for a click on a marker while the tooltip is open.
+      act(() => {
+        document.dispatchEvent(
+          new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+        );
+      });
+      pin();
+
+      // The pin is the last write and must win over dismissPinned's unpin.
+      expect(cardProps().pinned).toBe(true);
+      expect(chartProps().pinnedExemplarKey).toBe(
+        `exemplar-${exemplar.traceId}-${exemplar.timestamp}`,
+      );
+      expect(queryByTestId('series-tooltip')).toBeNull();
+    });
   });
 });

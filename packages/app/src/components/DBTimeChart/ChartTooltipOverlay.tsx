@@ -33,7 +33,7 @@ export function ChartTooltipOverlay({
     payload.activePayload != null &&
     payload.activePayload.length > 0;
 
-  const popoverZIndex = useChartTooltipZIndex();
+  const popoverZIndex = useChartTooltipZIndex({ pinned: true });
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -59,6 +59,25 @@ export function ChartTooltipOverlay({
     });
     return () => {
       window.removeEventListener('scroll', handleScroll, { capture: true });
+    };
+  }, [isOpen, onDismiss]);
+
+  // Dismiss on outside click. Mantine's closeOnClickOutside misses it because
+  // the chart's recharts onClick calls stopPropagation (see
+  // HDXMultiSeriesTimeChart handleClick); a capture-phase listener sees the
+  // click regardless, ignoring clicks inside the tooltip's own dropdown.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target;
+      if (target instanceof Node && dropdownRef.current?.contains(target)) {
+        return;
+      }
+      onDismiss();
+    };
+    document.addEventListener('mousedown', handleMouseDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown, true);
     };
   }, [isOpen, onDismiss]);
 

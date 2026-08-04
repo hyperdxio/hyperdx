@@ -1,7 +1,7 @@
 // The `use*` keys below are jest.mock factory entries standing in for hooks, not
 // hooks themselves, so the "doesn't call any Hooks" rule doesn't apply — the name
 // has to match the real export for the mock to resolve.
-/* eslint-disable @eslint-react/no-unnecessary-use-prefix */
+
 import React from 'react';
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
 import { act } from '@testing-library/react';

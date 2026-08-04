@@ -1,7 +1,10 @@
 import {
+  FilterState,
+  filterStateToPredicate,
   filtersToQuery,
   isRenderablePinnedFilter,
   parseQuery,
+  serializeFilterState,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
   validateSavedQuery,
@@ -354,6 +357,119 @@ describe('filters', () => {
           { type: 'sql', condition: "Timestamp NOT IN ('2026-06-16')" },
         ]);
       });
+    });
+  });
+
+  describe('filterStateToPredicate', () => {
+    const identity = (k: string) => k;
+
+    it('returns undefined when nothing is selected', () => {
+      expect(filterStateToPredicate({}, identity)).toBeUndefined();
+      expect(
+        filterStateToPredicate(
+          { colA: { included: new Set(), excluded: new Set() } },
+          identity,
+        ),
+      ).toBeUndefined();
+    });
+
+    it('wraps a single condition in parentheses', () => {
+      expect(
+        filterStateToPredicate(
+          { colA: { included: new Set(['x']), excluded: new Set() } },
+          identity,
+        ),
+      ).toBe("(colA IN ('x'))");
+    });
+
+    it('AND-joins conditions across keys and across include/exclude', () => {
+      const predicate = filterStateToPredicate(
+        {
+          colA: { included: new Set(['x']), excluded: new Set(['y']) },
+          colB: { included: new Set(['z']), excluded: new Set() },
+        },
+        identity,
+      );
+      expect(predicate).toBe(
+        "(colA IN ('x')) AND (colA NOT IN ('y')) AND (colB IN ('z'))",
+      );
+    });
+
+    it('addresses each key through renderKey', () => {
+      // The whole point of the callback: a JSON column is aggregated as a
+      // typed subcolumn, so the predicate has to name it the same way.
+      expect(
+        filterStateToPredicate(
+          {
+            "Attributes['cluster']": {
+              included: new Set(['prod']),
+              excluded: new Set(),
+            },
+          },
+          () => '`Attributes`.`cluster`.:String',
+        ),
+      ).toBe("(`Attributes`.`cluster`.:String IN ('prod'))");
+    });
+  });
+
+  describe('serializeFilterState', () => {
+    it('distinguishes different selections', () => {
+      const a: FilterState = {
+        colA: { included: new Set(['x']), excluded: new Set() },
+      };
+      const b: FilterState = {
+        colA: { included: new Set(['y']), excluded: new Set() },
+      };
+      expect(serializeFilterState(a)).not.toBe(serializeFilterState(b));
+      // JSON.stringify alone would flatten both Sets to {} and collide, which
+      // is exactly what this helper exists to prevent in react-query keys.
+      expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    });
+
+    it('distinguishes an included value from an excluded one', () => {
+      expect(
+        serializeFilterState({
+          colA: { included: new Set(['x']), excluded: new Set() },
+        }),
+      ).not.toBe(
+        serializeFilterState({
+          colA: { included: new Set(), excluded: new Set(['x']) },
+        }),
+      );
+    });
+
+    it('is stable across key and member insertion order', () => {
+      expect(
+        serializeFilterState({
+          colA: { included: new Set(['x', 'y']), excluded: new Set() },
+          colB: { included: new Set(['z']), excluded: new Set() },
+        }),
+      ).toBe(
+        serializeFilterState({
+          colB: { included: new Set(['z']), excluded: new Set() },
+          colA: { included: new Set(['y', 'x']), excluded: new Set() },
+        }),
+      );
+    });
+
+    it('includes the range bound', () => {
+      expect(
+        serializeFilterState({
+          colA: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min: 1, max: 2 },
+          },
+        }),
+      ).not.toBe(
+        serializeFilterState({
+          colA: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min: 1, max: 3 },
+          },
+        }),
+      );
     });
   });
 

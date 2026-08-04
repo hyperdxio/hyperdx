@@ -59,6 +59,15 @@
   padding: 6px 12px;
 }
 
+// Hover-tooltip only: bound the series list so a many-series bucket can't grow
+// the tooltip past the chart. Uses `hidden`, not `auto`, because the hover
+// tooltip has `pointer-events: none` (its scrollbar would be unreachable) — to
+// see every series, click to pin, where the list scrolls instead.
+.chartTooltipContentClipped {
+  max-height: 200px;
+  overflow: hidden;
+}
+
 .chartTooltipFooter {
   padding: 6px 12px;
   border-top: 1px solid var(--color-border);

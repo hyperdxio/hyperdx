@@ -2434,7 +2434,7 @@ export function isPromqlExemplarEligible(
   let depth = 0;
   let quote: string | null = null;
   for (let i = opening[0].length - 1; i < expression.length; i++) {
-    const c = expression[i];
+    const c = expression.charAt(i);
     if (quote) {
       if (c === '\\') i++;
       else if (c === quote) quote = null;

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -10,7 +16,11 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { PresetDashboard, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  PresetDashboard,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
@@ -43,12 +53,12 @@ import DashboardFiltersModal from '@/DashboardFiltersModal';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { usePrevious } from '@/utils';
 
 import DatabaseTab from './DatabaseTab';
 import ErrorsTab from './ErrorsTab';
@@ -139,6 +149,22 @@ const appliedConfigMap = {
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 
+/**
+ * This page only works with trace sources, so a source that isn't an enabled
+ * trace source — including one the URL param failed to resolve to anything —
+ * falls back to the first available one. Exported for tests.
+ */
+export function getEffectiveTraceSourceId(
+  sourceId: string | null | undefined,
+  sources: TSource[] | undefined,
+): string {
+  const traceSources = sources?.filter(
+    s => s.kind === SourceKind.Trace && !s.disabled,
+  );
+  const isUsable = traceSources?.some(s => s.id === sourceId);
+  return (isUsable ? sourceId : traceSources?.[0]?.id) || '';
+}
+
 function ServicesDashboardPage() {
   const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
@@ -153,46 +179,55 @@ function ServicesDashboardPage() {
   const [appliedConfigParams, setAppliedConfigParams] =
     useQueryStates(appliedConfigMap);
 
-  // Only use the source from the URL params if it is a trace source
-  const appliedConfigWithoutFilters = useMemo(() => {
-    if (!sources?.length) return appliedConfigParams;
+  // `?source=` accepts a source name as well as a source ID.
+  // Resolve to a matching Trace source object here.
+  const { source: paramSource } = useResolvedSourceParam(
+    appliedConfigParams.source,
+    { kinds: [SourceKind.Trace] },
+  );
 
-    const traceSources = sources?.filter(
-      s => s.kind === SourceKind.Trace && !s.disabled,
-    );
-    const paramsSourceIdIsTraceSource = traceSources?.find(
-      s => s.id === appliedConfigParams.source,
-    );
-
-    const effectiveSourceId = paramsSourceIdIsTraceSource
-      ? appliedConfigParams.source
-      : traceSources?.[0]?.id || '';
-
-    return {
+  // The effective source is never the raw param: that may be a source *name*,
+  // and everything keyed on this — the form value, the side panels, and the
+  // preset-filter request — needs a real ID. Until the list loads there simply
+  // isn't one.
+  const appliedConfigWithoutFilters = useMemo(
+    () => ({
       ...appliedConfigParams,
-      source: effectiveSourceId,
-    };
-  }, [appliedConfigParams, sources]);
+      source: sources?.length
+        ? getEffectiveTraceSourceId(paramSource?.id, sources)
+        : '',
+    }),
+    [appliedConfigParams, paramSource?.id, sources],
+  );
 
   // Services dashboard is SQL-first (WHERE filters are applied to metric/SQL queries).
   // Default to 'sql' here; Search and Dashboard pages default to 'lucene'.
   const effectiveWhereLanguage =
     appliedConfigWithoutFilters?.whereLanguage ?? getStoredLanguage() ?? 'sql';
 
-  const { control, handleSubmit } = useForm({
+  const { control, handleSubmit, setValue } = useForm({
     defaultValues: {
-      where: '',
+      where: appliedConfigWithoutFilters?.where || '',
       whereLanguage: effectiveWhereLanguage as 'sql' | 'lucene',
       service: appliedConfigWithoutFilters?.service || '',
-      source: appliedConfigWithoutFilters?.source ?? '',
+      // Deliberately empty: these defaults are captured on mount, when the
+      // source list hasn't loaded and the param may still be an unresolved name.
+      source: '',
     },
   });
 
   const service = useWatch({ control, name: 'service' });
-  const previousService = usePrevious(service);
-
   const sourceId = useWatch({ control, name: 'source' });
-  const previousSourceId = usePrevious(sourceId);
+
+  // `defaultValues` above is captured on mount, before the source list has
+  // loaded, so the effective source has to be pushed in afterwards — otherwise
+  // the picker stays empty.
+  const effectiveSourceId = appliedConfigWithoutFilters?.source;
+  useEffect(() => {
+    if (!effectiveSourceId || effectiveSourceId === sourceId) return;
+    if (sourceId && sourceId !== appliedConfigParams.source) return;
+    setValue('source', effectiveSourceId);
+  }, [effectiveSourceId, sourceId, appliedConfigParams.source, setValue]);
 
   const { data: source } = useSource({
     id: sourceId,
@@ -222,19 +257,16 @@ function ServicesDashboardPage() {
     [appliedConfigWithoutFilters, additionalFilters],
   );
 
-  // Update the `source` query parameter if the appliedConfig source changes
-  useEffect(() => {
-    if (
-      appliedConfigWithoutFilters.source &&
-      appliedConfigWithoutFilters.source !== appliedConfigParams.source
-    ) {
-      setAppliedConfigParams({ source: appliedConfigWithoutFilters.source });
+  // Update the `source` query parameter if the appliedConfig source changes,
+  // which also canonicalizes a source name to its ID.
+  const syncSourceParam = useEffectEvent((effectiveSource: string) => {
+    if (effectiveSource && effectiveSource !== appliedConfigParams.source) {
+      setAppliedConfigParams({ source: effectiveSource });
     }
-  }, [
-    appliedConfigWithoutFilters.source,
-    appliedConfigParams.source,
-    setAppliedConfigParams,
-  ]);
+  });
+  useEffect(() => {
+    syncSourceParam(appliedConfigWithoutFilters.source);
+  }, [appliedConfigWithoutFilters.source]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -265,23 +297,19 @@ function ServicesDashboardPage() {
     [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue],
   );
 
-  // Auto-submit when source changes
-  // Note: do not include appliedConfig.source in the deps,
-  // to avoid infinite render loops when navigating away from the page
+  // Auto-submit when the selected source or service changes.
+  const submitOnSelectionChange = useEffectEvent(() => {
+    // Nothing to submit before a source is selected, and submitting then writes
+    // the form's empty source over the `?source=` the page is still resolving.
+    if (!sourceId) return;
+    onSubmit(false);
+  });
   useEffect(() => {
-    if (sourceId && sourceId != previousSourceId) {
-      onSubmit(false);
-    }
-  }, [sourceId, onSubmit, previousSourceId]);
-
-  // Auto-submit when service changes
-  // Note: do not include appliedConfig.service in the deps,
-  // to avoid infinite render loops when navigating away from the page
+    submitOnSelectionChange();
+  }, [sourceId]);
   useEffect(() => {
-    if (service != previousService) {
-      onSubmit(false);
-    }
-  }, [service, onSubmit, previousService]);
+    submitOnSelectionChange();
+  }, [service]);
 
   return (
     <Box p="sm" data-testid="services-dashboard-page">

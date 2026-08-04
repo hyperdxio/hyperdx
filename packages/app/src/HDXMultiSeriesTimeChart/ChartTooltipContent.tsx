@@ -16,6 +16,8 @@ import {
 } from './constants';
 import { TooltipItem, type TooltipPayload } from './TooltipItem';
 
+import styles from '@styles/HDXLineChart.module.scss';
+
 type HDXLineChartTooltipProps = {
   lineDataMap: { [keyName: string]: LineData };
   previousPeriodOffsetSeconds?: number;
@@ -110,7 +112,10 @@ export const HDXLineChartTooltip = withErrorBoundary(
 
       return (
         <div style={anchorStyle}>
-          <ChartTooltipContainer header={header}>
+          <ChartTooltipContainer
+            header={header}
+            contentClassName={styles.chartTooltipContentClipped}
+          >
             {/* Copy before sorting: Recharts 3 freezes the payload, so an
                 in-place sort throws "this object has been frozen". */}
             {[...payload]

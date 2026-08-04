@@ -3,6 +3,11 @@ export const DEFAULT_TRACES_SOURCE_NAME = 'E2E Traces';
 export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
 
+// Log source deliberately left without a correlated metric source, so tests can
+// exercise the "not correlated" paths (the search side panel's infrastructure
+// tab, and the Kubernetes dashboard's correlation warning).
+export const K8S_LOGS_NO_METRICS_SOURCE_NAME = 'E2E K8s Logs No Metrics';
+
 // Source backed by `otel_logs_interesting_filter_keys`, used by the filter-key
 // edge case tests to exercise identifier escaping (dotted/hyphenated column
 // names, Map keys, and JSON paths) in search and dashboard filters.
