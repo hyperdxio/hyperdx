@@ -3,6 +3,7 @@ import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
+import { stripTypeWrappers } from '@/core/eventDeltas';
 import {
   GROUP_ALIAS,
   translateExponentialHistogram,
@@ -973,7 +974,9 @@ export async function timeFilterExpr({
         ? chSql`${toStartOf.function}(${rawEndBound}${toStartOf.formattedRemainingArgs})`
         : rawEndBound;
 
-      const isDateType = columnMeta?.type === 'Date' || isToDateExpr;
+      const isDateType =
+        /^Date(?:32)?$/i.test(stripTypeWrappers(columnMeta?.type ?? '')) ||
+        isToDateExpr;
 
       // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
       const startOp =
