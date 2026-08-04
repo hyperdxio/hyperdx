@@ -1,5 +1,6 @@
 import { SourceFormComponent } from '../components/SourceFormComponent';
 import { SearchPage } from '../page-objects/SearchPage';
+import { SourcesListPage } from '../page-objects/SourcesListPage';
 import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
@@ -275,12 +276,15 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     'does not infer missing metric tables when editing a source that already has tables',
     { tag: ['@full-stack'] },
     async ({ page }) => {
+      const sourcesListPage = new SourcesListPage(page);
       const sourceForm = new SourceFormComponent(page);
 
-      // 'E2E Metrics Partial' is saved with only the gauge table configured;
-      // sum (and the rest) are intentionally left empty.
-      await searchPage.selectSource(PARTIAL_METRICS_SOURCE_NAME);
-      await searchPage.openEditSourceModal();
+      // Metric sources can't be picked on the search page, so edit via the
+      // team "Data" tab, which lists every source and expands its edit form
+      // inline. 'E2E Metrics Partial' is saved with only the gauge table
+      // configured; sum (and the rest) are intentionally left empty.
+      await sourcesListPage.goto();
+      await sourcesListPage.expandSource(PARTIAL_METRICS_SOURCE_NAME);
 
       // Form hydrates from the saved source: gauge is set, sum is empty.
       await expect(sourceForm.getMetricTableInput('gauge')).toHaveValue(
