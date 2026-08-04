@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  Code,
   MantineTheme,
   MantineThemeOverride,
   Radio,
@@ -82,6 +83,13 @@ const makeTheme = ({
     fontFamily,
   },
   components: {
+    Code: Code.extend({
+      vars: () => ({
+        root: {
+          '--code-bg': 'var(--color-bg-code)',
+        },
+      }),
+    }),
     Tooltip: Tooltip.extend({
       styles: () => ({
         tooltip: {
@@ -313,10 +321,13 @@ const makeTheme = ({
     SegmentedControl: SegmentedControl.extend({
       styles: () => ({
         root: {
-          background: 'var(--color-bg-field)',
+          background: 'var(--color-bg-body)',
+          border: '1px solid var(--color-border)',
         },
         indicator: {
-          background: 'var(--color-bg-field-highlighted)',
+          background: 'var(--color-bg-option-active)',
+          borderRadius: '2px',
+          boxShadow: 'none',
         },
       }),
     }),
@@ -326,6 +337,10 @@ const makeTheme = ({
           '--tabs-color': 'var(--color-text-brand)',
         },
       }),
+      classNames: {
+        list: componentClasses.tabsList,
+        tab: componentClasses.tabsTab,
+      },
       styles: {
         tabLabel: { textAlign: 'left' },
       },

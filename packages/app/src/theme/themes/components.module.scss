@@ -1,3 +1,19 @@
+// Mantine's default variant draws the list line as a `::before` with a 1px
+// border on all four sides of a zero-height box, so the top + bottom borders
+// stack and read as a ~2px line. Collapse it to a single 1px bottom edge for
+// horizontal tabs (vertical tabs keep their native side border).
+[data-orientation='horizontal'] .tabsList::before {
+  border-width: 0 0 1px !important;
+}
+
+// The tab's bottom border defaults to 2px (shared with the active indicator).
+// Keep non-active horizontal tabs at 1px so their hover underline matches the
+// 1px list line, while the active tab keeps its 2px indicator. Applying this at
+// rest too (not only :hover) avoids a 1px layout shift on hover.
+[data-orientation='horizontal'] .tabsTab:not([data-active]) {
+  border-bottom-width: 1px;
+}
+
 .sliderMark {
   width: 6px !important;
   height: 6px !important;
