@@ -399,4 +399,45 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
     const ext = convertToExternalDashboard(doc);
     expect(ext.tiles.map(t => t.id)).toEqual(['normal-tile']);
   });
+
+  // The external `seriesLimit` field is positive-only, but internally 0 means
+  // "unlimited". A stored 0 (or null) must serialize as absent (undefined, which
+  // JSON.stringify drops) so an unmodified GET body still validates on PUT.
+  // Positive values pass through unchanged.
+  describe.each([DisplayType.Line, DisplayType.StackedBar])(
+    'seriesLimit serialization for %s tiles',
+    displayType => {
+      function makeSeriesLimitTile(seriesLimit: number | null) {
+        return makeTile({
+          id: 'series-limit-tile',
+          config: {
+            displayType,
+            source: new mongoose.Types.ObjectId().toString(),
+            name: 'Series limit tile',
+            select: [{ aggFn: 'count', valueExpression: '' }],
+            where: '',
+            seriesLimit,
+          } as any,
+        });
+      }
+
+      it('emits seriesLimit as absent when stored as 0 (unlimited)', () => {
+        const doc = makeDoc({ tiles: [makeSeriesLimitTile(0)] });
+        const ext = convertToExternalDashboard(doc);
+        expect((ext.tiles[0].config as any).seriesLimit).toBeUndefined();
+      });
+
+      it('emits seriesLimit as absent when stored as null', () => {
+        const doc = makeDoc({ tiles: [makeSeriesLimitTile(null)] });
+        const ext = convertToExternalDashboard(doc);
+        expect((ext.tiles[0].config as any).seriesLimit).toBeUndefined();
+      });
+
+      it('passes a positive seriesLimit through unchanged', () => {
+        const doc = makeDoc({ tiles: [makeSeriesLimitTile(25)] });
+        const ext = convertToExternalDashboard(doc);
+        expect((ext.tiles[0].config as any).seriesLimit).toBe(25);
+      });
+    },
+  );
 });

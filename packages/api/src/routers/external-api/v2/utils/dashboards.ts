@@ -300,7 +300,12 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
-        seriesLimit: config.seriesLimit ?? undefined,
+        // 0 = unlimited internally, but the external `seriesLimit` is
+        // positive-only; emit it as absent so a GET->PUT round-trip isn't
+        // rejected by the write-body schema. null/undefined also map to absent.
+        seriesLimit: hasPositiveSeriesLimit(config.seriesLimit)
+          ? config.seriesLimit
+          : undefined,
       };
     case DisplayType.StackedBar:
       return {
@@ -317,7 +322,12 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
-        seriesLimit: config.seriesLimit ?? undefined,
+        // 0 = unlimited internally, but the external `seriesLimit` is
+        // positive-only; emit it as absent so a GET->PUT round-trip isn't
+        // rejected by the write-body schema. null/undefined also map to absent.
+        seriesLimit: hasPositiveSeriesLimit(config.seriesLimit)
+          ? config.seriesLimit
+          : undefined,
       };
     case DisplayType.Number:
       return {
