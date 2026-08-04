@@ -72,6 +72,9 @@ describe('MCP Dashboard Prompts', () => {
       expect(metricsBody).toMatch(/gauge\s+Use aggFn:"last_value"/);
       expect(metricsBody).toMatch(/sum\s+Use aggFn:"increase"/);
       expect(metricsBody).toMatch(/histogram\s+Use aggFn:"quantile"/);
+      expect(metricsBody).toMatch(
+        /exponential histogram\s+Use aggFn:"quantile"/,
+      );
       // The 20-group cap on increase + groupBy is documented.
       expect(metricsBody).toMatch(/top 20 groups/);
       // The four-tool discovery chain is documented in order.

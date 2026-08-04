@@ -51,6 +51,8 @@ const KIND_USAGE: Record<QueryableMetricKind, string> = {
   sum: 'Sum (counter): use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum"/"avg" on the computed rate. increase+groupBy is capped at the top 20 groups.',
   histogram:
     'Histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
+  'exponential histogram':
+    'Exponential histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
 };
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ const describeMetricSchema = z.object({
   kind: z
     .enum(QUERYABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram". Required. ' +
+      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram". Required. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -642,7 +644,7 @@ async function describeMetricImpl(
   const queryExample = `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
     kind === 'sum'
       ? '"increase"'
-      : kind === 'histogram'
+      : kind === 'histogram' || kind === 'exponential histogram'
         ? '"quantile", level: 0.95'
         : '"avg"'
   }, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
@@ -705,7 +707,7 @@ export function registerDescribeMetric({
         'sample) to get attribute keys, sampled values, unit, and description for a ' +
         'specific (metricName, kind) pair. Attribute keys vary per metric — not per source — ' +
         "so always call this before clickstack_timeseries / clickstack_table for any metric you've never queried.\n\n" +
-        'REQUIRES `kind` — pass the gauge/sum/histogram value emitted alongside the metric name by ' +
+        'REQUIRES `kind` — pass the gauge/sum/histogram/exponential histogram value emitted alongside the metric name by ' +
         'clickstack_list_metrics or clickstack_describe_source. A metric name can legitimately ' +
         'live in more than one kind (e.g. "container.cpu.usage" appears in both gauge and sum); ' +
         'call this tool once per kind you care about.\n\n' +

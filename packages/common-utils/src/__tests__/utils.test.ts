@@ -206,6 +206,30 @@ describe('utils', () => {
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
     });
 
+    it('should keep commas inside single-quoted strings with backslash-escaped quotes', () => {
+      const input = "'it\\'s,ok' AS label, count()";
+      const expected = ["'it\\'s,ok' AS label", 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep commas inside double-quoted identifiers with escaped quotes', () => {
+      const input = '"foo\\"bar,baz" AS label, count()';
+      const expected = ['"foo\\"bar,baz" AS label', 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep commas inside single-quoted strings with doubled quotes', () => {
+      const input = "'it''s,ok' AS label, count()";
+      const expected = ["'it''s,ok' AS label", 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should close strings after an even number of backslashes', () => {
+      const input = "'path\\\\', count()";
+      const expected = ["'path\\\\'", 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
     it('should handle mixed quotes with commas', () => {
       const input = `col1, "double, quoted", col2, 'single, quoted', col3`;
       const expected = [

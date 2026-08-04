@@ -5,7 +5,11 @@ import {
   isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithOptTimestamp,
+  ChartPaletteToken,
+  ColorCondition,
+} from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
@@ -127,6 +131,39 @@ export default function DBTableChart({
 
   const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
 
+  // Per-column color config (static token + ordered conditional rules) for
+  // builder table tiles. Mirrors `formatByColumn`: each series in `select`
+  // maps by index to its result column (meta[i].name), so these maps key
+  // identically and the columns memo consumes them the same way. Color targets
+  // aggregation (series) columns only; group-by columns are not select items
+  // and never appear here. Ratio configs merge two series into one column, so
+  // per-column color is skipped (matching the numberFormat treatment).
+  const { colorByColumn, rulesByColumn } = useMemo(() => {
+    const colorByColumn = new Map<string, ChartPaletteToken>();
+    const rulesByColumn = new Map<string, ColorCondition[]>();
+    const meta = data?.meta;
+    if (
+      !meta ||
+      !isBuilderChartConfig(queriedConfig) ||
+      !Array.isArray(queriedConfig.select) ||
+      isRatioChartConfig(queriedConfig.select, queriedConfig)
+    ) {
+      return { colorByColumn, rulesByColumn };
+    }
+    for (let i = 0; i < queriedConfig.select.length; i++) {
+      const series = queriedConfig.select[i];
+      const key = meta[i]?.name;
+      if (key == null) continue;
+      if (series.color) {
+        colorByColumn.set(key, series.color);
+      }
+      if (series.colorRules && series.colorRules.length > 0) {
+        rulesByColumn.set(key, series.colorRules);
+      }
+    }
+    return { colorByColumn, rulesByColumn };
+  }, [data?.meta, queriedConfig]);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -172,9 +209,21 @@ export default function DBTableChart({
         numberFormat: groupByKeys.includes(key)
           ? undefined
           : (formatByColumn.get(key) ?? queriedConfig.numberFormat),
+        color: groupByKeys.includes(key) ? undefined : colorByColumn.get(key),
+        colorRules: groupByKeys.includes(key)
+          ? undefined
+          : rulesByColumn.get(key),
         sortingFn: getClientSideSortingFn(data?.meta, key),
       }));
-  }, [data, queriedConfig, hiddenColumns, aliasMap, formatByColumn]);
+  }, [
+    data,
+    queriedConfig,
+    hiddenColumns,
+    aliasMap,
+    formatByColumn,
+    colorByColumn,
+    rulesByColumn,
+  ]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];

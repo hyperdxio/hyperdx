@@ -21,6 +21,7 @@ import {
 import {
   extractSettingsClauseFromEnd,
   hashCode,
+  isTimeSeriesDisplayType,
   replaceJsonExpressions,
   splitAndTrimWithBracket,
 } from '@/core/utils';
@@ -842,7 +843,7 @@ export abstract class BaseClickhouseClient {
       ),
     );
 
-    const isTimeSeries = config.displayType === 'line';
+    const isTimeSeries = isTimeSeriesDisplayType(config.displayType);
 
     const resultSets = await Promise.all(
       queries.map(async query => {

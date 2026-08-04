@@ -853,6 +853,45 @@ describe('getMetricSelectIssues', () => {
     ).toEqual([]);
   });
 
+  it('rejects aggFn:"avg" on an exponential histogram metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricType: 'exponential histogram',
+      metricName: 'http.server.request.duration',
+    });
+    expect(issues.find(i => i.path[0] === 'aggFn')).toBeDefined();
+  });
+
+  it('accepts aggFn:"count" on an exponential histogram metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'count',
+        metricType: 'exponential histogram',
+        metricName: 'http.server.request.duration',
+      }),
+    ).toEqual([]);
+  });
+
+  it('requires level for exponential histogram quantiles', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'quantile',
+      metricType: 'exponential histogram',
+      metricName: 'http.server.request.duration',
+    });
+    expect(issues.find(i => i.path[0] === 'level')).toBeDefined();
+  });
+
+  it('accepts an exponential histogram quantile with level', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'quantile',
+        level: 0.95,
+        metricType: 'exponential histogram',
+        metricName: 'http.server.request.duration',
+      }),
+    ).toEqual([]);
+  });
+
   it('rejects isDelta on a non-gauge metric', () => {
     const issues = getMetricSelectIssues({
       aggFn: 'sum',
@@ -932,7 +971,7 @@ describe('validateMetricSelectItems', () => {
 // type-checking.
 type SelectItem = {
   aggFn: string;
-  metricType?: 'gauge' | 'sum' | 'histogram';
+  metricType?: 'gauge' | 'sum' | 'histogram' | 'exponential histogram';
   metricName?: string;
   valueExpression?: string;
 };
@@ -961,6 +1000,19 @@ describe('applyMetricSelectDefaults', () => {
     ];
     const out = applyMetricSelectDefaults(input);
     expect(out[0].valueExpression).toBe('Value * 100');
+  });
+
+  it('does not default valueExpression for metric count items', () => {
+    const input: SelectItem[] = [
+      {
+        aggFn: 'count',
+        metricType: 'exponential histogram',
+        metricName: 'http.server.request.duration',
+      },
+    ];
+    const out = applyMetricSelectDefaults(input);
+    expect(out[0]).toBe(input[0]);
+    expect(out[0].valueExpression).toBeUndefined();
   });
 
   it('leaves non-metric items untouched', () => {

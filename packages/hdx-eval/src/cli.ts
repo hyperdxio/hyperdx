@@ -16,6 +16,7 @@ import {
   type GradeBatchOptions,
   resolveBatchDir,
 } from './grading/grade';
+import { DEFAULT_JUDGE_SPEC, parseJudgeSpec } from './grading/judgeModel';
 import { runCell } from './harness/runRun';
 import { type McpKind, PLUGIN_NONE, type PromptVariant } from './harness/types';
 import {
@@ -138,6 +139,25 @@ const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 // `maxTurns` override is set. Kept low so exploratory over-querying is
 // penalized; scenarios that need more headroom set `maxTurns` on themselves.
 const DEFAULT_MAX_TURNS = 15;
+
+/**
+ * Resolve the judge model spec with precedence:
+ *   CLI --judge-model flag > eval.config.json `grading.judgeModel` > built-in.
+ * Validates the resulting spec so a bad `provider:model` fails fast at the CLI.
+ */
+function resolveJudgeModelSpec(flagValue: string | undefined): string {
+  let configValue: string | undefined;
+  if (configExists()) {
+    try {
+      configValue = readConfig().grading?.judgeModel;
+    } catch {
+      // Config may be stale/invalid — fall back to flag/default.
+    }
+  }
+  const spec = flagValue ?? configValue ?? DEFAULT_JUDGE_SPEC;
+  // Throws with a clear message on an unknown provider or empty model.
+  return parseJudgeSpec(spec).spec;
+}
 
 const program = new Command();
 
@@ -433,9 +453,12 @@ program
   .option('--no-grade', 'Skip automatic grading after runs complete')
   .option('--no-report', 'Skip automatic report generation after grading')
   .option(
-    '--judge-model <id>',
-    'Judge model ID (used when auto-grading)',
-    'claude-opus-4-7',
+    '--judge-model <spec>',
+    'Judge model as "provider:model" (providers: anthropic, openai; e.g. ' +
+      '"openai:gpt-4o", "anthropic:claude-opus-4-7"). A bare model name ' +
+      'defaults to anthropic. The grader can differ from the run model for ' +
+      'independence. Overrides eval.config.json grading.judgeModel. ' +
+      `Default: ${DEFAULT_JUDGE_SPEC}.`,
   )
   .option(
     '--no-judge',
@@ -470,7 +493,7 @@ program
         promptVariant: string;
         grade: boolean;
         report: boolean;
-        judgeModel: string;
+        judgeModel?: string;
         judge: boolean;
         email: string;
         password: string;
@@ -790,7 +813,7 @@ program
           ? buildInspectionConfig(config, cmdOpts, anchorTimeIso)
           : undefined;
         const gradeOpts: GradeBatchOptions = {
-          judgeModel: cmdOpts.judgeModel,
+          judgeModel: resolveJudgeModelSpec(cmdOpts.judgeModel),
           skipJudge: cmdOpts.judge === false,
           blindingEntries,
           inspectionConfig,
@@ -918,9 +941,17 @@ program
 program
   .command('grade <batch>')
   .description(
-    'Grade trajectories: programmatic checks + LLM-as-judge (Opus 4.7 by default)',
+    'Grade trajectories: programmatic checks + LLM-as-judge. The judge can ' +
+      'use a different provider/model than the run model for independence ' +
+      `(default: ${DEFAULT_JUDGE_SPEC}).`,
   )
-  .option('--judge-model <id>', 'Judge model ID', 'claude-opus-4-7')
+  .option(
+    '--judge-model <spec>',
+    'Judge model as "provider:model" (providers: anthropic, openai; e.g. ' +
+      '"openai:gpt-4o"). A bare model name defaults to anthropic. Overrides ' +
+      'eval.config.json grading.judgeModel. ' +
+      `Default: ${DEFAULT_JUDGE_SPEC}.`,
+  )
   .option('--rerun-judge', 'Re-call judge even if a grade JSON already exists')
   .option('--no-judge', 'Run programmatic checks only (cheap regrade)')
   .option(
@@ -937,7 +968,7 @@ program
     async (
       batch: string,
       cmdOpts: {
-        judgeModel: string;
+        judgeModel?: string;
         rerunJudge?: boolean;
         judge: boolean;
         email: string;
@@ -976,7 +1007,7 @@ program
         }
       }
       const summary = await gradeBatch(dir, {
-        judgeModel: cmdOpts.judgeModel,
+        judgeModel: resolveJudgeModelSpec(cmdOpts.judgeModel),
         rerunJudge: cmdOpts.rerunJudge ?? false,
         skipJudge: cmdOpts.judge === false,
         blindingEntries,
