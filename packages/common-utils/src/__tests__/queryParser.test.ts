@@ -450,6 +450,24 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       sql: "(NOT (hasToken(lower(Body), lower('red'))) AND NOT (hasToken(lower(Body), lower('blue'))))",
       english: 'NOT event has whole word red AND NOT event has whole word blue',
     },
+    {
+      lucene: 'http://a.com http://b.com',
+      sql: "((hasToken(lower(Body), lower('http')) AND hasToken(lower(Body), lower('a')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%http://a.com%'))) AND (hasToken(lower(Body), lower('http')) AND hasToken(lower(Body), lower('b')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%http://b.com%'))))",
+      english:
+        'event has whole word http://a.com AND event has whole word http://b.com',
+    },
+    {
+      lucene: 'https://a.com https://b.com',
+      sql: "((hasToken(lower(Body), lower('https')) AND hasToken(lower(Body), lower('a')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%https://a.com%'))) AND (hasToken(lower(Body), lower('https')) AND hasToken(lower(Body), lower('b')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%https://b.com%'))))",
+      english:
+        'event has whole word https://a.com AND event has whole word https://b.com',
+    },
+    {
+      lucene: 'localhost:3000 localhost:4000',
+      sql: "((hasToken(lower(Body), lower('localhost')) AND hasToken(lower(Body), lower('3000')) AND (lower(Body) LIKE lower('%localhost:3000%'))) AND (hasToken(lower(Body), lower('localhost')) AND hasToken(lower(Body), lower('4000')) AND (lower(Body) LIKE lower('%localhost:4000%'))))",
+      english:
+        'event has whole word localhost:3000 AND event has whole word localhost:4000',
+    },
   ];
 
   it.each(testCases)(
@@ -599,6 +617,50 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
         multiColumnBodySerializer,
       ).build();
       expect(sql).toContain("concatWithSeparator(';',Body,Message)");
+    });
+  });
+
+  describe('LIKE metacharacters in search terms', () => {
+    const escapingCases = [
+      {
+        lucene: 'ServiceName:user_service',
+        sql: "((ServiceName ILIKE '%user\\\\_service%'))",
+      },
+      {
+        lucene: 'ServiceName:100%',
+        sql: "((ServiceName ILIKE '%100\\\\%%'))",
+      },
+      {
+        lucene: '-ServiceName:user_service',
+        sql: "((ServiceName NOT ILIKE '%user\\\\_service%'))",
+      },
+      {
+        lucene: 'LogAttributes.error_code:5_0',
+        sql: "((`LogAttributes`['error_code'] ILIKE '%5\\\\_0%' AND indexHint(mapContains(`LogAttributes`, 'error_code'))))",
+      },
+      {
+        lucene: 'ResourceAttributesJSON.error:a_b',
+        sql: "((toString(`ResourceAttributesJSON`.`error`) ILIKE '%a\\\\_b%'))",
+      },
+      {
+        lucene: 'user_*',
+        sql: "((lower(Body) LIKE lower('user\\\\_%')))",
+      },
+    ];
+
+    it.each(escapingCases)(
+      'escapes wildcards in "$lucene"',
+      async ({ lucene, sql }) => {
+        const builder = new SearchQueryBuilder(lucene, serializer);
+        expect(await builder.build()).toBe(sql);
+      },
+    );
+
+    it('escapes the LIKE fallback but leaves the tokens raw', async () => {
+      const builder = new SearchQueryBuilder('user_service', serializer);
+      expect(await builder.build()).toBe(
+        "((hasToken(lower(Body), lower('user')) AND hasToken(lower(Body), lower('service')) AND (lower(Body) LIKE lower('%user\\\\_service%'))))",
+      );
     });
   });
 });

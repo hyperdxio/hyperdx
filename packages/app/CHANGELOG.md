@@ -1,5 +1,58 @@
 # @hyperdx/app
 
+## 2.33.0
+
+### Minor Changes
+
+- 8aeb2f32: Add a read-only kiosk mode for dashboards with a minimal header and automatic
+  live refresh for static displays.
+- b1e4e1d9: feat: Accept source names in addition to IDs in URL Params
+
+### Patch Changes
+
+- b1e4e1d9: fix: Disable invalid autocomplete query while source loads
+- b2165b41: feat(dashboards): opt-in linked (faceted) filter values
+
+  Dashboard and Kubernetes filter bars gain a "link filters" toggle (the
+  bidirectional-arrow button at the end of the bar). When enabled, each filter
+  dropdown only shows values that co-occur with the other current selections —
+  e.g. picking a `cluster` narrows the `namespace` dropdown to namespaces in that
+  cluster (the K8s bar also factors in the free-text search). A filter never
+  constrains its own options, so multi-select still works. It is off by default
+  because contingent value lookups can't use the cheap per-key rollups and are
+  more expensive at scale; when on, all of a source's facets are computed in a
+  single `groupUniqArrayIf` scan rather than one query per filter. Search-page
+  filters are unaffected.
+
+- cacdfe98: feat: Support source name deeplinks on additional pages
+- 7914ec09: Fix the time-chart tooltip: clicking outside the chart now unpins the pinned
+  tooltip, the pin always stacks above hover tooltips, and a many-series hover
+  tooltip is clamped to a bounded height instead of overflowing the chart (pin it
+  to scroll through every series).
+- 9327396c: Fix saved-search navigation so newly created searches reliably load their stored
+  configuration.
+- ab190d16: chore: move usage stats tracking to Reo.dev
+- e231d72e: fix: Stop requesting additional search pages while a query is in an error state.
+  A failed page (for example a ClickHouse query timeout on a slow time window)
+  previously kept `hasNextPage` true, so the table re-issued the failing query and
+  stayed in a loading state that hid the error and reported zero results.
+- ec161d70: feat: move the dashboard tile fullscreen action to a top-level toolbar icon
+
+  The View fullscreen action now sits directly in the tile toolbar as an icon instead of inside the "More actions" menu, so it is one click instead of two. Narrow tiles that collapse the toolbar keep it in the menu, and the `f` shortcut is unchanged.
+
+- 7b3e6d28: fix: draw an isolated dashboard series even when it ranks beyond the line cap
+
+  Isolating (or search/checkbox filtering) a time-chart series that sits beyond the per-chart line-render cap left the chart empty, because the cap was applied before the selection filter. The selection now wins over the cap, so an explicitly chosen series always renders, and an oversized manual selection is still bounded by the cap.
+
+- fa1a0687: feat: Warn on missing params/macros in SQL Editor
+- Updated dependencies [017c296e]
+- Updated dependencies [874a5e95]
+- Updated dependencies [0e280949]
+- Updated dependencies [1b658f3c]
+- Updated dependencies [fa1a0687]
+  - @hyperdx/api@2.33.0
+  - @hyperdx/common-utils@0.24.1
+
 ## 2.32.0
 
 ### Minor Changes
