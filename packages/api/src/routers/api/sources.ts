@@ -6,6 +6,7 @@ import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { validateConnectionId } from '@/controllers/connection';
 import {
   createSource,
   deleteSource,
@@ -16,6 +17,25 @@ import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
+
+async function requireValidConnectionId(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  try {
+    const result = await validateConnectionId(
+      req.body?.connection,
+      req.user?.team,
+    );
+    if (!result.ok) {
+      return res.status(result.status).json({ message: result.message });
+    }
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
 
 router.get('/', async (req, res, next) => {
   try {
@@ -39,6 +59,7 @@ router.post(
   validateRequest({
     body: SourceSchemaNoId,
   }),
+  requireValidConnectionId,
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
@@ -63,6 +84,7 @@ router.put(
       id: objectIdSchema,
     }),
   }),
+  requireValidConnectionId,
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
