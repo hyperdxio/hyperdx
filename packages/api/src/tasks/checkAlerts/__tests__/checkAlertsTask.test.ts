@@ -11,6 +11,7 @@ import CheckAlertTask from '@/tasks/checkAlerts';
 import {
   AlertDetails,
   AlertProvider,
+  AlertTask,
   AlertTaskType,
   loadProvider,
 } from '@/tasks/checkAlerts/providers';
@@ -327,6 +328,116 @@ describe('CheckAlertTask', () => {
       expect(mockAlertProvider.getWebhooks).toHaveBeenCalledWith(
         team2Id.toString(),
       );
+    });
+
+    describe('when a connection fails', () => {
+      // The task queue runs batches fire-and-forget, and the worker's global
+      // unhandledRejection handler exits the process, so a single failing
+      // ClickHouse connection must not escape as a rejected promise.
+      let unhandledRejections: unknown[];
+      let onUnhandledRejection: (reason: unknown) => void;
+
+      const buildAlertTask = (
+        connId: string,
+        alertId: string,
+        teamId: mongoose.Types.ObjectId,
+      ) =>
+        ({
+          alerts: [
+            {
+              alert: {
+                id: alertId,
+                team: { _id: teamId },
+                source: AlertSource.SAVED_SEARCH,
+                threshold: 10,
+                thresholdType: AlertThresholdType.ABOVE,
+                interval: '5m',
+                channel: { type: 'webhook', webhookId: 'webhook-123' },
+              },
+              source: {
+                id: 'source-123',
+                from: { databaseName: 'default', tableName: 'otel_logs' },
+                timestampValueExpression: 'Timestamp',
+              },
+              taskType: AlertTaskType.SAVED_SEARCH,
+              previousMap: new Map(),
+            },
+          ],
+          conn: {
+            id: connId,
+            _id: new mongoose.Types.ObjectId(),
+            host: config.CLICKHOUSE_HOST,
+            username: config.CLICKHOUSE_USER,
+            password: config.CLICKHOUSE_PASSWORD,
+            name: '',
+            team: teamId,
+          },
+          now: new Date(),
+        }) as unknown as AlertTask;
+
+      beforeEach(() => {
+        unhandledRejections = [];
+        onUnhandledRejection = reason => unhandledRejections.push(reason);
+        process.on('unhandledRejection', onUnhandledRejection);
+
+        const teamId = new mongoose.Types.ObjectId();
+        mockAlertProvider.getAlertTasks.mockResolvedValue([
+          buildAlertTask('conn-broken', 'alert-broken', teamId),
+          buildAlertTask('conn-healthy', 'alert-healthy', teamId),
+        ]);
+        mockAlertProvider.getWebhooks.mockResolvedValue(new Map());
+        mockAlertProvider.getClickHouseClient.mockImplementation(
+          async (conn: any) => {
+            if (conn.id === 'conn-broken') {
+              throw new Error('connect ECONNREFUSED');
+            }
+            return new ClickhouseClient({});
+          },
+        );
+      });
+
+      afterEach(() => {
+        process.off('unhandledRejection', onUnhandledRejection);
+      });
+
+      it('should not produce an unhandled rejection', async () => {
+        const args: CheckAlertsTaskArgs = { taskName: TaskName.CHECK_ALERTS };
+        const task = new CheckAlertTask(args);
+
+        await task.execute();
+        // Let node emit any rejection that is still without a handler.
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(unhandledRejections).toEqual([]);
+      });
+
+      it('should still evaluate alerts on the healthy connections', async () => {
+        const args: CheckAlertsTaskArgs = { taskName: TaskName.CHECK_ALERTS };
+        const task = new CheckAlertTask(args);
+
+        await task.execute();
+
+        expect(mockProcessAlert).toHaveBeenCalledTimes(1);
+        expect(mockProcessAlert).toHaveBeenCalledWith(
+          expect.any(Date),
+          expect.objectContaining({
+            alert: expect.objectContaining({ id: 'alert-healthy' }),
+          }),
+          expect.any(ClickhouseClient),
+          'conn-healthy',
+          mockAlertProvider,
+          expect.any(Map),
+        );
+      });
+
+      it('should not persist an alert error for the failed batch', async () => {
+        const args: CheckAlertsTaskArgs = { taskName: TaskName.CHECK_ALERTS };
+        const task = new CheckAlertTask(args);
+
+        await task.execute();
+
+        expect(mockAlertProvider.recordAlertErrors).not.toHaveBeenCalled();
+      });
     });
   });
 });

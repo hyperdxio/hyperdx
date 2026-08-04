@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
+import Script from 'next/script';
 import cx from 'classnames';
 import HyperDX from '@hyperdx/browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
@@ -57,6 +58,15 @@ import styles from './AppNav.module.scss';
 // Expose the same value Next injected at build time; fall back to package.json for dev tooling
 const APP_VERSION =
   process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version ?? 'dev';
+
+// Reo.dev client ID for our usage tracking. USAGE_STATS_ENABLED is the opt-out.
+const REO_CLIENT_ID = '38b2e79cdb32fa7';
+
+declare global {
+  interface Window {
+    Reo?: { init: (options: { clientID: string; source?: string }) => void };
+  }
+}
 
 // Navigation link configuration
 type NavLinkConfig = {
@@ -510,10 +520,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             onClickUserPreferences={openUserPreferences}
             logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
-          {meData && meData.usageStatsEnabled && (
-            <img
-              referrerPolicy="no-referrer-when-downgrade"
-              src="https://static.scarf.sh/a.png?x-pxid=bbc99c42-7a75-4eee-9fb9-2b161fc4acd6"
+          {meData?.usageStatsEnabled && (
+            <Script
+              id="reo-beacon"
+              strategy="afterInteractive"
+              src={`https://static.reo.dev/${REO_CLIENT_ID}/reo.js`}
+              onLoad={() => {
+                window.Reo?.init({
+                  clientID: REO_CLIENT_ID,
+                  source: 'internal',
+                });
+              }}
             />
           )}
         </div>

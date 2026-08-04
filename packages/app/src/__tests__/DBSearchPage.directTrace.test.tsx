@@ -1,6 +1,7 @@
 import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { screen, waitFor } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 import { DBSearchPage } from '@/DBSearchPage';
 
@@ -15,6 +16,9 @@ const mockOnTimeRangeSelect = jest.fn();
 let mockDirectTraceId: string | null = null;
 let mockSearchedConfig: Record<string, any> = {};
 let mockSources: any[] = [];
+// When true, useSources() reports the list as still loading, so tests can
+// exercise what the page does before and after the source list arrives.
+let mockSourcesLoading = false;
 let latestDirectTracePanelProps: Record<string, any> | null = null;
 
 jest.mock('@/layout', () => ({
@@ -76,11 +80,13 @@ jest.mock('@/source', () => ({
   getEventBody: () => 'Body',
   getFirstTimestampValueExpression: () => 'Timestamp',
   useSources: () => ({
-    data: mockSources,
+    data: mockSourcesLoading ? undefined : mockSources,
   }),
   useSource: ({ id }: { id?: string | null }) => ({
-    data: mockSources.find(source => source.id === id),
-    isLoading: false,
+    data: mockSourcesLoading
+      ? undefined
+      : mockSources.find(source => source.id === id),
+    isLoading: mockSourcesLoading,
   }),
 }));
 
@@ -256,6 +262,7 @@ describe('DBSearchPage direct trace flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     latestDirectTracePanelProps = null;
+    mockSourcesLoading = false;
     mockDirectTraceId = 'trace-123';
     mockSearchedConfig = {
       source: undefined,
@@ -379,5 +386,179 @@ describe('DBSearchPage direct trace flow', () => {
     screen.getByText('close-trace').click();
 
     expect(mockSetDirectTraceId).toHaveBeenCalledWith(null);
+  });
+
+  it('resolves a source *name* in the source param to its id', async () => {
+    mockSearchedConfig = {
+      ...mockSearchedConfig,
+      source: 'Trace Source',
+    };
+    window.history.pushState(
+      {},
+      '',
+      '/search?traceId=trace-123&source=Trace%20Source',
+    );
+
+    renderWithMantine(<DBSearchPage />);
+
+    // The direct trace filter only applies once the param resolves to a real
+    // trace source, so this asserts the name was resolved to its id.
+    await waitFor(() => {
+      expect(mockSetSearchedConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: 'trace-source',
+          where: "TraceId = 'trace-123'",
+          whereLanguage: 'sql',
+        }),
+      );
+    });
+  });
+
+  // Renders through the source-list load so the form's `source` value goes from
+  // empty to the resolved ID, the way a cold page load does. A wrapper (rather
+  // than renderWithMantine) is used so `rerender` keeps the provider tree, and
+  // with it the page's own state and refs.
+  async function renderThroughSourceLoad() {
+    jest.useFakeTimers();
+    const { rerender } = render(<DBSearchPage />, {
+      wrapper: ({ children }) => <MantineProvider>{children}</MantineProvider>,
+    });
+
+    mockSourcesLoading = false;
+    await act(async () => {
+      rerender(<DBSearchPage />);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    jest.useRealTimers();
+  }
+
+  it('canonicalizes a source name to its id without touching the rest of the config', async () => {
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockSearchedConfig = {
+      source: 'Log Source',
+      where: '',
+      select: 'Timestamp, Body',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: '',
+    };
+    window.history.pushState(
+      {},
+      '',
+      '/search?source=Log%20Source&select=Timestamp%2C%20Body',
+    );
+
+    await renderThroughSourceLoad();
+
+    // The name is replaced by its id, and nothing else: a source-switch would
+    // have cleared select/orderBy/filters and submitted the whole config.
+    expect(mockSetSearchedConfig).toHaveBeenCalledTimes(1);
+    expect(mockSetSearchedConfig).toHaveBeenCalledWith({
+      source: 'log-source',
+    });
+  });
+
+  it('leaves the config alone when the param is already a source id', async () => {
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockSearchedConfig = {
+      source: 'log-source',
+      where: '',
+      select: 'Timestamp, Body',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: '',
+    };
+    window.history.pushState(
+      {},
+      '',
+      '/search?source=log-source&select=Timestamp%2C%20Body',
+    );
+
+    await renderThroughSourceLoad();
+
+    expect(mockSetSearchedConfig).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unresolvable source param alone instead of picking a default', async () => {
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockSearchedConfig = {
+      source: 'Deleted Source',
+      where: '',
+      select: '',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: '',
+    };
+    window.history.pushState({}, '', '/search?source=Deleted%20Source');
+
+    await renderThroughSourceLoad();
+
+    // Neither the default-source effect nor the form fallback may overwrite a
+    // link whose source no longer exists — the user gets a notification and an
+    // empty source picker instead.
+    expect(mockSetSearchedConfig).not.toHaveBeenCalled();
+  });
+
+  it('still selects a default source when there is no source param', async () => {
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockSearchedConfig = {
+      source: null,
+      where: '',
+      select: '',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: '',
+    };
+    window.history.pushState({}, '', '/search');
+
+    await renderThroughSourceLoad();
+
+    expect(mockSetSearchedConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'trace-source' }),
+    );
+  });
+
+  it('submits on a saved search route without discarding the config the link carried', async () => {
+    // On `/search/<savedSearchId>` the source is written to the URL by the
+    // saved-search effect, so the form catches up to it on a cold load. The
+    // submit still has to run — that is how a freshly loaded page pushes its
+    // defaults into the search config — but it must not clear `select`, which a
+    // bookmarked or refreshed link may carry (e.g. an unsaved tweak).
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockSearchedConfig = {
+      source: 'log-source',
+      where: '',
+      select: 'Timestamp, Body, lower(Body) as body_lower',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: 'Timestamp DESC',
+    };
+    window.history.pushState(
+      {},
+      '',
+      '/search/saved-1?source=log-source&select=Timestamp%2C%20Body%2C%20lower(Body)%20as%20body_lower&orderBy=Timestamp%20DESC',
+    );
+
+    await renderThroughSourceLoad();
+
+    expect(mockSetSearchedConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'log-source',
+        select: 'Timestamp, Body, lower(Body) as body_lower',
+        orderBy: 'Timestamp DESC',
+      }),
+    );
+    // Nothing may land that empties them.
+    for (const [config] of mockSetSearchedConfig.mock.calls) {
+      expect(config).not.toMatchObject({ select: '' });
+      expect(config).not.toMatchObject({ orderBy: '' });
+    }
   });
 });

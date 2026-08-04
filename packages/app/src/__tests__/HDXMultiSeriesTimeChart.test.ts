@@ -95,16 +95,39 @@ describe('getVisibleLineData', () => {
     expect(visible.map(l => l.dataKey)).toEqual(['a', 'c']);
   });
 
-  it('drops series beyond HARD_LINES_LIMIT', () => {
+  it('caps to HARD_LINES_LIMIT when there is no selection', () => {
     const lineData = Array.from({ length: HARD_LINES_LIMIT + 5 }, (_, i) =>
       makeLine(`series-${i}`),
     );
     const visible = getVisibleLineData(lineData, undefined);
     expect(visible).toHaveLength(HARD_LINES_LIMIT);
-    // A series past the limit must never appear, even if selected.
+    expect(visible.map(l => l.dataKey)).not.toContain(
+      `series-${HARD_LINES_LIMIT + 2}`,
+    );
+  });
+
+  it('draws a selected series even when it ranks beyond HARD_LINES_LIMIT', () => {
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 5 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    // Selection wins over the cap: isolating a low-ranked series still draws it
+    // (cap-first order previously left the chart empty while its stats stayed
+    // in the legend table).
     const overLimitName = `series-${HARD_LINES_LIMIT + 2}`;
-    expect(getVisibleLineData(lineData, new Set([overLimitName]))).toHaveLength(
-      0,
+    expect(
+      getVisibleLineData(lineData, new Set([overLimitName])).map(
+        l => l.dataKey,
+      ),
+    ).toEqual([overLimitName]);
+  });
+
+  it('still caps an oversized manual selection to HARD_LINES_LIMIT', () => {
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 20 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    const everySeries = new Set(lineData.map(l => l.dataKey));
+    expect(getVisibleLineData(lineData, everySeries)).toHaveLength(
+      HARD_LINES_LIMIT,
     );
   });
 });
