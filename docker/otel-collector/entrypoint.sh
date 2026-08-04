@@ -51,6 +51,15 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
   # both configure the same receiver's auth.authenticator, so enabling both
   # would just make whichever config file is loaded last win.
   if [ -n "$OIDC_ISSUER_URL" ]; then
+    # oidcauthextension requires a non-empty audience unless ignore_audience
+    # is set (which we don't expose here, since silently skipping the
+    # audience check would weaken the auth rather than just fail loudly).
+    # Fail fast with a clear message instead of letting the collector crash
+    # on the extension's own less obvious "no audience provided" error.
+    if [ -z "$OIDC_AUDIENCE" ]; then
+      echo "ERROR: OIDC_ISSUER_URL is set but OIDC_AUDIENCE is not. Both are required to enable OIDC authentication." >&2
+      exit 1
+    fi
     echo "OIDC_ISSUER_URL is configured, enabling OIDC-based bearer token authentication"
     COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-oidc-config.yaml"
   elif [ -n "$OTLP_AUTH_TOKEN" ]; then
