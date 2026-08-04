@@ -20,6 +20,13 @@ export const INTERESTING_FILTER_KEYS_SOURCE_NAME =
 // filter-key edge case tests to exercise the rollup-backed facet path.
 export const METADATA_MV_LOGS_SOURCE_NAME = 'E2E Metadata MV Logs';
 
+// Log source backed by `e2e_otel_logs_distributed`, a Distributed table whose
+// DDL declares a column its target MergeTree table does not have. `SELECT *`
+// (used to load full row details) therefore fails, which is what surfaces the
+// Known Columns List hint in the row side panel and the expanded row.
+export const DISTRIBUTED_MISSING_COLUMN_SOURCE_NAME =
+  'E2E Distributed Missing Column';
+
 // Trace source pre-configured with a materialized view (e2e_otel_traces_1m),
 // used by the materialized-view acceleration tests.
 export const DEFAULT_TRACES_MV_SOURCE_NAME = 'E2E Traces MV';
