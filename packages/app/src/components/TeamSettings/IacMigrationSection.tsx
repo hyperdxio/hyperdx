@@ -5,6 +5,7 @@ import {
   IAC_MANIFEST_LIMIT,
   type IacImportManifest,
   type IacResourceType,
+  providerEndpoint,
 } from '@hyperdx/common-utils/dist/iac';
 import {
   Alert,
@@ -43,16 +44,29 @@ const RESOURCE_TYPE_OPTIONS: Record<
   webhook: { label: 'Webhooks', key: 'webhooks' },
 };
 
-// Display order for the checkbox list. Separate from the map above so the map
-// stays exhaustiveness-checked.
-const RESOURCE_TYPE_ORDER: IacResourceType[] = [
+// Display order. Written out rather than derived from Object.keys, which is
+// typed `string[]` and would need a cast; the two checks below give the same
+// guarantee without one.
+const RESOURCE_TYPE_ORDER = [
   'dashboard',
   'alert',
   'saved_search',
   'source',
   'connection',
   'webhook',
-];
+] as const satisfies readonly IacResourceType[];
+
+// `satisfies` above rejects an entry that is not a resource type. This rejects
+// the other direction: a seventh type added to IacResourceType but not to the
+// order becomes a non-`never` Exclude, so the annotation stops compiling and
+// the type cannot ship silently missing from the checkbox list.
+type ResourceTypeMissingFromOrder = Exclude<
+  IacResourceType,
+  (typeof RESOURCE_TYPE_ORDER)[number]
+>;
+const _everyResourceTypeIsOrdered: ResourceTypeMissingFromOrder extends never
+  ? true
+  : false = true;
 
 const truncatedLabels = (
   truncatedTypes: string[],
@@ -70,14 +84,19 @@ const truncatedLabels = (
  * resource types, built entirely client-side from the lean id+name manifest
  * served by `GET /iac/import-manifest`.
  */
-export default function IacMigrationSection() {
+export default function IacMigrationSection({
+  active = true,
+}: {
+  /** False while the containing tab is not the visible one — see the hook. */
+  active?: boolean;
+}) {
   const {
     data: manifest,
     isLoading,
     isError,
     isRefetching,
     refetch,
-  } = useIacImportManifest();
+  } = useIacImportManifest({ enabled: active });
   const [selected, setSelected] = useState<IacResourceType[]>([
     'dashboard',
     'alert',
@@ -91,42 +110,63 @@ export default function IacMigrationSection() {
     selected,
   );
 
-  const { resources, connectionLocals, skippedAlerts } = useMemo(
+  const {
+    resources,
+    connectionLocals,
+    skippedAlerts,
+    skippedDashboards,
+    skippedSources,
+  } = useMemo(
     () =>
       manifest
         ? collectImportableResources(manifest, selected)
-        : { resources: [], connectionLocals: [], skippedAlerts: 0 },
+        : {
+            resources: [],
+            connectionLocals: [],
+            skippedAlerts: 0,
+            skippedDashboards: 0,
+            skippedSources: 0,
+          },
     [manifest, selected],
   );
+  const [downloadError, setDownloadError] = useState(false);
 
   const onDownload = async () => {
-    // Built from a refetch, not from the 60s-stale cache. A resource deleted
-    // inside that window would be written out as a dangling id, and
-    // `terraform plan -generate-config-out` then fails for every block in the
-    // file, not just the stale one.
-    //
-    // Branches on isSuccess, not on `data`: once the query has succeeded once,
-    // a failed refetch resolves with the PREVIOUS payload still in `data`, so
-    // a truthiness check would write exactly the stale file this refetch
-    // exists to avoid. The failure surfaces through the isError banner below.
-    const result = await refetch();
-    if (!result.isSuccess || !result.data) return;
-    const freshSelection = collectImportableResources(result.data, selected);
+    // The whole body is guarded: this is an async click handler, so anything
+    // that throws past it becomes an unhandled rejection the user never sees —
+    // they click Download and nothing happens. buildImportFile in particular
+    // throws by design on a non-ObjectId id.
+    setDownloadError(false);
+    try {
+      // Built from a refetch, not from the 60s-stale cache. A resource deleted
+      // inside that window would be written out as a dangling id, and
+      // `terraform plan -generate-config-out` then fails for every block in the
+      // file, not just the stale one.
+      //
+      // Branches on isSuccess, not on `data`: once the query has succeeded once,
+      // a failed refetch resolves with the PREVIOUS payload still in `data`, so
+      // a truthiness check would write exactly the stale file this refetch
+      // exists to avoid. The failure surfaces through the isError banner below.
+      const result = await refetch();
+      if (!result.isSuccess || !result.data) return;
+      const freshSelection = collectImportableResources(result.data, selected);
 
-    downloadTextFile(
-      buildImportFile({
-        // Includes the deployment path prefix — `window.location.origin` alone
-        // drops it, and the API is served under the same prefix as the UI.
-        endpoint: `${window.location.origin}${BASE_PATH}/api`,
-        resources: freshSelection.resources,
-        connectionLocals: freshSelection.connectionLocals,
-        // From the refetched payload, not the banner's cached one: a listing
-        // that only became truncated on this refetch would otherwise save a
-        // partial file carrying no indication that it is partial.
-        truncatedTypes: truncatedLabels(result.data.truncatedTypes, selected),
-      }),
-      'hyperdx-import.tf',
-    );
+      downloadTextFile(
+        buildImportFile({
+          endpoint: providerEndpoint(window.location.origin, BASE_PATH),
+          resources: freshSelection.resources,
+          connectionLocals: freshSelection.connectionLocals,
+          // From the refetched payload, not the banner's cached one: a listing
+          // that only became truncated on this refetch would otherwise save a
+          // partial file carrying no indication that it is partial.
+          truncatedTypes: truncatedLabels(result.data.truncatedTypes, selected),
+        }),
+        'hyperdx-import.tf',
+      );
+    } catch (e) {
+      console.error('Failed to build the Terraform import file', e);
+      setDownloadError(true);
+    }
   };
 
   return (
@@ -191,10 +231,32 @@ export default function IacMigrationSection() {
             {IAC_MANIFEST_LIMIT.toLocaleString()} of each are in this file.
           </Alert>
         )}
+        {/* Surfaced rather than silently dropped: a user who expects 12
+            dashboards and gets 10 needs to know why. */}
+        {downloadError && (
+          <Alert variant="danger" title="Couldn't build the file" mb="sm">
+            Something went wrong generating the import file. Nothing was
+            downloaded. Reload the page and try again.
+          </Alert>
+        )}
         {skippedAlerts > 0 && (
           <Text size="xs" style={{ color: 'var(--color-text-muted)' }} mb="sm">
             {skippedAlerts} alert{skippedAlerts === 1 ? '' : 's'} will be
             skipped — the Terraform provider only supports saved-search alerts.
+          </Text>
+        )}
+        {skippedDashboards > 0 && (
+          <Text size="xs" style={{ color: 'var(--color-text-muted)' }} mb="sm">
+            {skippedDashboards} dashboard
+            {skippedDashboards === 1 ? '' : 's'} will be skipped — they contain
+            PromQL tiles, which the provider cannot represent. Importing one
+            would delete those tiles on the next apply.
+          </Text>
+        )}
+        {skippedSources > 0 && (
+          <Text size="xs" style={{ color: 'var(--color-text-muted)' }} mb="sm">
+            {skippedSources} PromQL source{skippedSources === 1 ? '' : 's'} will
+            be skipped — the provider models only ClickHouse-backed sources.
           </Text>
         )}
         <Button

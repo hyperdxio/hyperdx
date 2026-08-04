@@ -1,4 +1,5 @@
 import {
+  dashboardHasUnexportableTiles,
   IAC_MANIFEST_LIMIT,
   type IacImportManifest,
 } from '@hyperdx/common-utils/dist/iac';
@@ -85,17 +86,21 @@ router.get('/import-manifest', async (req, res, next) => {
       ] = await Promise.all([
         // Provisioned dashboards are machine-managed (ProvisionDashboardsTask)
         // and would conflict with Terraform-managed state.
+        // `tiles` is projected despite the manifest being deliberately lean:
+        // a dashboard containing a tile the import round trip would destroy
+        // must not be offered, and that is only knowable from the configs.
+        // Only the derived boolean crosses the wire, never the tiles.
         bounded(
           Dashboard.find(
             { team: teamId, provisioned: { $ne: true } },
-            { name: 1 },
+            { name: 1, tiles: 1 },
           ),
         ).lean(),
         bounded(
           Alert.find({ team: teamId }, { name: 1, source: 1, savedSearch: 1 }),
         ).lean(),
         bounded(SavedSearch.find({ team: teamId }, { name: 1 })).lean(),
-        bounded(Source.find({ team: teamId }, { name: 1 })).lean(),
+        bounded(Source.find({ team: teamId }, { name: 1, kind: 1 })).lean(),
         bounded(
           Connection.find(
             { team: teamId },
@@ -133,37 +138,45 @@ router.get('/import-manifest', async (req, res, next) => {
         manifestTruncations.add(1);
       }
 
+      // `name` is `?? undefined` on every listing, not just alerts: these are
+      // plain non-required Strings in Mongoose, so a stored null is legal, and
+      // the wire contract is `.optional()` which rejects null. One null name
+      // would fail the client's all-or-nothing parse for the whole manifest.
       const body: IacImportManifest = {
         dashboards: dashboards.items.map(d => ({
           id: d._id.toString(),
-          name: d.name,
+          name: d.name ?? undefined,
+          // Omitted rather than `false` when fine, so the wire stays lean and
+          // the field reads as a marker rather than a tri-state.
+          ...(dashboardHasUnexportableTiles(d.tiles)
+            ? { unexportableTiles: true }
+            : {}),
         })),
         alerts: alerts.items.map(a => ({
           id: a._id.toString(),
-          // Alert.name is nullable in Mongoose (null clears it); the wire
-          // contract declares `name?: string`, so normalise null away here.
           name: a.name ?? undefined,
           source: a.source,
           savedSearchId: a.savedSearch?.toString(),
         })),
         savedSearches: savedSearches.items.map(s => ({
           id: s._id.toString(),
-          name: s.name,
+          name: s.name ?? undefined,
         })),
         sources: sources.items.map(s => ({
           id: s._id.toString(),
-          name: s.name,
+          name: s.name ?? undefined,
+          kind: s.kind,
         })),
         connections: connections.items.map(c => ({
           id: c._id.toString(),
-          name: c.name,
+          name: c.name ?? undefined,
           // Passed through verbatim, including undefined — the export
           // distinguishes "unknown" from an explicit false.
           platformProvisioned: c.platformProvisioned,
         })),
         webhooks: webhooks.items.map(w => ({
           id: w._id.toString(),
-          name: w.name,
+          name: w.name ?? undefined,
         })),
         truncatedTypes,
       };

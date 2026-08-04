@@ -3,11 +3,12 @@ import {
   buildImportBlock,
   buildProviderBlock,
   type IacResourceRef,
+  providerEndpoint,
 } from '@hyperdx/common-utils/dist/iac';
 import { ActionIcon, Popover, Tooltip } from '@mantine/core';
 import { IconBrandTerraform } from '@tabler/icons-react';
 
-import { IS_IAC_EXPORT_ENABLED } from '@/config';
+import { BASE_PATH, IS_IAC_EXPORT_ENABLED } from '@/config';
 
 import {
   TerraformHelperPanel,
@@ -76,7 +77,9 @@ export default function ResourceTerraformPopover({
         label: 'Provider setup',
         collapsible: true,
         hint: 'Add once per Terraform module. Skip if your project already declares the ClickHouse provider.',
-        snippet: buildProviderBlock(`${window.location.origin}/api`),
+        snippet: buildProviderBlock(
+          providerEndpoint(window.location.origin, BASE_PATH),
+        ),
       },
     ];
   }, [opened, type, id, name]);

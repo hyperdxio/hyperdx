@@ -1,4 +1,10 @@
-import { AlertSource, type IacImportManifest } from './types';
+import { isPromqlSavedChartConfig } from './guards';
+import {
+  AlertSource,
+  type IacImportManifest,
+  SourceKind,
+  type Tile,
+} from './types';
 
 //
 // Single source of truth for everything HyperDX asserts about the ClickHouse
@@ -77,16 +83,62 @@ export function isImportableAlert(alert: {
 }
 
 /**
- * Provisioned dashboards are machine-managed by ProvisionDashboardsTask, whose
- * name-keyed upsert overwrites tiles, tags, and filters wholesale — two
- * managers for one object is a fight nobody wins. The bulk manifest filters
- * them out server-side (`provisioned: { $ne: true }`); this is the same rule
- * for the per-dashboard surface, so the two cannot disagree.
+ * True when a tile cannot survive the round trip the import flow puts it
+ * through, so a dashboard containing one must not be offered for import.
+ *
+ * The documented flow is `terraform plan -generate-config-out` then `apply`.
+ * The provider authenticates with a Personal API Access Key, so it reads
+ * through the key-authenticated external API v2 — which is HyperDX's own
+ * allowlist converter, not a path around it. That converter drops a PromQL
+ * tile from the read response entirely (deliberately: the alternative was
+ * falling through to a default Line config, a worse silent rewrite). The write
+ * path then rebuilds `tiles` wholesale from the request body, so applying a
+ * config generated from that read deletes the tile.
+ *
+ * Scoped to PromQL rather than "anything the converter rejects" so this and
+ * the per-dashboard popover — which cannot reach that converter — decide
+ * eligibility identically. The remaining rejection case is a legacy or
+ * corrupted `displayType`, which fails the input schema loudly on apply rather
+ * than losing data silently.
+ */
+export function isUnexportableTile(tile: Pick<Tile, 'config'>): boolean {
+  return isPromqlSavedChartConfig(tile.config);
+}
+
+export function dashboardHasUnexportableTiles(
+  tiles: readonly Pick<Tile, 'config'>[] | undefined,
+): boolean {
+  return (tiles ?? []).some(isUnexportableTile);
+}
+
+/**
+ * Two independent reasons a dashboard is not importable.
+ *
+ * `provisioned` — machine-managed by ProvisionDashboardsTask, whose name-keyed
+ * upsert overwrites tiles, tags, and filters wholesale. Two managers for one
+ * object is a fight nobody wins. The manifest also filters these out
+ * server-side (`provisioned: { $ne: true }`); this keeps the per-dashboard
+ * surface agreeing with it.
+ *
+ * `unexportableTiles` — content the import round trip would destroy, per
+ * isUnexportableTile above. The server computes this, because the lean manifest
+ * deliberately does not ship tile configs to the client.
  */
 export function isImportableDashboard(dashboard: {
   provisioned?: boolean;
+  unexportableTiles?: boolean;
 }): boolean {
-  return !dashboard.provisioned;
+  return !dashboard.provisioned && !dashboard.unexportableTiles;
+}
+
+/**
+ * A PromQL source has no `clickhouse_clickstack_source` representation — the
+ * provider models the ClickHouse-backed kinds. Emitting one produces an import
+ * block for a resource the provider cannot read, which fails the plan. Same
+ * shape as the tile-alert rule: eligibility decided once, here.
+ */
+export function isImportableSource(source: { kind?: string }): boolean {
+  return source.kind !== SourceKind.Promql;
 }
 
 /**
@@ -145,6 +197,16 @@ export function buildImportBlock(ref: IacResourceRef): string {
   to = ${TERRAFORM_RESOURCE_TYPES[ref.type]}.${terraformResourceLabel(ref)}
   id = "${assertResourceId(ref.id)}"
 }`;
+}
+
+/**
+ * The provider endpoint both surfaces emit. Shared because they had drifted:
+ * the popover used the bare origin while the bulk export added the deployment
+ * path prefix, so on any deployment with a prefix set one of the two produced
+ * an endpoint that could not reach the API.
+ */
+export function providerEndpoint(origin: string, basePath = ''): string {
+  return `${origin}${basePath}/api`;
 }
 
 /**
@@ -272,9 +334,13 @@ export function collectImportableResources(
   resources: IacResourceRef[];
   connectionLocals: IacConnectionRef[];
   skippedAlerts: number;
+  skippedDashboards: number;
+  skippedSources: number;
 } {
   const resources: IacResourceRef[] = [];
   let skippedAlerts = 0;
+  let skippedDashboards = 0;
+  let skippedSources = 0;
 
   // Dispatched explicitly rather than looping a {type, key} table. The table
   // form could not tie a resource type to its manifest key, so a mispaired
@@ -290,7 +356,16 @@ export function collectImportableResources(
     }
   };
 
-  add('source', manifest.sources);
+  if (selectedTypes.includes('source')) {
+    for (const source of manifest.sources) {
+      if (!isImportableSource(source)) {
+        skippedSources += 1;
+        continue;
+      }
+      resources.push({ type: 'source', id: source.id, name: source.name });
+    }
+  }
+
   add('saved_search', manifest.savedSearches);
   add('webhook', manifest.webhooks);
 
@@ -304,7 +379,21 @@ export function collectImportableResources(
     }
   }
 
-  add('dashboard', manifest.dashboards);
+  // Not `add('dashboard', ...)`: a dashboard whose tiles the round trip would
+  // destroy is skipped and counted, the same treatment tile alerts get.
+  if (selectedTypes.includes('dashboard')) {
+    for (const dashboard of manifest.dashboards) {
+      if (!isImportableDashboard(dashboard)) {
+        skippedDashboards += 1;
+        continue;
+      }
+      resources.push({
+        type: 'dashboard',
+        id: dashboard.id,
+        name: dashboard.name,
+      });
+    }
+  }
 
   // A connection is only safe to import when the server affirmatively says it
   // is self-managed. Platform-provisioned connections (ClickHouse Cloud) can't
@@ -331,5 +420,11 @@ export function collectImportableResources(
     }
   }
 
-  return { resources, connectionLocals, skippedAlerts };
+  return {
+    resources,
+    connectionLocals,
+    skippedAlerts,
+    skippedDashboards,
+    skippedSources,
+  };
 }

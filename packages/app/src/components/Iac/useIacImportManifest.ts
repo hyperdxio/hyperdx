@@ -4,8 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 
-export function useIacImportManifest() {
+/**
+ * `enabled` defaults to true for callers that always want the data, but Team
+ * Settings passes the active-tab check: Mantine `Tabs` keeps every panel
+ * mounted, so without it this six-query team-scoped fan-out fires on every
+ * Team Settings visit for every user, whether or not the export UI is opened.
+ */
+export function useIacImportManifest({ enabled = true } = {}) {
   return useQuery({
+    enabled,
     queryKey: ['iac', 'import-manifest'],
     queryFn: async () => {
       const body = await hdxServer('iac/import-manifest').json();

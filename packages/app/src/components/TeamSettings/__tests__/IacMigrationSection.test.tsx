@@ -153,6 +153,55 @@ describe('IacMigrationSection', () => {
     expect(content).not.toContain('clickhouse_clickstack_connection');
   });
 
+  // The P1: a dashboard whose PromQL tiles the import round trip would delete
+  // must be withheld, and the user told why rather than silently given fewer.
+  it('withholds a dashboard with unexportable tiles and says so', async () => {
+    const manifest = {
+      ...MANIFEST,
+      dashboards: [
+        { id: '1'.repeat(24), name: 'D1' },
+        { id: '7'.repeat(24), name: 'Has PromQL', unexportableTiles: true },
+      ],
+    };
+    refetch.mockResolvedValue({ data: manifest, isSuccess: true });
+    useIacImportManifest.mockReturnValue({
+      data: manifest,
+      isLoading: false,
+      isError: false,
+      isRefetching: false,
+      refetch,
+    });
+
+    renderSection();
+
+    expect(screen.getByText(/1 dashboard will be skipped/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('iac-download-button'));
+    await waitFor(() => expect(downloadTextFile).toHaveBeenCalled());
+    const [content] = downloadTextFile.mock.calls.at(-1)!;
+    expect(content).toContain('1'.repeat(24));
+    expect(content).not.toContain('7'.repeat(24));
+  });
+
+  // onDownload is an async click handler, so a throw would otherwise be an
+  // unhandled rejection with the user seeing nothing happen at all.
+  it('surfaces a failure to build the file instead of failing silently', async () => {
+    refetch.mockResolvedValue({
+      // A non-ObjectId id makes buildImportFile throw by design.
+      data: { ...MANIFEST, dashboards: [{ id: 'not-an-objectid', name: 'X' }] },
+      isSuccess: true,
+    });
+
+    renderSection();
+
+    fireEvent.click(screen.getByTestId('iac-download-button'));
+
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't build the file")).toBeInTheDocument(),
+    );
+    expect(downloadTextFile).not.toHaveBeenCalled();
+  });
+
   // A capped listing otherwise reads as a complete export.
   it('warns when a selected type was truncated', () => {
     useIacImportManifest.mockReturnValue({

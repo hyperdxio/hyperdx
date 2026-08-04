@@ -2311,7 +2311,14 @@ const IacManifestEntrySchema = z.object({
 });
 
 export const IacImportManifestSchema = z.object({
-  dashboards: z.array(IacManifestEntrySchema),
+  dashboards: z.array(
+    IacManifestEntrySchema.extend({
+      // Set when a tile would not survive the import round trip, so the
+      // dashboard must not be offered. Computed server-side: the manifest
+      // deliberately does not ship tile configs. See isUnexportableTile.
+      unexportableTiles: z.boolean().optional(),
+    }),
+  ),
   alerts: z.array(
     IacManifestEntrySchema.extend({
       // Only saved-search alerts are modelled by the Terraform provider.
@@ -2320,7 +2327,13 @@ export const IacImportManifestSchema = z.object({
     }),
   ),
   savedSearches: z.array(IacManifestEntrySchema),
-  sources: z.array(IacManifestEntrySchema),
+  sources: z.array(
+    IacManifestEntrySchema.extend({
+      // The provider models only the ClickHouse-backed kinds, so the client
+      // needs `kind` to filter PromQL sources out. See isImportableSource.
+      kind: z.string().optional(),
+    }),
+  ),
   connections: z.array(
     IacManifestEntrySchema.extend({
       // Tri-state, mirroring the Connection model: undefined = unknown

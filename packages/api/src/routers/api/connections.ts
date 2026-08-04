@@ -1,6 +1,5 @@
 import { ConnectionSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
-import { omit } from 'lodash';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
@@ -35,13 +34,15 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // `platformProvisioned` records how a connection came to exist and decides
-      // whether IaC export treats it as safe to `terraform import`. It is
-      // server-owned, but `validateRequest` only validates — it does not
-      // replace `req.body` — and ConnectionSchema is non-strict, so a
-      // client-supplied value survives into the model unless dropped here.
-      // (The type below doesn't admit the key; the runtime object can.)
-      const body = omit(req.body, 'platformProvisioned');
+      // `platformProvisioned` records how a connection came to exist and
+      // decides whether IaC export treats it as safe to `terraform import`, so
+      // it is server-owned. `validateRequest` only validates — it does not
+      // replace `req.body` — so a client-supplied value would otherwise reach
+      // the model. Re-parsing rather than omitting the one key by name: zod
+      // strips every unknown key, so this holds for the next server-owned
+      // field too, and lodash's `omit` types its key as `keyof any` rather
+      // than `keyof T`, so a typo in the name would compile silently.
+      const body = ConnectionSchema.omit({ id: true }).parse(req.body);
 
       const connection = await createConnection(teamId.toString(), {
         ...body,
@@ -81,9 +82,8 @@ router.put(
         req.body.hyperdxSettingPrefix === '';
 
       // `platformProvisioned` is server-owned — see the POST handler above.
-      const { hyperdxSettingPrefix, ...restBody } = omit(
+      const { hyperdxSettingPrefix, ...restBody } = ConnectionSchema.parse(
         req.body,
-        'platformProvisioned',
       );
 
       const newConnection = {

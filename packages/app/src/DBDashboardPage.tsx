@@ -39,7 +39,10 @@ import {
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
-import { isImportableDashboard } from '@hyperdx/common-utils/dist/iac';
+import {
+  dashboardHasUnexportableTiles,
+  isImportableDashboard,
+} from '@hyperdx/common-utils/dist/iac';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
@@ -2618,15 +2621,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       )}
       {/* Shared predicate, not an inline `!provisioned` check, so this and the
           bulk manifest cannot disagree about which dashboards are eligible. */}
-      {dashboard?.id && isImportableDashboard(dashboard) && (
-        <ResourceTerraformPopover
-          resource={{
-            type: 'dashboard',
-            id: dashboard.id,
-            name: dashboard.name,
-          }}
-        />
-      )}
+      {dashboard?.id &&
+        isImportableDashboard({
+          provisioned: dashboard.provisioned,
+          // Computed here rather than read off the manifest: this surface has
+          // the full tile configs, and the shared predicate keeps it agreeing
+          // with what the bulk export decides server-side.
+          unexportableTiles: dashboardHasUnexportableTiles(dashboard.tiles),
+        }) && (
+          <ResourceTerraformPopover
+            resource={{
+              type: 'dashboard',
+              id: dashboard.id,
+              name: dashboard.name,
+            }}
+          />
+        )}
       {/* local dashboards cant be "deleted" */}
       <Menu width={250}>
         <Menu.Target>

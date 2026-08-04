@@ -36,16 +36,29 @@ type TeamTab = {
   label: string;
   sections: {
     id: string;
-    content: ReactNode;
+    // A function when the section needs to know whether its tab is the visible
+    // one. Mantine `Tabs` keeps every panel mounted, so a section that fetches
+    // on mount would otherwise do so on every Team Settings visit. Taking it as
+    // an argument avoids duplicating the tab-value list to compute `activeTab`
+    // before `tabs` is built.
+    content: ReactNode | ((active: boolean) => ReactNode);
   }[];
 };
 
-function TeamTabContent({ sections }: { sections: TeamTab['sections'] }) {
+function TeamTabContent({
+  sections,
+  active,
+}: {
+  sections: TeamTab['sections'];
+  active: boolean;
+}) {
   return (
     <Stack gap="lg" pt="lg">
       {sections.map(section => (
         <Box key={section.id} id={section.id}>
-          {section.content}
+          {typeof section.content === 'function'
+            ? section.content(active)
+            : section.content}
         </Box>
       ))}
     </Stack>
@@ -150,7 +163,9 @@ export default function TeamPage() {
           ? [
               {
                 id: 'team-api-agents-iac',
-                content: <IacMigrationSection />,
+                content: (active: boolean) => (
+                  <IacMigrationSection active={active} />
+                ),
               },
             ]
           : []),
@@ -327,7 +342,10 @@ export default function TeamPage() {
               </Tabs.List>
               {tabs.map(tab => (
                 <Tabs.Panel key={tab.value} value={tab.value}>
-                  <TeamTabContent sections={tab.sections} />
+                  <TeamTabContent
+                    sections={tab.sections}
+                    active={tab.value === activeTab}
+                  />
                 </Tabs.Panel>
               ))}
             </Tabs>

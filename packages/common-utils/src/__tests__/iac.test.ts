@@ -2,14 +2,19 @@ import {
   buildImportBlock,
   buildImportFile,
   collectImportableResources,
+  dashboardHasUnexportableTiles,
   IAC_MANIFEST_LIMIT,
   type IacImportManifest,
   type IacResourceType,
   isImportableAlert,
   isImportableDashboard,
+  isImportableSource,
+  isUnexportableTile,
+  providerEndpoint,
   TERRAFORM_RESOURCE_TYPES,
   terraformResourceLabel,
 } from '@/iac';
+import { DisplayType, SourceKind } from '@/types';
 
 const ID = '655b1b7d9143aa1b1b73f4f4';
 
@@ -102,6 +107,96 @@ describe('isImportableDashboard', () => {
   // Terraform managing one too would produce a permanent diff.
   it('rejects a provisioned dashboard', () => {
     expect(isImportableDashboard({ provisioned: true })).toBe(false);
+  });
+});
+
+// The import flow reads dashboards back through the external v2 API, which
+// drops PromQL tiles from the response, and then writes `tiles` wholesale — so
+// applying a generated config deletes them. These dashboards must never be
+// offered.
+describe('dashboard tile exportability', () => {
+  const promqlTile = {
+    config: {
+      configType: 'promql' as const,
+      promqlExpression: 'up',
+      connection: '6'.repeat(24),
+      displayType: DisplayType.Line,
+    },
+  };
+  const builderTile = {
+    config: {
+      displayType: DisplayType.Line,
+      source: '7'.repeat(24),
+      select: [{ aggFn: 'count' as const, valueExpression: '' }],
+      where: '',
+    },
+  };
+
+  it('flags a PromQL tile', () => {
+    expect(isUnexportableTile(promqlTile)).toBe(true);
+  });
+
+  it('does not flag an ordinary builder tile', () => {
+    expect(isUnexportableTile(builderTile)).toBe(false);
+  });
+
+  it('flags a dashboard as soon as one tile is unexportable', () => {
+    expect(dashboardHasUnexportableTiles([builderTile, promqlTile])).toBe(true);
+    expect(dashboardHasUnexportableTiles([builderTile])).toBe(false);
+    expect(dashboardHasUnexportableTiles([])).toBe(false);
+    expect(dashboardHasUnexportableTiles(undefined)).toBe(false);
+  });
+
+  it('withholds a dashboard carrying unexportable tiles', () => {
+    expect(isImportableDashboard({ unexportableTiles: true })).toBe(false);
+    expect(isImportableDashboard({ unexportableTiles: false })).toBe(true);
+  });
+
+  // The reason a dashboard is ineligible does not change the outcome.
+  it('withholds a provisioned dashboard regardless of tiles', () => {
+    expect(
+      isImportableDashboard({ provisioned: true, unexportableTiles: false }),
+    ).toBe(false);
+  });
+});
+
+// A PromQL source has no clickhouse_clickstack_source representation, so an
+// import block for one fails the plan.
+describe('isImportableSource', () => {
+  it('accepts the ClickHouse-backed kinds', () => {
+    for (const kind of [
+      SourceKind.Log,
+      SourceKind.Trace,
+      SourceKind.Session,
+      SourceKind.Metric,
+    ]) {
+      expect(isImportableSource({ kind })).toBe(true);
+    }
+  });
+
+  it('rejects a PromQL source', () => {
+    expect(isImportableSource({ kind: SourceKind.Promql })).toBe(false);
+  });
+
+  // An older manifest, or a row predating the discriminator, has no kind.
+  it('accepts a source with no kind recorded', () => {
+    expect(isImportableSource({})).toBe(true);
+  });
+});
+
+// Both surfaces emit this, and they had drifted: the popover omitted the
+// deployment path prefix the bulk export included.
+describe('providerEndpoint', () => {
+  it('appends /api to the origin', () => {
+    expect(providerEndpoint('https://hdx.example.com')).toBe(
+      'https://hdx.example.com/api',
+    );
+  });
+
+  it('keeps a deployment path prefix', () => {
+    expect(providerEndpoint('https://host.example.com', '/hyperdx')).toBe(
+      'https://host.example.com/hyperdx/api',
+    );
   });
 });
 
@@ -418,6 +513,42 @@ describe('collectImportableResources', () => {
       { type: 'connection', id: '6'.repeat(24), name: 'Local ClickHouse' },
     ]);
     expect(connectionLocals).toEqual([]);
+  });
+
+  // The P1 this guards: a dashboard with a PromQL tile used to be emitted, and
+  // applying the generated config would delete that tile.
+  it('skips a dashboard with unexportable tiles and counts it', () => {
+    const { resources, skippedDashboards } = collectImportableResources(
+      emptyManifest({
+        dashboards: [
+          { id: '1'.repeat(24), name: 'Fine' },
+          { id: '2'.repeat(24), name: 'Has PromQL', unexportableTiles: true },
+        ],
+      }),
+      ['dashboard'],
+    );
+
+    expect(resources).toEqual([
+      { type: 'dashboard', id: '1'.repeat(24), name: 'Fine' },
+    ]);
+    expect(skippedDashboards).toBe(1);
+  });
+
+  it('skips a PromQL source and counts it', () => {
+    const { resources, skippedSources } = collectImportableResources(
+      emptyManifest({
+        sources: [
+          { id: '3'.repeat(24), name: 'Logs', kind: SourceKind.Log },
+          { id: '4'.repeat(24), name: 'Prom', kind: SourceKind.Promql },
+        ],
+      }),
+      ['source'],
+    );
+
+    expect(resources).toEqual([
+      { type: 'source', id: '3'.repeat(24), name: 'Logs' },
+    ]);
+    expect(skippedSources).toBe(1);
   });
 
   it('emits neither when connections are not selected', () => {

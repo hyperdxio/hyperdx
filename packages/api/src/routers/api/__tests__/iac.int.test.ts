@@ -72,6 +72,50 @@ describe('iac router', () => {
     expect(resp.body.dashboards).toHaveLength(0);
   });
 
+  // The manifest projects `tiles` purely to answer this: the import flow reads
+  // dashboards back through external API v2, which drops PromQL tiles, then
+  // writes `tiles` wholesale — so importing one deletes them. The flag is what
+  // stops the client offering it.
+  it('marks a dashboard whose tiles cannot survive the round trip', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await Dashboard.create({
+      name: 'Plain',
+      tiles: [],
+      team: team._id,
+    });
+    await Dashboard.create({
+      name: 'Has PromQL',
+      team: team._id,
+      tiles: [
+        {
+          id: 'tile-1',
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 2,
+          config: {
+            configType: 'promql',
+            promqlExpression: 'up',
+            connection: randomMongoId(),
+            displayType: 'line',
+          },
+        },
+      ],
+    });
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+    const byName = Object.fromEntries(
+      resp.body.dashboards.map((d: { name: string }) => [d.name, d]),
+    );
+
+    expect(byName['Has PromQL'].unexportableTiles).toBe(true);
+    // Absent rather than `false` on a healthy dashboard — the field is a
+    // marker, and the lean manifest does not carry tile configs either way.
+    expect(byName['Plain']).not.toHaveProperty('unexportableTiles');
+    expect(byName['Plain']).not.toHaveProperty('tiles');
+  });
+
   it('rejects unauthenticated requests', async () => {
     const resp = await getAgent(server).get('/iac/import-manifest');
     expect(resp.status).toBe(401);
