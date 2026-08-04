@@ -269,6 +269,17 @@ function hasAllColumns(columns: ColumnMeta[], requiredColumns: string[]) {
   return missingColumns.length === 0;
 }
 
+// Metric tables need this optional column to join against the unified `series` table.
+const SERIES_HASH_COLUMN_NAME = 'SeriesHash';
+const SERIES_HASH_COLUMN_TYPE = 'UInt64';
+
+export function hasSeriesHashColumn(columns: ColumnMeta[]) {
+  return columns.some(
+    c =>
+      c.name === SERIES_HASH_COLUMN_NAME && c.type === SERIES_HASH_COLUMN_TYPE,
+  );
+}
+
 type TStrippedSource<T extends TSource> = Partial<
   Omit<T, 'id' | 'name' | 'from' | 'connection'>
 > & { kind: T['kind'] };
@@ -720,6 +731,17 @@ const ReqMetricTableColumns = {
     'MetricName',
     'ResourceAttributes',
   ],
+  // Unified metrics series table (not a MetricsDataType)
+  series: [
+    'Date',
+    'MetricName',
+    'SeriesHash',
+    'ServiceName',
+    'MetricType',
+    'Temporality',
+    'ResourceAttributes',
+    'Attributes',
+  ],
 };
 
 export async function isValidMetricTable({
@@ -732,7 +754,7 @@ export async function isValidMetricTable({
   databaseName: string;
   tableName?: string;
   connectionId: string;
-  metricType: MetricsDataType;
+  metricType: MetricsDataType | 'series';
   metadata: Metadata;
 }) {
   if (!tableName) {

@@ -15,9 +15,16 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
 import { useTableMetadata } from '@/hooks/useMetadata';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
 import { SQLPreview } from './ChartSQLPreview';
+
+const SelectStar = () => (
+  <Text span ff="monospace">
+    SELECT *
+  </Text>
+);
 
 /** A hint to the user that setting the Known Columns List may resolve SELECT * failures on Distributed or Merge tables */
 function KnownColumnsListHint({
@@ -27,29 +34,28 @@ function KnownColumnsListHint({
   onEditClick?: () => void;
   source: TSource;
 }) {
+  const brand = useBrandDisplayName();
   const hasKnownColumnsList =
     (isLogSource(source) || isTraceSource(source)) &&
     !!source.knownColumnsListExpression;
 
   const message = hasKnownColumnsList ? (
     <>
-      This query may have failed due to an invalid <b>Known Columns List</b>{' '}
-      configuration. Check the <b>Known Columns List</b> for this source and
-      ensure that it references valid columns that exist in all target tables of
-      the Distributed or Merge table.
+      To show every field for a row, {brand} loads the full row using the{' '}
+      <b>Known Columns List</b> configured on this source (instead of a{' '}
+      <SelectStar /> query). This likely failed because the list references a
+      column that doesn&apos;t exist in every target table of the Distributed or
+      Merge table. Update the <b>Known Columns List</b> so it only includes
+      columns present in all target tables.
     </>
   ) : (
     <>
-      This query may have failed due to a{' '}
-      <Text span ff="monospace">
-        SELECT *
-      </Text>{' '}
-      query on a Distributed table that declares columns missing in one or more
-      of its target tables. If this is the case, the{' '}
-      <Text span ff="monospace">
-        SELECT *
-      </Text>{' '}
-      can be overridden by setting a <b>Known Columns List</b> for this source.
+      To show every field for this row, {brand} loads the full row with a{' '}
+      <SelectStar /> query. This failed because a column declared by the parent
+      (distributed) table is missing from at least one target table. To fix
+      this, set a <b>Known Columns List</b> on this source, specifying a list of
+      columns that every target table has. When set, {brand} will select those
+      columns instead of <SelectStar />.
     </>
   );
 
@@ -57,7 +63,8 @@ function KnownColumnsListHint({
     <Alert
       color="yellow"
       icon={<IconAlertTriangle size={16} />}
-      title="SELECT * failure on Distributed or Merge table"
+      title="Failed to load row details from distributed or merge table"
+      data-testid="known-columns-list-hint"
     >
       <Stack gap="xs" align="start">
         <Text size="sm">{message}</Text>
@@ -89,7 +96,7 @@ export function DBRowSidePanelErrorState({
     isMissingColumnError(error) && !!tableMetadata?.isPointerTable;
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" data-testid="row-error-state">
       <Text>Error loading row data</Text>
 
       {showHint && (
