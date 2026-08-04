@@ -1,5 +1,6 @@
 import type { ToolDefinition, ToolRegistrar } from '@/mcp/tools/types';
 
+import { registerEmergingSignals } from './emergingSignals';
 import { registerEventDeltas } from './eventDeltas';
 import { registerEventPatterns } from './eventPatterns';
 import { registerSearch } from './search';
@@ -13,6 +14,7 @@ const queryTools: ToolDefinition = (registrar: ToolRegistrar) => {
   registerSearch(registrar);
   registerEventPatterns(registrar);
   registerEventDeltas(registrar);
+  registerEmergingSignals(registrar);
   registerSql(registrar);
 };
 
