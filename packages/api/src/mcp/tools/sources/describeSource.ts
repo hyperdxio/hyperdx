@@ -8,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
+import SqlString from 'sqlstring';
 import { z } from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -23,6 +24,7 @@ import {
   type QueryableMetricKind,
   sanitizeMetricTables,
 } from './metricKinds';
+import { extractSourceConfig } from './schemas';
 
 // How far back to look when querying the rollup tables for value samples.
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -42,9 +44,9 @@ const MAX_METRIC_NAMES_PER_KIND = 20;
 /**
  * Pick the representative metric table to use as the starting point for
  * schema/attribute discovery on a metric source. Prefers gauge → sum →
- * histogram from the source's populated metricTables map. Returns the
- * ClickHouse table name, or undefined when no queryable metric table is
- * populated.
+ * histogram → exponential histogram from the source's populated metricTables
+ * map. Returns the ClickHouse table name, or undefined when no queryable metric
+ * table is populated.
  */
 function pickRepresentativeMetricTable(
   metricTables: MetricTable,
@@ -114,7 +116,7 @@ async function sampleMetricNamesForKind({
     timestampValueExpression,
     signal,
   });
-  const names = nameResults[0]?.value ?? [];
+  const names = nameResults[0]?.value.map(v => v.toString()) ?? [];
   if (names.length === 0) return [];
 
   // Best-effort enrichment with unit + description. One small query
@@ -251,6 +253,9 @@ async function describeSourceSchema(
     kind: source.kind,
     connectionId: source.connection.toString(),
     timestampColumn: source.timestampValueExpression,
+    // Round-trippable config for clickstack_save_source (clone / read-modify-
+    // write); includes fields the curated summary below omits.
+    config: extractSourceConfig(source.toObject()),
   };
 
   if (source.section) {
@@ -308,7 +313,7 @@ async function describeSourceSchema(
   // Resolve the table name we'll use for column / map-key / value
   // discovery. For non-metric sources this is just source.from.tableName.
   // For metric sources we use the representative metric table picked
-  // above (gauge → sum → histogram).
+  // above (gauge → sum → histogram → exponential histogram).
   const discoveryTableName =
     source.from.tableName || representativeMetric?.tableName || '';
 
@@ -451,7 +456,7 @@ async function describeSourceSchema(
       });
       for (const { key, value } of results) {
         if (value.length > 0) {
-          lowCardinalityValues[key] = value;
+          lowCardinalityValues[key] = value.map(v => v.toString());
         }
       }
     } catch {
@@ -473,7 +478,11 @@ async function describeSourceSchema(
     const keyExprs: string[] = [];
     for (const [colName, keys] of Object.entries(mapKeysResults)) {
       for (const key of keys.slice(0, MAX_MAP_KEYS_TO_SAMPLE)) {
-        keyExprs.push(`${colName}['${key}']`);
+        // Map keys come from ClickHouse data (customer telemetry) so they can
+        // contain arbitrary characters, including single quotes. Escape as a
+        // SQL string literal — `SqlString.escape` returns a fully-quoted,
+        // safely-escaped value — before embedding in the key expression.
+        keyExprs.push(`${colName}[${SqlString.escape(key)}]`);
       }
     }
 
@@ -491,7 +500,7 @@ async function describeSourceSchema(
       });
       for (const { key, value } of results) {
         if (value.length > 0) {
-          mapAttributeValues[key] = value;
+          mapAttributeValues[key] = value.map(v => v.toString());
         }
       }
     } catch {
@@ -589,7 +598,7 @@ async function describeSourceSchema(
       lowCardinalityValues: lcValuesHint,
       ...(isMetricSource && {
         metricNames:
-          'Each entry maps a metric kind (gauge/sum/histogram) to a sample of metric names ' +
+          'Each entry maps a metric kind (gauge/sum/histogram/exponential histogram) to a sample of metric names ' +
           'available on that table. Pass metricType + metricName on each select item.',
       }),
     },

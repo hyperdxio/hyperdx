@@ -8,6 +8,7 @@ import {
 } from 'react-hook-form';
 import {
   DateRange,
+  isChartPaletteToken,
   MetricsDataType,
   SourceKind,
   TSource,
@@ -26,6 +27,7 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconCopy,
+  IconPalette,
   IconTrash,
 } from '@tabler/icons-react';
 
@@ -43,6 +45,7 @@ import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPa
 import { MetricNameSelect } from '@/components/MetricNameSelect';
 import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SeriesColorDrawer from '@/components/SeriesColorDrawer';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
@@ -50,7 +53,7 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { getMetricTableName } from '@/utils';
+import { getColorFromCSSToken, getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -72,6 +75,7 @@ type ChartSeriesEditorProps = {
   showGroupBy: boolean;
   showHaving: boolean;
   showDuplicate: boolean;
+  showColor: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -93,6 +97,7 @@ export function ChartSeriesEditor({
   showGroupBy,
   showHaving,
   showDuplicate,
+  showColor,
   tableName: _tableName,
   parentRef,
   length,
@@ -214,6 +219,17 @@ export function ChartSeriesEditor({
     { open: openSeriesNumberFormat, close: closeSeriesNumberFormat },
   ] = useDisclosure(false);
 
+  const seriesColor = useWatch({ control, name: `${namePrefix}color` });
+  const seriesColorRules = useWatch({
+    control,
+    name: `${namePrefix}colorRules`,
+  });
+
+  const [
+    isSeriesColorOpen,
+    { open: openSeriesColor, close: closeSeriesColor },
+  ] = useDisclosure(false);
+
   return (
     <>
       <Divider
@@ -287,6 +303,27 @@ export function ChartSeriesEditor({
                 {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
               </ActionIcon>
             </Tooltip>
+            {showColor && (
+              <Tooltip label="Edit column color">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="xs"
+                  onClick={openSeriesColor}
+                  aria-label="Edit column color"
+                  data-testid="series-color-button"
+                >
+                  <IconPalette
+                    size={16}
+                    color={
+                      seriesColor && isChartPaletteToken(seriesColor)
+                        ? getColorFromCSSToken(seriesColor)
+                        : undefined
+                    }
+                  />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         }
         labelPosition="right"
@@ -454,6 +491,19 @@ export function ChartSeriesEditor({
           closeSeriesNumberFormat();
         }}
       />
+      {showColor && (
+        <SeriesColorDrawer
+          opened={isSeriesColorOpen}
+          color={seriesColor}
+          colorRules={seriesColorRules}
+          onChange={next => {
+            setValue(`${namePrefix}color`, next.color);
+            setValue(`${namePrefix}colorRules`, next.colorRules);
+            onSubmit();
+          }}
+          onClose={closeSeriesColor}
+        />
+      )}
     </>
   );
 }

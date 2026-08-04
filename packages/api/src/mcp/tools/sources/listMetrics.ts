@@ -78,7 +78,7 @@ const listMetricsSchema = z.object({
     .optional()
     .describe(
       'Optional metric kind filter. Omit to scan every populated kind on the source ' +
-        '(gauge → sum → histogram). Set to narrow results to one kind.',
+        '(gauge, sum, histogram, exponential histogram). Set to narrow results to one kind.',
     ),
   namePattern: z
     .string()
@@ -257,7 +257,7 @@ export function registerListMetrics({
         'DISCOVERY: Use this after clickstack_describe_source when you need more metric ' +
         'names than the per-kind sample shows, or when you want to narrow by ' +
         'kind / name pattern / time window. ' +
-        'Returns paginated metric names per kind (gauge/sum/histogram) ' +
+        'Returns paginated metric names per kind (gauge/sum/histogram/exponential histogram) ' +
         'with optional unit and description (when the OTel-default columns are present). ' +
         'Pass the returned `nextCursor` back unchanged to fetch the next page.\n\n' +
         'Workflow: clickstack_list_sources → clickstack_describe_source → ' +

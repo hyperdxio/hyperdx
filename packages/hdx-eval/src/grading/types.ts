@@ -18,6 +18,13 @@ type JudgeCriterion = {
 
 export type Rubric = {
   programmatic: ProgrammaticCheck[];
+  /**
+   * Optional transcript-aware checks. Same regex-check shape as
+   * `programmatic`, but run against the serialized tool-call transcript
+   * (tool names + args) instead of the final answer. Used to grade
+   * tool-adoption signals (e.g. "used a metric tool").
+   */
+  transcript?: ProgrammaticCheck[];
   judge: { criteria: JudgeCriterion[] };
 };
 
@@ -78,6 +85,11 @@ export type GradeRecord = {
   scenario: string;
   mcp: McpKind;
   programmatic: ProgrammaticResult;
+  /**
+   * Transcript-aware (tool-adoption) check results, when the scenario rubric
+   * defines a `transcript` block. Absent when the rubric has no `transcript` block.
+   */
+  adoption?: ProgrammaticResult;
   judge: JudgeResult | null;
   toolErrors: ToolErrorStats;
   /**

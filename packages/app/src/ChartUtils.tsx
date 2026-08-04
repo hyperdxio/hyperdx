@@ -189,7 +189,7 @@ export function useTimeChartSettings(
 }
 
 export const ChartKeyJoiner = ' · ';
-export const PreviousPeriodSuffix = ' (previous)';
+const PreviousPeriodSuffix = ' (previous)';
 
 // Note: roundToNearestMinutes is broken in date-fns currently
 // additionally it doesn't support seconds or > 30min

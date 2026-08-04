@@ -72,6 +72,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
+import { useChartSyncId } from '@/chartSync';
 import { searchChartConfigDefaults } from '@/defaults';
 import {
   useAliasMapFromChartConfig,
@@ -217,6 +218,7 @@ const PatternTrendChart = ({
   dateRange: [Date, Date];
   color?: string;
 }) => {
+  const syncId = useChartSyncId();
   return (
     <div
       // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
@@ -240,7 +242,7 @@ const PatternTrendChart = ({
             width={500}
             height={300}
             data={data}
-            syncId="hdx"
+            syncId={syncId}
             syncMethod="value"
             margin={{ top: 4, left: 0, right: 4, bottom: 0 }}
           >
@@ -684,6 +686,7 @@ export const RawLogTable = memo(
           if (
             scrollHeight - scrollTop - clientHeight < FETCH_NEXT_PAGE_PX &&
             !isLoading &&
+            !isError &&
             hasNextPage
           ) {
             // Cancel refetch is important to ensure we wait for the last fetch to finish
@@ -691,7 +694,7 @@ export const RawLogTable = memo(
           }
         }
       },
-      [fetchNextPage, isLoading, hasNextPage],
+      [fetchNextPage, isLoading, isError, hasNextPage],
     );
 
     //a check on mount and after a fetch to see if the table is already scrolled to the bottom and immediately needs to fetch more data
@@ -885,6 +888,7 @@ export const RawLogTable = memo(
         if (
           dedupedRows.length < MAX_SCROLL_FETCH_LINES &&
           !isLoading &&
+          !isError &&
           hasNextPage
         ) {
           fetchNextPage?.({ cancelRefetch: false });
@@ -906,6 +910,7 @@ export const RawLogTable = memo(
       rowVirtualizer,
       scrolledToHighlightedLine,
       isLoading,
+      isError,
       hasNextPage,
     ]);
 

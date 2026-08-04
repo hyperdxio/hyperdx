@@ -17,7 +17,11 @@ export function loadScenarioRubric(scenarioName: string): Rubric {
  * Hydrate a compact tuple `[id, weight, pattern, negative?]` into a
  * ProgrammaticCheck object. The `flags` field always defaults to `"i"`.
  */
-function hydrateCheck(entry: unknown, scenarioName: string): ProgrammaticCheck {
+function hydrateCheck(
+  entry: unknown,
+  scenarioName: string,
+  field: 'programmatic' | 'transcript' = 'programmatic',
+): ProgrammaticCheck {
   if (Array.isArray(entry)) {
     const [id, weight, pattern, negative] = entry;
     if (
@@ -26,7 +30,7 @@ function hydrateCheck(entry: unknown, scenarioName: string): ProgrammaticCheck {
       typeof pattern !== 'string'
     ) {
       throw new Error(
-        `rubric.programmatic for '${scenarioName}': tuple must be [string, number, string, boolean?]`,
+        `rubric.${field} for '${scenarioName}': tuple must be [string, number, string, boolean?]`,
       );
     }
     return {
@@ -39,18 +43,18 @@ function hydrateCheck(entry: unknown, scenarioName: string): ProgrammaticCheck {
   }
   if (!entry || typeof entry !== 'object') {
     throw new Error(
-      `rubric.programmatic for '${scenarioName}' has a non-object/non-array entry`,
+      `rubric.${field} for '${scenarioName}' has a non-object/non-array entry`,
     );
   }
   const check = entry as Record<string, unknown>;
   if (typeof check.id !== 'string' || typeof check.pattern !== 'string') {
     throw new Error(
-      `rubric.programmatic for '${scenarioName}': each check needs string 'id' and 'pattern'`,
+      `rubric.${field} for '${scenarioName}': each check needs string 'id' and 'pattern'`,
     );
   }
   if (typeof check.weight !== 'number' || check.weight <= 0) {
     throw new Error(
-      `rubric.programmatic for '${scenarioName}': check '${check.id}' weight must be a positive number`,
+      `rubric.${field} for '${scenarioName}': check '${check.id}' weight must be a positive number`,
     );
   }
   return entry as ProgrammaticCheck;
@@ -69,6 +73,22 @@ function validateRubric(raw: unknown, scenarioName: string): Rubric {
   const programmatic = (obj.programmatic as unknown[]).map(c =>
     hydrateCheck(c, scenarioName),
   );
+
+  // Optional transcript-aware (adoption) checks. Same shape as programmatic
+  // checks but run against the serialized tool-call transcript. Absent ⇒
+  // scenario has no adoption grading.
+  let transcript: ProgrammaticCheck[] | undefined;
+  if (obj.transcript !== undefined) {
+    if (!Array.isArray(obj.transcript)) {
+      throw new Error(
+        `rubric.transcript for '${scenarioName}' must be an array`,
+      );
+    }
+    transcript = (obj.transcript as unknown[]).map(c =>
+      hydrateCheck(c, scenarioName, 'transcript'),
+    );
+  }
+
   const judge = obj.judge as { criteria?: unknown } | undefined;
   if (!judge || !Array.isArray(judge.criteria) || judge.criteria.length === 0) {
     throw new Error(
@@ -93,5 +113,9 @@ function validateRubric(raw: unknown, scenarioName: string): Rubric {
       );
     }
   }
-  return { programmatic, judge: judge as Rubric['judge'] };
+  return {
+    programmatic,
+    judge: judge as Rubric['judge'],
+    ...(transcript ? { transcript } : {}),
+  };
 }

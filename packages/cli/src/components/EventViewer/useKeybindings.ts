@@ -60,6 +60,7 @@ export interface KeybindingParams {
 
   // Navigation
   onOpenAlerts?: () => void;
+  onOpenDashboards?: () => void;
 
   // State setters
   setFocusSearch: React.Dispatch<React.SetStateAction<boolean>>;
@@ -138,6 +139,7 @@ export function useKeybindings(params: KeybindingParams): void {
     findActiveIndex,
     onSavedSearchSelect,
     onOpenAlerts,
+    onOpenDashboards,
     setFocusSearch,
     setFocusDetailSearch,
     setShowHelp,
@@ -575,6 +577,11 @@ export function useKeybindings(params: KeybindingParams): void {
     }
     if (input === 'A' && onOpenAlerts) {
       onOpenAlerts();
+      return;
+    }
+    // d = open dashboards page (ctrl+d is page-down in scroll contexts)
+    if (input === 'd' && !key.ctrl && onOpenDashboards) {
+      onOpenDashboards();
       return;
     }
     if (input === 'w') setWrapLines(w => !w);

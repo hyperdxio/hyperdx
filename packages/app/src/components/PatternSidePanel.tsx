@@ -3,6 +3,7 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 // Easter egg: April Fools 2026 — see aiSummarize/ for details.
 import AISummarizePatternButton from '@/components/AISummarizePatternButton';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
@@ -127,58 +128,60 @@ export default function PatternSidePanel({
       }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
-          <DrawerHeader
-            header="Pattern"
-            onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
-          />
-          <DrawerBody>
-            <Stack>
-              <Card p="md">
-                <Text size="sm">{pattern.pattern}</Text>
-                <AISummarizePatternButton
-                  pattern={pattern}
-                  serviceNameExpression={serviceNameExpression}
-                />
-              </Card>
-              <Card p="md">
-                <Card.Section p="md" py="xs">
-                  ~{pattern.count?.toLocaleString()} Sample Events
-                </Card.Section>
-                <RawLogTable
-                  rows={displayedSamples}
-                  generateRowId={row => ({ where: row.id, aliasWith: [] })}
-                  displayedColumns={displayedColumns}
-                  columnTypeMap={columnTypeMap}
-                  columnNameMap={columnNameMap}
-                  onRowDetailsClick={handleRowClick}
-                  wrapLines={false}
-                  showExpandButton={false}
-                  isLive={false}
-                />
-                {!showAll && pattern.samples.length > INITIAL_LIMIT && (
-                  <Button
-                    variant="subtle"
-                    fullWidth
-                    size="xs"
-                    mt="xs"
-                    onClick={() => setShowAll(true)}
-                  >
-                    Show all {pattern.samples.length.toLocaleString()} samples
-                  </Button>
-                )}
-              </Card>
-            </Stack>
-          </DrawerBody>
-          {selectedRowWhere && (
-            <DBRowSidePanel
-              source={source}
-              rowId={selectedRowWhere.where}
-              aliasWith={selectedRowWhere.aliasWith}
-              onClose={handleCloseRowSidePanel}
+        <IsolatedChartSyncProvider>
+          <div className={styles.panel}>
+            <DrawerHeader
+              header="Pattern"
+              onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
             />
-          )}
-        </div>
+            <DrawerBody>
+              <Stack>
+                <Card p="md">
+                  <Text size="sm">{pattern.pattern}</Text>
+                  <AISummarizePatternButton
+                    pattern={pattern}
+                    serviceNameExpression={serviceNameExpression}
+                  />
+                </Card>
+                <Card p="md">
+                  <Card.Section p="md" py="xs">
+                    ~{pattern.count?.toLocaleString()} Sample Events
+                  </Card.Section>
+                  <RawLogTable
+                    rows={displayedSamples}
+                    generateRowId={row => ({ where: row.id, aliasWith: [] })}
+                    displayedColumns={displayedColumns}
+                    columnTypeMap={columnTypeMap}
+                    columnNameMap={columnNameMap}
+                    onRowDetailsClick={handleRowClick}
+                    wrapLines={false}
+                    showExpandButton={false}
+                    isLive={false}
+                  />
+                  {!showAll && pattern.samples.length > INITIAL_LIMIT && (
+                    <Button
+                      variant="subtle"
+                      fullWidth
+                      size="xs"
+                      mt="xs"
+                      onClick={() => setShowAll(true)}
+                    >
+                      Show all {pattern.samples.length.toLocaleString()} samples
+                    </Button>
+                  )}
+                </Card>
+              </Stack>
+            </DrawerBody>
+            {selectedRowWhere && (
+              <DBRowSidePanel
+                source={source}
+                rowId={selectedRowWhere.where}
+                aliasWith={selectedRowWhere.aliasWith}
+                onClose={handleCloseRowSidePanel}
+              />
+            )}
+          </div>
+        </IsolatedChartSyncProvider>
       </ZIndexContext.Provider>
     </Drawer>
   );

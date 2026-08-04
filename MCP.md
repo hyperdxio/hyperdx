@@ -45,6 +45,18 @@ claude mcp add --transport http clickstack <your-hyperdx-url>/api/mcp \
   --header "Authorization: Bearer <your-personal-access-key>"
 ```
 
+### Codex CLI
+
+The Codex CLI reads the bearer token from an environment variable rather than a
+`--header` flag. Export your personal access key, then register the server with
+`--bearer-token-env-var`:
+
+```bash
+export CLICKSTACK_ACCESS_KEY="<your-personal-access-key>"
+codex mcp add clickstack --url <your-hyperdx-url>/api/mcp \
+  --bearer-token-env-var CLICKSTACK_ACCESS_KEY
+```
+
 ### OpenCode
 
 Add the following to your [OpenCode config](https://opencode.ai/docs/config):
@@ -109,7 +121,9 @@ with:
 | Tool                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `clickstack_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
-| `clickstack_describe_source`     | Full column schema, attribute keys, and sampled low-cardinality values for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_describe_source`     | Full column schema, attribute keys, sampled low-cardinality values, and a round-trippable `config` block (the exact shape `clickstack_save_source` accepts, incl. correlation IDs) for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_save_source`         | Create (omit id) or update (provide id) a data source (log, trace, session, metric, or promql) so shipped telemetry becomes queryable. To clone a source, read its `config` from `clickstack_describe_source`, drop `id`, and pass it here |
+| `clickstack_delete_source`       | Permanently delete a data source by ID                                                        |
 | `clickstack_list_metrics`        | Paginated catalog of metric names on a metric source with optional kind / namePattern / time-window filters |
 | `clickstack_describe_metric`     | Per-metric drill-down: kind(s), unit, description, attribute keys per map column, and sampled values |
 | `clickstack_timeseries`          | Plot metrics over time as a line or stacked bar chart (works on log, trace, and metric sources)        |
@@ -129,12 +143,15 @@ with:
 | `clickstack_trace_waterfall`     | Fetch all spans in a single trace as a parent/child waterfall tree with optional correlated logs |
 | `clickstack_trace_top_time_consuming_operations` | Aggregate breakdown of child operations by cumulative time across matching parent traces |
 | `clickstack_get_webhook`         | List available webhook destinations for use as alert notification channels                    |
+| `clickstack_save_webhook`        | Create (omit id) or update (provide id) a webhook notification destination (slack, generic, or incidentio) |
+| `clickstack_delete_webhook`      | Permanently delete a webhook by ID (blocked while alerts still reference it)                   |
 
 ### Metric Sources
 
 `clickstack_timeseries`, `clickstack_table`, and the dashboard builder tile
 tools accept metric sources transparently. Each `select` item on a metric
-query must set `metricType` (`"gauge"`, `"sum"`, or `"histogram"`) and
+query must set `metricType` (`"gauge"`, `"sum"`, `"histogram"`, or
+`"exponential histogram"`) and
 `metricName` (the OTel metric name, e.g. `system.cpu.utilization`).
 `valueExpression` defaults to `"Value"` when omitted, so a typical metric
 series looks like:
@@ -153,9 +170,11 @@ Per-kind aggregation guidance:
   emits a neutral hint when the cap may apply.
 - **Histogram**: `"quantile"` with `level` ∈ {0.5, 0.9, 0.95, 0.99} for
   percentiles, or `"count"` for the total bucket count.
+- **Exponential histogram**: `"quantile"` with `level` ∈
+  {0.5, 0.9, 0.95, 0.99} for percentiles, or `"count"` for the total bucket
+  count.
 
-`summary` and `"exponential histogram"` metric kinds are not yet supported
-by the query renderer.
+`summary` metrics are not yet supported by the query renderer.
 
 Discovery workflow for metrics:
 
