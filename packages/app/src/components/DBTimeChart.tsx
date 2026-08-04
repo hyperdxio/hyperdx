@@ -350,8 +350,15 @@ function DBTimeChartComponent({
   );
 
   // When the render cap hides series, the hidden-series notice lets the user
-  // opt into rendering every series (accepting the memory/perf cost).
-  const [showAllSeries, setShowAllSeries] = useState(false);
+  // opt into rendering every series (accepting the memory/perf cost). Store the
+  // query shape the opt-in was enabled at (not a bare boolean) so it can be
+  // gated on the current shape during render — this resets the opt-in the
+  // instant the query changes, with no setState-in-effect and no one-commit
+  // window where a stale opt-in pairs with the new shape. `queryShapeIdentity`
+  // is derived below; `showAllSeries` is defined right after it.
+  const [showAllSeriesShape, setShowAllSeriesShape] = useState<string | null>(
+    null,
+  );
 
   const handleToggleSeries = useCallback(
     (seriesName: string, isShiftKey?: boolean) => {
@@ -420,6 +427,16 @@ function DBTimeChartComponent({
       rawSeriesLimit: config.seriesLimit ?? null,
     });
   }, [queriedConfig, config.seriesLimit]);
+
+  // "Load all" is active only while the shape it was enabled at still matches.
+  // Deriving it (instead of resetting a boolean in an effect) means a query
+  // change drops the opt-in in the same render, so a stale opt-in can never
+  // pair with the new shape — and there's no setState-in-effect.
+  const showAllSeries = showAllSeriesShape === queryShapeIdentity;
+  const enableShowAllSeries = useCallback(
+    () => setShowAllSeriesShape(queryShapeIdentity),
+    [queryShapeIdentity],
+  );
 
   // Determine whether the config can be optimized with an MV, to drive the MV
   // optimization indicator and the MV-derived date-range indicator in the
@@ -612,19 +629,16 @@ function DBTimeChartComponent({
   const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
 
-  // Reset the "load all" opt-in whenever the query shape changes. Dashboard
-  // tiles key on chart.id (not config) and the edit-modal preview has no key, so
-  // the component stays mounted across config edits; without this a stale
-  // showAllSeries=true would bypass the newly-authored series cap on the next
-  // query. Keyed on `queryShapeIdentity` (a stable serialization of the query
-  // shape) rather than the `queriedConfig` object reference — which is new every
-  // render — so unrelated re-renders (tile hover) and live-range ticks don't
-  // reset the opt-in, while re-authoring the group-by / filter / series limit
-  // still does. Also dismiss any open pin: its frozen snapshot belongs to the
-  // previous query, and the resync effect would otherwise repaint it with the
-  // new query's series at the stale click anchor.
+  // Dismiss any open pin when the query shape changes: its frozen snapshot
+  // belongs to the previous query, and the resync effect would otherwise
+  // repaint it with the new query's series at the stale click anchor. (The
+  // "load all" opt-in resets on its own — it's derived from
+  // `showAllSeriesShape === queryShapeIdentity` above — so it isn't touched
+  // here.) Keyed on `queryShapeIdentity` (a stable serialization of the query
+  // shape) rather than the `queriedConfig` object reference — which is new
+  // every render — so unrelated re-renders (tile hover) and live-range ticks
+  // don't dismiss the pin, while re-authoring the query still does.
   useEffect(() => {
-    setShowAllSeries(false);
     dismissPinned();
   }, [queryShapeIdentity, dismissPinned]);
 
@@ -873,7 +887,7 @@ function DBTimeChartComponent({
           // Only offer "load all" while still capped. Once it's on, the cap is
           // already lifted to MAX_LOADABLE_TIME_CHART_SERIES; a larger result
           // stays partly hidden but clicking again is a no-op, so go passive.
-          onLoadAll={showAllSeries ? undefined : () => setShowAllSeries(true)}
+          onLoadAll={showAllSeries ? undefined : enableShowAllSeries}
         />,
       );
     }
@@ -899,6 +913,7 @@ function DBTimeChartComponent({
     hiddenSeriesCount,
     lineData.length,
     showAllSeries,
+    enableShowAllSeries,
   ]);
 
   return (
@@ -938,9 +953,7 @@ function DBTimeChartComponent({
             // "+N more" in the pinned tooltip loads every series (same escape
             // hatch as the hidden-series warning). Only offered while capped.
             hiddenSeriesCount={hiddenSeriesCount}
-            onLoadAllSeries={
-              showAllSeries ? undefined : () => setShowAllSeries(true)
-            }
+            onLoadAllSeries={showAllSeries ? undefined : enableShowAllSeries}
             // Once loaded, render the full set in the scrollable tooltip body
             // (not just the 20-row preview) so "load all" actually shows them.
             expanded={showAllSeries}
