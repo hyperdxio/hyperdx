@@ -803,7 +803,8 @@ export function formatResponseForTimeChart({
   // its own top-N by the SQL CTE, so their kept sets can differ. Rank only the
   // current-period set so a previous-only group can't evict a current-period
   // series the query explicitly selected (its dashed twin still rides along via
-  // the shared currentPeriodKey). Falls back to all groups when there is no
+  // the shared currentPeriodKey); previous-only groups are kept unconditionally
+  // below rather than ranked. Falls back to all groups when there is no
   // current-period entry (e.g. a previous-only edge case).
   const currentPeriodGroupKeys = new Set<string>();
   for (const line of sortedLineData) {
@@ -860,6 +861,17 @@ export function formatResponseForTimeChart({
         .slice(0, maxSeries)
         .map(({ groupKey }) => groupKey),
     );
+
+    // Also keep any previous-only groups (in the previous period but not the
+    // current). They were excluded from ranking so they can't evict a
+    // current-period series, but they must not be silently dropped either — the
+    // previous query's own CTE already bounds them, so retaining them can't blow
+    // past the cap the current side already allows.
+    for (const groupKey of logicalSeriesKeys) {
+      if (!currentPeriodGroupKeys.has(groupKey)) {
+        keptGroups.add(groupKey);
+      }
+    }
 
     // Keep every entry (current + previous) whose logical series survives.
     const keptKeys = new Set(

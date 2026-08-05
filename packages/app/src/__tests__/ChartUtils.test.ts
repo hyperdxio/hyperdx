@@ -973,6 +973,56 @@ describe('ChartUtils', () => {
       expect(keptKeys.has('g2')).toBe(false);
       expect(keptKeys.has(`g2${PREVIOUS_SUFFIX}`)).toBe(false);
     });
+
+    it('keeps previous-only comparison groups rather than dropping them', () => {
+      // Independently-ranked comparison queries can return a previous-period
+      // group (g3) that the current period doesn't. Ranking excludes it so it
+      // can't evict a current-period series, but it must still be kept — not
+      // silently dropped — and it must not be counted as hidden.
+      const PREVIOUS_SUFFIX = ' (previous)';
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      const bucket = '2025-11-26T11:12:00Z';
+      // Current period: 3 groups, cap to 2 -> g2 (lowest peak) is hidden.
+      const currentData = [
+        { value: 30, group: 'g0', __hdx_time_bucket: bucket },
+        { value: 20, group: 'g1', __hdx_time_bucket: bucket },
+        { value: 10, group: 'g2', __hdx_time_bucket: bucket },
+      ];
+      // Previous period includes g3, which never appears in the current period,
+      // and has a high peak that would have won a slot if it were rankable.
+      const previousData = [
+        { value: 29, group: 'g0', __hdx_time_bucket: bucket },
+        { value: 19, group: 'g1', __hdx_time_bucket: bucket },
+        { value: 999, group: 'g3', __hdx_time_bucket: bucket },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data: currentData, meta },
+        previousPeriodResponse: { data: previousData, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: 2,
+      });
+
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      // Current-period top-2 kept with their twins; g2 hidden.
+      expect(keptKeys.has('g0')).toBe(true);
+      expect(keptKeys.has('g1')).toBe(true);
+      expect(keptKeys.has('g2')).toBe(false);
+      // The previous-only group survives despite not being rankable, and its
+      // high peak did NOT evict a current-period series.
+      expect(keptKeys.has(`g3${PREVIOUS_SUFFIX}`)).toBe(true);
+      // Only the current-period overflow (g2) is reported hidden.
+      expect(actual.hiddenSeriesCount).toBe(1);
+    });
   });
 
   describe('resolveRenderedSeriesCap', () => {
