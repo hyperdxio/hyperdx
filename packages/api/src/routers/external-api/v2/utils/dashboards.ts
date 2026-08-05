@@ -341,6 +341,8 @@ export const convertToExternalTileChartConfig = (
         seriesLimit: config.seriesLimit ?? undefined,
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
+        enableExemplars: config.enableExemplars,
+        exemplarTraceSourceId: config.exemplarTraceSourceId,
       };
     case DisplayType.StackedBar:
       return {
@@ -362,6 +364,8 @@ export const convertToExternalTileChartConfig = (
         seriesLimit: config.seriesLimit ?? undefined,
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
+        enableExemplars: config.enableExemplars,
+        exemplarTraceSourceId: config.exemplarTraceSourceId,
       };
     case DisplayType.Number:
       return {
@@ -764,6 +768,8 @@ export function convertToInternalTileConfig(
             // validated the expressions against `select`.
             'formulas',
             'showOperandSeries',
+            'enableExemplars',
+            'exemplarTraceSourceId',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'

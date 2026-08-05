@@ -720,6 +720,20 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             Only meaningful with formulas. When false, only the formula
  *             series are returned; the raw operand series are hidden.
  *           default: true
+ *         enableExemplars:
+ *           type: boolean
+ *           description: >
+ *             Overlay exemplars: markers for individual trace-linked data points.
+ *             Only renders when the tile is exemplar-eligible — a single
+ *             non-ratio histogram metric series with no groupBy — and is
+ *             accepted but inert otherwise.
+ *           default: false
+ *         exemplarTraceSourceId:
+ *           type: string
+ *           description: >
+ *             ID of the Trace source an exemplar marker links to. Defaults to
+ *             the chart source's linked trace source when omitted.
+ *           example: "65f5e4a3b9e77c001a222222"
  *
  *     BarBuilderChartConfig:
  *       type: object
@@ -790,6 +804,20 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             Only meaningful with formulas. When false, only the formula
  *             series are returned; the raw operand series are hidden.
  *           default: true
+ *         enableExemplars:
+ *           type: boolean
+ *           description: >
+ *             Overlay exemplars: markers for individual trace-linked data points.
+ *             Only renders when the tile is exemplar-eligible — a single
+ *             non-ratio histogram metric series with no groupBy — and is
+ *             accepted but inert otherwise.
+ *           default: false
+ *         exemplarTraceSourceId:
+ *           type: string
+ *           description: >
+ *             ID of the Trace source an exemplar marker links to. Defaults to
+ *             the chart source's linked trace source when omitted.
+ *           example: "65f5e4a3b9e77c001a222222"
  *
  *     TableBuilderChartConfig:
  *       type: object

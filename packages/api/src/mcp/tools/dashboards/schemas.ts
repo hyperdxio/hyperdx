@@ -707,6 +707,22 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
+    enableExemplars: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay exemplars: markers for individual trace-linked data points. ' +
+          'Only renders on an exemplar-eligible tile — a single non-ratio ' +
+          'histogram metric series with no groupBy — and is inert otherwise.',
+      ),
+    exemplarTraceSourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Trace source an exemplar marker links to. Must be a Trace source: use ' +
+          'clickstack_list_sources and pick one whose kind is "trace". Defaults ' +
+          "to the chart source's linked trace source when omitted.",
+      ),
   }),
 });
 
@@ -728,6 +744,22 @@ export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
+    enableExemplars: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay exemplars: markers for individual trace-linked data points. ' +
+          'Only renders on an exemplar-eligible tile — a single non-ratio ' +
+          'histogram metric series with no groupBy — and is inert otherwise.',
+      ),
+    exemplarTraceSourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Trace source an exemplar marker links to. Must be a Trace source: use ' +
+          'clickstack_list_sources and pick one whose kind is "trace". Defaults ' +
+          "to the chart source's linked trace source when omitted.",
+      ),
   }),
 });
 
