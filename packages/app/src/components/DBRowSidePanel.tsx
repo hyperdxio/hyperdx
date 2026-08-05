@@ -422,16 +422,16 @@ export const DBRowSidePanelInner = ({
   >({});
 
   // One-time nudge pointing at the (now more prominent) "View trace" button.
-  // Two levels of closing: a transient close (click-away / Escape) just hides it
-  // for now so it can reappear next time — an accidental click shouldn't burn the
-  // message before it's read — while an explicit acknowledgement (Got it, or
-  // clicking View Trace) persists the dismissal so it never shows again. The
-  // persisted flag lives under its own localStorage key, not in user settings.
+  // Dismissed only by an explicit acknowledgement (Got it, or clicking View
+  // Trace), which persists under its own localStorage key (not user settings).
+  // Otherwise it stays pinned: stray clicks, drawer resizes, and Escape do not
+  // dismiss it. Escape keeps its normal panel behavior (handled by the panel-level
+  // hotkey); the callout deliberately does not intercept it. Because nothing
+  // transient is stored, the nudge simply reappears the next time the panel opens
+  // on an eligible log until it is acknowledged.
   const [viewTraceCalloutDismissed, setViewTraceCalloutDismissed] =
     useLocalStorage('hdx-view-trace-callout-dismissed', false);
-  const [viewTraceCalloutClosed, setViewTraceCalloutClosed] = useState(false);
   const dismissViewTraceCallout = useCallback(() => {
-    setViewTraceCalloutClosed(true);
     setViewTraceCalloutDismissed(true);
   }, [setViewTraceCalloutDismissed]);
 
@@ -894,23 +894,16 @@ export const DBRowSidePanelInner = ({
               shadow="md"
               trapFocus={false}
               // Stay pinned to the button until the user acknowledges it (Got it
-              // / View Trace) or presses Escape. Not closed by stray clicks or
-              // resizing the drawer, which are not intents to dismiss.
+              // / View Trace). Deliberately does not close on stray clicks, drawer
+              // resizes, or Escape — Escape stays owned by the panel-level hotkey
+              // so the callout never fights it for the keypress.
               closeOnClickOutside={false}
-              closeOnEscape
+              closeOnEscape={false}
               opened={
                 !!traceSourceData &&
                 !!traceSpanRowId &&
-                !viewTraceCalloutDismissed &&
-                !viewTraceCalloutClosed
+                !viewTraceCalloutDismissed
               }
-              onChange={opened => {
-                // Click-away / Escape only hides it for now (transient) so an
-                // unread callout gets another chance; it is not persisted.
-                if (!opened) {
-                  setViewTraceCalloutClosed(true);
-                }
-              }}
             >
               <Popover.Target>
                 <Button
