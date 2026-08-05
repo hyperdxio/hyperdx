@@ -42,6 +42,13 @@ export function ViewTraceCalloutButton({
       withArrow
       shadow="md"
       trapFocus={false}
+      // Intentional: an outside click neither dismisses the callout nor is it
+      // treated as an accidental dismissal. This is a one-time, one-line hint
+      // that only ever covers a small strip below the button; it is dismissed
+      // deliberately via "Got it" or by clicking View Trace, and does not
+      // reappear once acknowledged. We accept that the covered controls are
+      // briefly non-interactive so a stray click can't burn the message before
+      // it is read. (Reviewed: PR #2815 — kept by design.)
       closeOnClickOutside={false}
       closeOnEscape={false}
       opened={!disabled && !dismissed}
