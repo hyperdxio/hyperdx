@@ -30,6 +30,13 @@ type UseExemplarMarkersArgs = {
   onExemplarSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
   onExemplarPinEnd?: () => void;
   /**
+   * Both cards have moved out from under the cursor and must close immediately.
+   * Distinct from onExemplarHoverEnd, which schedules a cancellable close so the
+   * cursor can travel from a marker into the card — a cursor resting in the card
+   * would cancel that and keep it open at stale coordinates.
+   */
+  onExemplarPositionsChanged?: () => void;
+  /**
    * How many markers the clamps dropped this render. Reported because the drop
    * happens in the render layer, below the fetch-layer notice machinery — without
    * this an overlay can empty itself with nothing on screen explaining why. The
@@ -75,6 +82,7 @@ export function useExemplarMarkers({
   onExemplarHoverEnd,
   onExemplarSelect,
   onExemplarPinEnd,
+  onExemplarPositionsChanged,
   onExemplarsDropped,
   suppressNextClickRef,
   brushOriginRef,
@@ -213,11 +221,11 @@ export function useExemplarMarkers({
     }
     if (shownDomainRef.current !== domainKey) {
       shownDomainRef.current = domainKey;
+      // Also clears the key, so the series tooltip stops being suppressed.
       setHoveredExemplarKey(null);
-      onExemplarHoverEnd?.();
-      onExemplarPinEnd?.();
+      onExemplarPositionsChanged?.();
     }
-  }, [domainKey, onExemplarHoverEnd, onExemplarPinEnd]);
+  }, [domainKey, onExemplarPositionsChanged]);
 
   return {
     exemplarPoints,

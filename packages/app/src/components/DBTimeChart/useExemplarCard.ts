@@ -115,6 +115,21 @@ export function useExemplarCard({
       150,
     );
   }, []);
+  /**
+   * Close both cards now, for when the markers have moved out from under them.
+   *
+   * Not scheduleCloseExemplarCard: that delay exists so the cursor can travel
+   * from a marker into the card, and the card's own mouseenter cancels it. Here
+   * there is nothing to travel to — the card is already beside the wrong diamond
+   * — so a cancellable delay would leave a cursor resting in the card holding it
+   * open at stale coordinates, still suppressing the series tooltip.
+   */
+  const closeExemplarCardsNow = useCallback(() => {
+    if (exemplarCloseTimerRef.current)
+      clearTimeout(exemplarCloseTimerRef.current);
+    setHoveredExemplar(null);
+    setPinnedExemplar(null);
+  }, []);
   useEffect(
     () => () => {
       if (exemplarCloseTimerRef.current)
@@ -249,6 +264,7 @@ export function useExemplarCard({
     isHoveredTraceMetaLoading,
     openExemplarCard,
     scheduleCloseExemplarCard,
+    closeExemplarCardsNow,
     cancelClose,
     pin,
     unpin: unpinExemplarCard,
