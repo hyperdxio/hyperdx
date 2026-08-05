@@ -1,6 +1,8 @@
+import { isValidElement } from 'react';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
+import { type LineData } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { useChartScales } from '@/HDXMultiSeriesTimeChart/useChartScales';
 
@@ -10,10 +12,16 @@ import { useChartScales } from '@/HDXMultiSeriesTimeChart/useChartScales';
  * used to be buried in MemoChart — fit-to-data, legend selection, zero-anchored
  * bars, the half-bucket bar padding — is what these cases pin.
  */
-const lineData = [
-  { dataKey: 'a', displayName: 'A' },
-  { dataKey: 'b', displayName: 'B' },
-] as any;
+const series = (dataKey: string, displayName: string): LineData => ({
+  dataKey,
+  displayName,
+  currentPeriodKey: dataKey,
+  previousPeriodKey: `${dataKey}-prev`,
+  valueColumnName: dataKey,
+  color: '#000000',
+});
+
+const lineData: LineData[] = [series('a', 'A'), series('b', 'B')];
 
 const baseArgs = {
   annotations: undefined as ChartAnnotation[] | undefined,
@@ -44,22 +52,19 @@ describe('useChartScales y-domain', () => {
 
   it('fits the lower bound to the data minimum, less padding', () => {
     // min 10, max 40 -> 5% padding is 1.5.
-    const [lower, upper] = scales({ fitYAxisToData: true }).yAxisDomain as [
-      number,
-      number,
-    ];
-    expect(lower).toBe(8.5);
-    expect(upper).toBe(41.5);
+    expect(scales({ fitYAxisToData: true }).yAxisDomain).toEqual([8.5, 41.5]);
   });
 
   it('does not let the padding drag the axis below zero', () => {
-    // A chart of durations whose axis starts at -4ms reads as broken, so the
-    // clamp only lifts when the data itself never goes negative.
-    const [lower] = scales({
-      fitYAxisToData: true,
-      graphResults: [{ a: 1, b: 100 }],
-    }).yAxisDomain as [number, number];
-    expect(lower).toBe(0);
+    // min 1, max 100 -> padding 4.95 would put the floor at -3.95, and a chart of
+    // durations whose axis starts below zero reads as broken. The clamp only
+    // lifts when the data itself goes negative.
+    expect(
+      scales({
+        fitYAxisToData: true,
+        graphResults: [{ a: 1, b: 100 }],
+      }).yAxisDomain,
+    ).toEqual([0, 104.95]);
   });
 
   it('follows the data minimum when fitting and the data is negative', () => {
@@ -135,8 +140,10 @@ describe('useChartScales annotations', () => {
   // non-null result passes even when the time is read from the wrong field and
   // every marker lands on NaN.
   const markerX = (annotations: ChartAnnotation[]) =>
-    (scales({ annotations }).annotationElements ?? []).map(
-      el => (el.props as { x: number }).x,
+    (scales({ annotations }).annotationElements ?? []).map(el =>
+      // A guard rather than a cast: the elements come back as ReactElement with
+      // unknown props, and asserting the shape would hide a rename of `x`.
+      isValidElement<{ x: number }>(el) ? el.props.x : undefined,
     );
 
   it('renders nothing when there are none', () => {
