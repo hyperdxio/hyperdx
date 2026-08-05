@@ -225,7 +225,7 @@ const QUERY_TIMEOUT_RETRY_NOTE =
  * (client request timeout/abort, server-side TIMEOUT_EXCEEDED, socket
  * timeouts) separately from other query errors so the message is actionable.
  */
-export const makeQueryAlertError = (
+const makeQueryAlertError = (
   e: unknown,
   requestTimeoutMs: number,
 ): IAlertError => {
