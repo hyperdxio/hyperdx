@@ -5126,6 +5126,80 @@ describe('External API v2 Dashboards - new format', () => {
         })
         .expect(200);
     });
+
+    // Same reasoning as the heatmap case above: the trace source can be deleted
+    // or change kind long after the tile was accepted, and an optional marker
+    // link target must not make the whole dashboard unsaveable for edits made
+    // elsewhere on it.
+    it('does not re-validate the exemplar trace source for unchanged tiles', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar PUT scoping test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+            {
+              name: 'Other line tile',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count', where: '' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const exemplarTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Latency',
+      );
+      const otherTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Other line tile',
+      );
+
+      // The trace source stops being a Trace source after the fact. Written
+      // straight to the collection for the same reason the heatmap test does.
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar PUT scoping test - renamed',
+          tiles: [
+            { ...exemplarTile },
+            {
+              ...otherTile,
+              name: 'Other line tile, edited',
+              config: {
+                ...otherTile.config,
+                select: [{ aggFn: 'count', where: 'level:error' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+    });
   });
 
   describe('Number tile color (HDX-1360)', () => {

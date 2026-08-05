@@ -1084,6 +1084,41 @@ function filterChangedHeatmapTiles(
 }
 
 /**
+ * For a PUT (update), return only the tiles whose exemplar trace source needs
+ * re-checking: new tiles, and existing ones where the id actually changed.
+ *
+ * Same reasoning as filterChangedHeatmapTiles. Without it, a tile whose trace
+ * source was later deleted or changed kind would fail the gate on every
+ * subsequent save, so an unrelated edit elsewhere on the dashboard could not be
+ * persisted at all.
+ */
+function filterChangedExemplarTiles(
+  requestTiles: ExternalDashboardTileWithId[],
+  existingTiles: DashboardDocument['tiles'],
+): ExternalDashboardTileWithId[] {
+  const existingTilesById = new Map<string, DashboardDocument['tiles'][number]>(
+    existingTiles.map(t => [t.id, t]),
+  );
+  return requestTiles.filter(tile => {
+    if (
+      !isConfigTile(tile) ||
+      !('exemplarTraceSourceId' in tile.config) ||
+      !tile.config.exemplarTraceSourceId
+    ) {
+      return false;
+    }
+    const existing = tile.id ? existingTilesById.get(tile.id) : undefined;
+    // A new tile, or one that had no exemplar trace source before: validate.
+    if (existing === undefined) return true;
+    const existingConfig = existing.config;
+    if (isRawSqlSavedChartConfig(existingConfig)) return true;
+    return (
+      existingConfig.exemplarTraceSourceId !== tile.config.exemplarTraceSourceId
+    );
+  });
+}
+
+/**
  * Returns source IDs referenced by onClick search link-outs (mode=id,
  * type=search) whose source kind is not log or trace. The /search destination
  * only supports log and trace sources, so linking to a metric/session source
@@ -1350,9 +1385,15 @@ export async function validateDashboardTiles(
     return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
   }
 
+  // Scoped to changed tiles on update, like the heatmap gate above: an unchanged
+  // tile whose trace source has since been deleted must not block edits made
+  // elsewhere on the dashboard.
+  const exemplarTilesToCheck = existingTiles
+    ? filterChangedExemplarTiles(tiles, existingTiles)
+    : tiles;
   const invalidExemplarTraceSources = getInvalidExemplarTraceSources(
     sources,
-    tiles,
+    exemplarTilesToCheck,
   );
   if (invalidExemplarTraceSources.length > 0) {
     return `exemplarTraceSourceId must reference a Trace source. The following source IDs are not Trace sources: ${invalidExemplarTraceSources.join(', ')}`;
