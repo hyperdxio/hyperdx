@@ -116,19 +116,21 @@ export function useExemplarCard({
     );
   }, []);
   /**
-   * Close both cards now, for when the markers have moved out from under them.
+   * Re-anchor the open card to the marker's current position.
    *
-   * Not scheduleCloseExemplarCard: that delay exists so the cursor can travel
-   * from a marker into the card, and the card's own mouseenter cancels it. Here
-   * there is nothing to travel to — the card is already beside the wrong diamond
-   * — so a cancellable delay would leave a cursor resting in the card holding it
-   * open at stale coordinates, still suppressing the series tooltip.
+   * The marker reports this itself (see ExemplarDot), which is the only place
+   * that knows: a zoom, a y-axis rescale and a container resize all move a marker
+   * without changing anything this hook can observe. Earlier attempts closed the
+   * card on proxies for movement instead — first the quantised date range, then
+   * the rendered x-domain — and each missed a cause. Following the marker also
+   * keeps a card the user deliberately pinned open through a live-tail tick.
+   *
+   * Only the marker the card is describing reports, so this is one call per
+   * change, not one per marker.
    */
-  const closeExemplarCardsNow = useCallback(() => {
-    if (exemplarCloseTimerRef.current)
-      clearTimeout(exemplarCloseTimerRef.current);
-    setHoveredExemplar(null);
-    setPinnedExemplar(null);
+  const moveExemplarCard = useCallback((x: number, y: number) => {
+    setPinnedExemplar(prev => (prev ? { ...prev, x, y } : prev));
+    setHoveredExemplar(prev => (prev ? { ...prev, x, y } : prev));
   }, []);
   useEffect(
     () => () => {
@@ -264,7 +266,7 @@ export function useExemplarCard({
     isHoveredTraceMetaLoading,
     openExemplarCard,
     scheduleCloseExemplarCard,
-    closeExemplarCardsNow,
+    moveExemplarCard,
     cancelClose,
     pin,
     unpin: unpinExemplarCard,

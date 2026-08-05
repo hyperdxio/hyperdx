@@ -133,7 +133,7 @@ export const MemoChart = memo(function MemoChart({
   onExemplarSelect,
   pinnedExemplarKey = null,
   onExemplarPinEnd,
-  onExemplarPositionsChanged,
+  onActiveExemplarMoved,
   onExemplarsDropped,
 }: {
   // Matches what useChartScales narrows to, so the hook's stricter type is
@@ -196,8 +196,8 @@ export const MemoChart = memo(function MemoChart({
   pinnedExemplarKey?: string | null;
   /** Invoked when the pinned marker is no longer in the rendered set. */
   onExemplarPinEnd?: () => void;
-  /** See useExemplarMarkers: an immediate close, not the cancellable one. */
-  onExemplarPositionsChanged?: () => void;
+  /** See useExemplarMarkers: re-anchors the open card when its marker moves. */
+  onActiveExemplarMoved?: (cx: number, cy: number) => void;
   /** How many markers the render-layer clamps dropped; see useExemplarMarkers. */
   onExemplarsDropped?: (count: number) => void;
 }) {
@@ -728,6 +728,7 @@ export const MemoChart = memo(function MemoChart({
 
   // Exemplar marker layer — see useExemplarMarkers.
   const {
+    activeExemplarKey,
     exemplarPoints,
     isExemplarHovered,
     handleExemplarHoverStart,
@@ -744,7 +745,7 @@ export const MemoChart = memo(function MemoChart({
     onExemplarHoverEnd,
     onExemplarSelect,
     onExemplarPinEnd,
-    onExemplarPositionsChanged,
+    onActiveExemplarMoved,
     onExemplarsDropped,
     suppressNextClickRef,
     brushOriginRef: mouseDownPosRef,
@@ -907,6 +908,8 @@ export const MemoChart = memo(function MemoChart({
                   onHoverStart={handleExemplarHoverStart}
                   onHoverEnd={handleExemplarHoverEnd}
                   onSelect={handleExemplarSelect}
+                  isActive={p.key === activeExemplarKey}
+                  onPositionChange={onActiveExemplarMoved}
                 />
               }
             />

@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
@@ -30,12 +29,11 @@ type UseExemplarMarkersArgs = {
   onExemplarSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
   onExemplarPinEnd?: () => void;
   /**
-   * Both cards have moved out from under the cursor and must close immediately.
-   * Distinct from onExemplarHoverEnd, which schedules a cancellable close so the
-   * cursor can travel from a marker into the card — a cursor resting in the card
-   * would cancel that and keep it open at stale coordinates.
+   * The active marker has moved; re-anchor the open card to these coordinates.
+   * Fired from the marker itself, so it covers every cause of movement rather
+   * than the handful the chart can observe.
    */
-  onExemplarPositionsChanged?: () => void;
+  onActiveExemplarMoved?: (cx: number, cy: number) => void;
   /**
    * How many markers the clamps dropped this render. Reported because the drop
    * happens in the render layer, below the fetch-layer notice machinery — without
@@ -82,7 +80,7 @@ export function useExemplarMarkers({
   onExemplarHoverEnd,
   onExemplarSelect,
   onExemplarPinEnd,
-  onExemplarPositionsChanged,
+  onActiveExemplarMoved,
   onExemplarsDropped,
   suppressNextClickRef,
   brushOriginRef,
@@ -196,38 +194,17 @@ export function useExemplarMarkers({
     }
   }, [exemplarPoints, pinnedExemplarKey, onExemplarPinEnd]);
 
-  // The guards above only fire when a marker leaves the rendered set. A marker
-  // that stays can still move: a card is positioned from the pixel coordinates
-  // the SVG shape reported at hover or click time, and those come from the data
-  // point mapped through the x-domain — so when the domain changes, every marker
-  // slides and both cards are left beside the wrong diamond.
-  //
-  // Keyed on the rendered domain rather than the raw date range because that is
-  // exactly what determines the mapping, and it is already floored to the
-  // chart's granularity (see useChartScales). A live-tail tick inside the
-  // current bucket therefore leaves an open card alone, while crossing a bucket
-  // — where markers really do jump a bucket's width — closes it.
-  //
-  // The y-range is deliberately not part of this. It moves on any refetch that
-  // shifts the series maximum, which during live tail is most of them, and the
-  // vertical drift is small; a marker pushed out of range is already handled by
-  // the clamps feeding the guards above.
-  const domainKey = `${xAxisDomain[0]}-${xAxisDomain[1]}`;
-  const shownDomainRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (shownDomainRef.current == null) {
-      shownDomainRef.current = domainKey;
-      return;
-    }
-    if (shownDomainRef.current !== domainKey) {
-      shownDomainRef.current = domainKey;
-      // Also clears the key, so the series tooltip stops being suppressed.
-      setHoveredExemplarKey(null);
-      onExemplarPositionsChanged?.();
-    }
-  }, [domainKey, onExemplarPositionsChanged]);
+  // The guards above fire when a marker leaves the rendered set. A marker that
+  // stays can still move, and the cards are anchored to pixel coordinates the SVG
+  // shape reported when the pointer touched it. Rather than guessing at every
+  // cause — a zoom, a y-axis rescale, a container resize all move a marker — the
+  // active marker reports where it now is and the card follows it. See
+  // ExemplarDot's onPositionChange.
+  const activeExemplarKey = pinnedExemplarKey ?? hoveredExemplarKey;
 
   return {
+    activeExemplarKey,
+    onActiveExemplarMoved,
     exemplarPoints,
     isExemplarHovered,
     handleExemplarHoverStart,
