@@ -9,7 +9,13 @@ const mockFetch = global.fetch as jest.Mock;
 // The proxy now streams the upstream response straight through (no
 // `await resp.json()`), so test mocks must expose the fields the pipeline
 // actually reads: `status`, `headers.get()`, and a web `ReadableStream` body.
-function fakeUpstreamResponse(payload: unknown, status = 200) {
+// Returned as `Response` so callers can hand it straight to `mockResolvedValue`
+// without an `as any` at every site — the proxy only touches the fields below.
+function fakeUpstreamResponse(
+  payload: unknown,
+  status = 200,
+  contentType = 'application/json',
+): Response {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));
@@ -19,11 +25,11 @@ function fakeUpstreamResponse(payload: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
-    headers: new Headers({ 'content-type': 'application/json' }),
+    headers: new Headers({ 'content-type': contentType }),
     body,
     text: jest.fn().mockResolvedValue(JSON.stringify(payload)),
     json: jest.fn().mockResolvedValue(payload),
-  };
+  } as unknown as Response;
 }
 
 describe('prometheus router', () => {
@@ -36,7 +42,7 @@ describe('prometheus router', () => {
   afterEach(async () => {
     await server.clearDBs();
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue(fakeUpstreamResponse({}) as any);
+    mockFetch.mockResolvedValue(fakeUpstreamResponse({}));
   });
 
   afterAll(async () => {
@@ -111,6 +117,59 @@ describe('prometheus router', () => {
       });
     });
 
+    // The connection host is member-configured, so its response body is untrusted
+    // output on our own origin: /api/* is same-origin-proxied by the app and the
+    // session cookie is sameSite lax. A text/html body forwarded verbatim would
+    // render as script here.
+    it('never forwards a non-JSON upstream content-type, and always sends nosniff', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(
+          '<script>alert(document.cookie)</script>',
+          200,
+          'text/html',
+        ),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.headers['content-type']).not.toContain('text/html');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('passes a JSON upstream content-type through unchanged', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({ status: 'success', data: [] }, 200),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
     it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
@@ -119,9 +178,7 @@ describe('prometheus router', () => {
         status: 'success',
         data: { resultType: 'matrix', result: [] },
       };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/query_range')
@@ -220,9 +277,7 @@ describe('prometheus router', () => {
         status: 'success',
         data: { resultType: 'vector', result: [] },
       };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/query')
@@ -256,9 +311,7 @@ describe('prometheus router', () => {
       const conn = await seedPrometheusConnection(team._id);
 
       const promResponse = { status: 'success', data: ['up', 'requests'] };
-      mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse(promResponse) as any,
-      );
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
 
       const res = await agent
         .get('/v1/prometheus/label/__name__/values')
@@ -268,6 +321,95 @@ describe('prometheus router', () => {
       expect(res.body).toEqual(promResponse);
       const calledUrl = mockFetch.mock.calls[0][0] as string;
       expect(calledUrl).toContain('/api/v1/label/__name__/values');
+    });
+  });
+
+  describe('GET /v1/prometheus/query_exemplars', () => {
+    it('returns 400 when query parameter is missing', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({ connectionId: new Types.ObjectId().toString() })
+        .expect(400);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('query'),
+      });
+    });
+
+    it('returns 400 when connectionId is missing', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({ query: 'up' })
+        .expect(400);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('connectionId'),
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a connection owned by another team', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      // A real, resolvable connection — just not this team's. The 404 must come
+      // from the team scoping, not from the id simply not existing.
+      const otherTeamConn = await seedPrometheusConnection(
+        new Types.ObjectId(),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({ query: 'up', connectionId: otherTeamConn._id.toString() })
+        .expect(404);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        error: 'Connection not found',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      const promResponse = { status: 'success', data: [] };
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.body).toEqual(promResponse);
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toContain('/api/v1/query_exemplars');
+      expect(calledUrl).toContain('query=up');
+    });
+
+    it('returns an empty result for ClickHouse-backed connections (no native exemplar table function)', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.body).toEqual({ status: 'success', data: [] });
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

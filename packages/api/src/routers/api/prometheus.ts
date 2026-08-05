@@ -147,9 +147,16 @@ const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
 const PROMETHEUS_MAX_EXECUTION_SEC = 30;
 const PROMETHEUS_MAX_RESULT_ROWS = '100000';
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
+// Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
+// small circular buffer, so a wider range mostly costs a bigger streamed body
+// for no extra markers — the chart's own thinning caps what's rendered anyway.
+const PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC = 7 * 24 * 60 * 60;
 
 // Forwards the response straight from the upstream Prometheus to the
-// HyperDX client. The response can be multi-megabyte (e.g. `/label/__name__/
+// HyperDX client. Returns the HTTP status it wrote, so callers can record an
+// error metric: this helper handles its own failures by writing 400/502/504 and
+// returning normally, so a caller's `catch` never sees an upstream outage and
+// would otherwise report zero errors while still recording duration. The response can be multi-megabyte (e.g. `/label/__name__/
 // values` on a large Prometheus), so we avoid `await resp.json()` +
 // `res.json(...)` which would parse + re-serialize the whole body in memory.
 // Prometheus's native response shape (`{status, data}` / `{status, errorType,
@@ -160,7 +167,7 @@ async function proxyToPrometheus(
   path: string,
   params: Record<string, string>,
   res: express.Response,
-): Promise<void> {
+): Promise<number> {
   let url: URL;
   try {
     url = new URL(path, upstreamHost);
@@ -170,7 +177,7 @@ async function proxyToPrometheus(
       errorType: 'bad_data',
       error: `Connection host is not a valid URL: ${JSON.stringify(upstreamHost)}`,
     });
-    return;
+    return 400;
   }
   for (const [k, v] of Object.entries(params)) {
     if (['connectionId', 'database', 'table'].includes(k)) continue;
@@ -190,7 +197,7 @@ async function proxyToPrometheus(
         errorType: 'timeout',
         error: `Prometheus request to ${target} timed out after ${PROMETHEUS_PROXY_TIMEOUT_MS}ms`,
       });
-      return;
+      return 504;
     }
     // Node's fetch wraps the real network error (ECONNREFUSED, ENOTFOUND, TLS,
     // …) in `.cause`. Without unwrapping it the client only sees a useless
@@ -210,16 +217,30 @@ async function proxyToPrometheus(
       errorType: 'unavailable',
       error: `Failed to reach Prometheus at ${target} (${detail})`,
     });
-    return;
+    return 502;
   }
 
   res.status(upstreamResp.status);
+
+  // The connection host is member-configured, so its response is untrusted output
+  // on our own origin: the app same-origin-proxies /api/*, and the session cookie
+  // is sameSite lax. Forwarding the upstream content-type verbatim would let a
+  // text/html body render as script here. Send nosniff unconditionally and pass
+  // the content-type through only when it is JSON; anything else is relabelled,
+  // which keeps a genuine Prometheus error body readable while making a hostile
+  // one inert.
+  res.setHeader('x-content-type-options', 'nosniff');
   const contentType = upstreamResp.headers.get('content-type');
-  if (contentType) res.setHeader('content-type', contentType);
+  res.setHeader(
+    'content-type',
+    contentType && /^application\/(json|[\w.+-]+\+json)\b/i.test(contentType)
+      ? contentType
+      : 'application/json',
+  );
 
   if (!upstreamResp.body) {
     res.end();
-    return;
+    return upstreamResp.status;
   }
 
   try {
@@ -231,6 +252,28 @@ async function proxyToPrometheus(
     if (!res.writableEnded) {
       res.destroy(err instanceof Error ? err : new Error(String(err)));
     }
+    return 502;
+  }
+  return upstreamResp.status;
+}
+
+/**
+ * Records an error for a proxied response that failed server-side.
+ * proxyToPrometheus never throws, so this is the only place the error counter
+ * gets incremented on the proxy path.
+ *
+ * 5xx only. An upstream 4xx is almost always a malformed PromQL expression the
+ * user typed, and counting those would make this counter track user typos rather
+ * than backend health — which is what alerts and SLOs read it for. The helper's
+ * own failure statuses (502 unreachable, 504 timeout) are 5xx and so are counted.
+ */
+function recordProxyOutcome(
+  status: number,
+  endpoint: string,
+  backend: PrometheusBackend,
+) {
+  if (status >= 500) {
+    prometheusQueryErrors.add(1, { endpoint, backend });
   }
 }
 
@@ -281,12 +324,13 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     // directly to connection.host instead of running a ClickHouse query.
     if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
-      await proxyToPrometheus(
+      const status = await proxyToPrometheus(
         connection.host,
         '/api/v1/query_range',
         params,
         res,
       );
+      recordProxyOutcome(status, 'query_range', backend);
       return;
     }
 
@@ -414,7 +458,13 @@ const queryHandler: express.RequestHandler = async (req, res) => {
 
     if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
-      await proxyToPrometheus(connection.host, '/api/v1/query', params, res);
+      const status = await proxyToPrometheus(
+        connection.host,
+        '/api/v1/query',
+        params,
+        res,
+      );
+      recordProxyOutcome(status, 'query', backend);
       return;
     }
 
@@ -478,6 +528,140 @@ const queryHandler: express.RequestHandler = async (req, res) => {
 router.get('/query', queryHandler);
 router.post('/query', queryHandler);
 
+/**
+ * Resolve the exemplar window a /query_exemplars request should be proxied with.
+ *
+ * Returns either the bounded window or the reason it is unusable, so the handler
+ * stays a thin translation to HTTP and this logic can be tested without a route.
+ * Over-wide windows are narrowed rather than rejected: a 30d dashboard range is an
+ * ordinary request, and Prometheus keeps exemplars in a small recent buffer, so
+ * the older part has nothing to return anyway.
+ */
+export function resolveExemplarWindow(
+  rawStart: string | undefined,
+  rawEnd: string | undefined,
+  maxWindowSec = PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
+): { start: number; end: number } | { error: string } {
+  const parse = (v: string | undefined) => {
+    if (v == null || v === '') return NaN;
+    try {
+      return parseTimestamp(v);
+    } catch {
+      return NaN;
+    }
+  };
+  const start = parse(rawStart);
+  const end = parse(rawEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return { error: 'invalid or missing start/end parameters' };
+  }
+  return { start: Math.max(start, end - maxWindowSec), end };
+}
+
+// --------------------------
+// GET|POST /query_exemplars
+// --------------------------
+
+// Native Prometheus exposes exemplars via /api/v1/query_exemplars. We proxy
+// straight through for Prometheus-backed connections. ClickHouse-backed metric
+// exemplars are read directly from the OTel metric tables' `Exemplars.*`
+// columns in the app (via renderMetricExemplarsChartConfig), so there is no
+// ClickHouse table function to call here — return an empty result instead.
+const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
+  const startedAt = performance.now();
+  let backend: PrometheusBackend = 'unknown';
+  try {
+    const { teamId } = getNonNullUserWithTeam(req);
+    const params = getParams(req);
+
+    const query = params.query;
+    if (!query) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'missing required parameter: query',
+      });
+    }
+
+    const connectionId = params.connectionId;
+    if (!connectionId) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'missing required parameter: connectionId',
+      });
+    }
+
+    const connection = await getConnectionById(
+      teamId.toString(),
+      connectionId,
+      true,
+    );
+    if (!connection) {
+      return res.status(404).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'Connection not found',
+      });
+    }
+
+    if (connection.isPrometheusEndpoint) {
+      backend = 'prometheus';
+
+      // Bound the requested window before proxying. Unlike /query_range there is
+      // no `step` to cap the result size with, and Prometheus's /query_exemplars
+      // takes no limit parameter — the window is the only lever, and the response
+      // streams through this process. Parsed (not just forwarded) so a malformed
+      // timestamp fails here rather than upstream.
+      //
+      // Deliberately inside this branch: the ClickHouse-backed branch below never
+      // reaches Prometheus and answers with an empty success, so bounding it there
+      // would turn a healthy wide-range chart into a 400 (and light up the chart's
+      // exemplar error indicator) for a request that does no upstream work.
+      //
+      // parseTimestamp throws on a missing/unparseable value; a bad client param
+      // is a 400, not an upstream error, so it is resolved here, not in the catch.
+      const window = resolveExemplarWindow(params.start, params.end);
+      if ('error' in window) {
+        return res.status(400).json({
+          status: 'error',
+          errorType: 'bad_data',
+          error: window.error,
+        });
+      }
+
+      const status = await proxyToPrometheus(
+        connection.host,
+        '/api/v1/query_exemplars',
+        { ...params, start: String(window.start) },
+        res,
+      );
+      recordProxyOutcome(status, 'query_exemplars', backend);
+      return;
+    }
+
+    // ClickHouse-backed PromQL: no native exemplar table function. Exemplars
+    // for structured metric charts are fetched app-side from the metric table.
+    backend = 'clickhouse';
+    return res.json({ status: 'success', data: [] });
+  } catch (e) {
+    prometheusQueryErrors.add(1, { endpoint: 'query_exemplars', backend });
+    logger.error(e, 'Prometheus query_exemplars error');
+    return res.status(400).json({
+      status: 'error',
+      errorType: 'bad_data',
+      error: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    prometheusQueryDuration.record(performance.now() - startedAt, {
+      endpoint: 'query_exemplars',
+      backend,
+    });
+  }
+};
+router.get('/query_exemplars', queryExemplarsHandler);
+router.post('/query_exemplars', queryExemplarsHandler);
+
 // --------------------------
 // GET /label/:name/values
 // --------------------------
@@ -528,12 +712,13 @@ router.get('/label/:name/values', async (req, res) => {
     // Proxy to Prometheus if endpoint is set
     if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
-      await proxyToPrometheus(
+      const status = await proxyToPrometheus(
         connection.host,
         `/api/v1/label/${labelName}/values`,
         params,
         res,
       );
+      recordProxyOutcome(status, 'label_values', backend);
       return;
     }
 

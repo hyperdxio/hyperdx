@@ -3,6 +3,7 @@ import {
   formatVectorResponse,
   parseDuration,
   parseTimestamp,
+  resolveExemplarWindow,
 } from '@/routers/api/prometheus';
 
 describe('parseTimestamp', () => {
@@ -131,5 +132,65 @@ describe('formatVectorResponse', () => {
       1700000000,
       '3',
     ]);
+  });
+});
+
+describe('resolveExemplarWindow', () => {
+  const DAY = 24 * 60 * 60;
+  const end = 1_700_000_000;
+
+  it('passes a window inside the cap through untouched', () => {
+    expect(resolveExemplarWindow(String(end - DAY), String(end))).toEqual({
+      start: end - DAY,
+      end,
+    });
+  });
+
+  it('narrows an over-wide window instead of rejecting it', () => {
+    // A 30-day dashboard range is an ordinary request, and Prometheus keeps
+    // exemplars in a small recent buffer, so the older part has nothing to
+    // return. Rejecting would surface as the chart's exemplar error indicator on
+    // a perfectly healthy chart.
+    const result = resolveExemplarWindow(String(end - 30 * DAY), String(end));
+    expect(result).toEqual({ start: end - 7 * DAY, end });
+  });
+
+  it('keeps the requested end when narrowing', () => {
+    const result = resolveExemplarWindow(String(end - 30 * DAY), String(end));
+    expect('end' in result && result.end).toBe(end);
+  });
+
+  it('rejects an inverted range', () => {
+    expect(resolveExemplarWindow(String(end), String(end - DAY))).toEqual({
+      error: 'invalid or missing start/end parameters',
+    });
+  });
+
+  it('rejects a missing or unparseable bound', () => {
+    for (const [start, endArg] of [
+      [undefined, String(end)],
+      [String(end - DAY), undefined],
+      ['', String(end)],
+      ['not-a-time', String(end)],
+    ] as [string | undefined, string | undefined][]) {
+      expect(resolveExemplarWindow(start, endArg)).toEqual({
+        error: 'invalid or missing start/end parameters',
+      });
+    }
+  });
+
+  it('accepts an ISO timestamp, matching parseTimestamp', () => {
+    const result = resolveExemplarWindow(
+      '2023-11-14T22:13:20Z',
+      '2023-11-14T22:14:20Z',
+    );
+    expect('start' in result).toBe(true);
+  });
+
+  it('honours an explicit cap', () => {
+    expect(resolveExemplarWindow(String(end - 100), String(end), 10)).toEqual({
+      start: end - 10,
+      end,
+    });
   });
 });
