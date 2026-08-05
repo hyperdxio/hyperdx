@@ -67,7 +67,7 @@ const mockRow = {
 
 jest.mock('../DBRowDataPanel', () => ({
   __esModule: true,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useRowData: () => ({
     data: { data: [mockRow] },
     isLoading: false,
@@ -88,7 +88,7 @@ jest.mock('../DBRowDataPanel', () => ({
 jest.mock('@/source', () => ({
   __esModule: true,
   getEventBody: () => '__hdx_body',
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useSource: () => ({ data: undefined }),
 }));
 
@@ -129,7 +129,7 @@ jest.mock('../ContextSidePanel', () => ({
 
 jest.mock('../DBSessionPanel', () => ({
   __esModule: true,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useSessionId: () => ({ rumSessionId: undefined, rumServiceName: undefined }),
   DBSessionPanel: () => null,
 }));
