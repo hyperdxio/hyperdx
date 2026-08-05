@@ -2824,6 +2824,95 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    // `exemplarTraceSourceId` is where a marker's "view trace" link points, so a
+    // well-formed id for the wrong kind of source saves a tile whose markers all
+    // lead nowhere. Format validation alone cannot catch that.
+    it('rejects an exemplarTraceSourceId that is not a Trace source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with exemplars on a metric trace source',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: metricSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'exemplarTraceSourceId must reference a Trace source',
+      );
+    });
+
+    it('rejects an exemplarTraceSourceId for a source that does not exist', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with exemplars on a missing source',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: new ObjectId().toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('Could not find');
+    });
+
+    it('accepts an exemplarTraceSourceId pointing at a Trace source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with exemplars',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).toMatchObject({
+        enableExemplars: true,
+        exemplarTraceSourceId: traceSource._id.toString(),
+      });
+    });
+
     it('round-trips a heatmap tile with only required fields', async () => {
       // Covers the minimal payload path: countExpression, heatmapScaleType,
       // where, whereLanguage, and numberFormat are all omitted on the

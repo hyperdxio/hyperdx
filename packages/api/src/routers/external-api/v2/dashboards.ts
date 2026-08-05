@@ -639,14 +639,17 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: >
  *             Overlay exemplars: markers for individual trace-linked data points.
  *             Only renders when the tile is exemplar-eligible — a single
- *             non-ratio histogram metric series with no groupBy — and is
- *             accepted but inert otherwise.
+ *             non-ratio histogram metric series with no groupBy, aggregated with
+ *             avg, min, max, quantile or last_value. Not count or sum: a counted
+ *             point is not attributable to any one trace, so the overlay is
+ *             accepted but stays inert.
  *           default: false
  *         exemplarTraceSourceId:
  *           type: string
  *           description: >
- *             ID of the Trace source an exemplar marker links to. Defaults to
- *             the chart source's linked trace source when omitted.
+ *             ID of the Trace source an exemplar marker links to. Must exist and
+ *             be a Trace source; a request naming anything else is rejected.
+ *             Defaults to the chart source's linked trace source when omitted.
  *           example: "65f5e4a3b9e77c001a222222"
  *
  *     BarBuilderChartConfig:
@@ -705,14 +708,17 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: >
  *             Overlay exemplars: markers for individual trace-linked data points.
  *             Only renders when the tile is exemplar-eligible — a single
- *             non-ratio histogram metric series with no groupBy — and is
- *             accepted but inert otherwise.
+ *             non-ratio histogram metric series with no groupBy, aggregated with
+ *             avg, min, max, quantile or last_value. Not count or sum: a counted
+ *             point is not attributable to any one trace, so the overlay is
+ *             accepted but stays inert.
  *           default: false
  *         exemplarTraceSourceId:
  *           type: string
  *           description: >
- *             ID of the Trace source an exemplar marker links to. Defaults to
- *             the chart source's linked trace source when omitted.
+ *             ID of the Trace source an exemplar marker links to. Must exist and
+ *             be a Trace source; a request naming anything else is rejected.
+ *             Defaults to the chart source's linked trace source when omitted.
  *           example: "65f5e4a3b9e77c001a222222"
  *
  *     TableBuilderChartConfig:
