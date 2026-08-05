@@ -52,6 +52,7 @@ import {
 } from './constants';
 import { useChartScales } from './useChartScales';
 
+// Debounce (ms) for the chart's ResponsiveContainer resize observer. Without
 // it the observer fires on every frame, and a resize → re-render → resize
 // cycle can keep the chart (and the form controls around it in the tile
 // editor) from ever settling.
@@ -108,7 +109,9 @@ export const MemoChart = memo(function MemoChart({
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
 }: {
-  graphResults: any[];
+  // Matches what useChartScales narrows to, so the hook's stricter type is
+  // actually checked at this boundary rather than satisfied by `any`.
+  graphResults: Record<string, unknown>[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
   isClickActive: ActiveClickPayload | undefined;
   dateRange: [Date, Date] | Readonly<[Date, Date]>;

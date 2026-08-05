@@ -11,5 +11,6 @@ export {
   getVisibleLineData,
   HARD_LINES_LIMIT,
 } from './chartData';
+export { TOOLTIP_POINT_OFFSET_PX } from './constants';
 export { collectMemoChartGradientHexes, MemoChart } from './MemoChart';
 export { TooltipItem } from './TooltipItem';

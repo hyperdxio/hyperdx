@@ -4,7 +4,10 @@ import { Popover, Portal } from '@mantine/core';
 
 import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
-import type { ActiveClickPayload } from '@/HDXMultiSeriesTimeChart';
+import {
+  type ActiveClickPayload,
+  TOOLTIP_POINT_OFFSET_PX,
+} from '@/HDXMultiSeriesTimeChart';
 
 // The interactive PINNED tooltip, rendered over the chart in a body-portaled
 // Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
@@ -105,7 +108,9 @@ export function ChartTooltipOverlay({
         trapFocus={false}
         withinPortal
         position="bottom"
-        offset={12}
+        // Same gap the hover tooltip uses, so the two states don't sit at
+        // different distances from the point.
+        offset={TOOLTIP_POINT_OFFSET_PX}
         middlewares={{ flip: true, shift: true }}
         returnFocus={false}
         zIndex={popoverZIndex}

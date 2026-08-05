@@ -10,22 +10,16 @@ import { IconChartBar, IconChartLine } from '@tabler/icons-react';
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DisplaySwitcher from '@/components/charts/DisplaySwitcher';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 
 type UseChartToolbarItemsArgs = {
   builderQueriedConfig: BuilderChartConfigWithDateRange | undefined;
   config: ChartConfigWithDateRange;
   displayType: DisplayType | undefined;
   handleSetDisplayType: (displayType: DisplayType) => void;
-  // Shape comes from useMVOptimizationExplanation; only these fields are read here.
-  mvOptimizationData:
-    | {
-        optimizedConfig?: { dateRange?: [Date, Date] };
-        explanations: {
-          success: boolean;
-          mvConfig: { minGranularity?: string };
-        }[];
-      }
-    | undefined;
+  // Derived from the hook rather than hand-copied, so a change to its shape is
+  // a type error here instead of a field that quietly stops being read.
+  mvOptimizationData: ReturnType<typeof useMVOptimizationExplanation>['data'];
   queriedConfig: ChartConfigWithDateRange;
   showDateRangeIndicator: boolean;
   showDisplaySwitcher: boolean;

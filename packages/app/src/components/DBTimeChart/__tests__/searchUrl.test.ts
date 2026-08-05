@@ -4,7 +4,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { buildSeriesSearchUrl } from '@/components/DBTimeChart/searchUrl';
+import { buildSeriesSearchUrl } from '@/components/DBTimeChart';
 
 // The URL string itself is ChartUtils' concern and already covered there. What
 // matters here is the branching this function does before delegating — which was
@@ -65,6 +65,13 @@ const rawSqlConfig = {
   dateRange: [clicked, clicked],
 } satisfies Partial<ChartConfigWithDateRange> as ChartConfigWithDateRange;
 
+const promqlConfig = {
+  connection: 'conn-1',
+  configType: 'promql',
+  promqlExpression: 'up',
+  dateRange: [clicked, clicked],
+} satisfies Partial<ChartConfigWithDateRange> as ChartConfigWithDateRange;
+
 beforeEach(() => jest.clearAllMocks());
 
 describe('buildSeriesSearchUrl', () => {
@@ -96,6 +103,17 @@ describe('buildSeriesSearchUrl', () => {
         buildSeriesSearchUrl({
           ...args,
           config: rawSqlConfig,
+        }),
+      ).toBeNull();
+    });
+
+    it('for a PromQL chart', () => {
+      // Same reason as raw SQL, and covered separately because the two share one
+      // condition — without this, dropping the isPromqlChartConfig arm stays green.
+      expect(
+        buildSeriesSearchUrl({
+          ...args,
+          config: promqlConfig,
         }),
       ).toBeNull();
     });
@@ -144,6 +162,22 @@ describe('buildSeriesSearchUrl', () => {
       });
       const { valueRangeFilter } = delegatedArgs();
       expect(valueRangeFilter).toBeUndefined();
+    });
+
+    it('is added for a clicked value of zero', () => {
+      // Zero is a real point — buildActiveClickSeries keeps it rather than
+      // dropping it — so a truthiness guard here would silently widen the
+      // drill-down to every event in the bucket.
+      buildSeriesSearchUrl({
+        ...args,
+        seriesValue: 0,
+        config: configWith([{ aggFn: 'max', valueExpression: 'Duration' }]),
+      });
+      const { valueRangeFilter } = delegatedArgs();
+      expect(valueRangeFilter).toEqual({
+        expression: 'Duration',
+        value: 0,
+      });
     });
 
     it('resolves the value column by series-key prefix on a multi-value chart', () => {

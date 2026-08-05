@@ -21,18 +21,19 @@ import ChartContainer from '@/components/charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from '@/components/charts/ChartErrorState';
-import { ChartTooltipOverlay } from '@/components/DBTimeChart/ChartTooltipOverlay';
-import { useCrossChartPinDismiss } from '@/components/DBTimeChart/crossChartPin';
-import {
-  buildSeriesSearchUrl,
-  decodeSeriesGroupFilters,
-  type SeriesGroupFilter,
-} from '@/components/DBTimeChart/searchUrl';
-import { useChartToolbarItems } from '@/components/DBTimeChart/useChartToolbarItems';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
+
+import { ChartTooltipOverlay } from './ChartTooltipOverlay';
+import { useCrossChartPinDismiss } from './crossChartPin';
+import {
+  buildSeriesSearchUrl,
+  decodeSeriesGroupFilters,
+  type SeriesGroupFilter,
+} from './searchUrl';
+import { useChartToolbarItems } from './useChartToolbarItems';
 
 type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;

@@ -108,7 +108,14 @@ export function buildSeriesSearchUrl({
       }
     | undefined;
 
-  if (seriesValue && Array.isArray(config.select) && config.select.length > 0) {
+  // `!= null`, not truthiness: a clicked value of exactly 0 is a real point —
+  // buildActiveClickSeries preserves zeroes — and skipping the filter for it
+  // drills down to every event in the bucket instead of the matching ones.
+  if (
+    seriesValue != null &&
+    Array.isArray(config.select) &&
+    config.select.length > 0
+  ) {
     // Determine which value column to filter on
     let valueExpression: string | undefined;
 

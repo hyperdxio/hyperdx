@@ -29,6 +29,9 @@ type HDXLineChartTooltipProps = {
   containerRef: React.MutableRefObject<HTMLDivElement | null>;
 } & Record<string, any>;
 
+/** Stable stand-in for a missing payload, so the memo below keeps its identity. */
+const EMPTY_PAYLOAD: TooltipPayload[] = [];
+
 /**
  * The recharts `<Tooltip>` content used for the HOVER tooltip (on the hovered
  * chart and its synced followers). Clicking pins ChartSeriesTooltip instead.
@@ -51,7 +54,12 @@ export const HDXLineChartTooltip = withErrorBoundary(
       activePointYByKeyRef,
       containerRef,
     } = props;
-    const typedPayload = payload as TooltipPayload[];
+    // recharts calls this with no payload when nothing is hovered, and the memo
+    // below runs before the `active && payload` guard. Mapping over undefined
+    // there throws inside the render, which withErrorBoundary latches for the
+    // rest of this instance's life — the chart never recovers. A shared constant
+    // rather than `?? []` so the memo's dependency stays referentially stable.
+    const typedPayload = (payload ?? EMPTY_PAYLOAD) as TooltipPayload[];
 
     const tooltipZIndex = useChartTooltipZIndex();
 
