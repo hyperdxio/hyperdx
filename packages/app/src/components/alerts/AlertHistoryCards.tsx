@@ -26,7 +26,7 @@ import styles from '@styles/AlertsPage.module.scss';
 
 const HISTORY_ITEMS = 18;
 
-const ALERT_ERROR_TYPE_LABELS: Record<AlertErrorType, string> = {
+export const ALERT_ERROR_TYPE_LABELS: Record<AlertErrorType, string> = {
   [AlertErrorType.INVALID_ALERT]: 'Invalid Configuration',
   [AlertErrorType.QUERY_ERROR]: 'Query Error',
   [AlertErrorType.QUERY_TIMEOUT]: 'Query Timeout',
@@ -47,7 +47,7 @@ function stateToBgColorClass(state: AlertState) {
   }
 }
 
-function AlertErrorsContent({ errors }: { errors: AlertError[] }) {
+export function AlertErrorsContent({ errors }: { errors: AlertError[] }) {
   return (
     <Stack gap="md">
       {errors.map((error, idx) => (
