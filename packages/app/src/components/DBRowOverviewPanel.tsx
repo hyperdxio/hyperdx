@@ -270,21 +270,6 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {hasSpanEvents && (
-          <Accordion.Item value="spanEvents">
-            <Accordion.Control>
-              <Text size="sm" ps={contentPx}>
-                Span Events
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px={contentPx}>
-                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {Object.keys(topLevelAttributes).length > 0 && (
           <Accordion.Item value="topLevelAttributes">
             <Accordion.Control>
@@ -326,12 +311,12 @@ export function RowOverviewPanel({
         {hasSpanEvents && (
           <Accordion.Item value="spanEvents">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Span Events
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box ps={contentPx}>
                 <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
               </Box>
             </Accordion.Panel>
