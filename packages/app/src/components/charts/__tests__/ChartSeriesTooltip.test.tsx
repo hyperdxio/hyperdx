@@ -87,7 +87,7 @@ describe('ChartSeriesTooltip', () => {
       <ChartSeriesTooltip
         {...baseProps}
         activePayload={multiSeriesPayload}
-        onShowAllSeries={() => {}}
+        onShowAllSeries={jest.fn()}
       />,
     );
     expect(screen.getByTestId('chart-show-all-series')).toBeInTheDocument();

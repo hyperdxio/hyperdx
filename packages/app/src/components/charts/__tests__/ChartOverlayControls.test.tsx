@@ -48,8 +48,8 @@ describe('ChartOverlayControls', () => {
   it('renders both buttons when both handlers are provided', () => {
     renderWithMantine(
       <ChartOverlayControls
-        onClearSelection={() => {}}
-        onResetZoom={() => {}}
+        onClearSelection={jest.fn()}
+        onResetZoom={jest.fn()}
       />,
     );
 
