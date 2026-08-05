@@ -48,6 +48,12 @@ jobs:
       # Single-source the reviewer plugin ref: consumed by the plugin checkout,
       # the review gate, and the state marker. Bump in one place.
       PLUGIN_REF: compound-engineering-v3.6.1
+      # TEMPORARY: pin the Claude Code CLI to the last version before the
+      # >=2.1.216 bwrap sandbox regression that breaks every Bash call.
+      # Single-sourced so the install arg and the post-install assertion
+      # cannot drift. UNPIN once upstream fixes it (tracked in HDX-4907).
+      # https://github.com/anthropics/claude-code-action/issues/1547
+      CLAUDE_CLI_VERSION: 2.1.215
     permissions:
       contents: read
       pull-requests: write
@@ -249,6 +255,44 @@ jobs:
           ref: ${{ env.PLUGIN_REF }}
           path: ce-plugin
 
+      # --- CLI pin (TEMPORARY) ----------------------------------------------
+      # claude-code-action hardcodes the Claude Code CLI version it installs
+      # (currently 2.1.220) and exposes no version input -- the only override
+      # is `path_to_claude_code_executable`. CLI >= 2.1.216 has a bwrap sandbox
+      # regression: whenever subprocess isolation is on (which
+      # `allowed_non_write_users: '*'` below auto-enables via
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1), bwrap aborts EVERY Bash call while
+      # trying to mask a repo-root `.mcp.json`, with:
+      #   bwrap: Can't create file at /home/.mcp.json: Permission denied
+      # That kills git/gh and the reviewer fan-out, so the review posts an
+      # "environment failure" comment -- and the job still reports success.
+      # CLAUDE_CLI_VERSION is the last version before the regression. Install
+      # it into a fixed path and point the action at it below.
+      # Upstream issue: https://github.com/anthropics/claude-code-action/issues/1547
+      # UNPIN once the upstream regression is fixed (tracked in HDX-4907).
+      - name: Pin Claude Code CLI to a pre-regression version
+        if: steps.gate.outputs.should_review == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL https://claude.ai/install.sh | bash -s -- "$CLAUDE_CLI_VERSION"
+          CLAUDE_BIN="$HOME/.local/bin/claude"
+          if [ ! -x "$CLAUDE_BIN" ]; then
+            echo "::error::Pinned Claude Code CLI not found at $CLAUDE_BIN after install."
+            exit 1
+          fi
+          # Hard-fail unless the installed binary actually reports the pinned
+          # version. Without this, an installer that ignores the version arg or
+          # silently drifts would run a regressed CLI under a green build,
+          # defeating the pin. `claude --version` prints e.g. "2.1.215 (Claude
+          # Code)"; assert the pinned version appears as a whole token.
+          INSTALLED_VERSION="$("$CLAUDE_BIN" --version 2>/dev/null || true)"
+          echo "Installed Claude Code CLI: ${INSTALLED_VERSION:-<none>}"
+          if ! printf '%s' "$INSTALLED_VERSION" | grep -qE "(^|[^0-9.])${CLAUDE_CLI_VERSION//./\\.}([^0-9.]|$)"; then
+            echo "::error::Pinned CLI check failed: expected $CLAUDE_CLI_VERSION, got '${INSTALLED_VERSION:-<none>}'. The installer may have ignored the version argument."
+            exit 1
+          fi
+          echo "PINNED_CLAUDE=$CLAUDE_BIN" >> "$GITHUB_ENV"
+
       - name: Run deep review
         id: review
         if: steps.gate.outputs.should_review == 'true'
@@ -256,6 +300,11 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }} # bypasses OIDC auth (required for pull_request_target)
+          # Pin the CLI to dodge the >=2.1.216 bwrap sandbox regression that
+          # breaks every Bash call. Remove this input to revert to the action's
+          # bundled CLI once upstream fixes it.
+          # https://github.com/anthropics/claude-code-action/issues/1547
+          path_to_claude_code_executable: ${{ env.PINNED_CLAUDE }}
           allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
           allowed_non_write_users: '*' # allow fork-PR contributors to trigger reviews
 
@@ -418,6 +467,58 @@ jobs:
             --setting-sources user
             --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
             --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
+
+      # --- Sandbox smoke check ----------------------------------------------
+      # PERMANENT guard -- KEEP this even after the CLI pin above is removed.
+      # It defends against the whole class of "green checkmark on a broken
+      # sandbox" failures, not just the specific #1547 regression.
+      #
+      # This bug's nastiest trait is that the job reports SUCCESS while every
+      # Bash call inside the action silently fails (the action's `conclusion`
+      # is derived only from the final result message, never from per-tool
+      # errors), so a zero-coverage "environment failure" review posts under a
+      # green checkmark. Detect the failure from the MACHINE-READABLE execution
+      # transcript rather than the model's free-text review body -- grepping
+      # the review would false-positive on any PR (like this one) that merely
+      # discusses the bwrap error. The execution_file is a JSON array of SDK
+      # messages; failed tool calls appear as `tool_result` blocks with
+      # `is_error: true` carrying the bwrap error text in `content`.
+      # https://github.com/anthropics/claude-code-action/issues/1547
+      - name: Assert reviewer sandbox is healthy
+        if: steps.gate.outputs.should_review == 'true'
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          # A missing transcript on a review run is itself suspicious (the SDK
+          # iterator can hang before writing the file), so fail rather than
+          # silently pass with no evidence.
+          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -f "$EXECUTION_FILE" ]; then
+            echo "::error::No execution transcript from the reviewer (execution_file missing). Cannot confirm the sandbox was healthy."
+            exit 1
+          fi
+          # Count tool_result blocks that errored with the bwrap sandbox
+          # signature. `content` may be a string or an array of text blocks,
+          # so normalize both. jq reads the file directly -- no pipe, so no
+          # pipefail/SIGPIPE fail-open.
+          BROKEN=$(jq '
+            [ .[]
+              | select(.type == "user")
+              | .message.content[]?
+              | select(.type == "tool_result" and .is_error == true)
+              | ( .content
+                  | if type == "array" then map(.text // "") | join("\n")
+                    elif type == "string" then .
+                    else tostring end )
+              | select(test("bwrap: Can.t create file|Can.t create file at .*\\.mcp\\.json|bwrap:.*Permission denied"))
+            ] | length
+          ' "$EXECUTION_FILE")
+          echo "bwrap sandbox-failure tool_results: $BROKEN"
+          if [ "$BROKEN" -gt 0 ]; then
+            echo "::error::Deep review ran in a broken sandbox ($BROKEN bwrap Bash failures). The CLI pin is not taking effect or the regression changed shape. See https://github.com/anthropics/claude-code-action/issues/1547"
+            exit 1
+          fi
+          echo "Sandbox smoke check passed -- no bwrap failures in the reviewer transcript."
 
       # fromJSON() in `with:` has been observed to leave structured_output JSON
       # unparsed for the sibling claude-code-review workflow. Extract via jq.
