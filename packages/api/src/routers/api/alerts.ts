@@ -87,7 +87,7 @@ const formatAlertResponse = (
       'executionErrors',
       'numConsecutiveWindows',
     ]),
-    ...(alert.tileId != null && { tileId: alert.tileId }),
+    tileId: alert.tileId ?? undefined,
   };
 };
 
