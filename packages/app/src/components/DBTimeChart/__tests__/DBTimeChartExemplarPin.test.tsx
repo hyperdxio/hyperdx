@@ -1,6 +1,7 @@
 import React from 'react';
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
-import { act } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import { act, render } from '@testing-library/react';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import type { ExemplarHoverCard } from '@/components/Exemplars';
@@ -221,6 +222,92 @@ describe('DBTimeChart exemplar pin lifecycle', () => {
     });
 
     expect(cardProps().hovered?.exemplar.traceId).toBe(exemplar.traceId);
+  });
+
+  describe('range changes', () => {
+    // Both cards are positioned from pixel coordinates captured at pin/hover
+    // time, so anything that moves the markers leaves them beside the wrong
+    // diamond. A marker sliding out from under a stationary cursor fires no
+    // mouseleave, so the hover card cannot clean itself up.
+    //
+    // `wrapper` rather than renderWithMantine: it keeps the provider outside the
+    // rerendered element, so DBTimeChart stays at the same tree position and
+    // keeps its state. Rerendering a differently-shaped tree remounts the chart,
+    // which clears the cards by itself and would let these pass with the effect
+    // removed entirely.
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MantineProvider>{children}</MantineProvider>
+    );
+
+    let rerenderChart: ((ui: React.ReactElement) => void) | null = null;
+
+    const renderAt = (dateRange: [Date, Date]) => {
+      const { rerender } = render(
+        <DBTimeChart config={{ ...config, dateRange }} />,
+        { wrapper },
+      );
+      rerenderChart = rerender;
+    };
+
+    const moveTo = (dateRange: [Date, Date]) =>
+      act(() => {
+        if (!rerenderChart) throw new Error('renderAt was not called');
+        rerenderChart(<DBTimeChart config={{ ...config, dateRange }} />);
+      });
+
+    const initialRange: [Date, Date] = [
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-02T00:00:05Z'),
+    ];
+    const zoomedRange: [Date, Date] = [
+      new Date('2024-06-01T00:00:00Z'),
+      new Date('2024-06-02T00:00:05Z'),
+    ];
+
+    it('clears a pinned card when the range changes', () => {
+      renderAt(initialRange);
+      pin();
+      expect(cardProps().pinned).toBe(true);
+
+      moveTo(zoomedRange);
+
+      expect(cardProps().pinned).toBe(false);
+      expect(cardProps().hovered).toBeNull();
+    });
+
+    it('clears a hover card when the range changes with nothing pinned', () => {
+      // The case an earlier version missed: it keyed the effect on there being a
+      // pin, so a hover-only card survived the zoom at stale coordinates and kept
+      // the series tooltip suppressed.
+      renderAt(initialRange);
+      act(() => {
+        callback(chartProps().onExemplarHover, 'onExemplarHover')(
+          exemplar,
+          10,
+          20,
+        );
+      });
+      expect(cardProps().hovered).toEqual({ exemplar, x: 10, y: 20 });
+      expect(cardProps().pinned).toBe(false);
+
+      moveTo(zoomedRange);
+
+      expect(cardProps().hovered).toBeNull();
+    });
+
+    it('keeps a pinned card across a live-tail tick', () => {
+      // dateRange advances every second while live-tailing; the exemplar query
+      // quantises to a 30s bucket so those ticks stay one cache entry, and the
+      // card must not be yanked away a moment after the user clicked it. The end
+      // sits mid-bucket, as a live range does — a boundary-aligned one would
+      // cross into the next bucket on the very first tick.
+      renderAt(initialRange);
+      pin();
+
+      moveTo([initialRange[0], new Date(initialRange[1].getTime() + 1000)]);
+
+      expect(cardProps().pinned).toBe(true);
+    });
   });
 
   // The drill-down tooltip and the exemplar card share `dismissPinned`, and main's
