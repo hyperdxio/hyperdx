@@ -48,6 +48,7 @@ import type { AlertsPageItem } from './types';
 import styles from '@styles/AlertsPage.module.scss';
 
 const DEFAULT_TIME_RANGE_LABEL = 'Past 12h';
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- parseTimeQuery always resolves a fixed relative label
 const defaultTimeRange = parseTimeQuery(DEFAULT_TIME_RANGE_LABEL, false) as [
   Date,
   Date,
