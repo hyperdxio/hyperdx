@@ -95,3 +95,7 @@ docker-compose.prod.yml
 
 # webstorm
 .idea
+
+# Stryker mutation-testing output
+packages/*/reports/
+packages/*/.stryker-tmp/

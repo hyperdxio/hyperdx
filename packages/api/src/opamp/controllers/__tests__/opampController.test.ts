@@ -7,6 +7,9 @@ const configState = {
   INGESTION_API_KEY: '' as string,
   IS_PROMQL_ENABLED: false,
   ENABLE_DATADOG_RECEIVER: false,
+  IS_SPAN_METRICS_ENABLED: false,
+  IS_SPAN_METRICS_PROM_RW_ENABLED: false,
+  SPAN_METRICS_PROM_RW_ENDPOINT: undefined as string | undefined,
 };
 
 jest.mock('@/config', () => ({
@@ -28,7 +31,19 @@ jest.mock('@/config', () => ({
   get ENABLE_DATADOG_RECEIVER() {
     return configState.ENABLE_DATADOG_RECEIVER;
   },
+  get IS_SPAN_METRICS_ENABLED() {
+    return configState.IS_SPAN_METRICS_ENABLED;
+  },
+  get IS_SPAN_METRICS_PROM_RW_ENABLED() {
+    return configState.IS_SPAN_METRICS_PROM_RW_ENABLED;
+  },
+  get SPAN_METRICS_PROM_RW_ENDPOINT() {
+    return configState.SPAN_METRICS_PROM_RW_ENDPOINT;
+  },
 }));
+
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 import { buildOtelCollectorConfig } from '@/opamp/controllers/opampController';
 
@@ -39,6 +54,9 @@ const resetConfig = () => {
   configState.INGESTION_API_KEY = '';
   configState.IS_PROMQL_ENABLED = false;
   configState.ENABLE_DATADOG_RECEIVER = false;
+  configState.IS_SPAN_METRICS_ENABLED = false;
+  configState.IS_SPAN_METRICS_PROM_RW_ENABLED = false;
+  configState.SPAN_METRICS_PROM_RW_ENDPOINT = undefined;
 };
 
 describe('opampController', () => {
@@ -121,6 +139,138 @@ describe('opampController', () => {
       expect(cfg.service.extensions).toContain('bearertokenauth/datadog');
       // The otlp/hyperdx auth extension stays intact alongside it.
       expect(cfg.service.extensions).toContain('bearertokenauth/hyperdx');
+    });
+  });
+
+  describe('buildOtelCollectorConfig span metrics', () => {
+    it('omits the span metrics connector when the flag is off (default)', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+      expect(cfg.connectors?.spanmetrics).toBeUndefined();
+      expect(cfg.service.pipelines['metrics/spanmetrics']).toBeUndefined();
+      expect(cfg.service.pipelines.traces.exporters).not.toContain(
+        'spanmetrics',
+      );
+    });
+
+    it('derives span metrics as exponential histograms with exemplars', () => {
+      configState.IS_SPAN_METRICS_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      // Exponential rather than explicit buckets: a fixed ladder's wide top
+      // bucket makes high quantiles interpolate well past the slowest real
+      // request, so no exemplar can ever sit on the plotted line.
+      expect(cfg.connectors?.spanmetrics?.histogram).toEqual({
+        unit: 'ms',
+        exponential: { max_size: 160 },
+      });
+      expect(cfg.connectors?.spanmetrics?.exemplars).toEqual({
+        enabled: true,
+      });
+      expect(cfg.service.pipelines['metrics/spanmetrics']?.exporters).toEqual([
+        'clickhouse',
+      ]);
+      // The connector has to be wired at both ends or it silently does nothing.
+      expect(cfg.service.pipelines.traces.exporters).toContain('spanmetrics');
+      expect(cfg.service.pipelines['metrics/spanmetrics']?.receivers).toEqual([
+        'spanmetrics',
+      ]);
+    });
+
+    it('adds a remote-write exporter for the derived metrics when enabled', () => {
+      configState.IS_SPAN_METRICS_ENABLED = true;
+      configState.IS_SPAN_METRICS_PROM_RW_ENABLED = true;
+      configState.SPAN_METRICS_PROM_RW_ENDPOINT =
+        'http://prometheus:9090/api/v1/write';
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      expect(
+        cfg.exporters?.['prometheusremotewrite/spanmetrics'],
+      ).toMatchObject({ endpoint: 'http://prometheus:9090/api/v1/write' });
+      expect(cfg.service.pipelines['metrics/spanmetrics']?.exporters).toEqual([
+        'clickhouse',
+        'prometheusremotewrite/spanmetrics',
+      ]);
+    });
+
+    // A config naming a component type the binary doesn't register fails to
+    // decode as a whole, and docker/otel-collector/config.yaml defines no
+    // pipelines of its own — so a bad type name here leaves the collector with
+    // no usable config at all rather than just disabling one feature. Pin every
+    // generated component id against what builder-config.yaml actually builds.
+    it('only references component types the collector build registers', () => {
+      configState.IS_SPAN_METRICS_ENABLED = true;
+      configState.IS_SPAN_METRICS_PROM_RW_ENABLED = true;
+      configState.SPAN_METRICS_PROM_RW_ENDPOINT =
+        'http://prometheus:9090/write';
+      configState.IS_PROMQL_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      const builderConfig = readFileSync(
+        resolve(__dirname, '../../../../../otel-collector/builder-config.yaml'),
+        'utf8',
+      );
+      // `<type>/<name>` ids share the base type, which is what gets registered.
+      const baseType = (id: string) => id.split('/')[0];
+      // gomod lines end in `<type><kind>` — e.g. `.../connector/spanmetricsconnector`
+      // for type `spanmetrics`. Matching the suffixed forms is what makes
+      // `span_metrics` (the bug this test exists for) fail to resolve.
+      const registers = (id: string) =>
+        ['connector', 'exporter', 'receiver', 'processor'].some(kind =>
+          builderConfig.includes(`/${baseType(id)}${kind}`),
+        );
+
+      // Core components shipped in the collector binary rather than declared as
+      // contrib gomods in builder-config.yaml.
+      const CORE_COMPONENTS = ['nop', 'debug', 'memory_limiter', 'batch'];
+
+      const declaredIds = [
+        ...Object.keys(cfg.connectors ?? {}),
+        ...Object.keys(cfg.exporters ?? {}),
+        ...Object.keys(cfg.receivers ?? {}),
+      ];
+      // Assert we actually looked at something — an empty set would make every
+      // loop below vacuously green, which is how a bad type name shipped.
+      expect(declaredIds.length).toBeGreaterThan(0);
+
+      for (const id of declaredIds) {
+        if (CORE_COMPONENTS.includes(baseType(id))) continue;
+        expect(registers(id)).toBe(true);
+      }
+
+      // Every pipeline reference must resolve to a declared component. Processors
+      // are included: they're named here but declared in
+      // docker/otel-collector/config.yaml, so they can't be checked against the
+      // declared set — but they still have to be types the build registers, since
+      // an unregistered processor fails the whole config to decode just like an
+      // unregistered connector.
+      const declared = new Set(declaredIds);
+      let pipelineRefs = 0;
+      for (const pipeline of Object.values(cfg.service.pipelines)) {
+        for (const id of [
+          ...(pipeline?.receivers ?? []),
+          ...(pipeline?.exporters ?? []),
+        ]) {
+          expect(declared).toContain(id);
+          pipelineRefs++;
+        }
+        for (const id of pipeline?.processors ?? []) {
+          if (CORE_COMPONENTS.includes(baseType(id))) continue;
+          expect(registers(id)).toBe(true);
+          pipelineRefs++;
+        }
+      }
+      expect(pipelineRefs).toBeGreaterThan(0);
     });
   });
 });

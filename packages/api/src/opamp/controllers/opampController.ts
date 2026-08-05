@@ -105,6 +105,13 @@ type CollectorConfig = {
         pipelines: string[];
       }>;
     };
+    spanmetrics?: {
+      histogram: { unit: string; exponential: { max_size: number } };
+      dimensions: Array<{ name: string }>;
+      exemplars: { enabled: boolean };
+      metrics_flush_interval: string;
+      namespace?: string;
+    };
   };
   exporters?: {
     nop?: null;
@@ -147,6 +154,15 @@ type CollectorConfig = {
       };
     };
     prometheusremotewrite?: {
+      endpoint: string;
+      tls: {
+        insecure: boolean;
+      };
+      resource_to_telemetry_conversion: {
+        enabled: boolean;
+      };
+    };
+    'prometheusremotewrite/spanmetrics'?: {
       endpoint: string;
       tls: {
         insecure: boolean;
@@ -342,6 +358,72 @@ export const buildOtelCollectorConfig = (
         receivers: ['otlp/hyperdx'],
         processors: ['memory_limiter', 'batch'],
         exporters: ['prometheusremotewrite'],
+      };
+    }
+
+    if (
+      config.IS_SPAN_METRICS_ENABLED &&
+      otelCollectorConfig.connectors &&
+      otelCollectorConfig.exporters
+    ) {
+      // Derive request metrics (with trace exemplars) from spans. The connector
+      // consumes the traces pipeline and feeds a dedicated metrics pipeline, so
+      // the resulting `traces.span.metrics.*` land in ClickHouse with
+      // `Exemplars.*` pointing back at the spans they were measured from.
+      //
+      // The key MUST be `spanmetrics` — that is the component type
+      // spanmetricsconnector registers, and a config naming an unregistered type
+      // fails to decode wholesale. Because docker/otel-collector/config.yaml
+      // supplies no pipelines of its own, a rejected remote config leaves the
+      // collector with nothing to run, so a typo here takes ingestion down
+      // rather than just disabling this feature.
+      //
+      // Requires a collector built from the current builder-config.yaml (which
+      // added spanmetricsconnector). Enabling this flag against collectors built
+      // before that will have them reject the config for the same reason, so
+      // roll the collector image out first.
+      otelCollectorConfig.connectors.spanmetrics = {
+        histogram: {
+          unit: 'ms',
+          // Exponential (OTLP) / native (Prometheus) buckets rather than a fixed
+          // ladder. Explicit bounds put everything slow into one wide top bucket
+          // — with a 5s–10s bucket, a p99 interpolates towards 10s while the
+          // slowest real request was half that, and no exemplar can ever sit on
+          // the line. max_size is the connector's default; scale adapts to the
+          // observed range, giving sub-percent quantile error at any latency.
+          exponential: { max_size: 160 },
+        },
+        dimensions: [
+          { name: 'http.route' },
+          { name: 'http.method' },
+          { name: 'host.region' },
+          { name: 'app.tenant_id' },
+          { name: 'http.status_code' },
+        ],
+        exemplars: { enabled: true },
+        metrics_flush_interval: '15s',
+      };
+      otelCollectorConfig.service.pipelines.traces.exporters.push(
+        'spanmetrics',
+      );
+
+      const spanMetricsExporters = ['clickhouse'];
+      // Optionally also remote-write the derived metrics (with exemplars) to a
+      // Prometheus endpoint, so the native Prometheus `query_exemplars` path can
+      // be exercised against the same real, generated data.
+      if (config.IS_SPAN_METRICS_PROM_RW_ENABLED) {
+        otelCollectorConfig.exporters['prometheusremotewrite/spanmetrics'] = {
+          // Guaranteed set by IS_SPAN_METRICS_PROM_RW_ENABLED above.
+          endpoint: config.SPAN_METRICS_PROM_RW_ENDPOINT!,
+          tls: { insecure: true },
+          resource_to_telemetry_conversion: { enabled: true },
+        };
+        spanMetricsExporters.push('prometheusremotewrite/spanmetrics');
+      }
+      otelCollectorConfig.service.pipelines['metrics/spanmetrics'] = {
+        receivers: ['spanmetrics'],
+        processors: ['memory_limiter', 'batch'],
+        exporters: spanMetricsExporters,
       };
     }
 
