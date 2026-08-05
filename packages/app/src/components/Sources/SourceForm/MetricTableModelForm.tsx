@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useWatch } from 'react-hook-form';
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
@@ -10,7 +10,7 @@ import { DBTableSelectControlled } from '@/components/DBTableSelect';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMetricsSeriesTableAvailability } from '@/hooks/useMetricsSeriesTableAvailability';
-import { isValidMetricTable } from '@/source';
+import { isValidMetricTable, useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   matchMetricTables,
@@ -21,7 +21,11 @@ import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
 
-export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+export function MetricTableModelForm({
+  control,
+  setValue,
+  sourceId,
+}: TableModelProps) {
   const brandName = useBrandDisplayName();
   const { data: team } = api.useTeam();
   const isMetricsSeriesTableEnabled = !!team?.isMetricsSeriesTableEnabled;
@@ -143,10 +147,31 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
     { enabled: !!databaseName && !!connectionId },
   );
 
+  const { data: savedSource } = useSource({ id: sourceId });
+  const savedDatabaseName = savedSource?.from?.databaseName;
+  const wasSavedAsMetricSource = savedSource?.kind === SourceKind.Metric;
+  const isExistingSource = !!sourceId;
+
   const lastAutofillKeyRef = useRef('');
+  const hasLoadedSavedSourceRef = useRef(false);
 
   useEffect(() => {
     const key = `${databaseName}:${connectionId}`;
+
+    if (isExistingSource && !hasLoadedSavedSourceRef.current) {
+      // Until the saved source lands in the form the watched values are still
+      // the new-source defaults, so nothing here reflects a user choice yet.
+      if (!savedSource) return;
+      if (savedDatabaseName && databaseName !== savedDatabaseName) return;
+      hasLoadedSavedSourceRef.current = true;
+      if (wasSavedAsMetricSource) {
+        // Treat the saved database as already handled — only a later switch to
+        // a different database triggers autofill.
+        lastAutofillKeyRef.current = key;
+        return;
+      }
+    }
+
     if (key === lastAutofillKeyRef.current) return; // already ran for this db
 
     const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
@@ -230,6 +255,10 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
     connectionId,
     metadata,
     isMetricsSeriesTableEnabled,
+    isExistingSource,
+    savedSource,
+    savedDatabaseName,
+    wasSavedAsMetricSource,
   ]);
 
   return (

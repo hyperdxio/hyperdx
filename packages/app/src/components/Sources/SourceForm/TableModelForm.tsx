@@ -18,10 +18,12 @@ export function TableModelForm({
   control,
   setValue,
   kind,
+  sourceId,
 }: {
   control: Control<TSource>;
   setValue: UseFormSetValue<TSource>;
   kind: SourceKind;
+  sourceId?: string;
 }) {
   switch (kind) {
     case SourceKind.Log:
@@ -31,7 +33,13 @@ export function TableModelForm({
     case SourceKind.Session:
       return <SessionTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Metric:
-      return <MetricTableModelForm control={control} setValue={setValue} />;
+      return (
+        <MetricTableModelForm
+          control={control}
+          setValue={setValue}
+          sourceId={sourceId}
+        />
+      );
     case SourceKind.Promql:
       return <PromqlTableModelForm control={control} setValue={setValue} />;
   }
