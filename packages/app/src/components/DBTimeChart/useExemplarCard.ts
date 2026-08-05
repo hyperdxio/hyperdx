@@ -10,7 +10,6 @@ import {
 
 import { type PositionedExemplar } from '@/components/Exemplars';
 import { useExemplars, useExemplarTraceMeta } from '@/hooks/useExemplars';
-import { quantizeEnd, quantizeStart } from '@/hooks/useExemplars/quantize';
 import { useSource } from '@/source';
 
 /**
@@ -140,40 +139,12 @@ export function useExemplarCard({
     ? `exemplar-${pinnedExemplar.exemplar.traceId}-${pinnedExemplar.exemplar.timestamp}`
     : null;
 
-  // Both cards are positioned from the marker's pixel coordinates at hover or
-  // click time, so anything that moves the markers leaves them beside the wrong
-  // diamond. The other guard only fires when a *pinned* marker leaves the
-  // rendered set; a live-tail tick, zoom, or rescale that keeps the marker slides
-  // it out from under the card instead. Close on a range change rather than
-  // trying to re-derive the position — the coordinates are only known inside the
-  // SVG shape, and a card that closes beats one pointing at someone else's trace.
-  // The card carries the exemplar's own value and time, so the user still saw
-  // what it described.
-  //
-  // Keyed on the range alone, not on whether something is pinned. The hover card
-  // has the same problem and less recourse: a marker sliding out from under a
-  // stationary cursor fires no mouseleave, so a hover card left behind sits at
-  // stale coordinates and suppresses the series tooltip until the pointer happens
-  // to move.
-  //
-  // Quantised to the same bucket as the exemplar query key, so a live-tail tick —
-  // which advances dateRange every second — counts as the same view. A real zoom
-  // or range switch crosses the bucket and still closes.
-  const shownRangeRef = useRef<string | null>(null);
-  const rangeKey = queriedConfig.dateRange
-    ? `${quantizeStart(queriedConfig.dateRange[0])}-${quantizeEnd(queriedConfig.dateRange[1])}`
-    : 'none';
-  useEffect(() => {
-    if (shownRangeRef.current == null) {
-      shownRangeRef.current = rangeKey;
-      return;
-    }
-    if (shownRangeRef.current !== rangeKey) {
-      shownRangeRef.current = rangeKey;
-      setPinnedExemplar(null);
-      setHoveredExemplar(null);
-    }
-  }, [rangeKey]);
+  // Closing both cards when the markers move lives in useExemplarMarkers, keyed
+  // on the rendered x-domain: that is what actually maps a data point to the
+  // pixels a card was positioned from, and this hook cannot see it. An earlier
+  // version keyed on the quantised date range here, which was both too coarse (a
+  // zoom inside the 30s bucket moved the markers and left the cards behind) and
+  // in the wrong place.
 
   // Clear both cards before the chart subtree remounts on a display-type switch.
   useEffect(() => {
