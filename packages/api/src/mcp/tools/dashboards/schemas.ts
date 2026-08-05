@@ -543,6 +543,22 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    enableExemplars: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay exemplars: markers for individual trace-linked data points. ' +
+          'Only renders on an exemplar-eligible tile — a single non-ratio ' +
+          'histogram metric series with no groupBy — and is inert otherwise.',
+      ),
+    exemplarTraceSourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Trace source an exemplar marker links to. Must be a Trace source: use ' +
+          'clickstack_list_sources and pick one whose kind is "trace". Defaults ' +
+          "to the chart source's linked trace source when omitted.",
+      ),
   }),
 });
 
@@ -561,6 +577,22 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .describe(tileLevelNumberFormatDescription),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    enableExemplars: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay exemplars: markers for individual trace-linked data points. ' +
+          'Only renders on an exemplar-eligible tile — a single non-ratio ' +
+          'histogram metric series with no groupBy — and is inert otherwise.',
+      ),
+    exemplarTraceSourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Trace source an exemplar marker links to. Must be a Trace source: use ' +
+          'clickstack_list_sources and pick one whose kind is "trace". Defaults ' +
+          "to the chart source's linked trace source when omitted.",
+      ),
   }),
 });
 
