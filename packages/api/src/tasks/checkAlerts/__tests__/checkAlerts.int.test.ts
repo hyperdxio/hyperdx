@@ -3324,7 +3324,9 @@ describe('checkAlerts', () => {
         expect(updated!.executionErrors ?? []).toHaveLength(0);
 
         // The normal history was written for the retried window, and the
-        // ERROR row remains as a historical record of the failed attempt.
+        // failed attempt's ERROR row was removed — otherwise the window
+        // would render as ERROR forever (the evaluations view ranks ERROR
+        // above OK/ALERT) even though the retry succeeded.
         const normalHistories = await AlertHistory.find({
           alert: details.alert.id,
           state: { $ne: AlertState.ERROR },
@@ -3339,7 +3341,92 @@ describe('checkAlerts', () => {
             alert: details.alert.id,
             state: AlertState.ERROR,
           }),
-        ).toBe(1);
+        ).toBe(0);
+      });
+
+      it('keeps ERROR rows from older windows when a later window succeeds', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        // Non-breaching data in the 22:15 window (range [22:10, 22:15))
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:11:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Tick in the 22:10 window fails — ERROR row at 22:10
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The next window (22:15) evaluates cleanly. Only a same-window
+        // success clears an ERROR row — the 22:10 row is a truthful record
+        // of a tick that failed, so it must survive.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:17:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        expect(normalHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:15:00.000Z',
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
       });
 
       it.each([

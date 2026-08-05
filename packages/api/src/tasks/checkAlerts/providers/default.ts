@@ -421,6 +421,17 @@ export default class DefaultAlertProvider implements AlertProvider {
     const evaluationWindowStart = histories[0]?.createdAt;
     if (errors.length > 0 && evaluationWindowStart != null) {
       await this.upsertErrorHistory(alertId, evaluationWindowStart, errors);
+    } else if (evaluationWindowStart != null && successfulHistories.length > 0) {
+      // A failed earlier tick may have left an ERROR row for this window
+      // (recordAlertErrors upserts one, and ERROR rows don't mark the window
+      // as evaluated so it's retried). The window has now evaluated cleanly —
+      // remove the stale ERROR row so the window doesn't render as ERROR
+      // forever (the evaluations view ranks ERROR above OK).
+      await AlertHistory.deleteOne({
+        alert: new mongoose.Types.ObjectId(alertId),
+        createdAt: evaluationWindowStart,
+        state: AlertState.ERROR,
+      });
     }
   }
 
