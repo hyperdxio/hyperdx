@@ -47,6 +47,28 @@ import { resolve } from 'path';
 
 import { buildOtelCollectorConfig } from '@/opamp/controllers/opampController';
 
+/**
+ * Pipeline names declared under `service.pipelines:` in the bootstrap collector
+ * config. Scanned rather than parsed because no YAML library is a dependency of
+ * this package and the block is a handful of fixed-indent keys.
+ */
+const bootstrapPipelineNames = (yamlText: string): string[] => {
+  const lines = yamlText.split('\n');
+  const start = lines.indexOf('  pipelines:');
+  if (start === -1) return [];
+  const names: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+    if (indent <= 2) break; // dedented out of the pipelines block
+    if (indent !== 4) continue; // a key within a pipeline, e.g. `processors:`
+    const match = /^([^:\s]+):$/.exec(trimmed);
+    if (match) names.push(match[1]);
+  }
+  return names;
+};
+
 const resetConfig = () => {
   configState.IS_ALL_IN_ONE_IMAGE = false;
   configState.IS_LOCAL_APP_MODE = false;
@@ -223,38 +245,45 @@ describe('opampController', () => {
       // `<type>/<name>` ids share the base type, which is what gets registered.
       const baseType = (id: string) => id.split('/')[0];
       // gomod lines end in `<type><kind>` — e.g. `.../connector/spanmetricsconnector`
-      // for type `spanmetrics`. Matching the suffixed forms is what makes
-      // `span_metrics` (the bug this test exists for) fail to resolve.
-      const registers = (id: string) =>
-        ['connector', 'exporter', 'receiver', 'processor'].some(kind =>
-          builderConfig.includes(`/${baseType(id)}${kind}`),
-        );
+      // for type `spanmetrics`. The kind has to match the section the id was
+      // declared in, not just any kind: `prometheus` is a real receiver, so an
+      // OR across kinds would wave through an `exporters.prometheus` entry that
+      // the build has no exporter for.
+      const registers = (id: string, kind: string) =>
+        builderConfig.includes(`/${baseType(id)}${kind}`);
+
+      // The discrimination the loop below relies on: the build has a Prometheus
+      // receiver but no Prometheus exporter.
+      expect(registers('prometheus', 'receiver')).toBe(true);
+      expect(registers('prometheus', 'exporter')).toBe(false);
 
       // Core components shipped in the collector binary rather than declared as
       // contrib gomods in builder-config.yaml.
       const CORE_COMPONENTS = ['nop', 'debug', 'memory_limiter', 'batch'];
 
-      const declaredIds = [
-        ...Object.keys(cfg.connectors ?? {}),
-        ...Object.keys(cfg.exporters ?? {}),
-        ...Object.keys(cfg.receivers ?? {}),
+      const declaredIds: Array<[string, string]> = [
+        ...Object.keys(cfg.connectors ?? {}).map(
+          id => [id, 'connector'] as [string, string],
+        ),
+        ...Object.keys(cfg.exporters ?? {}).map(
+          id => [id, 'exporter'] as [string, string],
+        ),
+        ...Object.keys(cfg.receivers ?? {}).map(
+          id => [id, 'receiver'] as [string, string],
+        ),
       ];
       // Assert we actually looked at something — an empty set would make every
       // loop below vacuously green, which is how a bad type name shipped.
       expect(declaredIds.length).toBeGreaterThan(0);
 
-      for (const id of declaredIds) {
+      for (const [id, kind] of declaredIds) {
         if (CORE_COMPONENTS.includes(baseType(id))) continue;
-        expect(registers(id)).toBe(true);
+        expect([id, registers(id, kind)]).toEqual([id, true]);
       }
 
-      // Every pipeline reference must resolve to a declared component. Processors
-      // are included: they're named here but declared in
-      // docker/otel-collector/config.yaml, so they can't be checked against the
-      // declared set — but they still have to be types the build registers, since
-      // an unregistered processor fails the whole config to decode just like an
-      // unregistered connector.
-      const declared = new Set(declaredIds);
+      // Every pipeline reference must also resolve to a component this config
+      // declares — a pipeline naming an undeclared id fails to decode too.
+      const declared = new Set(declaredIds.map(([id]) => id));
       let pipelineRefs = 0;
       for (const pipeline of Object.values(cfg.service.pipelines)) {
         for (const id of [
@@ -264,13 +293,109 @@ describe('opampController', () => {
           expect(declared).toContain(id);
           pipelineRefs++;
         }
-        for (const id of pipeline?.processors ?? []) {
-          if (CORE_COMPONENTS.includes(baseType(id))) continue;
-          expect(registers(id)).toBe(true);
-          pipelineRefs++;
-        }
       }
       expect(pipelineRefs).toBeGreaterThan(0);
+    });
+
+    // The supervisor merges the bootstrap config.yaml with the remote config
+    // unconditionally, and the collector rejects a pipeline with no receivers or
+    // no exporters ("must have at least one receiver") — failing the whole
+    // config, not just that pipeline. So any pipeline key the bootstrap declares
+    // has to be one the generated config always fills in. Declaring a
+    // flag-gated pipeline there leaves the collector unable to start whenever
+    // the flag is off, which is exactly the bug this pins.
+    it.each([
+      ['off', false],
+      ['on', true],
+    ])(
+      'fills in every bootstrap-declared pipeline with span metrics %s',
+      (_label, enabled) => {
+        configState.IS_SPAN_METRICS_ENABLED = enabled;
+
+        const bootstrapPipelines = bootstrapPipelineNames(
+          readFileSync(
+            resolve(
+              __dirname,
+              '../../../../../../docker/otel-collector/config.yaml',
+            ),
+            'utf8',
+          ),
+        );
+        // An empty scan would make the loop below vacuously green.
+        expect(bootstrapPipelines.length).toBeGreaterThan(0);
+
+        const cfg = buildOtelCollectorConfig([
+          { apiKey: 'k1', collectorAuthenticationEnforced: false },
+        ]);
+
+        for (const name of bootstrapPipelines) {
+          const pipeline = cfg.service.pipelines[name];
+          expect([name, pipeline?.receivers?.length ?? 0]).not.toEqual([
+            name,
+            0,
+          ]);
+          expect([name, pipeline?.exporters?.length ?? 0]).not.toEqual([
+            name,
+            0,
+          ]);
+        }
+      },
+    );
+
+    it('keeps the derived series bounded', () => {
+      configState.IS_SPAN_METRICS_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      // Temporality is cumulative, so nothing evicts a series once created.
+      // Without a limit, one caller-supplied dimension (a tenant id, a raw
+      // unparameterised path) grows collector memory and the ClickHouse write
+      // volume without bound.
+      expect(
+        cfg.connectors?.spanmetrics?.aggregation_cardinality_limit,
+      ).toBeGreaterThan(0);
+      // The limit is per resource-cache entry, so it bounds nothing unless the
+      // resource key is bounded too. Left at its default the key is every
+      // resource attribute, and per-pod attributes would multiply the ceiling by
+      // the cache size.
+      expect(
+        cfg.connectors?.spanmetrics?.resource_metrics_key_attributes,
+      ).toEqual([
+        'service.name',
+        'service.namespace',
+        'deployment.environment.name',
+      ]);
+      const dimensions = cfg.connectors?.spanmetrics?.dimensions.map(
+        d => d.name,
+      );
+      expect(dimensions).toEqual([
+        'http.route',
+        'http.request.method',
+        'http.response.status_code',
+      ]);
+    });
+
+    it('omits the remote-write exporter when the endpoint is unset', () => {
+      // config.ts derives IS_SPAN_METRICS_PROM_RW_ENABLED from the endpoint
+      // being present, but the controller must not depend on that: an exporter
+      // with no `endpoint` fails the whole config to decode, taking ingestion
+      // down rather than just skipping this sink.
+      configState.IS_SPAN_METRICS_ENABLED = true;
+      configState.IS_SPAN_METRICS_PROM_RW_ENABLED = true;
+      configState.SPAN_METRICS_PROM_RW_ENDPOINT = undefined;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      expect(
+        cfg.exporters?.['prometheusremotewrite/spanmetrics'],
+      ).toBeUndefined();
+      expect(cfg.service.pipelines['metrics/spanmetrics']?.exporters).toEqual([
+        'clickhouse',
+      ]);
     });
   });
 });

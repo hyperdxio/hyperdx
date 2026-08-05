@@ -46,6 +46,13 @@ const opampRemoteConfigsCounter = getCounter('hyperdx.opamp.remote_configs', {
     'Count of OpAMP remote collector configs sent back to agents in a ServerToAgent response.',
 });
 
+type PrometheusRemoteWriteExporter = {
+  endpoint: string;
+  resource_to_telemetry_conversion: {
+    enabled: boolean;
+  };
+};
+
 type CollectorConfig = {
   extensions: Record<string, any>;
   receivers: {
@@ -95,7 +102,9 @@ type CollectorConfig = {
       };
     };
   };
-  connectors?: {
+  // Always constructed below, so the blocks that extend them can index
+  // without narrowing.
+  connectors: {
     'routing/logs'?: {
       default_pipelines: string[];
       error_mode: string;
@@ -110,10 +119,11 @@ type CollectorConfig = {
       dimensions: Array<{ name: string }>;
       exemplars: { enabled: boolean };
       metrics_flush_interval: string;
-      namespace?: string;
+      resource_metrics_key_attributes: string[];
+      aggregation_cardinality_limit: number;
     };
   };
-  exporters?: {
+  exporters: {
     nop?: null;
     debug?: {
       verbosity: string;
@@ -153,24 +163,14 @@ type CollectorConfig = {
         max_elapsed_time: string;
       };
     };
-    prometheusremotewrite?: {
-      endpoint: string;
-      tls: {
-        insecure: boolean;
-      };
-      resource_to_telemetry_conversion: {
-        enabled: boolean;
-      };
+    prometheusremotewrite?: PrometheusRemoteWriteExporter & {
+      tls: { insecure: boolean };
     };
-    'prometheusremotewrite/spanmetrics'?: {
-      endpoint: string;
-      tls: {
-        insecure: boolean;
-      };
-      resource_to_telemetry_conversion: {
-        enabled: boolean;
-      };
-    };
+    // No `tls` block. On an HTTP exporter the URL scheme decides whether TLS is
+    // used and verification is on by default; `insecure` only means anything to
+    // gRPC transports, so it is inert on the exporter above rather than
+    // weakening it. Omitted here so nobody reads it as a knob that does.
+    'prometheusremotewrite/spanmetrics'?: PrometheusRemoteWriteExporter;
   };
   service: {
     extensions: string[];
@@ -344,7 +344,7 @@ export const buildOtelCollectorConfig = (
       'otlp/hyperdx',
     );
 
-    if (config.IS_PROMQL_ENABLED && otelCollectorConfig.exporters) {
+    if (config.IS_PROMQL_ENABLED) {
       otelCollectorConfig.exporters.prometheusremotewrite = {
         endpoint: 'http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
         tls: {
@@ -361,11 +361,7 @@ export const buildOtelCollectorConfig = (
       };
     }
 
-    if (
-      config.IS_SPAN_METRICS_ENABLED &&
-      otelCollectorConfig.connectors &&
-      otelCollectorConfig.exporters
-    ) {
+    if (config.IS_SPAN_METRICS_ENABLED) {
       // Derive request metrics (with trace exemplars) from spans. The connector
       // consumes the traces pipeline and feeds a dedicated metrics pipeline, so
       // the resulting `traces.span.metrics.*` land in ClickHouse with
@@ -393,16 +389,50 @@ export const buildOtelCollectorConfig = (
           // observed range, giving sub-percent quantile error at any latency.
           exponential: { max_size: 160 },
         },
+        // Stable HTTP semconv names — `http.method`/`http.status_code` are the
+        // pre-1.23 spellings and are absent from current SDKs. Every dimension
+        // here is bounded by the application's own route table or by the HTTP
+        // spec; free-form or caller-supplied attributes (a tenant id, a raw
+        // unparameterised path) are deliberately excluded, because each distinct
+        // combination is a separate series held in collector memory and written
+        // to ClickHouse on every flush.
+        //
+        // The connector always adds `service.name`, `span.name`, `span.kind` and
+        // `status.code` on top of these, and they cannot be turned off. Of those
+        // `span.name` is the one the instrumentation controls, so an SDK that
+        // puts raw paths or ids in span names widens the label set regardless of
+        // what is listed here.
         dimensions: [
           { name: 'http.route' },
-          { name: 'http.method' },
-          { name: 'host.region' },
-          { name: 'app.tenant_id' },
-          { name: 'http.status_code' },
+          { name: 'http.request.method' },
+          { name: 'http.response.status_code' },
         ],
         exemplars: { enabled: true },
         metrics_flush_interval: '15s',
+        // Backstop for the above: temporality is cumulative, so series are never
+        // evicted on their own. Past this many, the connector folds further
+        // combinations into an overflow series rather than growing without
+        // bound.
+        //
+        // The limit applies per entry in the resource cache, not globally, so it
+        // only bounds anything if the resource key is itself bounded. By default
+        // that key is every resource attribute — including per-pod and
+        // per-process ones — which would make the real ceiling
+        // resource_metrics_cache_size (1000) x this limit. Keying on the service
+        // instead keeps one aggregation per service, and stops counters resetting
+        // when a pod restarts and its resource key changes.
+        resource_metrics_key_attributes: [
+          'service.name',
+          'service.namespace',
+          'deployment.environment.name',
+        ],
+        aggregation_cardinality_limit: 10_000,
       };
+      // A connector runs inline in the pipeline fan-out rather than behind
+      // exporterhelper's queue and retry, so unlike the clickhouse exporter
+      // beside it there is nothing decoupling it from trace ingestion — time
+      // spent aggregating is time the traces pipeline waits. That is inherent to
+      // connectors; it is the reason the dimensions above are kept small.
       otelCollectorConfig.service.pipelines.traces.exporters.push(
         'spanmetrics',
       );
@@ -411,15 +441,33 @@ export const buildOtelCollectorConfig = (
       // Optionally also remote-write the derived metrics (with exemplars) to a
       // Prometheus endpoint, so the native Prometheus `query_exemplars` path can
       // be exercised against the same real, generated data.
-      if (config.IS_SPAN_METRICS_PROM_RW_ENABLED) {
+      //
+      // Keyed off the endpoint rather than the flag alone: an exporter with no
+      // `endpoint` fails the whole config to decode, which would take ingestion
+      // down (see the connector comment above) over an optional extra sink.
+      const spanMetricsRemoteWriteEndpoint =
+        config.IS_SPAN_METRICS_PROM_RW_ENABLED
+          ? config.SPAN_METRICS_PROM_RW_ENDPOINT
+          : undefined;
+      if (spanMetricsRemoteWriteEndpoint) {
         otelCollectorConfig.exporters['prometheusremotewrite/spanmetrics'] = {
-          // Guaranteed set by IS_SPAN_METRICS_PROM_RW_ENABLED above.
-          endpoint: config.SPAN_METRICS_PROM_RW_ENDPOINT!,
-          tls: { insecure: true },
-          resource_to_telemetry_conversion: { enabled: true },
+          endpoint: spanMetricsRemoteWriteEndpoint,
+          // Off, unlike the promql exporter above: that one writes to our own
+          // ClickHouse-backed Prometheus, whereas this endpoint is a third party.
+          // Promoting every resource attribute to a label would egress host, pod
+          // and namespace there, and it happens in the exporter — after, and so
+          // unbounded by, the connector's aggregation_cardinality_limit.
+          resource_to_telemetry_conversion: { enabled: false },
         };
         spanMetricsExporters.push('prometheusremotewrite/spanmetrics');
       }
+      // Sets `processors:` even though the comment on `pipelines` above says the
+      // remote config should not, which costs CUSTOM_OTELCOL_CONFIG_FILE
+      // overrides for this one pipeline (as `metrics/promql` already does). The
+      // alternative — declaring them in the bootstrap config — is worse: this
+      // pipeline only exists when the flag is on, so the bootstrap would be left
+      // holding a pipeline with no receivers and no exporters, which fails
+      // collector validation outright and stops the agent starting at all.
       otelCollectorConfig.service.pipelines['metrics/spanmetrics'] = {
         receivers: ['spanmetrics'],
         processors: ['memory_limiter', 'batch'],

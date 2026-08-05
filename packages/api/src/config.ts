@@ -58,8 +58,14 @@ export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
 
 // Opt-in: have the collector derive request metrics (with trace exemplars) from
-// spans via the spanmetrics connector. Off by default; enabled in dev so the
-// telemetry-generator's traces produce coherent metric exemplars end-to-end.
+// spans via the spanmetrics connector. Off everywhere by default — set
+// ENABLE_SPAN_METRICS=true to have the telemetry-generator's traces produce
+// coherent metric exemplars end-to-end.
+//
+// Requires a collector built from the current builder-config.yaml. An older
+// image does not register the `spanmetrics` type, and a config naming an
+// unregistered type fails to decode as a whole, so the agent would fall back to
+// no pipelines at all. Roll the collector image out before setting this.
 export const IS_SPAN_METRICS_ENABLED = env.ENABLE_SPAN_METRICS === 'true';
 
 // Opt-in: also remote-write the span-derived metrics (with exemplars) to a
@@ -68,7 +74,26 @@ export const IS_SPAN_METRICS_ENABLED = env.ENABLE_SPAN_METRICS === 'true';
 // inlined into the generated collector config, so the collector container does
 // not need SPAN_METRICS_PROM_RW_ENDPOINT in its own environment. Requires the
 // endpoint to be set; without it the feature stays disabled.
-export const SPAN_METRICS_PROM_RW_ENDPOINT = env.SPAN_METRICS_PROM_RW_ENDPOINT;
+//
+// The generated config is served from /v1/opamp, which agents reach without
+// authenticating, so this URL is readable by anyone who can POST there. A URL
+// carrying `user:token@` — the usual way to point at a hosted Prometheus —
+// would hand that credential out with it, so such an endpoint is rejected
+// rather than used. Non-http schemes go the same way: the exporter only speaks
+// HTTP, so anything else is a misconfiguration.
+export const SPAN_METRICS_PROM_RW_ENDPOINT = (() => {
+  const raw = env.SPAN_METRICS_PROM_RW_ENDPOINT;
+  if (!raw) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+  if (url.username || url.password) return undefined;
+  return raw;
+})();
 export const IS_SPAN_METRICS_PROM_RW_ENABLED =
   env.ENABLE_SPAN_METRICS_PROM_RW === 'true' && !!SPAN_METRICS_PROM_RW_ENDPOINT;
 
