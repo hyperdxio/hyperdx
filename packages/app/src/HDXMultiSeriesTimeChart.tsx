@@ -28,8 +28,7 @@ import {
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Button, Popover, Tooltip as MantineTooltip } from '@mantine/core';
-import { IconZoomReset } from '@tabler/icons-react';
+import { Popover } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
@@ -38,6 +37,7 @@ import {
   ChartAnnotation,
   getAnnotationElements,
 } from './components/charts/chartAnnotations';
+import { ChartOverlayControls } from './components/charts/ChartOverlayControls';
 import {
   ChartTooltipContainer,
   ChartTooltipHeader,
@@ -647,6 +647,7 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds,
   selectedSeriesNames,
   onToggleSeries,
+  onClearSeriesSelection,
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
@@ -676,6 +677,8 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds?: number;
   selectedSeriesNames?: Set<string>;
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
+  /** Clear the current series isolation; renders a "Show All Series" button when set. */
+  onClearSeriesSelection?: () => void;
   granularity: string;
   dateRangeEndInclusive?: boolean;
   /**
@@ -1039,24 +1042,20 @@ export const MemoChart = memo(function MemoChart({
       ref={containerRef}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
-      {onTimeRangeSelect != null && zoomOrigin != null ? (
-        <MantineTooltip label="Reset to the range before zooming in" withArrow>
-          <Button
-            variant="secondary"
-            size="compact-xs"
-            leftSection={<IconZoomReset size={14} />}
-            onClick={handleResetZoom}
-            style={{
-              position: 'absolute',
-              top: 4,
-              right: 8,
-              zIndex: 2,
-            }}
-          >
-            Reset zoom
-          </Button>
-        </MantineTooltip>
-      ) : null}
+      <ChartOverlayControls
+        onClearSelection={
+          onClearSeriesSelection != null &&
+          selectedSeriesNames != null &&
+          selectedSeriesNames.size > 0
+            ? onClearSeriesSelection
+            : undefined
+        }
+        onResetZoom={
+          onTimeRangeSelect != null && zoomOrigin != null
+            ? handleResetZoom
+            : undefined
+        }
+      />
       <ResponsiveContainer
         width="100%"
         height="100%"
