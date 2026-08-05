@@ -3,6 +3,11 @@ export const DEFAULT_TRACES_SOURCE_NAME = 'E2E Traces';
 export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
 
+// Log source deliberately left without a correlated metric source, so tests can
+// exercise the "not correlated" paths (the search side panel's infrastructure
+// tab, and the Kubernetes dashboard's correlation warning).
+export const K8S_LOGS_NO_METRICS_SOURCE_NAME = 'E2E K8s Logs No Metrics';
+
 // Source backed by `otel_logs_interesting_filter_keys`, used by the filter-key
 // edge case tests to exercise identifier escaping (dotted/hyphenated column
 // names, Map keys, and JSON paths) in search and dashboard filters.
@@ -14,6 +19,13 @@ export const INTERESTING_FILTER_KEYS_SOURCE_NAME =
 // 15-minute rollups) registered on the source definition. Used by the
 // filter-key edge case tests to exercise the rollup-backed facet path.
 export const METADATA_MV_LOGS_SOURCE_NAME = 'E2E Metadata MV Logs';
+
+// Log source backed by `e2e_otel_logs_distributed`, a Distributed table whose
+// DDL declares a column its target MergeTree table does not have. `SELECT *`
+// (used to load full row details) therefore fails, which is what surfaces the
+// Known Columns List hint in the row side panel and the expanded row.
+export const DISTRIBUTED_MISSING_COLUMN_SOURCE_NAME =
+  'E2E Distributed Missing Column';
 
 // Trace source pre-configured with a materialized view (e2e_otel_traces_1m),
 // used by the materialized-view acceleration tests.

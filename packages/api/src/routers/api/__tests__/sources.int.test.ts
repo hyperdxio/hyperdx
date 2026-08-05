@@ -24,6 +24,25 @@ const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
   defaultTableSelectExpression: 'body',
 };
 
+const MOCK_METRIC_SOURCE: Omit<Extract<TSource, { kind: 'metric' }>, 'id'> = {
+  kind: SourceKind.Metric,
+  name: 'Test Metric Source',
+  connection: new Types.ObjectId().toString(),
+  from: {
+    databaseName: 'test_db',
+    tableName: '',
+  },
+  timestampValueExpression: 'TimeUnix',
+  resourceAttributesExpression: 'ResourceAttributes',
+  metricTables: {
+    gauge: 'otel_metrics_gauge',
+    histogram: 'otel_metrics_histogram',
+    sum: 'otel_metrics_sum',
+    summary: 'otel_metrics_summary',
+    'exponential histogram': 'otel_metrics_exponential_histogram',
+  },
+};
+
 describe('sources router', () => {
   const server = getServer();
 
@@ -399,6 +418,104 @@ describe('sources router', () => {
     }
     expect(updatedSource).not.toHaveProperty('metricTables');
     expect(updatedSource.severityTextExpression).toBe('SeverityText');
+  });
+
+  describe('seriesTable', () => {
+    it('POST / - creates a metric source with seriesTable and it round-trips', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_METRIC_SOURCE,
+          seriesTable: 'otel_metrics_series',
+        })
+        .expect(200);
+
+      expect(response.body.seriesTable).toBe('otel_metrics_series');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Metric) {
+        expect(persisted?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(persisted.seriesTable).toBe('otel_metrics_series');
+    });
+
+    it('PUT /:id - updates seriesTable', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${metricSource._id}`)
+        .send({
+          id: metricSource._id.toString(),
+          ...MOCK_METRIC_SOURCE,
+          seriesTable: 'otel_metrics_series',
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(metricSource._id).lean();
+      if (updatedSource?.kind !== SourceKind.Metric) {
+        expect(updatedSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(updatedSource.seriesTable).toBe('otel_metrics_series');
+    });
+
+    it('PUT /:id - removes seriesTable when omitted from the update payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        seriesTable: 'otel_metrics_series',
+        team: team._id,
+      });
+
+      const createdSource = await Source.findById(metricSource._id).lean();
+      if (createdSource?.kind !== SourceKind.Metric) {
+        expect(createdSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(createdSource.seriesTable).toBe('otel_metrics_series');
+
+      await agent
+        .put(`/sources/${metricSource._id}`)
+        .send({
+          id: metricSource._id.toString(),
+          ...MOCK_METRIC_SOURCE,
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(metricSource._id).lean();
+      if (updatedSource?.kind !== SourceKind.Metric) {
+        expect(updatedSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(updatedSource).not.toHaveProperty('seriesTable');
+    });
+
+    it('a metric source created without seriesTable has no seriesTable field (undefined for existing sources)', async () => {
+      const { team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        team: team._id,
+      });
+
+      const createdSource = await Source.findById(metricSource._id).lean();
+      if (createdSource?.kind !== SourceKind.Metric) {
+        expect(createdSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(createdSource).not.toHaveProperty('seriesTable');
+    });
   });
 
   it('DELETE /:id - deletes a source', async () => {

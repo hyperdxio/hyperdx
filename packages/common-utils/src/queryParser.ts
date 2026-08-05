@@ -32,23 +32,28 @@ const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
 function encodeSpecialTokens(query: string): string {
   return query
     .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
-    .replace('http://', 'http_COLON_//')
-    .replace('https://', 'https_COLON_//')
-    .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
+    .replace(/http:\/\//g, 'http_COLON_//')
+    .replace(/https:\/\//g, 'https_COLON_//')
+    .replace(/localhost:(\d{1,5})/g, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
 function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
-    .replace('http_COLON_//', 'http://')
-    .replace('https_COLON_//', 'https://')
-    .replace(/localhost_COLON_(\d{1,5})/, 'localhost:$1')
+    .replace(/http_COLON_\/\//g, 'http://')
+    .replace(/https_COLON_\/\//g, 'https://')
+    .replace(/localhost_COLON_(\d{1,5})/g, 'localhost:$1')
     .replace(/HDX_COLON/g, ':');
 }
 
 export function parse(query: string): lucene.AST {
   return lucene.parse(encodeSpecialTokens(query));
+}
+
+/** Escape the LIKE/ILIKE metacharacters `\`, `%` and `_` so a term matches literally */
+function escapeLikePattern(term: string): string {
+  return term.replace(/[\\%_]/g, '\\$&');
 }
 
 function buildMapContains(mapField: string) {
@@ -817,7 +822,7 @@ function renderArrayFieldExpression({
         ])
       : SqlString.format(`${prefix}arrayExists(el -> el[?] ILIKE ?, ?)`, [
           mapKey,
-          `%${term}%`,
+          `%${escapeLikePattern(term)}%`,
           SqlString.raw(column),
         ]);
   }
@@ -836,7 +841,7 @@ function renderArrayFieldExpression({
         ])
       : SqlString.format(
           `${prefix}arrayExists(el -> toString(el.??) ILIKE ?, ?)`,
-          [mapKey, `%${term}%`, SqlString.raw(column)],
+          [mapKey, `%${escapeLikePattern(term)}%`, SqlString.raw(column)],
         );
   }
 
@@ -854,7 +859,7 @@ function renderArrayFieldExpression({
         )
       : SqlString.format(
           `${prefix}arrayExists(el -> ${stringifiedElement} ILIKE ?, ?)`,
-          [`%${term}%`, SqlString.raw(column)],
+          [`%${escapeLikePattern(term)}%`, SqlString.raw(column)],
         );
 }
 
@@ -1399,7 +1404,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
         `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?${expressionPostfix})`,
-        [`%${term}%`],
+        [`%${escapeLikePattern(term)}%`],
       );
     }
 
@@ -1421,7 +1426,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
             SqlString.raw(column),
-            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
+            `${prefixWildcard ? '%' : ''}${escapeLikePattern(term)}${
+              suffixWildcard ? '%' : ''
+            }`,
           ],
         );
       } else if (shouldUseTokenBf) {
@@ -1486,7 +1493,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               ...hasAllTokensExpressions,
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column),
-                `%${term}%`,
+                `%${escapeLikePattern(term)}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
@@ -1516,7 +1523,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               // If there are token separators in the term, try to match the whole term as well
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column),
-                `%${term}%`,
+                `%${escapeLikePattern(term)}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
@@ -1538,7 +1545,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             // If there are symbols in the term, try to match the whole term as well
             SqlString.format(`(lower(?) LIKE lower(?))`, [
               SqlString.raw(column),
-              `%${term}%`,
+              `%${escapeLikePattern(term)}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
@@ -1552,7 +1559,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
     return SqlString.format(
       `(${column} ${isNegatedField ? 'NOT ' : ''}? ?${expressionPostfix})`,
-      [SqlString.raw('ILIKE'), `%${term}%`],
+      [SqlString.raw('ILIKE'), `%${escapeLikePattern(term)}%`],
     );
   }
 
