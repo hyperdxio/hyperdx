@@ -32,7 +32,10 @@ import {
 } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
-import { AggFnSelectControlled } from '@/components/AggFnSelect';
+import {
+  AggFnSelectControlled,
+  HISTOGRAM_SUPPORTED_AGG_FNS,
+} from '@/components/AggFnSelect';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
@@ -136,6 +139,21 @@ export function ChartSeriesEditor({
       metricType === MetricsDataType.Sum;
     if (!isSumMetric && aggFn === 'increase') {
       setValue(`${namePrefix}aggFn`, 'sum');
+    }
+  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
+
+  // Histogram and exponential histogram metrics only support 'count' and
+  // 'quantile' aggregations. Reset any unsupported aggFn to a default, valid one
+  useEffect(() => {
+    const isHistogramMetric =
+      tableSource?.kind === SourceKind.Metric &&
+      (metricType === MetricsDataType.Histogram ||
+        metricType === MetricsDataType.ExponentialHistogram);
+    if (
+      isHistogramMetric &&
+      !HISTOGRAM_SUPPORTED_AGG_FNS.includes(aggFn ?? '')
+    ) {
+      setValue(`${namePrefix}aggFn`, 'count');
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
