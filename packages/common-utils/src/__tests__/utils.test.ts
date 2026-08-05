@@ -2998,6 +2998,34 @@ describe('utils', () => {
       ).toBe('EventTime');
     });
 
+    it('DateTime with an explicit timezone still classifies as DateTime', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: "DateTime('UTC')",
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
+    });
+
+    it('Nullable(DateTime) with an explicit timezone still classifies as DateTime', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: "Nullable(DateTime('Europe/Berlin'))",
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
+    });
+
     it('higher DateTime64 precision wins over lower', async () => {
       const metadata = makeMetadata({
         TsMs: 'DateTime64(3)',

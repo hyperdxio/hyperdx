@@ -226,6 +226,26 @@
         "kvRollupTable": "e2e_otel_logs_kv_rollup_15m",
         "granularity": "15 minute"
       }
+    },
+    {
+      "id": "E2E Distributed Missing Column",
+      "kind": "log",
+      "name": "E2E Distributed Missing Column",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_otel_logs_distributed"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
     }
   ]
 }

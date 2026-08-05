@@ -2281,6 +2281,35 @@ describe('renderChartConfig', () => {
         `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
       );
     });
+
+    it.each(['Date32', 'Nullable(Date)', 'LowCardinality(Date)'])(
+      'wraps a %s column in toDate() and keeps the bounds inclusive',
+      async type => {
+        mockMetadata.getColumn.mockImplementation(
+          async () => ({ type }) as ColumnMeta,
+        );
+
+        const dateRange: [Date, Date] = [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ];
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'date',
+          dateRangeEndInclusive: false,
+          dateRangeStartInclusive: false,
+          dateRange,
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
+        );
+      },
+    );
   });
 
   it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {
@@ -3411,6 +3440,51 @@ describe('renderChartConfig', () => {
       // WHERE clause should still reference both columns for partition pruning.
       expect(sql).toContain('EventDate');
       expect(sql).toContain('EventTime');
+    });
+
+    it('picks the DateTime token when its type carries a timezone', async () => {
+      mockMetadata.getColumn = jest
+        .fn()
+        .mockImplementation(async ({ column }: { column: string }) => {
+          if (column === 'EventDate')
+            return { name: 'EventDate', type: 'Date' };
+          if (column === 'EventTime')
+            return { name: 'EventTime', type: "DateTime('UTC')" };
+          return undefined;
+        });
+
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'logs' },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'EventDate, EventTime',
+        dateRange: [
+          new Date('2026-05-27T00:00:00Z'),
+          new Date('2026-05-27T12:00:00Z'),
+        ],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generated = await renderChartConfig(
+        config,
+        mockMetadata,
+        undefined,
+      );
+      const sql = parameterizedQueryToSql(generated);
+
+      expect(sql).toContain('toStartOfInterval(toDateTime(EventTime),');
+      expect(sql).not.toContain('toStartOfInterval(toDateTime(EventDate),');
     });
 
     it('all-Date input falls back to the first token (and warns)', async () => {

@@ -134,7 +134,8 @@ function classifyTimestampType(type: string | undefined): {
   if (/^Date(?:32)?$/i.test(inner)) {
     return { kind: 'date', precision: -1 };
   }
-  if (/^DateTime$/i.test(inner)) {
+  // DateTime[('<timezone>')]
+  if (/^DateTime$/i.test(inner) || /^DateTime\('[^']*'\)$/i.test(inner)) {
     return { kind: 'datetime', precision: 0 };
   }
   // DateTime64(<precision>[, '<timezone>'])
