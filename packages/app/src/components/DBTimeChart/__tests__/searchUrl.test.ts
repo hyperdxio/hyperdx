@@ -26,14 +26,15 @@ jest.mock('@/ChartUtils', () => ({
 /** Args the function handed to buildEventsSearchUrl on its first call. */
 const delegatedArgs = () => mockBuildEventsSearchUrl.mock.calls[0][0];
 
-const source = {
+const source: TSource = {
   id: 'src-1',
   kind: SourceKind.Log,
   name: 'logs',
   connection: 'conn-1',
   from: { databaseName: 'default', tableName: 'otel_logs' },
   timestampValueExpression: 'Timestamp',
-} as unknown as TSource;
+  defaultTableSelectExpression: 'Body',
+};
 
 const clicked = new Date('2026-01-01T00:00:00Z');
 
