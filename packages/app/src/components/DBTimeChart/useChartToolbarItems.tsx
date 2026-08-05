@@ -11,6 +11,7 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DisplaySwitcher from '@/components/charts/DisplaySwitcher';
 import HiddenSeriesIndicator from '@/components/charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 
 type UseChartToolbarItemsArgs = {
   builderQueriedConfig: BuilderChartConfigWithDateRange | undefined;
@@ -22,16 +23,9 @@ type UseChartToolbarItemsArgs = {
   /** Render every series, bypassing the cap; undefined when that is a no-op. */
   loadAllHandler: (() => void) | undefined;
   renderedSeriesCount: number;
-  // Shape comes from useMVOptimizationExplanation; only these fields are read here.
-  mvOptimizationData:
-    | {
-        optimizedConfig?: { dateRange?: [Date, Date] };
-        explanations: {
-          success: boolean;
-          mvConfig: { minGranularity?: string };
-        }[];
-      }
-    | undefined;
+  // Derived from the hook rather than hand-copied, so a change to its shape is
+  // a type error here instead of a field that quietly stops being read.
+  mvOptimizationData: ReturnType<typeof useMVOptimizationExplanation>['data'];
   queriedConfig: ChartConfigWithDateRange;
   showDateRangeIndicator: boolean;
   showDisplaySwitcher: boolean;

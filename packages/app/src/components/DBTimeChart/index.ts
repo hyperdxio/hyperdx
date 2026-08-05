@@ -4,4 +4,8 @@
  * import from here, so the internal file layout stays free to change.
  */
 export { DBTimeChart } from './DBTimeChart';
-export { decodeSeriesGroupFilters, type SeriesGroupFilter } from './searchUrl';
+export {
+  buildSeriesSearchUrl,
+  decodeSeriesGroupFilters,
+  type SeriesGroupFilter,
+} from './searchUrl';

@@ -134,8 +134,11 @@ export function buildSeriesSearchUrl({
     (expandedConfig.formulas?.length ?? 0) > 0 &&
     expandedConfig.showOperandSeries === false;
 
+  // `!= null`, not truthiness: a clicked value of exactly 0 is a real point —
+  // buildActiveClickSeries preserves zeroes — and skipping the filter for it
+  // drills down to every event in the bucket instead of the matching ones.
   if (
-    seriesValue &&
+    seriesValue != null &&
     !operandsHidden &&
     Array.isArray(expandedConfig.select) &&
     expandedConfig.select.length > 0

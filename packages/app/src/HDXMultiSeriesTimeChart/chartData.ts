@@ -4,10 +4,6 @@ import { formatNumber } from '@/utils';
 
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
-// Debounce (ms) for the chart's ResponsiveContainer resize observer. Without
-// it the observer fires on every frame, and a resize → re-render → resize
-// cycle can keep the chart (and the form controls around it in the tile
-
 /** One series entry in a tooltip's per-bucket payload (hover or click-frozen). */
 export type ActiveClickSeries = {
   value?: number;
