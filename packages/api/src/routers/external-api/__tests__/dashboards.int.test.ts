@@ -5200,6 +5200,72 @@ describe('External API v2 Dashboards - new format', () => {
         })
         .expect(200);
     });
+
+    // Deletion, not just a kind change. These were split for a while: the kind
+    // gate was exempted for unchanged tiles and the existence check was not, so
+    // deleting the source still wedged every later save. Only the exemplar
+    // reference dangles here — both tiles sit on a source that still exists, so a
+    // rejection could only come from the exemplar check.
+    it('does not re-validate a deleted exemplar trace source for unchanged tiles', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar deletion scoping test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+            {
+              name: 'Other line tile',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const exemplarTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Latency',
+      );
+      const otherTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Other line tile',
+      );
+
+      await Source.collection.deleteOne({ _id: traceSource._id });
+
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar deletion scoping test - renamed',
+          tiles: [
+            { ...exemplarTile },
+            {
+              ...otherTile,
+              name: 'Other line tile, edited',
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+    });
   });
 
   describe('Number tile color (HDX-1360)', () => {

@@ -943,15 +943,9 @@ function getMissingSources(
       if ('sourceId' in tile.config && tile.config.sourceId) {
         sourceIds.add(tile.config.sourceId);
       }
-      // The exemplar trace source is a source reference like any other. Without
-      // this it was only format-checked, so a well-formed id for a source that
-      // does not exist saved fine and left every marker's trace link dead.
-      if (
-        'exemplarTraceSourceId' in tile.config &&
-        tile.config.exemplarTraceSourceId
-      ) {
-        sourceIds.add(tile.config.exemplarTraceSourceId);
-      }
+      // exemplarTraceSourceId is deliberately NOT collected here: it is checked
+      // separately so the same unchanged-tile exemption can apply to it. See
+      // getExemplarTraceSourceIssues.
     }
 
     // Include source IDs referenced by OnClick link-outs (mode=id, type=search)
@@ -1007,17 +1001,22 @@ function getHeatmapTilesWithIncompatibleSources(
 }
 
 /**
- * Returns exemplar trace-source IDs that exist but are not Trace sources.
+ * Both problems an exemplar trace source can have: it does not exist, or it
+ * exists and is not a Trace source.
  *
- * The MCP and OpenAPI descriptions both tell the caller this must be a Trace
- * source; without a gate that was only a suggestion, and pointing it at a log or
- * metric source saved a tile whose markers link nowhere. Mirrors the heatmap
- * kind-gate above rather than inventing a second shape.
+ * Checked here rather than folding existence into getMissingSources so one
+ * unchanged-tile exemption covers both. Splitting them meant a deleted source
+ * blocked an update while a source whose kind had changed did not, which is not a
+ * distinction anyone could predict.
+ *
+ * Unlike a tile's `sourceId`, this reference is optional decoration: the chart
+ * renders the same without it, only a marker's "view trace" link goes dead. That
+ * is not worth refusing an edit made elsewhere on the dashboard over.
  */
-function getInvalidExemplarTraceSources(
+function getExemplarTraceSourceIssues(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
-): string[] {
+): { missing: string[]; notTrace: string[] } {
   const traceSourceIds = new Set<string>();
   for (const tile of tiles) {
     if (
@@ -1028,14 +1027,17 @@ function getInvalidExemplarTraceSources(
       traceSourceIds.add(tile.config.exemplarTraceSourceId);
     }
   }
-  if (traceSourceIds.size === 0) return [];
+  if (traceSourceIds.size === 0) return { missing: [], notTrace: [] };
 
   const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
-  return [...traceSourceIds].filter(id => {
+  const missing: string[] = [];
+  const notTrace: string[] = [];
+  for (const id of traceSourceIds) {
     const source = sourceById.get(id);
-    // Absent ids are getMissingSources' business, and it runs first.
-    return source !== undefined && !isTraceSource(source);
-  });
+    if (source === undefined) missing.push(id);
+    else if (!isTraceSource(source)) notTrace.push(id);
+  }
+  return { missing, notTrace };
 }
 
 /**
@@ -1391,12 +1393,15 @@ export async function validateDashboardTiles(
   const exemplarTilesToCheck = existingTiles
     ? filterChangedExemplarTiles(tiles, existingTiles)
     : tiles;
-  const invalidExemplarTraceSources = getInvalidExemplarTraceSources(
+  const exemplarTraceSourceIssues = getExemplarTraceSourceIssues(
     sources,
     exemplarTilesToCheck,
   );
-  if (invalidExemplarTraceSources.length > 0) {
-    return `exemplarTraceSourceId must reference a Trace source. The following source IDs are not Trace sources: ${invalidExemplarTraceSources.join(', ')}`;
+  if (exemplarTraceSourceIssues.missing.length > 0) {
+    return `Could not find the following exemplarTraceSourceId source IDs: ${exemplarTraceSourceIssues.missing.join(', ')}`;
+  }
+  if (exemplarTraceSourceIssues.notTrace.length > 0) {
+    return `exemplarTraceSourceId must reference a Trace source. The following source IDs are not Trace sources: ${exemplarTraceSourceIssues.notTrace.join(', ')}`;
   }
 
   if (missingOnClickDashboards.length > 0) {
