@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import * as config from '@/config';
 import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
 import Connection from '@/models/connection';
+import { PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC } from '@/routers/api/prometheus';
 
 const mockFetch = global.fetch as jest.Mock;
 
@@ -49,11 +50,14 @@ describe('prometheus router', () => {
     await server.stop();
   });
 
-  const seedPrometheusConnection = async (teamId: Types.ObjectId) => {
+  const seedPrometheusConnection = async (
+    teamId: Types.ObjectId,
+    host = 'http://prom.example.com',
+  ) => {
     return Connection.create({
       team: teamId,
       name: 'Prom',
-      host: 'http://prom.example.com',
+      host,
       username: '',
       password: '',
       isPrometheusEndpoint: true,
@@ -148,12 +152,21 @@ describe('prometheus router', () => {
       expect(res.headers['x-content-type-options']).toBe('nosniff');
     });
 
-    it('passes a JSON upstream content-type through unchanged', async () => {
+    // The reason the content-type is relabelled rather than allowlisted. A
+    // prefix-anchored JSON test passes this value — the comma is a word boundary
+    // — but the browser's MIME extraction keeps the *last* essence, so the body
+    // would render as HTML on our own origin. `Headers.get()` also joins two
+    // separate Content-Type headers into exactly this shape.
+    it('does not forward a JSON content-type that carries a second media type', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 
       mockFetch.mockResolvedValueOnce(
-        fakeUpstreamResponse({ status: 'success', data: [] }, 200),
+        fakeUpstreamResponse(
+          '<script>alert(document.cookie)</script>',
+          200,
+          'application/json, text/html',
+        ),
       );
 
       const res = await agent
@@ -166,7 +179,90 @@ describe('prometheus router', () => {
         })
         .expect(200);
 
-      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.headers['content-type']).not.toContain('text/html');
+      expect(res.headers['content-type']).toBe(
+        'application/json; charset=utf-8',
+      );
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    // A distinguishable JSON flavour, so this cannot pass by coinciding with the
+    // fallback: the upstream value must not survive even when it is valid JSON.
+    it('relabels even a legitimate non-standard JSON content-type', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(
+          { status: 'success', data: [] },
+          200,
+          'application/vnd.api+json',
+        ),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.headers['content-type']).toBe(
+        'application/json; charset=utf-8',
+      );
+      expect(res.headers['content-type']).not.toContain('vnd.api');
+    });
+
+    // The unreachable-upstream path builds its message from the target URL, so
+    // it needs nosniff too — and must not echo basic-auth credentials from a
+    // connection host into a body the browser shows.
+    it('sends nosniff on a 502 and redacts credentials from the message', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://user:s3cr3t@prom.example.com',
+      );
+
+      mockFetch.mockRejectedValueOnce(
+        Object.assign(new Error('fetch failed'), {
+          cause: { code: 'ECONNREFUSED' },
+        }),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(502);
+
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.body.error).toContain('ECONNREFUSED');
+      expect(res.body.error).not.toContain('s3cr3t');
+    });
+
+    // nosniff is set by router middleware, so the helper's own error bodies —
+    // which echo the caller-supplied host — carry it too.
+    it('sends nosniff on its own error responses', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id, 'not-a-valid-url');
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+
       expect(res.headers['x-content-type-options']).toBe('nosniff');
     });
 
@@ -394,6 +490,38 @@ describe('prometheus router', () => {
       expect(calledUrl).toContain('query=up');
     });
 
+    // The existing case above uses a 60-second window, where the Math.max in
+    // resolveExemplarWindow is a no-op — so it would still pass if the narrowed
+    // window never reached the outgoing URL. This drives a range wide enough for
+    // the clamp to bite and inspects what was actually requested.
+    it('narrows an over-wide window on the outgoing request and keeps end', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({ status: 'success', data: [] }),
+      );
+
+      const end = 1700000000;
+      const thirtyDays = 30 * 24 * 60 * 60;
+
+      await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: String(end - thirtyDays),
+          end: String(end),
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      const sentStart = Number(requested.searchParams.get('start'));
+      expect(Number(requested.searchParams.get('end'))).toBe(end);
+      expect(sentStart).toBeGreaterThan(end - thirtyDays);
+      expect(end - sentStart).toBe(PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC);
+    });
+
     it('returns an empty result for ClickHouse-backed connections (no native exemplar table function)', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedClickHouseConnection(team._id);
@@ -410,6 +538,37 @@ describe('prometheus router', () => {
 
       expect(res.body).toEqual({ status: 'success', data: [] });
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // The two backends have different required-parameter contracts on one route,
+    // keyed on an attribute the caller does not control. That is deliberate — the
+    // ClickHouse branch does no upstream work, so 400ing it would light up the
+    // chart's exemplar error indicator on a healthy chart — but it is surprising
+    // enough to pin rather than leave to a comment.
+    it('validates start/end only on the branch that reaches Prometheus', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const prom = await seedPrometheusConnection(team._id);
+      const ch = await seedClickHouseConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: 'not-a-time',
+          connectionId: prom._id.toString(),
+        })
+        .expect(400);
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: 'not-a-time',
+          connectionId: ch._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.body).toEqual({ status: 'success', data: [] });
     });
   });
 });

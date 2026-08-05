@@ -1,8 +1,20 @@
+const mockCounterAdd = jest.fn();
+
+jest.mock('@/utils/instrumentation', () => {
+  const actual = jest.requireActual('@/utils/instrumentation');
+  return {
+    ...actual,
+    getCounter: () => ({ add: mockCounterAdd }),
+  };
+});
+
 import {
   formatMatrixResponse,
   formatVectorResponse,
+  isClientDisconnect,
   parseDuration,
   parseTimestamp,
+  recordProxyOutcome,
   resolveExemplarWindow,
 } from '@/routers/api/prometheus';
 
@@ -192,5 +204,56 @@ describe('resolveExemplarWindow', () => {
       start: end - 10,
       end,
     });
+  });
+});
+
+describe('recordProxyOutcome', () => {
+  beforeEach(() => {
+    mockCounterAdd.mockClear();
+  });
+
+  // proxyToPrometheus handles its own failures by writing a status and returning
+  // normally, so the caller's catch never sees an upstream outage — this is the
+  // only place the proxy path's error counter moves.
+  it.each([500, 502, 503, 504])('counts an upstream %i', status => {
+    recordProxyOutcome(status, 'query_exemplars', 'prometheus');
+    expect(mockCounterAdd).toHaveBeenCalledWith(1, {
+      endpoint: 'query_exemplars',
+      backend: 'prometheus',
+    });
+  });
+
+  // A 4xx is almost always a PromQL expression the user typed. Counting those
+  // would make the counter track typos rather than backend health, which is what
+  // alerts and SLOs read it for.
+  it.each([200, 204, 400, 404, 422])('does not count a %i', status => {
+    recordProxyOutcome(status, 'query_range', 'prometheus');
+    expect(mockCounterAdd).not.toHaveBeenCalled();
+  });
+});
+
+describe('isClientDisconnect', () => {
+  // `pipeline` destroys the response stream before rejecting no matter which end
+  // failed, so `res.destroyed` cannot tell these apart — an earlier revision
+  // tested it and silently reclassified every upstream fault as a cancellation,
+  // leaving the error counter at zero for truncated bodies.
+  it('is false when the upstream stream fails mid-body', () => {
+    // What undici raises when the upstream resets: no `code`.
+    expect(isClientDisconnect(new TypeError('terminated'))).toBe(false);
+  });
+
+  it('is true when the client hangs up mid-body', () => {
+    expect(
+      isClientDisconnect(
+        Object.assign(new Error('Premature close'), {
+          code: 'ERR_STREAM_PREMATURE_CLOSE',
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false for a non-Error rejection', () => {
+    expect(isClientDisconnect('boom')).toBe(false);
+    expect(isClientDisconnect(undefined)).toBe(false);
   });
 });

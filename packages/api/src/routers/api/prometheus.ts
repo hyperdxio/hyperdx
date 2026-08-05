@@ -33,6 +33,14 @@ const prometheusQueryErrors = getCounter('hyperdx.prometheus.query_errors', {
 // Accept URL-encoded form bodies (Prometheus standard) and JSON
 router.use(express.urlencoded({ extended: true }));
 
+// Every response from this router either streams a member-configured upstream or
+// echoes caller-supplied text back in an error body. Set here rather than in the
+// proxy helper so the handlers' own catch blocks are covered too.
+router.use((_req, res, next) => {
+  res.setHeader('x-content-type-options', 'nosniff');
+  next();
+});
+
 // --------------------------
 // Param parsing helpers
 // --------------------------
@@ -150,7 +158,25 @@ const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
 // for no extra markers — the chart's own thinning caps what's rendered anyway.
-const PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC = 7 * 24 * 60 * 60;
+export const PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC = 7 * 24 * 60 * 60;
+
+/**
+ * Whether a rejection from streaming the upstream body means the client hung up
+ * rather than the backend failing.
+ *
+ * The error code is the only usable signal. `pipeline` destroys every stream it
+ * touches before rejecting — the destination included, whichever end actually
+ * failed — so `res.destroyed` is true either way and testing it would classify
+ * every upstream fault as a user cancellation. Node also resolves the race in
+ * our favour: a real error always beats the ERR_STREAM_PREMATURE_CLOSE that the
+ * cascading destroy raises, never the other way round.
+ */
+export function isClientDisconnect(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE'
+  );
+}
 
 // Forwards the response straight from the upstream Prometheus to the
 // HyperDX client. Returns the HTTP status it wrote, so callers can record an
@@ -160,8 +186,8 @@ const PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC = 7 * 24 * 60 * 60;
 // values` on a large Prometheus), so we avoid `await resp.json()` +
 // `res.json(...)` which would parse + re-serialize the whole body in memory.
 // Prometheus's native response shape (`{status, data}` / `{status, errorType,
-// error}`) is already what HyperDX clients expect, so we forward the status
-// code and content-type as-is.
+// error}`) is already what HyperDX clients expect, so we forward the status code
+// as-is — but never the content-type, which is always relabelled (see below).
 async function proxyToPrometheus(
   upstreamHost: string,
   path: string,
@@ -185,6 +211,16 @@ async function proxyToPrometheus(
   }
   const target = url.toString();
 
+  // A connection host may carry basic-auth credentials (`http://user:pw@host`),
+  // and the error bodies below are shown in the browser. Strip them for display
+  // only — `target` itself still needs them to authenticate.
+  const redactedTarget = (() => {
+    const safe = new URL(url);
+    safe.username = '';
+    safe.password = '';
+    return safe.toString();
+  })();
+
   let upstreamResp: Response;
   try {
     upstreamResp = await fetch(target, {
@@ -195,7 +231,7 @@ async function proxyToPrometheus(
       res.status(504).json({
         status: 'error',
         errorType: 'timeout',
-        error: `Prometheus request to ${target} timed out after ${PROMETHEUS_PROXY_TIMEOUT_MS}ms`,
+        error: `Prometheus request to ${redactedTarget} timed out after ${PROMETHEUS_PROXY_TIMEOUT_MS}ms`,
       });
       return 504;
     }
@@ -215,7 +251,7 @@ async function proxyToPrometheus(
     res.status(502).json({
       status: 'error',
       errorType: 'unavailable',
-      error: `Failed to reach Prometheus at ${target} (${detail})`,
+      error: `Failed to reach Prometheus at ${redactedTarget} (${detail})`,
     });
     return 502;
   }
@@ -224,19 +260,18 @@ async function proxyToPrometheus(
 
   // The connection host is member-configured, so its response is untrusted output
   // on our own origin: the app same-origin-proxies /api/*, and the session cookie
-  // is sameSite lax. Forwarding the upstream content-type verbatim would let a
-  // text/html body render as script here. Send nosniff unconditionally and pass
-  // the content-type through only when it is JSON; anything else is relabelled,
-  // which keeps a genuine Prometheus error body readable while making a hostile
-  // one inert.
-  res.setHeader('x-content-type-options', 'nosniff');
-  const contentType = upstreamResp.headers.get('content-type');
-  res.setHeader(
-    'content-type',
-    contentType && /^application\/(json|[\w.+-]+\+json)\b/i.test(contentType)
-      ? contentType
-      : 'application/json',
-  );
+  // is sameSite lax. Forwarding the upstream content-type would let a text/html
+  // body render as script here, so it is never forwarded — every response is
+  // relabelled, which keeps a genuine Prometheus error body readable while making
+  // a hostile one inert.
+  //
+  // An allowlist was tried first and is not worth it. Prometheus only ever
+  // answers application/json, so passing anything through buys nothing, and
+  // getting the check right is easy to botch: `Content-Type: application/json,
+  // text/html` (which is also what Headers.get() produces from two separate
+  // headers) passes a prefix-anchored JSON test, while the browser's MIME
+  // extraction keeps the *last* essence — text/html.
+  res.setHeader('content-type', 'application/json; charset=utf-8');
 
   if (!upstreamResp.body) {
     res.end();
@@ -246,13 +281,19 @@ async function proxyToPrometheus(
   try {
     await pipeline(Readable.fromWeb(upstreamResp.body as any), res);
   } catch (err) {
+    // A client that navigates away mid-body makes `pipeline` reject too. That is
+    // not a backend failure, and returning 502 for it would have the caller count
+    // ordinary user cancellations against Prometheus's health. Report the
+    // upstream's own status in that case; only a genuine stream failure is 502.
+    const clientGone = isClientDisconnect(err);
+
     // Headers are already sent at this point — best we can do is destroy the
     // socket so the client sees a truncated response instead of a hung
     // connection.
     if (!res.writableEnded) {
       res.destroy(err instanceof Error ? err : new Error(String(err)));
     }
-    return 502;
+    return clientGone ? upstreamResp.status : 502;
   }
   return upstreamResp.status;
 }
@@ -267,7 +308,7 @@ async function proxyToPrometheus(
  * than backend health — which is what alerts and SLOs read it for. The helper's
  * own failure statuses (502 unreachable, 504 timeout) are 5xx and so are counted.
  */
-function recordProxyOutcome(
+export function recordProxyOutcome(
   status: number,
   endpoint: string,
   backend: PrometheusBackend,
@@ -564,9 +605,9 @@ export function resolveExemplarWindow(
 
 // Native Prometheus exposes exemplars via /api/v1/query_exemplars. We proxy
 // straight through for Prometheus-backed connections. ClickHouse-backed metric
-// exemplars are read directly from the OTel metric tables' `Exemplars.*`
-// columns in the app (via renderMetricExemplarsChartConfig), so there is no
-// ClickHouse table function to call here — return an empty result instead.
+// exemplars come from the OTel metric tables' own `Exemplars.*` columns, read by
+// the chart query the app already issues — there is no ClickHouse table function
+// to call here, so this returns an empty result rather than a second query.
 const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
@@ -592,11 +633,9 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const connection = await getConnectionById(
-      teamId.toString(),
-      connectionId,
-      true,
-    );
+    // No `selectPassword` — neither branch builds a ClickhouseClient, so there
+    // is no reason to pull the connection secret into request scope.
+    const connection = await getConnectionById(teamId.toString(), connectionId);
     if (!connection) {
       return res.status(404).json({
         status: 'error',
@@ -630,10 +669,18 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
         });
       }
 
+      // Both bounds come from the resolved window, not just `start`. Forwarding
+      // the raw `end` would let a value this function accepts but Prometheus
+      // rejects — leading whitespace, a `0x` literal — be declared valid here
+      // and then 400 upstream.
       const status = await proxyToPrometheus(
         connection.host,
         '/api/v1/query_exemplars',
-        { ...params, start: String(window.start) },
+        {
+          ...params,
+          start: String(window.start),
+          end: String(window.end),
+        },
         res,
       );
       recordProxyOutcome(status, 'query_exemplars', backend);
