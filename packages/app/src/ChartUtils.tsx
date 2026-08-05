@@ -812,11 +812,18 @@ export function formatResponseForTimeChart({
   // selection below), so a previous-only group can't evict a current-period
   // series — but previous-only groups still count toward the total cap.
   const currentPeriodGroupKeys = new Set<string>();
+  // The value-column prefix is only added to currentPeriodKey when a chart has
+  // BOTH multiple value columns AND group columns (see addResponseToFormattedData:
+  // omitValueColumnInKey). In every other shape the key has no such prefix, so
+  // stripping a leading `<valueColumnName> · ` would wrongly collapse a group
+  // whose own value merely starts with that text. Only strip when the builder
+  // actually added the prefix.
+  const keyHasValueColumnPrefix =
+    valueColumns.length > 1 && groupColumns.length > 0;
   const groupKeyOf = (line: LineDataWithOptionalColor): string => {
-    // Multi-value-column charts prefix currentPeriodKey with the value column
-    // (`<valueColumn> · <group…>`); single-value charts have no such prefix, so
-    // currentPeriodKey already is the group identity. Strip the prefix only when
-    // it's actually present to collapse a group's value columns into one key.
+    if (!keyHasValueColumnPrefix) {
+      return line.currentPeriodKey;
+    }
     const prefix = `${line.valueColumnName}${ChartKeyJoiner}`;
     return line.currentPeriodKey.startsWith(prefix)
       ? line.currentPeriodKey.slice(prefix.length)

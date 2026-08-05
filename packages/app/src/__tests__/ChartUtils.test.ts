@@ -962,6 +962,10 @@ describe('ChartUtils', () => {
 
       // One logical series (g2 and its previous twin) is hidden.
       expect(actual.hiddenSeriesCount).toBe(1);
+      // renderedSeriesCount counts LOGICAL series (2), not the 4 lineData
+      // entries (2 groups × current+previous).
+      expect(actual.renderedSeriesCount).toBe(2);
+      expect(actual.renderedSeriesCount + actual.hiddenSeriesCount).toBe(3);
 
       const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
       // Both kept logical series retain BOTH halves of the pair.
@@ -1101,6 +1105,48 @@ describe('ChartUtils', () => {
       expect(keptKeys.has('avg · g2')).toBe(false);
       expect(keptKeys.has('max · g2')).toBe(false);
       expect(actual.hiddenSeriesCount).toBe(1);
+      // renderedSeriesCount is a LOGICAL group count (2 kept groups), not the
+      // flat lineData length (4 entries: 2 groups × 2 value columns). A
+      // regression to lineData.length would break this.
+      expect(actual.renderedSeriesCount).toBe(2);
+      expect(actual.renderedSeriesCount + actual.hiddenSeriesCount).toBe(3);
+    });
+
+    it('does not collapse single-value groups whose name starts with the value-column prefix', () => {
+      // Single-value charts add NO value-column prefix to the key, so a group
+      // literally named `value · x` must stay distinct from a group `x`. A
+      // naive prefix-strip would merge them and miscount series.
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      const bucket = '2025-11-26T11:12:00Z';
+      // Two distinct groups; one collides with the strip pattern `value · `.
+      const data = [
+        { value: 30, group: 'value · x', __hdx_time_bucket: bucket },
+        { value: 20, group: 'x', __hdx_time_bucket: bucket },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        // Cap high enough that nothing is dropped: this is about the group
+        // IDENTITY, not eviction.
+        maxSeries: 100,
+      });
+
+      // Both groups are kept as separate series (not collapsed into one).
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      expect(keptKeys.has('value · x')).toBe(true);
+      expect(keptKeys.has('x')).toBe(true);
+      expect(actual.renderedSeriesCount).toBe(2);
+      expect(actual.hiddenSeriesCount).toBe(0);
     });
   });
 

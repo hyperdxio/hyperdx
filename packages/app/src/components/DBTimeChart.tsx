@@ -437,6 +437,16 @@ function DBTimeChartComponent({
     () => setShowAllSeriesShape(queryShapeIdentity),
     [queryShapeIdentity],
   );
+  // "Load all" only helps when it actually raises the cap. If the tile's own
+  // seriesLimit already meets or exceeds the load-all bound (or is unlimited),
+  // clicking would render the same set — so don't offer the affordance rather
+  // than flip showAllSeries to a state where onLoadAll goes permanently
+  // undefined for a no-op.
+  const loadAllCanRaiseCap =
+    MAX_LOADABLE_TIME_CHART_SERIES >
+    resolveRenderedSeriesCap(config.seriesLimit);
+  const loadAllHandler =
+    showAllSeries || !loadAllCanRaiseCap ? undefined : enableShowAllSeries;
 
   // Determine whether the config can be optimized with an MV, to drive the MV
   // optimization indicator and the MV-derived date-range indicator in the
@@ -893,10 +903,10 @@ function DBTimeChartComponent({
           key="db-time-chart-hidden-series-indicator"
           hiddenSeriesCount={hiddenSeriesCount}
           renderedSeriesCount={renderedSeriesCount}
-          // Only offer "load all" while still capped. Once it's on, the cap is
-          // already lifted to MAX_LOADABLE_TIME_CHART_SERIES; a larger result
-          // stays partly hidden but clicking again is a no-op, so go passive.
-          onLoadAll={showAllSeries ? undefined : enableShowAllSeries}
+          // Offered only while still capped AND when load-all would actually
+          // raise the cap (loadAllHandler is undefined otherwise), so the
+          // notice never advertises a no-op click.
+          onLoadAll={loadAllHandler}
         />,
       );
     }
@@ -921,8 +931,7 @@ function DBTimeChartComponent({
     queriedConfig,
     hiddenSeriesCount,
     renderedSeriesCount,
-    showAllSeries,
-    enableShowAllSeries,
+    loadAllHandler,
   ]);
 
   return (
@@ -962,7 +971,7 @@ function DBTimeChartComponent({
             // "+N more" in the pinned tooltip loads every series (same escape
             // hatch as the hidden-series warning). Only offered while capped.
             hiddenSeriesCount={hiddenSeriesCount}
-            onLoadAllSeries={showAllSeries ? undefined : enableShowAllSeries}
+            onLoadAllSeries={loadAllHandler}
             // Once loaded, render the full set in the scrollable tooltip body
             // (not just the 20-row preview) so "load all" actually shows them.
             expanded={showAllSeries}
