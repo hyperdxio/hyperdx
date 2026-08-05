@@ -6,6 +6,7 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  Exemplar,
 } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
@@ -21,6 +22,8 @@ import ChartContainer from '@/components/charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from '@/components/charts/ChartErrorState';
+import { ExemplarHoverCard } from '@/components/Exemplars';
+import { DEFAULT_MAX_EXEMPLARS } from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -34,6 +37,7 @@ import {
   type SeriesGroupFilter,
 } from './searchUrl';
 import { useChartToolbarItems } from './useChartToolbarItems';
+import { useExemplarCard } from './useExemplarCard';
 
 type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
@@ -295,6 +299,43 @@ function DBTimeChartComponent({
     }
   }, [displayTypeLocal, displayTypeProp, setDisplayType]);
 
+  // Exemplar overlay: data plus the hover/pin card state machine. See
+  // useExemplarCard — the chart coordinates with it below because its drill-down
+  // tooltip and the exemplar card are mutually exclusive.
+  const {
+    exemplars,
+    exemplarNotice,
+    reportClampDropped,
+    traceLookupFailed,
+    exemplarTraceSource,
+    activeExemplar,
+    pinnedExemplar,
+    pinnedExemplarKey,
+    hoveredTraceMeta,
+    isHoveredTraceMetaLoading,
+    openExemplarCard,
+    scheduleCloseExemplarCard,
+    cancelClose: cancelExemplarCardClose,
+    pin: pinExemplarCardState,
+    unpin: unpinExemplarCard,
+    navigateToExemplarTrace,
+  } = useExemplarCard({
+    queriedConfig,
+    source,
+    displayType,
+    // Rendered series count, so a multi-line chart cannot be given markers that
+    // belong to an unknown line. Taken from the main query's own result — the
+    // exemplar response can't answer it, since Prometheus returns only series
+    // that carry a sampled exemplar. This is why the hook is called here rather
+    // than beside the other data hooks: it needs lineData.
+    // Current-period lines only. The previous-period comparison lands in the same
+    // lineData (flagged isDashed), so counting it made a single-metric chart with
+    // "Compare to Previous Period" ticked look like two series: every marker
+    // vanished behind a notice telling the user to aggregate to a single line,
+    // which they already had. The markers belong to the solid current line.
+    plottedSeriesCount: lineData.filter(ld => !ld.isDashed).length,
+  });
+
   const handleSetDisplayType = useCallback(
     (type: DisplayType) => {
       if (setDisplayType) {
@@ -318,14 +359,31 @@ function DBTimeChartComponent({
 
   const dismissPinned = useCallback(() => {
     setActiveClickPayload(undefined);
-  }, []);
+    unpinExemplarCard();
+  }, [unpinExemplarCard]);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
+
+  // Clicking an exemplar marker pins its card. The marker stops the click from
+  // reaching the chart, so this never races the drill-down tooltip — but the
+  // two are still mutually exclusive, here and in setPinnedPayload below.
+  const pinExemplarCard = useCallback(
+    (exemplar: Exemplar, x: number, y: number) => {
+      notifyTooltipPinned();
+      setActiveClickPayload(undefined);
+      pinExemplarCardState(exemplar, x, y);
+    },
+    [notifyTooltipPinned, pinExemplarCardState],
+  );
 
   // Pin the tooltip on click. Not gated on `source`: source-less charts still
   // show values/percent-change, and the drill-down actions hide themselves when
   // there's no source. `disableDrillDown` stays an explicit opt-out.
   const setPinnedPayload = useCallback(
     (payload: ActiveClickPayload | undefined) => {
+      // Any click that reaches the plot area dismisses a pinned exemplar card —
+      // before the drill-down opt-out, so the card still closes on charts that
+      // have drill-down disabled.
+      unpinExemplarCard();
       if (disableDrillDown) {
         return;
       }
@@ -335,7 +393,7 @@ function DBTimeChartComponent({
       }
       setActiveClickPayload(payload);
     },
-    [disableDrillDown, notifyTooltipPinned],
+    [disableDrillDown, notifyTooltipPinned, unpinExemplarCard],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -395,6 +453,7 @@ function DBTimeChartComponent({
     builderQueriedConfig,
     config,
     displayType,
+    exemplarNotice,
     handleSetDisplayType,
     mvOptimizationData,
     queriedConfig,
@@ -444,6 +503,19 @@ function DBTimeChartComponent({
             numberFormatByKey={formatByColumn}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
           />
+          <ExemplarHoverCard
+            hovered={activeExemplar}
+            meta={hoveredTraceMeta ?? undefined}
+            isLoading={isHoveredTraceMetaLoading}
+            traceSourceConfigured={!!exemplarTraceSource}
+            traceLookupFailed={traceLookupFailed}
+            numberFormat={axisNumberFormat}
+            pinned={pinnedExemplar != null}
+            onClose={unpinExemplarCard}
+            onInspect={navigateToExemplarTrace}
+            onMouseEnter={cancelExemplarCardClose}
+            onMouseLeave={scheduleCloseExemplarCard}
+          />
           <MemoChart
             dateRange={dateRange}
             displayType={displayType}
@@ -468,6 +540,14 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            exemplars={exemplars}
+            maxExemplars={me?.team?.maxExemplars ?? DEFAULT_MAX_EXEMPLARS}
+            onExemplarHover={openExemplarCard}
+            onExemplarHoverEnd={scheduleCloseExemplarCard}
+            onExemplarSelect={pinExemplarCard}
+            pinnedExemplarKey={pinnedExemplarKey}
+            onExemplarPinEnd={unpinExemplarCard}
+            onExemplarsDropped={reportClampDropped}
           />
         </>
       )}

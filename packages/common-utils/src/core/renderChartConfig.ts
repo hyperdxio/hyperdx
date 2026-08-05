@@ -56,6 +56,7 @@ import {
   SortSpecificationList,
   SqlAstFilter,
   SQLInterval,
+  SQLIntervalSchema,
 } from '@/types';
 
 /**
@@ -2325,6 +2326,356 @@ export async function renderChartConfig(
 
     // SETTINGS must be last - see `extractSettingsClause` in "./utils.ts"
     chSql`${settings.sql ? chSql`SETTINGS ${settings}` : []}`,
+  ]);
+}
+
+/** Overall cap on exemplar markers returned for a single chart, so a wide
+ * time range can't flood the chart overlay with thousands of points. */
+export const EXEMPLAR_QUERY_LIMIT = 200;
+
+/** Ceiling on rows kept per time bucket, so a single busy bucket can't eat the
+ * whole budget when the range is short. */
+const EXEMPLAR_MAX_PER_BUCKET = 4;
+
+/**
+ * Pick the bucket width and per-bucket row count for the exemplar scan so its
+ * {@link EXEMPLAR_QUERY_LIMIT} budget is spent evenly across the range, instead
+ * of being emptied into whichever buckets happen to hold the slowest traces.
+ *
+ * The scan bucket is the chart granularity, widened only if that granularity
+ * would produce more buckets than the budget can cover — one marker per plotted
+ * point is the ideal, but running out of budget a third of the way along the
+ * x-axis is worse than a coarser sample that spans it. Widening here costs no
+ * accuracy: exemplars keep their raw timestamps, and the chart re-buckets at the
+ * true granularity when it decides what to draw.
+ */
+export function exemplarScanBucketing(
+  granularity: SQLInterval,
+  dateRange: [Date, Date] | undefined,
+): { interval: SQLInterval; perBucket: number } {
+  // Re-validate rather than trust the type: granularity reaches here from a URL
+  // param, and `interval` is spliced into the query as raw SQL by timeBucketExpr.
+  const safeGranularity: SQLInterval = SQLIntervalSchema.safeParse(granularity)
+    .success
+    ? granularity
+    : '1 minute';
+  const granularitySeconds = convertGranularityToSeconds(safeGranularity);
+  const rangeSeconds = dateRange
+    ? (dateRange[1].getTime() - dateRange[0].getTime()) / 1000
+    : 0;
+  if (
+    granularitySeconds <= 0 ||
+    !Number.isFinite(rangeSeconds) ||
+    rangeSeconds <= 0
+  ) {
+    return { interval: safeGranularity, perBucket: 1 };
+  }
+
+  // Divide by LIMIT - 1, not LIMIT: toStartOfInterval aligns to epoch multiples
+  // of the interval rather than to the range start, so a range that isn't a
+  // multiple of the widened bucket spills into one extra group. Leaving room
+  // for it keeps buckets * perBucket inside the trailing LIMIT — otherwise that
+  // LIMIT clips the newest bucket, the right-hand edge of the chart.
+  const bucketSeconds = Math.max(
+    granularitySeconds,
+    Math.ceil(rangeSeconds / (EXEMPLAR_QUERY_LIMIT - 1)),
+  );
+  const buckets = Math.ceil(rangeSeconds / bucketSeconds) + 1;
+  return {
+    interval:
+      bucketSeconds === granularitySeconds
+        ? safeGranularity
+        : `${bucketSeconds} second`,
+    perBucket: Math.min(
+      EXEMPLAR_MAX_PER_BUCKET,
+      Math.max(1, Math.floor(EXEMPLAR_QUERY_LIMIT / buckets)),
+    ),
+  };
+}
+
+/**
+ * The exemplar-eligibility rule, in one place. An exemplar marker sits at a
+ * single trace's raw measurement on the chart's y-axis, so it is only
+ * attributable when the chart draws exactly one series of a compatible unit:
+ *
+ * - single series, no Group By — a marker can't be attributed (or scaled) across
+ *   series, and a grouped scan pools exemplars from every group.
+ * - not a ratio — the exemplar value isn't on a ratio axis.
+ * - histogram, explicit-bucket or exponential — the exemplar value is a
+ *   duration, which only shares the y-axis unit on a latency histogram
+ *   (counts/gauges/rates are a different scale). Both kinds store exemplars in
+ *   the same `Exemplars.*` columns, and the scan resolves its table from
+ *   `metricTables[metricType]`, so neither the query nor the marker changes.
+ *
+ * The chart-editor toggle and the SQL renderer both delegate here so they can't
+ * drift apart.
+ */
+// Aggregations whose result is on the same scale as a single observation, and so
+// share an axis with `Exemplars.Value`. A quantile, average, min or max of
+// durations is itself a duration; a count is a number of observations and a sum is
+// their total, both of which put the axis in a different unit — a duration marker
+// clamped into a count domain reads as a real point on that scale. `none` is the
+// raw value, so it qualifies.
+const EXEMPLAR_COMPATIBLE_AGG_FNS = new Set([
+  'avg',
+  'max',
+  'min',
+  'quantile',
+  'last_value',
+  'any',
+  'none',
+]);
+
+export function isExemplarEligible({
+  seriesCount,
+  seriesReturnType,
+  metricType,
+  aggFn,
+  hasGroupBy,
+}: {
+  seriesCount: number;
+  seriesReturnType?: 'ratio' | 'column';
+  // Deliberately `string`, and compared by value below. tsup emits this
+  // declaration without importing MetricsDataType, so any annotation naming the
+  // enum resolves against the *consumer's* scope: in packages/app it binds to
+  // that package's unrelated legacy MetricsDataType, whose values are
+  // capitalised ('Histogram'), and the build fails on the mismatch.
+  // Callers must pass a common-utils MetricsDataType value (lowercase
+  // 'histogram'); a legacy-enum value would compile but never match.
+  metricType?: string;
+  /**
+   * The series' aggregation. `string` for the same tsup reason as `metricType`.
+   * Undefined is treated as ineligible: a caller that cannot say what it plots
+   * cannot promise the axis is a duration.
+   */
+  aggFn?: string;
+  hasGroupBy: boolean;
+}): boolean {
+  return (
+    seriesCount === 1 &&
+    seriesReturnType !== 'ratio' &&
+    (metricType === MetricsDataType.Histogram ||
+      metricType === MetricsDataType.ExponentialHistogram) &&
+    aggFn != null &&
+    EXEMPLAR_COMPATIBLE_AGG_FNS.has(aggFn) &&
+    !hasGroupBy
+  );
+}
+
+/**
+ * PromQL functions whose result shares the y-axis unit with an exemplar's value
+ * (a duration). A marker's height is the linked trace's own measurement, so it
+ * is only honest on an axis measured in the same unit.
+ *
+ * Notably absent: `rate(..._bucket[5m])` and friends. A `_bucket` series holds
+ * observation *counts*, so plotting duration-valued markers on it puts, say, a
+ * 250ms trace at "250 requests/sec" — clampExemplarY would then pin it inside
+ * the axis and it would read as a real point on that scale.
+ */
+const PROMQL_DURATION_VALUED_CALL =
+  /^\s*(histogram_quantile|histogram_avg)\s*\(/;
+
+/**
+ * The PromQL counterpart to isExemplarEligible: whether the expression plots a
+ * duration, and so can carry exemplar markers on its axis. The PromQL editor's
+ * toggle and the exemplar fetch both delegate here so they can't drift apart.
+ *
+ * Deliberately narrow rather than a full parse, and deliberately erring towards
+ * `false`: a false negative hides the toggle on a chart that could have shown
+ * markers, while a false positive plots duration markers on an axis measured in
+ * something else and clamps them into it, which reads as real data. Other
+ * duration-valued shapes (`avg_over_time(latency_seconds[5m])`, a
+ * `_sum / _count` ratio) are not recognised yet — extend this pattern when one
+ * is wanted rather than loosening it to a substring test.
+ */
+export function isPromqlExemplarEligible(
+  expression: string | undefined,
+): boolean {
+  if (!expression) return false;
+  const opening = PROMQL_DURATION_VALUED_CALL.exec(expression);
+  if (!opening) return false;
+
+  // The call must span the WHOLE expression, not merely start it. Walking to the
+  // matching close paren is what distinguishes `histogram_quantile(...)` from
+  // `histogram_quantile(...) * 1000`: the latter's axis is milliseconds while its
+  // exemplars are still seconds, so the markers would plot 1000x low and clamp to
+  // the axis floor as though they were real values. Quotes are skipped so a paren
+  // inside a label matcher doesn't unbalance the count.
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = opening[0].length - 1; i < expression.length; i++) {
+    const c = expression.charAt(i);
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      // Closed the outermost call: eligible only if nothing but whitespace is
+      // left, i.e. its value is what the axis renders.
+      if (depth === 0) return expression.slice(i + 1).trim() === '';
+    }
+  }
+  // Unbalanced parens — a half-typed expression. Not eligible.
+  return false;
+}
+
+/**
+ * Builds a ClickHouse query that surfaces native exemplars stored on an OTel
+ * metric table (`Exemplars.TraceId/SpanId/Value/TimeUnix`). Returns null when
+ * the config is not a single-metric chart we can resolve a table for.
+ *
+ * Reuses `renderWhere` so the exemplar scan honors the exact same time range,
+ * metric-name, and user filters as the rendered series. Exemplars keep their own
+ * raw timestamp/value (the marker sits at the exemplar's own measurement); the
+ * bucket column exists only to spread the result set evenly across the range —
+ * `LIMIT n BY bucket` keeps the top `n` of every bucket rather than the top `n`
+ * of the whole range, which would return nothing but the spikes.
+ */
+export async function renderMetricExemplarsChartConfig(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql | null> {
+  if (
+    isRawSqlChartConfig(chartConfig) ||
+    isPromqlChartConfig(chartConfig) ||
+    !isMetricChartConfig(chartConfig) ||
+    !Array.isArray(chartConfig.select) ||
+    // Without a range, renderWhere emits no time predicate and this becomes a
+    // whole-table ARRAY JOIN plus sort, bounded only by the trailing LIMIT. The
+    // PromQL branch already refuses this case; match it.
+    chartConfig.dateRange == null
+  ) {
+    return null;
+  }
+  const { metricTables, select } = chartConfig;
+  const { metricType, metricName, metricNameSql, aggFn } = select[0] ?? {};
+  // Shared eligibility rule (single, non-ratio, non-grouped histogram series) —
+  // see isExemplarEligible. A Group By in particular would pool exemplars from
+  // every group into one unattributable set.
+  if (
+    !isExemplarEligible({
+      seriesCount: select.length,
+      seriesReturnType: chartConfig.seriesReturnType,
+      metricType,
+      aggFn,
+      hasGroupBy: isUsingGroupBy(chartConfig),
+    })
+  ) {
+    return null;
+  }
+  const table =
+    metricType && metricTables ? metricTables[metricType] : undefined;
+  if (!metricType || !metricName || !table) {
+    return null;
+  }
+
+  // Build a config that points at the concrete metric-type table and carries
+  // the metric-name predicate alongside the user filters, then let renderWhere
+  // assemble the time filter + filters exactly as the main query does. The
+  // guards above narrow chartConfig to the metric builder config, so no cast.
+  // Bucket the scan so every part of the range gets a fair shot at a marker.
+  // 'auto' is resolved here rather than left to timeBucketExpr so the bucket
+  // column and the per-bucket limit agree on the same width.
+  const granularity: SQLInterval =
+    chartConfig.granularity && chartConfig.granularity !== 'auto'
+      ? chartConfig.granularity
+      : chartConfig.dateRange
+        ? convertDateRangeToGranularityString(chartConfig.dateRange)
+        : '1 minute';
+  const { interval, perBucket } = exemplarScanBucketing(
+    granularity,
+    chartConfig.dateRange,
+  );
+  // How far an exemplar's own timestamp can trail its data point is the metric's
+  // collection interval, which we don't know here. The chart's granularity is a
+  // proxy, not the same thing — and on a short window it resolves to 15s or 30s,
+  // finer than a typical scrape, which would leave the newest exemplars out of
+  // reach again. So take the larger of the granularity and a one-minute floor.
+  // The exact ex_TimeUnix bound below plus `LIMIT n BY bucket` trim the overshoot,
+  // so erring wide is close to free. The derived bucket width is deliberately not
+  // used: exemplarScanBucketing can stretch it to many minutes on a multi-day
+  // range, which over-fetches for no benefit.
+  const COLLECTION_INTERVAL_FLOOR_MS = 60_000;
+  const collectionIntervalMs = Math.max(
+    convertGranularityToSeconds(granularity) * 1000,
+    COLLECTION_INTERVAL_FLOOR_MS,
+  );
+
+  const [rangeStart, rangeEnd] = chartConfig.dateRange;
+
+  // renderWhere bounds the *row's* TimeUnix, but the value we project and bucket
+  // is the ARRAY JOINed `ex_TimeUnix`. Those are not the same instant: an
+  // exemplar is attached to the data point that covers it, so its own timestamp
+  // falls in the collection interval *before* that row's. So the row bound is
+  // widened forward by one interval — otherwise an exemplar inside the window
+  // whose data point lands just after it is never returned — and the exact
+  // window is then applied to `ex_TimeUnix` below, which also drops the
+  // pre-window exemplars the widened row bound now lets through.
+  const rowBoundEnd = new Date(rangeEnd.getTime() + collectionIntervalMs);
+
+  const whereConfig: BuilderChartConfigWithOptDateRangeEx = {
+    ...chartConfig,
+    dateRange: [rangeStart, rowBoundEnd],
+    from: { ...chartConfig.from, tableName: table },
+    timestampValueExpression:
+      chartConfig.timestampValueExpression || DEFAULT_METRIC_TABLE_TIME_COLUMN,
+    // Keep the original select so renderWhere applies the series' aggCondition —
+    // otherwise the exemplar scan would surface traces from other series (e.g.
+    // other services/routes/tenants) that share the same metric name.
+  };
+
+  const where = await renderWhere(whereConfig, metadata);
+  const from = renderFrom({ from: whereConfig.from });
+
+  // The metric-name predicate is REQUIRED and must always be ANDed. Appending it
+  // to `chartConfig.filters` would subject it to the chart's
+  // `filtersLogicalOperator`, so an 'OR' filter group would produce
+  // `userFilterA OR userFilterB OR MetricName = ...` and let the exemplar scan
+  // surface traces from other metrics. AND it separately from the user filters.
+  const metricNameCondition = createMetricNameFilter(metricName, metricNameSql);
+
+  const bucketExpr = timeBucketExpr({
+    interval,
+    timestampValueExpression: 'ex_TimeUnix',
+    dateRange: chartConfig.dateRange,
+    alias: 'bucket',
+  });
+
+  return concatChSql(' ', [
+    chSql`SELECT
+      toUnixTimestamp64Milli(ex_TimeUnix) AS timestamp,
+      ex_Value AS value,
+      ex_TraceId AS traceId,
+      ex_SpanId AS spanId,
+      ${bucketExpr}`,
+    chSql`FROM ${from}`,
+    chSql`ARRAY JOIN
+      \`Exemplars.TimeUnix\` AS ex_TimeUnix,
+      \`Exemplars.Value\` AS ex_Value,
+      \`Exemplars.TraceId\` AS ex_TraceId,
+      \`Exemplars.SpanId\` AS ex_SpanId`,
+    chSql`WHERE ${where.sql ? where : chSql`1 = 1`} AND (${metricNameCondition}) AND notEmpty(ex_TraceId) AND ex_TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: rangeStart.getTime() }}) AND ex_TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: rangeEnd.getTime() }})`,
+    // Within a bucket the slowest traces are the interesting ones; across
+    // buckets we want coverage, so the per-bucket limit — not the value order —
+    // is what bounds the result set. exemplarScanBucketing keeps
+    // buckets * perBucket under the trailing LIMIT, which is a backstop only.
+    //
+    // Consequence worth knowing: this hands the client the top `perBucket`
+    // rows per bucket, so the chart's 2σ spread sampler can only choose among a
+    // bucket's slowest few — on this path the overlay is a narrow max envelope,
+    // not the full within-bucket distribution the Prometheus path can show.
+    // Widening that needs within-bucket sampling in SQL (a window function),
+    // which is a bigger change than this one.
+    chSql`ORDER BY bucket ASC, value DESC`,
+    // Raw rather than a bound parameter: `LIMIT n BY` is parsed before
+    // parameter substitution. `perBucket` (not the sibling `interval`) is a
+    // clamped integer from exemplarScanBucketing, never user input.
+    chSql`LIMIT ${{ UNSAFE_RAW_SQL: String(perBucket) }} BY bucket`,
+    chSql`LIMIT ${{ Int32: EXEMPLAR_QUERY_LIMIT }}`,
   ]);
 }
 

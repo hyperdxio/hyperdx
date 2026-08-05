@@ -1229,6 +1229,15 @@ const SharedChartSettingsSchema = z.object({
   // number tiles have no time dimension to bucket). Other display types
   // ignore the field. Kept at shared level mirroring `color` / `colorRules`.
   backgroundChart: BackgroundChartSchema.optional(),
+  // Opt-in: overlay exemplar markers (individual traces linked to the series)
+  // on time charts. Sourced natively for metric/PromQL sources and generated
+  // per time bucket for trace sources. The UI gates the toggle on supported
+  // source kinds; off by default so the extra exemplar query never runs.
+  enableExemplars: z.boolean().optional(),
+  // Trace source that an exemplar's trace id resolves against — used to fetch
+  // hover metadata and to deep-link straight to the trace. When unset, the
+  // chart source's linked `traceSourceId` is used as a fallback.
+  exemplarTraceSourceId: z.string().optional(),
   // Zebra striping for table tiles: when true, the renderer tints alternating
   // rows so wide tables are easier to scan across. Applies to any table tile
   // (builder or raw SQL); the striping is purely presentational and keys off
@@ -1365,6 +1374,30 @@ export const ChartConfigSchema = z.union([
 ]);
 
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
+
+/**
+ * A single exemplar: an individual data point overlaid on a time chart that
+ * links back to a trace. Shared shape for both backends — metric/PromQL
+ * sources surface native exemplars, trace sources generate them per bucket.
+ */
+// Both numbers are `.finite()` because both reach the renderer as SVG
+// coordinates: a non-finite timestamp collapses every affected exemplar into one
+// `@NaN` bucket and emits a NaN x-coordinate, and a single Infinity value makes
+// the 2σ spread NaN, silently switching the thinning rule off chart-wide. The
+// normalizers parse untrusted upstream bodies through this schema, so rejecting
+// here keeps both out of the render path.
+export const ExemplarSchema = z.object({
+  timestamp: z.number().finite(), // epoch ms, x-position on the chart
+  value: z.number().finite(), // exemplar's own value (metric Value / trace Duration in ms)
+  traceId: z.string(),
+  spanId: z.string().optional(),
+  // Matches the series the exemplar belongs to (LineData.displayName) so the
+  // overlay can attach markers to the right line. Undefined => applies to all.
+  groupKey: z.string().optional(),
+  attributes: z.record(z.string()).optional(),
+});
+
+export type Exemplar = z.infer<typeof ExemplarSchema>;
 
 export type DateRange = {
   dateRange: [Date, Date];
@@ -1669,6 +1702,9 @@ export const TeamClickHouseSettingsSchema = z.object({
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
+  // Target number of exemplar markers shown per chart (0 = unlimited). Not a
+  // ClickHouse setting, but lives in the same team-config bag for reuse.
+  maxExemplars: z.number().optional(),
 });
 
 /** Accepts null to unset (reset to default) a setting. */
@@ -1679,6 +1715,10 @@ export const TeamClickHouseSettingsUpdateSchema = z.object({
   metadataMaxRowsToRead: z.number().nullish(),
   parallelizeWhenPossible: z.boolean().nullish(),
   filterKeysFetchLimit: z.number().nullish(),
+  // Bounded here, not just in the settings form: the form's min/max are
+  // client-side only, and a fractional or negative value reaches the chart's
+  // marker-budget arithmetic directly.
+  maxExemplars: z.number().int().min(0).max(1000).nullish(),
 });
 export type TeamClickHouseSettingsUpdate = z.infer<
   typeof TeamClickHouseSettingsUpdateSchema

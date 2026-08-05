@@ -79,3 +79,7 @@ const IS_IAC_HELPERS_ENABLED = true;
 // Terraform provider to talk to. Single definition — the alerts, dashboard,
 // search, and team-settings surfaces all read this one constant.
 export const IS_IAC_EXPORT_ENABLED = IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE;
+// Exemplar overlay (trace markers on time charts). Off by default while the
+// feature is being tested; set NEXT_PUBLIC_ENABLE_EXEMPLARS=true to enable.
+export const IS_EXEMPLARS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_EXEMPLARS') === 'true';
