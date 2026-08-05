@@ -77,6 +77,168 @@ describe('DBRowDataPanel', () => {
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
   });
 
+  describe('time filtering', () => {
+    // A row id synthesized from ids alone (e.g. "View Trace" builds
+    // TraceId + SpanId) has no timestamp of its own, so without a dateRange the
+    // lookup scans every part.
+    it('omits the time filter when no dateRange is given', () => {
+      renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(config.dateRange).toBeUndefined();
+      expect(config.timestampValueExpression).toBeUndefined();
+    });
+
+    it('filters on timestampValueExpression when a dateRange is given', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T02:00:00Z'),
+      ];
+
+      renderHook(() => useRowData({ source, rowId: "id='abc123'", dateRange }));
+
+      const [config, options] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(config.dateRange).toBe(dateRange);
+      expect(config.timestampValueExpression).toBe('Timestamp');
+      // Filtered and unfiltered lookups for the same row must not share a
+      // cache entry.
+      expect(options.queryKey).toContain(dateRange);
+    });
+
+    // The filter has to cover every timestamp column in the sort key, so the
+    // multi-column expression is passed through whole rather than truncated to
+    // its first token.
+    it('passes a multi-column timestampValueExpression through to the filter', () => {
+      const multiColumnSource: TLogSource = {
+        ...source,
+        timestampValueExpression: 'EventDate, EventTime',
+      };
+
+      renderHook(() =>
+        useRowData({
+          source: multiColumnSource,
+          rowId: "id='abc123'",
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T02:00:00Z'),
+          ],
+        }),
+      );
+
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(config.timestampValueExpression).toBe('EventDate, EventTime');
+    });
+
+    // renderChartConfig needs both halves to emit a filter, so a source with no
+    // usable timestamp expression must not contribute a lone dateRange.
+    it('omits the filter when the source has no timestamp expression', () => {
+      const sourceWithoutTimestamp: TLogSource = {
+        ...source,
+        timestampValueExpression: '   ',
+      };
+
+      renderHook(() =>
+        useRowData({
+          source: sourceWithoutTimestamp,
+          rowId: "id='abc123'",
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T02:00:00Z'),
+          ],
+        }),
+      );
+
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(config.dateRange).toBeUndefined();
+      expect(config.timestampValueExpression).toBeUndefined();
+    });
+
+    it('gives bounded and unbounded lookups of the same row different query keys', () => {
+      renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+      renderHook(() =>
+        useRowData({
+          source,
+          rowId: "id='abc123'",
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T02:00:00Z'),
+          ],
+        }),
+      );
+
+      const [, unboundedOptions] = mockUseQueriedChartConfig.mock.calls[0];
+      const [, boundedOptions] = mockUseQueriedChartConfig.mock.calls[1];
+      expect(boundedOptions.queryKey).not.toEqual(unboundedOptions.queryKey);
+    });
+  });
+
+  describe('__hdx_timestamp_value_<i>', () => {
+    function timestampValueSelects(config: {
+      select: { alias?: string }[];
+    }): { alias?: string }[] {
+      return config.select.filter(s =>
+        s.alias?.startsWith('__hdx_timestamp_value_'),
+      );
+    }
+
+    it("selects the source's timestampValueExpression, not the displayed one", () => {
+      const sourceWithDisplayedTimestamp: TLogSource = {
+        ...source,
+        displayedTimestampValueExpression: 'ObservedTimestamp',
+      };
+
+      renderHook(() =>
+        useRowData({
+          source: sourceWithDisplayedTimestamp,
+          rowId: "id='abc123'",
+        }),
+      );
+
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(config.select).toContainEqual({
+        valueExpression: 'ObservedTimestamp',
+        alias: '__hdx_timestamp',
+      });
+      expect(timestampValueSelects(config)).toEqual([
+        { valueExpression: 'Timestamp', alias: '__hdx_timestamp_value_0' },
+      ]);
+    });
+
+    // Every column is projected so the anchor can be resolved from the
+    // highest-precision one at read time; picking the first token here would
+    // pin the anchor to `EventDate`'s midnight.
+    it('selects every column of a multi-column timestamp expression', () => {
+      const multiColumnSource: TLogSource = {
+        ...source,
+        timestampValueExpression: 'EventDate, EventTime',
+      };
+
+      renderHook(() =>
+        useRowData({ source: multiColumnSource, rowId: "id='abc123'" }),
+      );
+
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(timestampValueSelects(config)).toEqual([
+        { valueExpression: 'EventDate', alias: '__hdx_timestamp_value_0' },
+        { valueExpression: 'EventTime', alias: '__hdx_timestamp_value_1' },
+      ]);
+    });
+
+    it('is not selected when the source has no timestamp expression', () => {
+      const sourceWithoutTimestamp: TLogSource = {
+        ...source,
+        timestampValueExpression: '   ',
+      };
+
+      renderHook(() =>
+        useRowData({ source: sourceWithoutTimestamp, rowId: "id='abc123'" }),
+      );
+
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      expect(timestampValueSelects(config)).toEqual([]);
+    });
+  });
+
   // Regression test for the OSS #2357 conflict-resolution merge. The
   // composed result wraps `Event Attributes` in a length check from
   // origin/main AND passes `mapColumns={mapColumns}` through to the

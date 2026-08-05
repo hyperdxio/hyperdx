@@ -51,6 +51,7 @@ import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -278,6 +279,28 @@ export const DBRowSidePanelInner = ({
   const activeRowId = skipRowQuery ? undefined : resolvedRowId;
   const activeAliasWith = skipRowQuery ? undefined : resolvedAliasWith;
 
+  // A cross-source frame's row id is synthesized from ids alone ("View Trace"
+  // builds `TraceId = … AND SpanId = …`), so on its own the lookup has no
+  // timestamp predicate and scans every part. When the pushing panel stamped
+  // the origin row's timestamp onto the frame, bound the lookup to the same
+  // ±1h window the trace waterfall and service map already use.
+  const frameFocusTimestamp = activeSourceFrame?.focusTimestamp;
+  const frameDateRange = useMemo<[Date, Date] | undefined>(() => {
+    // Nav entries carry a full row id (timestamp included), so their lookups
+    // are already bounded and must not be narrowed by the frame's window —
+    // surrounding context can walk arbitrarily far from the frame's anchor.
+    if (leafNav != null || frameFocusTimestamp == null) {
+      return undefined;
+    }
+    const focus = new Date(frameFocusTimestamp);
+    if (isNaN(focus.getTime())) {
+      return undefined;
+    }
+    return [add(focus, { minutes: -60 }), add(focus, { minutes: 60 })];
+  }, [leafNav, frameFocusTimestamp]);
+
+  const activeDateRange = skipRowQuery ? undefined : frameDateRange;
+
   const {
     data: rowData,
     isLoading: isRowLoading,
@@ -288,6 +311,7 @@ export const DBRowSidePanelInner = ({
     source,
     rowId: activeRowId,
     aliasWith: activeAliasWith,
+    dateRange: activeDateRange,
   });
 
   const hasActiveStacks = activeSourceFrame != null || leafNav != null;
@@ -507,6 +531,22 @@ export const DBRowSidePanelInner = ({
     traceSourceData?.kind === SourceKind.Trace
       ? traceSourceData.spanIdExpression
       : undefined;
+
+  // The current row's own timestamp, read from the source's
+  // `timestampValueExpression` rather than the displayed expression (which
+  // may not be in the ordering key). Undefined when the source exposes no
+  // better-than-day precision, so a composite `"EventDate, EventTime"` can't
+  // anchor a window on `EventDate`'s midnight.
+  const rowMeta = rowData?.meta;
+  const rowFocusTimestamp = useMemo(
+    () =>
+      resolveRowTimestampAnchor({
+        timestampValueExpression: source.timestampValueExpression,
+        row: normalizedRow,
+        meta: rowMeta,
+      })?.toISOString(),
+    [source.timestampValueExpression, normalizedRow, rowMeta],
+  );
 
   const traceSpanRowId = useMemo(() => {
     const clauses: string[] = [];
@@ -877,6 +917,7 @@ export const DBRowSidePanelInner = ({
                     label: mainContent || 'Log',
                     sourceKind: traceSourceData.kind as SourceKind,
                     aliasWith: [],
+                    focusTimestamp: rowFocusTimestamp,
                   });
                 }
               }}
@@ -970,6 +1011,7 @@ export const DBRowSidePanelInner = ({
             source={source}
             rowId={activeRowId}
             aliasWith={activeAliasWith}
+            dateRange={activeDateRange}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -1034,6 +1076,7 @@ export const DBRowSidePanelInner = ({
             source={source}
             rowId={activeRowId}
             aliasWith={activeAliasWith}
+            dateRange={activeDateRange}
           />
         </ErrorBoundary>
       )}

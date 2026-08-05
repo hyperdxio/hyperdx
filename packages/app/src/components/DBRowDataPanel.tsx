@@ -17,10 +17,13 @@ import {
   getEventBody,
 } from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
+import { getTimestampValueSelects } from '@/utils/rowTimestamps';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { getActiveInfraCorrelations } from './infraCorrelations';
 
+// The source's own `timestampValueExpression` columns are projected too, under
+// the `__hdx_timestamp_value_<i>` aliases owned by `@/utils/rowTimestamps`.
 export enum ROW_DATA_ALIASES {
   TIMESTAMP = '__hdx_timestamp',
   BODY = '__hdx_body',
@@ -41,12 +44,25 @@ export function useRowData({
   source,
   rowId,
   aliasWith,
+  dateRange,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  /**
+   * Optional window to bound the lookup by. Applied against the source's
+   * `timestampValueExpression` (not the displayed timestamp), so a row id that
+   * carries no timestamp of its own — e.g. the `TraceId`/`SpanId` pair "View
+   * Trace" synthesizes — can still prune parts instead of scanning the table.
+   * Callers must memoize the tuple; it participates in the query key.
+   */
+  dateRange?: [Date, Date];
 }) {
   const eventBodyExpr = getEventBody(source);
+
+  const timestampValueExpr = source.timestampValueExpression?.trim()
+    ? source.timestampValueExpression
+    : undefined;
 
   const searchedTraceIdExpr =
     isLogSource(source) || isTraceSource(source)
@@ -90,6 +106,7 @@ export function useRowData({
           valueExpression: getDisplayedTimestampValueExpression(source),
           alias: ROW_DATA_ALIASES.TIMESTAMP,
         },
+        ...getTimestampValueSelects(timestampValueExpr),
         ...(eventBodyExpr
           ? [
               {
@@ -191,9 +208,12 @@ export function useRowData({
       from: source.from,
       limit: { limit: 1 },
       ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
+      ...(dateRange && timestampValueExpr
+        ? { dateRange, timestampValueExpression: timestampValueExpr }
+        : {}),
     },
     {
-      queryKey: ['row_side_panel', rowId, aliasWith, source],
+      queryKey: ['row_side_panel', rowId, aliasWith, source, dateRange],
       enabled: rowId != null,
     },
   );
@@ -288,18 +308,20 @@ export function RowDataPanel({
   source,
   rowId,
   aliasWith,
+  dateRange,
   flush = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  dateRange?: [Date, Date];
   // When true, drop the horizontal margin so content aligns flush with
   // surrounding chrome (e.g. the tab bar in the trace span detail panel).
   flush?: boolean;
   'data-testid'?: string;
 }) {
-  const { data } = useRowData({ source, rowId, aliasWith });
+  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
