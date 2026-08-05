@@ -1114,8 +1114,18 @@ function filterChangedExemplarTiles(
     if (existing === undefined) return true;
     const existingConfig = existing.config;
     if (isRawSqlSavedChartConfig(existingConfig)) return true;
-    return (
+    if (
       existingConfig.exemplarTraceSourceId !== tile.config.exemplarTraceSourceId
+    ) {
+      return true;
+    }
+    // The id is unchanged, but a reference nobody was following is not the same
+    // as one that is about to draw markers. While exemplars were off the source
+    // could have been deleted or stopped being a Trace source with no effect, so
+    // switching them on has to be checked as if the reference were new.
+    return (
+      tile.config.enableExemplars === true &&
+      existingConfig.enableExemplars !== true
     );
   });
 }

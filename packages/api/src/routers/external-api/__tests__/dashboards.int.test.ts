@@ -5268,6 +5268,105 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('exemplar settings enabled on an existing tile', () => {
+    // The unchanged-tile exemption keys on the source id, but an id nobody was
+    // following is not the same as one about to draw markers: while exemplars
+    // were off the source could have been deleted or stopped being a Trace
+    // source with no effect at all.
+    it('validates the trace source when exemplars are switched on', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar enable test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: false,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const tile = createResponse.body.data.tiles[0];
+
+      // The source stops being a Trace source while nothing was following it.
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar enable test',
+          tiles: [
+            {
+              ...tile,
+              config: { ...tile.config, enableExemplars: true },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'exemplarTraceSourceId must reference a Trace source',
+      );
+    });
+
+    it('still exempts a tile whose exemplars were already on', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar already-on test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const tile = createResponse.body.data.tiles[0];
+
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      // enableExemplars stays true, so this is the exemption, not the transition.
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar already-on test - renamed',
+          tiles: [{ ...tile }],
+          tags: [],
+        })
+        .expect(200);
+    });
+  });
+
   describe('Number tile color (HDX-1360)', () => {
     // Minimal builder number tile; callers supply color / colorRules. The
     // payload is sent through `.send()` (untyped) so negative tests can post
