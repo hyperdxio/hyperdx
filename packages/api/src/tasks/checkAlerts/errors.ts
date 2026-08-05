@@ -47,19 +47,7 @@ export const isClientTimeoutOrAbortError = (e: unknown): boolean =>
   e instanceof Error &&
   (e.message === CLIENT_TIMEOUT_MESSAGE || e.message === CLIENT_ABORT_MESSAGE);
 
-/**
- * Classify whether an alert query failure is a timeout/abort (rather than a
- * query or connection error). Covers:
- * - the ClickHouse client's request_timeout ("Timeout error.")
- * - aborted requests ("The user aborted a request.")
- * - server-side TIMEOUT_EXCEEDED (code 159, e.g. max_execution_time)
- * - TCP-level socket timeouts (ETIMEDOUT)
- */
-export const isQueryTimeoutError = (e: unknown): boolean => {
-  if (!(e instanceof Error)) {
-    return false;
-  }
-
+const isTimeoutErrorShallow = (e: Error): boolean => {
   if (isClientTimeoutOrAbortError(e)) {
     return true;
   }
@@ -72,4 +60,37 @@ export const isQueryTimeoutError = (e: unknown): boolean => {
   }
 
   return (e as NodeJS.ErrnoException).code === 'ETIMEDOUT';
+};
+
+// Guard against pathological/self-referential cause chains.
+const MAX_CAUSE_DEPTH = 5;
+
+/**
+ * Classify whether an alert query failure is a timeout/abort (rather than a
+ * query or connection error). Covers:
+ * - the ClickHouse client's request_timeout ("Timeout error.")
+ * - aborted requests ("The user aborted a request.")
+ * - server-side TIMEOUT_EXCEEDED (code 159, e.g. max_execution_time)
+ * - TCP-level socket timeouts (ETIMEDOUT)
+ *
+ * Walks the `cause` chain: `BaseClickhouseClient.query` wraps failures in a
+ * `ClickHouseQueryError` that preserves the message but keeps the original
+ * error (and its identifying type/code) only on `cause`, so server-side
+ * TIMEOUT_EXCEEDED and socket ETIMEDOUT would otherwise misclassify as
+ * generic query errors.
+ */
+export const isQueryTimeoutError = (e: unknown): boolean => {
+  const seen = new Set<unknown>();
+  let current = e;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
+    if (!(current instanceof Error) || seen.has(current)) {
+      return false;
+    }
+    if (isTimeoutErrorShallow(current)) {
+      return true;
+    }
+    seen.add(current);
+    current = current.cause;
+  }
+  return false;
 };
