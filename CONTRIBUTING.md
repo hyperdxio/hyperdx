@@ -152,6 +152,11 @@ that ran anyway. `NoCoverage` means no unit test reaches that code at all — so
 of those are covered by integration tests, which this doesn't run. An HTML
 report lands in `reports/mutation/`.
 
+The score is not a coverage number for the whole file. Module-level code —
+constants, regexes, lookup tables — isn't mutated at all (`ignoreStatic`, about
+10% of the mutants here) and is left out of the denominator, so a high score
+says nothing about whether those are asserted on.
+
 Not wired into CI. It's a tool for while you're writing tests, not a gate.
 
 One wrinkle worth knowing about: the root `package.json` pins

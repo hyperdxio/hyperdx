@@ -95,8 +95,10 @@ docker-compose.prod.yml
 
 # stryker (mutation testing)
 **/.stryker-tmp/
-**/reports/mutation/
-**/reports/stryker-incremental.json
+
+# generated report output at a package root. Not **/reports/ — packages/hdx-eval
+# has tracked source under src/reports/.
+packages/*/reports/
 
 # webstorm
 .idea
