@@ -793,41 +793,58 @@ export function formatResponseForTimeChart({
   // pair is kept or dropped together, not orphaned by a flat entry-list slice.
   let hiddenSeriesCount = 0;
 
-  // dataKey -> logical series key, so the peak scan (which sees only bucket
-  // cell keys) can attribute values to a group.
+  // The cap operates on the group-by GROUP, not on each rendered series. A
+  // single group can yield several series that must be kept or dropped together:
+  //   - the current + previous-period pair in comparison mode (same
+  //     currentPeriodKey, distinguished by isDashed), and
+  //   - one series per value column when a chart plots multiple aggregations
+  //     (e.g. avg + max), which the key builder prefixes with valueColumnName.
+  // Ranking each of those independently would let, say, a large-magnitude `max`
+  // column evict every `avg` series, or a previous-only line evict a current
+  // one. Derive a group identity by stripping the leading value-column segment
+  // from currentPeriodKey so all series of a group share one rankable key.
   const groupKeyByDataKey = new Map<string, string>();
   const logicalSeriesKeys: string[] = [];
   const seenLogicalKeys = new Set<string>();
   // Groups that have a current-period (non-dashed) entry. In comparison mode the
-  // current and previous periods are separate queries, each already trimmed to
-  // its own top-N by the SQL CTE, so their kept sets can differ. Rank only the
-  // current-period set so a previous-only group can't evict a current-period
-  // series the query explicitly selected (its dashed twin still rides along via
-  // the shared currentPeriodKey); previous-only groups are kept unconditionally
-  // below rather than ranked. Falls back to all groups when there is no
-  // current-period entry (e.g. a previous-only edge case).
+  // current and previous periods are separate queries whose kept sets can
+  // differ. Current-period groups get priority when the cap trips (see the
+  // selection below), so a previous-only group can't evict a current-period
+  // series — but previous-only groups still count toward the total cap.
   const currentPeriodGroupKeys = new Set<string>();
+  const groupKeyOf = (line: LineDataWithOptionalColor): string => {
+    // Multi-value-column charts prefix currentPeriodKey with the value column
+    // (`<valueColumn> · <group…>`); single-value charts have no such prefix, so
+    // currentPeriodKey already is the group identity. Strip the prefix only when
+    // it's actually present to collapse a group's value columns into one key.
+    const prefix = `${line.valueColumnName}${ChartKeyJoiner}`;
+    return line.currentPeriodKey.startsWith(prefix)
+      ? line.currentPeriodKey.slice(prefix.length)
+      : line.currentPeriodKey;
+  };
   for (const line of sortedLineData) {
-    groupKeyByDataKey.set(line.dataKey, line.currentPeriodKey);
-    if (!seenLogicalKeys.has(line.currentPeriodKey)) {
-      seenLogicalKeys.add(line.currentPeriodKey);
-      logicalSeriesKeys.push(line.currentPeriodKey);
+    const groupKey = groupKeyOf(line);
+    groupKeyByDataKey.set(line.dataKey, groupKey);
+    if (!seenLogicalKeys.has(groupKey)) {
+      seenLogicalKeys.add(groupKey);
+      logicalSeriesKeys.push(groupKey);
     }
     if (!line.isDashed) {
-      currentPeriodGroupKeys.add(line.currentPeriodKey);
+      currentPeriodGroupKeys.add(groupKey);
     }
   }
 
-  // Rank the current-period groups when any exist; otherwise fall back to all.
-  const rankableKeys =
-    currentPeriodGroupKeys.size > 0
-      ? logicalSeriesKeys.filter(key => currentPeriodGroupKeys.has(key))
-      : logicalSeriesKeys;
+  // The cap bounds the TOTAL number of logical groups materialized, so a
+  // comparison chart whose current and previous result sets are disjoint can't
+  // exceed maxSeries by keeping every previous-only group on top of the
+  // current-period top-N. Current-period groups still take priority: they're
+  // ranked and slotted first, then any remaining slots go to previous-only
+  // groups (also by peak). This keeps a current-period series from being
+  // evicted by a higher-peak previous-only one while still honoring the cap.
+  if (logicalSeriesKeys.length > maxSeries) {
+    hiddenSeriesCount = logicalSeriesKeys.length - maxSeries;
 
-  if (rankableKeys.length > maxSeries) {
-    hiddenSeriesCount = rankableKeys.length - maxSeries;
-
-    // Peak absolute value per logical series. Iterate only each bucket's
+    // Peak absolute value per logical group. Iterate only each bucket's
     // populated cells so sparse results cost O(populated cells), not
     // O(buckets * series).
     const peakByGroup = new Map<string, number>();
@@ -848,40 +865,42 @@ export function formatResponseForTimeChart({
       }
     }
 
-    // Sort by peak desc; index tiebreak keeps the log-level color ordering.
+    // Rank by peak desc; index tiebreak preserves log-level color ordering.
+    const byPeakThenIndex = (
+      a: { groupKey: string; index: number },
+      b: { groupKey: string; index: number },
+    ) => {
+      const diff =
+        (peakByGroup.get(b.groupKey) ?? 0) - (peakByGroup.get(a.groupKey) ?? 0);
+      return diff !== 0 ? diff : a.index - b.index;
+    };
+    const currentRanked = logicalSeriesKeys
+      .map((groupKey, index) => ({ groupKey, index }))
+      .filter(({ groupKey }) => currentPeriodGroupKeys.has(groupKey))
+      .sort(byPeakThenIndex);
+    const previousOnlyRanked = logicalSeriesKeys
+      .map((groupKey, index) => ({ groupKey, index }))
+      .filter(({ groupKey }) => !currentPeriodGroupKeys.has(groupKey))
+      .sort(byPeakThenIndex);
+
+    // Current-period groups fill slots first; previous-only groups take any
+    // remainder. Slice the concatenation to the cap so the total is bounded.
     const keptGroups = new Set(
-      rankableKeys
-        .map((groupKey, index) => ({ groupKey, index }))
-        .sort((a, b) => {
-          const diff =
-            (peakByGroup.get(b.groupKey) ?? 0) -
-            (peakByGroup.get(a.groupKey) ?? 0);
-          return diff !== 0 ? diff : a.index - b.index;
-        })
+      [...currentRanked, ...previousOnlyRanked]
         .slice(0, maxSeries)
         .map(({ groupKey }) => groupKey),
     );
 
-    // Also keep any previous-only groups (in the previous period but not the
-    // current). They were excluded from ranking so they can't evict a
-    // current-period series, but they must not be silently dropped either — the
-    // previous query's own CTE already bounds them, so retaining them can't blow
-    // past the cap the current side already allows.
-    for (const groupKey of logicalSeriesKeys) {
-      if (!currentPeriodGroupKeys.has(groupKey)) {
-        keptGroups.add(groupKey);
-      }
-    }
-
-    // Keep every entry (current + previous) whose logical series survives.
+    // Keep every entry of a surviving group: its current + previous-period
+    // pair AND every value column, since keptGroups holds group identities.
     const keptKeys = new Set(
       sortedLineData
-        .filter(line => keptGroups.has(line.currentPeriodKey))
+        .filter(line => keptGroups.has(groupKeyOf(line)))
         .map(line => line.dataKey),
     );
 
     sortedLineData = sortedLineData.filter(line =>
-      keptGroups.has(line.currentPeriodKey),
+      keptGroups.has(groupKeyOf(line)),
     );
 
     // Prune dropped keys from every bucket so graphResults stays small.
@@ -935,12 +954,12 @@ export function formatResponseForTimeChart({
 
   const sortedLineDataWithColors = setLineColors(sortedLineData);
 
-  // Count of LOGICAL series actually rendered (distinct currentPeriodKey), in
-  // the same unit as hiddenSeriesCount — so a comparison chart, whose lineData
-  // holds two entries (current + previous) per logical series, isn't double
-  // counted in the hidden-series notice.
+  // Count of LOGICAL groups actually rendered, in the same unit as
+  // hiddenSeriesCount — so a comparison chart (current + previous entries per
+  // group) or a multi-value-column chart (one entry per value column per group)
+  // isn't multiply counted in the hidden-series notice.
   const renderedSeriesCount = new Set(
-    sortedLineDataWithColors.map(line => line.currentPeriodKey),
+    sortedLineDataWithColors.map(line => groupKeyOf(line)),
   ).size;
 
   return {

@@ -43,13 +43,18 @@ export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
  * Whether a tile's `seriesLimit` should apply an actual limit. Per the schema
  * (SharedChartSettingsSchema.seriesLimit): a positive integer caps the series;
  * `0` means unlimited and `null`/`undefined` means unset — both of which apply
- * no limit. Centralizes the `!= null && > 0` check that gates the SQL
- * `__hdx_series_limit` CTE, the pie/bar `LIMIT`, and the chunked-ranking window.
+ * no limit. Gates the SQL `__hdx_series_limit` CTE, the pie/bar `LIMIT`, and the
+ * chunked-ranking window. Requires an INTEGER (matching the client-side
+ * resolveRenderedSeriesCap): a non-integer or non-finite value from the `Mixed`
+ * tiles field would otherwise pass this guard and bind as `{ Int32: 0.5 }`,
+ * failing the query, while the client half silently falls back to the default.
  */
 export function hasPositiveSeriesLimit(
   seriesLimit: number | null | undefined,
 ): seriesLimit is number {
-  return seriesLimit != null && seriesLimit > 0;
+  return (
+    seriesLimit != null && Number.isInteger(seriesLimit) && seriesLimit > 0
+  );
 }
 
 export const isBrowser: boolean =

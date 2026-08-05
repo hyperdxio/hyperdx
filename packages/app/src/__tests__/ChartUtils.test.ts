@@ -974,11 +974,12 @@ describe('ChartUtils', () => {
       expect(keptKeys.has(`g2${PREVIOUS_SUFFIX}`)).toBe(false);
     });
 
-    it('keeps previous-only comparison groups rather than dropping them', () => {
-      // Independently-ranked comparison queries can return a previous-period
-      // group (g3) that the current period doesn't. Ranking excludes it so it
-      // can't evict a current-period series, but it must still be kept — not
-      // silently dropped — and it must not be counted as hidden.
+    it('gives current-period groups priority but still bounds the total by the cap', () => {
+      // A high-peak previous-only group (g3) must NOT evict a current-period
+      // series, and previous-only groups must still count toward the cap so a
+      // disjoint comparison result can't exceed maxSeries. Current: g0,g1,g2;
+      // previous adds g3 (peak 999). Cap 2 -> current priority keeps g0,g1;
+      // g2 and g3 both drop; hidden = 4 total groups - 2 = 2.
       const PREVIOUS_SUFFIX = ' (previous)';
       const meta = [
         { name: 'value', type: 'Float64' },
@@ -986,14 +987,11 @@ describe('ChartUtils', () => {
         { name: '__hdx_time_bucket', type: 'DateTime' },
       ];
       const bucket = '2025-11-26T11:12:00Z';
-      // Current period: 3 groups, cap to 2 -> g2 (lowest peak) is hidden.
       const currentData = [
         { value: 30, group: 'g0', __hdx_time_bucket: bucket },
         { value: 20, group: 'g1', __hdx_time_bucket: bucket },
         { value: 10, group: 'g2', __hdx_time_bucket: bucket },
       ];
-      // Previous period includes g3, which never appears in the current period,
-      // and has a high peak that would have won a slot if it were rankable.
       const previousData = [
         { value: 29, group: 'g0', __hdx_time_bucket: bucket },
         { value: 19, group: 'g1', __hdx_time_bucket: bucket },
@@ -1013,14 +1011,95 @@ describe('ChartUtils', () => {
       });
 
       const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
-      // Current-period top-2 kept with their twins; g2 hidden.
+      // Current-period top-2 kept with their previous twins.
       expect(keptKeys.has('g0')).toBe(true);
       expect(keptKeys.has('g1')).toBe(true);
+      // g3's peak of 999 did NOT evict a current-period series...
+      expect(keptKeys.has(`g3${PREVIOUS_SUFFIX}`)).toBe(false);
+      // ...and the lowest current group is dropped too.
       expect(keptKeys.has('g2')).toBe(false);
-      // The previous-only group survives despite not being rankable, and its
-      // high peak did NOT evict a current-period series.
+      // Total is bounded: 4 logical groups, cap 2 -> 2 hidden (g2 + g3).
+      expect(actual.hiddenSeriesCount).toBe(2);
+    });
+
+    it('keeps a previous-only group when there is room under the cap', () => {
+      // Current: g0,g1. Previous adds g3. 3 logical groups, cap 3 -> nothing
+      // hidden, and the previous-only g3 survives rather than being dropped.
+      const PREVIOUS_SUFFIX = ' (previous)';
+      const meta = [
+        { name: 'value', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      const bucket = '2025-11-26T11:12:00Z';
+      const currentData = [
+        { value: 30, group: 'g0', __hdx_time_bucket: bucket },
+        { value: 20, group: 'g1', __hdx_time_bucket: bucket },
+      ];
+      const previousData = [
+        { value: 29, group: 'g0', __hdx_time_bucket: bucket },
+        { value: 5, group: 'g3', __hdx_time_bucket: bucket },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data: currentData, meta },
+        previousPeriodResponse: { data: previousData, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: 3,
+      });
+
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      expect(keptKeys.has('g0')).toBe(true);
+      expect(keptKeys.has('g1')).toBe(true);
       expect(keptKeys.has(`g3${PREVIOUS_SUFFIX}`)).toBe(true);
-      // Only the current-period overflow (g2) is reported hidden.
+      expect(actual.hiddenSeriesCount).toBe(0);
+    });
+
+    it('caps by group so all value columns of a kept group survive together', () => {
+      // Two value columns (avg + max) with a group-by: each group yields one
+      // series per value column, keyed `<valueColumn> · <group>`. max >> avg in
+      // magnitude, so ranking each key independently by peak would keep the two
+      // max series and evict BOTH avg series. Capping by GROUP must instead keep
+      // both value columns of the surviving groups together.
+      const meta = [
+        { name: 'avg', type: 'Float64' },
+        { name: 'max', type: 'Float64' },
+        { name: 'group', type: 'String' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ];
+      const bucket = '2025-11-26T11:12:00Z';
+      // 3 groups, cap to 2 logical groups -> g2 (lowest) hidden.
+      const data = [
+        { avg: 30, max: 300, group: 'g0', __hdx_time_bucket: bucket },
+        { avg: 20, max: 200, group: 'g1', __hdx_time_bucket: bucket },
+        { avg: 10, max: 100, group: 'g2', __hdx_time_bucket: bucket },
+      ];
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: { data, meta },
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:13:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        maxSeries: 2,
+      });
+
+      const keptKeys = new Set(actual.lineData.map(l => l.dataKey));
+      // Both value columns of the two kept groups survive together.
+      expect(keptKeys.has('avg · g0')).toBe(true);
+      expect(keptKeys.has('max · g0')).toBe(true);
+      expect(keptKeys.has('avg · g1')).toBe(true);
+      expect(keptKeys.has('max · g1')).toBe(true);
+      // The whole g2 group is dropped (both columns), and counted once.
+      expect(keptKeys.has('avg · g2')).toBe(false);
+      expect(keptKeys.has('max · g2')).toBe(false);
       expect(actual.hiddenSeriesCount).toBe(1);
     });
   });

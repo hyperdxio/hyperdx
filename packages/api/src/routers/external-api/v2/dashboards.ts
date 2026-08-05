@@ -838,12 +838,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         limit:
  *           type: integer
- *           minimum: 1
+ *           minimum: 0
  *           description: >
  *             Maximum number of slices (SQL LIMIT). Without a custom "orderBy"
  *             the query keeps the groups with the largest aggregated values;
  *             with an "orderBy" it keeps the first slices in that order. Omit
- *             to fetch all groups.
+ *             or set 0 to fetch all groups.
  *           example: 10
  *
  *     CategoricalBarBuilderChartConfig:
@@ -891,12 +891,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         limit:
  *           type: integer
- *           minimum: 1
+ *           minimum: 0
  *           description: >
  *             Maximum number of bars (SQL LIMIT). Without a custom "orderBy"
  *             the query keeps the groups with the largest aggregated values;
- *             with an "orderBy" it keeps the first bars in that order. Omit to
- *             fetch all groups.
+ *             with an "orderBy" it keeps the first bars in that order. Omit or
+ *             set 0 to fetch all groups.
  *           example: 10
  *
  *     HeatmapSelectItem:

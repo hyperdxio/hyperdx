@@ -565,9 +565,16 @@ function DBTimeChartComponent({
         // to seriesLimit, so this is a no-op there; on raw SQL it's the only
         // cardinality guard. "Load all" is bounded (not truly unlimited) so a
         // runaway high-cardinality result can't exhaust browser memory; drawn
-        // lines stay capped at HARD_LINES_LIMIT either way.
+        // lines stay capped at HARD_LINES_LIMIT either way. Take the max of the
+        // bound and the tile's own cap so load-all can only ever RAISE the
+        // rendered count — never reduce it when a tile's seriesLimit already
+        // exceeds the bound. (A `0`/unlimited tile shows no affordance, so the
+        // Infinity case is unreachable here.)
         maxSeries: showAllSeries
-          ? MAX_LOADABLE_TIME_CHART_SERIES
+          ? Math.max(
+              MAX_LOADABLE_TIME_CHART_SERIES,
+              resolveRenderedSeriesCap(config.seriesLimit),
+            )
           : resolveRenderedSeriesCap(config.seriesLimit),
       });
       return {
