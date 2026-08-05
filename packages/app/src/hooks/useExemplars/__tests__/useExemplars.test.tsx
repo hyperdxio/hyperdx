@@ -57,6 +57,10 @@ jest.mock('@/source', () => ({
   getDurationMsExpression: jest.fn().mockReturnValue('Duration / 1e6'),
 }));
 
+const NEVER_SETTLES = () => {
+  // Deliberately never resolves or rejects.
+};
+
 describe('normalizePrometheusExemplars', () => {
   it('returns [] for undefined/empty input', () => {
     expect(normalizePrometheusExemplars(undefined).exemplars).toEqual([]);
@@ -522,7 +526,10 @@ describe('useExemplars', () => {
     // fetch sits behind an await either way — the whole block passed with the
     // `enabled` gate hardcoded to true. So every case now flushes the microtask
     // queue first, and a control case proves the harness does fetch when it should.
-    const flush = () => act(async () => {});
+    const flush = () =>
+      act(async () => {
+        // Nothing to do — awaiting the act() is the point.
+      });
 
     const renderGated = async (
       config: Parameters<typeof useExemplars>[0],
@@ -635,7 +642,8 @@ describe('useExemplars', () => {
       await waitFor(() => expect(result.current.exemplars).toHaveLength(1));
 
       // Same chart, later window: the markers should survive the refetch.
-      mockQuery.mockImplementation(() => new Promise(() => {}));
+      // A promise that never settles: the query is in flight for good.
+      mockQuery.mockImplementation(() => new Promise(NEVER_SETTLES));
       rerender({
         config: {
           ...histogramConfig,
@@ -658,7 +666,8 @@ describe('useExemplars', () => {
 
       // A different chart (its filter changed, so it plots different data): the
       // previous chart's traces must not be shown here.
-      mockQuery.mockImplementation(() => new Promise(() => {}));
+      // A promise that never settles: the query is in flight for good.
+      mockQuery.mockImplementation(() => new Promise(NEVER_SETTLES));
       rerender({
         config: {
           ...histogramConfig,
