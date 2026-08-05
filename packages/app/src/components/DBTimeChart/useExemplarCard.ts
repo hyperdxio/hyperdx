@@ -43,6 +43,7 @@ export function useExemplarCard({
   queriedConfig,
   source,
   displayType,
+  isPlotRendered,
   plottedSeriesCount,
 }: {
   queriedConfig: ChartConfigWithDateRange;
@@ -53,6 +54,13 @@ export function useExemplarCard({
    * card would be left over markers that no longer exist.
    */
   displayType: DisplayType | undefined;
+  /**
+   * Whether the chart is currently drawing its plot. False for the loading,
+   * error and empty states, which replace the whole subtree — so the marker layer
+   * unmounts, no marker can report a position, and a card left open would come
+   * back anchored to coordinates from the previous chart instance.
+   */
+  isPlotRendered: boolean;
   /** Series the chart actually draws; see useExemplars for why it matters. */
   plottedSeriesCount?: number;
 }) {
@@ -163,7 +171,16 @@ export function useExemplarCard({
   // zoom inside the 30s bucket moved the markers and left the cards behind) and
   // in the wrong place.
 
-  // Clear both cards before the chart subtree remounts on a display-type switch.
+  // Clear both cards whenever the marker layer goes away: a display-type switch
+  // remounts the recharts subtree (Area and Bar are different element types), and
+  // the loading, error and empty states replace it outright. In every case the
+  // markers a card was anchored to no longer exist.
+  useEffect(() => {
+    if (isPlotRendered) return;
+    setPinnedExemplar(null);
+    setHoveredExemplar(null);
+  }, [isPlotRendered]);
+
   useEffect(() => {
     setPinnedExemplar(null);
     setHoveredExemplar(null);

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
-import { act } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import { act, render } from '@testing-library/react';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import type { ExemplarHoverCard } from '@/components/Exemplars';
@@ -292,6 +293,67 @@ describe('DBTimeChart exemplar pin lifecycle', () => {
 
       expect(cardProps().hovered).toBeNull();
       expect(cardProps().pinned).toBe(false);
+    });
+  });
+
+  // Loading, error and empty states replace the whole subtree, so the marker layer
+  // unmounts and nothing can report a position. A card left open through that
+  // comes back anchored to the previous chart instance's coordinates.
+  describe('the plot going away', () => {
+    const setQueryState = (state: Record<string, unknown>) =>
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: [{ timestamp: '2024-01-01 00:00:00', value: 100 }],
+          meta: [
+            { name: 'timestamp', type: 'DateTime' },
+            { name: 'value', type: 'Float64' },
+          ],
+          rows: 1,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        ...state,
+      });
+
+    // `wrapper` rather than renderWithMantine: it keeps the provider outside the
+    // rerendered element, so the chart stays at the same tree position and keeps
+    // its state. A rerender that remounts it would clear the card by itself and
+    // let these pass with the cleanup removed.
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MantineProvider>{children}</MantineProvider>
+    );
+
+    it.each([
+      ['an error', { isError: true, error: new Error('boom') }],
+      ['no data in range', { data: { data: [], meta: [], rows: 0 } }],
+    ])('does not restore a pinned card after %s', (_label, state) => {
+      const { rerender } = render(<DBTimeChart config={config} />, { wrapper });
+      pin();
+      expect(cardProps().pinned).toBe(true);
+
+      // The plot goes away. The card unmounts with it, so nothing renders and
+      // nothing can report a marker position.
+      setQueryState(state);
+      act(() => {
+        // A fresh object each time: DBTimeChart is memo'd, so reusing the same
+        // config reference would skip the re-render entirely.
+        rerender(<DBTimeChart config={{ ...config }} />);
+      });
+      const rendersWhileGone = mockCard.mock.calls.length;
+
+      // And comes back. Without the cleanup the card returns still pinned, at
+      // the coordinates it had before the chart was torn down.
+      setQueryState({});
+      act(() => {
+        rerender(<DBTimeChart config={{ ...config }} />);
+      });
+
+      expect(mockCard.mock.calls.length).toBeGreaterThan(rendersWhileGone);
+      expect(cardProps().pinned).toBe(false);
+      expect(cardProps().hovered).toBeNull();
     });
   });
 
