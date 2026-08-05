@@ -383,10 +383,33 @@ describe('determineTier', () => {
     });
 
     it('release branch carrying real source code is NOT short-circuited', () => {
-      assert.equal(classify('github-actions', 'changeset-release/main', [
+      // Deliberately non-critical code: an auth.ts case would pass even if the
+      // release guard were deleted, since auth is Tier 4 either way.
+      assert.notEqual(classify('github-actions', 'changeset-release/main', [
         makeFile('packages/otel-collector/package.json', 1, 1),
-        makeFile('packages/api/src/middleware/auth.ts', 40, 10),  // not a release artifact
-      ]), 4);
+        makeFile('packages/app/src/App.tsx', 600, 300),  // not a release artifact
+      ]), 1);
+    });
+
+    it('github-actions gets no blanket bot escape — only the release path', () => {
+      // .github/workflows/claude.yml runs with secrets.GITHUB_TOKEN, so PRs the
+      // agent opens are authored by github-actions. A blanket bot escape would
+      // drop a 900-line agent PR to Tier 1 auto-merge.
+      const files = [makeFile('packages/app/src/App.tsx', 600, 300)];
+      assert.equal(classify('github-actions', 'chore/codegen', files), 3);
+      assert.equal(classify('github-actions[bot]', 'chore/codegen', files), 3);
+      assert.equal(
+        classify('github-actions', 'chore/codegen', files),
+        classify('alice', 'chore/codegen', files),
+        'a bot-authored PR must tier the same as the identical human one'
+      );
+    });
+
+    it('dependabot keeps its blanket escape', () => {
+      assert.equal(classify('dependabot[bot]', 'dependabot/npm/lodash', [
+        makeFile('package.json', 5, 3),
+        makeFile('packages/api/package.json', 2, 2),
+      ]), 1);
     });
 
     it('release-artifact files outside a release branch classify normally', () => {
@@ -590,6 +613,25 @@ describe('determineTier', () => {
         makeFile('packages/api/src/routers/external-api/v2/alerts.ts', 7, 3),
         makeFile('packages/api/src/services/alerts.ts', 12, 4),     // PR #2595 pattern
       ]), 3);
+    });
+
+    it('grazing counts churn in buckets excluded from prodLines', () => {
+      // Workflows, Actions scripts and hdx-eval are excluded from prodLines for
+      // tiering, but they are still code a reviewer has to read — they must not
+      // let a large PR pass itself off as a graze.
+      assert.equal(classify('alice', 'infra/ch-and-ci', [
+        makeFile('docker/clickhouse/local/users.xml', 3, 2),
+        makeFile('.github/workflows/deploy-staging.yml', 700, 0),
+      ]), 4);
+      assert.equal(classify('alice', 'feat/evals-and-config', [
+        makeFile('packages/api/src/config.ts', 3, 2),
+        makeFile('packages/hdx-eval/src/big.ts', 5000, 0),
+      ]), 4);
+      // Lockfile churn is unreadable and does not count against a graze
+      assert.equal(classify('alice', 'chore/bump', [
+        makeFile('packages/api/src/config.ts', 3, 2),
+        makeFile('yarn.lock', 4000, 3000),
+      ]), 2);
     });
 
     it('grazing stops at the bounds — either bound alone is not enough', () => {
@@ -818,6 +860,28 @@ describe('buildTierComment', () => {
       buildTierComment(2, agent).replace(/claude\/thing/g, 'feat/thing'),
       buildTierComment(2, base)
     );
+  });
+
+  it('does not call a workflow-only Tier 4 PR "docs / images / lock files"', () => {
+    // main.yml is both trivial and infra-critical, so allFilesTrivial is true
+    // while the PR escalates on pipeline churn. The two must not both render.
+    const infraCriticalFiles = [makeFile('.github/workflows/main.yml', 30, 5)];
+    const body = buildTierComment(4, makeSignals({
+      criticalFiles: infraCriticalFiles,
+      infraCriticalFiles,
+      infraCriticalLines: 35,
+      infraCriticalEscalates: true,
+      allFilesTrivial: true,
+      prodFiles: [],
+      prodLines: 0,
+    }));
+    assert.ok(body.includes('delivery pipeline substantially modified'));
+    assert.ok(!body.includes('All files are docs'), 'contradictory trigger must be suppressed');
+    assert.ok(body.includes('Critical-path lines changed: 35'), 'stats must not report 0 churn');
+  });
+
+  it('does not throw on a fixture claiming a graze with no core-critical files', () => {
+    assert.doesNotThrow(() => buildTierComment(2, makeSignals({ grazesCoreCritical: true })));
   });
 
   it('shows test line count in stats when non-zero', () => {
