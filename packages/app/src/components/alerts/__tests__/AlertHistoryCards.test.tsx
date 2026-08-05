@@ -10,6 +10,7 @@ import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import type { AlertsPageItem } from '@/types';
 
 const makeAlert = (history: AlertHistory[]): AlertsPageItem =>
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- partial test fixture
   ({
     _id: 'alert-1',
     interval: '5m',
