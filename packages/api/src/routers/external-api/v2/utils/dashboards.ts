@@ -1030,6 +1030,15 @@ function getMissingSources(
       if ('sourceId' in tile.config && tile.config.sourceId) {
         sourceIds.add(tile.config.sourceId);
       }
+      // The exemplar trace source is a source reference like any other. Without
+      // this it was only format-checked, so a well-formed id for a source that
+      // does not exist saved fine and left every marker's trace link dead.
+      if (
+        'exemplarTraceSourceId' in tile.config &&
+        tile.config.exemplarTraceSourceId
+      ) {
+        sourceIds.add(tile.config.exemplarTraceSourceId);
+      }
     }
 
     // Include source IDs referenced by OnClick link-outs (mode=id, type=search)
@@ -1181,6 +1190,38 @@ function filterChangedFormulaTiles(
     // Existing tile already carried these exact formulas. Re-check only
     // when the source changed.
     return existingConfig.source?.toString() !== tile.config.sourceId;
+  });
+}
+
+/**
+ * Returns exemplar trace-source IDs that exist but are not Trace sources.
+ *
+ * The MCP and OpenAPI descriptions both tell the caller this must be a Trace
+ * source; without a gate that was only a suggestion, and pointing it at a log or
+ * metric source saved a tile whose markers link nowhere. Mirrors the heatmap
+ * kind-gate above rather than inventing a second shape.
+ */
+function getInvalidExemplarTraceSources(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const traceSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      'exemplarTraceSourceId' in tile.config &&
+      tile.config.exemplarTraceSourceId
+    ) {
+      traceSourceIds.add(tile.config.exemplarTraceSourceId);
+    }
+  }
+  if (traceSourceIds.size === 0) return [];
+
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  return [...traceSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    // Absent ids are getMissingSources' business, and it runs first.
+    return source !== undefined && !isTraceSource(source);
   });
 }
 
@@ -1518,6 +1559,14 @@ export async function validateDashboardTiles(
     promqlLabelFilters.map(f => f.sourceId),
   );
   if (promqlLabelFilterError != null) return promqlLabelFilterError;
+
+  const invalidExemplarTraceSources = getInvalidExemplarTraceSources(
+    sources,
+    tiles,
+  );
+  if (invalidExemplarTraceSources.length > 0) {
+    return `exemplarTraceSourceId must reference a Trace source. The following source IDs are not Trace sources: ${invalidExemplarTraceSources.join(', ')}`;
+  }
 
   if (missingOnClickDashboards.length > 0) {
     return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
