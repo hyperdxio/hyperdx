@@ -155,6 +155,7 @@ jest.mock('@/useFormatTime', () => ({
 // which close over the `mock*` helpers declared at the top of this file.
 import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
+import { getRowLookupWindow } from '@/utils/rowTimestamps';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const ROOT_SOURCE = {
@@ -227,9 +228,12 @@ function pushedFrame() {
   return setterFor('sidePanelSourceStack').mock.calls[0][0][0];
 }
 
-function hourWindow(isoTimestamp: string) {
-  const ms = new Date(isoTimestamp).getTime();
-  return [new Date(ms - 60 * 60 * 1000), new Date(ms + 60 * 60 * 1000)];
+/**
+ * Delegates to the real helper: these tests assert the window reaches the
+ * lookup, while its bounds are pinned in `utils/__tests__/rowTimestamps.test.ts`.
+ */
+function lookupWindow(isoTimestamp: string) {
+  return getRowLookupWindow(isoTimestamp);
 }
 
 describe('DBRowSidePanelInner, "View Trace" row lookup time filter', () => {
@@ -347,15 +351,32 @@ describe('DBRowSidePanelInner, "View Trace" row lookup time filter', () => {
       mockQueryStore['sidePanelStackRoot'] = 'row-1';
     }
 
-    it('bounds the lookup to a 1h window around the frame timestamp', () => {
+    it('bounds the lookup to a window around the frame timestamp', () => {
       seedFrame({ focusTimestamp: TIMESTAMP_VALUE });
 
       renderInner('row-1');
 
       expect(lastRowDataArgs()).toMatchObject({
         rowId: TRACE_SPAN_ROW_ID,
-        dateRange: hourWindow(TIMESTAMP_VALUE),
+        dateRange: lookupWindow(TIMESTAMP_VALUE),
       });
+    });
+
+    // Regression: the window is anchored on the origin log but filtered against
+    // the destination span's *start*, so a symmetric hour excluded any span that
+    // ran longer than that and logged late in its life.
+    it('reaches back past the start of a long-running span', () => {
+      const spanStart = new Date('2024-05-01T08:50:00.000Z');
+      // 70 minutes into the span — outside a symmetric hour around the log.
+      seedFrame({ focusTimestamp: TIMESTAMP_VALUE });
+
+      renderInner('row-1');
+
+      const [start, end] = lastRowDataArgs().dateRange;
+      expect(start.getTime()).toBeLessThan(spanStart.getTime());
+      expect(end.getTime()).toBeGreaterThan(
+        new Date(TIMESTAMP_VALUE).getTime(),
+      );
     });
 
     // The tab panels re-run the same lookup; an unbounded copy in one of them
@@ -374,7 +395,7 @@ describe('DBRowSidePanelInner, "View Trace" row lookup time filter', () => {
       renderInner('row-1');
 
       expect(getSpy()).toHaveBeenCalledWith(
-        expect.objectContaining({ dateRange: hourWindow(TIMESTAMP_VALUE) }),
+        expect.objectContaining({ dateRange: lookupWindow(TIMESTAMP_VALUE) }),
       );
     });
 

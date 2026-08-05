@@ -1,6 +1,9 @@
 import {
+  getRowLookupWindow,
   getTimestampValueSelects,
   resolveRowTimestampAnchor,
+  ROW_LOOKUP_WINDOW_LEAD_HOURS,
+  ROW_LOOKUP_WINDOW_LOOKBACK_HOURS,
   timestampValueAlias,
 } from '@/utils/rowTimestamps';
 
@@ -212,5 +215,43 @@ describe('resolveRowTimestampAnchor', () => {
     ],
   ])('returns undefined when %s', (_label, args) => {
     expect(resolveRowTimestampAnchor(args)).toBeUndefined();
+  });
+});
+
+describe('getRowLookupWindow', () => {
+  it('reaches further back than forward', () => {
+    // The whole point of the window: the destination span starts at or before
+    // the origin log, so a symmetric window drops long-running spans.
+    expect(ROW_LOOKUP_WINDOW_LOOKBACK_HOURS).toBeGreaterThan(
+      ROW_LOOKUP_WINDOW_LEAD_HOURS,
+    );
+  });
+
+  it('spans 4h back and 1h forward from the anchor', () => {
+    expect(getRowLookupWindow('2024-05-02T12:00:00.000Z')).toEqual([
+      new Date('2024-05-02T08:00:00.000Z'),
+      new Date('2024-05-02T13:00:00.000Z'),
+    ]);
+  });
+
+  // A log emitted well into a long span is the case a symmetric hour missed.
+  it('covers a span that started hours before the log it anchors on', () => {
+    const spanStart = new Date('2024-05-02T09:00:00.000Z');
+    const logInstant = '2024-05-02T12:30:00.000Z';
+
+    const [start, end] = getRowLookupWindow(logInstant)!;
+
+    expect(start.getTime()).toBeLessThan(spanStart.getTime());
+    expect(end.getTime()).toBeGreaterThan(new Date(logInstant).getTime());
+  });
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['blank', '   '],
+    ['unparseable', 'not-a-timestamp'],
+  ])('returns undefined when the anchor is %s', (_label, focusTimestamp) => {
+    expect(getRowLookupWindow(focusTimestamp)).toBeUndefined();
   });
 });

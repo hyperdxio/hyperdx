@@ -154,7 +154,6 @@ describe('DBRowDataPanel', () => {
     });
 
     it('gives bounded and unbounded lookups of the same row different query keys', () => {
-      renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
       renderHook(() =>
         useRowData({
           source,
@@ -166,9 +165,162 @@ describe('DBRowDataPanel', () => {
         }),
       );
 
-      const [, unboundedOptions] = mockUseQueriedChartConfig.mock.calls[0];
-      const [, boundedOptions] = mockUseQueriedChartConfig.mock.calls[1];
-      expect(boundedOptions.queryKey).not.toEqual(unboundedOptions.queryKey);
+      const [, boundedOptions] = mockUseQueriedChartConfig.mock.calls[0];
+      const [, fallbackOptions] = mockUseQueriedChartConfig.mock.calls[1];
+      expect(boundedOptions.queryKey).not.toEqual(fallbackOptions.queryKey);
+    });
+  });
+
+  // A window derived from the origin row's instant but filtered against the
+  // destination's timestamp can exclude the row being looked up — a long span
+  // starts before a window centered on a log it emitted late in its life. Zero
+  // rows is a query success, so the lookup has to retry unbounded rather than
+  // report the row as missing.
+  describe('unbounded fallback', () => {
+    const DATE_RANGE: [Date, Date] = [
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-01T02:00:00Z'),
+    ];
+    const ROW = { __hdx_timestamp: '2024-01-01T01:00:00Z' };
+
+    function lookupResult(overrides: Record<string, unknown> = {}) {
+      return {
+        data: { data: [], meta: [], rows: 0, isComplete: true },
+        isLoading: false,
+        isPending: false,
+        isError: false,
+        isSuccess: true,
+        ...overrides,
+      };
+    }
+
+    // Dispatch on the query key rather than a call counter, so the mock is
+    // indifferent to how many times the hook renders. The unbounded lookup is
+    // the one whose key ends in `undefined` instead of the window.
+    function mockLookups({
+      bounded,
+      fallback,
+    }: {
+      bounded: ReturnType<typeof lookupResult>;
+      fallback: ReturnType<typeof lookupResult>;
+    }) {
+      mockUseQueriedChartConfig.mockImplementation((_config, options) =>
+        options.queryKey[options.queryKey.length - 1] === undefined
+          ? fallback
+          : bounded,
+      );
+    }
+
+    function renderLookup(dateRange?: [Date, Date]) {
+      return renderHook(() =>
+        useRowData({ source, rowId: "id='abc123'", dateRange }),
+      );
+    }
+
+    function enabledFlags() {
+      const [, boundedOptions] = mockUseQueriedChartConfig.mock.calls[0];
+      const [, fallbackOptions] = mockUseQueriedChartConfig.mock.calls[1];
+      return {
+        bounded: boundedOptions.enabled,
+        fallback: fallbackOptions.enabled,
+      };
+    }
+
+    it('does not run when the bounded lookup finds the row', () => {
+      mockLookups({
+        bounded: lookupResult({
+          data: { data: [ROW], meta: [], rows: 1, isComplete: true },
+        }),
+        fallback: lookupResult(),
+      });
+
+      const { result } = renderLookup(DATE_RANGE);
+
+      expect(enabledFlags()).toEqual({ bounded: true, fallback: false });
+      expect(result.current.data?.data).toEqual([ROW]);
+    });
+
+    it('runs when the bounded lookup comes back empty', () => {
+      mockLookups({ bounded: lookupResult(), fallback: lookupResult() });
+
+      renderLookup(DATE_RANGE);
+
+      expect(enabledFlags()).toEqual({ bounded: true, fallback: true });
+    });
+
+    it('serves the row the bounded lookup missed', () => {
+      mockLookups({
+        bounded: lookupResult(),
+        fallback: lookupResult({
+          data: { data: [ROW], meta: [], rows: 1, isComplete: true },
+        }),
+      });
+
+      const { result } = renderLookup(DATE_RANGE);
+
+      expect(result.current.data?.data).toEqual([ROW]);
+    });
+
+    // An error isn't evidence the row is outside the window, and retrying
+    // unbounded would hide it from `DBRowSidePanelErrorState`.
+    it('does not run when the bounded lookup errors', () => {
+      const error = new Error('boom');
+      mockLookups({
+        bounded: lookupResult({
+          data: undefined,
+          isSuccess: false,
+          isError: true,
+          error,
+        }),
+        fallback: lookupResult(),
+      });
+
+      const { result } = renderLookup(DATE_RANGE);
+
+      expect(enabledFlags()).toEqual({ bounded: true, fallback: false });
+      expect(result.current.isError).toBe(true);
+      expect(result.current.error).toBe(error);
+    });
+
+    it('is the only lookup that runs when there is no window', () => {
+      mockLookups({ bounded: lookupResult(), fallback: lookupResult() });
+
+      renderLookup();
+
+      expect(enabledFlags()).toEqual({ bounded: false, fallback: true });
+    });
+
+    // Otherwise the panel would flash an absent row between the bounded lookup
+    // settling empty and the retry resolving.
+    it('reports loading while in flight', () => {
+      mockLookups({
+        bounded: lookupResult(),
+        fallback: lookupResult({
+          data: undefined,
+          isSuccess: false,
+          isLoading: false,
+          isPending: true,
+        }),
+      });
+
+      const { result } = renderLookup(DATE_RANGE);
+
+      expect(result.current.isLoading).toBe(true);
+    });
+
+    // A chunked query publishes partial results as successes, so an empty
+    // first chunk must not read as "no such row".
+    it('does not run on an incomplete bounded result', () => {
+      mockLookups({
+        bounded: lookupResult({
+          data: { data: [], meta: [], rows: 0, isComplete: false },
+        }),
+        fallback: lookupResult(),
+      });
+
+      renderLookup(DATE_RANGE);
+
+      expect(enabledFlags()).toEqual({ bounded: true, fallback: false });
     });
   });
 

@@ -95,128 +95,164 @@ export function useRowData({
       ? source.knownColumnsListExpression?.trim()
       : undefined;
 
-  const queryResult = useQueriedChartConfig(
+  const baseConfig = {
+    connection: source.connection,
+    select: [
+      {
+        valueExpression: knownColumns || '*',
+      },
+      {
+        valueExpression: getDisplayedTimestampValueExpression(source),
+        alias: ROW_DATA_ALIASES.TIMESTAMP,
+      },
+      ...getTimestampValueSelects(timestampValueExpr),
+      ...(eventBodyExpr
+        ? [
+            {
+              valueExpression: eventBodyExpr,
+              alias: ROW_DATA_ALIASES.BODY,
+            },
+          ]
+        : []),
+      ...(searchedTraceIdExpr
+        ? [
+            {
+              valueExpression: searchedTraceIdExpr,
+              alias: ROW_DATA_ALIASES.TRACE_ID,
+            },
+          ]
+        : []),
+      ...(searchedSpanIdExpr
+        ? [
+            {
+              valueExpression: searchedSpanIdExpr,
+              alias: ROW_DATA_ALIASES.SPAN_ID,
+            },
+          ]
+        : []),
+      ...(severityTextExpr
+        ? [
+            {
+              valueExpression: severityTextExpr,
+              alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
+            },
+          ]
+        : []),
+      ...((isLogSource(source) || isTraceSource(source)) &&
+      source.serviceNameExpression
+        ? [
+            {
+              valueExpression: source.serviceNameExpression,
+              alias: ROW_DATA_ALIASES.SERVICE_NAME,
+            },
+          ]
+        : []),
+      ...('resourceAttributesExpression' in source &&
+      source.resourceAttributesExpression
+        ? [
+            {
+              valueExpression: source.resourceAttributesExpression,
+              alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
+            },
+          ]
+        : []),
+      ...((isLogSource(source) || isTraceSource(source)) &&
+      source.eventAttributesExpression
+        ? [
+            {
+              valueExpression: source.eventAttributesExpression,
+              alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
+        ? [
+            {
+              valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
+              alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
+            },
+            {
+              valueExpression: source.spanEventsValueExpression,
+              alias: ROW_DATA_ALIASES.SPAN_EVENTS,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.durationExpression
+        ? [
+            {
+              valueExpression: getDurationMsExpression(source),
+              alias: ROW_DATA_ALIASES.DURATION_MS,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.spanKindExpression
+        ? [
+            {
+              valueExpression: source.spanKindExpression,
+              alias: ROW_DATA_ALIASES.SPAN_KIND,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.spanLinksValueExpression
+        ? [
+            {
+              valueExpression: source.spanLinksValueExpression,
+              alias: ROW_DATA_ALIASES.SPAN_LINKS,
+            },
+          ]
+        : []),
+      ...selectHighlightedRowAttributes,
+    ],
+    where: rowId ?? '0=1',
+    from: source.from,
+    limit: { limit: 1 },
+    ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
+  };
+
+  const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
+  // Both halves of the filter are needed for `renderChartConfig` to emit one, so
+  // a source with no usable timestamp expression can't be bounded at all.
+  const hasWindow = dateRange != null && timestampValueExpr != null;
+
+  const boundedResult = useQueriedChartConfig(
     {
-      connection: source.connection,
-      select: [
-        {
-          valueExpression: knownColumns || '*',
-        },
-        {
-          valueExpression: getDisplayedTimestampValueExpression(source),
-          alias: ROW_DATA_ALIASES.TIMESTAMP,
-        },
-        ...getTimestampValueSelects(timestampValueExpr),
-        ...(eventBodyExpr
-          ? [
-              {
-                valueExpression: eventBodyExpr,
-                alias: ROW_DATA_ALIASES.BODY,
-              },
-            ]
-          : []),
-        ...(searchedTraceIdExpr
-          ? [
-              {
-                valueExpression: searchedTraceIdExpr,
-                alias: ROW_DATA_ALIASES.TRACE_ID,
-              },
-            ]
-          : []),
-        ...(searchedSpanIdExpr
-          ? [
-              {
-                valueExpression: searchedSpanIdExpr,
-                alias: ROW_DATA_ALIASES.SPAN_ID,
-              },
-            ]
-          : []),
-        ...(severityTextExpr
-          ? [
-              {
-                valueExpression: severityTextExpr,
-                alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
-              },
-            ]
-          : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.serviceNameExpression
-          ? [
-              {
-                valueExpression: source.serviceNameExpression,
-                alias: ROW_DATA_ALIASES.SERVICE_NAME,
-              },
-            ]
-          : []),
-        ...('resourceAttributesExpression' in source &&
-        source.resourceAttributesExpression
-          ? [
-              {
-                valueExpression: source.resourceAttributesExpression,
-                alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
-              },
-            ]
-          : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.eventAttributesExpression
-          ? [
-              {
-                valueExpression: source.eventAttributesExpression,
-                alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
-          ? [
-              {
-                valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
-                alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
-              },
-              {
-                valueExpression: source.spanEventsValueExpression,
-                alias: ROW_DATA_ALIASES.SPAN_EVENTS,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.durationExpression
-          ? [
-              {
-                valueExpression: getDurationMsExpression(source),
-                alias: ROW_DATA_ALIASES.DURATION_MS,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.spanKindExpression
-          ? [
-              {
-                valueExpression: source.spanKindExpression,
-                alias: ROW_DATA_ALIASES.SPAN_KIND,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.spanLinksValueExpression
-          ? [
-              {
-                valueExpression: source.spanLinksValueExpression,
-                alias: ROW_DATA_ALIASES.SPAN_LINKS,
-              },
-            ]
-          : []),
-        ...selectHighlightedRowAttributes,
-      ],
-      where: rowId ?? '0=1',
-      from: source.from,
-      limit: { limit: 1 },
-      ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
-      ...(dateRange && timestampValueExpr
+      ...baseConfig,
+      ...(hasWindow
         ? { dateRange, timestampValueExpression: timestampValueExpr }
         : {}),
     },
     {
-      queryKey: ['row_side_panel', rowId, aliasWith, source, dateRange],
-      enabled: rowId != null,
+      queryKey: [...baseQueryKey, dateRange],
+      enabled: rowId != null && hasWindow,
     },
   );
+
+  // The window may be derived from a *different* row than the one we're
+  // looking for (eg. looking up a span based on a log's timestamp). If the
+  // window excludes the row, the bounded query returns zero rows.
+  const isBoundedEmpty =
+    hasWindow &&
+    boundedResult.isSuccess &&
+    boundedResult.data?.isComplete !== false && // Defensive check against chunked queries
+    boundedResult.data?.data?.length === 0;
+
+  const isFallbackActive = !hasWindow || isBoundedEmpty;
+
+  // Key is identical to the unbounded config so this shares cache entries
+  // with the call sites that never pass a `dateRange`, letting the retry
+  // often resolve from cache instead of scanning.
+  const fallbackResult = useQueriedChartConfig(baseConfig, {
+    queryKey: [...baseQueryKey, undefined],
+    enabled: rowId != null && isFallbackActive,
+  });
+
+  const queryResult = isFallbackActive ? fallbackResult : boundedResult;
+
+  // The bounded result is known-empty by the time the retry is enabled, so
+  // report loading until it settles rather than briefly claiming the row is
+  // absent.
+  const isLoading =
+    queryResult.isLoading || (isBoundedEmpty && queryResult.isPending);
 
   // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
   const normalizedData = useMemo(() => {
@@ -248,6 +284,7 @@ export function useRowData({
   return {
     ...queryResult,
     data: normalizedData,
+    isLoading,
   };
 }
 

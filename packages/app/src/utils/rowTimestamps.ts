@@ -1,3 +1,4 @@
+import { add } from 'date-fns';
 import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   classifyTimestampType,
@@ -90,4 +91,40 @@ export function resolveRowTimestampAnchor({
   });
 
   return best?.date;
+}
+
+/**
+ * How far a cross-source row lookup's window reaches on either side of the
+ * origin row's instant.
+ *
+ * Asymmetric because the window is derived from the *origin* row's instant but
+ * filtered against the *destination* source's `timestampValueExpression`. The
+ * only push that carries an anchor today is "View Trace" (log → the span the log
+ * belongs to), and a span always starts at or before the logs that reference it
+ * while the traces schema's `Timestamp` is the span's *start* — so a symmetric
+ * window silently drops any span that ran longer than the window and logged late
+ * in its life. The lookback is therefore longer, and the lead only has to
+ * cover clock skew between the log and span emitters.
+ */
+export const ROW_LOOKUP_WINDOW_LOOKBACK_HOURS = 4;
+export const ROW_LOOKUP_WINDOW_LEAD_HOURS = 1;
+
+/**
+ * Window to bound a cross-source row lookup by, given the origin row's instant.
+ * Returns undefined when focusTimestamp is not a valid date.
+ */
+export function getRowLookupWindow(
+  focusTimestamp: string | null | undefined,
+): [Date, Date] | undefined {
+  if (!focusTimestamp?.trim()) {
+    return undefined;
+  }
+  const focus = new Date(focusTimestamp);
+  if (isNaN(focus.getTime())) {
+    return undefined;
+  }
+  return [
+    add(focus, { hours: -ROW_LOOKUP_WINDOW_LOOKBACK_HOURS }),
+    add(focus, { hours: ROW_LOOKUP_WINDOW_LEAD_HOURS }),
+  ];
 }
