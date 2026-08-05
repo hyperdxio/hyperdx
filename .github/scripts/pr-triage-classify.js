@@ -117,11 +117,21 @@ const CROSS_LAYER_MIN_LINES = 100;
 // evidence as anyone else's — what the diff touches and how big it is. Keying off
 // a `claude/` prefix only penalised the tools that advertise themselves, while
 // equally agent-written `cursor/` branches sailed past.
-const BOT_AUTHORS = [
-  'dependabot', 'dependabot[bot]',
-  'github-actions', 'github-actions[bot]',
-];
+// Authors whose PRs are trivial by construction — a dependency bump is a
+// lockfile and a manifest, whatever its line count.
+const BOT_AUTHORS = ['dependabot', 'dependabot[bot]'];
+
+// The account the changesets action runs as. Deliberately NOT in BOT_AUTHORS:
+// `github-actions` also authors every PR opened by .github/workflows/claude.yml,
+// which runs with secrets.GITHUB_TOKEN. A blanket bot escape here would drop
+// agent-authored PRs of any size straight to Tier 1. Only the narrow
+// release-artifact path below short-circuits for this account.
+const RELEASE_BOT_AUTHORS = ['github-actions', 'github-actions[bot]'];
 const RELEASE_BRANCH_PREFIX = 'changeset-release/';
+
+// Lockfiles are enormous and unreadable; they never count toward "how much is
+// there to review".
+const LOCKFILE_PATTERN = /^(yarn\.lock|package-lock\.json)$/;
 
 const TIER_LABELS = {
   1: { name: 'review/tier-1', color: '0E8A16', description: 'Trivial — auto-merge candidate once CI passes' },
@@ -217,12 +227,24 @@ function computeSignals(pr, filesRes) {
   const coreCriticalLines  = churn(coreCriticalFiles);
   const infraCriticalLines = churn(infraCriticalFiles);
 
+  // Everything a reviewer actually has to read. Unlike prodLines this keeps
+  // workflows, Actions scripts and internal-tooling packages in: they are
+  // excluded from tiering but are still real code, and a five-line config.ts
+  // edit shipped alongside 5000 lines of hdx-eval is not a PR that merely
+  // grazes anything.
+  const reviewableLines = churn(
+    criticalCandidates.filter(f => !LOCKFILE_PATTERN.test(f.filename))
+  );
+
   // A small edit to a core-critical path inside an otherwise small PR reviews
-  // like any other small change, so let it fall through to normal sizing.
+  // like any other small change, so let it fall through to normal sizing. Both
+  // size bounds are checked so neither a large excluded bucket nor a large
+  // production diff can sneak through.
   const grazesCoreCritical =
     coreCriticalFiles.length > 0 &&
     coreCriticalLines <= CORE_CRITICAL_GRAZE_LINES &&
-    prodLines <= GRAZE_MAX_PROD_LINES;
+    prodLines <= GRAZE_MAX_PROD_LINES &&
+    reviewableLines <= GRAZE_MAX_PROD_LINES;
 
   const infraCriticalEscalates = infraCriticalLines >= INFRA_CRITICAL_MIN_LINES;
 
@@ -239,7 +261,7 @@ function computeSignals(pr, filesRes) {
   // on the entire file set, so real code pushed onto a release branch still
   // classifies on its merits.
   const isReleaseArtifactPR =
-    isBotAuthor &&
+    (isBotAuthor || RELEASE_BOT_AUTHORS.includes(author)) &&
     branchName.startsWith(RELEASE_BRANCH_PREFIX) &&
     filesRes.length > 0 &&
     filesRes.every(f => isReleaseArtifactFile(f.filename));
@@ -265,7 +287,8 @@ function computeSignals(pr, filesRes) {
     author, branchName,
     prodFiles, prodLines, testLines,
     criticalFiles, securityCriticalFiles, coreCriticalFiles, infraCriticalFiles,
-    coreCriticalLines, infraCriticalLines, grazesCoreCritical, infraCriticalEscalates,
+    coreCriticalLines, infraCriticalLines, reviewableLines,
+    grazesCoreCritical, infraCriticalEscalates,
     internalToolingFiles,
     isBotAuthor, allFilesTrivial, isReleaseArtifactPR,
     touchesApiModels, touchesFrontend, touchesBackend, touchesSharedUtils,
@@ -323,6 +346,7 @@ function buildTierComment(tier, signals) {
 
   const info = TIER_INFO[tier];
   const fileList = files => files.map(f => `    - \`${f.filename}\``).join('\n');
+  const criticalChurn = criticalFiles.reduce((sum, f) => sum + f.additions + f.deletions, 0);
 
   // Assembles the final body from whatever `triggers` and `contextSignals` hold
   // at call time, so an early return can skip the context block.
@@ -341,6 +365,10 @@ function buildTierComment(tier, signals) {
     '',
     `- Production files changed: ${prodFiles.length}`,
     `- Production lines changed: ${prodLines}${testLines > 0 ? ` (+ ${testLines} in test files, excluded from tier calculation)` : ''}`,
+    // Workflow files are both trivial and infra-critical, so a PR can escalate
+    // on churn that never reaches prodLines. Show it rather than report 0.
+    ...(criticalChurn > 0 && criticalChurn !== prodLines
+      ? [`- Critical-path lines changed: ${criticalChurn}`] : []),
     `- Branch: \`${branchName}\``,
     `- Author: ${author}`,
     '',
@@ -370,7 +398,12 @@ function buildTierComment(tier, signals) {
     triggers.push(`**Diff size**: ${prodLines} production lines changed (Tier 2 max: < ${TIER2_MAX_LINES})`);
   }
   if (isBotAuthor && !isReleaseArtifactPR) triggers.push(`**Bot author**: \`${author}\``);
-  if (allFilesTrivial && !isBotAuthor) triggers.push('**All files are docs / images / lock files**');
+  // Guarded on criticalFiles: a workflow file is both trivial and infra-critical,
+  // so without this a main.yml rewrite claimed to be "docs / images / lock files"
+  // in the same breath as escalating on 35 lines of pipeline churn.
+  if (allFilesTrivial && !isBotAuthor && criticalFiles.length === 0) {
+    triggers.push('**All files are docs / images / lock files**');
+  }
   if (isCrossLayer) {
     const layers = [
       touchesFrontend    && 'frontend (`packages/app`)',
@@ -390,8 +423,8 @@ function buildTierComment(tier, signals) {
   // for automated releases, where none of it is actionable.
   const contextSignals = [];
   if (isReleaseArtifactPR) return render();
-  if (grazesCoreCritical) {
-    contextSignals.push(`grazes a critical path (${coreCriticalLines} lines in \`${coreCriticalFiles[0].filename}\`) but the whole PR is only ${prodLines} production lines, so it is tiered on size`);
+  if (grazesCoreCritical && coreCriticalFiles.length > 0) {
+    contextSignals.push(`grazes a critical path (${coreCriticalLines} lines in \`${coreCriticalFiles[0].filename}\`) inside a ${prodLines}-line PR, so it is tiered on size`);
   }
   if (infraCriticalFiles.length > 0 && !infraCriticalEscalates) {
     contextSignals.push(`touches background tasks or the delivery pipeline lightly (${infraCriticalLines} lines, under the ${INFRA_CRITICAL_MIN_LINES}-line bar for Tier 4)`);
