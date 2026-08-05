@@ -44,6 +44,34 @@ describe('utils/externalApi', () => {
 
       expect(translated.scheduleStartAt).toBeUndefined();
     });
+
+    it('returns silencedGroups with stringified ids and iso timestamps', () => {
+      const silencedAt = new Date('2026-07-07T08:00:00.000Z');
+      const silencedUntil = new Date('2026-07-07T09:00:00.000Z');
+      const by = new Types.ObjectId();
+
+      const alert = createAlertDocument({
+        silencedGroups: [
+          {
+            group: 'service:api',
+            by,
+            at: silencedAt,
+            until: silencedUntil,
+          },
+        ],
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.silencedGroups).toEqual([
+        {
+          group: 'service:api',
+          by: by.toString(),
+          at: silencedAt.toISOString(),
+          until: silencedUntil.toISOString(),
+        },
+      ]);
+    });
   });
 
   describe('note handling', () => {

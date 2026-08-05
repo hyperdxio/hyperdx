@@ -183,14 +183,13 @@ function AlertErrorsIndicator({ alert }: { alert: AlertsPageItem }) {
   );
 }
 
-export function AlertHistoryCardList({
-  alert,
+export function AlertHistoryCardStack({
   alertUrl,
+  history,
 }: {
-  alert: AlertsPageItem;
   alertUrl?: string;
+  history: AlertHistory[];
 }) {
-  const { history } = alert;
   const items = React.useMemo(() => {
     if (history.length < HISTORY_ITEMS) {
       return history;
@@ -205,28 +204,36 @@ export function AlertHistoryCardList({
     return new Array(HISTORY_ITEMS - history.length).fill(null);
   }, [history]);
 
+  if (items.length === 0) return null;
+
+  return (
+    <div className={styles.historyCardWrapper}>
+      {paddingItems.map((_, index) => (
+        <Tooltip label="No data" withArrow key={index}>
+          <div className={styles.historyCard} />
+        </Tooltip>
+      ))}
+      {items
+        .slice()
+        .reverse()
+        .map((history, index) => (
+          <AlertHistoryCard key={index} history={history} alertUrl={alertUrl} />
+        ))}
+    </div>
+  );
+}
+
+export function AlertHistoryCardList({
+  alert,
+  alertUrl,
+}: {
+  alert: AlertsPageItem;
+  alertUrl?: string;
+}) {
   return (
     <Group gap="xs" wrap="nowrap">
       <AlertErrorsIndicator alert={alert} />
-      {items.length > 0 && (
-        <div className={styles.historyCardWrapper}>
-          {paddingItems.map((_, index) => (
-            <Tooltip label="No data" withArrow key={index}>
-              <div className={styles.historyCard} />
-            </Tooltip>
-          ))}
-          {items
-            .slice()
-            .reverse()
-            .map((history, index) => (
-              <AlertHistoryCard
-                key={index}
-                history={history}
-                alertUrl={alertUrl}
-              />
-            ))}
-        </div>
-      )}
+      <AlertHistoryCardStack history={alert.history} alertUrl={alertUrl} />
     </Group>
   );
 }

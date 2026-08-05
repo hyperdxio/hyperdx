@@ -19,6 +19,12 @@ type GroupedAlertHistory = {
   lastValues: IAlertHistory['lastValues'][];
 };
 
+type AlertGroupHistorySummary = {
+  group: string;
+  state: AlertState;
+  history: Omit<IAlertHistory, 'alert' | 'group'>[];
+};
+
 function groupStateToOverallState(states: string[]): AlertState {
   if (states.includes(AlertState.ALERT)) {
     return AlertState.ALERT;
@@ -42,6 +48,17 @@ function mapGroupedHistories(
       .flat()
       .sort((a, b) => a.startTime.getTime() - b.startTime.getTime()),
   }));
+}
+
+function mapHistoryEntry(
+  history: Pick<IAlertHistory, 'createdAt' | 'counts' | 'lastValues' | 'state'>,
+): Omit<IAlertHistory, 'alert' | 'group'> {
+  return {
+    createdAt: history.createdAt,
+    counts: history.counts,
+    lastValues: history.lastValues,
+    state: history.state,
+  };
 }
 
 /**
@@ -127,6 +144,82 @@ export async function getRecentAlertHistoriesBatch(
   return new Map(
     entries.filter(
       (e): e is [string, Omit<IAlertHistory, 'alert'>[]] => e !== undefined,
+    ),
+  );
+}
+
+export async function getRecentAlertGroupSummaries({
+  alertId,
+  interval,
+  limit,
+}: {
+  alertId: ObjectId;
+  interval: AlertInterval;
+  limit: number;
+}): Promise<AlertGroupHistorySummary[]> {
+  const lookbackMs = limit * ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
+
+  const histories = await AlertHistory.find({
+    alert: new ObjectId(alertId),
+    createdAt: { $gte: new Date(Date.now() - lookbackMs) },
+    group: { $type: 'string' },
+  })
+    .sort({ group: 1, createdAt: -1 })
+    .lean();
+
+  const groupedHistories = new Map<string, AlertGroupHistorySummary>();
+
+  for (const history of histories) {
+    const group = history.group;
+
+    if (group == null) {
+      continue;
+    }
+
+    const existing = groupedHistories.get(group);
+
+    if (existing == null) {
+      groupedHistories.set(group, {
+        group,
+        state: history.state,
+        history: [mapHistoryEntry(history)],
+      });
+      continue;
+    }
+
+    if (existing.history.length < limit) {
+      existing.history.push(mapHistoryEntry(history));
+    }
+  }
+
+  return Array.from(groupedHistories.values()).sort(
+    (a, b) =>
+      b.history[0]!.createdAt.getTime() - a.history[0]!.createdAt.getTime(),
+  );
+}
+
+export async function getRecentAlertGroupSummariesBatch(
+  alerts: { alertId: ObjectId; interval: AlertInterval }[],
+  limit: number,
+): Promise<Map<string, AlertGroupHistorySummary[]>> {
+  const queue = new PQueue({ concurrency: ALERT_HISTORY_QUERY_CONCURRENCY });
+
+  const entries = await Promise.all(
+    alerts.map(({ alertId, interval }) =>
+      queue.add(async () => {
+        const summaries = await getRecentAlertGroupSummaries({
+          alertId,
+          interval,
+          limit,
+        });
+        return [alertId.toString(), summaries] as const;
+      }),
+    ),
+  );
+
+  return new Map(
+    entries.filter(
+      (e): e is [string, AlertGroupHistorySummary[]] => e !== undefined,
     ),
   );
 }
