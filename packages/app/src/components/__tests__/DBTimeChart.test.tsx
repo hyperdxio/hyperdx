@@ -297,12 +297,23 @@ describe('DBTimeChart', () => {
         ).not.toBeInTheDocument();
       });
 
-      // Re-render with a brand-new object that is structurally identical (mimics
-      // the dashboard rebuilding the tile config inline on an unrelated render).
+      // Re-render with a brand-new object AND a genuinely shifted time window
+      // (a new dateRange, mimicking a live-range tick / zoom). dateRange is
+      // deliberately excluded from the shape identity, so the opt-in must
+      // survive — this also guards against dateRange being reintroduced into
+      // queryShapeIdentity, which would make live-range ticks re-cap the chart.
       rerender(
         <MantineProvider>
           <Notifications />
-          <DBTimeChart config={{ ...groupByConfig }} />
+          <DBTimeChart
+            config={{
+              ...groupByConfig,
+              dateRange: [new Date('2024-02-01'), new Date('2024-02-02')] as [
+                Date,
+                Date,
+              ],
+            }}
+          />
         </MantineProvider>,
       );
 

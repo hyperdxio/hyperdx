@@ -798,16 +798,33 @@ export function formatResponseForTimeChart({
   const groupKeyByDataKey = new Map<string, string>();
   const logicalSeriesKeys: string[] = [];
   const seenLogicalKeys = new Set<string>();
+  // Groups that have a current-period (non-dashed) entry. In comparison mode the
+  // current and previous periods are separate queries, each already trimmed to
+  // its own top-N by the SQL CTE, so their kept sets can differ. Rank only the
+  // current-period set so a previous-only group can't evict a current-period
+  // series the query explicitly selected (its dashed twin still rides along via
+  // the shared currentPeriodKey). Falls back to all groups when there is no
+  // current-period entry (e.g. a previous-only edge case).
+  const currentPeriodGroupKeys = new Set<string>();
   for (const line of sortedLineData) {
     groupKeyByDataKey.set(line.dataKey, line.currentPeriodKey);
     if (!seenLogicalKeys.has(line.currentPeriodKey)) {
       seenLogicalKeys.add(line.currentPeriodKey);
       logicalSeriesKeys.push(line.currentPeriodKey);
     }
+    if (!line.isDashed) {
+      currentPeriodGroupKeys.add(line.currentPeriodKey);
+    }
   }
 
-  if (logicalSeriesKeys.length > maxSeries) {
-    hiddenSeriesCount = logicalSeriesKeys.length - maxSeries;
+  // Rank the current-period groups when any exist; otherwise fall back to all.
+  const rankableKeys =
+    currentPeriodGroupKeys.size > 0
+      ? logicalSeriesKeys.filter(key => currentPeriodGroupKeys.has(key))
+      : logicalSeriesKeys;
+
+  if (rankableKeys.length > maxSeries) {
+    hiddenSeriesCount = rankableKeys.length - maxSeries;
 
     // Peak absolute value per logical series. Iterate only each bucket's
     // populated cells so sparse results cost O(populated cells), not
@@ -832,7 +849,7 @@ export function formatResponseForTimeChart({
 
     // Sort by peak desc; index tiebreak keeps the log-level color ordering.
     const keptGroups = new Set(
-      logicalSeriesKeys
+      rankableKeys
         .map((groupKey, index) => ({ groupKey, index }))
         .sort((a, b) => {
           const diff =
@@ -906,6 +923,14 @@ export function formatResponseForTimeChart({
 
   const sortedLineDataWithColors = setLineColors(sortedLineData);
 
+  // Count of LOGICAL series actually rendered (distinct currentPeriodKey), in
+  // the same unit as hiddenSeriesCount — so a comparison chart, whose lineData
+  // holds two entries (current + previous) per logical series, isn't double
+  // counted in the hidden-series notice.
+  const renderedSeriesCount = new Set(
+    sortedLineDataWithColors.map(line => line.currentPeriodKey),
+  ).size;
+
   return {
     graphResults,
     timestampColumn,
@@ -914,6 +939,7 @@ export function formatResponseForTimeChart({
     valueColumns: valueColumns.map(v => v.name),
     isSingleValueColumn,
     hiddenSeriesCount,
+    renderedSeriesCount,
   };
 }
 

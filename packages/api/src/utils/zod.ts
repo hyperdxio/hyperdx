@@ -268,7 +268,9 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
-    seriesLimit: z.number().int().positive().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -283,7 +285,9 @@ const externalDashboardLineRawSqlChartConfigSchema =
 const externalDashboardBarChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('stacked_bar'),
-    seriesLimit: z.number().int().positive().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardBarRawSqlChartConfigSchema =
@@ -375,7 +379,8 @@ const externalDashboardPieChartConfigSchema = z.object({
   groupBy: z.string().max(10000).optional(),
   orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
-  limit: z.number().int().positive().optional(),
+  // Three-state: omitted = default cap, 0 = unlimited, positive N = top-N.
+  limit: z.number().int().nonnegative().optional(),
 });
 
 const externalDashboardCategoricalBarChartConfigSchema = z.object({
@@ -385,7 +390,8 @@ const externalDashboardCategoricalBarChartConfigSchema = z.object({
   groupBy: z.string().max(10000).optional(),
   orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
-  limit: z.number().int().positive().optional(),
+  // Three-state: omitted = default cap, 0 = unlimited, positive N = top-N.
+  limit: z.number().int().nonnegative().optional(),
 });
 
 // Heatmap charts use a dedicated select item schema because they carry the

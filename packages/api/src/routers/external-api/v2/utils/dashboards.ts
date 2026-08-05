@@ -1,7 +1,6 @@
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
-  hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
@@ -300,12 +299,9 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
-        // 0 = unlimited internally, but the external `seriesLimit` is
-        // positive-only; emit it as absent so a GET->PUT round-trip isn't
-        // rejected by the write-body schema. null/undefined also map to absent.
-        seriesLimit: hasPositiveSeriesLimit(config.seriesLimit)
-          ? config.seriesLimit
-          : undefined,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
+        seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.StackedBar:
       return {
@@ -322,12 +318,9 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
-        // 0 = unlimited internally, but the external `seriesLimit` is
-        // positive-only; emit it as absent so a GET->PUT round-trip isn't
-        // rejected by the write-body schema. null/undefined also map to absent.
-        seriesLimit: hasPositiveSeriesLimit(config.seriesLimit)
-          ? config.seriesLimit
-          : undefined,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
+        seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Number:
       return {
@@ -364,12 +357,9 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
-        // 0 = unlimited internally, but the external `limit` is positive-only;
-        // emit it as absent so a GET->PUT round-trip isn't rejected by the
-        // write-body schema. null/undefined also map to absent.
-        limit: hasPositiveSeriesLimit(config.seriesLimit)
-          ? config.seriesLimit
-          : undefined,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
+        limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Bar:
       return {
@@ -381,12 +371,9 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
-        // 0 = unlimited internally, but the external `limit` is positive-only;
-        // emit it as absent so a GET->PUT round-trip isn't rejected by the
-        // write-body schema. null/undefined also map to absent.
-        limit: hasPositiveSeriesLimit(config.seriesLimit)
-          ? config.seriesLimit
-          : undefined,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
+        limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Table:
       return {

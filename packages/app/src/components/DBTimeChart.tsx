@@ -529,6 +529,7 @@ function DBTimeChartComponent({
     isSingleValueColumn,
     lineData,
     hiddenSeriesCount,
+    renderedSeriesCount,
   } = useMemo(() => {
     const defaultResponse = {
       error: null,
@@ -539,6 +540,7 @@ function DBTimeChartComponent({
       valueColumns: [],
       isSingleValueColumn: true,
       hiddenSeriesCount: 0,
+      renderedSeriesCount: 0,
     };
 
     if (data == null || !isSuccess) {
@@ -883,7 +885,7 @@ function DBTimeChartComponent({
         <HiddenSeriesIndicator
           key="db-time-chart-hidden-series-indicator"
           hiddenSeriesCount={hiddenSeriesCount}
-          renderedSeriesCount={lineData.length}
+          renderedSeriesCount={renderedSeriesCount}
           // Only offer "load all" while still capped. Once it's on, the cap is
           // already lifted to MAX_LOADABLE_TIME_CHART_SERIES; a larger result
           // stays partly hidden but clicking again is a no-op, so go passive.
@@ -911,7 +913,7 @@ function DBTimeChartComponent({
     mvOptimizationData,
     queriedConfig,
     hiddenSeriesCount,
-    lineData.length,
+    renderedSeriesCount,
     showAllSeries,
     enableShowAllSeries,
   ]);

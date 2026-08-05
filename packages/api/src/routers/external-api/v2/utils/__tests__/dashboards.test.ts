@@ -400,10 +400,10 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
     expect(ext.tiles.map(t => t.id)).toEqual(['normal-tile']);
   });
 
-  // The external `seriesLimit` field is positive-only, but internally 0 means
-  // "unlimited". A stored 0 (or null) must serialize as absent (undefined, which
-  // JSON.stringify drops) so an unmodified GET body still validates on PUT.
-  // Positive values pass through unchanged.
+  // seriesLimit is three-state (matching the internal schema): omitted =
+  // default cap, 0 = unlimited, positive N = top-N. All three must survive a
+  // GET->PUT round-trip: 0 and N pass through, null maps to absent (the
+  // default-cap state).
   describe.each([DisplayType.Line, DisplayType.StackedBar])(
     'seriesLimit serialization for %s tiles',
     displayType => {
@@ -432,11 +432,11 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
         return wire.tiles[0].config.seriesLimit;
       }
 
-      it('emits seriesLimit as absent when stored as 0 (unlimited)', () => {
-        expect(readSeriesLimit(0)).toBeUndefined();
+      it('round-trips 0 (unlimited) rather than dropping it', () => {
+        expect(readSeriesLimit(0)).toBe(0);
       });
 
-      it('emits seriesLimit as absent when stored as null', () => {
+      it('emits seriesLimit as absent when stored as null (default cap)', () => {
         expect(readSeriesLimit(null)).toBeUndefined();
       });
 

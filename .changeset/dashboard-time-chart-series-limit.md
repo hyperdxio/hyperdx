@@ -10,6 +10,6 @@ number of series per tile, with escape hatches to reveal the rest on demand: a
 "+N more" affordance in the hover and pinned tooltips, and a "load all series"
 action that lifts the cap for a chart. Tooltips also cap how many rows they
 render per frame so a wide bucket can't mount thousands of popovers. The
-external dashboards API round-trips the per-tile series limit as a positive-only
-value across tile types, so a GET → PUT of a tile whose limit is unset (or set
-to the "unlimited" 0) is no longer rejected by the write schema.
+external dashboards API exposes the per-tile series limit as a three-state value
+across tile types — omit for the default cap, 0 for unlimited, or a positive N
+for the top N
