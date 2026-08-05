@@ -421,7 +421,10 @@ export default class DefaultAlertProvider implements AlertProvider {
     const evaluationWindowStart = histories[0]?.createdAt;
     if (errors.length > 0 && evaluationWindowStart != null) {
       await this.upsertErrorHistory(alertId, evaluationWindowStart, errors);
-    } else if (evaluationWindowStart != null && successfulHistories.length > 0) {
+    } else if (
+      evaluationWindowStart != null &&
+      successfulHistories.length > 0
+    ) {
       // A failed earlier tick may have left an ERROR row for this window
       // (recordAlertErrors upserts one, and ERROR rows don't mark the window
       // as evaluated so it's retried). The window has now evaluated cleanly —
