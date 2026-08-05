@@ -38,6 +38,13 @@ export const test = base.extend({
           'hdx-local-source',
           JSON.stringify(sources),
         );
+        // Suppress the one-time "View trace" callout so its auto-opening
+        // popover never interferes with side-panel interactions. useLocalStorage
+        // JSON-encodes values, so store the boolean as JSON.
+        window.localStorage.setItem(
+          'hdx-view-trace-callout-dismissed',
+          JSON.stringify(true),
+        );
       },
       [e2eFixtures.connections, e2eFixtures.sources],
     );

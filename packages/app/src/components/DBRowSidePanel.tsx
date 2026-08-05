@@ -30,11 +30,19 @@ import {
   Drawer,
   Flex,
   Group,
+  Popover,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
+import {
+  IconArrowRight,
+  IconConnection,
+  IconCopy,
+  IconKeyboard,
+  IconShare,
+  IconX,
+} from '@tabler/icons-react';
 
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
@@ -49,7 +57,7 @@ import { getEventBody, useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import { formatDistanceToNowStrictShort } from '@/utils';
+import { formatDistanceToNowStrictShort, useLocalStorage } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -412,6 +420,20 @@ export const DBRowSidePanelInner = ({
   const [resolvedFrameLabels, setResolvedFrameLabels] = useState<
     Record<string, string>
   >({});
+
+  // One-time nudge pointing at the (now more prominent) "View trace" button.
+  // Two levels of closing: a transient close (click-away / Escape) just hides it
+  // for now so it can reappear next time — an accidental click shouldn't burn the
+  // message before it's read — while an explicit acknowledgement (Got it, or
+  // clicking View Trace) persists the dismissal so it never shows again. The
+  // persisted flag lives under its own localStorage key, not in user settings.
+  const [viewTraceCalloutDismissed, setViewTraceCalloutDismissed] =
+    useLocalStorage('hdx-view-trace-callout-dismissed', false);
+  const [viewTraceCalloutClosed, setViewTraceCalloutClosed] = useState(false);
+  const dismissViewTraceCallout = useCallback(() => {
+    setViewTraceCalloutClosed(true);
+    setViewTraceCalloutDismissed(true);
+  }, [setViewTraceCalloutDismissed]);
 
   useEffect(() => {
     if (
@@ -865,25 +887,75 @@ export const DBRowSidePanelInner = ({
             </>
           )}
           {showLogTraceActions && (
-            <Button
-              data-testid="side-panel-view-trace"
-              variant="subtle"
-              size="compact-xs"
-              onClick={() => {
-                if (traceSourceData && traceSpanRowId) {
-                  handleSourceStackPush({
-                    sourceId: traceSourceData.id,
-                    rowId: traceSpanRowId,
-                    label: mainContent || 'Log',
-                    sourceKind: traceSourceData.kind as SourceKind,
-                    aliasWith: [],
-                  });
+            <Popover
+              width={260}
+              position="bottom-end"
+              withArrow
+              shadow="md"
+              trapFocus={false}
+              // Stay pinned to the button until the user acknowledges it (Got it
+              // / View Trace) or presses Escape. Not closed by stray clicks or
+              // resizing the drawer, which are not intents to dismiss.
+              closeOnClickOutside={false}
+              closeOnEscape
+              opened={
+                !!traceSourceData &&
+                !!traceSpanRowId &&
+                !viewTraceCalloutDismissed &&
+                !viewTraceCalloutClosed
+              }
+              onChange={opened => {
+                // Click-away / Escape only hides it for now (transient) so an
+                // unread callout gets another chance; it is not persisted.
+                if (!opened) {
+                  setViewTraceCalloutClosed(true);
                 }
               }}
-              disabled={!traceSourceData || !traceSpanRowId}
             >
-              View Trace →
-            </Button>
+              <Popover.Target>
+                <Button
+                  data-testid="side-panel-view-trace"
+                  variant="secondary"
+                  size="compact-sm"
+                  ml="auto"
+                  leftSection={<IconConnection size={14} />}
+                  rightSection={<IconArrowRight size={14} />}
+                  onClick={() => {
+                    dismissViewTraceCallout();
+                    if (traceSourceData && traceSpanRowId) {
+                      handleSourceStackPush({
+                        sourceId: traceSourceData.id,
+                        rowId: traceSpanRowId,
+                        label: mainContent || 'Log',
+                        sourceKind: traceSourceData.kind as SourceKind,
+                        aliasWith: [],
+                      });
+                    }
+                  }}
+                  disabled={!traceSourceData || !traceSpanRowId}
+                >
+                  View Trace
+                </Button>
+              </Popover.Target>
+              <Popover.Dropdown data-testid="view-trace-callout">
+                <Stack gap="xs">
+                  <Text size="sm" fw={600}>
+                    View trace is easier to find now 🎉
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    Jump straight to this log&apos;s full trace — one click.
+                  </Text>
+                  <Button
+                    variant="primary"
+                    size="compact-xs"
+                    ml="auto"
+                    onClick={dismissViewTraceCallout}
+                  >
+                    Got it
+                  </Button>
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
           )}
         </Group>
         <DBRowSidePanelHeader
