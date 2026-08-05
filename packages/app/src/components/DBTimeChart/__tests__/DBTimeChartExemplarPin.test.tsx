@@ -223,6 +223,52 @@ describe('DBTimeChart exemplar pin lifecycle', () => {
     expect(cardProps().hovered?.exemplar.traceId).toBe(exemplar.traceId);
   });
 
+  // The chart hands the marker layer an immediate closer for "the markers moved",
+  // separate from the cancellable one used for pointer-leave. This pins the
+  // difference at the seam, since the marker layer is stubbed out here.
+  describe('markers moving out from under a card', () => {
+    it('closes a card the cursor is still resting in', () => {
+      renderWithMantine(<DBTimeChart config={config} />);
+      pin();
+      // The cursor entering the card cancels any pending close.
+      act(() => {
+        callback(cardProps().onMouseEnter, 'onMouseEnter')();
+      });
+      expect(cardProps().pinned).toBe(true);
+
+      act(() => {
+        callback(
+          chartProps().onExemplarPositionsChanged,
+          'onExemplarPositionsChanged',
+        )();
+      });
+
+      expect(cardProps().pinned).toBe(false);
+      expect(cardProps().hovered).toBeNull();
+    });
+
+    it('closes a hover-only card as well', () => {
+      renderWithMantine(<DBTimeChart config={config} />);
+      act(() => {
+        callback(chartProps().onExemplarHover, 'onExemplarHover')(
+          exemplar,
+          10,
+          20,
+        );
+      });
+      expect(cardProps().hovered).not.toBeNull();
+
+      act(() => {
+        callback(
+          chartProps().onExemplarPositionsChanged,
+          'onExemplarPositionsChanged',
+        )();
+      });
+
+      expect(cardProps().hovered).toBeNull();
+    });
+  });
+
   describe('outside-click dismissal (ported from #2748)', () => {
     const openTooltip = () =>
       act(() => {

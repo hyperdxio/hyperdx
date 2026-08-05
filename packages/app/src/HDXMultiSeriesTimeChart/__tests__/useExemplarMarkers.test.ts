@@ -30,6 +30,7 @@ const args = (overrides: Record<string, unknown> = {}) => ({
   exemplarYBounds: { min: 0, max: 100 },
   onExemplarHoverEnd: jest.fn(),
   onExemplarPinEnd: jest.fn(),
+  onExemplarPositionsChanged: jest.fn(),
   onExemplarsDropped: jest.fn(),
   suppressNextClickRef: { current: false },
   brushOriginRef: { current: null as number | null },
@@ -43,7 +44,7 @@ describe('useExemplarMarkers domain changes', () => {
       initialProps: initial,
     });
 
-    expect(initial.onExemplarPinEnd).not.toHaveBeenCalled();
+    expect(initial.onExemplarPositionsChanged).not.toHaveBeenCalled();
 
     // A zoom: same marker still in range, but every pixel position shifts.
     rerender({
@@ -51,8 +52,24 @@ describe('useExemplarMarkers domain changes', () => {
       xAxisDomain: [BASE + HOUR / 4, BASE + (HOUR * 3) / 4],
     });
 
-    expect(initial.onExemplarPinEnd).toHaveBeenCalled();
-    expect(initial.onExemplarHoverEnd).toHaveBeenCalled();
+    expect(initial.onExemplarPositionsChanged).toHaveBeenCalled();
+  });
+
+  it('does not use the cancellable close when the markers move', () => {
+    // onExemplarHoverEnd schedules a close the card's own mouseenter cancels, so
+    // a cursor resting in the card would hold it open at stale coordinates and
+    // keep the series tooltip suppressed. Moving markers need an immediate close.
+    const initial = args({ pinnedExemplarKey: exemplarKey });
+    const { rerender } = renderHook(props => useExemplarMarkers(props), {
+      initialProps: initial,
+    });
+
+    rerender({
+      ...initial,
+      xAxisDomain: [BASE + HOUR / 4, BASE + (HOUR * 3) / 4],
+    });
+
+    expect(initial.onExemplarHoverEnd).not.toHaveBeenCalled();
   });
 
   it('leaves the cards alone when the domain is unchanged', () => {
@@ -67,16 +84,14 @@ describe('useExemplarMarkers domain changes', () => {
     // Same domain, fresh data — what a refetch looks like.
     rerender({ ...initial, exemplars: [{ ...exemplar }] });
 
-    expect(initial.onExemplarPinEnd).not.toHaveBeenCalled();
-    expect(initial.onExemplarHoverEnd).not.toHaveBeenCalled();
+    expect(initial.onExemplarPositionsChanged).not.toHaveBeenCalled();
   });
 
   it('does not fire on the first render', () => {
     const initial = args({ pinnedExemplarKey: exemplarKey });
     renderHook(props => useExemplarMarkers(props), { initialProps: initial });
 
-    expect(initial.onExemplarPinEnd).not.toHaveBeenCalled();
-    expect(initial.onExemplarHoverEnd).not.toHaveBeenCalled();
+    expect(initial.onExemplarPositionsChanged).not.toHaveBeenCalled();
   });
 
   it('still closes a pinned card whose marker leaves the rendered set', () => {
