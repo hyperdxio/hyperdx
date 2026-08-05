@@ -50,10 +50,16 @@ jobs:
       PLUGIN_REF: compound-engineering-v3.6.1
       # TEMPORARY: pin the Claude Code CLI to the last version before the
       # >=2.1.216 bwrap sandbox regression that breaks every Bash call.
-      # Single-sourced so the install arg and the post-install assertion
-      # cannot drift. UNPIN once upstream fixes it (tracked in HDX-4907).
+      # The SHA-512 is the npm dist.integrity of the
+      # @anthropic-ai/claude-code@<version> tarball; the pin step verifies the
+      # downloaded tarball against it before installing, so a compromised
+      # registry response cannot substitute the binary the credentialed review
+      # action later executes. Recompute it when bumping the version:
+      #   npm view @anthropic-ai/claude-code@<version> dist.integrity
+      # UNPIN once upstream fixes it (tracked in HDX-4907).
       # https://github.com/anthropics/claude-code-action/issues/1547
       CLAUDE_CLI_VERSION: 2.1.215
+      CLAUDE_CLI_SHA512: sha512-lsWBvyMyBqg/rOZ06o/HEhlpOzHsH8IBf9RH4u5gzizQ1LWS/oXAh5nqWNUu3hn2d8QkyYg0aseNzMDlGD+3qg==
     permissions:
       contents: read
       pull-requests: write
@@ -266,29 +272,49 @@ jobs:
       #   bwrap: Can't create file at /home/.mcp.json: Permission denied
       # That kills git/gh and the reviewer fan-out, so the review posts an
       # "environment failure" comment -- and the job still reports success.
-      # CLAUDE_CLI_VERSION is the last version before the regression. Install
-      # it into a fixed path and point the action at it below.
+      # CLAUDE_CLI_VERSION is the last version before the regression. Rather
+      # than piping a mutable remote installer to bash, fetch the immutable
+      # npm tarball for that version, verify it against the SHA-512 hardcoded
+      # in this workflow (CLAUDE_CLI_SHA512), and install from the verified
+      # local tarball -- so trust rests on the hash in this file, not on the
+      # installer delivery chain or on the binary's spoofable --version output.
       # Upstream issue: https://github.com/anthropics/claude-code-action/issues/1547
       # UNPIN once the upstream regression is fixed (tracked in HDX-4907).
       - name: Pin Claude Code CLI to a pre-regression version
         if: steps.gate.outputs.should_review == 'true'
         run: |
           set -euo pipefail
-          curl -fsSL https://claude.ai/install.sh | bash -s -- "$CLAUDE_CLI_VERSION"
-          CLAUDE_BIN="$HOME/.local/bin/claude"
+          TARBALL="$RUNNER_TEMP/claude-code-$CLAUDE_CLI_VERSION.tgz"
+          curl -fsSL -o "$TARBALL" \
+            "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-$CLAUDE_CLI_VERSION.tgz"
+          # Integrity gate: hard-fail unless the downloaded tarball matches the
+          # SHA-512 pinned in this workflow. Everything past this line runs
+          # only on verified content.
+          ACTUAL="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
+          if [ "$ACTUAL" != "$CLAUDE_CLI_SHA512" ]; then
+            echo "::error::Pinned CLI tarball integrity check failed: expected $CLAUDE_CLI_SHA512, got $ACTUAL. Refusing to install."
+            exit 1
+          fi
+          INSTALL_DIR="$RUNNER_TEMP/claude-cli"
+          # --ignore-scripts so no dependency lifecycle script runs; the only
+          # script we execute is install.cjs from the hash-verified tarball,
+          # invoked explicitly below to link the platform-native binary. That
+          # binary comes from an optionalDependency exact-pinned (same version)
+          # by the verified package.json, so the whole chain is anchored to
+          # CLAUDE_CLI_SHA512.
+          npm install --prefix "$INSTALL_DIR" --no-audit --no-fund --ignore-scripts "$TARBALL"
+          node "$INSTALL_DIR/node_modules/@anthropic-ai/claude-code/install.cjs"
+          CLAUDE_BIN="$INSTALL_DIR/node_modules/.bin/claude"
           if [ ! -x "$CLAUDE_BIN" ]; then
             echo "::error::Pinned Claude Code CLI not found at $CLAUDE_BIN after install."
             exit 1
           fi
-          # Hard-fail unless the installed binary actually reports the pinned
-          # version. Without this, an installer that ignores the version arg or
-          # silently drifts would run a regressed CLI under a green build,
-          # defeating the pin. `claude --version` prints e.g. "2.1.215 (Claude
-          # Code)"; assert the pinned version appears as a whole token.
+          # Sanity check (integrity is already guaranteed by the hash above):
+          # the binary should run and report the pinned version.
           INSTALLED_VERSION="$("$CLAUDE_BIN" --version 2>/dev/null || true)"
           echo "Installed Claude Code CLI: ${INSTALLED_VERSION:-<none>}"
           if ! printf '%s' "$INSTALLED_VERSION" | grep -qE "(^|[^0-9.])${CLAUDE_CLI_VERSION//./\\.}([^0-9.]|$)"; then
-            echo "::error::Pinned CLI check failed: expected $CLAUDE_CLI_VERSION, got '${INSTALLED_VERSION:-<none>}'. The installer may have ignored the version argument."
+            echo "::error::Pinned CLI check failed: expected $CLAUDE_CLI_VERSION, got '${INSTALLED_VERSION:-<none>}'."
             exit 1
           fi
           echo "PINNED_CLAUDE=$CLAUDE_BIN" >> "$GITHUB_ENV"
