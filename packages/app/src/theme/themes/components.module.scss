@@ -14,6 +14,16 @@
   border-bottom-width: 1px;
 }
 
+// The active tab shows a 2px indicator. Keep its border-bottom-width at 1px
+// (same as non-active tabs) so selecting a tab doesn't shrink the content box
+// and nudge the icon/label up by 1px; draw the extra pixel with an inset shadow,
+// which doesn't participate in layout. Together the 1px border + 1px shadow read
+// as a single 2px line anchored at the bottom edge.
+[data-orientation='horizontal'] .tabsTab[data-active] {
+  border-bottom-width: 1px;
+  box-shadow: inset 0 -1px 0 var(--tabs-color);
+}
+
 .sliderMark {
   width: 6px !important;
   height: 6px !important;

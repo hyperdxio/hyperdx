@@ -348,6 +348,7 @@ const makeTheme = ({
       vars: () => ({
         root: {
           '--tabs-color': 'var(--color-text-brand)',
+          '--tab-border-color': 'var(--color-border)',
         },
       }),
       classNames: {
