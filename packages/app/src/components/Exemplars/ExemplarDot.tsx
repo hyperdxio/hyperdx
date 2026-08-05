@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
 
 // Half-diagonal of the diamond marker, in px.
@@ -13,6 +14,19 @@ type ExemplarDotProps = {
   onHoverStart?: (exemplar: Exemplar, cx: number, cy: number) => void;
   onHoverEnd?: () => void;
   onSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
+  /**
+   * Whether this is the marker the open card is describing. Only that one reports
+   * its position — every marker doing so would be a callback per marker per
+   * frame, and nothing reads the rest.
+   */
+  isActive?: boolean;
+  /**
+   * Where this marker now is. Recharts recomputes cx/cy whenever the scales or
+   * the container change, so this is the only thing that knows a card's anchor
+   * has gone stale — a zoom, a y-axis rescale and a window resize all move a
+   * marker without changing anything the card's owner can observe.
+   */
+  onPositionChange?: (cx: number, cy: number) => void;
 };
 
 /**
@@ -28,7 +42,16 @@ export function ExemplarDot({
   onHoverStart,
   onHoverEnd,
   onSelect,
+  isActive,
+  onPositionChange,
 }: ExemplarDotProps) {
+  // Before the guard below: hooks cannot sit after an early return.
+  useEffect(() => {
+    if (!isActive) return;
+    if (typeof cx !== 'number' || typeof cy !== 'number') return;
+    onPositionChange?.(cx, cy);
+  }, [isActive, cx, cy, onPositionChange]);
+
   if (typeof cx !== 'number' || typeof cy !== 'number') {
     return null;
   }

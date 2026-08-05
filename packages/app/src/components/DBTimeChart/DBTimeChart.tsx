@@ -315,7 +315,7 @@ function DBTimeChartComponent({
     isHoveredTraceMetaLoading,
     openExemplarCard,
     scheduleCloseExemplarCard,
-    closeExemplarCardsNow,
+    moveExemplarCard,
     cancelClose: cancelExemplarCardClose,
     pin: pinExemplarCardState,
     unpin: unpinExemplarCard,
@@ -548,7 +548,7 @@ function DBTimeChartComponent({
             onExemplarSelect={pinExemplarCard}
             pinnedExemplarKey={pinnedExemplarKey}
             onExemplarPinEnd={unpinExemplarCard}
-            onExemplarPositionsChanged={closeExemplarCardsNow}
+            onActiveExemplarMoved={moveExemplarCard}
             onExemplarsDropped={reportClampDropped}
           />
         </>

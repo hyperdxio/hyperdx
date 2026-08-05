@@ -223,31 +223,28 @@ describe('DBTimeChart exemplar pin lifecycle', () => {
     expect(cardProps().hovered?.exemplar.traceId).toBe(exemplar.traceId);
   });
 
-  // The chart hands the marker layer an immediate closer for "the markers moved",
-  // separate from the cancellable one used for pointer-leave. This pins the
-  // difference at the seam, since the marker layer is stubbed out here.
+  // The marker reports its own position, so a card follows it rather than being
+  // closed on a guess about what moved it. The marker layer is stubbed here, so
+  // this pins the seam: what the chart does with the report.
   describe('markers moving out from under a card', () => {
-    it('closes a card the cursor is still resting in', () => {
+    it('re-anchors a pinned card to the new coordinates', () => {
       renderWithMantine(<DBTimeChart config={config} />);
       pin();
-      // The cursor entering the card cancels any pending close.
+      expect(cardProps().hovered).toEqual({ exemplar, x: 10, y: 20 });
+
       act(() => {
-        callback(cardProps().onMouseEnter, 'onMouseEnter')();
+        callback(chartProps().onActiveExemplarMoved, 'onActiveExemplarMoved')(
+          120,
+          240,
+        );
       });
+
+      // Still open, and now pointing at the marker rather than where it was.
       expect(cardProps().pinned).toBe(true);
-
-      act(() => {
-        callback(
-          chartProps().onExemplarPositionsChanged,
-          'onExemplarPositionsChanged',
-        )();
-      });
-
-      expect(cardProps().pinned).toBe(false);
-      expect(cardProps().hovered).toBeNull();
+      expect(cardProps().hovered).toEqual({ exemplar, x: 120, y: 240 });
     });
 
-    it('closes a hover-only card as well', () => {
+    it('re-anchors a hover-only card', () => {
       renderWithMantine(<DBTimeChart config={config} />);
       act(() => {
         callback(chartProps().onExemplarHover, 'onExemplarHover')(
@@ -256,16 +253,45 @@ describe('DBTimeChart exemplar pin lifecycle', () => {
           20,
         );
       });
-      expect(cardProps().hovered).not.toBeNull();
 
       act(() => {
-        callback(
-          chartProps().onExemplarPositionsChanged,
-          'onExemplarPositionsChanged',
-        )();
+        callback(chartProps().onActiveExemplarMoved, 'onActiveExemplarMoved')(
+          55,
+          66,
+        );
+      });
+
+      expect(cardProps().hovered).toEqual({ exemplar, x: 55, y: 66 });
+    });
+
+    it('keeps the same exemplar, moving only the anchor', () => {
+      // The card's contents describe a specific trace; a move must not swap them.
+      renderWithMantine(<DBTimeChart config={config} />);
+      pin();
+
+      act(() => {
+        callback(chartProps().onActiveExemplarMoved, 'onActiveExemplarMoved')(
+          1,
+          2,
+        );
+      });
+
+      expect(cardProps().hovered?.exemplar).toEqual(exemplar);
+    });
+
+    it('does nothing when no card is open', () => {
+      renderWithMantine(<DBTimeChart config={config} />);
+      expect(cardProps().hovered).toBeNull();
+
+      act(() => {
+        callback(chartProps().onActiveExemplarMoved, 'onActiveExemplarMoved')(
+          10,
+          20,
+        );
       });
 
       expect(cardProps().hovered).toBeNull();
+      expect(cardProps().pinned).toBe(false);
     });
   });
 

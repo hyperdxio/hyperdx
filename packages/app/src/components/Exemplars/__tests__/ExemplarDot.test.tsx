@@ -64,3 +64,75 @@ describe('ExemplarDot', () => {
     expect(container.querySelector('path')).toBeNull();
   });
 });
+
+/**
+ * Recharts recomputes cx/cy whenever the scales or the container change, so this
+ * marker is the only thing that knows an open card's anchor has gone stale — a
+ * zoom, a y-axis rescale and a window resize all move it without changing
+ * anything the card's owner can observe.
+ */
+describe('ExemplarDot position reporting', () => {
+  const renderAt = (
+    cx: number,
+    cy: number,
+    props: Partial<React.ComponentProps<typeof ExemplarDot>>,
+  ) =>
+    render(
+      <svg>
+        <ExemplarDot cx={cx} cy={cy} exemplar={exemplar} {...props} />
+      </svg>,
+    );
+
+  it('reports its position when it is the active marker', () => {
+    const onPositionChange = jest.fn();
+    renderAt(10, 20, { isActive: true, onPositionChange });
+
+    expect(onPositionChange).toHaveBeenCalledWith(10, 20);
+  });
+
+  it('reports again when recharts moves it', () => {
+    const onPositionChange = jest.fn();
+    const { rerender } = renderAt(10, 20, {
+      isActive: true,
+      onPositionChange,
+    });
+    onPositionChange.mockClear();
+
+    rerender(
+      <svg>
+        <ExemplarDot
+          cx={80}
+          cy={140}
+          exemplar={exemplar}
+          isActive
+          onPositionChange={onPositionChange}
+        />
+      </svg>,
+    );
+
+    expect(onPositionChange).toHaveBeenCalledWith(80, 140);
+  });
+
+  it('stays quiet when it is not the active marker', () => {
+    // Otherwise every marker reports on every frame and nothing reads the rest.
+    const onPositionChange = jest.fn();
+    renderAt(10, 20, { isActive: false, onPositionChange });
+
+    expect(onPositionChange).not.toHaveBeenCalled();
+  });
+
+  it('does not report before recharts supplies coordinates', () => {
+    const onPositionChange = jest.fn();
+    render(
+      <svg>
+        <ExemplarDot
+          exemplar={exemplar}
+          isActive
+          onPositionChange={onPositionChange}
+        />
+      </svg>,
+    );
+
+    expect(onPositionChange).not.toHaveBeenCalled();
+  });
+});

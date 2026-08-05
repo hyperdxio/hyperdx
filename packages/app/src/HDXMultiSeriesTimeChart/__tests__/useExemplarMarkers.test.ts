@@ -1,5 +1,5 @@
 import { Exemplar } from '@hyperdx/common-utils/dist/types';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 
 import { useExemplarMarkers } from '@/HDXMultiSeriesTimeChart/useExemplarMarkers';
 
@@ -37,63 +37,43 @@ const args = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('useExemplarMarkers domain changes', () => {
-  it('closes both cards when the rendered x-domain moves', () => {
-    const initial = args({ pinnedExemplarKey: exemplarKey });
-    const { rerender } = renderHook(props => useExemplarMarkers(props), {
-      initialProps: initial,
-    });
+describe('useExemplarMarkers active marker', () => {
+  // Only the marker the card describes reports its position — every marker doing
+  // so would be a callback per marker per frame, and nothing reads the rest.
+  it('marks the pinned marker active', () => {
+    const { result } = renderHook(() =>
+      useExemplarMarkers(args({ pinnedExemplarKey: exemplarKey })),
+    );
 
-    expect(initial.onExemplarPositionsChanged).not.toHaveBeenCalled();
-
-    // A zoom: same marker still in range, but every pixel position shifts.
-    rerender({
-      ...initial,
-      xAxisDomain: [BASE + HOUR / 4, BASE + (HOUR * 3) / 4],
-    });
-
-    expect(initial.onExemplarPositionsChanged).toHaveBeenCalled();
+    expect(result.current.activeExemplarKey).toBe(exemplarKey);
   });
 
-  it('does not use the cancellable close when the markers move', () => {
-    // onExemplarHoverEnd schedules a close the card's own mouseenter cancels, so
-    // a cursor resting in the card would hold it open at stale coordinates and
-    // keep the series tooltip suppressed. Moving markers need an immediate close.
-    const initial = args({ pinnedExemplarKey: exemplarKey });
-    const { rerender } = renderHook(props => useExemplarMarkers(props), {
-      initialProps: initial,
-    });
+  it('has no active marker when nothing is hovered or pinned', () => {
+    const { result } = renderHook(() => useExemplarMarkers(args()));
 
-    rerender({
-      ...initial,
-      xAxisDomain: [BASE + HOUR / 4, BASE + (HOUR * 3) / 4],
-    });
-
-    expect(initial.onExemplarHoverEnd).not.toHaveBeenCalled();
+    expect(result.current.activeExemplarKey).toBeNull();
   });
 
-  it('leaves the cards alone when the domain is unchanged', () => {
-    // A live-tail tick inside the current granularity bucket does not move the
-    // rendered domain (useChartScales floors it), so an open card must survive —
-    // closing one a second after the user clicked it was the original complaint.
-    const initial = args({ pinnedExemplarKey: exemplarKey });
-    const { rerender } = renderHook(props => useExemplarMarkers(props), {
-      initialProps: initial,
+  it('lets the pin outrank a hover, matching which card is shown', () => {
+    // The card shows pinned ?? hovered, so position reports have to follow the
+    // same precedence or a hover would re-anchor the pinned card.
+    const { result } = renderHook(() =>
+      useExemplarMarkers(args({ pinnedExemplarKey: exemplarKey })),
+    );
+
+    act(() => {
+      result.current.handleExemplarHoverStart(
+        { ...exemplar, traceId: 'other' },
+        1,
+        2,
+      );
     });
 
-    // Same domain, fresh data — what a refetch looks like.
-    rerender({ ...initial, exemplars: [{ ...exemplar }] });
-
-    expect(initial.onExemplarPositionsChanged).not.toHaveBeenCalled();
+    expect(result.current.activeExemplarKey).toBe(exemplarKey);
   });
+});
 
-  it('does not fire on the first render', () => {
-    const initial = args({ pinnedExemplarKey: exemplarKey });
-    renderHook(props => useExemplarMarkers(props), { initialProps: initial });
-
-    expect(initial.onExemplarPositionsChanged).not.toHaveBeenCalled();
-  });
-
+describe('useExemplarMarkers rendered set', () => {
   it('still closes a pinned card whose marker leaves the rendered set', () => {
     // The pre-existing guard, kept honest alongside the new one.
     const initial = args({ pinnedExemplarKey: exemplarKey });
