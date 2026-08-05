@@ -24,7 +24,7 @@ jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
-    // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
     useQueryState: (key: string, parser?: { defaultValue?: unknown }) => {
       const hasValue = Object.prototype.hasOwnProperty.call(
         mockQueryStore,
