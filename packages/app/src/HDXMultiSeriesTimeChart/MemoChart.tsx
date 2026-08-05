@@ -463,6 +463,7 @@ export const MemoChart = memo(function MemoChart({
     onExemplarPinEnd,
     onExemplarsDropped,
     suppressNextClickRef,
+    brushOriginRef: mouseDownPosRef,
   });
 
   return (

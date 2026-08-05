@@ -42,6 +42,15 @@ type UseExemplarMarkersArgs = {
    * layer are the only two consumers and they must agree on a single flag.
    */
   suppressNextClickRef: MutableRefObject<boolean>;
+  /**
+   * Non-null while a brush-to-zoom drag is in progress (the chart's mouse-down x).
+   * The hover card is a pointer-live absolutely-positioned sibling of the chart,
+   * so a drag whose path crosses a marker would mount the card under the moving
+   * cursor; the cursor then enters it, the chart sees mouseleave, and the zoom is
+   * cancelled halfway through. Suppressing hover for the duration of the drag
+   * keeps the card reachable by a resting cursor without eating the drag.
+   */
+  brushOriginRef: MutableRefObject<number | null>;
 };
 
 /**
@@ -67,6 +76,7 @@ export function useExemplarMarkers({
   onExemplarPinEnd,
   onExemplarsDropped,
   suppressNextClickRef,
+  brushOriginRef,
 }: UseExemplarMarkersArgs) {
   // While the cursor is over an exemplar marker, the exemplar hover card owns
   // the tooltip real estate — suppress the series hover tooltip so the two don't
@@ -81,12 +91,14 @@ export function useExemplarMarkers({
   const isExemplarHovered = hoveredExemplarKey != null;
   const handleExemplarHoverStart = useCallback(
     (exemplar: Exemplar, cx: number, cy: number) => {
+      // Mid-drag: see brushOriginRef.
+      if (brushOriginRef.current != null) return;
       setHoveredExemplarKey(
         `exemplar-${exemplar.traceId}-${exemplar.timestamp}`,
       );
       onExemplarHover?.(exemplar, cx, cy);
     },
-    [onExemplarHover],
+    [onExemplarHover, brushOriginRef],
   );
   const handleExemplarHoverEnd = useCallback(() => {
     setHoveredExemplarKey(null);
