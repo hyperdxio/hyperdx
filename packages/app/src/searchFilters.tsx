@@ -4,6 +4,8 @@ import {
   type FilterState,
   filtersToQuery,
   parseQuery,
+  parseWhereClauseToFilterState,
+  replaceFilterClauses,
 } from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
@@ -35,12 +37,60 @@ export const escapeFilterStateKeys = (
 };
 
 // Convert valid SQL/persisted keys to clean FilterState keys.
-const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
+export const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
   const cleaned: FilterState = {};
   for (const [key, value] of Object.entries(filters)) {
     cleaned[cleanClickHouseExpression(key)] = value;
   }
   return cleaned;
+};
+
+/**
+ * Derive the SQL `Filter[]` the search page's filter hook expects from a
+ * `where` clause string in either query language. The `where` text is the
+ * canonical form on the search page, so this adapter is what feeds the
+ * sidebar's FilterState: facet clauses are parsed out (`whereToFilters` is a
+ * lossy projection for facets only — free-text and complex content doesn't map
+ * to facets and is dropped here), escaped back to canonical SQL keys, and
+ * emitted as `filtersToQuery` filters so the hook's existing parse/unescape
+ * cycle restores clean keys for the sidebar.
+ */
+export const whereToFilters = (
+  whereText: string,
+  whereLanguage: 'lucene' | 'sql',
+  knownColumns: Set<string>,
+  dateTimeColumns?: ReadonlyMap<string, string>,
+): Filter[] => {
+  const state = parseWhereClauseToFilterState(whereText, whereLanguage);
+  const clean =
+    whereLanguage === 'sql' ? unescapeFilterStateKeys(state) : state;
+  return filtersToQuery(escapeFilterStateKeys(clean, knownColumns), {
+    dateTimeColumns,
+  });
+};
+
+/**
+ * Rewrite a `where` clause string so its facet clauses reflect `filters` (the
+ * SQL `Filter[]` emitted by the filter hook's mutators), preserving unrelated
+ * free-text/complex content. Keys in `filters` are the canonical
+ * quoted/bracket ClickHouse form; they are unescaped to clean keys before the
+ * round-trip so `replaceFilterClauses` can match existing clauses.
+ */
+export const replaceFiltersInWhereClause = (
+  whereText: string,
+  whereLanguage: 'lucene' | 'sql',
+  filters: Filter[],
+  knownColumns: Set<string>,
+  dateTimeColumns?: ReadonlyMap<string, string>,
+): string => {
+  const cleanState = unescapeFilterStateKeys(parseQuery(filters).filters);
+  return replaceFilterClauses(whereText, whereLanguage, cleanState, {
+    escapeKey:
+      whereLanguage === 'sql'
+        ? key => toQuotedClickHouseKeyExpression(key, knownColumns)
+        : undefined,
+    dateTimeColumns,
+  });
 };
 
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
