@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Team from '@/models/team';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
 
@@ -33,9 +34,22 @@ describe('team router', () => {
       .toMatchInlineSnapshot(`
       {
         "allowedAuthMethods": [],
+        "isMetricsSeriesTableEnabled": false,
         "name": "fake@deploysentinel.com's Team",
       }
     `);
+  });
+
+  it('GET /team reflects isMetricsSeriesTableEnabled when set', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await Team.findByIdAndUpdate(team._id, {
+      isMetricsSeriesTableEnabled: true,
+    });
+
+    const resp = await agent.get('/team').expect(200);
+
+    expect(resp.body.isMetricsSeriesTableEnabled).toBe(true);
   });
 
   it('GET /team/tags - no tags', async () => {
