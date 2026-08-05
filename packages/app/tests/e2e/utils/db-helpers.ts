@@ -1,3 +1,8 @@
+/**
+ * Direct MongoDB access helpers for full-stack E2E tests. Only usable in
+ * full-stack mode (real Mongo via docker-compose) — there is no database in
+ * local mode, so callers must gate on `{ tag: ['@full-stack'] }`.
+ */
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -8,12 +13,8 @@ import path from 'path';
  * escape quotes in the script body, so callers can pass multi-line JavaScript
  * with string literals verbatim.
  *
- * Used to set fields that only a backend job writes in normal operation
- * (`Alert.executionErrors`, `Dashboard.provisioned`), so a test can reach that
- * state without running the job.
- *
  * `execFileSync` with an argument array rather than a shell string: the project
- * slug comes from an env var, and no shell means nothing in it can be read as a
+ * slug comes from an env var, and with no shell nothing in it can be read as a
  * metacharacter.
  *
  * Throws if the docker-compose file can't be found (meaning we're not running
@@ -49,4 +50,23 @@ export function runMongoshScript(script: string): string {
       input: script,
     },
   );
+}
+
+/**
+ * Sets a boolean field directly on the (single, seeded) e2e team document.
+ * There's no settings UI or API endpoint for team feature flags yet, so
+ * direct DB writes are the only way to toggle them for a test.
+ *
+ * This app only ever has one team per deployment (`/register/password`
+ * 409s with `teamAlreadyExists` once any team exists — see
+ * `isTeamExisting` in packages/api/src/controllers/team.ts), so there's
+ * nothing to scope by. Tests that toggle a flag here should still avoid
+ * racing each other — e.g. via `test.describe.serial(...)` — since
+ * `fullyParallel: true` lets tests in the same file run concurrently.
+ */
+export function setTeamFlag(flagName: string, value: boolean): void {
+  runMongoshScript(`
+use('hyperdx-e2e');
+db.teams.updateOne({}, { $set: { [${JSON.stringify(flagName)}]: ${JSON.stringify(value)} } });
+`);
 }

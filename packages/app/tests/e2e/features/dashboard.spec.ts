@@ -10,7 +10,7 @@ import {
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
-import { runMongoshScript } from '../utils/mongosh';
+import { runMongoshScript } from '../utils/db-helpers';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;

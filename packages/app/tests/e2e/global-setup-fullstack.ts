@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
-import { runMongoshScript } from './utils/mongosh';
+import { runMongoshScript } from './utils/db-helpers';
 import { seedClickHouse } from './seed-clickhouse';
 
 // Configuration constants

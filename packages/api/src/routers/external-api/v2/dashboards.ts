@@ -629,6 +629,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: boolean
  *           description: Overlay the equivalent previous time period for comparison.
  *           default: false
+ *         seriesLimit:
+ *           type: integer
+ *           minimum: 1
+ *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           example: 5
  *
  *     BarBuilderChartConfig:
  *       type: object
@@ -676,6 +681,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         seriesLimit:
+ *           type: integer
+ *           minimum: 1
+ *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           example: 5
  *
  *     TableBuilderChartConfig:
  *       type: object

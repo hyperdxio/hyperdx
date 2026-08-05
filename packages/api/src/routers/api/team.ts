@@ -52,6 +52,7 @@ router.get('/', async (req, res: TeamApiExpRes, next) => {
       'apiKey',
       'name',
       'createdAt',
+      'isMetricsSeriesTableEnabled',
     ] as const;
     const team = await getTeam(teamId, fields);
     if (team == null) {
