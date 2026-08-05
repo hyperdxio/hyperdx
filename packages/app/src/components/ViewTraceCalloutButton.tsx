@@ -70,10 +70,10 @@ export function ViewTraceCalloutButton({
       >
         <Stack gap="xs">
           <Text size="sm" fw={600}>
-            View trace is easier to find now 🎉
+            Jump to this log&apos;s full trace
           </Text>
           <Text size="xs" c="dimmed">
-            Jump straight to this log&apos;s full trace — one click.
+            Open the correlated trace in one click.
           </Text>
           <Button
             variant="primary"
