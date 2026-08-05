@@ -8,7 +8,18 @@ import {
   SourceFrame,
   Tab,
 } from '@/components/DBRowSidePanel.types';
+import { useLocalStorage } from '@/utils';
 import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
+
+export const LAST_TAB_STORAGE_KEY = 'hdx-side-panel-last-tab';
+
+/**
+ * Tabs that are a way to *find* another row rather than a way to read the
+ * current one, so they never become the remembered preference. Opening
+ * Surrounding Context to pick out a neighbour shouldn't cost you the reading
+ * view you had chosen, nor strand you on another context list once you land.
+ */
+const NAVIGATIONAL_TABS: readonly Tab[] = [Tab.Context];
 
 const EMPTY_SOURCE_STACK: SourceFrame[] = [];
 const EMPTY_NAV_STACK: NavEntry[] = [];
@@ -53,6 +64,12 @@ export type SidePanelStack = {
   isStale: boolean;
   /** Persisted tab, or null when unset. Reconcile against the source's tabs. */
   tab: Tab | null;
+  /**
+   * The reader's remembered reading view, independent of where the URL currently
+   * points. Use this as the destination for navigations that change *which row*
+   * is shown rather than which view of it, so the reader keeps their view.
+   */
+  preferredTab: Tab | null;
 
   /** Push a cross-source frame (e.g. View Trace) and jump to its default tab. */
   pushSource: (frame: SourceFrame, destinationTab: Tab) => void;
@@ -116,13 +133,28 @@ export default function useSidePanelStack({
     [rawSourceStack, rawNavStack, stackRoot, initialRowId],
   );
 
+  const [storedTab, setStoredTab] = useLocalStorage<Tab | null>(
+    LAST_TAB_STORAGE_KEY,
+    null,
+  );
+
+  // Drop a stored tab the current build no longer knows about (renamed/removed
+  // between releases): it would otherwise be stamped into the nav stack as
+  // originTab and fail that stack's schema parse, discarding the whole trail.
+  const lastTab =
+    storedTab != null && Object.values<string>(Tab).includes(storedTab)
+      ? storedTab
+      : null;
+
+  const rememberedTab = tab ?? lastTab;
+
   const pushSource = useCallback(
     (frame: SourceFrame, destinationTab: Tab) => {
       // Compute from the *effective* stack (empty when stale) so a push from a
       // stale URL starts a fresh, owned trail instead of extending old frames.
       setSourceStack([
         ...sourceStack,
-        { ...frame, originTab: tab ?? undefined },
+        { ...frame, originTab: rememberedTab ?? undefined },
       ]);
       setNavStack([]);
       setStackRoot(initialRowId ?? null);
@@ -130,7 +162,7 @@ export default function useSidePanelStack({
     },
     [
       sourceStack,
-      tab,
+      rememberedTab,
       initialRowId,
       setSourceStack,
       setNavStack,
@@ -142,14 +174,17 @@ export default function useSidePanelStack({
   const pushNav = useCallback(
     (entry: NavEntry, destinationTab: Tab) => {
       setSourceStack(sourceStack);
-      setNavStack([...navStack, { ...entry, originTab: tab ?? undefined }]);
+      setNavStack([
+        ...navStack,
+        { ...entry, originTab: rememberedTab ?? undefined },
+      ]);
       setStackRoot(initialRowId ?? null);
       setQueryTab(destinationTab);
     },
     [
       sourceStack,
       navStack,
-      tab,
+      rememberedTab,
       initialRowId,
       setSourceStack,
       setNavStack,
@@ -199,7 +234,15 @@ export default function useSidePanelStack({
     [sourceStack, navStack, setSourceStack, setNavStack, setQueryTab],
   );
 
-  const setTab = useCallback((next: Tab) => setQueryTab(next), [setQueryTab]);
+  const setTab = useCallback(
+    (next: Tab) => {
+      if (!NAVIGATIONAL_TABS.includes(next)) {
+        setStoredTab(next);
+      }
+      setQueryTab(next);
+    },
+    [setStoredTab, setQueryTab],
+  );
 
   const clearTrail = useCallback(() => {
     setSourceStack(null); // sidePanelSourceStack
@@ -213,7 +256,8 @@ export default function useSidePanelStack({
       sourceStack,
       navStack,
       isStale,
-      tab,
+      tab: rememberedTab,
+      preferredTab: lastTab,
       pushSource,
       pushNav,
       popOne,
@@ -223,6 +267,8 @@ export default function useSidePanelStack({
     }),
     [
       clearTrail,
+      rememberedTab,
+      lastTab,
       isStale,
       navStack,
       popOne,
@@ -230,7 +276,6 @@ export default function useSidePanelStack({
       pushSource,
       setTab,
       sourceStack,
-      tab,
       truncateTo,
     ],
   );

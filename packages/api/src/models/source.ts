@@ -267,6 +267,8 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     resourceAttributesExpression: String,
     serviceNameExpression: String,
     logSourceId: String,
+    // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
+    seriesTable: String,
   }),
 );
 
