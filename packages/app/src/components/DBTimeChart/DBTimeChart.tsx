@@ -299,6 +299,14 @@ function DBTimeChartComponent({
     }
   }, [displayTypeLocal, displayTypeProp, setDisplayType]);
 
+  // The chart replaces its whole subtree — marker layer and exemplar card
+  // included — for the loading, error and empty states. Derived here from the
+  // same booleans the branches below use, so the two cannot drift.
+  const showLoading = isLoading && !data;
+  const showEmpty = graphResults.length === 0;
+  const isPlotRendered =
+    !showLoading && !isError && !resultFormattingError && !showEmpty;
+
   // Exemplar overlay: data plus the hover/pin card state machine. See
   // useExemplarCard — the chart coordinates with it below because its drill-down
   // tooltip and the exemplar card are mutually exclusive.
@@ -324,6 +332,7 @@ function DBTimeChartComponent({
     queriedConfig,
     source,
     displayType,
+    isPlotRendered,
     // Rendered series count, so a multi-line chart cannot be given markers that
     // belong to an unknown line. Taken from the main query's own result — the
     // exemplar response can't answer it, since Prometheus returns only series
@@ -468,7 +477,7 @@ function DBTimeChartComponent({
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
-      {isLoading && !data ? (
+      {showLoading ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...
         </div>
@@ -483,7 +492,7 @@ function DBTimeChartComponent({
               : new Error(String(resultFormattingError))
           }
         />
-      ) : graphResults.length === 0 ? (
+      ) : showEmpty ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.
         </div>
