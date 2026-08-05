@@ -1815,4 +1815,57 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  // The other half of the dashboard export gate. Same self-proving shape as the
+  // provisioned case: assert visible on this dashboard first, then make it
+  // ineligible and assert hidden, so the transition itself is the assertion.
+  test(
+    'should withhold Terraform import once a dashboard gains a PromQL tile',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const uniqueName = `E2E PromQL Dashboard ${Date.now()}`;
+      const terraformButton = page.locator(
+        '[data-testid^="terraform-popover-button-"]',
+      );
+      let dashboardId: string;
+
+      await test.step('Create a saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+        dashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Verify the export affordance is offered', async () => {
+        await expect(terraformButton).toBeVisible();
+      });
+
+      await test.step('Give it a PromQL tile', async () => {
+        // Written directly rather than built in the chart editor: the editor
+        // flow for a PromQL tile is long and this test is about the gate, not
+        // the editor.
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'print(JSON.stringify(db.dashboards.updateOne(',
+            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
+            "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
+            "      config: { configType: 'promql', promqlExpression: 'up',",
+            "                connection: 'c1', displayType: 'line' } }] } }",
+            ')));',
+          ].join('\n'),
+        );
+        expect(out).toContain('"matchedCount":1');
+        expect(out).toContain('"modifiedCount":1');
+      });
+
+      await test.step('Verify it is withheld after reload', async () => {
+        await dashboardPage.gotoDashboard(dashboardId);
+        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        // Importing this dashboard would delete the PromQL tile on the next
+        // apply, because the provider reads it back through external API v2.
+        await expect(terraformButton).toBeHidden();
+      });
+    },
+  );
 });

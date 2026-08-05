@@ -36,12 +36,12 @@ type TeamTab = {
   label: string;
   sections: {
     id: string;
-    // A function when the section needs to know whether its tab is the visible
-    // one. Mantine `Tabs` keeps every panel mounted, so a section that fetches
-    // on mount would otherwise do so on every Team Settings visit. Taking it as
-    // an argument avoids duplicating the tab-value list to compute `activeTab`
-    // before `tabs` is built.
-    content: ReactNode | ((active: boolean) => ReactNode);
+    // Always a function of whether this tab is the visible one. Mantine `Tabs`
+    // keeps every panel mounted, so a section that fetches on mount would
+    // otherwise do so on every Team Settings visit. Uniform rather than a
+    // `ReactNode | fn` union: the union let a bare `<Section />` be passed where
+    // the closure form was needed, silently reinstating the eager fetch.
+    content: (active: boolean) => ReactNode;
   }[];
 };
 
@@ -56,9 +56,7 @@ function TeamTabContent({
     <Stack gap="lg" pt="lg">
       {sections.map(section => (
         <Box key={section.id} id={section.id}>
-          {typeof section.content === 'function'
-            ? section.content(active)
-            : section.content}
+          {section.content(active)}
         </Box>
       ))}
     </Stack>
@@ -111,11 +109,11 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-data-sources',
-          content: <SourcesSection />,
+          content: () => <SourcesSection />,
         },
         {
           id: 'team-data-connections',
-          content: <ConnectionsSection />,
+          content: () => <ConnectionsSection />,
         },
       ],
     },
@@ -125,7 +123,7 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-members',
-          content: <TeamMembersSection />,
+          content: () => <TeamMembersSection />,
         },
       ],
     },
@@ -137,7 +135,7 @@ export default function TeamPage() {
             sections: [
               {
                 id: 'team-access-security-policies',
-                content: (
+                content: () => (
                   <SecurityPoliciesSection
                     allowedAuthMethods={allowedAuthMethods}
                   />
@@ -153,11 +151,11 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-api-agents-api-keys',
-          content: <ApiKeysSection />,
+          content: () => <ApiKeysSection />,
         },
         {
           id: 'team-api-agents-mcp-server',
-          content: <McpServerSection />,
+          content: () => <McpServerSection />,
         },
         ...(IS_IAC_EXPORT_ENABLED
           ? [
@@ -177,7 +175,7 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-integrations-webhooks',
-          content: <IntegrationsSection />,
+          content: () => <IntegrationsSection />,
         },
       ],
     },
@@ -187,7 +185,7 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-advanced-query-settings',
-          content: <TeamQueryConfigSection />,
+          content: () => <TeamQueryConfigSection />,
         },
       ],
     },

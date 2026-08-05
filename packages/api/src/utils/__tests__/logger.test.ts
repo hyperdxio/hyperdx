@@ -8,6 +8,7 @@ import {
   REDACTED_PATHS,
   scrubbedRequestSerializer,
   scrubUrlTokens,
+  selectRequestSerializers,
 } from '@/utils/logger';
 
 /**
@@ -191,5 +192,29 @@ describe('production log line', () => {
     // Still a useful log line: the non-credential parts survive.
     expect(out).toContain('jest');
     expect(out).toContain('203.0.113.7');
+  });
+});
+
+/**
+ * The branch itself, not just its output. `expressLogger` is built at import
+ * time from `IS_DEV || IS_CI`, and IS_CI is true under Jest, so the production
+ * wiring is unreachable in this suite — inverting the condition would leave the
+ * rest of these tests green while shipping unscrubbed request URLs.
+ */
+describe('selectRequestSerializers', () => {
+  it('wires the scrubbing serializer outside dev and CI', () => {
+    expect(selectRequestSerializers(false).serializers.req).toBe(
+      scrubbedRequestSerializer,
+    );
+  });
+
+  it('disables req and res serializers in dev and CI', () => {
+    const { serializers } = selectRequestSerializers(true);
+
+    expect(serializers.req).not.toBe(scrubbedRequestSerializer);
+    // pino-pretty already prints the request line locally; the full objects
+    // are noise. Both must be off, not just req.
+    expect(serializers.req({})).toBeUndefined();
+    expect(serializers.res({})).toBeUndefined();
   });
 });

@@ -28,7 +28,7 @@ import { downloadTextFile } from '@/utils/downloadFile';
 // Keyed by IacResourceType rather than a plain array, so adding a seventh
 // provider resource type fails to compile here instead of shipping a type that
 // is silently unexportable from Team Settings.
-const RESOURCE_TYPE_OPTIONS: Record<
+export const RESOURCE_TYPE_OPTIONS: Record<
   IacResourceType,
   {
     label: string;
@@ -44,10 +44,14 @@ const RESOURCE_TYPE_OPTIONS: Record<
   webhook: { label: 'Webhooks', key: 'webhooks' },
 };
 
-// Display order. Written out rather than derived from Object.keys, which is
-// typed `string[]` and would need a cast; the two checks below give the same
-// guarantee without one.
-const RESOURCE_TYPE_ORDER = [
+// Display order. `satisfies` rejects an entry that is not a resource type, but
+// nothing in the type system catches the two failures that matter here — a type
+// missing from the list, or one listed twice (which would render duplicate
+// checkboxes and emit the same import address twice, and Terraform rejects a
+// duplicate address for the whole plan). Both are covered by a test that
+// compares this against RESOURCE_TYPE_OPTIONS' keys, which is why both are
+// exported.
+export const RESOURCE_TYPE_ORDER = [
   'dashboard',
   'alert',
   'saved_search',
@@ -55,18 +59,6 @@ const RESOURCE_TYPE_ORDER = [
   'connection',
   'webhook',
 ] as const satisfies readonly IacResourceType[];
-
-// `satisfies` above rejects an entry that is not a resource type. This rejects
-// the other direction: a seventh type added to IacResourceType but not to the
-// order becomes a non-`never` Exclude, so the annotation stops compiling and
-// the type cannot ship silently missing from the checkbox list.
-type ResourceTypeMissingFromOrder = Exclude<
-  IacResourceType,
-  (typeof RESOURCE_TYPE_ORDER)[number]
->;
-const _everyResourceTypeIsOrdered: ResourceTypeMissingFromOrder extends never
-  ? true
-  : false = true;
 
 const truncatedLabels = (
   truncatedTypes: string[],
@@ -131,6 +123,52 @@ export default function IacMigrationSection({
   );
   const [downloadError, setDownloadError] = useState(false);
 
+  const skipNoticesFor = ({
+    skippedAlerts: alerts,
+    skippedDashboards: dashboards,
+    skippedSources: sources,
+  }: {
+    skippedAlerts: number;
+    skippedDashboards: number;
+    skippedSources: number;
+  }) =>
+    [
+      {
+        count: alerts,
+        text: `${alerts} alert${alerts === 1 ? '' : 's'} — the provider only supports saved-search alerts.`,
+      },
+      {
+        count: dashboards,
+        text: `${dashboards} dashboard${dashboards === 1 ? '' : 's'} — a tile on them cannot be represented by the provider, and importing one would delete that tile on the next apply.`,
+      },
+      {
+        count: sources,
+        text: `${sources} PromQL source${sources === 1 ? '' : 's'} — the provider models only ClickHouse-backed sources.`,
+      },
+    ]
+      .filter(n => n.count > 0)
+      .map(n => n.text);
+
+  // One renderer for all three exclusion rules — they differ only in count and
+  // reason, and a fourth rule should not mean a fourth near-identical block.
+  const skipNotices = [
+    {
+      key: 'alerts',
+      count: skippedAlerts,
+      text: `${skippedAlerts} alert${skippedAlerts === 1 ? '' : 's'} will be skipped — the Terraform provider only supports saved-search alerts.`,
+    },
+    {
+      key: 'dashboards',
+      count: skippedDashboards,
+      text: `${skippedDashboards} dashboard${skippedDashboards === 1 ? '' : 's'} will be skipped — a tile on them cannot be represented by the provider, and importing one would delete that tile on the next apply.`,
+    },
+    {
+      key: 'sources',
+      count: skippedSources,
+      text: `${skippedSources} PromQL source${skippedSources === 1 ? '' : 's'} will be skipped — the provider models only ClickHouse-backed sources.`,
+    },
+  ].filter(notice => notice.count > 0);
+
   const onDownload = async () => {
     // The whole body is guarded: this is an async click handler, so anything
     // that throws past it becomes an unhandled rejection the user never sees —
@@ -160,6 +198,10 @@ export default function IacMigrationSection({
           // that only became truncated on this refetch would otherwise save a
           // partial file carrying no indication that it is partial.
           truncatedTypes: truncatedLabels(result.data.truncatedTypes, selected),
+          // Recomputed from the refetched payload, like truncatedTypes: the
+          // banner above is cached-manifest state, the file must describe what
+          // was actually written.
+          skipNotices: skipNoticesFor(freshSelection),
         }),
         'hyperdx-import.tf',
       );
@@ -239,26 +281,16 @@ export default function IacMigrationSection({
             downloaded. Reload the page and try again.
           </Alert>
         )}
-        {skippedAlerts > 0 && (
-          <Text size="xs" style={{ color: 'var(--color-text-muted)' }} mb="sm">
-            {skippedAlerts} alert{skippedAlerts === 1 ? '' : 's'} will be
-            skipped — the Terraform provider only supports saved-search alerts.
+        {skipNotices.map(({ key, text }) => (
+          <Text
+            key={key}
+            size="xs"
+            style={{ color: 'var(--color-text-muted)' }}
+            mb="sm"
+          >
+            {text}
           </Text>
-        )}
-        {skippedDashboards > 0 && (
-          <Text size="xs" style={{ color: 'var(--color-text-muted)' }} mb="sm">
-            {skippedDashboards} dashboard
-            {skippedDashboards === 1 ? '' : 's'} will be skipped — they contain
-            PromQL tiles, which the provider cannot represent. Importing one
-            would delete those tiles on the next apply.
-          </Text>
-        )}
-        {skippedSources > 0 && (
-          <Text size="xs" style={{ color: 'var(--color-text-muted)' }} mb="sm">
-            {skippedSources} PromQL source{skippedSources === 1 ? '' : 's'} will
-            be skipped — the provider models only ClickHouse-backed sources.
-          </Text>
-        )}
+        ))}
         <Button
           variant="primary"
           leftSection={<IconDownload size={16} />}

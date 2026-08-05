@@ -140,6 +140,81 @@ describe('dashboard tile exportability', () => {
     expect(isUnexportableTile(builderTile)).toBe(false);
   });
 
+  // The converter substitutes defaultTileConfig — an empty Line chart — for
+  // anything it cannot represent, not just PromQL, and the write path then
+  // persists that substitution. These are the other branches it rejects.
+  it('flags a tile with no displayType', () => {
+    expect(isUnexportableTile({ config: { source: '7'.repeat(24) } })).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    DisplayType.Search,
+    DisplayType.Markdown,
+    DisplayType.Heatmap,
+    DisplayType.EventPatterns,
+  ])('flags a raw-SQL tile displayed as %s', displayType => {
+    expect(
+      isUnexportableTile({
+        config: {
+          configType: 'sql',
+          displayType,
+          connection: '6'.repeat(24),
+          sqlTemplate: 'SELECT 1',
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    DisplayType.Line,
+    DisplayType.StackedBar,
+    DisplayType.Table,
+    DisplayType.Number,
+    DisplayType.Pie,
+    DisplayType.Bar,
+  ])('does not flag a raw-SQL tile displayed as %s', displayType => {
+    expect(
+      isUnexportableTile({
+        config: {
+          configType: 'sql',
+          displayType,
+          connection: '6'.repeat(24),
+          sqlTemplate: 'SELECT 1',
+        },
+      }),
+    ).toBe(false);
+  });
+
+  // A builder tile of these kinds IS representable — only the raw-SQL branch
+  // of the converter rejects them.
+  it('does not flag a builder markdown tile', () => {
+    expect(
+      isUnexportableTile({
+        config: { displayType: DisplayType.Markdown, markdown: 'hi' },
+      }),
+    ).toBe(false);
+  });
+
+  // Dashboard.tiles is a Mongoose Mixed array, so the database enforces
+  // nothing. One legacy row must not take down the whole team's manifest.
+  it('survives a malformed tile instead of throwing', () => {
+    expect(() =>
+      dashboardHasUnexportableTiles([
+        { config: undefined },
+        { config: null },
+        { config: 'nonsense' },
+        {},
+      ]),
+    ).not.toThrow();
+    expect(
+      dashboardHasUnexportableTiles(
+        'not-an-array' as unknown as readonly { config?: unknown }[],
+      ),
+    ).toBe(false);
+  });
+
   it('flags a dashboard as soon as one tile is unexportable', () => {
     expect(dashboardHasUnexportableTiles([builderTile, promqlTile])).toBe(true);
     expect(dashboardHasUnexportableTiles([builderTile])).toBe(false);

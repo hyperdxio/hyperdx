@@ -3,14 +3,19 @@ import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import IacMigrationSection from '@/components/TeamSettings/IacMigrationSection';
+import IacMigrationSection, {
+  RESOURCE_TYPE_OPTIONS,
+  RESOURCE_TYPE_ORDER,
+} from '@/components/TeamSettings/IacMigrationSection';
 
 // Indirected through a module-scope jest.fn so individual tests can vary the
 // hook result; `jest.mock` factories are hoisted above module initialisers, so
 // the factory may only close over the fn, never read it at hoist time.
 const useIacImportManifest = jest.fn();
+// Forwards args: the component passes `{ enabled: active }`, and a mock that
+// dropped them made the tab gating structurally untestable.
 jest.mock('@/components/Iac/useIacImportManifest', () => ({
-  useIacImportManifest: () => useIacImportManifest(),
+  useIacImportManifest: (...args: unknown[]) => useIacImportManifest(...args),
 }));
 
 const MANIFEST = {
@@ -52,6 +57,22 @@ function renderSection() {
     </QueryClientProvider>,
   );
 }
+
+// The checkbox list and the truncation labels both read RESOURCE_TYPE_ORDER,
+// while eligibility reads RESOURCE_TYPE_OPTIONS. A type missing from the order
+// is silently unexportable; one listed twice renders duplicate checkboxes and
+// emits the same Terraform address twice, which fails the whole plan.
+describe('resource type registry', () => {
+  it('orders exactly the resource types the options map defines', () => {
+    expect([...RESOURCE_TYPE_ORDER].sort()).toEqual(
+      Object.keys(RESOURCE_TYPE_OPTIONS).sort(),
+    );
+  });
+
+  it('lists no resource type twice', () => {
+    expect(new Set(RESOURCE_TYPE_ORDER).size).toBe(RESOURCE_TYPE_ORDER.length);
+  });
+});
 
 describe('IacMigrationSection', () => {
   beforeEach(() => {
@@ -200,6 +221,31 @@ describe('IacMigrationSection', () => {
       expect(screen.getByText("Couldn't build the file")).toBeInTheDocument(),
     );
     expect(downloadTextFile).not.toHaveBeenCalled();
+  });
+
+  // Mantine Tabs keeps every panel mounted, so without this the six-query
+  // fan-out fires on every Team Settings visit whether or not this tab is
+  // opened. The plumbing through TeamPage exists only to carry this flag.
+  it('does not fetch while its tab is not the visible one', () => {
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MantineProvider>
+          <IacMigrationSection active={false} />
+        </MantineProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(useIacImportManifest).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it('fetches once its tab becomes visible', () => {
+    renderSection();
+
+    expect(useIacImportManifest).toHaveBeenCalledWith({ enabled: true });
   });
 
   // A capped listing otherwise reads as a complete export.

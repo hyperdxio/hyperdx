@@ -8,10 +8,14 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 // A getter, not a literal: the component reads the binding at render time, so
 // this lets one test flip the gate without re-requiring React.
 let iacExportEnabled = true;
+let basePath = '';
 jest.mock('@/config', () => ({
   ...jest.requireActual('@/config'),
   get IS_IAC_EXPORT_ENABLED() {
     return iacExportEnabled;
+  },
+  get BASE_PATH() {
+    return basePath;
   },
 }));
 
@@ -39,6 +43,7 @@ function openPopover(resource: IacResourceRef = DASHBOARD) {
 describe('ResourceTerraformPopover', () => {
   beforeEach(() => {
     iacExportEnabled = true;
+    basePath = '';
   });
 
   // The dropdown mounts through Mantine's `<Transition>`, which renders on a
@@ -118,6 +123,23 @@ describe('ResourceTerraformPopover', () => {
     expect(
       await screen.findByText(/survives a rename in HyperDX/),
     ).toBeInTheDocument();
+  });
+
+  // This surface and the bulk export had drifted here: one included the
+  // deployment path prefix and the other did not, so on a prefixed deployment
+  // one of them emitted an endpoint that could not reach the API. Both now go
+  // through providerEndpoint, and this pins the call site so they cannot drift
+  // apart again.
+  it('includes the deployment path prefix in the provider endpoint', async () => {
+    basePath = '/hyperdx';
+    openPopover();
+
+    const toggle = await screen.findByText(/Show provider setup/);
+    fireEvent.click(toggle);
+
+    expect(screen.getByText(/clickstack_endpoint/)).toHaveTextContent(
+      '/hyperdx/api',
+    );
   });
 
   // Terraform allows one required_providers per module, so this boilerplate is

@@ -2,6 +2,7 @@ import {
   dashboardHasUnexportableTiles,
   IAC_MANIFEST_LIMIT,
   type IacImportManifest,
+  isImportableSource,
 } from '@hyperdx/common-utils/dist/iac';
 import express from 'express';
 import type { Query } from 'mongoose';
@@ -28,6 +29,22 @@ const manifestTruncations = getCounter(
   {
     description:
       'Count of import-manifest requests where at least one listing hit IAC_MANIFEST_LIMIT.',
+  },
+);
+
+const manifestUnexportableDashboards = getCounter(
+  'hyperdx.iac.import_manifest_unexportable_dashboards',
+  {
+    description:
+      'Dashboards withheld from Terraform export because a tile would not survive the import round trip.',
+  },
+);
+
+const manifestUnexportableSources = getCounter(
+  'hyperdx.iac.import_manifest_unexportable_sources',
+  {
+    description:
+      'Sources withheld from Terraform export because the provider cannot model their kind.',
   },
 );
 
@@ -68,9 +85,11 @@ export function capListing<T extends readonly unknown[]>(
   };
 }
 
-// Lean id+name manifest for the "Export to Terraform" team-settings UI.
-// Deliberately avoids the heavy /dashboards and /alerts listing endpoints,
-// which populate references and load full tile configs.
+// Lean manifest for the "Export to Terraform" team-settings UI. Deliberately
+// avoids the /dashboards and /alerts listing endpoints, which populate
+// references and load whole documents. The dashboards leg reads two tile
+// discriminators to decide exportability (see the projection below); nothing
+// beyond ids, names and derived flags reaches the response.
 router.get('/import-manifest', async (req, res, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
@@ -86,14 +105,20 @@ router.get('/import-manifest', async (req, res, next) => {
       ] = await Promise.all([
         // Provisioned dashboards are machine-managed (ProvisionDashboardsTask)
         // and would conflict with Terraform-managed state.
-        // `tiles` is projected despite the manifest being deliberately lean:
-        // a dashboard containing a tile the import round trip would destroy
-        // must not be offered, and that is only knowable from the configs.
-        // Only the derived boolean crosses the wire, never the tiles.
+        // Only the two discriminators `isUnexportableTile` reads, not whole
+        // tile configs: a dashboard containing a tile the import round trip
+        // would destroy must not be offered, and that is only knowable from
+        // the configs — but SQL templates, select lists and filters have no
+        // business leaving Mongo for a boolean. Keep this projection in step
+        // with what that predicate inspects.
         bounded(
           Dashboard.find(
             { team: teamId, provisioned: { $ne: true } },
-            { name: 1, tiles: 1 },
+            {
+              name: 1,
+              'tiles.config.configType': 1,
+              'tiles.config.displayType': 1,
+            },
           ),
         ).lean(),
         bounded(
@@ -130,12 +155,37 @@ router.get('/import-manifest', async (req, res, next) => {
         .filter(([, truncated]) => truncated)
         .map(([key]) => key as string);
 
+      // Ineligible resources are withheld silently from the caller's point of
+      // view, so the count is the only operational signal that an export is
+      // smaller than the team. Attributes are per-request detail; the counter
+      // is what an alert can watch.
+      const unexportableDashboards = dashboards.items.filter(d =>
+        dashboardHasUnexportableTiles(d.tiles),
+      ).length;
+      const unexportableSources = sources.items.filter(
+        s => !isImportableSource({ kind: s.kind }),
+      ).length;
+
       span.setAttribute(
         'hyperdx.iac.import_manifest.truncated_types',
         truncatedTypes.join(','),
       );
+      span.setAttribute(
+        'hyperdx.iac.import_manifest.unexportable_dashboards',
+        unexportableDashboards,
+      );
+      span.setAttribute(
+        'hyperdx.iac.import_manifest.unexportable_sources',
+        unexportableSources,
+      );
       if (truncatedTypes.length > 0) {
         manifestTruncations.add(1);
+      }
+      if (unexportableDashboards > 0) {
+        manifestUnexportableDashboards.add(unexportableDashboards);
+      }
+      if (unexportableSources > 0) {
+        manifestUnexportableSources.add(unexportableSources);
       }
 
       // `name` is `?? undefined` on every listing, not just alerts: these are

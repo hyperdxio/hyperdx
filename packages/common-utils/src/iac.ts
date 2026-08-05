@@ -1,10 +1,19 @@
-import { isPromqlSavedChartConfig } from './guards';
 import {
-  AlertSource,
-  type IacImportManifest,
-  SourceKind,
-  type Tile,
-} from './types';
+  isImportableAlert,
+  isImportableDashboard,
+  isImportableSource,
+} from './iacEligibility';
+import { type IacImportManifest } from './types';
+
+// Re-exported so callers keep one import site (`@hyperdx/common-utils/dist/iac`)
+// for both halves of the feature.
+export {
+  dashboardHasUnexportableTiles,
+  isImportableAlert,
+  isImportableDashboard,
+  isImportableSource,
+  isUnexportableTile,
+} from './iacEligibility';
 
 //
 // Single source of truth for everything HyperDX asserts about the ClickHouse
@@ -58,88 +67,6 @@ export type { IacImportManifest };
 // Connection/Source/SavedSearch schemas, so the manifest can legitimately
 // carry an entry without one.
 export type IacConnectionRef = IacImportManifest['connections'][number];
-
-/**
- * The provider models only saved-search alerts — a tile alert has no
- * corresponding resource, so offering one for import produces a command that
- * fails. Shared by the bulk export and the per-alert popover so the two cannot
- * disagree about what is eligible.
- */
-export function isImportableAlert(alert: {
-  source?: string;
-  savedSearchId?: string;
-}): boolean {
-  // `source` is authoritative whenever it is set. The savedSearchId fallback
-  // covers only legacy rows that predate the discriminator — it must NOT be an
-  // unconditional `||`, because converting a saved-search alert to a tile alert
-  // leaves the old savedSearch reference behind: `makeAlert` passes
-  // `savedSearch: undefined` and Mongoose 6 deletes undefined keys from the
-  // `$set` instead of clearing the field. A tile alert can therefore still
-  // report a savedSearchId, and the provider cannot model it.
-  return (
-    alert.source === AlertSource.SAVED_SEARCH ||
-    (alert.source == null && !!alert.savedSearchId)
-  );
-}
-
-/**
- * True when a tile cannot survive the round trip the import flow puts it
- * through, so a dashboard containing one must not be offered for import.
- *
- * The documented flow is `terraform plan -generate-config-out` then `apply`.
- * The provider authenticates with a Personal API Access Key, so it reads
- * through the key-authenticated external API v2 — which is HyperDX's own
- * allowlist converter, not a path around it. That converter drops a PromQL
- * tile from the read response entirely (deliberately: the alternative was
- * falling through to a default Line config, a worse silent rewrite). The write
- * path then rebuilds `tiles` wholesale from the request body, so applying a
- * config generated from that read deletes the tile.
- *
- * Scoped to PromQL rather than "anything the converter rejects" so this and
- * the per-dashboard popover — which cannot reach that converter — decide
- * eligibility identically. The remaining rejection case is a legacy or
- * corrupted `displayType`, which fails the input schema loudly on apply rather
- * than losing data silently.
- */
-export function isUnexportableTile(tile: Pick<Tile, 'config'>): boolean {
-  return isPromqlSavedChartConfig(tile.config);
-}
-
-export function dashboardHasUnexportableTiles(
-  tiles: readonly Pick<Tile, 'config'>[] | undefined,
-): boolean {
-  return (tiles ?? []).some(isUnexportableTile);
-}
-
-/**
- * Two independent reasons a dashboard is not importable.
- *
- * `provisioned` — machine-managed by ProvisionDashboardsTask, whose name-keyed
- * upsert overwrites tiles, tags, and filters wholesale. Two managers for one
- * object is a fight nobody wins. The manifest also filters these out
- * server-side (`provisioned: { $ne: true }`); this keeps the per-dashboard
- * surface agreeing with it.
- *
- * `unexportableTiles` — content the import round trip would destroy, per
- * isUnexportableTile above. The server computes this, because the lean manifest
- * deliberately does not ship tile configs to the client.
- */
-export function isImportableDashboard(dashboard: {
-  provisioned?: boolean;
-  unexportableTiles?: boolean;
-}): boolean {
-  return !dashboard.provisioned && !dashboard.unexportableTiles;
-}
-
-/**
- * A PromQL source has no `clickhouse_clickstack_source` representation — the
- * provider models the ClickHouse-backed kinds. Emitting one produces an import
- * block for a resource the provider cannot read, which fails the plan. Same
- * shape as the tile-alert rule: eligibility decided once, here.
- */
-export function isImportableSource(source: { kind?: string }): boolean {
-  return source.kind !== SourceKind.Promql;
-}
 
 /**
  * Terraform addresses are derived from the id, never the name.
@@ -266,16 +193,23 @@ export function buildImportFile({
   resources,
   connectionLocals = [],
   truncatedTypes = [],
+  skipNotices = [],
 }: {
   endpoint: string;
   resources: IacResourceRef[];
   connectionLocals?: IacConnectionRef[];
   /**
-   * Listing keys the server capped. Recorded in the generated file, not just
-   * the UI: the `.tf` is what gets committed and read months later, and a
-   * partial export that says nothing looks like a complete one.
+   * Human-readable names of the listings the server capped. Recorded in the
+   * generated file, not just the UI: the `.tf` is what gets committed and read
+   * months later, and a partial export that says nothing looks like a complete
+   * one.
    */
   truncatedTypes?: string[];
+  /**
+   * Reasons resources were withheld as ineligible, one line each. Same argument
+   * as truncatedTypes — the file has to say why it is smaller than the team.
+   */
+  skipNotices?: string[];
 }): string {
   const sections = [
     buildProviderBlock(endpoint),
@@ -292,9 +226,15 @@ export function buildImportFile({
 #   The remainder is not in this file and re-exporting returns the same page.
 `
     : '';
+  const skipped = skipNotices.length
+    ? `#
+# Some resources were left out as ineligible:
+${skipNotices.map(n => `#   - ${n}`).join('\n')}
+`
+    : '';
   return `# HyperDX Terraform import file
 # Generated by HyperDX. Review before committing to your repository.
-${partialWarning}#
+${partialWarning}${skipped}#
 # 1. Place this file in your Terraform project.
 #    If your project already declares the ClickHouse provider, delete the
 #    "terraform" and "provider" blocks below — Terraform allows only one of

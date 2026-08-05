@@ -116,6 +116,57 @@ describe('iac router', () => {
     expect(byName['Plain']).not.toHaveProperty('tiles');
   });
 
+  // The projection reads only tiles.config.configType/displayType, so this
+  // also pins that the narrowed projection still feeds the predicate.
+  it('marks a dashboard whose only tile is a raw-SQL search', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await Dashboard.create({
+      name: 'Raw SQL search',
+      team: team._id,
+      tiles: [
+        {
+          id: 'tile-sql',
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 2,
+          config: {
+            configType: 'sql',
+            displayType: 'search',
+            connection: randomMongoId(),
+            sqlTemplate: 'SELECT 1',
+          },
+        },
+      ],
+    });
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+    expect(resp.body.dashboards[0].unexportableTiles).toBe(true);
+  });
+
+  // Dashboard.tiles is Mixed, so the database enforces nothing. One legacy row
+  // must not 500 the endpoint for everything else the team owns.
+  it('still serves the manifest when a stored tile is malformed', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await Dashboard.create({
+      name: 'Healthy',
+      team: team._id,
+      tiles: [],
+    });
+    await Dashboard.collection.insertOne({
+      name: 'Corrupt',
+      team: team._id,
+      tiles: [{ id: 'bad', x: 0, y: 0, w: 4, h: 2 }],
+    });
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+    expect(
+      resp.body.dashboards.map((d: { name: string }) => d.name).sort(),
+    ).toEqual(['Corrupt', 'Healthy']);
+  });
+
   it('rejects unauthenticated requests', async () => {
     const resp = await getAgent(server).get('/iac/import-manifest');
     expect(resp.status).toBe(401);

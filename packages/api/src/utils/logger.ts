@@ -94,6 +94,24 @@ export const scrubbedRequestSerializer = (
   return req;
 };
 
+/**
+ * Which serializers pino-http gets, as a pure function of one boolean, so the
+ * branch that actually ships can be asserted in a test. The production branch
+ * is otherwise unreachable under Jest — `IS_CI` is true there — so an inverted
+ * condition or a dropped serializer would leave every test green while sending
+ * unscrubbed URLs to stdout.
+ *
+ * Serializers are disabled outside production because pino-pretty already
+ * prints the request line and the full req/res objects are noise locally.
+ */
+export function selectRequestSerializers(isDevOrCi: boolean): {
+  serializers: NonNullable<pino.LoggerOptions['serializers']>;
+} {
+  return isDevOrCi
+    ? { serializers: { req: () => undefined, res: () => undefined } }
+    : { serializers: { req: scrubbedRequestSerializer } };
+}
+
 const logger = pino({
   level: MAX_LEVEL,
   transport: getTransport(),
@@ -127,17 +145,7 @@ export const expressLogger = pinoHttp({
     }
     return {};
   },
-  // Only disable req/res serializers in development/CI
-  ...(config.IS_DEV || config.IS_CI
-    ? {
-        serializers: {
-          req: () => undefined,
-          res: () => undefined,
-        },
-      }
-    : {
-        serializers: { req: scrubbedRequestSerializer },
-      }),
+  ...selectRequestSerializers(config.IS_DEV || config.IS_CI),
 });
 
 export default logger;
