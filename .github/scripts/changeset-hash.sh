@@ -34,7 +34,17 @@ hashed() {
       split($1, meta, " ")
       print meta[3], $2
     }
-  ' "$LISTING" | sort -k2
+  ' "$LISTING" | LC_ALL=C sort -k2
+}
+
+# The draft and publish jobs must agree on this hash, and macOS (where the test
+# also runs) has no sha256sum.
+sha256() {
+  if command -v sha256sum > /dev/null; then
+    sha256sum
+  else
+    shasum -a 256
+  fi
 }
 
 # Cross-check the parse by counting the same paths a different way. A dropped
@@ -51,4 +61,4 @@ if [ "$ACTUAL" -ne "$EXPECTED" ]; then
   exit 1
 fi
 
-hashed | sha256sum | cut -c1-12
+hashed | sha256 | cut -c1-12

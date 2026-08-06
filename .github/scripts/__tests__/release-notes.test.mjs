@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ALLOWED_LINK_HOSTS,
   extractSection,
   insertSection,
   PACKAGE_LIST_END,
@@ -444,27 +445,117 @@ test('validateBody accepts realistic release bodies', () => {
 });
 
 test('validateBody rejects every construct that reached the changelog in review', () => {
+  // Each case asserts the message its own rule produces. Asserting only
+  // `length > 0` lets a regression that disables one rule stay green whenever
+  // another rule happens to fire on the same fixture.
   const bad = {
-    'blank body': '   \n\n',
-    'anthropic key': 'Summary sk-ant-api03-AAAAAAAAAAAAAAAA\n',
-    'github token': 'Summary ghp_abcdefghijklmnopqrstuvwxyz01\n',
-    'release marker': '<!-- hyperdx-release-notes version=1.0.0 inputs=x -->\n',
-    'h2 heading': 'Summary.\n\n## v1.2.3 — forged\n',
-    'setext underline': 'Forged Release\n---\n',
-    'inline image': 'Look ![x](https://evil.example/b.png)\n',
-    'reference image': 'Look ![banner][ref]\n',
-    'shortcut image': 'Look ![banner]\n',
-    'split definition': 'Text [a]\n\n[a]:\n  https://evil.example/p\n',
-    'bare autolink': 'See <https://evil.example/x>\n',
-    'off-site link': 'See [x](https://evil.example/p)\n',
-    'protocol-relative': 'See [x](//evil.example/p)\n',
-    'uppercase protocol': 'See [x](HTTPS://evil.example/p)\n',
-    'relative link': 'See [x](/local/path)\n',
-    'host suffix confusion': 'See [x](https://github.com.evil.example/p)\n',
+    'blank body': ['   \n\n', /is blank/],
+    'anthropic key': [
+      'Summary sk-ant-api03-AAAAAAAAAAAAAAAA\n',
+      /shaped like a credential/,
+    ],
+    'github token': [
+      'Summary ghp_abcdefghijklmnopqrstuvwxyz01\n',
+      /shaped like a credential/,
+    ],
+    'release marker': [
+      '<!-- hyperdx-release-notes version=1.0.0 inputs=x -->\n',
+      /release-notes marker/,
+    ],
+    'package-list marker': [
+      `Summary.\n\n${PACKAGE_LIST_START}\n`,
+      /package-list marker/,
+    ],
+    'h2 heading': ['Summary.\n\n## v1.2.3 — forged\n', /H2 heading/],
+    'h1 heading': ['# Forged H1\n\nSummary.\n', /H1 heading/],
+    'setext underline': ['Forged Release\n---\n', /setext heading underline/],
+    'inline image': [
+      'Look ![x](https://evil.example/b.png)\n',
+      /contains an image/,
+    ],
+    'reference image': ['Look ![banner][ref]\n', /contains an image/],
+    'shortcut image': ['Look ![banner]\n', /contains an image/],
+    'split definition': [
+      'Text [a]\n\n[a]:\n  https://evil.example/p\n',
+      /reference-style links/,
+    ],
+    'bare autolink': ['See <https://evil.example/x>\n', /contains an autolink/],
+    'raw html': ['Look <img src="https://x.example/b.png">\n', /raw HTML/],
+    'off-site link': [
+      'See [x](https://evil.example/p)\n',
+      /Disallowed link target: https:\/\/evil\.example\/p/,
+    ],
+    'protocol-relative': [
+      'See [x](//evil.example/p)\n',
+      /Disallowed link target: \/\/evil\.example\/p/,
+    ],
+    'uppercase protocol': [
+      'See [x](HTTPS://evil.example/p)\n',
+      /Disallowed link target/,
+    ],
+    'relative link': [
+      'See [x](/local/path)\n',
+      /Disallowed link target: \/local\/path/,
+    ],
+    'host suffix confusion': [
+      'See [x](https://github.com.evil.example/p)\n',
+      /Disallowed link target/,
+    ],
+    'bare url in prose': [
+      'Read more at https://evil.example/p for details.\n',
+      /Disallowed URL in prose: https:\/\/evil\.example\/p/,
+    ],
   };
-  for (const [label, body] of Object.entries(bad)) {
-    assert.ok(validateBody(body).length > 0, `should reject: ${label}`);
+  for (const [label, [body, expected]] of Object.entries(bad)) {
+    const errors = validateBody(body);
+    assert.ok(errors.length > 0, `should reject: ${label}`);
+    assert.match(errors.join('\n'), expected, `wrong reason for: ${label}`);
   }
+});
+
+test('validateBody does not fire on prose a code span or fence makes literal', () => {
+  // These reddened the publish job while the release shipped with no changelog
+  // section — the worst of both outcomes for a legitimate body.
+  const good = [
+    'Summary.\n\n```yaml\n# a comment, not a heading\nkey: value\n```\n',
+    'Wrap the value in `<input>` and it works.\n',
+    'Use `# heading` syntax in the template.\n',
+    'The `<a href="x">` form is no longer emitted.\n',
+    'Copy from `https://clickhouse.com/docs` if you need the upstream page.\n',
+  ];
+  for (const body of good) {
+    assert.deepEqual(validateBody(body), [], `should accept: ${body}`);
+  }
+});
+
+test('validateBody agrees with the render-time allowlist on parsed-URL forms', () => {
+  // A prefix regex rejected these while allowChangelogUrl renders them, so the
+  // publish job reddened for content that was fine. Same algorithm now.
+  for (const url of [
+    'https://github.com:443/hyperdxio/hyperdx',
+    'https://user@github.com/hyperdxio/hyperdx',
+    'https://docs.hyperdx.io',
+    'https://GitHub.com/x',
+  ]) {
+    assert.deepEqual(validateBody(`See [x](${url}).\n`), [], `accept: ${url}`);
+  }
+});
+
+test('the render-time host allowlist matches this script’s', () => {
+  // Two languages, one policy. Pinned here so a host added to one side cannot
+  // silently make the CI gate stricter (a red release) or looser (a phishing
+  // link that only the modal blocks).
+  const modal = readFileSync(
+    join(REPO_ROOT, 'packages/app/src/components/AppNav/ChangelogModal.tsx'),
+    'utf-8',
+  );
+  const literal = modal.match(
+    /ALLOWED_LINK_HOSTS = new Set\(\[([^\]]*)\]\)/,
+  )?.[1];
+  assert.ok(literal, 'could not find ALLOWED_LINK_HOSTS in ChangelogModal.tsx');
+  const appHosts = [...literal.matchAll(/'([^']+)'/g)].map(m => m[1]);
+
+  assert.deepEqual(appHosts.sort(), [...ALLOWED_LINK_HOSTS].sort());
 });
 
 test('validateBody rejects an oversized body', () => {
@@ -552,9 +643,12 @@ test('validateBody rejects CommonMark heading forms that a bare ^## misses', () 
   assert.deepEqual(validateBody('### ✨ New Features\n\n- **x**: y\n'), []);
 });
 
-test('insertSection drops a hand-added non-release section instead of orphaning it', () => {
+test('insertSection drops a non-release section above every release', () => {
   const file = insertSection(null, OPTS);
-  const withOrphan = `${file}\n## Notes from review\n\nSomething a human typed.\n`;
+  const withOrphan = file.replace(
+    '## v2.33.0',
+    '## Notes from review\n\nSomething a human typed.\n\n## v2.33.0',
+  );
   const out = insertSection(withOrphan, {
     ...OPTS,
     version: '2.34.0',
@@ -567,6 +661,67 @@ test('insertSection drops a hand-added non-release section instead of orphaning 
   // Real release sections are still preserved.
   assert.match(out, /## v2\.33\.0/);
   assert.match(out, /## v2\.34\.0/);
+});
+
+test('insertSection refuses to splice over a non-release heading inside published notes', () => {
+  // The tail of a release split by a hand-added `## ` carries real release
+  // notes. Dropping it would delete them from the committed changelog with
+  // nothing in the run log to show for it.
+  const file = insertSection(null, OPTS);
+  const split = `${file}\n## Notes from review\n\nSomething a human typed.\n`;
+
+  assert.throws(
+    () =>
+      insertSection(split, {
+        ...OPTS,
+        version: '2.34.0',
+        inputs: 'newer',
+        date: '2026-08-01',
+        body: 'Newer body.',
+      }),
+    /Notes from review/,
+  );
+});
+
+test('stripPackageList leaves a half-deleted marker pair alone', () => {
+  const list = `${PACKAGE_LIST_HEADING}\n\n- \`@hyperdx/app\` 1 → 2\n`;
+  const note = 'A maintainer note written below the generated list.';
+
+  // End marker gone: there is no safe cut, so nothing is removed and the
+  // leftover start marker makes validateBody treat the body as a cache miss.
+  const endGone = `Summary.\n\n${PACKAGE_LIST_START}\n\n${list}\n${note}\n`;
+  assert.equal(stripPackageList(endGone), endGone);
+  assert.match(
+    validateBody(stripPackageList(endGone)).join('\n'),
+    /package-list marker/,
+  );
+
+  // Start marker gone: the heading is where the generated block begins.
+  const startGone = `Summary.\n\n${list}\n${PACKAGE_LIST_END}\n\n${note}\n`;
+  const stripped = stripPackageList(startGone);
+  assert.doesNotMatch(stripped, /Package changelogs/);
+  assert.match(stripped, /Summary\./);
+  assert.match(stripped, /A maintainer note written below/);
+  assert.deepEqual(validateBody(stripped), []);
+});
+
+test('CLI latest-version falls back to the heading when the marker is gone', () => {
+  // Deleting the marker is the one edit the design anticipates. Exiting 2 here
+  // made the caller hand the already-released section to the generator as this
+  // release's prior text.
+  const dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
+  const changelog = join(dir, 'CHANGELOG.md');
+  writeFileSync(
+    changelog,
+    insertSection(null, OPTS).replace(
+      /<!-- hyperdx-release-notes[^>]*-->\n/,
+      '',
+    ),
+  );
+
+  const res = runCli(['latest-version', '--changelog', changelog]);
+  assert.equal(res.code, 0);
+  assert.equal(res.stdout, '2.33.0');
 });
 
 test('validateBody rejects raw HTML that GitHub would render', () => {

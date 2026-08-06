@@ -25,6 +25,10 @@ const MARKER_RE =
 // depending on how many blank lines prettier put around it.
 const MARKER_LINE_RE = /^<!-- hyperdx-release-notes .* -->$/;
 
+// A release heading, used to confirm a section runs to the next release rather
+// than to some other H2.
+const RELEASE_HEADING_RE = /^## v(\d+\.\d+\.\d+)/;
+
 function parseChangelog(content) {
   const lines = content.split('\n');
   const headingIdxs = [];
@@ -36,14 +40,18 @@ function parseChangelog(content) {
     const end = headingIdxs[n + 1] ?? lines.length;
     const text = lines.slice(start, end).join('\n');
     const marker = text.match(MARKER_RE);
-    return { text, version: marker?.[1] ?? null, inputs: marker?.[2] ?? null };
+    return {
+      text,
+      version: marker?.[1] ?? null,
+      inputs: marker?.[2] ?? null,
+      // The version as written in the heading, which survives a maintainer
+      // deleting the marker. Kept separate from `version` so a marker-less
+      // section still fails an inputs-keyed lookup.
+      headingVersion: text.match(RELEASE_HEADING_RE)?.[1] ?? null,
+    };
   });
   return { header, sections };
 }
-
-// A release heading, used to confirm a section runs to the next release rather
-// than to some other H2.
-const RELEASE_HEADING_RE = /^## v\d+\.\d+\.\d+/;
 
 export function insertSection(content, { version, inputs, date, body }) {
   // A blank file counts as missing: the capture step in release.yml can leave a
@@ -60,20 +68,33 @@ export function insertSection(content, { version, inputs, date, body }) {
     '',
     body.trim(),
   ].join('\n');
+  // A non-release `## ` heading below the newest release splits a published
+  // release in two, and the tail carries real release notes. Dropping it would
+  // delete them silently, so refuse to splice and let a human sort it out.
+  const newestRelease = sections.findIndex(s => s.headingVersion !== null);
+  const orphan = sections.findIndex(
+    (s, i) => i > newestRelease && s.headingVersion === null,
+  );
+  if (orphan !== -1) {
+    throw new Error(
+      `Refusing to splice: "${sections[orphan].text.split('\n')[0]}" is not a ` +
+        `release heading and sits inside published release notes. Fold it into ` +
+        `the section above (use ### or deeper) and re-run.`,
+    );
+  }
   // Match on the heading as well as the marker. A section whose marker a
   // maintainer deleted parses as version:null, and filtering on the marker
   // alone would keep it — leaving two sections for the same version that no
   // later run ever cleans up.
-  const headingPrefix = `## v${version} `;
   const kept = sections.filter(
     s =>
       s.version !== version &&
-      !s.text.startsWith(headingPrefix) &&
-      // Drop anything that is not a release section. A `## ` heading added by
-      // hand would otherwise persist forever: extractSection rejects the
-      // section it splits, so it is never replaced, and it renders in the
-      // in-app modal as though it were a release.
-      RELEASE_HEADING_RE.test(s.text),
+      s.headingVersion !== version &&
+      // Drop a non-release section sitting above every release: it renders in
+      // the in-app modal as though it were a release, and extractSection
+      // rejects the section it splits so it would never be replaced. Anything
+      // below the newest release already threw above.
+      s.headingVersion !== null,
   );
   return (
     [header.trimEnd(), section, ...kept.map(s => s.text.trimEnd())].join(
@@ -125,12 +146,28 @@ export function extractSection(content, { version, inputs, latest }) {
 // early, legible feedback in CI (the changelog jobs run without node_modules,
 // so a real markdown parser is not available to them).
 const MAX_BODY_BYTES = 65536;
-// Mirrors allowChangelogUrl in packages/app/.../ChangelogModal.tsx. The CI gate
-// must never be stricter than the render gate, or the publish job reddens for
-// content that would have rendered correctly — `https://docs.hyperdx.io` with
-// no trailing slash being the obvious case.
-const ALLOWED_LINK_PREFIX_RE =
-  /^https:\/\/(github\.com|docs\.hyperdx\.io)([/?#]|$)/i;
+// Kept in sync with ALLOWED_LINK_HOSTS in
+// packages/app/src/components/AppNav/ChangelogModal.tsx, and pinned there by a
+// test. Exported for that test.
+export const ALLOWED_LINK_HOSTS = new Set(['github.com', 'docs.hyperdx.io']);
+
+// Deliberately the same algorithm as allowChangelogUrl in ChangelogModal.tsx:
+// parse, then compare the whole hostname. A prefix regex disagrees with the
+// render gate on forms like `https://github.com:443/x` and
+// `https://user@github.com/x`, which would redden the publish job for content
+// that renders correctly.
+function linkAllowed(target) {
+  try {
+    // The base makes a relative target resolve to a host that is never allowed,
+    // rather than throwing.
+    const parsed = new URL(target, 'https://disallowed.invalid');
+    return (
+      parsed.protocol === 'https:' && ALLOWED_LINK_HOSTS.has(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Replace fenced and indented code blocks with blank lines, preserving line
 // count so the structural checks below cannot fire on a legitimate example.
@@ -157,6 +194,15 @@ function blankCodeBlocks(text) {
     .join('\n');
 }
 
+// Blank the contents of inline code spans, preserving line structure. GitHub
+// renders `` `<input>` `` and `` `# not a heading` `` as literal text, so a
+// check that fires on them reddens the publish job for legitimate prose.
+function blankInlineCode(text) {
+  return text.replace(/(`+)(?:(?!\1)[\s\S])*\1/g, m =>
+    m.replace(/[^\n]/g, ' '),
+  );
+}
+
 export function validateBody(body) {
   const errors = [];
   const fail = m => errors.push(m);
@@ -164,6 +210,8 @@ export function validateBody(body) {
   // whole body, since a link inside a fence still needs to be legitimate if it
   // is ever copied out.
   const prose = blankCodeBlocks(body);
+  // Checks whose construct only renders outside a code span or block.
+  const proseNoCode = blankInlineCode(prose);
 
   if (!body.trim()) fail('Body is blank.');
   if (Buffer.byteLength(body, 'utf-8') > MAX_BODY_BYTES) {
@@ -177,6 +225,9 @@ export function validateBody(body) {
   if (/hyperdx-release-notes/.test(body)) {
     fail('Body contains a release-notes marker; the splice owns those.');
   }
+  if (body.includes(PACKAGE_LIST_START) || body.includes(PACKAGE_LIST_END)) {
+    fail('Body contains a package-list marker; the publish step owns those.');
+  }
   // Checked against the RAW body, not `prose`. parseChangelog splits sections on
   // any line starting with `## ` with no fence awareness, so a `## ` inside a
   // code fence would be accepted here and then split the section in two on
@@ -186,8 +237,13 @@ export function validateBody(body) {
   //
   // CommonMark allows an ATX heading indented up to three spaces and delimited
   // by a tab, so `   ## v9.9.9` renders as a real <h2> while `^## ` misses it.
-  if (/^[ \t]{0,3}#{1,2}[ \t]/m.test(body)) {
-    fail('Body contains an H1/H2 heading (even inside a code fence); use ###.');
+  if (/^[ \t]{0,3}#{2}[ \t]/m.test(body)) {
+    fail('Body contains an H2 heading (even inside a code fence); use ###.');
+  }
+  // An H1 has no such constraint — parseChangelog ignores it — so a `# comment`
+  // line in a fenced config example is legitimate and only prose is checked.
+  if (/^[ \t]{0,3}#[ \t]/m.test(proseNoCode)) {
+    fail('Body contains an H1 heading; use ###.');
   }
   // Setext underlines forge an H2 without any leading `#`.
   if (/^[ \t]{0,3}(=+|-{2,})[ \t]*$/m.test(prose)) {
@@ -204,22 +260,29 @@ export function validateBody(body) {
   // Raw HTML. react-markdown ignores it (no rehype-raw), but GitHub renders the
   // committed CHANGELOG.md with these allowed, and `<img src>` carries no `](`
   // so every link and image rule above misses it. Named rather than a blanket
-  // `<[a-z]`, which would trip on prose like `Map<string, string>`.
+  // `<[a-z]`, which would trip on prose like `Map<string, string>`. Checked over
+  // prose: `` `<input>` `` and a fenced HTML example both render as text.
   if (
     /<\/?(a|img|script|iframe|svg|object|embed|style|form|input|link|meta|video|audio|source|base)\b/i.test(
-      body,
+      proseNoCode,
     )
   ) {
     fail('Body contains raw HTML; use markdown.');
   }
   // Bare autolinks are CommonMark and carry no `](`.
-  if (/<[a-z][a-z0-9+.-]*:/i.test(body)) {
+  if (/<[a-z][a-z0-9+.-]*:/i.test(proseNoCode)) {
     fail('Body contains an autolink; use inline [text](url) links.');
   }
   for (const [, target] of body.matchAll(/\]\(([^)\s]*)/g)) {
-    if (!ALLOWED_LINK_PREFIX_RE.test(target)) {
+    if (!linkAllowed(target)) {
       fail(`Disallowed link target: ${target}`);
     }
+  }
+  // A bare URL carries no `](` and no `<`, but GitHub autolinks it in the
+  // committed changelog and in the release PR diff. Only the absence of
+  // remark-gfm keeps it inert in the in-app modal.
+  for (const [url] of proseNoCode.matchAll(/https?:\/\/[^\s)<>\]]+/gi)) {
+    if (!linkAllowed(url)) fail(`Disallowed URL in prose: ${url}`);
   }
   return errors;
 }
@@ -234,14 +297,30 @@ export const PACKAGE_LIST_END = '<!-- /hyperdx-package-list -->';
 // Strip only between the markers. Slicing from the heading to end-of-body would
 // silently delete anything a maintainer wrote below the generated list.
 export function stripPackageList(body) {
+  const tidy = body.trimEnd() + '\n';
   const start = body.indexOf(PACKAGE_LIST_START);
-  if (start === -1) return body.trimEnd() + '\n';
-  const endIdx = body.indexOf(PACKAGE_LIST_END, start);
-  const after =
-    endIdx === -1 ? '' : body.slice(endIdx + PACKAGE_LIST_END.length);
-  return (
-    (body.slice(0, start).trimEnd() + '\n' + after.trim()).trimEnd() + '\n'
-  );
+  const end = body.indexOf(PACKAGE_LIST_END, start === -1 ? 0 : start);
+  if (start === -1 && end === -1) return tidy;
+  // One marker deleted by hand. There is no unambiguous end to cut to, and
+  // cutting to end-of-body would take a maintainer's text with it, so change
+  // nothing: validateBody rejects the leftover marker, which the reuse path
+  // reads as a cache miss and regenerates with this text as context.
+  if (end === -1) {
+    console.error('::warning::Package-list end marker missing; not stripping.');
+    return tidy;
+  }
+  // Start marker deleted but the heading survived: the heading is where the
+  // generated block begins, so that is a safe cut.
+  const from =
+    start !== -1 ? start : body.lastIndexOf(PACKAGE_LIST_HEADING, end);
+  if (from === -1) {
+    console.error(
+      '::warning::Package-list start marker and heading missing; not stripping.',
+    );
+    return tidy;
+  }
+  const after = body.slice(end + PACKAGE_LIST_END.length);
+  return (body.slice(0, from).trimEnd() + '\n' + after.trim()).trimEnd() + '\n';
 }
 
 const BOOLEAN_FLAGS = new Set(['latest']);
@@ -288,7 +367,12 @@ function main() {
     const c = existsSync(args.changelog)
       ? readFileSync(args.changelog, 'utf-8')
       : null;
-    const version = c === null ? null : parseChangelog(c).sections[0]?.version;
+    // Fall back to the heading. Deleting the marker is the one edit the design
+    // explicitly anticipates, and without the fallback this exits 2, which the
+    // caller reads as "no previous section" and then hands the already-released
+    // section to the generator as this release's prior text.
+    const newest = c === null ? null : parseChangelog(c).sections[0];
+    const version = newest?.version ?? newest?.headingVersion;
     if (!version) process.exit(2);
     process.stdout.write(version);
     return;

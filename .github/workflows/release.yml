@@ -288,10 +288,18 @@ jobs:
           # the case --latest exists to cover — the newest section is still this
           # cycle's work, just filed under a version we have since superseded.
           # Only a section matching the last RELEASED version is stale context.
-          LATEST="$(node .github/scripts/release-notes.mjs latest-version \
-            --changelog /tmp/prev-release-notes/CHANGELOG.md || true)"
-          if [ -f /tmp/previous-section.md ] && [ "$LATEST" = "$PREV_VERSION" ]; then
-            echo "Newest captured section is the released ${PREV_VERSION}; generating from scratch"
+          if LATEST="$(node .github/scripts/release-notes.mjs latest-version \
+              --changelog /tmp/prev-release-notes/CHANGELOG.md)"; then
+            if [ -f /tmp/previous-section.md ] && [ "$LATEST" = "$PREV_VERSION" ]; then
+              echo "Newest captured section is the released ${PREV_VERSION}; generating from scratch"
+              rm -f /tmp/previous-section.md
+            fi
+          elif [ -f /tmp/previous-section.md ]; then
+            # No version to compare against, so there is no way to tell this
+            # cycle's section from the last release's. Handing over the wrong one
+            # carries last release's bullets into these notes; handing over
+            # nothing only costs some phrasing.
+            echo "::warning::Cannot determine the newest section's version; discarding it as context"
             rm -f /tmp/previous-section.md
           fi
 
@@ -355,6 +363,12 @@ jobs:
                 [ -n "$pr" ] && echo "${sha} ${pr}" >> /tmp/inputs/pr-references.txt
               done || true
 
+          # The generator's own instructions and the style reference, copied out
+          # of the checkout so every path the model may read lives under /tmp
+          # and the allowlist below can be a single directory.
+          cp .github/prompts/release-changelog.md /tmp/inputs/instructions.md
+          cp CHANGELOG.md /tmp/inputs/CHANGELOG.md 2> /dev/null || true
+
           echo "--- collected inputs ---"
           wc -l /tmp/inputs/package-changelogs.diff /tmp/inputs/pr-references.txt
 
@@ -365,23 +379,31 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # No github_token: nothing in the allowlist below can use one, and
+          # this process reads attacker-influenceable text.
+          #
           # --setting-sources user matches deep-resolve.yml: without it, a
           # `.claude/settings.json` on the checked-out branch could widen this
-          # allowlist or register hooks. The allowlist is a usability guard, not
-          # the security boundary — that is the job split (see header comment).
-          # No Bash. Every input is pre-materialised under /tmp/inputs by the
-          # trusted step above, so the model only reads files and writes one.
+          # allowlist or register hooks.
+          #
+          # Read and Write are confined to paths, not just named. This job holds
+          # ANTHROPIC_API_KEY, so an unrestricted Read is a path to it —
+          # /proc/self/environ carries the whole environment, and the body is
+          # published to a public branch, where a credential grep on a literal
+          # prefix is defeated by any encoding. Everything the model needs was
+          # copied under /tmp by the trusted step above; /proc and the runner's
+          # own temp are denied outright in case a later Read rule widens.
+          # No Bash at all: a prefix allowlist over git is not read-only.
           claude_args: |
             --setting-sources user
-            --allowedTools "Read,Write"
+            --allowedTools "Read(//tmp/**),Write(//tmp/release-notes-body.md)"
+            --disallowedTools "Read(//proc/**),Read(//sys/**),Read(//home/**),Read(//etc/**),Bash,WebFetch,WebSearch"
           prompt: |
             VERSION: ${{ steps.meta.outputs.version }}
             REPO: ${{ github.repository }}
 
-            Read the instructions in `.github/prompts/release-changelog.md`
-            (in the current checkout) and follow them exactly to write
-            /tmp/release-notes-body.md for this release.
+            Read the instructions in /tmp/inputs/instructions.md and follow them
+            exactly to write /tmp/release-notes-body.md for this release.
 
       - name: Upload generated body
         # Nothing to hand over if generation was skipped for want of changesets.
@@ -409,9 +431,37 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Merging the release PR between drafting and publishing deletes
+      # changeset-release/main (head-branch auto-deletion), and actions/checkout
+      # fails outright on a missing ref. That is a routine condition, so probe
+      # for the branch first and skip quietly rather than redden the release run
+      # and page on-call. Every later step is gated on the guard's `stale`
+      # output, which stays empty when the guard itself is skipped.
+      - name: Probe for the release branch
+        id: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # A 404 is the routine case. Anything else (rate limit, transport
+          # error) must fail loudly: read as "branch gone" it would silently
+          # stop publishing a changelog for every release.
+          if OUT="$(gh api "repos/${REPO}/git/ref/heads/changeset-release/main" \
+              --jq .ref 2>&1)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'Not Found' <<< "$OUT"; then
+            echo "::notice::changeset-release/main is gone (release PR merged?); nothing to publish"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not probe changeset-release/main: ${OUT}"
+            exit 1
+          fi
+
       # Fresh checkout: the scripts and the working tree here were never
       # visible to the model, so a compromised draft job cannot alter what runs.
       - name: Checkout release branch
+        if: steps.probe.outputs.exists == 'true'
         uses: actions/checkout@v6
         with:
           ref: changeset-release/main
@@ -427,6 +477,7 @@ jobs:
       # the correct section, so skipping here is self-correcting.
       - name: Verify the release branch still matches the draft
         id: guard
+        if: steps.probe.outputs.exists == 'true'
         env:
           DRAFT_VERSION: ${{ needs.release_changelog_draft.outputs.version }}
           DRAFT_INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
@@ -522,16 +573,25 @@ jobs:
             --version "$VERSION" \
             --inputs "$INPUTS" \
             --date "$(date -u +%F)"
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "CHANGELOG.md unchanged; nothing to push"
-            exit 0
-          fi
+          # --intent-to-add so `git status` sees the file even when insert had to
+          # scaffold it: a branch without a CHANGELOG.md leaves it untracked,
+          # which the porcelain check below would read as "nothing to push".
+          git add --intent-to-add CHANGELOG.md
           # Belt and braces: this job must only ever touch the changelog.
-          if [ "$(git status --porcelain)" != " M CHANGELOG.md" ]; then
-            echo "::error::Unexpected working-tree changes:"
-            git status --porcelain
-            exit 1
-          fi
+          # " M" is the ordinary edit; " A"/"AM" the scaffolded-from-nothing case
+          # (intent-to-add leaves the content unstaged, so the status is " A").
+          case "$(git status --porcelain)" in
+            '')
+              echo "CHANGELOG.md unchanged; nothing to push"
+              exit 0
+              ;;
+            ' M CHANGELOG.md' | ' A CHANGELOG.md' | 'AM CHANGELOG.md') ;;
+            *)
+              echo "::error::Unexpected working-tree changes:"
+              git status --porcelain
+              exit 1
+              ;;
+          esac
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
