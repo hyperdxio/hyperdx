@@ -56,6 +56,10 @@ export const SEEDED_ERROR_ALERT = {
   errorType: 'QUERY_ERROR',
   errorMessage:
     'ClickHouse returned 500: DB::Exception: Timeout exceeded: elapsed 30s, maximum: 30s while executing query.',
+  // Message on the seeded ERROR-state AlertHistory row (evaluation history)
+  historyErrorType: 'QUERY_TIMEOUT',
+  historyErrorMessage:
+    'Alert query did not complete within the 300s evaluation timeout. The evaluation is retried on every check, but the alert will not fire until the query completes in time.',
 };
 
 /**
@@ -379,6 +383,13 @@ async function seedAlertWithErrors(
   // check-alerts job is the only code that writes this field in normal
   // operation, so we write it here to avoid having to run that job during
   // setup.
+  // Evaluation windows aligned to the alert's 5m interval: one OK window
+  // followed by an ERROR window (a failed evaluation), so the alerts page
+  // history strip and the alert detail page have data to render.
+  const windowMs = 5 * 60 * 1000;
+  const errorWindowStart = Math.floor(Date.now() / windowMs) * windowMs;
+  const okWindowStart = errorWindowStart - windowMs;
+
   const patchScript = `
 use('hyperdx-e2e');
 db.alerts.updateOne(
@@ -396,6 +407,30 @@ db.alerts.updateOne(
     }
   }
 );
+db.alerthistories.deleteMany({ alert: ObjectId(${JSON.stringify(alertId)}) });
+db.alerthistories.insertMany([
+  {
+    alert: ObjectId(${JSON.stringify(alertId)}),
+    createdAt: new Date(${okWindowStart}),
+    state: 'OK',
+    counts: 0,
+    lastValues: [{ startTime: new Date(${okWindowStart - windowMs}), count: 0 }]
+  },
+  {
+    alert: ObjectId(${JSON.stringify(alertId)}),
+    createdAt: new Date(${errorWindowStart}),
+    state: 'ERROR',
+    counts: 0,
+    lastValues: [],
+    errors: [
+      {
+        timestamp: new Date(),
+        type: ${JSON.stringify(SEEDED_ERROR_ALERT.historyErrorType)},
+        message: ${JSON.stringify(SEEDED_ERROR_ALERT.historyErrorMessage)}
+      }
+    ]
+  }
+]);
 `;
 
   try {
