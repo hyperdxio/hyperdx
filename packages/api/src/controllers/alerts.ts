@@ -125,6 +125,8 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
       : hasScheduleStartAt && alert.scheduleOffsetMinutes == null
         ? 0
         : alert.scheduleOffsetMinutes;
+  const isSavedSearch = alert.source === AlertSource.SAVED_SEARCH;
+  const isTile = alert.source === AlertSource.TILE;
 
   return {
     channel: alert.channel,
@@ -150,11 +152,15 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     note: alert.note ?? null,
 
     // Log alerts
-    savedSearch: alert.savedSearchId as unknown as ObjectId,
-    groupBy: alert.groupBy,
+    savedSearch: isSavedSearch
+      ? ((alert.savedSearchId ?? null) as unknown as ObjectId)
+      : null,
+    groupBy: isSavedSearch ? (alert.groupBy ?? null) : null,
     // Chart alerts
-    dashboard: alert.dashboardId as unknown as ObjectId,
-    tileId: alert.tileId,
+    dashboard: isTile
+      ? ((alert.dashboardId ?? null) as unknown as ObjectId)
+      : null,
+    tileId: isTile ? (alert.tileId ?? null) : null,
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
@@ -253,11 +259,17 @@ export const createOrUpdateDashboardAlerts = async (
         source: AlertSource.TILE,
         team: teamId,
       };
+      const alertInput = {
+        ...alert,
+        source: AlertSource.TILE,
+        dashboardId: dashboardId.toString(),
+        tileId,
+      };
       const oldAlert = await Alert.findOne(filter);
       const alertValues =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alert)
-          : makeAlert(alert, userId);
+          ? makeAlert(alertInput)
+          : makeAlert(alertInput, userId);
 
       return await Alert.findOneAndUpdate(filter, alertValues, {
         new: true,
