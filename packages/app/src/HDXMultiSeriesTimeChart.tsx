@@ -334,7 +334,7 @@ const LegendRenderer = memo<{
   const { payload, lineDataMap, allLineData, selectedSeries, onToggleSeries } =
     props;
 
-  const hasSelection = !!selectedSeries && selectedSeries.size > 0;
+  const hasSelection = hasSeriesSelection(selectedSeries);
 
   // Use allLineData to ensure all series are always shown in legend
   const allSeriesPayload = useMemo(() => {
@@ -514,11 +514,23 @@ export function buildActiveClickSeries(
  * lines and the drill-down click payload both derive from this same set so they
  * never diverge. Exported for unit testing.
  */
+/**
+ * Whether a series selection is active. The single source of truth for the
+ * "isolate to these series" predicate that gates line visibility, the y-axis
+ * domain, legend dimming, and the "Show All Series" control — so those can't
+ * drift out of sync.
+ */
+function hasSeriesSelection(
+  selectedSeriesNames: Set<string> | undefined,
+): selectedSeriesNames is Set<string> {
+  return !!selectedSeriesNames && selectedSeriesNames.size > 0;
+}
+
 export function getVisibleLineData(
   lineData: LineData[],
   selectedSeriesNames: Set<string> | undefined,
 ): LineData[] {
-  const hasSelection = !!selectedSeriesNames && selectedSeriesNames.size > 0;
+  const hasSelection = hasSeriesSelection(selectedSeriesNames);
   if (hasSelection) {
     return lineData
       .filter(ld => selectedSeriesNames.has(getSeriesDisplayName(ld)))
@@ -790,7 +802,7 @@ export const MemoChart = memo(function MemoChart({
   ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
-    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+    const hasSelection = hasSeriesSelection(selectedSeriesNames);
 
     // Fitting the y-axis lower bound to the data only applies to line charts.
     // Bar charts are always anchored at zero so the bar lengths stay
@@ -1045,8 +1057,7 @@ export const MemoChart = memo(function MemoChart({
       <ChartOverlayControls
         onClearSelection={
           onClearSeriesSelection != null &&
-          selectedSeriesNames != null &&
-          selectedSeriesNames.size > 0
+          hasSeriesSelection(selectedSeriesNames)
             ? onClearSeriesSelection
             : undefined
         }
