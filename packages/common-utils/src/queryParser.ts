@@ -68,6 +68,7 @@ function normalizeChExpression(expr: string): string {
 }
 
 const IMPLICIT_FIELD = '<implicit>';
+const RANGE_UNBOUNDED = '*';
 
 // Type guards for lucene AST types
 function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
@@ -197,6 +198,7 @@ interface Serializer {
     end: string,
     isNegatedField: boolean,
     context: SerializerContext,
+    inclusive?: lucene.NodeRangedTerm['inclusive'],
   ): Promise<string>;
 }
 
@@ -396,10 +398,20 @@ class EnglishSerializer implements Serializer {
     start: string,
     end: string,
     isNegatedField: boolean,
+    context: SerializerContext,
+    inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
+    const startBound =
+      inclusive === 'both' || inclusive === 'left'
+        ? start
+        : `${start} (exclusive)`;
+    const endBound =
+      inclusive === 'both' || inclusive === 'right'
+        ? end
+        : `${end} (exclusive)`;
     return `${field} ${
       isNegatedField ? 'is not' : 'is'
-    } between ${start} and ${end}`;
+    } between ${startBound} and ${endBound}`;
   }
 }
 
@@ -685,7 +697,7 @@ export abstract class SQLSerializer implements Serializer {
 
   // TODO: Not sure if SQL really needs this or if it'll coerce itself
   private attemptToParseNumber(term: string): string | number {
-    const number = Number.parseFloat(term);
+    const number = Number(term);
     if (Number.isNaN(number)) {
       return term;
     }
@@ -717,6 +729,7 @@ export abstract class SQLSerializer implements Serializer {
     end: string,
     isNegatedField: boolean,
     context: SerializerContext,
+    inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
     const { column, found, mapKeyIndexExpression, isArray } =
       await this.getColumnForField(field, context);
@@ -732,10 +745,41 @@ export abstract class SQLSerializer implements Serializer {
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
         : '';
-    return SqlString.format(
-      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
-      [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
-    );
+
+    const isStartUnbounded = start === RANGE_UNBOUNDED;
+    const isEndUnbounded = end === RANGE_UNBOUNDED;
+    if (isStartUnbounded && isEndUnbounded) {
+      return this.isNotNull(field, isNegatedField, context);
+    }
+    if (!isStartUnbounded && !isEndUnbounded && inclusive === 'both') {
+      return SqlString.format(
+        `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
+        [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
+      );
+    }
+
+    const bounds: string[] = [];
+    if (!isStartUnbounded) {
+      const operator =
+        inclusive === 'both' || inclusive === 'left' ? '>=' : '>';
+      bounds.push(
+        SqlString.format(`${column} ${operator} ?`, [
+          this.attemptToParseNumber(start),
+        ]),
+      );
+    }
+    if (!isEndUnbounded) {
+      const operator =
+        inclusive === 'both' || inclusive === 'right' ? '<=' : '<';
+      bounds.push(
+        SqlString.format(`${column} ${operator} ?`, [
+          this.attemptToParseNumber(end),
+        ]),
+      );
+    }
+    return isNegatedField
+      ? `(NOT (${bounds.join(' AND ')})${expressionPostfix})`
+      : `(${bounds.join(' AND ')}${expressionPostfix})`;
   }
 }
 
@@ -1981,6 +2025,7 @@ async function nodeTerm(
       rangedTerm.term_max,
       isNegatedField,
       context,
+      rangedTerm.inclusive,
     );
   }
 

@@ -345,10 +345,10 @@ export function translateAlertDocumentToExternalAlert(
     state: alertObj.state,
     channel: alertObj.channel,
     teamId: alertObj.team.toString(),
-    tileId: alertObj.tileId,
+    tileId: alertObj.tileId ?? undefined,
     dashboardId: alertObj.dashboard?.toString(),
     savedSearchId: alertObj.savedSearch?.toString(),
-    groupBy: alertObj.groupBy,
+    groupBy: alertObj.groupBy ?? undefined,
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
     executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
     createdAt: hasCreatedAt(alertObj)

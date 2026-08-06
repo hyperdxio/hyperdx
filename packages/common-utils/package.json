@@ -26,6 +26,9 @@
     "zod": "3.25"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/jest-runner": "^9.6.1",
+    "@stryker-mutator/typescript-checker": "^9.6.1",
     "@types/hyperdx__lucene": "npm:@types/lucene@*",
     "@types/jest": "^29.5.14",
     "@types/lodash": "^4.14.198",
@@ -49,6 +52,7 @@
     "ci:unit": "jest --ci --coverage",
     "dev:unit": "jest --watchAll",
     "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage --passWithNoTests",
-    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand"
+    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand",
+    "dev:mutation": "stryker run"
   }
 }
