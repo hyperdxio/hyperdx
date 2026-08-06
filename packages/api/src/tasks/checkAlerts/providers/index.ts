@@ -4,7 +4,7 @@ import _ from 'lodash';
 
 import { ObjectId } from '@/models';
 import { IAlert, IAlertError } from '@/models/alert';
-import { IAlertHistory } from '@/models/alertHistory';
+import { IAlertHistory, IAlertHistoryAnalytics } from '@/models/alertHistory';
 import { IConnection } from '@/models/connection';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -83,6 +83,9 @@ export interface AlertProvider {
    * Uses Promise.allSettled to handle partial failures gracefully.
    * The alert state is determined from successfully saved histories, or falls back to all histories if all saves fail.
    * Also replaces the alert's `executionErrors` field with the provided errors from the current execution.
+   * When errors are present (e.g. webhook failures), an ERROR-state history
+   * row is additionally upserted for the evaluation window so the failure is
+   * visible in the alert's evaluation history.
    */
   updateAlertState(
     alertId: string,
@@ -91,11 +94,23 @@ export interface AlertProvider {
   ): Promise<void>;
 
   /**
-   * Replace the alert's `executionErrors` field without changing state or creating history.
-   * Use this when an error prevents the normal state/history update from running
-   * (e.g. a ClickHouse query error).
+   * Replace the alert's `executionErrors` field without changing state or the
+   * alert's normal history. Use this when an error prevents the normal
+   * state/history update from running (e.g. a ClickHouse query error).
+   *
+   * When `evaluationWindowStart` is provided, the errors are also upserted as
+   * an ERROR-state AlertHistory row for that window (one row per window,
+   * regardless of retries). ERROR rows are excluded from scheduling/backfill
+   * computations, so recording them does not mark the window as evaluated.
+   * `analytics` carries whatever diagnostics the failed evaluation measured
+   * (e.g. the query's time-to-failure) onto that ERROR row.
    */
-  recordAlertErrors(alertId: string, errors: IAlertError[]): Promise<void>;
+  recordAlertErrors(
+    alertId: string,
+    errors: IAlertError[],
+    evaluationWindowStart?: Date,
+    analytics?: IAlertHistoryAnalytics,
+  ): Promise<void>;
 
   /** Fetch all webhooks for the given team, returning a map of webhook ID to webhook */
   getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;
