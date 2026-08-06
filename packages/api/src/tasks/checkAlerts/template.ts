@@ -432,7 +432,7 @@ export const buildAlertMessageTemplateHdxLink = (
       endTime,
       granularity,
       startTime,
-      tileId: alert.tileId,
+      tileId: alert.tileId ?? undefined,
     });
   }
 

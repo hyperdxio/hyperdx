@@ -195,8 +195,9 @@ efficient and accurate:
    agent solved the wrong problem or made a plausible-but-wrong trade-off.
 
 3. **Name agent-generated branches with a `claude/`, `agent/`, or `ai/` prefix**
-   (e.g., `claude/add-rate-limiting`). This allows the PR triage classifier to
-   apply appropriate scrutiny and lets reviewers calibrate their attention.
+   (e.g., `claude/add-rate-limiting`) so reviewers can calibrate their attention.
+   This is a convention for humans: the PR triage classifier deliberately ignores
+   branch names and tiers every PR on what the diff touches and how big it is.
 
 4. **Write or update tests alongside the implementation**, not after. Configure
    your agent to produce tests before writing implementation code. See the
