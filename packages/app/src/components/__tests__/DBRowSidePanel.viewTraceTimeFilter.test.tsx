@@ -275,7 +275,6 @@ describe('DBRowSidePanelInner, "View Trace" row lookup time filter', () => {
   // day-precision partition column. Anchoring the frame on it would center the
   // destination window on midnight and the span lookup would find no row.
   it('anchors a composite timestamp on its fine column, not the date', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const compositeSource = {
       ...ROOT_SOURCE,
       timestampValueExpression: 'EventDate, EventTime',
