@@ -18,25 +18,6 @@ import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
-async function requireValidConnectionId(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction,
-) {
-  try {
-    const result = await validateConnectionId(
-      req.body?.connection,
-      req.user?.team,
-    );
-    if (!result.ok) {
-      return res.status(result.status).json({ message: result.message });
-    }
-    next();
-  } catch (e) {
-    next(e);
-  }
-}
-
 router.get('/', async (req, res, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
@@ -59,10 +40,19 @@ router.post(
   validateRequest({
     body: SourceSchemaNoId,
   }),
-  requireValidConnectionId,
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
+
+      const connectionCheck = await validateConnectionId(
+        req.body.connection,
+        teamId,
+      );
+      if (!connectionCheck.ok) {
+        return res
+          .status(connectionCheck.status)
+          .json({ message: connectionCheck.message });
+      }
 
       const source = await createSource(teamId.toString(), {
         ...req.body,
@@ -84,10 +74,19 @@ router.put(
       id: objectIdSchema,
     }),
   }),
-  requireValidConnectionId,
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
+
+      const connectionCheck = await validateConnectionId(
+        req.body.connection,
+        teamId,
+      );
+      if (!connectionCheck.ok) {
+        return res
+          .status(connectionCheck.status)
+          .json({ message: connectionCheck.message });
+      }
 
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,
