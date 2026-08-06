@@ -15,7 +15,7 @@ import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
 function deriveAlertName(alert: {
   name?: string | null;
-  tileId?: string;
+  tileId?: string | null;
   savedSearch?: ISavedSearch | null;
   dashboard?: IDashboard | null;
 }): string | null {
