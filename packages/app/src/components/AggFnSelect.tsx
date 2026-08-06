@@ -7,6 +7,18 @@ import { AGG_FNS } from '@/ChartUtils';
 
 type AggFnValues = (typeof AGG_FNS)[number]['value'];
 
+// aggFn form values that are supported for histogram metrics.
+export const HISTOGRAM_SUPPORTED_AGG_FNS: string[] = ['count', 'quantile'];
+
+// Displayed versions of the supported aggregation functions for histogram metrics.
+const HISTOGRAM_SUPPORTED_AGG_FNS_DISPLAY: AggFnValues[] = [
+  'count',
+  'p99',
+  'p95',
+  'p90',
+  'p50',
+];
+
 type OnChangeValue =
   | { aggFn?: AggFnValues }
   | { aggFn: 'quantile'; level: number };
@@ -45,6 +57,15 @@ function AggFnSelect({
     // Only show 'increase' when the source is a Sum (counter) metric.
     if (metricType !== MetricsDataType.Sum) {
       opts = opts.filter(fn => fn.value !== 'increase');
+    }
+    // Filter out unsupported aggregation functions for histogram metrics.
+    if (
+      metricType === MetricsDataType.Histogram ||
+      metricType === MetricsDataType.ExponentialHistogram
+    ) {
+      opts = opts.filter(fn =>
+        HISTOGRAM_SUPPORTED_AGG_FNS_DISPLAY.includes(fn.value),
+      );
     }
     return opts;
   }, [hideCustom, metricType]);
