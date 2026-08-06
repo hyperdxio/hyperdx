@@ -26,7 +26,9 @@
     },
     "packages/common-utils": {
       "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@stryker-mutator/core"],
+      "ignoreBinaries": ["stryker"]
     },
     "packages/hdx-eval": {
       "project": ["src/**/*.ts"],

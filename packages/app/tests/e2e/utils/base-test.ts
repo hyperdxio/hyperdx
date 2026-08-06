@@ -44,7 +44,7 @@ export const test = base.extend({
         // popover never interferes with side-panel interactions. useLocalStorage
         // JSON-encodes values, so store the boolean as JSON.
         window.localStorage.setItem(
-          calloutDismissedKey as string,
+          String(calloutDismissedKey),
           JSON.stringify(true),
         );
       },
