@@ -121,6 +121,7 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   const {
     data: evaluationsData,
     isLoading: isEvaluationsLoading,
+    isError: isEvaluationsError,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -209,6 +210,7 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
                 evaluations={evaluations}
                 interval={alert.interval}
                 isLoading={isEvaluationsLoading}
+                isError={isEvaluationsError}
                 hasNextPage={hasNextPage ?? false}
                 isFetchingNextPage={isFetchingNextPage}
                 onLoadMore={onLoadMore}

@@ -9,6 +9,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
+  Button,
   Center,
   Group,
   Loader,
@@ -301,6 +302,7 @@ export function AlertEvaluationsTable({
   evaluations,
   interval,
   isLoading,
+  isError,
   hasNextPage,
   isFetchingNextPage,
   onLoadMore,
@@ -308,12 +310,23 @@ export function AlertEvaluationsTable({
   evaluations: AlertEvaluation[];
   interval: AlertInterval;
   isLoading: boolean;
+  isError: boolean;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   onLoadMore: () => void;
 }) {
   if (isLoading) {
     return <Skeleton h={160} w="100%" />;
+  }
+
+  if (evaluations.length === 0 && isError) {
+    return (
+      <Center py="lg">
+        <Text size="sm" c="red" data-testid="alert-evaluations-error">
+          Failed to load evaluations.
+        </Text>
+      </Center>
+    );
   }
 
   if (evaluations.length === 0 && !hasNextPage) {
@@ -351,12 +364,33 @@ export function AlertEvaluationsTable({
           ))}
         </Table.Tbody>
       </Table>
-      {hasNextPage && (
-        <LoadMoreSentinel
-          isFetchingNextPage={isFetchingNextPage}
-          onLoadMore={onLoadMore}
-        />
-      )}
+      {hasNextPage &&
+        // A failed page fetch must unmount the sentinel: its effect refires
+        // whenever isFetchingNextPage settles back to false, so leaving it
+        // mounted after an error would refetch in an unbounded loop. Show an
+        // explicit retry affordance instead.
+        (isError ? (
+          <Center py="sm" data-testid="alert-evaluations-load-error">
+            <Group gap="xs">
+              <Text size="sm" c="red">
+                Failed to load older evaluations.
+              </Text>
+              <Button
+                variant="secondary"
+                size="compact-xs"
+                loading={isFetchingNextPage}
+                onClick={onLoadMore}
+              >
+                Retry
+              </Button>
+            </Group>
+          </Center>
+        ) : (
+          <LoadMoreSentinel
+            isFetchingNextPage={isFetchingNextPage}
+            onLoadMore={onLoadMore}
+          />
+        ))}
     </>
   );
 }

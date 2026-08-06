@@ -95,6 +95,7 @@ const renderTable = (
       evaluations={[errorWindow, okWindow]}
       interval="5m"
       isLoading={false}
+      isError={false}
       hasNextPage={false}
       isFetchingNextPage={false}
       onLoadMore={jest.fn()}
@@ -174,6 +175,35 @@ describe('AlertEvaluationsTable', () => {
     renderTable({ hasNextPage: false });
     expect(
       screen.queryByTestId('alert-evaluations-load-more'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('stops auto-fetching and offers a retry once a page fetch fails', () => {
+    // Without this, the sentinel effect refires each time the failed fetch
+    // settles (isFetchingNextPage true -> false), refetching forever.
+    mockInViewport = true;
+    const onLoadMore = jest.fn();
+    renderTable({ hasNextPage: true, isError: true, onLoadMore });
+
+    // The sentinel is unmounted, so nothing auto-fetches
+    expect(
+      screen.queryByTestId('alert-evaluations-load-more'),
+    ).not.toBeInTheDocument();
+    expect(onLoadMore).not.toHaveBeenCalled();
+
+    // An explicit retry affordance replaces it
+    expect(
+      screen.getByTestId('alert-evaluations-load-error'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a failure message when the first page fails to load', () => {
+    renderTable({ evaluations: [], isError: true });
+    expect(screen.getByTestId('alert-evaluations-error')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No evaluations in the selected time range/),
     ).not.toBeInTheDocument();
   });
 
