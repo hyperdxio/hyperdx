@@ -11,11 +11,15 @@ import DBHeatmapChart, {
   toHeatmapChartConfig,
 } from '@/components/DBHeatmapChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { getDurationMsExpression } from '@/source';
+import {
+  getDurationMsExpression,
+  getTraceDurationNumberFormat,
+} from '@/source';
 import type { NumberFormat } from '@/types';
 
 import {
   durationConfig,
+  ERROR_RATE_HELPER_SERIES,
   errorConditionSql,
   errorsConfig,
   ErrorsMode,
@@ -71,6 +75,14 @@ export function TraceRedMetricsChart({
   const [errorsMode, setErrorsMode] = useState<ErrorsMode>('rate');
 
   const errorCondition = errorConditionSql(source.statusCodeExpression);
+  // Aggregate the raw Duration column (MV-friendly) and let the display format,
+  // derived from the source's durationPrecision, convert the unit. Falls back
+  // to getDurationMsExpression only for the heatmap tile below.
+  const durationExpression = source.durationExpression ?? '';
+  const durationFormat = getTraceDurationNumberFormat(source, {
+    valueExpression: durationExpression,
+    aggFn: 'avg',
+  });
   const durationMsExpression = getDurationMsExpression(source);
 
   const base = useMemo(
@@ -83,8 +95,8 @@ export function TraceRedMetricsChart({
     [base, errorCondition, errorsMode],
   );
   const duration = useMemo(
-    () => durationConfig(base, durationMsExpression),
-    [base, durationMsExpression],
+    () => durationConfig(base, durationExpression, durationFormat),
+    [base, durationExpression, durationFormat],
   );
   // Heatmap tile config (duration distribution over time), matching the
   // dashboard heatmap tile: DBHeatmapChart + toHeatmapChartConfig, no
@@ -171,6 +183,9 @@ export function TraceRedMetricsChart({
                   toolbarSuffix={[errorsModeControl]}
                   config={errors}
                   showLegend
+                  hiddenSeries={
+                    errorsMode === 'rate' ? ERROR_RATE_HELPER_SERIES : undefined
+                  }
                   {...commonProps}
                 />
               </Box>

@@ -6,16 +6,28 @@ import {
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
-  MS_NUMBER_FORMAT,
 } from '@/ChartUtils';
+import type { NumberFormat } from '@/types';
 
 export type ErrorsMode = 'rate' | 'volume';
+
+/**
+ * Helper series that back the error-rate ratio; hidden from the chart so only
+ * the computed rate shows. Aggregating count and countIf separately (instead of
+ * avg over a status boolean) lets AggregatingMergeTree materialized views
+ * satisfy the query.
+ */
+export const ERROR_RATE_HELPER_SERIES = ['total_spans', 'error_spans'];
 
 /**
  * The RED metrics for a trace source, derived from the same base config the
  * count histogram uses so they honor the active WHERE filter and time range.
  * Kept as pure builders so the aggregations can be unit tested without
  * rendering. Only the select, display type, and number format change per chart.
+ *
+ * Every aggregation is over a raw column (count, countIf, quantile/avg of the
+ * duration expression) so materialized views can satisfy it; unit and ratio
+ * conversion happen at the display layer or in a post-aggregation column.
  */
 
 /** SQL condition that marks a span as an error, or undefined when the source
@@ -53,9 +65,11 @@ export function throughputConfig(
 }
 
 /**
- * Errors as a rate (avg of a 0/1 error boolean, rendered as a percent line) or
- * a volume (countIf error, rendered as bars). Returns undefined when the source
- * has no error condition.
+ * Errors as a rate or a volume. Rate is `countIf(error) / count()`: the two
+ * counts are aggregated separately (MV-friendly) and divided in a
+ * post-aggregation column, with the helper counts hidden via
+ * ERROR_RATE_HELPER_SERIES. Volume is `countIf(error)` as bars. Returns
+ * undefined when the source has no error condition.
  */
 export function errorsConfig(
   base: BuilderChartConfigWithDateRange,
@@ -70,11 +84,19 @@ export function errorsConfig(
       ...base,
       select: [
         {
-          alias: 'Error rate',
-          aggFn: 'avg',
+          alias: 'total_spans',
+          aggFn: 'count',
           aggCondition: '',
-          valueExpression: errorCondition,
+          valueExpression: '',
         },
+        {
+          alias: 'error_spans',
+          aggFn: 'count',
+          aggCondition: errorCondition,
+          aggConditionLanguage: 'sql',
+          valueExpression: '',
+        },
+        { alias: 'Error rate', valueExpression: 'error_spans / total_spans' },
       ],
       displayType: DisplayType.Line,
       numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -96,10 +118,16 @@ export function errorsConfig(
   };
 }
 
-/** Duration: Avg, p95, p99 over the source's millisecond duration expression. */
+/**
+ * Duration: Avg, p95, p99 over the source's raw duration expression. Aggregating
+ * the raw column (not a divided-to-ms expression) keeps it MV-friendly; the
+ * caller passes a duration NumberFormat derived from the source's precision
+ * (via getTraceDurationNumberFormat) so unit conversion happens at display.
+ */
 export function durationConfig(
   base: BuilderChartConfigWithDateRange,
-  durationMsExpression: string,
+  durationExpression: string,
+  numberFormat: NumberFormat | undefined,
 ): BuilderChartConfigWithDateRange {
   return {
     ...base,
@@ -108,24 +136,24 @@ export function durationConfig(
         alias: 'Avg',
         aggFn: 'avg',
         aggCondition: '',
-        valueExpression: durationMsExpression,
+        valueExpression: durationExpression,
       },
       {
         alias: 'p95',
         aggFn: 'quantile',
         level: 0.95,
         aggCondition: '',
-        valueExpression: durationMsExpression,
+        valueExpression: durationExpression,
       },
       {
         alias: 'p99',
         aggFn: 'quantile',
         level: 0.99,
         aggCondition: '',
-        valueExpression: durationMsExpression,
+        valueExpression: durationExpression,
       },
     ],
     displayType: DisplayType.Line,
-    numberFormat: MS_NUMBER_FORMAT,
+    numberFormat,
   };
 }

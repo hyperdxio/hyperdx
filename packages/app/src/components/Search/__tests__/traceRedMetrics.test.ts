@@ -6,15 +6,16 @@ import {
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
-  MS_NUMBER_FORMAT,
 } from '@/ChartUtils';
 import {
   durationConfig,
+  ERROR_RATE_HELPER_SERIES,
   errorConditionSql,
   errorsConfig,
   redBaseConfig,
   throughputConfig,
 } from '@/components/Search/traceRedMetrics';
+import type { NumberFormat } from '@/types';
 
 const base: BuilderChartConfigWithDateRange = {
   connection: 'conn',
@@ -30,7 +31,8 @@ const base: BuilderChartConfigWithDateRange = {
 };
 
 const ERROR_COND = "lower(StatusCode) = 'error'";
-const DURATION_MS = '(Duration)/1e6';
+const DURATION_EXPR = 'Duration';
+const DURATION_FORMAT: NumberFormat = { output: 'duration', factor: 1e-9 };
 
 describe('traceRedMetrics', () => {
   describe('errorConditionSql', () => {
@@ -71,19 +73,29 @@ describe('traceRedMetrics', () => {
   });
 
   describe('errorsConfig', () => {
-    it('rate: avg of the error boolean, rendered as a percent line', () => {
+    it('rate: count + countIf aggregated separately, divided post-aggregation (MV-friendly)', () => {
       const result = errorsConfig(redBaseConfig(base), ERROR_COND, 'rate');
       expect(result).toBeDefined();
       expect(result?.displayType).toBe(DisplayType.Line);
       expect(result?.numberFormat).toBe(ERROR_RATE_PERCENTAGE_NUMBER_FORMAT);
       expect(result?.select).toEqual([
         {
-          alias: 'Error rate',
-          aggFn: 'avg',
+          alias: 'total_spans',
+          aggFn: 'count',
           aggCondition: '',
-          valueExpression: ERROR_COND,
+          valueExpression: '',
         },
+        {
+          alias: 'error_spans',
+          aggFn: 'count',
+          aggCondition: ERROR_COND,
+          aggConditionLanguage: 'sql',
+          valueExpression: '',
+        },
+        { alias: 'Error rate', valueExpression: 'error_spans / total_spans' },
       ]);
+      // the two aggregated counts are the ones hidden from the chart
+      expect(ERROR_RATE_HELPER_SERIES).toEqual(['total_spans', 'error_spans']);
     });
 
     it('volume: countIf error, rendered as bars', () => {
@@ -113,30 +125,35 @@ describe('traceRedMetrics', () => {
   });
 
   describe('durationConfig', () => {
-    it('avg + p95 + p99 over the ms duration expression, rendered as a line', () => {
-      const result = durationConfig(redBaseConfig(base), DURATION_MS);
+    it('aggregates the raw duration column and passes the display format through', () => {
+      const result = durationConfig(
+        redBaseConfig(base),
+        DURATION_EXPR,
+        DURATION_FORMAT,
+      );
       expect(result.displayType).toBe(DisplayType.Line);
-      expect(result.numberFormat).toBe(MS_NUMBER_FORMAT);
+      // no SQL-side unit conversion: the format handles the unit at display
+      expect(result.numberFormat).toBe(DURATION_FORMAT);
       expect(result.select).toEqual([
         {
           alias: 'Avg',
           aggFn: 'avg',
           aggCondition: '',
-          valueExpression: DURATION_MS,
+          valueExpression: DURATION_EXPR,
         },
         {
           alias: 'p95',
           aggFn: 'quantile',
           level: 0.95,
           aggCondition: '',
-          valueExpression: DURATION_MS,
+          valueExpression: DURATION_EXPR,
         },
         {
           alias: 'p99',
           aggFn: 'quantile',
           level: 0.99,
           aggCondition: '',
-          valueExpression: DURATION_MS,
+          valueExpression: DURATION_EXPR,
         },
       ]);
     });
