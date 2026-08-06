@@ -5,12 +5,15 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import {
+  ChartKeyJoiner,
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
   formatResponseForCategoricalChart,
   formatResponseForTimeChart,
+  getSeriesColorForGroup,
+  type LineData,
 } from '@/ChartUtils';
 import { COLORS } from '@/utils';
 
@@ -1170,5 +1173,57 @@ describe('ChartUtils', () => {
       // pointer 100 is 10px from both 'a' (90) and 'b' (110)
       expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('a');
     });
+  });
+});
+
+describe('getSeriesColorForGroup', () => {
+  const line = (
+    currentPeriodKey: string,
+    color: string,
+    isDashed = false,
+  ): LineData => ({
+    dataKey: currentPeriodKey,
+    currentPeriodKey,
+    previousPeriodKey: `${currentPeriodKey} (previous)`,
+    displayName: currentPeriodKey,
+    valueColumnName: 'count()',
+    color,
+    isDashed,
+  });
+
+  // Single value column + group by: the series key is just the group value.
+  it('matches a group value that is the whole series key', () => {
+    const lineData = [line('checkout-service', '#blue'), line('api', '#gold')];
+
+    expect(getSeriesColorForGroup(lineData, 'api')).toBe('#gold');
+  });
+
+  // Multiple value columns: the key is prefixed with the column name, joined
+  // by ChartKeyJoiner, so the group value is only one component of it.
+  it('matches a group value that is one component of a composite key', () => {
+    const lineData = [
+      line(`count()${ChartKeyJoiner}checkout-service`, '#blue'),
+      line(`count()${ChartKeyJoiner}api`, '#gold'),
+    ];
+
+    expect(getSeriesColorForGroup(lineData, 'api')).toBe('#gold');
+  });
+
+  it('returns undefined when no series covers the group', () => {
+    expect(
+      getSeriesColorForGroup([line('checkout-service', '#blue')], 'api'),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for an empty series list', () => {
+    expect(getSeriesColorForGroup([], 'api')).toBeUndefined();
+  });
+
+  // Previous-period series mirror a current-period series' color, so skipping
+  // them keeps the marker tied to the solid line the user sees.
+  it('skips previous-period series', () => {
+    const lineData = [line('api', '#dashed', true), line('api', '#solid')];
+
+    expect(getSeriesColorForGroup(lineData, 'api')).toBe('#solid');
   });
 });

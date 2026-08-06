@@ -191,6 +191,33 @@ export function useTimeChartSettings(
 export const ChartKeyJoiner = ' · ';
 const PreviousPeriodSuffix = ' (previous)';
 
+/**
+ * Finds the color of the series a group value belongs to — e.g. the color of
+ * the `checkout-service` line on a chart grouped by service name.
+ *
+ * Series keys are the group values joined by `ChartKeyJoiner`, prefixed by the
+ * value column name when the chart has more than one, so the group value is
+ * matched against the key's components rather than the whole key. Previous
+ * period series are skipped; they mirror a current period series' color.
+ *
+ * Used to tint chart annotations (deployment markers) to match the series they
+ * describe, so a marker for one service can't be read as another's.
+ */
+export function getSeriesColorForGroup(
+  lineData: LineData[],
+  group: string,
+): string | undefined {
+  for (const line of lineData) {
+    if (line.isDashed) {
+      continue;
+    }
+    if (line.currentPeriodKey.split(ChartKeyJoiner).includes(group)) {
+      return line.color;
+    }
+  }
+  return undefined;
+}
+
 // Note: roundToNearestMinutes is broken in date-fns currently
 // additionally it doesn't support seconds or > 30min
 // so we need to write our own :(

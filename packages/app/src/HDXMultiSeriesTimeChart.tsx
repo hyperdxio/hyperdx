@@ -37,6 +37,7 @@ import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 import {
   ChartAnnotation,
   getAnnotationElements,
+  resolveAnnotationSeries,
 } from './components/charts/chartAnnotations';
 import {
   ChartTooltipContainer,
@@ -48,6 +49,7 @@ import {
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
+  getSeriesColorForGroup,
   LineData,
   MAX_TIME_CHART_SERIES,
   toStartOfInterval,
@@ -1024,15 +1026,30 @@ export const MemoChart = memo(function MemoChart({
   // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
   // an edge marker (e.g. an alert already firing at window open) stays visible
   // instead of being dropped. Labels float in the reserved top headroom.
-  const annotationElements = useMemo(() => {
+  // Tint each marker to match the series it describes and drop the ones that
+  // can't be tied to anything on this chart — see `resolveAnnotationSeries`.
+  const coloredAnnotations = useMemo(() => {
     if (!annotations?.length) {
+      return annotations;
+    }
+    return resolveAnnotationSeries(annotations, group =>
+      getSeriesColorForGroup(lineData, group),
+    );
+  }, [annotations, lineData]);
+
+  const annotationElements = useMemo(() => {
+    if (!coloredAnnotations?.length) {
       return null;
     }
     // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
-    return getAnnotationElements(annotations, {
+    return getAnnotationElements(coloredAnnotations, {
       domain: xAxisDomain as [number, number],
+      // Drawable width, so markers too close together share one label. Zero on
+      // the first paint (before ResponsiveContainer measures), which the
+      // renderer treats as "label everything".
+      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
     });
-  }, [annotations, xAxisDomain]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth]);
 
   return (
     <div

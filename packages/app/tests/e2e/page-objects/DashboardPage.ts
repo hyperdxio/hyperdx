@@ -98,6 +98,7 @@ export class DashboardPage {
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
   private readonly enterKioskModeMenuItem: Locator;
+  private readonly toggleDeployAnnotationsMenuItem: Locator;
   private readonly exitKioskModeBtn: Locator;
   private readonly kioskHeaderContainer: Locator;
   private readonly kioskLiveStatusBadge: Locator;
@@ -161,6 +162,9 @@ export class DashboardPage {
     );
     this.enterKioskModeMenuItem = page.getByTestId(
       'enter-kiosk-mode-menu-item',
+    );
+    this.toggleDeployAnnotationsMenuItem = page.getByTestId(
+      'toggle-deploy-annotations-menu-item',
     );
     this.exitKioskModeBtn = page.getByTestId('exit-kiosk-mode-button');
     this.kioskHeaderContainer = page.getByTestId('kiosk-header');
@@ -659,6 +663,10 @@ export class DashboardPage {
    */
   async setGlobalFilter(filter: string) {
     await this.searchInput.fill(filter);
+    // Dismiss the suggestion popover, which otherwise overlays the submit
+    // button and fails its actionability check. Blur (not Escape) so it can't
+    // close a surrounding modal — same reasoning as `dismissSqlAutocomplete`.
+    await this.searchInput.blur();
     await this.searchSubmitButton.click();
   }
 
@@ -1291,6 +1299,36 @@ export class DashboardPage {
     await this.ignoredUrlFiltersBanner
       .getByRole('button', { name: 'Dismiss' })
       .click();
+  }
+
+  // ---- Chart annotation helpers ----
+
+  /**
+   * Open the dashboard overflow menu and toggle deployment markers on tile
+   * charts. Expects the menu item with
+   * data-testid="toggle-deploy-annotations-menu-item", which only renders once
+   * the dashboard has at least one tile.
+   */
+  async toggleDeployAnnotations() {
+    await this.dashboardMenuButton.click();
+    await this.toggleDeployAnnotationsMenuItem.click();
+  }
+
+  /**
+   * Annotation markers (deployments, alerts) drawn on a tile's time chart as
+   * dashed vertical Recharts reference lines.
+   */
+  getAnnotationMarkers(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('.recharts-reference-line');
+  }
+
+  /**
+   * Text labels for the annotation markers. Recharts hoists reference-line
+   * labels into a separate z-index layer, so they are NOT descendants of the
+   * `.recharts-reference-line` group and cannot be matched by filtering it.
+   */
+  getAnnotationLabels(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('text.recharts-label');
   }
 
   // ---- Kiosk mode helpers ----

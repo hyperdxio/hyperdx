@@ -102,6 +102,7 @@ import {
   IconPlus,
   IconPresentation,
   IconRefresh,
+  IconRocket,
   IconSearch,
   IconSquaresDiagonal,
   IconTags,
@@ -113,6 +114,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
+import { mergeAnnotations } from '@/components/charts/chartAnnotations';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
@@ -149,6 +151,7 @@ import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
+import { useDeploymentAnnotations } from '@/hooks/useDeploymentAnnotations';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -385,6 +388,7 @@ const Tile = forwardRef(
       onTimeRangeSelect,
       filters,
       showAlertAnnotations,
+      showDeployAnnotations,
       isLive,
       readOnly,
 
@@ -414,6 +418,8 @@ const Tile = forwardRef(
       filters?: Filter[];
       // When true, draw alert firing/recovery annotations on this tile's chart.
       showAlertAnnotations?: boolean;
+      // When true, draw release markers on this tile's chart.
+      showDeployAnnotations?: boolean;
       isLive?: boolean;
       readOnly?: boolean;
 
@@ -653,6 +659,30 @@ const Tile = forwardRef(
       alert?.id,
       isFullscreen ? fullscreenDateRange : dateRange,
       showAlertAnnotations,
+    );
+
+    // Release markers, over the same visible window. Scoped to this tile: the
+    // query runs against the tile's own source with the tile's own predicates,
+    // so a chart filtered to one service isn't annotated with another's
+    // releases. Tiles sharing a source and filters share one query.
+    const deployAnnotations = useDeploymentAnnotations(
+      isFullscreen ? fullscreenDateRange : dateRange,
+      showDeployAnnotations,
+      {
+        source,
+        where: isBuilderSavedChartConfig(chart.config)
+          ? chart.config.where
+          : undefined,
+        whereLanguage: isBuilderSavedChartConfig(chart.config)
+          ? chart.config.whereLanguage
+          : undefined,
+        filters,
+      },
+    );
+
+    const annotations = useMemo(
+      () => mergeAnnotations(alertAnnotations, deployAnnotations),
+      [alertAnnotations, deployAnnotations],
     );
 
     const filterWarning = useMemo(() => {
@@ -1103,7 +1133,7 @@ const Tile = forwardRef(
                     showDisplaySwitcher={!readOnly}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
-                    annotations={alertAnnotations}
+                    annotations={annotations}
                     onTimeRangeSelect={
                       readOnly
                         ? undefined
@@ -1315,7 +1345,7 @@ const Tile = forwardRef(
         isSourceMissing,
         isSourceUnset,
         hasBeenVisible,
-        alertAnnotations,
+        annotations,
         isLive,
         readOnly,
       ],
@@ -1726,6 +1756,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   // Ephemeral view state (URL param), not persisted on the dashboard.
   const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
     'alertAnnotations',
+    parseAsBoolean.withDefault(false),
+  );
+  // Same for release markers, derived from `service.version` changes.
+  const [showDeployAnnotations, setShowDeployAnnotations] = useQueryState(
+    'deployMarkers',
     parseAsBoolean.withDefault(false),
   );
 
@@ -2189,6 +2224,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           ]}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
+          showDeployAnnotations={showDeployAnnotations}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={
             isKioskMode
@@ -2286,6 +2322,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
+      showDeployAnnotations,
       getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
@@ -2712,15 +2749,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {(hasTiles || containers.length > 0) && (
             <>
               {hasTiles && (
-                <Menu.Item
-                  leftSection={<IconTimelineEvent size={16} />}
-                  onClick={() => setShowAlertAnnotations(v => !v)}
-                  data-testid="toggle-alert-annotations-menu-item"
-                >
-                  {showAlertAnnotations
-                    ? 'Hide alert annotations'
-                    : 'Show alert annotations'}
-                </Menu.Item>
+                <>
+                  <Menu.Item
+                    leftSection={<IconTimelineEvent size={16} />}
+                    onClick={() => setShowAlertAnnotations(v => !v)}
+                    data-testid="toggle-alert-annotations-menu-item"
+                  >
+                    {showAlertAnnotations
+                      ? 'Hide alert annotations'
+                      : 'Show alert annotations'}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconRocket size={16} />}
+                    onClick={() => setShowDeployAnnotations(v => !v)}
+                    data-testid="toggle-deploy-annotations-menu-item"
+                  >
+                    {showDeployAnnotations
+                      ? 'Hide deployment markers'
+                      : 'Show deployment markers'}
+                  </Menu.Item>
+                </>
               )}
               {containers.length > 0 && (
                 <>
