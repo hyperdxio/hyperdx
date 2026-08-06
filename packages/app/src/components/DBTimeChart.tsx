@@ -140,6 +140,7 @@ function ChartTooltipOverlay({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  onShowAllSeries,
   fallbackNumberFormat,
   numberFormatByKey,
   previousPeriodOffsetSeconds,
@@ -152,6 +153,8 @@ function ChartTooltipOverlay({
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
+  /** Clear an active series focus; undefined when nothing is focused. */
+  onShowAllSeries?: () => void;
   fallbackNumberFormat?: NumberFormat;
   /** Per-value-column formats, keyed by result column name. */
   numberFormatByKey: Map<string, NumberFormat>;
@@ -275,6 +278,7 @@ function ChartTooltipOverlay({
             buildSearchUrl={buildSearchUrl}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
+            onShowAllSeries={onShowAllSeries}
             hiddenSeriesCount={hiddenSeriesCount}
             onLoadAllSeries={onLoadAllSeries}
             expanded={expanded}
@@ -359,6 +363,10 @@ function DBTimeChartComponent({
   const [showAllSeriesShape, setShowAllSeriesShape] = useState<string | null>(
     null,
   );
+
+  const handleClearSelectedSeries = useCallback(() => {
+    setSelectedSeriesSet(new Set());
+  }, []);
 
   const handleToggleSeries = useCallback(
     (seriesName: string, isShiftKey?: boolean) => {
@@ -965,6 +973,9 @@ function DBTimeChartComponent({
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}
             onFocusSeries={handleFocusSeries}
+            onShowAllSeries={
+              selectedSeriesSet.size > 0 ? handleClearSelectedSeries : undefined
+            }
             fallbackNumberFormat={queriedConfig.numberFormat}
             numberFormatByKey={formatByColumn}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
@@ -997,6 +1008,7 @@ function DBTimeChartComponent({
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             selectedSeriesNames={selectedSeriesSet}
             onToggleSeries={handleToggleSeries}
+            onClearSeriesSelection={handleClearSelectedSeries}
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}

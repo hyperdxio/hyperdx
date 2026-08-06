@@ -45,7 +45,10 @@
   display: flex;
   flex-wrap: wrap;
   max-width: 40vw;
-  overflow: hidden;
+
+  // Cap the height so many series scroll instead of overflowing the viewport.
+  max-height: 40vh;
+  overflow: hidden auto;
   gap: 2px;
 }
 

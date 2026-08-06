@@ -656,7 +656,7 @@ const zChannel = z.object({
 
 const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
-  groupBy: z.string().optional(),
+  groupBy: z.string().nullish(),
   savedSearchId: z.string().min(1),
 });
 

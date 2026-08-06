@@ -9,8 +9,10 @@
 }
 
 .withTabulate {
-  .key {
-    min-width: 150px;
+  .keyContainer {
+    // `min()` keeps the floor inside the 50% cap so the key
+    // column also can't overflow into the value column in narrow panels.
+    min-width: min(150px, 50%);
   }
 }
 

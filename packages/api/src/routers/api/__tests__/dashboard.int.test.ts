@@ -15,7 +15,7 @@ import {
   makeRawSqlTile,
   makeTile,
 } from '@/fixtures';
-import Alert from '@/models/alert';
+import Alert, { AlertSource } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import PresetDashboardFilter from '@/models/presetDashboardFilter';
 import { Source } from '@/models/source';
@@ -251,6 +251,16 @@ describe('dashboard router', () => {
         tileId: dashboard.body.tiles[0].id,
       },
     ]);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert).not.toBeNull();
+    expect(storedAlert?.savedSearch).toBeNull();
+    expect(storedAlert?.groupBy).toBeNull();
   });
 
   it('alerts are created when updating dashboard (adding alert to tile)', async () => {
@@ -371,6 +381,15 @@ describe('dashboard router', () => {
         tileId: dashboard.body.tiles[0].id,
       },
     ]);
+
+    const storedAlerts = await Alert.find({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlerts).toHaveLength(1);
+    expect(storedAlerts[0].threshold).toBe(updatedAlert.threshold);
   });
 
   it('deletes alert when tile is updated from builder to raw SQL config', async () => {

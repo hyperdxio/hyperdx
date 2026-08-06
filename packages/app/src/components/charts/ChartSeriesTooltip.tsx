@@ -9,6 +9,7 @@ import {
 } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import {
+  IconArrowsMaximize,
   IconCheck,
   IconCopy,
   IconFocusCentered,
@@ -27,6 +28,7 @@ import {
   ChartTooltipContainer,
   ChartTooltipHeader,
   ChartTooltipItem,
+  useChartTooltipActionZIndex,
 } from './ChartTooltip';
 
 /**
@@ -45,6 +47,7 @@ function SeriesRow({
   previousValue,
   numberFormat,
   actions,
+  actionTooltipZIndex,
 }: {
   name: string;
   dataKey?: string;
@@ -58,6 +61,8 @@ function SeriesRow({
     onDrillIn: () => void;
     onFocus: () => void;
   };
+  /** z-index for the action tooltips, so they sit above the pinned popover. */
+  actionTooltipZIndex?: number;
 }) {
   const clipboard = useClipboard({ timeout: 1500 });
 
@@ -87,6 +92,7 @@ function SeriesRow({
             withinPortal
             color="gray"
             position="top"
+            zIndex={actionTooltipZIndex}
           >
             <ActionIcon
               component={Link}
@@ -110,6 +116,7 @@ function SeriesRow({
           withinPortal
           color="gray"
           position="top"
+          zIndex={actionTooltipZIndex}
         >
           <ActionIcon
             variant="subtle"
@@ -131,6 +138,7 @@ function SeriesRow({
           withinPortal
           color="gray"
           position="top"
+          zIndex={actionTooltipZIndex}
         >
           <ActionIcon
             variant="subtle"
@@ -162,6 +170,8 @@ export type ChartSeriesTooltipProps = {
   onDismiss?: () => void;
   /** Focus a series by its raw key + display name. */
   onFocusSeries?: (payload: { dataKey?: string; name: string }) => void;
+  /** Clear an active series focus; renders a "Show All Series" footer action when set. */
+  onShowAllSeries?: () => void;
   /**
    * Series dropped by the chart's render cap (i.e. absent from activePayload
    * entirely, not just beyond this tooltip's row cap). Added to the tooltip's
@@ -209,11 +219,15 @@ export function ChartSeriesTooltip({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  onShowAllSeries,
   hiddenSeriesCount = 0,
   onLoadAllSeries,
   expanded = false,
   expandedRowCap = MAX_EXPANDED_TOOLTIP_ROWS,
 }: ChartSeriesTooltipProps) {
+  // Called before any early return to keep hook order stable.
+  const actionTooltipZIndex = useChartTooltipActionZIndex();
+
   // Exclude previous-period series from the row list; their comparison is
   // folded into the matching current-period row as a percent-change chip.
   const rows = activePayload
@@ -259,7 +273,23 @@ export function ChartSeriesTooltip({
     />
   );
 
-  const footer = canDrillDown ? (
+  const showAllSeriesAction =
+    onShowAllSeries != null ? (
+      <UnstyledButton
+        data-testid="chart-show-all-series"
+        onClick={() => {
+          onShowAllSeries();
+          onDismiss?.();
+        }}
+      >
+        <Group gap={8} py={2}>
+          <IconArrowsMaximize size={14} />
+          <Text size="xs">Show All Series</Text>
+        </Group>
+      </UnstyledButton>
+    ) : null;
+
+  const viewAllEventsAction = canDrillDown ? (
     <Link
       data-testid="chart-view-events-link"
       href={bucketSearchUrl}
@@ -274,7 +304,15 @@ export function ChartSeriesTooltip({
         <Text size="xs">View All Events</Text>
       </Group>
     </Link>
-  ) : undefined;
+  ) : null;
+
+  const footer =
+    showAllSeriesAction != null || viewAllEventsAction != null ? (
+      <Stack gap={2}>
+        {showAllSeriesAction}
+        {viewAllEventsAction}
+      </Stack>
+    ) : undefined;
 
   return (
     <ChartTooltipContainer header={header} footer={footer}>
@@ -302,6 +340,7 @@ export function ChartSeriesTooltip({
               value={payload.value!}
               previousValue={payload.previousValue}
               numberFormat={rowNumberFormat}
+              actionTooltipZIndex={actionTooltipZIndex}
               actions={
                 showPerSeriesActions
                   ? {

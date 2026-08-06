@@ -6,7 +6,7 @@ jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
-    // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
     useQueryState: () => [false, mockSetKioskMode],
   };
 });
