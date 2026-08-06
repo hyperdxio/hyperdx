@@ -77,10 +77,14 @@
     "serve-static": "^1.16.0",
     "cookie": "^0.7.0",
     "brace-expansion": "^2.1.2",
+    "@stryker-mutator/core/minimatch": "^9.0.5",
     "diff": "^5.2.2",
     "on-headers": "^1.1.0",
     "fast-xml-parser": "^4.5.6",
     "systeminformation": "^5.24.0",
     "@asyncapi/specs": "6.11.1"
+  },
+  "resolutionsNotes": {
+    "@stryker-mutator/core/minimatch": "Dev tooling, not a CVE override. Stryker needs minimatch v9 because the blanket `brace-expansion` pin above forces v2 (CJS) and minimatch v10's ESM build needs v5's named exports. Narrowing `brace-expansion` or bumping `@stryker-mutator/core` past a minimatch v9 requirement breaks `yarn dev:mutation`, and no CI job covers it. See CONTRIBUTING.md#mutation-tests."
   }
 }
