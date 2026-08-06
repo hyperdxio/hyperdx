@@ -40,6 +40,10 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  dashboardHasUnexportableTiles,
+  isImportableDashboard,
+} from '@hyperdx/common-utils/dist/iac';
+import {
   AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -128,6 +132,7 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
@@ -2665,6 +2670,24 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Button>
         </Tags>
       )}
+      {/* Shared predicate, not an inline `!provisioned` check, so this and the
+          bulk manifest cannot disagree about which dashboards are eligible. */}
+      {dashboard?.id &&
+        isImportableDashboard({
+          provisioned: dashboard.provisioned,
+          // Computed here rather than read off the manifest: this surface has
+          // the full tile configs, and the shared predicate keeps it agreeing
+          // with what the bulk export decides server-side.
+          unexportableTiles: dashboardHasUnexportableTiles(dashboard.tiles),
+        }) && (
+          <ResourceTerraformPopover
+            resource={{
+              type: 'dashboard',
+              id: dashboard.id,
+              name: dashboard.name,
+            }}
+          />
+        )}
       {/* local dashboards cant be "deleted" */}
       <Menu width={250}>
         <Menu.Target>
