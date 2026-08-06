@@ -116,6 +116,11 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
   },
 );
 
+// Sources are almost always read by team (IaC import manifest, source pickers,
+// MCP listings); without this those reads collection-scan across every team.
+// Declared on the base schema so the discriminators inherit it.
+sourceBaseSchema.index({ team: 1, _id: 1 });
+
 // Model is typed with the base schema type internally. Consumers use ISource
 // (the discriminated union) via the exported type and discriminator models.
 const SourceModel = mongoose.model<MongooseSourceBase>(
@@ -267,6 +272,8 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     resourceAttributesExpression: String,
     serviceNameExpression: String,
     logSourceId: String,
+    // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
+    seriesTable: String,
   }),
 );
 

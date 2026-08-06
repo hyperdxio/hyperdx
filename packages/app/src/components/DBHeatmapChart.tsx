@@ -676,6 +676,36 @@ export function formatDataForHeatmap({
   return [time, bucket, count];
 }
 
+/**
+ * Cumulative share (0-100) of events at or below each y-bucket, keyed by
+ * that bucket's y-value.
+ */
+export function computeBucketPercentiles(
+  data: Mode2DataArray,
+): Map<number, number> {
+  const [, ys, counts] = data;
+
+  const bucketTotals = new Map<number, number>();
+  let total = 0;
+  for (let i = 0; i < ys.length; i++) {
+    bucketTotals.set(ys[i], (bucketTotals.get(ys[i]) ?? 0) + counts[i]);
+    total += counts[i];
+  }
+
+  const percentiles = new Map<number, number>();
+  if (total === 0) {
+    return percentiles;
+  }
+
+  let cumulative = 0;
+  for (const [y, bucketTotal] of [...bucketTotals].sort(([a], [b]) => a - b)) {
+    cumulative += bucketTotal;
+    percentiles.set(y, (cumulative / total) * 100);
+  }
+
+  return percentiles;
+}
+
 function HeatmapContainer({
   config,
   enabled = true,
@@ -1093,6 +1123,11 @@ function Heatmap({
     [numberFormatKey, scaleType],
   );
 
+  const bucketPercentiles = useMemo(
+    () => computeBucketPercentiles(data),
+    [data],
+  );
+
   const options: uPlot.Options = useMemo(() => {
     const themedSeries = buildSeriesForPalette(palette);
     return {
@@ -1258,6 +1293,9 @@ function Heatmap({
     };
   }, [width, height, tickFormatter, scaleType, palette, hasFilter]);
 
+  const highlightedPercentile =
+    highlightedPoint && bucketPercentiles.get(highlightedPoint.yVal);
+
   return (
     <div
       ref={ref}
@@ -1349,6 +1387,10 @@ function Heatmap({
             </div>
             <div>
               <b>Y Value:</b> {tickFormatter(highlightedPoint.yVal)}
+              {highlightedPercentile != null &&
+                ` (p${new Intl.NumberFormat('en-US', {
+                  maximumFractionDigits: 1,
+                }).format(highlightedPercentile)})`}
             </div>
             <div>
               <b>Count Value:</b>{' '}

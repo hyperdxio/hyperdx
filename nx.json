@@ -8,31 +8,28 @@
   },
   "targetDefaults": {
     "build": {
+      "cache": true,
       "dependsOn": ["^build"]
     },
     "ci:build": {
+      "cache": true,
       "dependsOn": ["^ci:build"],
       "inputs": ["production", "^production"],
       "outputs": ["{projectRoot}/dist"]
     },
     "ci:lint": {
+      "cache": true,
       "dependsOn": ["^ci:build"],
       "inputs": ["default", "^production"]
-    }
-  },
-  "tasksRunnerOptions": {
-    "default": {
-      "runner": "nx/tasks-runners/default",
-      "options": {
-        "cacheableOperations": [
-          "build",
-          "dev:build",
-          "lint",
-          "test",
-          "ci:build",
-          "ci:lint"
-        ]
-      }
+    },
+    "dev:build": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
     }
   },
   "namedInputs": {

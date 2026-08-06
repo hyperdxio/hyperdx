@@ -38,7 +38,7 @@ const LINKED_SPAN_NAME = 'consume order.created';
 const mockUseRowData = jest.fn();
 jest.mock('../DBRowDataPanel', () => ({
   __esModule: true,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useRowData: (args: unknown) => mockUseRowData(args),
   ROW_DATA_ALIASES: {
     DURATION_MS: '__hdx_duration',
@@ -62,14 +62,14 @@ const TRACE_SOURCE = {
 jest.mock('@/source', () => ({
   __esModule: true,
   getEventBody: () => undefined,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useSource: ({ id }: { id: string | null }) =>
     id === 'trace-src' ? { data: TRACE_SOURCE } : { data: undefined },
 }));
 
 jest.mock('../DBSessionPanel', () => ({
   __esModule: true,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useSessionId: () => ({ rumSessionId: undefined, rumServiceName: undefined }),
   DBSessionPanel: () => null,
 }));

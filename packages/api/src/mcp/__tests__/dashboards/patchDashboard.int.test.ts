@@ -705,6 +705,61 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     });
   });
 
+  it('should round-trip seriesLimit: patch then get_dashboard_tile', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Series Limit Patch Test',
+        tiles: [
+          {
+            name: 'Original',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              groupBy: 'SpanName',
+              seriesLimit: 5,
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+    expect(created.tiles[0].config.seriesLimit).toBe(5);
+    const tileId = created.tiles[0].id;
+
+    await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+      dashboardId: created.id,
+      tileId,
+      tile: {
+        name: 'Patched',
+        config: {
+          displayType: 'stacked_bar',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+          groupBy: 'SpanName',
+          seriesLimit: 3,
+        },
+      },
+    });
+
+    const getResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard_tile',
+      {
+        dashboardId: created.id,
+        tileId,
+      },
+    );
+
+    expect(getResult.isError).toBeFalsy();
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.config.displayType).toBe('stacked_bar');
+    expect(tile.config.seriesLimit).toBe(3);
+  });
+
   describe('raw SQL macro warnings', () => {
     // Patching a tile to a macro-less raw SQL config succeeds (non-blocking)
     // but surfaces an advisory `warnings` array on the response.

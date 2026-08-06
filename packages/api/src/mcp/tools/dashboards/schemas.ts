@@ -47,6 +47,14 @@ const tileLevelNumberFormatDescription =
   'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
   'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
 
+const timeChartSeriesLimitDescription =
+  'Maximum number of series to fetch (the "Series Limit" display setting). ' +
+  'Keeps the top-N groups by aggregated value over the queried range and ' +
+  'drops the rest. Requires `groupBy`; ignored on a chart without one. ' +
+  'Omit to fetch every series.';
+
+const seriesLimitSchema = z.number().int().positive().optional();
+
 const numberTileColorDescription =
   'Static color for the displayed number, as a palette token such as ' +
   '"chart-blue", "chart-green", or "chart-success" (see the enum for the ' +
@@ -534,6 +542,7 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
+    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
   }),
 });
 
@@ -551,6 +560,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
   }),
 });
 

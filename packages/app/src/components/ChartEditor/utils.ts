@@ -397,7 +397,7 @@ export const validateChartForm = (
     if (alertErrors.length > 0) {
       errors.push({
         path: `sqlTemplate`,
-        message: alertErrors.join('. '),
+        message: alertErrors.join(' '),
       });
     }
   }

@@ -24,7 +24,7 @@ jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
-    // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
     useQueryState: (key: string, parser?: { defaultValue?: unknown }) => {
       const hasValue = Object.prototype.hasOwnProperty.call(
         mockQueryStore,
@@ -43,6 +43,7 @@ jest.mock('nuqs', () => {
 // helpers declared at the top of this file.
 import useSidePanelStack, {
   deriveEffectiveTrail,
+  LAST_TAB_STORAGE_KEY,
   reconcileTab,
 } from '@/hooks/useSidePanelStack';
 
@@ -371,5 +372,109 @@ describe('useSidePanelStack', () => {
     expect(setterFor('sidePanelNavStack')).toHaveBeenCalledWith(null);
     expect(setterFor('sidePanelStackRoot')).toHaveBeenCalledWith(null);
     expect(setterFor('sidePanelTab')).toHaveBeenCalledWith(null);
+  });
+
+  describe('remembered tab (localStorage)', () => {
+    // useLocalStorage JSON-encodes, so seed/read through JSON here.
+    function seedLastTab(value: unknown) {
+      localStorage.setItem(LAST_TAB_STORAGE_KEY, JSON.stringify(value));
+    }
+    function readLastTab() {
+      const raw = localStorage.getItem(LAST_TAB_STORAGE_KEY);
+      return raw == null ? null : JSON.parse(raw);
+    }
+
+    beforeEach(() => localStorage.clear());
+
+    it('setTab remembers the tab for the next open', () => {
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      act(() => result.current.setTab(Tab.Parsed));
+      expect(readLastTab()).toBe(Tab.Parsed);
+    });
+
+    it('seeds the tab from the remembered value when the URL has none', () => {
+      seedLastTab(Tab.Context);
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      expect(result.current.tab).toBe(Tab.Context);
+    });
+
+    it('an explicit URL tab wins over the remembered value', () => {
+      seedLastTab(Tab.Context);
+      seedParam('sidePanelTab', Tab.Trace);
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      expect(result.current.tab).toBe(Tab.Trace);
+    });
+
+    it('stays null when nothing is remembered and the URL has no tab', () => {
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      expect(result.current.tab).toBeNull();
+    });
+
+    it('stamps the remembered tab as originTab so Back restores it', () => {
+      seedLastTab(Tab.Parsed);
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      act(() => result.current.pushSource(FRAME, Tab.Trace));
+      expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([
+        { ...FRAME, originTab: Tab.Parsed },
+      ]);
+    });
+
+    it('a targeted navigation does not overwrite the remembered tab', () => {
+      seedLastTab(Tab.Parsed);
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      act(() => result.current.pushSource(FRAME, Tab.Trace));
+      expect(readLastTab()).toBe(Tab.Parsed);
+    });
+
+    it('does not remember a navigational tab as a reading view', () => {
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      act(() => result.current.setTab(Tab.Parsed));
+      // Opening Surrounding Context to hunt for a neighbouring row must not cost
+      // the reader the view they had chosen.
+      act(() => result.current.setTab(Tab.Context));
+
+      expect(readLastTab()).toBe(Tab.Parsed);
+      // It is still the active tab for the current row, just not remembered.
+      expect(setterFor('sidePanelTab')).toHaveBeenLastCalledWith(Tab.Context);
+    });
+
+    it('exposes the reading view separately from where the URL points', () => {
+      seedLastTab(Tab.Parsed);
+      seedParam('sidePanelTab', Tab.Context);
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      // The panel shows Surrounding Context...
+      expect(result.current.tab).toBe(Tab.Context);
+      // ...while a row-changing navigation can still target the reading view.
+      expect(result.current.preferredTab).toBe(Tab.Parsed);
+    });
+
+    it('discards a remembered tab this build no longer knows about', () => {
+      seedLastTab('a-tab-from-a-future-release');
+      const { result } = renderHook(() =>
+        useSidePanelStack({ initialRowId: 'root-1' }),
+      );
+      expect(result.current.tab).toBeNull();
+      // And it must not leak into the nav stack, whose schema would reject it.
+      act(() => result.current.pushSource(FRAME, Tab.Trace));
+      expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([
+        { ...FRAME, originTab: undefined },
+      ]);
+    });
   });
 });

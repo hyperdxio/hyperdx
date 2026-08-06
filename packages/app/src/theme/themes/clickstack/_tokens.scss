@@ -209,7 +209,7 @@
   --color-slider-dot-active: var(--mantine-color-yellow-7);
 
   /* Code / Misc UI */
-  --color-bg-code: #1d1e30;
+  --color-bg-code: var(--palette-neutral-725);
   --color-border-code: #4d4f66;
   --color-bg-kbd: var(--click-global-color-background-default);
 
@@ -446,7 +446,7 @@
   --color-slider-dot-active: var(--mantine-color-dark-3);
 
   /* Code / Misc UI */
-  --color-bg-code: var(--click-global-color-background-muted);
+  --color-bg-code: var(--palette-slate-50);
   --color-border-code: #dee2e6;
   --color-bg-kbd: var(--click-global-color-background-muted);
 

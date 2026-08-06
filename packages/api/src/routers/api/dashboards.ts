@@ -79,7 +79,13 @@ router.post(
     try {
       const { teamId, userId } = getNonNullUserWithTeam(req);
 
-      const dashboard = req.body;
+      // `provisioned` marks a dashboard as machine-managed by
+      // ProvisionDashboardsTask, whose upsert overwrites tiles/tags/filters
+      // wholesale. It is server-owned: `validateRequest` validates without
+      // replacing `req.body`, and DashboardSchema is non-strict, so a
+      // client-supplied value would otherwise persist and hand the caller's
+      // dashboard to the provisioner.
+      const dashboard = _.omit(req.body, 'provisioned');
 
       const newDashboard = await createDashboard(teamId, dashboard, userId);
 
@@ -111,7 +117,8 @@ router.patch(
       }
 
       // Only omit undefined values, keep null (which signals field removal)
-      const updates = _.omitBy(req.body, _.isUndefined);
+      // `provisioned` is server-owned — see the POST handler above.
+      const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
 
       const updatedDashboard = await updateDashboard(
         dashboardId,
