@@ -728,7 +728,12 @@ export function TableSourceForm({
           </Button>
         </FormRow>
       </Stack>
-      <TableModelForm control={control} setValue={setValue} kind={kind} />
+      <TableModelForm
+        control={control}
+        setValue={setValue}
+        kind={kind}
+        sourceId={sourceId}
+      />
       <Group justify="flex-end" mt="lg">
         {onCancel && (
           <Button variant="secondary" onClick={onCancel} size="xs">

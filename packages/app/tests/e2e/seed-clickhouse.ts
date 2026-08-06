@@ -10,6 +10,9 @@
  */
 
 import {
+  E2E_ALT_METRICS_DATABASE,
+  E2E_ALT_METRICS_GAUGE_TABLE,
+  E2E_ALT_METRICS_SUM_TABLE,
   E2E_CLICKHOUSE_DATABASE,
   E2E_INTERESTING_FILTER_KEYS_TABLE,
   E2E_LOGS_TABLE,
@@ -815,11 +818,33 @@ async function clearTestData(
   console.log('  Existing data cleared');
 }
 
+// A second database with OTEL-shaped metric tables, used by the metric table
+// autofill tests to exercise changing the source form's database. Only the
+// schema matters (autofill validates a candidate table by its columns), so the
+// tables are structure-only copies and stay empty. Created here rather than in
+// `init-db-e2e.sh` because that script only runs on a fresh ClickHouse volume.
+async function createAltMetricsDatabase(
+  client: ReturnType<typeof createClickHouseClient>,
+): Promise<void> {
+  console.log('  Ensuring alternate metrics database...');
+  await client.query(
+    `CREATE DATABASE IF NOT EXISTS ${E2E_ALT_METRICS_DATABASE}`,
+  );
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS ${E2E_ALT_METRICS_DATABASE}.${E2E_ALT_METRICS_GAUGE_TABLE} AS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_GAUGE_TABLE}`,
+  );
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS ${E2E_ALT_METRICS_DATABASE}.${E2E_ALT_METRICS_SUM_TABLE} AS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_SUM_TABLE}`,
+  );
+  console.log(`  ${E2E_ALT_METRICS_DATABASE} ready`);
+}
+
 export async function seedClickHouse(): Promise<void> {
   console.log('Seeding ClickHouse with test data...');
   const client = createClickHouseClient();
 
   await waitForClickHouse(client);
+  await createAltMetricsDatabase(client);
   await clearTestData(client);
 
   const seedRef = Date.now();
