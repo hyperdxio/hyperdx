@@ -91,8 +91,7 @@ function Harness({
       kind: SourceKind.Metric,
       connection: 'conn-1',
       from: { databaseName, tableName: '' },
-
-      metricTables: metricTables as any,
+      metricTables,
     },
   });
 
@@ -123,6 +122,7 @@ function autofilledTables() {
     .map(([path, value]) => [path, value]);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const SAVED_SOURCE: TSource = {
   id: 'metric-source-1',
   kind: SourceKind.Metric,
@@ -133,7 +133,7 @@ const SAVED_SOURCE: TSource = {
   metricTables: {
     gauge: 'otel_metrics_gauge',
     sum: 'otel_metrics_sum',
-  } as any,
+  },
 } as any;
 
 describe('MetricTableModelForm metric table autofill', () => {
@@ -237,6 +237,7 @@ describe('MetricTableModelForm metric table autofill', () => {
   // A saved source of another kind switched over to OTEL Metrics has no metric
   // tables to preserve, so it autofills like a new source.
   it('autofills for an existing source switched to the metrics kind', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     savedSource = {
       ...SAVED_SOURCE,
       kind: SourceKind.Log,
