@@ -38,7 +38,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
 import { withAppNav } from '@/layout';
 
-import { ChartBox } from './components/ChartBox';
+import { ChartCard } from './components/charts/ChartCard';
 import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
@@ -70,7 +70,7 @@ function InfrastructureTab({
   return (
     <Grid mt="md">
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTimeChart
             title="CPU Usage (Cores)"
             config={{
@@ -93,10 +93,10 @@ function InfrastructureTab({
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTimeChart
             title="Memory Usage"
             config={{
@@ -122,10 +122,10 @@ function InfrastructureTab({
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTimeChart
             title="Disk"
             config={{
@@ -159,10 +159,10 @@ function InfrastructureTab({
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTimeChart
             title="S3 Requests"
             config={{
@@ -210,10 +210,10 @@ function InfrastructureTab({
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTimeChart
             title={
               <Stack gap={0}>
@@ -250,7 +250,7 @@ function InfrastructureTab({
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
     </Grid>
   );
@@ -355,7 +355,7 @@ function InsertsTab({
   return (
     <Grid mt="md">
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTimeChart
             title={
               <Text size="sm">
@@ -387,10 +387,10 @@ function InsertsTab({
             config={insertsPerTableConfig}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 200 }}>
+        <ChartCard style={{ height: 200 }}>
           <DBTimeChart
             title="Max Active Parts per Partition"
             config={{
@@ -416,10 +416,10 @@ function InsertsTab({
             showLegend={false}
             onTimeRangeSelect={onTimeRangeSelect}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 400 }}>
+        <ChartCard style={{ height: 400 }}>
           <DBTableChart
             title={
               <Stack gap={0}>
@@ -484,7 +484,7 @@ function InsertsTab({
               selectGroupBy: false,
             }}
           />
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
     </Grid>
   );
@@ -665,7 +665,7 @@ function ClickhousePage() {
             <Tabs.Panel value="selects">
               <Grid mt="md">
                 <Grid.Col span={12}>
-                  <ChartBox style={{ height: 250 }}>
+                  <ChartCard style={{ height: 250 }}>
                     <DBHeatmapChart
                       title="Query Latency"
                       toolbarSuffix={heatmapToolbarItems}
@@ -698,10 +698,10 @@ function ClickhousePage() {
                         });
                       }}
                     />
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={12}>
-                  <ChartBox style={{ height: 400 }}>
+                  <ChartCard style={{ height: 400 }}>
                     <DBTimeChart
                       title="Query Count by Table"
                       config={{
@@ -737,10 +737,10 @@ function ClickhousePage() {
                         onTimeRangeSelect(start, end);
                       }}
                     />
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={12}>
-                  <ChartBox style={{ height: 400 }}>
+                  <ChartCard style={{ height: 400 }}>
                     <DBTableChart
                       title="Most Time Consuming Query Patterns"
                       config={{
@@ -793,10 +793,10 @@ function ClickhousePage() {
                         limit: { limit: 20 },
                       }}
                     />
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={12}>
-                  <ChartBox
+                  <ChartCard
                     style={{
                       height: 400,
                       overflow: 'hidden',
@@ -849,7 +849,7 @@ function ClickhousePage() {
                         limit: { limit: 100 },
                       }}
                     />
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
               </Grid>
             </Tabs.Panel>

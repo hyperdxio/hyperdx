@@ -159,6 +159,43 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
 
+### Chart cards (ChartCard)
+
+**Use `ChartCard` (`@/components/charts/ChartCard`) to wrap a chart in a card.**
+It is a bordered surface with the same header treatment as a custom dashboard
+tile (a full-bleed divider under the title). It replaces the older `ChartBox`;
+don't hand-roll a bordered `<div>`/`<Paper>` around a chart.
+
+`ChartCard` renders the card **chrome only**. It draws the header divider by
+providing `ChartContainerCardHeaderProvider`, so put a chart that renders a
+`ChartContainer` inside it (`DBTimeChart`, `DBHeatmapChart`, `DBListBarChart`,
+…). The tile-level controls (fullscreen, line/bar display switcher, kebab menu)
+belong to dashboard tiles and are intentionally **not** part of `ChartCard`.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `children` | `ReactNode` | The chart, usually a `DB*Chart` that renders a `ChartContainer` |
+| `style` | `CSSProperties` | Sizing/overflow override — pass a fixed `height`, or `flex: 1; height: 100%` to fill a flex row |
+| `data-testid` | `string` | Test hook |
+
+```tsx
+// ✅ GOOD — shared card chrome, consistent with dashboard tiles
+<ChartCard style={{ height: 350 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</ChartCard>
+
+// ❌ BAD — hand-rolled card that drifts from the dashboard look
+<Box style={{ border: '1px solid var(--color-border)', borderRadius: 4 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</Box>
+```
+
+**Give it a height.** `ChartCard` is `width: 100%` and fills its parent, so the
+parent (or a `style={{ height }}`) must define the height. For equal-width
+side-by-side charts (e.g. the RED row) use
+`style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}` inside a
+`Flex`. See the `Charts/ChartCard` Storybook stories for the variants.
+
 ## Semantic design tokens (prefer over raw Mantine colors)
 
 The UI is built with **Mantine components**, but **colors and surfaces** should follow the **semantic CSS custom properties** in our themes (`--color-*`, etc.), not ad-hoc Mantine palette values. Those tokens are defined in `packages/app/src/theme/themes/**/_tokens.scss`, align with a **Click UI**–style system, and keep HyperDX and ClickStack visually consistent. They are the path toward a shared design system even while Mantine remains the component layer.

@@ -6,7 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Group, Text } from '@mantine/core';
 
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 
@@ -66,7 +66,7 @@ export default function SlowestEventsTile({
   const roundedP95 = Math.round(p95 ?? 0);
 
   return (
-    <ChartBox style={{ height }}>
+    <ChartCard style={{ height }}>
       <Group justify="space-between" align="center" mb="sm">
         <Text size="sm">{title}</Text>
         <Text size="xs">(Slower than {roundedP95}ms)</Text>
@@ -137,6 +137,6 @@ export default function SlowestEventsTile({
           </>
         )
       )}
-    </ChartBox>
+    </ChartCard>
   );
 }
