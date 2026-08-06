@@ -36,9 +36,11 @@
  *   - Gauge     inventory.sync.queue.depth (inventory-service) : noisy but
  *     benign across the whole window — a metric red herring.
  *
- * The scenario measures ORGANIC metric-tool adoption via the transcript
- * rubric: the agent doesn't need the metric tools, so reaching for them is
- * the adoption signal (contrast with metric-saturation, where it's forced).
+ * The scenario measures ORGANIC metric adoption via the adoption rubric:
+ * a tool call counts when its input args name a target metric (any tool —
+ * dedicated metric tools and raw SQL against the metrics tables score the
+ * same). The agent doesn't need the metrics, so reaching for them is the
+ * adoption signal (contrast with metric-saturation, where it's forced).
  *
  * Distractors: an INNOCENT completed payment-service rollout minutes before
  * checkout's (the "blame the other deploy" trap), a deploy-introduced

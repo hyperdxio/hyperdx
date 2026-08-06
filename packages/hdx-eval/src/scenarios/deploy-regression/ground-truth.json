@@ -17,7 +17,7 @@
       "histogram": "http.server.request.duration on checkout-api split by http.response.status_code: the 500-series count steps up at the deploy — corroborates the onset, adds nothing traces don't show.",
       "sum": "http.server.request.count{status_class=5xx} (cumulative): slope changes at the deploy — same corroboration as a rate.",
       "gauge": "system.cpu.utilization and process.memory.usage on checkout-api stay flat and healthy — rules out infra saturation as an alternative cause. inventory.sync.queue.depth on inventory-service is a noisy-but-benign red herring.",
-      "adoptionNote": "This scenario measures ORGANIC metric-tool adoption: the transcript checks record whether the agent reaches for metric tools it does not strictly need. Contrast with metric-saturation, where metric-tool use is forced by the scenario design."
+      "adoptionNote": "This scenario measures ORGANIC metric adoption: the adoption checks record whether any tool call's input args name the target metrics (regardless of which tool — a dedicated metric tool and raw SQL against the metrics tables both count), even though the agent does not strictly need metrics here. Contrast with metric-saturation, where metric use is forced by the scenario design."
     }
   },
   "distractors": [
@@ -152,17 +152,22 @@
         true
       ]
     ],
-    "transcript": [
-      [
-        "used_metric_tool",
-        1,
-        "clickstack_(list_metrics|describe_metric)|clickstack_(timeseries|table)[^\\n]*metricType"
-      ],
-      [
-        "queried_checkout_metrics",
-        1,
-        "(clickstack_describe_metric|clickstack_(timeseries|table)(?=[^\\n]*metricType))[^\\n]*(http[\\s._]server[\\s._]request|checkout)"
-      ]
+    "adoption": [
+      {
+        "id": "queried_target_metric",
+        "weight": 1,
+        "metrics": [
+          "http.server.request.duration",
+          "http.server.request.count",
+          "system.cpu.utilization",
+          "process.memory.usage"
+        ]
+      },
+      {
+        "id": "queried_checkout_http_metrics",
+        "weight": 1,
+        "metrics": ["http.server.request.duration", "http.server.request.count"]
+      }
     ],
     "judge": {
       "criteria": [

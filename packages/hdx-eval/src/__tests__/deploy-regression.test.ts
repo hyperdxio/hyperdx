@@ -543,11 +543,17 @@ describe('deploy-regression scenario', () => {
       'rules_out_deprecation_flood',
     ];
 
-    it('loads and includes transcript (adoption) checks', () => {
+    it('loads and includes metric-adoption checks', () => {
       const rubric = loadScenarioRubric('deploy-regression');
       expect(rubric.programmatic.length).toBeGreaterThan(0);
-      expect(rubric.transcript?.length).toBe(2);
-      expect(rubric.transcript![0].id).toBe('used_metric_tool');
+      expect(rubric.adoption?.length).toBe(2);
+      expect(rubric.adoption!.map(c => c.id)).toEqual([
+        'queried_target_metric',
+        'queried_checkout_http_metrics',
+      ]);
+      expect(rubric.adoption![0].metrics).toContain(
+        'http.server.request.duration',
+      );
     });
 
     it('negative checks do not fire on rule-out phrasing', () => {

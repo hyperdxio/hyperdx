@@ -410,13 +410,17 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
 - **Tool error penalty** — up to 20% deducted for high tool-call error rates.
 
 **Adoption (tool use)** is reported alongside the outcome score for scenarios
-with a `transcript` rubric block — regex checks over the serialized tool-call
-transcript (tool names + args). It is intentionally **excluded** from the
-combined score: measuring tool usage must not inflate outcome quality.
-`metric-saturation` (metrics load-bearing) should show ≈100% adoption; the
-interesting readout is `deploy-regression` (metrics merely corroborating),
-where adoption measures whether the agent reaches for metric tools it
-doesn't strictly need.
+with an `adoption` rubric block. Each check declares the scenario's target
+metric names/keys; a tool call counts when its **input args** name one of them
+(separator-tolerant: `jvm.gc.pause` ≡ `jvm_gc_pause`), regardless of which
+tool was called — a dedicated metric tool and raw SQL against the metrics
+tables score identically, so both arms are graded by the same rule. Tool
+names, tool outputs, and the prompt never count. Adoption is intentionally
+**excluded** from the combined score: measuring tool usage must not inflate
+outcome quality. `metric-saturation` (metrics load-bearing) should show
+≈100% adoption; the interesting readout is `deploy-regression` (metrics
+merely corroborating), where adoption measures whether the agent reaches for
+metrics it doesn't strictly need.
 
 ### Baseline + Challengers
 
