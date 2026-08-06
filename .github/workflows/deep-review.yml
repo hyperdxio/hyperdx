@@ -534,11 +534,20 @@ jobs:
             { echo "broken=true"; echo "reason=$1"; } >> "$GITHUB_OUTPUT"
             exit 0
           }
-          # A missing transcript on a review run is itself suspicious (the SDK
-          # iterator can hang before writing the file), so treat it as
-          # unhealthy rather than silently passing with no evidence.
+          # A missing, empty, or reshaped transcript on a review run is itself
+          # suspicious (the SDK iterator can hang before writing the file, or
+          # crash after truncating it), so treat those as unhealthy rather
+          # than silently passing with no evidence: jq emits nothing (exit 0)
+          # on empty input, which would otherwise fall through to
+          # broken=false and stamp a valid state marker.
           if [ -z "${EXECUTION_FILE:-}" ] || [ ! -f "$EXECUTION_FILE" ]; then
             broken "No execution transcript from the reviewer (execution_file missing). Cannot confirm the sandbox was healthy."
+          fi
+          if [ ! -s "$EXECUTION_FILE" ]; then
+            broken "Execution transcript exists but is empty. Cannot confirm the sandbox was healthy."
+          fi
+          if ! jq -e 'type == "array" and length > 0' "$EXECUTION_FILE" >/dev/null 2>&1; then
+            broken "Execution transcript is not a non-empty JSON array. Cannot confirm the sandbox was healthy."
           fi
           # Count errored tool_result blocks that (a) correlate to a Bash
           # tool_use by id and (b) carry the bwrap signature at a line start.
@@ -564,7 +573,15 @@ jobs:
                 | select(test("(^|\\n)bwrap: .*(Can.t create file|Permission denied)"))
               ] | length
           ' "$EXECUTION_FILE")
-          echo "bwrap sandbox-failure Bash tool_results: $BROKEN_COUNT"
+          echo "bwrap sandbox-failure Bash tool_results: ${BROKEN_COUNT:-<empty>}"
+          # Belt-and-suspenders: never let a non-numeric count reach the
+          # comparison below -- `[ "" -gt 0 ]` errors but is set-e-exempt as
+          # an `if` condition, so it would silently fall through to healthy.
+          case "$BROKEN_COUNT" in
+            '' | *[!0-9]*)
+              broken "Sandbox check could not derive a failure count from the execution transcript (got: '${BROKEN_COUNT:-<empty>}')."
+              ;;
+          esac
           if [ "$BROKEN_COUNT" -gt 0 ]; then
             broken "Deep review ran in a broken sandbox ($BROKEN_COUNT bwrap Bash failures). The CLI pin is not taking effect or the regression changed shape. See https://github.com/anthropics/claude-code-action/issues/1547"
           fi
