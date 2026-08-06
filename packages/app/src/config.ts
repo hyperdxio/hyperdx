@@ -73,6 +73,10 @@ export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
 export const IS_DASHBOARD_VARIABLES_ENABLED =
   env('NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES') === 'true';
+// Alert detail page (/alerts/:id). Default off — currently enabled only in
+// dev (.env.development) and CI (e2e webserver) while the feature bakes.
+export const IS_ALERT_DETAILS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_ALERT_DETAILS') === 'true';
 // Not exported: IS_IAC_EXPORT_ENABLED below is the only gate callers should
 // read. Leaving the raw flag importable re-opens the "forgot the local-mode
 // check" mistake that folding the two together was meant to close.

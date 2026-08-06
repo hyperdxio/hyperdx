@@ -13,6 +13,7 @@ import {
   Alert,
   Anchor,
   Badge,
+  Button,
   Collapse,
   Container,
   Flex,
@@ -43,6 +44,7 @@ import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import EmptyState from '@/components/EmptyState';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
+import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
@@ -53,7 +55,7 @@ import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
 
-function getAlertDisplayName(alert: AlertsPageItem): string {
+export function getAlertDisplayName(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
     const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
     const tileName = tile?.config.name || 'Tile';
@@ -61,6 +63,17 @@ function getAlertDisplayName(alert: AlertsPageItem): string {
   }
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
     return alert.savedSearch.name;
+  }
+  return '';
+}
+
+/** URL of the saved search / dashboard tile the alert is watching. */
+export function getAlertSourceUrl(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return `/search/${alert.savedSearchId}`;
   }
   return '';
 }
@@ -74,7 +87,7 @@ function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
   return alert.createdBy.name || alert.createdBy.email;
 }
 
-function AlertNote({ note }: { note: string }) {
+export function AlertNote({ note }: { note: string }) {
   const [opened, { toggle }] = useDisclosure(false);
 
   return (
@@ -149,15 +162,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
     return '–';
   }, [alert]);
 
-  const alertUrl = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return `/search/${alert.savedSearchId}`;
-    }
-    return '';
-  }, [alert]);
+  const alertUrl = React.useMemo(() => getAlertSourceUrl(alert), [alert]);
 
   const alertIcon = (() => {
     switch (alert.source) {
@@ -286,6 +291,17 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         )}
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
+        {IS_ALERT_DETAILS_ENABLED && (
+          <Button
+            component={Link}
+            href={`/alerts/${alert._id}`}
+            variant="link"
+            size="compact-sm"
+            data-testid={`alert-details-link-${alert._id}`}
+          >
+            Details
+          </Button>
+        )}
       </Group>
     </div>
   );
