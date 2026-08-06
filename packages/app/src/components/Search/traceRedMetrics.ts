@@ -3,13 +3,17 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 
-import {
-  ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-  INTEGER_NUMBER_FORMAT,
-} from '@/ChartUtils';
+import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import type { NumberFormat } from '@/types';
 
 export type ErrorsMode = 'rate' | 'volume';
+
+// One decimal so sub-1% rates read (e.g. 0.4%) instead of rounding to 0%,
+// while the axis still auto-scales to the data.
+export const ERROR_RATE_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 1,
+};
 
 /**
  * Helper series that back the error-rate ratio; hidden from the chart so only
@@ -96,10 +100,17 @@ export function errorsConfig(
           aggConditionLanguage: 'sql',
           valueExpression: '',
         },
-        { alias: 'Error rate', valueExpression: 'error_spans / total_spans' },
+        {
+          // Guard the empty-bucket 0/0 (which becomes NaN and breaks the
+          // auto-scaled y-axis) and clamp to 100%, since an error rate cannot
+          // exceed 1 by definition.
+          alias: 'Error rate',
+          valueExpression:
+            'least(if(total_spans > 0, error_spans / total_spans, 0), 1)',
+        },
       ],
       displayType: DisplayType.Line,
-      numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+      numberFormat: ERROR_RATE_FORMAT,
     };
   }
   return {

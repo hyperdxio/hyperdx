@@ -157,6 +157,8 @@ export function TraceRedMetricsChart({
     queryKeyPrefix,
     onTimeRangeSelect,
     enableParallelQueries: true,
+    // narrow tiles: keep the edge time labels from clipping
+    compactXAxisLabels: true,
   } as const;
 
   return (

@@ -3,12 +3,10 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 
-import {
-  ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-  INTEGER_NUMBER_FORMAT,
-} from '@/ChartUtils';
+import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import {
   durationConfig,
+  ERROR_RATE_FORMAT,
   ERROR_RATE_HELPER_SERIES,
   errorConditionSql,
   errorsConfig,
@@ -77,7 +75,7 @@ describe('traceRedMetrics', () => {
       const result = errorsConfig(redBaseConfig(base), ERROR_COND, 'rate');
       expect(result).toBeDefined();
       expect(result?.displayType).toBe(DisplayType.Line);
-      expect(result?.numberFormat).toBe(ERROR_RATE_PERCENTAGE_NUMBER_FORMAT);
+      expect(result?.numberFormat).toBe(ERROR_RATE_FORMAT);
       expect(result?.select).toEqual([
         {
           alias: 'total_spans',
@@ -92,7 +90,12 @@ describe('traceRedMetrics', () => {
           aggConditionLanguage: 'sql',
           valueExpression: '',
         },
-        { alias: 'Error rate', valueExpression: 'error_spans / total_spans' },
+        {
+          alias: 'Error rate',
+          // guards the empty-bucket 0/0 and caps at 100%
+          valueExpression:
+            'least(if(total_spans > 0, error_spans / total_spans, 0), 1)',
+        },
       ]);
       // the two aggregated counts are the ones hidden from the chart
       expect(ERROR_RATE_HELPER_SERIES).toEqual(['total_spans', 'error_spans']);

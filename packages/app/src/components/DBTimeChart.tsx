@@ -302,6 +302,11 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * Anchor the first/last x-axis labels inward so they are not clipped on
+   * narrow charts (e.g. side-by-side RED metric tiles). Forwarded to the chart.
+   */
+  compactXAxisLabels?: boolean;
 };
 
 function DBTimeChartComponent({
@@ -327,6 +332,7 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  compactXAxisLabels,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -848,6 +854,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            compactXAxisLabels={compactXAxisLabels}
           />
         </>
       )}
