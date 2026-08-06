@@ -14,13 +14,16 @@
     "ci:build": {
       "cache": true,
       "dependsOn": ["^ci:build"],
-      "inputs": ["production", "^production"],
+      // The `runtime` input pairs with `.nvmrc` in sharedGlobals: the file
+      // catches a declared version bump, this catches an actual interpreter
+      // that disagrees with it (local shells, a runner image change).
+      "inputs": ["production", "^production", { "runtime": "node --version" }],
       "outputs": ["{projectRoot}/dist"]
     },
     "ci:lint": {
       "cache": true,
       "dependsOn": ["^ci:build"],
-      "inputs": ["default", "^production"]
+      "inputs": ["default", "^production", { "runtime": "node --version" }]
     },
     "dev:build": {
       "cache": true
@@ -55,7 +58,8 @@
       "{workspaceRoot}/.prettierrc",
       "{workspaceRoot}/.prettierignore",
       "{workspaceRoot}/package.json",
-      "{workspaceRoot}/yarn.lock"
+      "{workspaceRoot}/yarn.lock",
+      "{workspaceRoot}/.nvmrc"
     ]
   }
 }
