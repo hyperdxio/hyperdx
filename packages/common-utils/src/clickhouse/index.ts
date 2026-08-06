@@ -667,6 +667,15 @@ export abstract class BaseClickhouseClient {
     }
   }
 
+  /**
+   * The configured request timeout in milliseconds. Exposed so callers (e.g.
+   * the alert task) can produce actionable error messages when a query is
+   * aborted by this timeout.
+   */
+  get requestTimeoutMs(): number {
+    return this.requestTimeout;
+  }
+
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
     if (!this.client) {
       throw new Error(
