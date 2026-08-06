@@ -117,7 +117,11 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import {
+  getUnrepresentableWhereReason,
+  getWhereParseError,
+  mergeFiltersIntoWhereClause,
   replaceFiltersInWhereClause,
+  translateWhereClauseInQuery,
   useSearchPageFilterState,
   whereToFilters,
 } from '@/searchFilters';
@@ -1102,7 +1106,7 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, reset, getValues, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
@@ -1343,25 +1347,72 @@ export function DBSearchPage() {
   // filter sidebar and the query text can never drift apart.
   const inputWhere = useWatch({ name: 'where', control });
   const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
-  const searchQuery = useMemo(
+
+  // The `where` text is the canonical representation, but while the user is
+  // mid-typing it can be momentarily unparseable (e.g. `service:`). Keep the
+  // last valid derived query so the sidebar doesn't wipe, and surface the
+  // parse error separately so the sidebar can explain what's happening.
+  const lastGoodSearchQueryRef = useRef<Filter[]>([]);
+  const searchQuery = useMemo(() => {
+    const language = inputWhereLanguage ?? 'lucene';
+    const parseError = getWhereParseError(inputWhere, language);
+    if (parseError) return lastGoodSearchQueryRef.current;
+    const query = whereToFilters(
+      inputWhere,
+      language,
+      knownColumns,
+      dateTimeColumns,
+    );
+    lastGoodSearchQueryRef.current = query;
+    return query;
+  }, [inputWhere, inputWhereLanguage, knownColumns, dateTimeColumns]);
+
+  const whereParseError = useMemo(
+    () => getWhereParseError(inputWhere, inputWhereLanguage ?? 'lucene'),
+    [inputWhere, inputWhereLanguage],
+  );
+
+  const whereUnrepresentableReason = useMemo(
     () =>
-      whereToFilters(
+      getUnrepresentableWhereReason(inputWhere, inputWhereLanguage ?? 'lucene'),
+    [inputWhere, inputWhereLanguage],
+  );
+
+  // Language switches happen through SearchWhereInput; translate the live
+  // `where` text so facet clauses survive (the free-text/facet rewrite keeps
+  // non-facet content verbatim). Skip when there is nothing to translate.
+  const handleWhereLanguageChange = useCallback(
+    (language: 'sql' | 'lucene') => {
+      const previousLanguage = inputWhereLanguage ?? 'lucene';
+      if (language === previousLanguage) return;
+      const translatedWhere = translateWhereClauseInQuery(
         inputWhere,
-        inputWhereLanguage ?? 'lucene',
+        previousLanguage,
+        language,
         knownColumns,
         dateTimeColumns,
-      ),
-    [inputWhere, inputWhereLanguage, knownColumns, dateTimeColumns],
+      );
+      if (translatedWhere !== inputWhere) {
+        setValue('where', translatedWhere, { shouldDirty: true });
+      }
+    },
+    [inputWhere, inputWhereLanguage, knownColumns, dateTimeColumns, setValue],
   );
 
   // Sidebar filter mutations arrive as the canonical SQL `Filter[]` the hook
   // emits; rewrite the facet clauses of the live `where` text to match and
   // drop the separate `filters` param entirely.
+  //
+  // Read the current form values with `getValues()` (a non-reactive read) at
+  // call time instead of closing over the watched `where`, so this callback
+  // keeps a stable identity across keystrokes. A stable `onFilterChange` keeps
+  // the sidebar hook's eight mutators stable too, which is what lets
+  // `memo(DBSearchPageFiltersComponent)` skip re-rendering while typing.
   const handleSetFilters = useCallback(
     (filters: Filter[]) => {
       const newWhere = replaceFiltersInWhereClause(
-        inputWhere,
-        inputWhereLanguage ?? 'lucene',
+        getValues('where') ?? '',
+        getValues('whereLanguage') ?? 'lucene',
         filters,
         knownColumns,
         dateTimeColumns,
@@ -1369,14 +1420,7 @@ export function DBSearchPage() {
       setValue('where', newWhere);
       debouncedSubmit();
     },
-    [
-      debouncedSubmit,
-      setValue,
-      inputWhere,
-      inputWhereLanguage,
-      knownColumns,
-      dateTimeColumns,
-    ],
+    [debouncedSubmit, setValue, getValues, knownColumns, dateTimeColumns],
   );
 
   const searchFilters = useSearchPageFilterState({
@@ -1394,7 +1438,7 @@ export function DBSearchPage() {
     const { filters: legacyFilters, where, whereLanguage } = searchedConfig;
     if (!legacyFilters?.length || !inputSourceColumns) return;
     try {
-      const migratedWhere = replaceFiltersInWhereClause(
+      const migratedWhere = mergeFiltersIntoWhereClause(
         where ?? '',
         (whereLanguage as 'sql' | 'lucene') ?? 'lucene',
         legacyFilters,
@@ -2381,6 +2425,7 @@ export function DBSearchPage() {
             control={control}
             name="where"
             onSubmit={onSubmit}
+            onLanguageChange={handleWhereLanguageChange}
             sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
@@ -2498,6 +2543,8 @@ export function DBSearchPage() {
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
                     onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    whereParseError={whereParseError}
+                    whereUnrepresentableReason={whereUnrepresentableReason}
                     {...searchFilters}
                   />
                 </ErrorBoundary>

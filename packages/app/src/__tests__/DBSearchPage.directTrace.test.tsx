@@ -120,6 +120,10 @@ jest.mock('@/searchFilters', () => ({
   }),
   whereToFilters: () => [],
   replaceFiltersInWhereClause: (where: string) => where,
+  mergeFiltersIntoWhereClause: (where: string) => where,
+  translateWhereClauseInQuery: (where: string) => where,
+  getWhereParseError: () => null,
+  getUnrepresentableWhereReason: () => null,
 }));
 
 jest.mock('@/hooks/useChartConfig', () => ({

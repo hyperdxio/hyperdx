@@ -18,7 +18,16 @@ export type FilterState = {
   [key: string]: {
     included: Set<string | boolean>;
     excluded: Set<string | boolean>;
-    range?: { min: number; max: number }; // For BETWEEN conditions
+    range?: {
+      min: number;
+      max: number;
+      /**
+       * Lucene range bracket style: 'both' ([min TO max]), 'none' ({min TO max}),
+       * 'left' ([min TO max}), 'right' ({min TO max]).
+       * Defaults to 'both' (fully inclusive) when not set.
+       */
+      inclusive?: 'both' | 'none' | 'left' | 'right';
+    };
   };
 };
 
@@ -149,17 +158,35 @@ const escapeLuceneQuotedTerm = (s: string) => {
 };
 
 /**
- * Escape backslashes and colons so the field name survives Lucene parsing.
- * Map sub-keys can legitimately contain `:` (e.g. `LogAttributes['foo:bar']`
- * normalizes to `LogAttributes.foo:bar` via parseKeyPath().join('.')), and
- * `:` is the Lucene field/value separator. Backslashes are escaped first so
- * the inserted `\:` survives `encodeSpecialTokens`' `\\` → backslash-literal
- * substitution; the encoder's matching `\:` → HDX_COLON rule then makes the
- * colon opaque to the parser, and `decodeSpecialTokens` restores the
- * original key on the consumer side.
+ * Escape characters in a field name that would break Lucene syntax.
+ *
+ * Lucene treats several characters as syntax in field names / at the
+ * field:value boundary:
+ *   - `\`  – escape prefix (must come first so later replacements survive)
+ *   - `:`  – field/value separator
+ *   - `(`  `)` – grouping / field-group open/close
+ *   - `"`  – quoted-value delimiter
+ *   - `{`  `}` – exclusive range bracket
+ *   - `[`  `]` – inclusive range bracket
+ *   - ` `  (space) – token separator
+ *
+ * Backslashes are escaped first so the `\X` sequences we insert later are
+ * not double-processed.  The encoder's special-token rules (`encodeSpecialTokens`)
+ * handle `\:` → HDX_COLON so that colons survive the parser; the other
+ * characters are simply backslash-escaped in the raw Lucene text.
  */
 const escapeLuceneFieldName = (key: string): string =>
-  key.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+  key
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/"/g, '\\"')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/ /g, '\\ ');
 
 /**
  * Render a FilterState as a single `where` clause string in the given query
@@ -226,8 +253,16 @@ export function filterStateToWhereClause(
       );
     }
     if (values.range != null) {
+      const open =
+        values.range.inclusive === 'none' || values.range.inclusive === 'right'
+          ? '{'
+          : '[';
+      const close =
+        values.range.inclusive === 'none' || values.range.inclusive === 'left'
+          ? '}'
+          : ']';
       clauses.push(
-        `${luceneField}:[${values.range.min} TO ${values.range.max}]`,
+        `${luceneField}:${open}${values.range.min} TO ${values.range.max}${close}`,
       );
     }
   }
@@ -235,36 +270,207 @@ export function filterStateToWhereClause(
 }
 
 type CollectedTerm = { field: string; value: string; negated: boolean };
-type CollectedRange = { field: string; min: number; max: number };
+type CollectedRange = {
+  field: string;
+  min: number;
+  max: number;
+  inclusive?: 'both' | 'none' | 'left' | 'right';
+};
 
 /**
- * Collect quoted terms and range terms from a Lucene AST.
+ * Return true when a `NodeTerm` carries a proximity (~N), fuzzy (~), or boost
+ * (^N) modifier. The `@hyperdx/lucene` package ships no `.d.ts` file so
+ * TypeScript infers these optional properties as absent from `NodeTerm`; we
+ * access them through an `unknown` cast to stay type-safe while still checking
+ * the runtime values the grammar always sets (to `null` when absent).
+ */
+function hasTermModifiers(node: lucene.NodeTerm): boolean {
+  const n = node as unknown as Record<string, unknown>;
+  return (
+    n['proximity'] != null || n['boost'] != null || n['similarity'] != null
+  );
+}
+
+/**
+ * Collect quoted terms and range terms from a Lucene AST into the `terms` /
+ * `ranges` arrays.  `managedFields` collects every explicit-field name that we
+ * should treat as "managed" even when we cannot faithfully round-trip the value
+ * (unquoted terms, field groups).  `collectFromAst` is only called in contexts
+ * that build the `managed` set, so this wider set lets `renderNode` prune
+ * unquoted field clauses (Bug 7) and field-group clauses (Bug 3).
+ *
+ * Cross-field OR rules (Bug 2): when an OR node connects clauses for *different*
+ * fields, the relationship cannot be expressed in FilterState (which has AND
+ * semantics across fields), so we treat the whole OR sub-tree as unmanaged —
+ * neither side is collected, and `renderNode` will preserve the raw text.
  */
 function collectFromAst(
   ast: lucene.AST | lucene.Node,
   terms: CollectedTerm[],
   ranges: CollectedRange[],
+  managedFields: Set<string>,
+  negate = false,
 ): void {
   if (isNodeTerm(ast)) {
-    if (!ast.quoted) return;
-    const negated = ast.field.startsWith('-');
-    const field = decodeSpecialTokens(negated ? ast.field.slice(1) : ast.field);
-    // Implicit-field phrases (`"a b"`) are free-text search, not facets.
+    // `negate` carries a `NOT` (or `+`/`-`) wrapper from an enclosing node, so
+    // `NOT a:"1"` / `a AND NOT b:"2"` collect as excluded instead of included.
+    // A `-` prefix XORs with the wrapper (`NOT -a` is not negated). Only a
+    // literal `-` prefix is sliced off the field name.
+    const negatedField = ast.field.startsWith('-');
+    const negated = negatedField !== negate;
+    const field = decodeSpecialTokens(
+      negatedField ? ast.field.slice(1) : ast.field,
+    );
+    // Implicit-field terms (free-text, quoted phrases) are never managed facets.
     if (field === IMPLICIT_FIELD) return;
+
+    // Terms with proximity (~N), fuzzy (~), or boost (^N) modifiers cannot be
+    // faithfully represented in FilterState, so treat them as unmanaged (Bug 6).
+    // However the field is still marked managed so that sibling plain clauses
+    // for the same field are pruned by renderNode rather than left to pile up
+    // alongside the new emission.
+    if (hasTermModifiers(ast)) {
+      managedFields.add(field);
+      return;
+    }
+
+    // Collect the field as managed so renderNode can prune it (Bug 7).
+    managedFields.add(field);
+
+    if (!ast.quoted) {
+      // Unquoted terms are managed for *removal* (so the old unquoted clause
+      // doesn't linger when the sidebar replaces it with a quoted one), but we
+      // don't add them to `terms` — the sidebar always emits quoted values.
+      return;
+    }
+
     terms.push({ field, value: decodeSpecialTokens(ast.term), negated });
   } else if (isNodeRangedTerm(ast)) {
     const field = decodeSpecialTokens(ast.field);
     if (field === IMPLICIT_FIELD) return;
+    // A negated range (`NOT duration:[10 TO 20]`) can't be represented in
+    // FilterState, so leave it unmanaged and preserve it verbatim. But still
+    // mark the field as managed so plain range clauses on the same field don't
+    // survive alongside the new emission.
+    if (negate) {
+      managedFields.add(field);
+      return;
+    }
     const min = parseFloat(ast.term_min);
     const max = parseFloat(ast.term_max);
     if (!isNaN(min) && !isNaN(max)) {
-      ranges.push({ field, min, max });
+      managedFields.add(field);
+      const inclusive =
+        (ast.inclusive as 'both' | 'none' | 'left' | 'right') ?? 'both';
+      ranges.push({
+        field,
+        min,
+        max,
+        // Only store non-default inclusivity so round-tripping `[min TO max]`
+        // doesn't add an unexpected `inclusive` key to the range object.
+        ...(inclusive !== 'both' ? { inclusive } : {}),
+      });
     }
   } else if (isBinaryAST(ast)) {
-    collectFromAst(ast.left, terms, ranges);
-    collectFromAst(ast.right, terms, ranges);
+    // Field-group syntax: ServiceName:("api" OR "web").  The parser puts a
+    // non-implicit `field` on the BinaryAST wrapper (Bug 3).  Collect its
+    // inner leaf values as if they had the group's field name.
+    const groupField =
+      'field' in ast &&
+      typeof ast.field === 'string' &&
+      ast.field !== IMPLICIT_FIELD
+        ? decodeSpecialTokens(ast.field)
+        : null;
+
+    if (groupField) {
+      // Collect each leaf of the field group under the group's field name.
+      managedFields.add(groupField);
+      collectFieldGroupLeaves(ast, groupField, terms, managedFields, negate);
+      return;
+    }
+
+    // Cross-field OR: if this OR node connects clauses for *different* fields,
+    // we cannot represent that in FilterState, so leave both sides unmanaged
+    // (Bug 2).  Same-field OR (e.g. `level:"info" OR level:"warn"`) is fine —
+    // both leaves map to the same field and end up as multiple `included` values.
+    // `OR NOT` is an OR too (a:"1" OR NOT b:"2" is cross-field and unrepresentable).
+    if (ast.operator === 'OR' || ast.operator === 'OR NOT') {
+      const leftFields = new Set<string>();
+      const rightFields = new Set<string>();
+      const leftManaged = new Set<string>();
+      const rightManaged = new Set<string>();
+      collectFromAst(ast.left, [], [], leftFields);
+      collectFromAst(ast.right, [], [], rightFields);
+      // Merge managed fields from each side for the lookup
+      for (const f of leftFields) leftManaged.add(f);
+      for (const f of rightFields) rightManaged.add(f);
+      const isSameField =
+        leftFields.size > 0 &&
+        rightFields.size > 0 &&
+        leftFields.size === 1 &&
+        rightFields.size === 1 &&
+        [...leftFields][0] === [...rightFields][0];
+
+      if (!isSameField) {
+        // Cross-field OR — do not add either side to managed, leave raw.
+        return;
+      }
+    }
+
+    // A `start: 'NOT'` on the binary node negates its left subtree (`NOT a AND
+    // b`); an `AND NOT` / `OR NOT` operator negates the right subtree.
+    const startOp: string | undefined =
+      'start' in ast && typeof ast.start === 'string' ? ast.start : undefined;
+    const leftNegate = negate !== (startOp === 'NOT');
+    const rightNegate =
+      negate !== (ast.operator === 'AND NOT' || ast.operator === 'OR NOT');
+    collectFromAst(ast.left, terms, ranges, managedFields, leftNegate);
+    collectFromAst(ast.right, terms, ranges, managedFields, rightNegate);
   } else if (isLeftOnlyAST(ast)) {
-    collectFromAst(ast.left, terms, ranges);
+    collectFromAst(
+      ast.left,
+      terms,
+      ranges,
+      managedFields,
+      negate !== (ast.start === 'NOT'),
+    );
+  }
+}
+
+/**
+ * Recursively collect leaf terms from a field-group BinaryAST, assigning them
+ * the `groupField` instead of `<implicit>`.
+ */
+function collectFieldGroupLeaves(
+  ast: lucene.AST | lucene.Node,
+  groupField: string,
+  terms: CollectedTerm[],
+  managedFields: Set<string>,
+  negate = false,
+): void {
+  if (isNodeTerm(ast)) {
+    // Skip modifiers — proximity/boost can't be faithfully round-tripped.
+    if (hasTermModifiers(ast)) {
+      return;
+    }
+    if (!ast.quoted) return; // unquoted inside group: add field but no value
+    const negated = ast.field.startsWith('-') !== negate;
+    terms.push({
+      field: groupField,
+      value: decodeSpecialTokens(ast.term),
+      negated,
+    });
+  } else if (isBinaryAST(ast)) {
+    collectFieldGroupLeaves(ast.left, groupField, terms, managedFields, negate);
+    collectFieldGroupLeaves(
+      ast.right,
+      groupField,
+      terms,
+      managedFields,
+      negate,
+    );
+  } else if (isLeftOnlyAST(ast)) {
+    collectFieldGroupLeaves(ast.left, groupField, terms, managedFields, negate);
   }
 }
 
@@ -300,14 +506,19 @@ export function parseWhereClauseToFilterState(
     const ast = parse(whereText);
     const terms: CollectedTerm[] = [];
     const ranges: CollectedRange[] = [];
-    collectFromAst(ast, terms, ranges);
+    const managedFields = new Set<string>();
+    collectFromAst(ast, terms, ranges, managedFields);
 
     const byField = new Map<
       string,
       {
         included: Set<string | boolean>;
         excluded: Set<string | boolean>;
-        range?: { min: number; max: number };
+        range?: {
+          min: number;
+          max: number;
+          inclusive?: 'both' | 'none' | 'left' | 'right';
+        };
       }
     >();
     const getEntry = (field: string) => {
@@ -328,11 +539,143 @@ export function parseWhereClauseToFilterState(
     }
     for (const r of ranges) {
       const entry = getEntry(r.field);
-      entry.range = { min: r.min, max: r.max };
+      entry.range = {
+        min: r.min,
+        max: r.max,
+        ...(r.inclusive != null ? { inclusive: r.inclusive } : {}),
+      };
     }
     return Object.fromEntries(byField);
   } catch {
     return {};
+  }
+}
+
+/**
+ * Return a non-null message when a `where` clause cannot be parsed in the given
+ * query language (e.g. an incomplete lucene query like `service:`). The message
+ * is intended for a UI notice — callers can treat any non-null value as "the
+ * query is invalid/incomplete".
+ *
+ * `sql` always returns null: there is no strict SQL parser here and
+ * `parseQuery` is tolerant, so we can't reliably distinguish invalid from valid.
+ */
+export function getWhereParseError(
+  whereText: string,
+  language: 'lucene' | 'sql',
+): string | null {
+  if (!whereText.trim()) return null;
+  if (language === 'sql') return null;
+  try {
+    parse(whereText);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : 'Invalid query';
+  }
+}
+
+/**
+ * Collect every explicit-field name referenced under a lucene AST node, using
+ * the field's decoded name (stripping `-`/`+` prefixes). Used to detect
+ * cross-field OR constructs.
+ */
+function collectExplicitFields(
+  node: lucene.AST | lucene.Node,
+  out: Set<string>,
+): void {
+  if (isNodeTerm(node)) {
+    const raw =
+      node.field.startsWith('-') || node.field.startsWith('+')
+        ? node.field.slice(1)
+        : node.field;
+    const field = decodeSpecialTokens(raw);
+    if (field !== IMPLICIT_FIELD) out.add(field);
+    return;
+  }
+  if (isNodeRangedTerm(node)) {
+    const field = decodeSpecialTokens(node.field);
+    if (field !== IMPLICIT_FIELD) out.add(field);
+    return;
+  }
+  if (isBinaryAST(node)) {
+    const groupField =
+      'field' in node &&
+      typeof node.field === 'string' &&
+      node.field !== IMPLICIT_FIELD
+        ? decodeSpecialTokens(node.field)
+        : null;
+    if (groupField) {
+      // Field-group syntax: all inner leaves belong to the group's field.
+      out.add(groupField);
+      return;
+    }
+    collectExplicitFields(node.left, out);
+    collectExplicitFields(node.right, out);
+    return;
+  }
+  if (isLeftOnlyAST(node)) {
+    collectExplicitFields(node.left, out);
+  }
+}
+
+/**
+ * Return true when a lucene AST contains an OR (or OR NOT) node connecting
+ * clauses for different explicit fields. Such a query cannot be represented as
+ * a FilterState (which has AND semantics across fields), so the sidebar would
+ * either silently drop it or mislead.
+ */
+function hasCrossFieldOr(node: lucene.AST | lucene.Node): boolean {
+  if (isNodeTerm(node) || isNodeRangedTerm(node)) return false;
+  if (isLeftOnlyAST(node)) return hasCrossFieldOr(node.left);
+  if (isBinaryAST(node)) {
+    const groupField =
+      'field' in node &&
+      typeof node.field === 'string' &&
+      node.field !== IMPLICIT_FIELD
+        ? decodeSpecialTokens(node.field)
+        : null;
+    if (groupField) {
+      return hasCrossFieldOr(node.left) || hasCrossFieldOr(node.right);
+    }
+    if (node.operator === 'OR' || node.operator === 'OR NOT') {
+      const leftFields = new Set<string>();
+      const rightFields = new Set<string>();
+      collectExplicitFields(node.left, leftFields);
+      collectExplicitFields(node.right, rightFields);
+      const isSameField =
+        leftFields.size > 0 &&
+        rightFields.size > 0 &&
+        leftFields.size === 1 &&
+        rightFields.size === 1 &&
+        [...leftFields][0] === [...rightFields][0];
+      if (!isSameField) return true;
+    }
+    return hasCrossFieldOr(node.left) || hasCrossFieldOr(node.right);
+  }
+  return false;
+}
+
+/**
+ * Return a non-null reason when a `where` clause parses but contains facet-like
+ * content the sidebar FilterState cannot faithfully represent — currently a
+ * cross-field OR (e.g. `ServiceName:"api" OR SeverityText:"error"`). The UI
+ * should surface this instead of showing a misleading or silently-emptied
+ * filter sidebar. `sql` always returns null.
+ */
+export function getUnrepresentableWhereReason(
+  whereText: string,
+  language: 'lucene' | 'sql',
+): string | null {
+  if (!whereText.trim()) return null;
+  if (language === 'sql') return null;
+  try {
+    const ast = parse(whereText);
+    if (hasCrossFieldOr(ast)) {
+      return 'This query contains OR conditions between different fields, which cannot be shown as sidebar filters.';
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -343,7 +686,14 @@ function termClauseSpan(node: lucene.NodeTerm, src: string): Span | null {
   if (!tl?.end) return null;
   const start = node.fieldLocation?.start?.offset ?? tl.start?.offset;
   if (start == null) return null;
-  return { start, end: tl.end.offset };
+  // Bug 10 fix: termLocation.end.offset can include trailing whitespace (the
+  // grammar's `_*` consumes whitespace after the term).  Trim to avoid
+  // accumulating extra spaces when the residual is re-joined with an operator.
+  let end = tl.end.offset;
+  while (end > start && (src[end - 1] === ' ' || src[end - 1] === '\t')) {
+    end--;
+  }
+  return { start, end };
 }
 
 function rangeClauseSpan(
@@ -351,9 +701,18 @@ function rangeClauseSpan(
   src: string,
 ): Span | null {
   const fl = node.fieldLocation;
-  if (!fl?.start?.offset || !fl.end?.offset) return null;
-  const endBracket = src.indexOf(']', fl.end.offset);
-  if (endBracket === -1) return null;
+  // Bug 4 fix: use == null instead of falsy check so offset=0 is not dropped.
+  if (fl?.start?.offset == null || !fl.end?.offset) return null;
+  // Bug 5 fix: the range may end with `]` (inclusive) or `}` (exclusive).
+  // Search for whichever closing bracket appears first after the field end.
+  const searchFrom = fl.end.offset;
+  const closeSq = src.indexOf(']', searchFrom);
+  const closeCurly = src.indexOf('}', searchFrom);
+  let endBracket: number;
+  if (closeSq === -1 && closeCurly === -1) return null;
+  if (closeSq === -1) endBracket = closeCurly;
+  else if (closeCurly === -1) endBracket = closeSq;
+  else endBracket = Math.min(closeSq, closeCurly);
   return { start: fl.start.offset, end: endBracket + 1 };
 }
 
@@ -371,21 +730,40 @@ type RenderResult = {
  * OR/AND chain doesn't leave dangling operators (e.g. removing `host` from
  * `foo:"x" AND host:"a" AND bar:"y"` yields `foo:"x" AND bar:"y"`, and from
  * `(a OR host OR b)` yields `(a OR b)`).
+ *
+ * `negate` mirrors the same flag in `collectFromAst`: negated ranges
+ * (`NOT duration:[...]`) cannot be represented in FilterState and must be
+ * preserved verbatim even when their field is managed.
  */
 function renderNode(
   node: lucene.AST | lucene.Node,
   src: string,
   isManagedField: (field: string) => boolean,
+  negate = false,
 ): RenderResult {
   if (isNodeTerm(node)) {
     const span = termClauseSpan(node, src);
     if (!span) return { text: '', fullyManaged: false };
     if (!node.quoted) {
+      // Bug 7 fix: unquoted explicit-field terms (e.g. level:error) must also
+      // be pruned when their field is managed, so the sidebar can replace them
+      // with a quoted clause without duplication.
+      const rawField = node.field.startsWith('-')
+        ? node.field.slice(1)
+        : node.field;
+      const field = decodeSpecialTokens(rawField);
+      if (field !== IMPLICIT_FIELD && isManagedField(field)) {
+        return { text: '', fullyManaged: true };
+      }
       return { text: src.slice(span.start, span.end), fullyManaged: false };
     }
     const field = decodeSpecialTokens(
       node.field.startsWith('-') ? node.field.slice(1) : node.field,
     );
+    // Terms with modifiers (proximity, boost, fuzzy) are not managed.
+    if (hasTermModifiers(node)) {
+      return { text: src.slice(span.start, span.end), fullyManaged: false };
+    }
     if (field !== IMPLICIT_FIELD && isManagedField(field)) {
       return { text: '', fullyManaged: true };
     }
@@ -396,14 +774,17 @@ function renderNode(
     const span = rangeClauseSpan(node, src);
     if (!span) return { text: '', fullyManaged: false };
     const field = decodeSpecialTokens(node.field);
-    if (field !== IMPLICIT_FIELD && isManagedField(field)) {
+    // Negated ranges (NOT duration:[...]) are not representable in FilterState
+    // and must be preserved verbatim even when the field is otherwise managed.
+    if (!negate && field !== IMPLICIT_FIELD && isManagedField(field)) {
       return { text: '', fullyManaged: true };
     }
     return { text: src.slice(span.start, span.end), fullyManaged: false };
   }
 
   if (isLeftOnlyAST(node)) {
-    const inner = renderNode(node.left, src, isManagedField);
+    const nodeNegate = negate !== (node.start === 'NOT');
+    const inner = renderNode(node.left, src, isManagedField, nodeNegate);
     if (inner.fullyManaged) {
       return { text: '', fullyManaged: true };
     }
@@ -415,15 +796,72 @@ function renderNode(
   }
 
   if (isBinaryAST(node)) {
-    const left = renderNode(node.left, src, isManagedField);
-    const right = renderNode(node.right, src, isManagedField);
+    // Field-group syntax: ServiceName:("api" OR "web").  The parser attaches
+    // a non-implicit `field` to the BinaryAST wrapper (Bug 3).  When the group
+    // field is managed we discard the whole group; otherwise we preserve the
+    // raw source including the "Field:" prefix.
+    const groupField =
+      'field' in node &&
+      typeof node.field === 'string' &&
+      node.field !== IMPLICIT_FIELD
+        ? decodeSpecialTokens(node.field)
+        : null;
+
+    if (groupField) {
+      if (isManagedField(groupField)) {
+        return { text: '', fullyManaged: true };
+      }
+      // Preserve raw source.  The field-group span starts at the field's
+      // fieldLocation and ends after the closing ')'.
+      const fl =
+        'fieldLocation' in node
+          ? (node.fieldLocation as
+              | { start?: { offset?: number }; end?: { offset?: number } }
+              | null
+              | undefined)
+          : undefined;
+      const groupStart = fl?.start?.offset;
+      if (groupStart == null) return { text: '', fullyManaged: false };
+      // Find the closing ')' of the paren group.
+      let depth = 0;
+      let groupEnd = -1;
+      for (let i = groupStart; i < src.length; i++) {
+        if (src[i] === '(') depth++;
+        else if (src[i] === ')') {
+          depth--;
+          if (depth === 0) {
+            groupEnd = i + 1;
+            break;
+          }
+        }
+      }
+      if (groupEnd === -1) return { text: '', fullyManaged: false };
+      return {
+        text: src.slice(groupStart, groupEnd).trimEnd(),
+        fullyManaged: false,
+      };
+    }
+
+    const startOp: string | undefined =
+      'start' in node && typeof node.start === 'string' ? node.start : undefined;
+    const leftNegate = negate !== (startOp === 'NOT');
+    const rightNegate =
+      negate !== (node.operator === 'AND NOT' || node.operator === 'OR NOT');
+    const left = renderNode(node.left, src, isManagedField, leftNegate);
+    const right = renderNode(node.right, src, isManagedField, rightNegate);
     if (left.fullyManaged && right.fullyManaged) {
       return { text: '', fullyManaged: true };
     }
-    const operator = node.operator === '<implicit>' ? '' : ` ${node.operator} `;
+    const operator =
+      node.operator === '<implicit>' ? ' ' : ` ${node.operator} `;
     const combined = [left.text, right.text].filter(Boolean).join(operator);
+    // Bug 1 fix: the `start` field carries a leading operator like `NOT` that
+    // the grammar placed on the outer binary node rather than a LeftOnlyAST.
+    // Re-emit it so `NOT term AND ...` is not silently stripped to `term AND ...`.
+    const startPrefix = 'start' in node && node.start ? `${node.start} ` : '';
+    const text = node.parenthesized && combined ? `(${combined})` : combined;
     return {
-      text: node.parenthesized && combined ? `(${combined})` : combined,
+      text: startPrefix && text ? `${startPrefix}${text}` : text,
       fullyManaged: false,
     };
   }
@@ -433,15 +871,88 @@ function renderNode(
 
 /**
  * Returns true when the Lucene text contains a top-level OR operator (i.e. an
- * OR that is not inside parentheses). Used to decide whether the residual must
- * be wrapped in parens before joining it with AND — without the wrapping,
- * `a OR b AND c:"v"` would be mis-parsed as `a OR (b AND c:"v")`.
+ * OR that is not inside parentheses or quoted strings). Used to decide whether
+ * the residual must be wrapped in parens before joining it with AND — without
+ * the wrapping, `a OR b AND c:"v"` would be mis-parsed as `a OR (b AND c:"v")`.
+ *
+ * Bug 9 fix: the original implementation counted bare `(` / `)` characters
+ * without skipping quoted strings, so a `)` inside a quoted value like
+ * `"timeout)"` decremented the paren depth and corrupted the subsequent scan.
  */
 function hasTopLevelOr(text: string): boolean {
   let parenDepth = 0;
+  let inQuote = false;
   for (let i = 0; i < text.length; i++) {
-    if (text[i] === '(') { parenDepth++; continue; }
-    if (text[i] === ')') { parenDepth--; continue; }
+    const ch = text[i];
+    if (ch === '\\' && inQuote) {
+      // Skip escaped character inside a quoted string.
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (inQuote) continue;
+    if (ch === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (ch === ')') {
+      parenDepth--;
+      continue;
+    }
+    if (parenDepth === 0 && text.slice(i, i + 4).toUpperCase() === ' OR ') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns true when the SQL text contains a top-level OR operator (i.e. an OR
+ * that is not inside parentheses, single-quoted strings, or backtick-quoted
+ * identifiers). Used to decide whether the residual must be wrapped in parens
+ * before joining it with AND — without the wrapping, `a = 1 OR b = 2 AND c IN
+ * ('v')` would be mis-parsed as `a = 1 OR (b = 2 AND c IN ('v'))`.
+ */
+function hasTopLevelOrSql(text: string): boolean {
+  let parenDepth = 0;
+  let inString = false;
+  let inBacktick = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "'") {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+        inString = false;
+      }
+      continue;
+    }
+    if (inBacktick) {
+      if (ch === '`') inBacktick = false;
+      continue;
+    }
+    if (ch === "'") {
+      inString = true;
+      continue;
+    }
+    if (ch === '`') {
+      inBacktick = true;
+      continue;
+    }
+    if (ch === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (ch === ')') {
+      parenDepth--;
+      continue;
+    }
     if (parenDepth === 0 && text.slice(i, i + 4).toUpperCase() === ' OR ') {
       return true;
     }
@@ -461,28 +972,47 @@ function hasTopLevelOr(text: string): boolean {
 function replaceLuceneFacetClauses(
   whereText: string,
   newState: FilterState,
+  emitLanguage: 'lucene' | 'sql' | undefined,
+  escapeKey: ((key: string) => string) | undefined,
+  dateTimeColumns: ReadonlyMap<string, string> | undefined,
 ): string {
   if (!whereText.trim()) {
-    return filterStateToWhereClause(newState, { language: 'lucene' });
+    return filterStateToWhereClause(newState, {
+      language: emitLanguage ?? 'lucene',
+      escapeKey,
+      dateTimeColumns,
+    });
   }
 
   let ast: lucene.AST;
   try {
     ast = parse(whereText);
   } catch {
-    // Invalid Lucene — don't clobber the user's text.
-    return whereText;
+    // Invalid Lucene — the query text is incomplete/mid-edit. Rather than
+    // silently no-oping the caller's rewrite, emit the new state fresh so a
+    // sidebar click still applies and replaces the broken text.
+    return filterStateToWhereClause(newState, {
+      language: emitLanguage ?? 'lucene',
+      escapeKey,
+      dateTimeColumns,
+    });
   }
 
   // Managed fields are every facet field currently present in the text, so a
   // caller that intentionally drops a field (e.g. source-change cleanup) also
   // removes its clauses rather than leaving them to resurface.
-  const managed = new Set(
-    Object.keys(parseWhereClauseToFilterState(whereText, 'lucene')),
-  );
-  const residual = renderNode(ast, whereText, field => managed.has(field)).text;
+  // We use the wider `managedFields` set (which includes unquoted explicit-field
+  // terms and field-group fields, but excludes cross-field OR branches) so that
+  // e.g. an unquoted `level:error` is removed when the sidebar sets level:"warn".
+  const managedFields = new Set<string>();
+  collectFromAst(parse(whereText), [], [], managedFields);
+  const residual = renderNode(ast, whereText, field =>
+    managedFields.has(field),
+  ).text;
   const newClauses = filterStateToWhereClause(newState, {
-    language: 'lucene',
+    language: emitLanguage ?? 'lucene',
+    escapeKey,
+    dateTimeColumns,
   });
 
   const trimmedResidual = residual.trim();
@@ -506,11 +1036,20 @@ function splitSqlConjuncts(text: string): string[] {
   const conjuncts: string[] = [];
   let current = '';
   let inString = false;
+  let inBacktick = false;
   let parenDepth = 0;
   let sawBetween = false;
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
+
+    // Backtick-quoted identifiers (e.g. `it's`) are opaque: a `'` or `(` inside
+    // them is literal and must not toggle string state or paren depth.
+    if (inBacktick) {
+      if (char === '`') inBacktick = false;
+      current += char;
+      continue;
+    }
 
     if (isQuoteBoundary(text, i)) {
       if (inString) {
@@ -526,6 +1065,17 @@ function splitSqlConjuncts(text: string): string[] {
       continue;
     }
 
+    if (inString) {
+      current += char;
+      continue;
+    }
+
+    if (char === '`') {
+      inBacktick = true;
+      current += char;
+      continue;
+    }
+
     if (char === '(') {
       parenDepth++;
       current += char;
@@ -537,7 +1087,7 @@ function splitSqlConjuncts(text: string): string[] {
       continue;
     }
 
-    if (inString || parenDepth > 0) {
+    if (parenDepth > 0) {
       current += char;
       continue;
     }
@@ -574,6 +1124,86 @@ function splitSqlConjuncts(text: string): string[] {
   return conjuncts;
 }
 
+// Strip SQL comments (`-- ...` line comments and `/* ... */` block comments)
+// from a WHERE string, returning the code with each comment replaced by a single
+// space plus the collected comment texts. Comments inside single-quoted strings
+// or backtick-quoted identifiers are literal text and are left untouched.
+// Stripping comments before conjunct splitting keeps a commented-out ` AND `
+// from being treated as a real separator, and lets the caller re-append the
+// comments at the end instead of letting a facet predicate land inside one.
+function stripSqlComments(text: string): {
+  code: string;
+  comments: string[];
+} {
+  let code = '';
+  const comments: string[] = [];
+  let inString = false;
+  let inBacktick = false;
+
+  for (let i = 0; i < text.length; i++) {
+    if (inBacktick) {
+      code += text[i];
+      if (text[i] === '`') inBacktick = false;
+      continue;
+    }
+    if (inString) {
+      if (isQuoteBoundary(text, i)) {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          code += "''";
+          i = esc.next;
+          continue;
+        }
+        inString = false;
+      }
+      code += text[i];
+      continue;
+    }
+    if (text[i] === "'") {
+      inString = true;
+      code += text[i];
+      continue;
+    }
+    if (text[i] === '`') {
+      inBacktick = true;
+      code += text[i];
+      continue;
+    }
+    if (text[i] === '-' && text[i + 1] === '-') {
+      let comment = '--';
+      i += 2;
+      while (i < text.length && text[i] !== '\n') {
+        comment += text[i];
+        i++;
+      }
+      comments.push(comment);
+      code += ' ';
+      i--; // the \n (or end) will be consumed by the loop's own increment
+      continue;
+    }
+    if (text[i] === '/' && text[i + 1] === '*') {
+      let comment = '/*';
+      i += 2;
+      while (i < text.length) {
+        if (text[i] === '*' && text[i + 1] === '/') {
+          comment += '*/';
+          i += 2;
+          break;
+        }
+        comment += text[i];
+        i++;
+      }
+      comments.push(comment);
+      code += ' ';
+      i--; // let the loop's increment advance past the closing '/' (or end)
+      continue;
+    }
+    code += text[i];
+  }
+
+  return { code, comments };
+}
+
 /**
  * Replace the facet clauses in a SQL `where` clause with a new FilterState.
  *
@@ -588,23 +1218,59 @@ function replaceSqlFacetClauses(
   newState: FilterState,
   escapeKey: ((key: string) => string) | undefined,
   dateTimeColumns: ReadonlyMap<string, string> | undefined,
+  emitLanguage?: 'lucene' | 'sql',
 ): string {
   const clean = whereText.trim();
+  // Strip SQL comments up front so a commented-out ` AND ` is not mistaken for
+  // a real conjunct separator, and re-append them at the end so newly emitted
+  // facet predicates never land inside a comment.
+  const { code, comments } = stripSqlComments(clean);
+  const commentSuffix = comments.length ? ` ${comments.join(' ')}` : '';
   const emit = () =>
     filterStateToWhereClause(newState, {
-      language: 'sql',
+      language: emitLanguage ?? 'sql',
       escapeKey,
       dateTimeColumns,
     });
 
-  if (!clean) return emit();
+  if (!code.trim()) return `${emit()}${commentSuffix}`;
 
   const kept: string[] = [];
-  // Build the set of clean keys being written so we only drop conjuncts whose
-  // field is being replaced — not every parseable facet in the where clause.
-  const replacedKeys = new Set(Object.keys(newState));
+  // Build the set of clean keys being managed (present in the original text as
+  // parseable facets) so we drop ALL of them and re-emit only those in newState.
+  // This lets the caller clear a field from the filter by omitting it from
+  // newState, and also handles the case where newState is empty (clear all).
+  //
+  // A key is only managed when it appears *exactly once* as a facet conjunct.
+  // If the same key appears in multiple conjuncts (e.g. `host IN ('a') AND host
+  // IN ('b')`) the user intentionally wrote a conjunction of two IN lists.
+  // Merging them into one IN list would change the semantics (intersection →
+  // union for scalar columns), so we leave both conjuncts untouched instead.
+  const keyCount = new Map<string, number>();
+  for (const conjunct of splitSqlConjuncts(code)) {
+    if (!conjunct.trim()) continue;
+    const upper = conjunct.toUpperCase();
+    const isFacet =
+      upper.includes(' IN (') ||
+      upper.includes(' NOT IN (') ||
+      upper.includes(' BETWEEN ');
+    if (!isFacet) continue;
+    const filter: Filter = { type: 'sql', condition: conjunct };
+    if (isRenderablePinnedFilter(filter)) {
+      const parsedKey = Object.keys(parseQuery([filter]).filters)[0];
+      if (parsedKey !== undefined) {
+        keyCount.set(parsedKey, (keyCount.get(parsedKey) ?? 0) + 1);
+      }
+    }
+  }
+  // Only keys that appear exactly once are safe to replace.
+  const managedKeys = new Set<string>(
+    [...keyCount.entries()]
+      .filter(([, count]) => count === 1)
+      .map(([key]) => key),
+  );
 
-  for (const conjunct of splitSqlConjuncts(clean)) {
+  for (const conjunct of splitSqlConjuncts(code)) {
     if (!conjunct.trim()) continue;
     const upper = conjunct.toUpperCase();
     const isFacet =
@@ -616,12 +1282,12 @@ function replaceSqlFacetClauses(
       continue;
     }
     const filter: Filter = { type: 'sql', condition: conjunct };
-    // Only drop this conjunct if it maps to a field we are replacing.
-    // Compound conditions and unparseable conjuncts are always preserved.
+    // Drop this conjunct if it maps to a managed field — it will be re-emitted
+    // from newState (or omitted entirely if newState doesn't include that field).
     if (isRenderablePinnedFilter(filter)) {
       const parsedKey = Object.keys(parseQuery([filter]).filters)[0];
-      if (parsedKey !== undefined && replacedKeys.has(parsedKey)) {
-        continue; // will be re-emitted from newState
+      if (parsedKey !== undefined && managedKeys.has(parsedKey)) {
+        continue; // will be re-emitted from newState (or dropped if not there)
       }
     }
     kept.push(conjunct);
@@ -629,9 +1295,15 @@ function replaceSqlFacetClauses(
 
   const residual = kept.join(' AND ');
   const newClauses = emit();
-  if (!residual) return newClauses;
-  if (!newClauses) return residual;
-  return `${residual} AND ${newClauses}`;
+  if (!residual) return `${newClauses}${commentSuffix}`;
+  if (!newClauses) return `${residual}${commentSuffix}`;
+  // If the residual contains a top-level OR operator it must be parenthesized
+  // before joining with AND, otherwise `a = 1 OR b = 2 AND c IN ('v')` would be
+  // parsed as `a = 1 OR (b = 2 AND c IN ('v'))` — narrowing the OR branch.
+  const safeResidual = hasTopLevelOrSql(residual)
+    ? `(${residual.trim()})`
+    : residual;
+  return `${safeResidual} AND ${newClauses}${commentSuffix}`;
 }
 
 /**
@@ -651,20 +1323,90 @@ export function replaceFilterClauses(
   {
     escapeKey,
     dateTimeColumns,
+    emitLanguage,
   }: {
     escapeKey?: (key: string) => string;
     dateTimeColumns?: ReadonlyMap<string, string>;
+    /**
+     * When set, the facets are re-emitted in this language instead of `language`.
+     * Matching/pruning still happens in `language` (the source of the existing
+     * text); `emitLanguage` only changes how the new clauses are written. Used
+     * to translate a `where` clause from one query language to another while
+     * preserving non-facet content.
+     */
+    emitLanguage?: 'lucene' | 'sql';
   } = {},
 ): string {
   if (language === 'lucene') {
-    return replaceLuceneFacetClauses(whereText, newState);
+    return replaceLuceneFacetClauses(
+      whereText,
+      newState,
+      emitLanguage,
+      escapeKey,
+      dateTimeColumns,
+    );
   }
   return replaceSqlFacetClauses(
     whereText,
     newState,
     escapeKey,
     dateTimeColumns,
+    emitLanguage,
   );
+}
+
+/**
+ * Append `newState`'s clauses to a `where` clause while preserving the existing
+ * text verbatim. Unlike `replaceFilterClauses` (which treats the existing text's
+ * facet fields as managed and re-emits only the new state's fields), this *merges*:
+ * both the original clause and the new state's predicates are kept, joined with
+ * AND.
+ *
+ * This is the semantics a legacy `where` + separate `filters` representation
+ * needs when folding the filters into the unified `where`: the two were
+ * independent predicates ANDed at query time, so neither may be dropped.
+ *
+ * The existing text is preserved verbatim (it is not re-emitted), so complex or
+ * free-form content round-trips exactly. Only two adjustments are made to keep
+ * the joined clause well-formed:
+ *  - a top-level OR in the existing text is parenthesized before the AND join,
+ *    so `a OR b AND c:"v"` is not mis-parsed as `a OR (b AND c:"v")`;
+ *  - SQL comments in the existing text are moved to the end so the appended
+ *    predicate does not land inside a `--` / `/* */
+export function mergeFilterStateIntoWhereClause(
+  whereText: string,
+  language: 'lucene' | 'sql',
+  newState: FilterState,
+  {
+    escapeKey,
+    dateTimeColumns,
+  }: {
+    escapeKey?: (key: string) => string;
+    dateTimeColumns?: ReadonlyMap<string, string>;
+  } = {},
+): string {
+  const newClauses = filterStateToWhereClause(newState, {
+    language,
+    escapeKey,
+    dateTimeColumns,
+  });
+  if (!whereText.trim()) return newClauses;
+  if (!newClauses) return whereText.trim();
+
+  if (language === 'sql') {
+    const { code, comments } = stripSqlComments(whereText.trim());
+    const residual = code.trim();
+    const safeResidual = hasTopLevelOrSql(residual)
+      ? `(${residual})`
+      : residual;
+    const commentSuffix = comments.length ? ` ${comments.join(' ')}` : '';
+    return `${safeResidual} AND ${newClauses}${commentSuffix}`;
+  }
+
+  const safeWhere = hasTopLevelOr(whereText)
+    ? `(${whereText.trim()})`
+    : whereText.trim();
+  return `${safeWhere} AND ${newClauses}`;
 }
 
 // Helper function to parse a string value as boolean if possible, or otherwise
@@ -900,6 +1642,29 @@ function extractInClauses(condition: string): Array<{
 
       const keyStr = key.trim();
       const trimmedValues = values.trim();
+
+      // A subquery (`col IN (SELECT ...)`) is not a facet: treating its inner
+      // SQL as a plain value list would both render a bogus checkbox in the
+      // sidebar and let `replaceSqlFacetClauses` destroy the subquery when
+      // re-emitting the column. Reject any parenthesized list containing SQL
+      // clause keywords outside quoted strings.
+      if (
+        containsOutsideQuotes(trimmedValues, [
+          ' SELECT ',
+          ' FROM ',
+          ' WHERE ',
+          ' GROUP ',
+          ' ORDER ',
+          ' UNION ',
+          ' HAVING ',
+          ' JOIN ',
+          ' LIMIT ',
+          ' DISTINCT ',
+        ])
+      ) {
+        continue;
+      }
+
       const withoutParens =
         trimmedValues.startsWith('(') && trimmedValues.endsWith(')')
           ? trimmedValues.slice(1, -1)

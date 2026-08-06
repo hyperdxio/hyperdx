@@ -3,8 +3,10 @@ import { Filter } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
 import {
+  mergeFiltersIntoWhereClause,
   parseQuery,
   replaceFiltersInWhereClause,
+  translateWhereClauseInQuery,
   useSearchPageFilterState,
   whereToFilters,
 } from '@/searchFilters';
@@ -268,14 +270,16 @@ describe('replaceFiltersInWhereClause', () => {
     const where = 'error OR warn';
     // No facet fields in this query, so replace with a fresh level filter.
     // The residual `error OR warn` must be wrapped in parens.
-    const filters: Filter[] = [{ type: 'sql', condition: "level IN ('error')" }];
+    const filters: Filter[] = [
+      { type: 'sql', condition: "level IN ('error')" },
+    ];
     const result = replaceFiltersInWhereClause(
       where,
       'lucene',
       filters,
       new Set(),
     );
-    expect(result).toBe('(error  OR warn) AND level:"error"');
+    expect(result).toBe('(error OR warn) AND level:"error"');
   });
 
   it('replaces lowercase sql facet (case-insensitive detection)', () => {
@@ -285,5 +289,192 @@ describe('replaceFiltersInWhereClause', () => {
     expect(replaceFiltersInWhereClause(where, 'sql', filters, new Set())).toBe(
       "foo = 1 AND host IN ('b')",
     );
+  });
+});
+
+describe('mergeFiltersIntoWhereClause (legacy migration)', () => {
+  it('preserves the where text and appends a lucene filter', () => {
+    const filters: Filter[] = [
+      { type: 'sql', condition: "SeverityText IN ('error')" },
+    ];
+    expect(
+      mergeFiltersIntoWhereClause(
+        'ServiceName:"api"',
+        'lucene',
+        filters,
+        new Set(),
+      ),
+    ).toBe('ServiceName:"api" AND SeverityText:"error"');
+  });
+
+  it('preserves the where text and appends a sql filter', () => {
+    const filters: Filter[] = [
+      { type: 'sql', condition: "SeverityText IN ('error')" },
+    ];
+    expect(
+      mergeFiltersIntoWhereClause(
+        "ServiceName = 'api'",
+        'sql',
+        filters,
+        new Set(),
+      ),
+    ).toBe("ServiceName = 'api' AND SeverityText IN ('error')");
+  });
+
+  it('parenthesizes a top-level OR in the where text before appending', () => {
+    const filters: Filter[] = [
+      { type: 'sql', condition: "SeverityText IN ('error')" },
+    ];
+    expect(
+      mergeFiltersIntoWhereClause(
+        'ServiceName:"api" OR ServiceName:"web"',
+        'lucene',
+        filters,
+        new Set(),
+      ),
+    ).toBe('(ServiceName:"api" OR ServiceName:"web") AND SeverityText:"error"');
+  });
+
+  it('keeps a filter already present in the where text (legacy AND semantics)', () => {
+    // Legacy `where` + `filters` were independent predicates ANDed at query
+    // time, so a filter referencing a column already in the where is not
+    // deduped — both clauses are preserved.
+    const filters: Filter[] = [
+      { type: 'sql', condition: "ServiceName IN ('api')" },
+    ];
+    expect(
+      mergeFiltersIntoWhereClause(
+        'ServiceName:"api"',
+        'lucene',
+        filters,
+        new Set(),
+      ),
+    ).toBe('ServiceName:"api" AND ServiceName:"api"');
+  });
+});
+
+describe('translateWhereClauseInQuery (language switch)', () => {
+  it('returns the text unchanged when switching to the same language', () => {
+    expect(
+      translateWhereClauseInQuery(
+        'ServiceName:"api"',
+        'lucene',
+        'lucene',
+        new Set(),
+      ),
+    ).toBe('ServiceName:"api"');
+  });
+
+  it('translates lucene facets to SQL, preserving free text', () => {
+    expect(
+      translateWhereClauseInQuery(
+        'error AND ServiceName:"api"',
+        'lucene',
+        'sql',
+        new Set(),
+      ),
+    ).toBe("error AND ServiceName IN ('api')");
+  });
+
+  it('translates SQL facets to lucene', () => {
+    expect(
+      translateWhereClauseInQuery(
+        "ServiceName IN ('api')",
+        'sql',
+        'lucene',
+        new Set(),
+      ),
+    ).toBe('ServiceName:"api"');
+  });
+
+  it('quotes SQL keys that need escaping in the target language', () => {
+    expect(
+      translateWhereClauseInQuery(
+        'service-name:"a"',
+        'lucene',
+        'sql',
+        new Set(['service-name']),
+      ),
+    ).toBe("`service-name` IN ('a')");
+  });
+
+  it('returns the text unchanged when there are no facets to translate', () => {
+    expect(
+      translateWhereClauseInQuery('error 404', 'lucene', 'sql', new Set()),
+    ).toBe('error 404');
+  });
+
+  it('returns the text unchanged when the source does not parse', () => {
+    expect(
+      translateWhereClauseInQuery('service:', 'lucene', 'sql', new Set()),
+    ).toBe('service:');
+  });
+});
+
+describe('useSearchPageFilterState mutator identity stability', () => {
+  it('keeps every mutator reference stable across searchQuery changes when onFilterChange is stable', () => {
+    // Regression guard: the sidebar is memoized, so its props (the mutators)
+    // must keep stable identities while the user types. `searchQuery` changes
+    // per keystroke, but that alone must not re-create the mutators.
+    const onFilterChange = jest.fn();
+    let props = {
+      searchQuery: EMPTY_SEARCH_QUERY,
+      onFilterChange,
+      knownColumns: new Set<string>(),
+    };
+    const { result, rerender } = renderHook(() =>
+      useSearchPageFilterState(props),
+    );
+
+    const first = {
+      setFilterValue: result.current.setFilterValue,
+      setOnlyFilters: result.current.setOnlyFilters,
+      replaceFilterValue: result.current.replaceFilterValue,
+      setFilterRange: result.current.setFilterRange,
+      clearFilter: result.current.clearFilter,
+      clearAllFilters: result.current.clearAllFilters,
+      retainFiltersByColumns: result.current.retainFiltersByColumns,
+    };
+
+    props = {
+      ...props,
+      // A different searchQuery that still resolves to no facets, so the
+      // internal `filters` state is untouched and every mutator can be
+      // asserted stable.
+      searchQuery: [{ type: 'sql', condition: "Body LIKE '%error%'" }],
+    };
+    rerender();
+
+    expect(result.current.setFilterValue).toBe(first.setFilterValue);
+    expect(result.current.setOnlyFilters).toBe(first.setOnlyFilters);
+    expect(result.current.replaceFilterValue).toBe(first.replaceFilterValue);
+    expect(result.current.setFilterRange).toBe(first.setFilterRange);
+    expect(result.current.clearFilter).toBe(first.clearFilter);
+    expect(result.current.clearAllFilters).toBe(first.clearAllFilters);
+    expect(result.current.retainFiltersByColumns).toBe(
+      first.retainFiltersByColumns,
+    );
+  });
+
+  it('re-creates the mutators when onFilterChange changes identity', () => {
+    let onFilterChange = jest.fn();
+    let props = {
+      searchQuery: EMPTY_SEARCH_QUERY,
+      onFilterChange,
+      knownColumns: new Set<string>(),
+    };
+    const { result, rerender } = renderHook(() =>
+      useSearchPageFilterState(props),
+    );
+    const firstSetFilterValue = result.current.setFilterValue;
+
+    // A new onFilterChange identity (what happened per keystroke when
+    // handleSetFilters closed over the watched `where`) must invalidate the
+    // mutators.
+    onFilterChange = jest.fn();
+    props = { ...props, onFilterChange };
+    rerender();
+
+    expect(result.current.setFilterValue).not.toBe(firstSetFilterValue);
   });
 });

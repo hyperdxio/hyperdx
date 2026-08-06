@@ -3,6 +3,7 @@ import produce from 'immer';
 import {
   type FilterState,
   filtersToQuery,
+  mergeFilterStateIntoWhereClause,
   parseQuery,
   parseWhereClauseToFilterState,
   replaceFilterClauses,
@@ -93,6 +94,64 @@ export const replaceFiltersInWhereClause = (
   });
 };
 
+/**
+ * Append `filters` to a `where` clause while preserving the existing text
+ * verbatim. Unlike `replaceFiltersInWhereClause` (used for sidebar toggles,
+ * where the existing text's facet fields are owned by the FilterState and get
+ * replaced), this *merges*: the original clause and the new filters are both
+ * kept, ANDed together.
+ *
+ * This is the semantics required when migrating a legacy `where` + separate
+ * `filters` representation (independent predicates ANDed at query time) into
+ * the unified `where`, so neither side may be dropped.
+ */
+export const mergeFiltersIntoWhereClause = (
+  whereText: string,
+  whereLanguage: 'lucene' | 'sql',
+  filters: Filter[],
+  knownColumns: Set<string>,
+  dateTimeColumns?: ReadonlyMap<string, string>,
+): string => {
+  const cleanState = unescapeFilterStateKeys(parseQuery(filters).filters);
+  return mergeFilterStateIntoWhereClause(whereText, whereLanguage, cleanState, {
+    escapeKey:
+      whereLanguage === 'sql'
+        ? key => toQuotedClickHouseKeyExpression(key, knownColumns)
+        : undefined,
+    dateTimeColumns,
+  });
+};
+
+/**
+ * Convert a `where` clause from one query language to another so the facet
+ * clauses transfer across a language switch instead of being dropped when the
+ * text is re-parsed in the new language. Facet clauses are re-emitted in the
+ * target language; non-facet content (free text, complex conditions) is
+ * preserved verbatim. If the text parses to no facets (or is unparseable) it is
+ * returned unchanged so we never clobber in-progress or facet-free input.
+ */
+export const translateWhereClauseInQuery = (
+  whereText: string,
+  fromLanguage: 'lucene' | 'sql',
+  toLanguage: 'lucene' | 'sql',
+  knownColumns: Set<string>,
+  dateTimeColumns?: ReadonlyMap<string, string>,
+): string => {
+  if (fromLanguage === toLanguage) return whereText;
+  const state = parseWhereClauseToFilterState(whereText, fromLanguage);
+  const cleanState =
+    fromLanguage === 'sql' ? unescapeFilterStateKeys(state) : state;
+  if (Object.keys(cleanState).length === 0) return whereText;
+  return replaceFilterClauses(whereText, fromLanguage, cleanState, {
+    emitLanguage: toLanguage,
+    escapeKey:
+      toLanguage === 'sql'
+        ? key => toQuotedClickHouseKeyExpression(key, knownColumns)
+        : undefined,
+    dateTimeColumns,
+  });
+};
+
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
@@ -128,6 +187,10 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
 // filtersToQuery; re-export so existing `@/searchFilters` importers keep working.
 export { parseQuery };
 
+export {
+  getUnrepresentableWhereReason,
+  getWhereParseError,
+} from '@hyperdx/common-utils/dist/filters';
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,

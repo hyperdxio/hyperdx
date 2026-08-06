@@ -12,6 +12,7 @@ import {
 import {
   Accordion,
   ActionIcon,
+  Alert,
   Box,
   Button,
   Center,
@@ -33,6 +34,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
+  IconAlertCircle,
   IconArrowBarToLeft,
   IconChartBar,
   IconChartBarOff,
@@ -1072,6 +1074,8 @@ const DBSearchPageFiltersComponent = ({
   onColumnToggle,
   displayedColumns,
   onCollapse,
+  whereParseError,
+  whereUnrepresentableReason,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -1085,6 +1089,8 @@ const DBSearchPageFiltersComponent = ({
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
   onCollapse?: () => void;
+  whereParseError?: string | null;
+  whereUnrepresentableReason?: string | null;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1662,6 +1668,35 @@ const DBSearchPageFiltersComponent = ({
               )}
             </Group>
           </Flex>
+          {whereParseError && (
+            <Alert
+              variant="light"
+              color="orange"
+              radius="sm"
+              p="xs"
+              title="Query is incomplete"
+              icon={<IconAlertCircle size={16} />}
+            >
+              <Text size="xs" c="dimmed">
+                Finish the query text above, or click a value below to replace
+                the incomplete text.
+              </Text>
+            </Alert>
+          )}
+          {!whereParseError && whereUnrepresentableReason && (
+            <Alert
+              variant="light"
+              color="orange"
+              radius="sm"
+              p="xs"
+              title="Filters shown partially"
+              icon={<IconAlertCircle size={16} />}
+            >
+              <Text size="xs" c="dimmed">
+                {whereUnrepresentableReason}
+              </Text>
+            </Alert>
+          )}
           <Tabs
             value={analysisMode}
             onChange={value =>
