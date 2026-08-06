@@ -307,6 +307,11 @@ type DBTimeChartComponentProps = {
    * narrow charts (e.g. side-by-side RED metric tiles). Forwarded to the chart.
    */
   compactXAxisLabels?: boolean;
+  /**
+   * Cap the y-axis upper bound (e.g. 1 for a 0-100% rate) while still
+   * auto-scaling below it. Forwarded to the chart.
+   */
+  yAxisMaxDomain?: number;
 };
 
 function DBTimeChartComponent({
@@ -333,6 +338,7 @@ function DBTimeChartComponent({
   errorVariant,
   onFocusSeries,
   compactXAxisLabels,
+  yAxisMaxDomain,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -855,6 +861,7 @@ function DBTimeChartComponent({
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
             compactXAxisLabels={compactXAxisLabels}
+            yAxisMaxDomain={yAxisMaxDomain}
           />
         </>
       )}

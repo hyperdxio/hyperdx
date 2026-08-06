@@ -188,6 +188,10 @@ export function TraceRedMetricsChart({
                   hiddenSeries={
                     errorsMode === 'rate' ? ERROR_RATE_HELPER_SERIES : undefined
                   }
+                  // Rate is 0-100%: cap the axis so a flat/near-zero series
+                  // can't render a nonsense 0-400% scale, while still
+                  // auto-scaling to small values.
+                  yAxisMaxDomain={errorsMode === 'rate' ? 1 : undefined}
                   {...commonProps}
                 />
               </Box>

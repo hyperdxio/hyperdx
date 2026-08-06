@@ -652,6 +652,7 @@ export const MemoChart = memo(function MemoChart({
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
   compactXAxisLabels = false,
+  yAxisMaxDomain,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -691,6 +692,13 @@ export const MemoChart = memo(function MemoChart({
    * narrow charts, e.g. the side-by-side RED metrics tiles.
    */
   compactXAxisLabels?: boolean;
+  /**
+   * Cap the y-axis upper bound at this value (e.g. 1 for a 0-100% rate). The
+   * axis still auto-scales below the cap so small values keep a tight range,
+   * and a flat/zero series falls back to the cap instead of a degenerate
+   * auto-domain. Only applied on the default (non-fit, non-selection) path.
+   */
+  yAxisMaxDomain?: number;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -807,6 +815,18 @@ export const MemoChart = memo(function MemoChart({
     // fit the lower bound to the data. When neither applies, let Recharts
     // auto-calculate the upper bound while pinning the lower bound to zero.
     if (!hasSelection && !shouldFitYAxis) {
+      if (yAxisMaxDomain != null) {
+        // Auto-scale up to the data max (with headroom) but never above the
+        // cap; a flat or zero series uses the cap instead of a degenerate
+        // auto-domain (which recharts renders as e.g. 0-400% for a 0% rate).
+        return [
+          0,
+          (dataMax: number) =>
+            Number.isFinite(dataMax) && dataMax > 0
+              ? Math.min(dataMax * 1.1, yAxisMaxDomain)
+              : yAxisMaxDomain,
+        ];
+      }
       return [0, 'auto'];
     }
 
@@ -851,6 +871,7 @@ export const MemoChart = memo(function MemoChart({
     selectedSeriesNames,
     fitYAxisToData,
     displayType,
+    yAxisMaxDomain,
   ]);
 
   const [containerWidth, setContainerWidth] = useState(0);
@@ -942,7 +963,7 @@ export const MemoChart = memo(function MemoChart({
         <Text
           x={x}
           y={y}
-          dy={12}
+          dy={8}
           textAnchor={textAnchor}
           verticalAnchor="start"
           fontSize={11}
