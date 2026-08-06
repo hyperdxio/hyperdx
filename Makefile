@@ -191,6 +191,7 @@ ci-unit:
 .PHONY: ci-triage
 ci-triage:
 	node --test .github/scripts/__tests__/pr-triage-classify.test.js
+	node --test scripts/ci/__tests__/ratchet.test.mjs
 
 # ---------------------------------------------------------------------------
 # E2E tests — port isolation is handled by scripts/test-e2e.sh

@@ -6,6 +6,15 @@
   "engines": {
     "node": ">=22.16.0"
   },
+  "nx": {
+    "targets": {
+      "ci:lint": {
+        "outputs": [
+          "{projectRoot}/openapi.json"
+        ]
+      }
+    }
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.47",
