@@ -15,6 +15,7 @@ import { getMetadata, Metadata } from '@/core/metadata';
 import {
   FIXED_TIME_BUCKET_EXPR_ALIAS,
   renderChartConfig,
+  renderRatioChartConfig,
   splitChartConfigs,
 } from '@/core/renderChartConfig';
 import {
@@ -833,6 +834,24 @@ export abstract class BaseClickhouseClient {
     };
     querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
+    // Try the native CTE ratio path first — one query instead of split+merge
+    const ratioSql = await renderRatioChartConfig(
+      config,
+      metadata,
+      querySettings,
+    );
+    if (ratioSql) {
+      const resp = await this.query<'JSON'>({
+        query: ratioSql.sql,
+        query_params: ratioSql.params,
+        format: 'JSON',
+        abort_signal: opts?.abort_signal,
+        connectionId: config.connection,
+        clickhouse_settings: opts?.clickhouse_settings,
+      });
+      return resp.json<any>();
+    }
+
     const queries: ChSql[] = await Promise.all(
       splitChartConfigs(config).map(c =>
         renderChartConfig(c, metadata, querySettings),

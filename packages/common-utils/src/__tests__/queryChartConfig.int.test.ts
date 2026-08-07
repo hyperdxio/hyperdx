@@ -615,4 +615,339 @@ describe('queryChartConfig Integration Tests', () => {
       });
     }
   });
+
+  // The cap ranks on the value the chart plots. For seriesReturnType 'ratio'
+  // that is divide(select[0], select[1]) — ranking on the bare numerator would
+  // drop a low-volume group with a high ratio in favour of a high-volume group
+  // with a low one.
+  //
+  // These share one fixture (rather than a table per test, as above) because
+  // every case needs the same six groups: the set is built so that the ordering
+  // by ratio and the ordering by numerator disagree, which is what makes the
+  // assertions behavioral instead of coincidental.
+  describe('ratio series under seriesLimit', () => {
+    const RATIO_TABLE = 'logs_ratio_series_limit_int_test';
+
+    // All rows share one midday timestamp so they always land in a single
+    // `1 day` bucket regardless of the ClickHouse server timezone.
+    const ROW_TIMESTAMP = '2025-04-15 12:00:00';
+
+    // ServiceName -> [Errors, Total]; ratio = sum(Errors) / sum(Total).
+    // Region is a second grouping key, used only by the two-column group-by
+    // case; one row per service keeps every (service, region) pair unique so
+    // the ranking is identical whether one or both columns are grouped on.
+    const FIXTURE: Record<string, [number, number]> = {
+      inf_group: [5, 0], // 5/0   = +inf, a real spike
+      broken: [2, 2], // 2/2   = 1.00
+      flaky: [3, 4], // 3/4   = 0.75
+      mild: [1, 2], // 1/2   = 0.50, smallest numerator
+      noisy: [6, 60], // 6/60  = 0.10, largest numerator
+      zero_group: [0, 0], // 0/0   = NaN, meaningless
+    };
+    const regionOf = (service: string) => `region-${service}`;
+
+    const sumOf = (column: string) => ({
+      aggFn: 'sum' as const,
+      aggCondition: '',
+      aggConditionLanguage: 'sql' as const,
+      valueExpression: column,
+    });
+
+    const ratioSelect = [sumOf('Errors'), sumOf('Total')];
+
+    const baseRatioConfig = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: DATABASE, tableName: RATIO_TABLE },
+      where: '',
+      whereLanguage: 'sql' as const,
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-04-14'), new Date('2025-04-17')] as [
+        Date,
+        Date,
+      ],
+      granularity: '1 day' as const,
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+    };
+
+    async function runRatioConfig(config: ChartConfigWithOptDateRange) {
+      return await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+        // Without this ClickHouse serializes both NaN and inf as JSON null,
+        // making the two indistinguishable — and telling them apart is exactly
+        // what the ordering assertions below check.
+        opts: {
+          clickhouse_settings: { output_format_json_quote_denormals: 1 },
+        },
+      });
+    }
+
+    const servicesOf = (result: { data: unknown }) =>
+      [
+        ...new Set(
+          (result.data as Array<{ ServiceName: string }>).map(
+            r => r.ServiceName,
+          ),
+        ),
+      ].sort();
+
+    /** The ratio column, which renders as an unaliased `divide(...)`. */
+    const ratioFor = (result: { data: unknown }, service: string) => {
+      const row = (result.data as Array<Record<string, string>>).find(
+        r => r['ServiceName'] === service,
+      );
+      return Object.entries(row ?? {}).find(([key]) =>
+        key.startsWith('divide('),
+      )?.[1];
+    };
+
+    /**
+     * `0.0 / 0.0` may set the NaN sign bit depending on the platform's
+     * floating-point unit, so ClickHouse prints either `nan` or `-nan`. The sign
+     * carries no meaning here (unlike `inf` vs `-inf`) and does not affect
+     * ordering, so accept both.
+     */
+    const isNanLiteral = (value: string | undefined) =>
+      value === 'nan' || value === '-nan';
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${RATIO_TABLE} (
+          Timestamp DateTime CODEC(ZSTD(1)),
+          ServiceName String CODEC(ZSTD(1)),
+          Region String CODEC(ZSTD(1)),
+          Errors UInt32 CODEC(ZSTD(1)),
+          Total UInt32 CODEC(ZSTD(1))
+        ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+      });
+
+      await client.insert({
+        table: `${DATABASE}.${RATIO_TABLE}`,
+        values: Object.entries(FIXTURE).map(([service, [errors, total]]) => ({
+          Timestamp: ROW_TIMESTAMP,
+          ServiceName: service,
+          Region: regionOf(service),
+          Errors: errors,
+          Total: total,
+        })),
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${RATIO_TABLE}`,
+      });
+    });
+
+    it('keeps the highest-ratio groups, not the highest-numerator ones', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        select: ratioSelect,
+        seriesReturnType: 'ratio',
+        seriesLimit: 2,
+      });
+
+      // broken (1.00) and flaky (0.75) are the two highest *finite* ratios.
+      // Ranking on the numerator would have returned ['inf_group', 'noisy'],
+      // since noisy has the largest numerator (6) and the smallest ratio.
+      expect(servicesOf(result)).toEqual(['broken', 'flaky']);
+    });
+
+    it('ranks non-finite ratios below every finite one', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        select: ratioSelect,
+        seriesReturnType: 'ratio',
+        seriesLimit: 4,
+      });
+
+      // Six groups, room for four. inf_group (x/0) and zero_group (0/0) are the
+      // two dropped: neither value can be compared or even plotted (the app
+      // queries without quoted denormals, so both arrive as JSON null and
+      // render as a gap), and ClickHouse would otherwise sort inf above every
+      // real number. The four finite ratios take the slots instead.
+      expect(servicesOf(result)).toEqual(['broken', 'flaky', 'mild', 'noisy']);
+    });
+
+    it('keeps a NaN-ratio group when the limit exceeds the group count', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        select: ratioSelect,
+        seriesReturnType: 'ratio',
+        seriesLimit: 10,
+      });
+
+      // Non-finite ratios are only deprioritized, never filtered out: with room
+      // for everyone, inf_group and zero_group still come back.
+      expect(servicesOf(result)).toEqual([
+        'broken',
+        'flaky',
+        'inf_group',
+        'mild',
+        'noisy',
+        'zero_group',
+      ]);
+      expect(isNanLiteral(ratioFor(result, 'zero_group'))).toBe(true);
+      expect(ratioFor(result, 'inf_group')).toBe('inf');
+    });
+
+    // Regression: with an aggCondition on every select, renderWhere ORs them
+    // into the WHERE, so a (group, bucket) row exists as soon as *either* side
+    // matched — buckets with a numerator and no denominator are routine, not
+    // exceptional. Each such bucket is +inf, ClickHouse sorts inf above every
+    // real number, and the resulting ties are broken alphabetically, so the cap
+    // used to fill up with arbitrary sparse groups and drop the steady
+    // high-ratio series.
+    it('does not let sparse zero-denominator buckets crowd out a real series', async () => {
+      const TABLE = 'logs_ratio_sparse_denominator_int_test';
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${TABLE} (
+          Timestamp DateTime CODEC(ZSTD(1)),
+          ServiceName String CODEC(ZSTD(1)),
+          Level String CODEC(ZSTD(1))
+        ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+      });
+
+      const rows: Array<Record<string, string>> = [];
+      const push = (ts: string, service: string, level: string, n: number) => {
+        for (let i = 0; i < n; i++) {
+          rows.push({ Timestamp: ts, ServiceName: service, Level: level });
+        }
+      };
+      // Four noisy groups: one error and NO warn in the first bucket (ratio
+      // +inf), then a boring 1/100 in the second.
+      for (const service of ['n1', 'n2', 'n3', 'n4']) {
+        push('2025-04-15 00:30:00', service, 'error', 1);
+        push('2025-04-15 01:30:00', service, 'error', 1);
+        push('2025-04-15 01:30:00', service, 'warn', 100);
+      }
+      // One genuinely high, always-finite ratio: 90/100 = 0.9 in both buckets.
+      // Named last alphabetically so it loses any tie-break.
+      for (const ts of ['2025-04-15 00:30:00', '2025-04-15 01:30:00']) {
+        push(ts, 'zz_genuine', 'error', 90);
+        push(ts, 'zz_genuine', 'warn', 100);
+      }
+      await client.insert({
+        table: `${DATABASE}.${TABLE}`,
+        values: rows,
+        format: 'JSONEachRow',
+      });
+
+      try {
+        const countOfLevel = (level: string) => ({
+          aggFn: 'count' as const,
+          aggCondition: `Level = '${level}'`,
+          aggConditionLanguage: 'sql' as const,
+          valueExpression: '',
+        });
+
+        const result = await runRatioConfig({
+          ...baseRatioConfig,
+          from: { databaseName: DATABASE, tableName: TABLE },
+          select: [countOfLevel('error'), countOfLevel('warn')],
+          seriesReturnType: 'ratio',
+          dateRange: [
+            new Date('2025-04-15T00:00:00Z'),
+            new Date('2025-04-15T02:00:00Z'),
+          ],
+          granularity: '1 hour',
+          seriesLimit: 2,
+        });
+
+        // zz_genuine (a steady 0.9) must take a slot. Ranking on the raw max
+        // would give ['n1', 'n2'] — the two alphabetically-first of the four
+        // groups tied at +inf.
+        expect(servicesOf(result)).toContain('zz_genuine');
+        expect(servicesOf(result)).toHaveLength(2);
+      } finally {
+        await client.command({
+          query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,
+        });
+      }
+    });
+
+    it('ranks a two-select non-ratio config by its first select only', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        select: [sumOf('Errors'), sumOf('Total')],
+        seriesLimit: 2,
+      });
+
+      // Without seriesReturnType 'ratio' the pair must not collapse into a
+      // divide(). Top 2 by sum(Errors) is [inf_group (5), noisy (6)]; ranking
+      // by the second select would give [flaky, noisy] and a ratio collapse
+      // would give [broken, inf_group].
+      expect(servicesOf(result)).toEqual(['inf_group', 'noisy']);
+    });
+
+    // Regression: ratio mode merges exactly two SELECT items into divide(a, b),
+    // and that merge used to be inferred from the length of whatever list was
+    // being rendered. A groupBy of exactly two columns therefore rendered
+    // `divide(ServiceName, Region)` into the SELECT, GROUP BY and the cap's
+    // tuple predicate, and ClickHouse rejected the whole query with
+    // "Illegal types String and String of arguments of function divide".
+    it('groups by two columns without merging them into a ratio', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        select: ratioSelect,
+        seriesReturnType: 'ratio',
+        groupBy: [
+          { aggCondition: '', valueExpression: 'ServiceName' },
+          { aggCondition: '', valueExpression: 'Region' },
+        ],
+        seriesLimit: 2,
+      });
+
+      // Both grouping keys survive as their own output columns...
+      expect(result.meta?.map(m => m.name)).toEqual(
+        expect.arrayContaining(['ServiceName', 'Region']),
+      );
+      // ...and the ratio ranking still picks the top two by finite ratio.
+      expect(servicesOf(result)).toEqual(['broken', 'flaky']);
+      expect(
+        (result.data as Array<{ Region: string }>).map(r => r.Region).sort(),
+      ).toEqual([regionOf('broken'), regionOf('flaky')]);
+    });
+
+    it('ranks by the first select when ratio mode has other than two selects', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        select: [
+          sumOf('Errors'),
+          sumOf('Total'),
+          { aggFn: 'max' as const, aggCondition: '', valueExpression: 'Total' },
+        ],
+        seriesReturnType: 'ratio',
+        seriesLimit: 2,
+      });
+
+      // A ratio needs exactly two selects, so a third falls back to plain
+      // multi-series rendering and the rank stays sum(Errors). Had the first
+      // two collapsed into a ratio this would be ['broken', 'inf_group'].
+      expect(servicesOf(result)).toEqual(['inf_group', 'noisy']);
+    });
+
+    it('aggregates every row when there is no group-by to cap', async () => {
+      const result = await runRatioConfig({
+        ...baseRatioConfig,
+        groupBy: undefined,
+        select: ratioSelect,
+        seriesReturnType: 'ratio',
+        seriesLimit: 2,
+      });
+
+      // The cap is gated on a non-empty group-by, so building the rank from the
+      // whole select list must not leak into the ungrouped path: every row
+      // still contributes, giving Errors 17 / Total 68. A limit applied here
+      // would drop rows and change this number.
+      expect(result.data).toHaveLength(1);
+      const ratio = Object.entries(
+        result.data[0] as Record<string, string>,
+      ).find(([key]) => key.startsWith('divide('))?.[1];
+      expect(Number(ratio)).toBeCloseTo(17 / 68, 5);
+    });
+  });
 });

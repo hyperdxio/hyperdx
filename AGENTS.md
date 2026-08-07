@@ -195,8 +195,9 @@ efficient and accurate:
    agent solved the wrong problem or made a plausible-but-wrong trade-off.
 
 3. **Name agent-generated branches with a `claude/`, `agent/`, or `ai/` prefix**
-   (e.g., `claude/add-rate-limiting`). This allows the PR triage classifier to
-   apply appropriate scrutiny and lets reviewers calibrate their attention.
+   (e.g., `claude/add-rate-limiting`) so reviewers can calibrate their attention.
+   This is a convention for humans: the PR triage classifier deliberately ignores
+   branch names and tiers every PR on what the diff touches and how big it is.
 
 4. **Write or update tests alongside the implementation**, not after. Configure
    your agent to produce tests before writing implementation code. See the
@@ -209,6 +210,88 @@ efficient and accurate:
    the format of existing entries), choosing the appropriate semver bump, before
    pushing the branch. Skip only for changes that don't warrant a release (docs,
    internal tooling, tests, CI).
+
+6. **The root `CHANGELOG.md` is generated at release time.** During each
+   release, CI writes an AI-generated cross-package summary section into the
+   root `CHANGELOG.md` on the "Release HyperDX" PR. Review and edit it there
+   like any other file — but keep the `<!-- hyperdx-release-notes … -->` comment
+   marker intact; it is how your edits are recognised when the release branch is
+   rebuilt. Use `###` or deeper for any heading you add — a `##` marks a release
+   boundary, and the next release refuses to splice rather than risk deleting
+   whatever ended up below it. Your edits are regenerated away when new
+   changesets land on `main` (the previous text is passed to the generator, so
+   phrasing is preserved best-effort, not guaranteed). They can also be lost
+   outright if a second push to `main` lands while a changelog run is still in
+   flight — the edit is held only in that run's artifact. If an edit matters,
+   re-check it on the release PR before merging. Don't edit the root
+   `CHANGELOG.md` in feature PRs; the only exception is the one-time seed that
+   introduced the file.
+
+### How the root changelog is generated
+
+Defined in `.github/workflows/release.yml`; the splicing logic lives in
+`.github/scripts/release-notes.mjs`.
+
+```
+push to main
+    |
+    v
+check_changesets
+    |  1. capture the branch's current CHANGELOG.md -> artifact
+    |     (must happen BEFORE the next step destroys it)
+    |  2. changesets/action force-rebuilds changeset-release/main from main
+    |     and opens/updates the "Release HyperDX" PR
+    v
+release_changelog_draft            contents: read - no push token
+    |
+    |  app version unchanged?  --yes-->  skip (CLI/common-utils-only release)
+    |  changeset hash matches?  --yes-->  reuse previous section verbatim
+    |                           --no-->  Claude writes a fresh body, given
+    |                                    the old section as context
+    v
+  body artifact                    the model's only output
+    |
+    v
+release_changelog_publish          contents: write - the model never ran here
+    |
+    |  branch moved since drafting?  --yes-->  skip, the newer run republishes
+    |  validate (no headings/markers/images/off-site links)
+    |  append the package list, splice into CHANGELOG.md
+    v
+push to changeset-release/main  ->  appears as a diff in the release PR,
+    |                               where a maintainer can edit it
+    v
+merge the release PR  ->  CHANGELOG.md lands on main  ->  served in "What's new"
+```
+
+The job split is a security boundary, not tidiness: the model reads changeset
+bodies, commit messages and PR bodies, which anyone opening a PR controls. Its
+job holds `ANTHROPIC_API_KEY` and a `contents: read` token, but no push
+credential and no ability to alter the script that does the splicing. Because
+the API key shares that process, the generator gets `--tools "Read" "Write"` and
+nothing else: no `Bash`, and no `Grep` or `Glob` either, since those read files
+without consulting a `Read` path rule. It may write exactly one file, granted by
+an `Edit(<path>)` rule, and `/proc`, `/sys`, `/home` and `/etc` are denied
+outright — `/proc/self/environ` carries the whole environment, and the output
+is published to a public branch.
+
+Three flags with three different jobs, which is worth keeping straight when
+editing this: `--tools` restricts what exists, `--allowedTools` only
+pre-approves (it is what stops a `-p` run stalling on a prompt it cannot
+answer), and `--disallowedTools` denies. A path rule attached to `Write` is
+accepted and then never consulted — file permissions are checked against
+`Edit` and `Read` rules — so write confinement is spelled `Edit(<path>)`.
+
+Because the generator has no way to list a directory, every input is
+materialised for it at a known path by trusted shell, including all the
+changesets concatenated into one file. Left to discover
+`.changeset/gentle-boats-serve.md` by name it cannot, and it writes a changelog
+that quietly omits whatever it could not find.
+
+The generator calls the Claude Code CLI, not
+`anthropics/claude-code-action`: that action accepts only GitHub entity events
+and rejects `push`, and everything it adds on top of the CLI — a token, entity
+context, PR comments — is what this job deliberately does without.
 
 ## GitHub Action Workflow (when invoked via @claude)
 

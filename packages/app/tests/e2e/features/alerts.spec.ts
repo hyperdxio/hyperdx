@@ -64,6 +64,13 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: savedSearchName }),
         ).toBeVisible({ timeout: 10000 });
+        // The provider models saved-search alerts, so this one is offered for
+        // import.
+        await expect(
+          alertsPage
+            .getAlertCardByName(savedSearchName)
+            .locator('[data-testid^="terraform-popover-button-"]'),
+        ).toBeVisible();
       });
     },
   );
@@ -124,6 +131,13 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
+        // Tile alerts have no Terraform resource, so they must not be offered
+        // for import — this is the eligibility branch in AlertsPage.
+        await expect(
+          alertsPage
+            .getAlertCardByName(tileName)
+            .locator('[data-testid^="terraform-popover-button-"]'),
+        ).toBeHidden();
       });
     },
   );

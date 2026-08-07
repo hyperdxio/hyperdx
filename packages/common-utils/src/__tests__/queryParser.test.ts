@@ -665,6 +665,136 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   });
 });
 
+describe('CustomSchemaSQLSerializerV2 - range bounds', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'Duration') {
+      return { name: 'Duration', type: 'UInt64' };
+    } else if (column === 'Timestamp') {
+      return { name: 'Timestamp', type: 'DateTime64(9)' };
+    } else if (column === 'ServiceName') {
+      return { name: 'ServiceName', type: 'String' };
+    } else if (column === 'LogAttributes') {
+      return { name: 'LogAttributes', type: 'Map' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  const rangeCases = [
+    {
+      lucene: 'Duration:[100 TO 500]',
+      sql: '((Duration BETWEEN 100 AND 500))',
+    },
+    {
+      lucene: 'Duration:[* TO 500]',
+      sql: '((Duration <= 500))',
+    },
+    {
+      lucene: 'Duration:[100 TO *]',
+      sql: '((Duration >= 100))',
+    },
+    {
+      lucene: '-Duration:[* TO 500]',
+      sql: '((NOT (Duration <= 500)))',
+    },
+    {
+      lucene: 'ServiceName:[* TO *]',
+      sql: '(notEmpty(ServiceName) = 1)',
+    },
+    {
+      lucene: 'Duration:{100 TO 500}',
+      sql: '((Duration > 100 AND Duration < 500))',
+    },
+    {
+      lucene: 'Duration:[100 TO 500}',
+      sql: '((Duration >= 100 AND Duration < 500))',
+    },
+    {
+      lucene: 'Duration:{100 TO 500]',
+      sql: '((Duration > 100 AND Duration <= 500))',
+    },
+    {
+      lucene: '-Duration:{100 TO 500}',
+      sql: '((NOT (Duration > 100 AND Duration < 500)))',
+    },
+    {
+      lucene: 'Timestamp:[2024-01-01 TO 2024-06-01]',
+      sql: "((Timestamp BETWEEN '2024-01-01' AND '2024-06-01'))",
+    },
+    {
+      lucene: 'Timestamp:{2024-01-01 TO 2024-06-01}',
+      sql: "((Timestamp > '2024-01-01' AND Timestamp < '2024-06-01'))",
+    },
+    {
+      lucene: 'LogAttributes.duration_ms:{100 TO 500}',
+      sql: "((`LogAttributes`['duration_ms'] > 100 AND `LogAttributes`['duration_ms'] < 500 AND indexHint(mapContains(`LogAttributes`, 'duration_ms'))))",
+    },
+  ];
+
+  it.each(rangeCases)(
+    'converts "$lucene" to SQL "$sql"',
+    async ({ lucene, sql }) => {
+      const builder = new SearchQueryBuilder(lucene, serializer);
+      expect(await builder.build()).toBe(sql);
+    },
+  );
+
+  const englishCases = [
+    {
+      lucene: 'Duration:[100 TO 500]',
+      english: 'Duration is between 100 and 500',
+    },
+    {
+      lucene: 'Duration:{100 TO 500}',
+      english: 'Duration is between 100 (exclusive) and 500 (exclusive)',
+    },
+    {
+      lucene: 'Duration:[100 TO 500}',
+      english: 'Duration is between 100 and 500 (exclusive)',
+    },
+    {
+      lucene: 'Duration:{100 TO 500]',
+      english: 'Duration is between 100 (exclusive) and 500',
+    },
+    {
+      lucene: '-Duration:{100 TO 500}',
+      english: 'Duration is not between 100 (exclusive) and 500 (exclusive)',
+    },
+  ];
+
+  it.each(englishCases)(
+    'converts "$lucene" to english "$english"',
+    async ({ lucene, english }) => {
+      const actualEnglish = await genEnglishExplanation({
+        query: lucene,
+        tableConnection: {
+          tableName,
+          databaseName,
+          connectionId,
+        },
+        metadata,
+      });
+      expect(actualEnglish).toBe(english);
+    },
+  );
+});
+
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
   const metadata = getMetadata(
     new ClickhouseClient({ host: 'http://localhost:8123' }),
