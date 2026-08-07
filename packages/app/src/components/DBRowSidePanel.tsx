@@ -111,6 +111,29 @@ export type RowSidePanelContextProps = {
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
 
+// Derives the context for rows rendered from `source`, which may differ from
+// the source the surrounding search context was built for (e.g. a log event
+// opened from a trace waterfall, or a span-link hop into another source's row).
+export function deriveRowSidePanelContextForSource(
+  parentContext: RowSidePanelContextProps,
+  source: TSource,
+): RowSidePanelContextProps {
+  const { generateSearchUrl } = parentContext;
+  const sameSource =
+    parentContext.source == null || parentContext.source.id === source.id;
+  return {
+    ...parentContext,
+    generateSearchUrl: generateSearchUrl
+      ? args => generateSearchUrl({ ...args, source: args.source ?? source })
+      : undefined,
+    onPropertyAddClick: sameSource
+      ? parentContext.onPropertyAddClick
+      : undefined,
+    displayedColumns: sameSource ? parentContext.displayedColumns : undefined,
+    toggleColumn: sameSource ? parentContext.toggleColumn : undefined,
+  };
+}
+
 function SidePanelHeaderActions({
   onClose,
   isFullWidth,
@@ -572,8 +595,13 @@ export const DBRowSidePanelInner = ({
   );
 
   const rowSidePanelContextValue = useMemo(
-    () => ({ ...parentContext, onOpenLinkedTrace: handleOpenLinkedTrace }),
-    [parentContext, handleOpenLinkedTrace],
+    () => ({
+      // The displayed row belongs to the resolved leaf source, which can
+      // differ from the searched source after a cross-source hop.
+      ...deriveRowSidePanelContextForSource(parentContext, source),
+      onOpenLinkedTrace: handleOpenLinkedTrace,
+    }),
+    [parentContext, handleOpenLinkedTrace, source],
   );
 
   const { rumSessionId, rumServiceName } = useSessionId({
