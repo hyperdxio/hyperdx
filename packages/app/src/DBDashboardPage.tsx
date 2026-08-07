@@ -49,7 +49,6 @@ import {
   Filter,
   getSampleWeightExpression,
   isLogSource,
-  isSearchableSource,
   isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
@@ -165,6 +164,7 @@ import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import {
+  buildDashboardReplaySearchUrl,
   buildEventsSearchUrl,
   buildTableRowSearchUrl,
   DEFAULT_CHART_CONFIG,
@@ -686,33 +686,7 @@ const Tile = forwardRef(
     }, [filters, queriedConfig, source]);
 
     const replaySearchUrl = useMemo(() => {
-      if (!queriedConfig || !source || !isBuilderChartConfig(queriedConfig)) {
-        return null;
-      }
-
-      if (queriedConfig.metricTables != null || !isSearchableSource(source)) {
-        return null;
-      }
-
-      if (Array.isArray(queriedConfig.select)) {
-        const hasPerSeriesCondition = queriedConfig.select.some(
-          select =>
-            typeof select !== 'string' &&
-            select.aggCondition != null &&
-            select.aggCondition.trim().length > 0,
-        );
-        const canPromoteSingleSeriesCondition =
-          queriedConfig.select.length === 1 && queriedConfig.where.length === 0;
-
-        // buildEventsSearchUrl can promote one per-series condition into the
-        // event query, but cannot faithfully replay multiple conditions or
-        // combine a series condition with a global where clause.
-        if (hasPerSeriesCondition && !canPromoteSingleSeriesCondition) {
-          return null;
-        }
-      }
-
-      return buildEventsSearchUrl({
+      return buildDashboardReplaySearchUrl({
         source,
         config: queriedConfig,
         dateRange,

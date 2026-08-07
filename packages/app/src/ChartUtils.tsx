@@ -28,6 +28,7 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
   Filter,
+  isSearchableSource,
   MetricsDataType as MetricsDataTypeV2,
   SourceKind,
   SQLInterval,
@@ -1047,6 +1048,46 @@ export function buildEventsSearchUrl({
   }
 
   return `/search?${new URLSearchParams(params).toString()}`;
+}
+
+export function buildDashboardReplaySearchUrl({
+  source,
+  config,
+  dateRange,
+}: {
+  source: TSource | null | undefined;
+  config: ChartConfigWithDateRange | null | undefined;
+  dateRange: [Date, Date];
+}): string | null {
+  if (!config || !source || !isBuilderChartConfig(config)) {
+    return null;
+  }
+
+  if (config.metricTables != null || !isSearchableSource(source)) {
+    return null;
+  }
+
+  if (Array.isArray(config.select)) {
+    const hasPerSeriesCondition = config.select.some(
+      select =>
+        select.aggCondition != null && select.aggCondition.trim().length > 0,
+    );
+    const canPromoteSingleSeriesCondition =
+      config.select.length === 1 && config.where.length === 0;
+
+    // buildEventsSearchUrl can promote one per-series condition into the
+    // event query, but cannot faithfully replay multiple conditions or
+    // combine a series condition with a global where clause.
+    if (hasPerSeriesCondition && !canPromoteSingleSeriesCondition) {
+      return null;
+    }
+  }
+
+  return buildEventsSearchUrl({
+    source,
+    config,
+    dateRange,
+  });
 }
 
 /**
