@@ -73,6 +73,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
   IconBolt,
+  IconChartDots,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -84,6 +85,7 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -151,6 +153,7 @@ import {
 } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { useStableCallback } from './hooks/useStableCallback';
+import { buildChartExplorerQuery } from './utils/chartExplorerLink';
 import {
   buildDirectTraceWhereClause,
   getDefaultDirectTraceDateRange,
@@ -319,6 +322,23 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
         aria-label="Show filters"
       >
         <IconArrowBarToRight size={14} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+function OpenInChartExplorerButton({ href }: { href: string }) {
+  return (
+    <Tooltip label="Open in Chart Explorer" position="bottom">
+      <ActionIcon
+        component="a"
+        href={href}
+        variant="subtle"
+        size="xs"
+        aria-label="Open in Chart Explorer"
+        data-testid="open-in-chart-explorer-button"
+      >
+        <IconChartDots size={14} />
       </ActionIcon>
     </Tooltip>
   );
@@ -1732,6 +1752,32 @@ export function DBSearchPage() {
     ],
   );
 
+  const chartExplorerUrl = useMemo(() => {
+    if (!searchedSource) return null;
+    const config = {
+      ...DEFAULT_CHART_CONFIG,
+      ...buildChartExplorerQuery({
+        where: searchedConfig.where,
+        whereLanguage: searchedConfig.whereLanguage,
+        filters: searchedConfig.filters,
+      }),
+      source: searchedSource.id,
+      connection: searchedSource.connection,
+    };
+    const qParams = new URLSearchParams({
+      config: JSON.stringify(config),
+      from: searchedTimeRange[0].getTime().toString(),
+      to: searchedTimeRange[1].getTime().toString(),
+    });
+    return `/chart?${qParams.toString()}`;
+  }, [
+    searchedSource,
+    searchedConfig.where,
+    searchedConfig.whereLanguage,
+    searchedConfig.filters,
+    searchedTimeRange,
+  ]);
+
   const handleTableError = useCallback(
     (error: Error | ClickHouseQueryError) => {
       setIsLive(false);
@@ -2463,17 +2509,24 @@ export function DBSearchPage() {
                           }
                           histogramTimeChartConfig={histogramTimeChartConfig}
                         />
-                        <SearchNumRows
-                          config={{
-                            ...chartConfig,
-                            dateRange: searchedTimeRange,
-                          }}
-                          sqlConfig={histogramTimeChartConfig ?? undefined}
-                          enabled={isReady}
-                          searchElapsedMs={searchElapsedMs}
-                          isSearching={isAnyQueryFetching}
-                          isLiveTail={isLive ?? false}
-                        />
+                        <Group gap="sm" align="center">
+                          {chartExplorerUrl && (
+                            <OpenInChartExplorerButton
+                              href={chartExplorerUrl}
+                            />
+                          )}
+                          <SearchNumRows
+                            config={{
+                              ...chartConfig,
+                              dateRange: searchedTimeRange,
+                            }}
+                            sqlConfig={histogramTimeChartConfig ?? undefined}
+                            enabled={isReady}
+                            searchElapsedMs={searchElapsedMs}
+                            isSearching={isAnyQueryFetching}
+                            isLiveTail={isLive ?? false}
+                          />
+                        </Group>
                       </Group>
                     </Box>
                     {!hasQueryError && (
@@ -2562,6 +2615,11 @@ export function DBSearchPage() {
                                   handleResumeLiveTail={handleResumeLiveTail}
                                 />
                               )}
+                            {chartExplorerUrl && (
+                              <OpenInChartExplorerButton
+                                href={chartExplorerUrl}
+                              />
+                            )}
                             <SearchNumRows
                               config={{
                                 ...chartConfig,
