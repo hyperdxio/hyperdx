@@ -3412,9 +3412,11 @@ describe('checkAlerts', () => {
           teamWebhooksById,
         );
 
-        // The next window (22:15) evaluates cleanly. Only a same-window
-        // success clears an ERROR row — the 22:10 row is a truthful record
-        // of a tick that failed, so it must survive.
+        // The next window (22:15) evaluates cleanly. With no previous
+        // history the clean tick only looks back one window ([22:10, 22:15))
+        // — the failed tick's data range ([22:05, 22:10)) was never
+        // re-evaluated, so the 22:10 ERROR row is a truthful record of an
+        // unrecovered failure and must survive.
         await processAlertAtTime(
           new Date('2023-11-16T22:17:00.000Z'),
           details,
@@ -3440,6 +3442,124 @@ describe('checkAlerts', () => {
         expect(errorHistories).toHaveLength(1);
         expect(errorHistories[0].createdAt.toISOString()).toBe(
           '2023-11-16T22:10:00.000Z',
+        );
+      });
+
+      it('clears the stale ERROR row when a failed window recovers via backfill on a later tick', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Tick 1 (window 22:05) evaluates cleanly — anchors the backfill.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:07:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // A webhook-failure-style ERROR row recorded alongside tick 1's
+        // normal rows (same createdAt). Its window WAS evaluated — it is
+        // never retried, so the cleanup below must not delete it.
+        await AlertHistory.create({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:05:00.000Z'),
+          state: AlertState.ERROR,
+          counts: 0,
+          lastValues: [],
+          errors: [
+            {
+              type: AlertErrorType.WEBHOOK_ERROR,
+              message: 'webhook boom',
+              timestamp: new Date('2023-11-16T22:07:00.000Z'),
+            },
+          ],
+        });
+
+        // Tick 2 (window 22:10) fails — ERROR row at 22:10, window not
+        // marked evaluated.
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
+        ).toBe(2);
+
+        // Tick 3 (window 22:15) evaluates cleanly. Its anchor is tick 1's
+        // 22:05 row, so the range [22:05, 22:15) folds the failed 22:10
+        // window in as a backfilled bucket — stamped with createdAt 22:15,
+        // NOT 22:10. The stale 22:10 ERROR row must still be cleared, or
+        // the recovered window renders as ERROR until the TTL expires it.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:17:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        }).sort({ createdAt: 1 });
+        expect(normalHistories.map(h => h.createdAt.toISOString())).toEqual([
+          '2023-11-16T22:05:00.000Z',
+          '2023-11-16T22:15:00.000Z',
+        ]);
+        expect(normalHistories[1].analytics!.backfilledBuckets).toBe(1);
+
+        // The backfilled window's ERROR row is gone; the webhook-failure
+        // row at the (already-evaluated) anchor window survives.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:05:00.000Z',
+        );
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
         );
       });
 

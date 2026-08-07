@@ -1271,6 +1271,7 @@ export const processAlert = async (
         alert.id,
         historyRecords,
         executionErrors,
+        dateRange,
       );
       return;
     }
@@ -1492,6 +1493,7 @@ export const processAlert = async (
       alert.id,
       historyRecords,
       executionErrors,
+      dateRange,
     );
   } catch (e) {
     // Uncomment this for better error messages locally
