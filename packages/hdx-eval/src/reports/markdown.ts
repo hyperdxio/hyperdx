@@ -130,7 +130,7 @@ function renderScenarioTable(
     c => val(c?.programmatic.mean, pct),
     d => signedPct(d?.programmaticScore),
   );
-  // Adoption is only graded for scenarios with a transcript rubric; omit the
+  // Adoption is only graded for scenarios with an adoption rubric; omit the
   // row entirely when no cell has adoption data.
   const hasAdoption = columns.some(m => scenario.cells[m]?.adoption);
   if (hasAdoption) {
@@ -249,7 +249,7 @@ function renderAdoptionBreakdown(
   const rows = [
     '#### Adoption per-check (usage rate)',
     '',
-    'Usage rate = share of runs whose tool-call transcript matched the check.',
+    'Usage rate = share of runs whose tool-call args matched the check.',
     '',
     `| Adoption check | ${colHeaders} |`,
     '|---' + '|---'.repeat(columns.length) + '|',
