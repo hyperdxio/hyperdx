@@ -80,6 +80,7 @@ import {
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
+import { ViewTraceCalloutButton } from './ViewTraceCalloutButton';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -439,6 +440,17 @@ export const DBRowSidePanelInner = ({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
+
+  // Owns the View Trace nudge's auto-open latch. Kept here (above the loading
+  // gate that unmounts the row content on every navigation) so the one-time
+  // callout doesn't reset and re-open as the user pages between rows. Resets
+  // when the panel closes and this component unmounts.
+  const [viewTraceCalloutAutoOpened, setViewTraceCalloutAutoOpened] =
+    useState(false);
+  const handleViewTraceCalloutAutoOpen = useCallback(
+    () => setViewTraceCalloutAutoOpened(true),
+    [],
+  );
 
   // Capture the root event body once for the root breadcrumb label.
   const [initialMainContent, setInitialMainContent] = useState<
@@ -931,11 +943,11 @@ export const DBRowSidePanelInner = ({
             </>
           )}
           {showLogTraceActions && (
-            <Button
-              data-testid="side-panel-view-trace"
-              variant="subtle"
-              size="compact-xs"
-              onClick={() => {
+            <ViewTraceCalloutButton
+              disabled={!traceSourceData || !traceSpanRowId}
+              autoOpened={viewTraceCalloutAutoOpened}
+              onAutoOpen={handleViewTraceCalloutAutoOpen}
+              onView={() => {
                 if (traceSourceData && traceSpanRowId) {
                   handleSourceStackPush({
                     sourceId: traceSourceData.id,
@@ -947,10 +959,7 @@ export const DBRowSidePanelInner = ({
                   });
                 }
               }}
-              disabled={!traceSourceData || !traceSpanRowId}
-            >
-              View Trace →
-            </Button>
+            />
           )}
         </Group>
         <DBRowSidePanelHeader
