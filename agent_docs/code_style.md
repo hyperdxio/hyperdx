@@ -159,6 +159,35 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
 
+## UI text: use sentence case
+
+All user-facing text uses **sentence case** — capitalize only the **first word**
+and any proper nouns/acronyms. Do **not** use Title Case (capitalizing every
+significant word).
+
+This applies to every string a user reads: field labels, buttons, tab/menu
+items, headings, section titles, modal titles, placeholders, tooltips, table
+column headers, empty states, and toast/notification copy.
+
+| Title Case (avoid) | Sentence case (use) |
+|--------------------|---------------------|
+| `Data Source`      | `Data source`       |
+| `Chart Name`       | `Chart name`        |
+| `Add Series`       | `Add series`        |
+| `Count of Events`  | `Count of events`   |
+| `Save Changes`     | `Save changes`      |
+| `Delete Dashboard` | `Delete dashboard`  |
+
+**Keep the original casing of proper nouns, product names, and acronyms**
+anywhere in the string — sentence case only changes the words around them:
+HyperDX, ClickHouse, ClickStack, OpenTelemetry/OTel, Lucene, SQL, PromQL,
+MongoDB, Kubernetes, JSON, CSV, URL, ID, API, MCP, CPU, P95. For example:
+`Search your events w/ Lucene`, `Edit SQL`, `Copy as cURL`, `View in ClickHouse`.
+
+Only sentence-case **static UI chrome**. Never rewrite dynamic/user data (column
+names, tag values, log/trace content, source or dashboard names a user typed) —
+render those verbatim.
+
 ## Semantic design tokens (prefer over raw Mantine colors)
 
 The UI is built with **Mantine components**, but **colors and surfaces** should follow the **semantic CSS custom properties** in our themes (`--color-*`, etc.), not ad-hoc Mantine palette values. Those tokens are defined in `packages/app/src/theme/themes/**/_tokens.scss`, align with a **Click UI**–style system, and keep HyperDX and ClickStack visually consistent. They are the path toward a shared design system even while Mantine remains the component layer.
