@@ -10,6 +10,7 @@ import {
   JSDataType,
 } from '@/clickhouse';
 import {
+  ClickHouseVersion,
   isClickHouseVersionAtLeast,
   supportsDirectReadMap,
 } from '@/core/clickhouseVersion';
@@ -31,23 +32,28 @@ const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
 function encodeSpecialTokens(query: string): string {
   return query
     .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
-    .replace('http://', 'http_COLON_//')
-    .replace('https://', 'https_COLON_//')
-    .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
+    .replace(/http:\/\//g, 'http_COLON_//')
+    .replace(/https:\/\//g, 'https_COLON_//')
+    .replace(/localhost:(\d{1,5})/g, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
 function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
-    .replace('http_COLON_//', 'http://')
-    .replace('https_COLON_//', 'https://')
-    .replace(/localhost_COLON_(\d{1,5})/, 'localhost:$1')
+    .replace(/http_COLON_\/\//g, 'http://')
+    .replace(/https_COLON_\/\//g, 'https://')
+    .replace(/localhost_COLON_(\d{1,5})/g, 'localhost:$1')
     .replace(/HDX_COLON/g, ':');
 }
 
 export function parse(query: string): lucene.AST {
   return lucene.parse(encodeSpecialTokens(query));
+}
+
+/** Escape the LIKE/ILIKE metacharacters `\`, `%` and `_` so a term matches literally */
+function escapeLikePattern(term: string): string {
+  return term.replace(/[\\%_]/g, '\\$&');
 }
 
 function buildMapContains(mapField: string) {
@@ -62,6 +68,7 @@ function normalizeChExpression(expr: string): string {
 }
 
 const IMPLICIT_FIELD = '<implicit>';
+const RANGE_UNBOUNDED = '*';
 
 // Type guards for lucene AST types
 function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
@@ -191,6 +198,7 @@ interface Serializer {
     end: string,
     isNegatedField: boolean,
     context: SerializerContext,
+    inclusive?: lucene.NodeRangedTerm['inclusive'],
   ): Promise<string>;
 }
 
@@ -390,10 +398,20 @@ class EnglishSerializer implements Serializer {
     start: string,
     end: string,
     isNegatedField: boolean,
+    context: SerializerContext,
+    inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
+    const startBound =
+      inclusive === 'both' || inclusive === 'left'
+        ? start
+        : `${start} (exclusive)`;
+    const endBound =
+      inclusive === 'both' || inclusive === 'right'
+        ? end
+        : `${end} (exclusive)`;
     return `${field} ${
       isNegatedField ? 'is not' : 'is'
-    } between ${start} and ${end}`;
+    } between ${startBound} and ${endBound}`;
   }
 }
 
@@ -411,7 +429,7 @@ export abstract class SQLSerializer implements Serializer {
     found: boolean;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
-    kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
+    kvItemsExpression?: KvIndexInfo & { mapKey: string };
   }>;
 
   operator(op: lucene.Operator) {
@@ -473,7 +491,7 @@ export abstract class SQLSerializer implements Serializer {
     // so we emit: has(arr, 'key<sep>') OR NOT mapContains(Map, 'key')
     if (kvItemsExpression && propertyType === JSDataType.String) {
       const hasExpr = SqlString.format(`has(??, concat(?, ?, ?))`, [
-        kvItemsExpression.kvItemsColumn,
+        kvItemsExpression.columnName,
         kvItemsExpression.mapKey,
         kvItemsExpression.separator,
         term,
@@ -679,7 +697,7 @@ export abstract class SQLSerializer implements Serializer {
 
   // TODO: Not sure if SQL really needs this or if it'll coerce itself
   private attemptToParseNumber(term: string): string | number {
-    const number = Number.parseFloat(term);
+    const number = Number(term);
     if (Number.isNaN(number)) {
       return term;
     }
@@ -711,6 +729,7 @@ export abstract class SQLSerializer implements Serializer {
     end: string,
     isNegatedField: boolean,
     context: SerializerContext,
+    inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
     const { column, found, mapKeyIndexExpression, isArray } =
       await this.getColumnForField(field, context);
@@ -726,10 +745,41 @@ export abstract class SQLSerializer implements Serializer {
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
         : '';
-    return SqlString.format(
-      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
-      [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
-    );
+
+    const isStartUnbounded = start === RANGE_UNBOUNDED;
+    const isEndUnbounded = end === RANGE_UNBOUNDED;
+    if (isStartUnbounded && isEndUnbounded) {
+      return this.isNotNull(field, isNegatedField, context);
+    }
+    if (!isStartUnbounded && !isEndUnbounded && inclusive === 'both') {
+      return SqlString.format(
+        `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
+        [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
+      );
+    }
+
+    const bounds: string[] = [];
+    if (!isStartUnbounded) {
+      const operator =
+        inclusive === 'both' || inclusive === 'left' ? '>=' : '>';
+      bounds.push(
+        SqlString.format(`${column} ${operator} ?`, [
+          this.attemptToParseNumber(start),
+        ]),
+      );
+    }
+    if (!isEndUnbounded) {
+      const operator =
+        inclusive === 'both' || inclusive === 'right' ? '<=' : '<';
+      bounds.push(
+        SqlString.format(`${column} ${operator} ?`, [
+          this.attemptToParseNumber(end),
+        ]),
+      );
+    }
+    return isNegatedField
+      ? `(NOT (${bounds.join(' AND ')})${expressionPostfix})`
+      : `(${bounds.join(' AND ')}${expressionPostfix})`;
   }
 }
 
@@ -743,8 +793,9 @@ type CustomSchemaSQLColumnExpression = {
   };
   mapKeyIndexExpression?: string;
   arrayMapKeyExpression?: string;
+  mapKey?: string;
   /** When a KV items index exists for a Map column, carries the info needed for the has() optimization */
-  kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
+  textIndexInfo?: TextIndexInfo;
 };
 
 export type CustomSchemaConfig = {
@@ -815,7 +866,7 @@ function renderArrayFieldExpression({
         ])
       : SqlString.format(`${prefix}arrayExists(el -> el[?] ILIKE ?, ?)`, [
           mapKey,
-          `%${term}%`,
+          `%${escapeLikePattern(term)}%`,
           SqlString.raw(column),
         ]);
   }
@@ -834,7 +885,7 @@ function renderArrayFieldExpression({
         ])
       : SqlString.format(
           `${prefix}arrayExists(el -> toString(el.??) ILIKE ?, ?)`,
-          [mapKey, `%${term}%`, SqlString.raw(column)],
+          [mapKey, `%${escapeLikePattern(term)}%`, SqlString.raw(column)],
         );
   }
 
@@ -852,13 +903,14 @@ function renderArrayFieldExpression({
         )
       : SqlString.format(
           `${prefix}arrayExists(el -> ${stringifiedElement} ILIKE ?, ?)`,
-          [`%${term}%`, SqlString.raw(column)],
+          [`%${escapeLikePattern(term)}%`, SqlString.raw(column)],
         );
 }
 
 /** Describes a KV items column and its concat separator */
-export type KvItemsInfo = {
-  kvItemsColumn: string;
+export type KvIndexInfo = {
+  columnName: string;
+  indexName: string;
   separator: string;
   /**
    * Whether the connected ClickHouse server supports `hasAny(items, array(...))`
@@ -868,10 +920,16 @@ export type KvItemsInfo = {
    * calls combined with `OR`.
    */
   useHasAny: boolean;
+  mapColumn: string;
 };
+export type KeyIndexInfo = {
+  indexName: string;
+  mapColumn: string;
+};
+export type TextIndexInfo = { kv?: KvIndexInfo; key?: KeyIndexInfo };
 
-/** Map from map column name to its KV items info */
-export type KvItemsLookup = Map<string, KvItemsInfo>;
+/** Map from map column name to its text index info */
+export type TextIndexInfoLookup = Map<string, TextIndexInfo>;
 
 /**
  * Tokenizes a ClickHouse expression into meaningful tokens (identifiers, parens,
@@ -1086,6 +1144,121 @@ const KV_ITEMS_STRATEGIES = [
   parseKvItemsCastExpression,
 ] as const;
 
+export function skipIndexMatches(
+  idx: SkipIndexMetadata,
+  expectedType:
+    | 'text'
+    | 'bloom_filter'
+    | 'minmax'
+    | 'tokenbf_v1'
+    | 'set'
+    | 'ngrambf_v1',
+  options?: {
+    tokenizer?: string;
+  },
+): boolean {
+  if (idx.type !== expectedType) return false;
+  if (expectedType === 'text' && options?.tokenizer) {
+    // ClickHouse's system.data_skipping_indices.type_full can render the
+    // tokenizer as either `tokenizer=array` or `tokenizer='array'` depending on
+    // server version. Delegate to the shared parser, which strips quotes and
+    // handles whitespace, instead of matching a single literal shape.
+    const parsed = parseTokenizerFromTextIndex(idx);
+    if (parsed?.type !== options.tokenizer) return false;
+  }
+  return true;
+}
+
+function populateValidKvTextIndices(
+  serverVersion: ClickHouseVersion | undefined,
+  columns: ColumnMeta[],
+  skipIndices: SkipIndexMetadata[],
+  isCloud: boolean,
+  lookup: TextIndexInfoLookup,
+) {
+  const isDirectReadSupported = supportsDirectReadMap(serverVersion, isCloud);
+  const useHasAny = isClickHouseVersionAtLeast(serverVersion, [26, 5, 0, 0]);
+  const candidates = columns.filter(
+    c =>
+      ((isDirectReadSupported && c.default_type === 'ALIAS') ||
+        c.default_type === 'MATERIALIZED') &&
+      c.default_expression,
+  );
+  for (const candidate of candidates) {
+    let parsed: { mapColumn: string; separator: string } | undefined;
+    for (const strategy of KV_ITEMS_STRATEGIES) {
+      parsed = strategy(candidate.default_expression);
+      if (parsed) break;
+    }
+    if (!parsed) continue;
+
+    const candidateName = normalizeChExpression(candidate.name);
+    const candidateExpr = normalizeChExpression(candidate.default_expression);
+
+    const validIndex = skipIndices.find(idx => {
+      if (!skipIndexMatches(idx, 'text', { tokenizer: 'array' })) return false;
+      const tokenizer = parseTokenizerFromTextIndex(idx);
+      if (tokenizer?.type !== 'array') return false;
+      const idxExpr = normalizeChExpression(idx.expression);
+      return idxExpr === candidateName || idxExpr === candidateExpr;
+    });
+
+    if (validIndex) {
+      let entry = lookup.get(parsed.mapColumn);
+      if (!entry) {
+        entry = {};
+        lookup.set(parsed.mapColumn, entry);
+      }
+      entry.kv = {
+        columnName: candidate.name,
+        indexName: validIndex.name,
+        separator: parsed.separator,
+        useHasAny,
+        mapColumn: parsed.mapColumn,
+      };
+    }
+  }
+}
+
+function populateValidKeyTextIndices(
+  _serverVersion: ClickHouseVersion | undefined,
+  columns: ColumnMeta[],
+  skipIndices: SkipIndexMetadata[],
+  _isCloud: boolean,
+  lookup: TextIndexInfoLookup,
+) {
+  const mapKeyIndexStartString = 'mapKeys(';
+  const candidates = skipIndices.filter(
+    idx =>
+      idx.expression.startsWith(mapKeyIndexStartString) &&
+      skipIndexMatches(idx, 'text', { tokenizer: 'array' }),
+  );
+  for (const candidate of candidates) {
+    const parsedMapColumn = candidate.expression.slice(
+      mapKeyIndexStartString.length,
+      -1,
+    );
+
+    const validColumn = columns.find(
+      col =>
+        col.name === parsedMapColumn &&
+        col.type === 'Map(LowCardinality(String), String)',
+    );
+
+    if (validColumn) {
+      let entry = lookup.get(parsedMapColumn);
+      if (!entry) {
+        entry = {};
+        lookup.set(parsedMapColumn, entry);
+      }
+      entry.key = {
+        indexName: candidate.name,
+        mapColumn: validColumn.name,
+      };
+    }
+  }
+}
+
 /**
  * Builds a lookup from map column name to KV items column name.
  * A KV items column is an ALIAS/MATERIALIZED column whose expression is
@@ -1101,7 +1274,7 @@ const KV_ITEMS_STRATEGIES = [
  *
  * Returns an empty Map on any failure; never throws.
  */
-export async function buildKvItemsLookup({
+export async function buildTextIndexInfoLookup({
   metadata,
   databaseName,
   tableName,
@@ -1111,8 +1284,8 @@ export async function buildKvItemsLookup({
   databaseName: string;
   tableName: string;
   connectionId: string;
-}): Promise<KvItemsLookup> {
-  const lookup: KvItemsLookup = new Map();
+}): Promise<TextIndexInfoLookup> {
+  const lookup: TextIndexInfoLookup = new Map();
   try {
     const [serverVersion, columns, skipIndices, isCloud] = await Promise.all([
       metadata.getServerVersion({ connectionId }),
@@ -1123,45 +1296,21 @@ export async function buildKvItemsLookup({
       metadata.isClickHouseCloud({ connectionId }).catch(() => false),
     ]);
 
-    const directReadSupported = supportsDirectReadMap(serverVersion, isCloud);
-    const useHasAny = isClickHouseVersionAtLeast(serverVersion, [26, 5, 0, 0]);
-
-    const kvItemsCandidates = columns.filter(
-      c =>
-        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
-        c.default_expression,
+    populateValidKvTextIndices(
+      serverVersion,
+      columns,
+      skipIndices,
+      isCloud,
+      lookup,
     );
-
-    for (const candidate of kvItemsCandidates) {
-      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
-        continue;
-      }
-
-      let parsed: { mapColumn: string; separator: string } | undefined;
-      for (const strategy of KV_ITEMS_STRATEGIES) {
-        parsed = strategy(candidate.default_expression);
-        if (parsed) break;
-      }
-      if (!parsed) continue;
-
-      const candidateName = normalizeChExpression(candidate.name);
-      const candidateExpr = normalizeChExpression(candidate.default_expression);
-      const hasArrayTextIndex = skipIndices.some(idx => {
-        if (idx.type !== 'text') return false;
-        const tokenizer = parseTokenizerFromTextIndex(idx);
-        if (tokenizer?.type !== 'array') return false;
-        const idxExpr = normalizeChExpression(idx.expression);
-        return idxExpr === candidateName || idxExpr === candidateExpr;
-      });
-
-      if (hasArrayTextIndex) {
-        lookup.set(parsed.mapColumn, {
-          kvItemsColumn: candidate.name,
-          separator: parsed.separator,
-          useHasAny,
-        });
-      }
-    }
+    populateValidKeyTextIndices(
+      serverVersion,
+      columns,
+      skipIndices,
+      isCloud,
+      lookup,
+    );
+    return lookup;
   } catch (error) {
     console.warn('Error building KV items lookup:', error);
   }
@@ -1178,7 +1327,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
-  private kvItemsLookupPromise?: Promise<KvItemsLookup>;
+  private textIndexInfoLookupPromise?: Promise<TextIndexInfoLookup>;
 
   constructor({
     metadata,
@@ -1223,11 +1372,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         return false;
       });
 
-    this.kvItemsLookupPromise = this.buildKvItemsLookup();
+    this.textIndexInfoLookupPromise = this.buildTextIndexInfoLookup();
   }
 
-  private buildKvItemsLookup(): Promise<KvItemsLookup> {
-    return buildKvItemsLookup({
+  private buildTextIndexInfoLookup(): Promise<TextIndexInfoLookup> {
+    return buildTextIndexInfoLookup({
       metadata: this.metadata,
       databaseName: this.databaseName,
       tableName: this.tableName,
@@ -1299,7 +1448,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
         `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?${expressionPostfix})`,
-        [`%${term}%`],
+        [`%${escapeLikePattern(term)}%`],
       );
     }
 
@@ -1321,7 +1470,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
             SqlString.raw(column),
-            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
+            `${prefixWildcard ? '%' : ''}${escapeLikePattern(term)}${
+              suffixWildcard ? '%' : ''
+            }`,
           ],
         );
       } else if (shouldUseTokenBf) {
@@ -1386,7 +1537,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               ...hasAllTokensExpressions,
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column),
-                `%${term}%`,
+                `%${escapeLikePattern(term)}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
@@ -1416,7 +1567,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               // If there are token separators in the term, try to match the whole term as well
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column),
-                `%${term}%`,
+                `%${escapeLikePattern(term)}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
@@ -1438,7 +1589,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             // If there are symbols in the term, try to match the whole term as well
             SqlString.format(`(lower(?) LIKE lower(?))`, [
               SqlString.raw(column),
-              `%${term}%`,
+              `%${escapeLikePattern(term)}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
@@ -1452,7 +1603,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
     return SqlString.format(
       `(${column} ${isNegatedField ? 'NOT ' : ''}? ?${expressionPostfix})`,
-      [SqlString.raw('ILIKE'), `%${term}%`],
+      [SqlString.raw('ILIKE'), `%${escapeLikePattern(term)}%`],
     );
   }
 
@@ -1535,8 +1686,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         const valueType = prefixMatch.type.match(/,\s+(\w+)\)$/)?.[1];
 
         // Check if a KV items index exists for this map column
-        const kvItemsLookup = await this.kvItemsLookupPromise;
-        const kvItemsInfo = kvItemsLookup?.get(prefixMatch.name);
+        const textIndexInfoLookup = await this.textIndexInfoLookupPromise;
+        const textIndexInfo = textIndexInfoLookup?.get(prefixMatch.name);
 
         return {
           found: true,
@@ -1546,12 +1697,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ]),
           mapKeyIndexExpression: `indexHint(${buildMapContains(`${prefixMatch.name}['${fieldPostfix}']`)})`,
           columnType: valueType ?? 'Unknown',
-          ...(kvItemsInfo
+          mapKey: fieldPostfix,
+          ...(textIndexInfo
             ? {
-                kvItemsExpression: {
-                  ...kvItemsInfo,
-                  mapColumn: prefixMatch.name,
-                  mapKey: fieldPostfix,
+                textIndexInfo: {
+                  kv: textIndexInfo.kv,
+                  key: textIndexInfo.key,
                 },
               }
             : {}),
@@ -1775,7 +1926,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       arrayMapKeyExpression: isArray
         ? expression.arrayMapKeyExpression
         : undefined,
-      kvItemsExpression: expression.kvItemsExpression,
+      kvItemsExpression:
+        expression.textIndexInfo?.kv && expression.mapKey
+          ? { ...expression.textIndexInfo.kv, mapKey: expression.mapKey }
+          : undefined,
     };
   }
 }
@@ -1871,6 +2025,7 @@ async function nodeTerm(
       rangedTerm.term_max,
       isNegatedField,
       context,
+      rangedTerm.inclusive,
     );
   }
 

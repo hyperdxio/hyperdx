@@ -470,6 +470,32 @@ describe('renderChartConfig', () => {
     expect(actual).not.toContain('TopGroups');
   });
 
+  it('renders bound values (not template macros) when generateSqlTemplate is unset', async () => {
+    // Regression guard for the generateSqlTemplate flag threaded through
+    // timeFilterExpr / timeBucketExpr / renderFrom / renderWhere: real query
+    // paths never set it, so the output must keep bound params and literals.
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+    const sql = parameterizedQueryToSql(
+      await renderChartConfig(config, mockMetadata, querySettings),
+    );
+    expect(sql).not.toContain('$__');
+    expect(sql).toContain('fromUnixTimestamp64Milli(');
+    expect(sql).toContain('INTERVAL 5 minute');
+    // parameterizedQueryToSql inlines Identifier params without backticks
+    expect(sql).toContain('FROM default.logs');
+  });
+
   describe('seriesLimit (group-by series cap)', () => {
     const baseLogsConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Line,
@@ -742,9 +768,9 @@ describe('renderChartConfig', () => {
 
   describe('histogram metric queries', () => {
     describe('quantile', () => {
-      it('should generate a query without grouping or time bucketing', async () => {
+      it('should generate a whole-range query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -779,6 +805,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -852,7 +886,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'TimeUnix',
           dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
           granularity: '2 minute',
-          groupBy: `ResourceAttributes['host']`,
+          groupBy: 'ServiceName',
           limit: { limit: 10 },
         };
 
@@ -867,9 +901,9 @@ describe('renderChartConfig', () => {
     });
 
     describe('count', () => {
-      it('should generate a count query without grouping or time bucketing', async () => {
+      it('should generate a whole-range count query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -903,6 +937,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -2239,6 +2281,35 @@ describe('renderChartConfig', () => {
         `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
       );
     });
+
+    it.each(['Date32', 'Nullable(Date)', 'LowCardinality(Date)'])(
+      'wraps a %s column in toDate() and keeps the bounds inclusive',
+      async type => {
+        mockMetadata.getColumn.mockImplementation(
+          async () => ({ type }) as ColumnMeta,
+        );
+
+        const dateRange: [Date, Date] = [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ];
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'date',
+          dateRangeEndInclusive: false,
+          dateRangeStartInclusive: false,
+          dateRange,
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
+        );
+      },
+    );
   });
 
   it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {
@@ -3369,6 +3440,51 @@ describe('renderChartConfig', () => {
       // WHERE clause should still reference both columns for partition pruning.
       expect(sql).toContain('EventDate');
       expect(sql).toContain('EventTime');
+    });
+
+    it('picks the DateTime token when its type carries a timezone', async () => {
+      mockMetadata.getColumn = jest
+        .fn()
+        .mockImplementation(async ({ column }: { column: string }) => {
+          if (column === 'EventDate')
+            return { name: 'EventDate', type: 'Date' };
+          if (column === 'EventTime')
+            return { name: 'EventTime', type: "DateTime('UTC')" };
+          return undefined;
+        });
+
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'logs' },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'EventDate, EventTime',
+        dateRange: [
+          new Date('2026-05-27T00:00:00Z'),
+          new Date('2026-05-27T12:00:00Z'),
+        ],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generated = await renderChartConfig(
+        config,
+        mockMetadata,
+        undefined,
+      );
+      const sql = parameterizedQueryToSql(generated);
+
+      expect(sql).toContain('toStartOfInterval(toDateTime(EventTime),');
+      expect(sql).not.toContain('toStartOfInterval(toDateTime(EventDate),');
     });
 
     it('all-Date input falls back to the first token (and warns)', async () => {

@@ -12,6 +12,10 @@ import {
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  FilterState,
+  serializeFilterState,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
@@ -233,8 +237,13 @@ export function useMultipleAllFields(
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, timestampValueExpression, intersect, ...queryOptions } =
-    options ?? {};
+  const {
+    dateRange,
+    timestampValueExpression,
+    intersect,
+    enabled: enabledOption = true,
+    ...queryOptions
+  } = options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
@@ -273,13 +282,14 @@ export function useMultipleAllFields(
         ? intersect2dArray<Field>(fields2d)
         : deduplicate2dArray<Field>(fields2d);
     },
+    ...queryOptions,
     enabled:
+      enabledOption &&
       tableConnections.length > 0 &&
       tableConnections.every(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...queryOptions,
   });
 }
 
@@ -331,6 +341,7 @@ export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode = 'exact',
@@ -340,6 +351,8 @@ export function useMultipleGetKeyValues(
       | BuilderChartConfigWithDateRange
       | BuilderChartConfigWithDateRange[];
     keys: string[];
+    /** Per-key constraints for faceted ('exact' mode) value lookups. */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -365,6 +378,9 @@ export function useMultipleGetKeyValues(
       metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      // Serialized: react-query hashes keys with JSON.stringify, which would
+      // flatten every distinct Set selection to `{}`.
+      keyConditions?.map(c => c && serializeFilterState(c)),
       disableRowLimit,
       maxKeys,
     ],
@@ -392,6 +408,7 @@ export function useMultipleGetKeyValues(
           databaseName,
           tableName,
           keyExpressions: keys.slice(0, maxKeys),
+          maxValuesPerKey: 20,
           connectionId,
           metadataMVs,
           dateRange,
@@ -410,6 +427,7 @@ export function useMultipleGetKeyValues(
             return metadata.getKeyValuesWithMVs({
               chartConfig,
               keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
               limit,
               disableRowLimit,
               source,
@@ -470,6 +488,7 @@ export function useGetKeyValues(
   {
     chartConfig,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode,
@@ -477,6 +496,8 @@ export function useGetKeyValues(
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key constraints for faceted value lookups (groupUniqArrayIf). */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -488,6 +509,7 @@ export function useGetKeyValues(
     {
       chartConfigs: chartConfig ? [chartConfig] : [],
       keys,
+      keyConditions,
       limit,
       disableRowLimit,
       mode,
@@ -495,75 +517,6 @@ export function useGetKeyValues(
     },
     options,
   );
-}
-
-/**
- * Combined key + value discovery in a single rollup query.
- * Returns all fields and their top N values without needing a separate
- * useAllFields + useGetKeyValues chain.
- */
-export function useAllFieldsAndValues(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-    metadataMVs,
-    dateRange,
-    maxValuesPerKey,
-    maxKeys,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange?: [Date, Date];
-    maxValuesPerKey?: number;
-    maxKeys?: number;
-  },
-  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
-) {
-  const metadata = useMetadataWithSettings();
-  const { data: me } = api.useMe();
-  const { enabled = true } = options || {};
-  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
-
-  return useQuery<Facet[]>({
-    queryKey: [
-      'useMetadata.useAllFieldsAndValues',
-      databaseName,
-      tableName,
-      connectionId,
-      metadataMVs,
-      dateRange?.[0]?.getTime(),
-      dateRange?.[1]?.getTime(),
-      maxValuesPerKey,
-      maxKeys,
-    ],
-    queryFn: async ({ signal }) => {
-      if (fieldMetadataDisabled) {
-        return [];
-      }
-      return metadata.getAllFieldsAndValues({
-        databaseName,
-        tableName,
-        connectionId,
-        metadataMVs,
-        dateRange,
-        maxValuesPerKey,
-        maxKeys,
-        signal,
-      });
-    },
-    staleTime: 1000 * 60 * 5,
-    placeholderData: keepPreviousData,
-    ...options,
-    enabled:
-      !!enabled &&
-      !fieldMetadataDisabled &&
-      !!databaseName &&
-      !!tableName &&
-      !!connectionId,
-  });
 }
 
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {

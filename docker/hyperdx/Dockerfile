@@ -86,6 +86,11 @@ COPY --from=app ./pages ./packages/app/pages
 COPY --from=app ./public ./packages/app/public
 COPY --from=app ./styles ./packages/app/styles
 COPY --from=app ./types ./packages/app/types
+# next.config.mjs copies the repo-root CHANGELOG.md into public/ so the in-app
+# changelog viewer can fetch it; the build fails loudly if it is missing (see
+# next.config.mjs). WORKDIR is /app, and next.config resolves it as
+# /app/packages/app/../../CHANGELOG.md.
+COPY ./CHANGELOG.md ./CHANGELOG.md
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_STANDALONE=true

@@ -1,4 +1,8 @@
-import { hasMacro, replaceMacros } from '@/macros';
+import {
+  getSourceDependentMacrosUsed,
+  hasMacro,
+  replaceMacros,
+} from '@/macros';
 import type { MetricTable } from '@/types';
 
 const ALL_METRIC_TABLES: MetricTable = {
@@ -24,6 +28,34 @@ describe('hasMacro', () => {
 
   it('detects macros that take arguments', () => {
     expect(hasMacro('WHERE $__timeFilter(ts)', 'timeFilter')).toBe(true);
+  });
+});
+
+describe('getSourceDependentMacrosUsed', () => {
+  it('returns an empty array when no source-dependent macros are used', () => {
+    expect(
+      getSourceDependentMacrosUsed('SELECT * WHERE $__timeFilter(ts)'),
+    ).toEqual([]);
+  });
+
+  it('detects $__filters', () => {
+    expect(getSourceDependentMacrosUsed('SELECT * WHERE $__filters')).toEqual([
+      'filters',
+    ]);
+  });
+
+  it('detects $__sourceTable', () => {
+    expect(
+      getSourceDependentMacrosUsed('SELECT * FROM $__sourceTable'),
+    ).toEqual(['sourceTable']);
+  });
+
+  it('detects both when used together', () => {
+    expect(
+      getSourceDependentMacrosUsed(
+        'SELECT * FROM $__sourceTable WHERE $__filters',
+      ),
+    ).toEqual(['filters', 'sourceTable']);
   });
 });
 

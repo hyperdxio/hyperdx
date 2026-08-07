@@ -1,6 +1,6 @@
 import { getScenario } from '@/scenarios';
 
-import type { ProgrammaticCheck, Rubric } from './types';
+import type { AdoptionCheck, ProgrammaticCheck, Rubric } from './types';
 
 export function loadScenarioRubric(scenarioName: string): Rubric {
   const scenario = getScenario(scenarioName);
@@ -56,6 +56,62 @@ function hydrateCheck(entry: unknown, scenarioName: string): ProgrammaticCheck {
   return entry as ProgrammaticCheck;
 }
 
+/**
+ * Validate an `adoption` check entry. Unlike programmatic checks these are
+ * NOT regex tuples: each entry is an object declaring the target metric
+ * names/keys the tool-call args must contain (see {@link AdoptionCheck}).
+ * `alsoPattern` is compiled eagerly so a bad regex fails at rubric load, not
+ * mid-grade.
+ */
+function validateAdoptionCheck(
+  entry: unknown,
+  scenarioName: string,
+): AdoptionCheck {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(
+      `rubric.adoption for '${scenarioName}': each check must be an object ` +
+        `{ id, weight, metrics[], alsoPattern? } — tuples/patterns are not supported`,
+    );
+  }
+  const check = entry as Record<string, unknown>;
+  if (typeof check.id !== 'string') {
+    throw new Error(
+      `rubric.adoption for '${scenarioName}': each check needs a string 'id'`,
+    );
+  }
+  if (typeof check.weight !== 'number' || check.weight <= 0) {
+    throw new Error(
+      `rubric.adoption for '${scenarioName}': check '${check.id}' weight must be a positive number`,
+    );
+  }
+  if (
+    !Array.isArray(check.metrics) ||
+    check.metrics.length === 0 ||
+    check.metrics.some(m => typeof m !== 'string' || m.length === 0)
+  ) {
+    throw new Error(
+      `rubric.adoption for '${scenarioName}': check '${check.id}' needs a non-empty 'metrics' string array`,
+    );
+  }
+  if (check.alsoPattern !== undefined) {
+    if (typeof check.alsoPattern !== 'string') {
+      throw new Error(
+        `rubric.adoption for '${scenarioName}': check '${check.id}' alsoPattern must be a string`,
+      );
+    }
+    try {
+      new RegExp(check.alsoPattern, 'i');
+    } catch (err) {
+      throw new Error(
+        `rubric.adoption for '${scenarioName}': check '${check.id}' alsoPattern is not a valid regex: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  return entry as AdoptionCheck;
+}
+
 function validateRubric(raw: unknown, scenarioName: string): Rubric {
   if (!raw || typeof raw !== 'object') {
     throw new Error(`rubric for '${scenarioName}' must be an object`);
@@ -69,6 +125,20 @@ function validateRubric(raw: unknown, scenarioName: string): Rubric {
   const programmatic = (obj.programmatic as unknown[]).map(c =>
     hydrateCheck(c, scenarioName),
   );
+
+  // Optional metric-adoption checks: declared target metric keys matched
+  // against tool-call args (never tool names/outputs). Absent ⇒ scenario has
+  // no adoption grading.
+  let adoption: AdoptionCheck[] | undefined;
+  if (obj.adoption !== undefined) {
+    if (!Array.isArray(obj.adoption)) {
+      throw new Error(`rubric.adoption for '${scenarioName}' must be an array`);
+    }
+    adoption = (obj.adoption as unknown[]).map(c =>
+      validateAdoptionCheck(c, scenarioName),
+    );
+  }
+
   const judge = obj.judge as { criteria?: unknown } | undefined;
   if (!judge || !Array.isArray(judge.criteria) || judge.criteria.length === 0) {
     throw new Error(
@@ -93,5 +163,9 @@ function validateRubric(raw: unknown, scenarioName: string): Rubric {
       );
     }
   }
-  return { programmatic, judge: judge as Rubric['judge'] };
+  return {
+    programmatic,
+    judge: judge as Rubric['judge'],
+    ...(adoption ? { adoption } : {}),
+  };
 }

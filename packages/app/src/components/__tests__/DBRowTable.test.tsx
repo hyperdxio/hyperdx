@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -194,6 +194,81 @@ describe('RawLogTable', () => {
       const headers = container.querySelectorAll('th');
       expect(headers).toHaveLength(2);
       expect((headers[0] as HTMLElement).style.width).not.toBe('250px');
+    });
+  });
+
+  describe('Error state', () => {
+    const paginationProps = {
+      displayedColumns: ['col1'],
+      rows: [] as Record<string, any>[],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: true,
+      onRowDetailsClick: () => {},
+      generateRowId: () => mockRowWhereResult,
+      columnTypeMap: new Map(),
+    };
+
+    it('should not request another page while the query is in an error state', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable
+          {...paginationProps}
+          isError
+          error={new Error('Timeout exceeded')}
+          fetchNextPage={fetchNextPage}
+        />,
+      );
+
+      expect(await screen.findByTestId('chart-error-state')).toBeTruthy();
+      expect(fetchNextPage).not.toHaveBeenCalled();
+    });
+
+    it('should still request another page when there is no error', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable {...paginationProps} fetchNextPage={fetchNextPage} />,
+      );
+
+      await waitFor(() => expect(fetchNextPage).toHaveBeenCalled());
+    });
+
+    // Looking for a highlighted row that has not been loaded yet also advances
+    // pages. Both auto-advance paths are active in jsdom, so these two cases
+    // pin the highlighted-line guard alongside the scroll one.
+    it('should not look for a highlighted row while the query is in an error state', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable
+          {...paginationProps}
+          rows={[{ col1: 'value1' }]}
+          highlightedLineId="a-row-that-is-not-loaded"
+          isError
+          error={new Error('Timeout exceeded')}
+          fetchNextPage={fetchNextPage}
+        />,
+      );
+
+      expect(await screen.findByTestId('chart-error-state')).toBeTruthy();
+      expect(fetchNextPage).not.toHaveBeenCalled();
+    });
+
+    it('should look for a highlighted row when there is no error', async () => {
+      const fetchNextPage = jest.fn();
+
+      renderWithMantine(
+        <RawLogTable
+          {...paginationProps}
+          rows={[{ col1: 'value1' }]}
+          highlightedLineId="a-row-that-is-not-loaded"
+          fetchNextPage={fetchNextPage}
+        />,
+      );
+
+      await waitFor(() => expect(fetchNextPage).toHaveBeenCalled());
     });
   });
 });

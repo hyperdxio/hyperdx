@@ -178,6 +178,8 @@ jobs:
           target: all-in-one-noauth
           platforms: linux/amd64
           push: false
+          load: true
+          tags: hyperdx-aio-smoke:pr
           build-contexts: |
             clickhouse=./docker/clickhouse
             otel-collector=./docker/otel-collector
@@ -189,3 +191,11 @@ jobs:
           cache-from: |
             type=gha,scope=all-in-one-nightly-amd64
             type=gha,scope=docker-build-pr-all-in-one
+      # Boot the freshly built Local image and push one OTLP log end-to-end into
+      # ClickHouse. Proves the artefact we ship actually runs, not just builds.
+      - name: Smoke test the built image
+        if:
+          steps.changed-files.outputs.any_changed == 'true' || github.event_name
+          == 'workflow_dispatch'
+        timeout-minutes: 10
+        run: scripts/ci/smoke-all-in-one.sh hyperdx-aio-smoke:pr

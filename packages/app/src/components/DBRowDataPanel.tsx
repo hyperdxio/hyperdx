@@ -17,10 +17,13 @@ import {
   getEventBody,
 } from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
+import { getTimestampValueSelects } from '@/utils/rowTimestamps';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { getActiveInfraCorrelations } from './infraCorrelations';
 
+// The source's own `timestampValueExpression` columns are projected too, under
+// the `__hdx_timestamp_value_<i>` aliases owned by `@/utils/rowTimestamps`.
 export enum ROW_DATA_ALIASES {
   TIMESTAMP = '__hdx_timestamp',
   BODY = '__hdx_body',
@@ -34,18 +37,32 @@ export enum ROW_DATA_ALIASES {
   SPAN_EVENTS = '__hdx_span_events',
   DURATION_MS = '__hdx_duration_ms',
   SPAN_KIND = '__hdx_span_kind',
+  SPAN_LINKS = '__hdx_span_links',
 }
 
 export function useRowData({
   source,
   rowId,
   aliasWith,
+  dateRange,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  /**
+   * Optional window to bound the lookup by. Applied against the source's
+   * `timestampValueExpression` (not the displayed timestamp), so a row id that
+   * carries no timestamp of its own — e.g. the `TraceId`/`SpanId` pair "View
+   * Trace" synthesizes — can still prune parts instead of scanning the table.
+   * Callers must memoize the tuple; it participates in the query key.
+   */
+  dateRange?: [Date, Date];
 }) {
   const eventBodyExpr = getEventBody(source);
+
+  const timestampValueExpr = source.timestampValueExpression?.trim()
+    ? source.timestampValueExpression
+    : undefined;
 
   const searchedTraceIdExpr =
     isLogSource(source) || isTraceSource(source)
@@ -78,116 +95,164 @@ export function useRowData({
       ? source.knownColumnsListExpression?.trim()
       : undefined;
 
-  const queryResult = useQueriedChartConfig(
+  const baseConfig = {
+    connection: source.connection,
+    select: [
+      {
+        valueExpression: knownColumns || '*',
+      },
+      {
+        valueExpression: getDisplayedTimestampValueExpression(source),
+        alias: ROW_DATA_ALIASES.TIMESTAMP,
+      },
+      ...getTimestampValueSelects(timestampValueExpr),
+      ...(eventBodyExpr
+        ? [
+            {
+              valueExpression: eventBodyExpr,
+              alias: ROW_DATA_ALIASES.BODY,
+            },
+          ]
+        : []),
+      ...(searchedTraceIdExpr
+        ? [
+            {
+              valueExpression: searchedTraceIdExpr,
+              alias: ROW_DATA_ALIASES.TRACE_ID,
+            },
+          ]
+        : []),
+      ...(searchedSpanIdExpr
+        ? [
+            {
+              valueExpression: searchedSpanIdExpr,
+              alias: ROW_DATA_ALIASES.SPAN_ID,
+            },
+          ]
+        : []),
+      ...(severityTextExpr
+        ? [
+            {
+              valueExpression: severityTextExpr,
+              alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
+            },
+          ]
+        : []),
+      ...((isLogSource(source) || isTraceSource(source)) &&
+      source.serviceNameExpression
+        ? [
+            {
+              valueExpression: source.serviceNameExpression,
+              alias: ROW_DATA_ALIASES.SERVICE_NAME,
+            },
+          ]
+        : []),
+      ...('resourceAttributesExpression' in source &&
+      source.resourceAttributesExpression
+        ? [
+            {
+              valueExpression: source.resourceAttributesExpression,
+              alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
+            },
+          ]
+        : []),
+      ...((isLogSource(source) || isTraceSource(source)) &&
+      source.eventAttributesExpression
+        ? [
+            {
+              valueExpression: source.eventAttributesExpression,
+              alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
+        ? [
+            {
+              valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
+              alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
+            },
+            {
+              valueExpression: source.spanEventsValueExpression,
+              alias: ROW_DATA_ALIASES.SPAN_EVENTS,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.durationExpression
+        ? [
+            {
+              valueExpression: getDurationMsExpression(source),
+              alias: ROW_DATA_ALIASES.DURATION_MS,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.spanKindExpression
+        ? [
+            {
+              valueExpression: source.spanKindExpression,
+              alias: ROW_DATA_ALIASES.SPAN_KIND,
+            },
+          ]
+        : []),
+      ...(source.kind === SourceKind.Trace && source.spanLinksValueExpression
+        ? [
+            {
+              valueExpression: source.spanLinksValueExpression,
+              alias: ROW_DATA_ALIASES.SPAN_LINKS,
+            },
+          ]
+        : []),
+      ...selectHighlightedRowAttributes,
+    ],
+    where: rowId ?? '0=1',
+    from: source.from,
+    limit: { limit: 1 },
+    ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
+  };
+
+  const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
+  // Both halves of the filter are needed for `renderChartConfig` to emit one, so
+  // a source with no usable timestamp expression can't be bounded at all.
+  const hasWindow = dateRange != null && timestampValueExpr != null;
+
+  const boundedResult = useQueriedChartConfig(
     {
-      connection: source.connection,
-      select: [
-        {
-          valueExpression: knownColumns || '*',
-        },
-        {
-          valueExpression: getDisplayedTimestampValueExpression(source),
-          alias: ROW_DATA_ALIASES.TIMESTAMP,
-        },
-        ...(eventBodyExpr
-          ? [
-              {
-                valueExpression: eventBodyExpr,
-                alias: ROW_DATA_ALIASES.BODY,
-              },
-            ]
-          : []),
-        ...(searchedTraceIdExpr
-          ? [
-              {
-                valueExpression: searchedTraceIdExpr,
-                alias: ROW_DATA_ALIASES.TRACE_ID,
-              },
-            ]
-          : []),
-        ...(searchedSpanIdExpr
-          ? [
-              {
-                valueExpression: searchedSpanIdExpr,
-                alias: ROW_DATA_ALIASES.SPAN_ID,
-              },
-            ]
-          : []),
-        ...(severityTextExpr
-          ? [
-              {
-                valueExpression: severityTextExpr,
-                alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
-              },
-            ]
-          : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.serviceNameExpression
-          ? [
-              {
-                valueExpression: source.serviceNameExpression,
-                alias: ROW_DATA_ALIASES.SERVICE_NAME,
-              },
-            ]
-          : []),
-        ...('resourceAttributesExpression' in source &&
-        source.resourceAttributesExpression
-          ? [
-              {
-                valueExpression: source.resourceAttributesExpression,
-                alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
-              },
-            ]
-          : []),
-        ...((isLogSource(source) || isTraceSource(source)) &&
-        source.eventAttributesExpression
-          ? [
-              {
-                valueExpression: source.eventAttributesExpression,
-                alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
-          ? [
-              {
-                valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
-                alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
-              },
-              {
-                valueExpression: source.spanEventsValueExpression,
-                alias: ROW_DATA_ALIASES.SPAN_EVENTS,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.durationExpression
-          ? [
-              {
-                valueExpression: getDurationMsExpression(source),
-                alias: ROW_DATA_ALIASES.DURATION_MS,
-              },
-            ]
-          : []),
-        ...(source.kind === SourceKind.Trace && source.spanKindExpression
-          ? [
-              {
-                valueExpression: source.spanKindExpression,
-                alias: ROW_DATA_ALIASES.SPAN_KIND,
-              },
-            ]
-          : []),
-        ...selectHighlightedRowAttributes,
-      ],
-      where: rowId ?? '0=1',
-      from: source.from,
-      limit: { limit: 1 },
-      ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
+      ...baseConfig,
+      ...(hasWindow
+        ? { dateRange, timestampValueExpression: timestampValueExpr }
+        : {}),
     },
     {
-      queryKey: ['row_side_panel', rowId, aliasWith, source],
-      enabled: rowId != null,
+      queryKey: [...baseQueryKey, dateRange],
+      enabled: rowId != null && hasWindow,
     },
   );
+
+  // The window may be derived from a *different* row than the one we're
+  // looking for (eg. looking up a span based on a log's timestamp). If the
+  // window excludes the row, the bounded query returns zero rows.
+  const isBoundedEmpty =
+    hasWindow &&
+    boundedResult.isSuccess &&
+    boundedResult.data?.isComplete !== false && // Defensive check against chunked queries
+    boundedResult.data?.data?.length === 0;
+
+  const isFallbackActive = !hasWindow || isBoundedEmpty;
+
+  // Key is identical to the unbounded config so this shares cache entries
+  // with the call sites that never pass a `dateRange`, letting the retry
+  // often resolve from cache instead of scanning.
+  const fallbackResult = useQueriedChartConfig(baseConfig, {
+    queryKey: [...baseQueryKey, undefined],
+    enabled: rowId != null && isFallbackActive,
+  });
+
+  const queryResult = isFallbackActive ? fallbackResult : boundedResult;
+
+  // The bounded result is known-empty by the time the retry is enabled, so
+  // report loading until it settles rather than briefly claiming the row is
+  // absent.
+  const isLoading =
+    queryResult.isLoading || (isBoundedEmpty && queryResult.isPending);
 
   // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
   const normalizedData = useMemo(() => {
@@ -219,6 +284,7 @@ export function useRowData({
   return {
     ...queryResult,
     data: normalizedData,
+    isLoading,
   };
 }
 
@@ -279,14 +345,20 @@ export function RowDataPanel({
   source,
   rowId,
   aliasWith,
+  dateRange,
+  flush = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  dateRange?: [Date, Date];
+  // When true, drop the horizontal margin so content aligns flush with
+  // surrounding chrome (e.g. the tab bar in the trace span detail panel).
+  flush?: boolean;
   'data-testid'?: string;
 }) {
-  const { data } = useRowData({ source, rowId, aliasWith });
+  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
@@ -301,7 +373,7 @@ export function RowDataPanel({
 
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
-      <Box mx="md" my="sm">
+      <Box mx={flush ? 0 : 'md'} my="sm">
         <DBRowJsonViewer
           data={firstRow}
           jsonColumns={jsonColumns}

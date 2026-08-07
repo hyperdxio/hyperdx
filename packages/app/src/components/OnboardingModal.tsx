@@ -134,6 +134,7 @@ async function addOtelDemoSources({
       statusCodeExpression: 'StatusCode',
       statusMessageExpression: 'StatusMessage',
       spanEventsValueExpression: 'Events',
+      spanLinksValueExpression: 'Links',
       highlightedTraceAttributeExpressions:
         traceSourceHighlightedTraceAttributes,
       materializedViews: traceSourceMaterializedViews,

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { add } from 'date-fns';
@@ -35,6 +36,7 @@ import {
 } from '@mantine/core';
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
+import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -49,6 +51,10 @@ import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import {
+  getRowLookupWindow,
+  resolveRowTimestampAnchor,
+} from '@/utils/rowTimestamps';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -73,6 +79,8 @@ import {
 } from './DrawerUtils';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
+import { SpanLinkData } from './SpanLinksSubpanel';
+import { ViewTraceCalloutButton } from './ViewTraceCalloutButton';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -103,9 +111,33 @@ export type RowSidePanelContextProps = {
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
   source?: TLogSource | TTraceSource;
+  onOpenLinkedTrace?: (link: SpanLinkData) => void;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
+
+// Derives the context for rows rendered from `source`, which may differ from
+// the source the surrounding search context was built for (e.g. a log event
+// opened from a trace waterfall, or a span-link hop into another source's row).
+export function deriveRowSidePanelContextForSource(
+  parentContext: RowSidePanelContextProps,
+  source: TSource,
+): RowSidePanelContextProps {
+  const { generateSearchUrl } = parentContext;
+  const sameSource =
+    parentContext.source == null || parentContext.source.id === source.id;
+  return {
+    ...parentContext,
+    generateSearchUrl: generateSearchUrl
+      ? args => generateSearchUrl({ ...args, source: args.source ?? source })
+      : undefined,
+    onPropertyAddClick: sameSource
+      ? parentContext.onPropertyAddClick
+      : undefined,
+    displayedColumns: sameSource ? parentContext.displayedColumns : undefined,
+    toggleColumn: sameSource ? parentContext.toggleColumn : undefined,
+  };
+}
 
 function SidePanelHeaderActions({
   onClose,
@@ -201,6 +233,10 @@ type DBRowSidePanelProps = {
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
+  // Clicking outside the drawer (and outside `keepOpenSelector`) closes it.
+  // Enabled by default; pass `false` to opt out.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 };
 
 type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
@@ -227,6 +263,7 @@ export const DBRowSidePanelInner = ({
     sourceStack,
     navStack,
     tab: persistedTab,
+    preferredTab,
     pushSource,
     pushNav,
     popOne,
@@ -269,6 +306,23 @@ export const DBRowSidePanelInner = ({
   const activeRowId = skipRowQuery ? undefined : resolvedRowId;
   const activeAliasWith = skipRowQuery ? undefined : resolvedAliasWith;
 
+  // A cross-source frame's row id is synthesized from ids alone ("View Trace"
+  // builds `TraceId = … AND SpanId = …`), so on its own the lookup has no
+  // timestamp predicate and scans every part. When the pushing panel stamped
+  // the origin row's timestamp onto the frame, bound the lookup to a window
+  // around it. `useRowData` retries unbounded if that window misses.
+  const frameFocusTimestamp = activeSourceFrame?.focusTimestamp;
+  const frameDateRange = useMemo<[Date, Date] | undefined>(
+    () =>
+      // Nav entries carry a full row id (timestamp included), so their lookups
+      // are already bounded and must not be narrowed by the frame's window —
+      // surrounding context can walk arbitrarily far from the frame's anchor.
+      leafNav != null ? undefined : getRowLookupWindow(frameFocusTimestamp),
+    [leafNav, frameFocusTimestamp],
+  );
+
+  const activeDateRange = skipRowQuery ? undefined : frameDateRange;
+
   const {
     data: rowData,
     isLoading: isRowLoading,
@@ -279,6 +333,7 @@ export const DBRowSidePanelInner = ({
     source,
     rowId: activeRowId,
     aliasWith: activeAliasWith,
+    dateRange: activeDateRange,
   });
 
   const hasActiveStacks = activeSourceFrame != null || leafNav != null;
@@ -323,11 +378,16 @@ export const DBRowSidePanelInner = ({
       label: string,
       sourceKind?: SourceKind,
     ) => {
-      // Same-source drilldown (e.g. surrounding context) → jump to this
-      // source's default tab.
-      pushNav({ rowId, aliasWith, label, sourceKind }, defaultTab);
+      // Same-source drilldown (e.g. picking a neighbour out of surrounding
+      // context) changes which row is shown, not which view of it, so keep the
+      // reader in their remembered view. reconcileTab drops it if the
+      // destination doesn't offer that tab.
+      pushNav(
+        { rowId, aliasWith, label, sourceKind },
+        preferredTab ?? defaultTab,
+      );
     },
-    [pushNav, defaultTab],
+    [pushNav, preferredTab, defaultTab],
   );
 
   const handleSourceStackPush = useCallback(
@@ -381,6 +441,17 @@ export const DBRowSidePanelInner = ({
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
 
+  // Owns the View Trace nudge's auto-open latch. Kept here (above the loading
+  // gate that unmounts the row content on every navigation) so the one-time
+  // callout doesn't reset and re-open as the user pages between rows. Resets
+  // when the panel closes and this component unmounts.
+  const [viewTraceCalloutAutoOpened, setViewTraceCalloutAutoOpened] =
+    useState(false);
+  const handleViewTraceCalloutAutoOpen = useCallback(
+    () => setViewTraceCalloutAutoOpened(true),
+    [],
+  );
+
   // Capture the root event body once for the root breadcrumb label.
   const [initialMainContent, setInitialMainContent] = useState<
     string | undefined
@@ -392,6 +463,24 @@ export const DBRowSidePanelInner = ({
       setInitialMainContent(mainContent);
     }
   }, [mainContent, initialMainContent, hasActiveStacks]);
+
+  // Once the hop's row loads we learn the landed span name and use it as the crumb label.
+  const spanLinkFrameRowIdsRef = useRef<Set<string>>(new Set());
+  const [resolvedFrameLabels, setResolvedFrameLabels] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    if (
+      activeRowId != null &&
+      mainContent != null &&
+      spanLinkFrameRowIdsRef.current.has(activeRowId) &&
+      resolvedFrameLabels[activeRowId] !== mainContent
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setResolvedFrameLabels(prev => ({ ...prev, [activeRowId]: mainContent }));
+    }
+  }, [activeRowId, mainContent, resolvedFrameLabels]);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions: NonNullable<
@@ -476,6 +565,22 @@ export const DBRowSidePanelInner = ({
       ? traceSourceData.spanIdExpression
       : undefined;
 
+  // The current row's own timestamp, read from the source's
+  // `timestampValueExpression` rather than the displayed expression (which
+  // may not be in the ordering key). Undefined when the source exposes no
+  // better-than-day precision, so a composite `"EventDate, EventTime"` can't
+  // anchor a window on `EventDate`'s midnight.
+  const rowMeta = rowData?.meta;
+  const rowFocusTimestamp = useMemo(
+    () =>
+      resolveRowTimestampAnchor({
+        timestampValueExpression: source.timestampValueExpression,
+        row: normalizedRow,
+        meta: rowMeta,
+      })?.toISOString(),
+    [source.timestampValueExpression, normalizedRow, rowMeta],
+  );
+
   const traceSpanRowId = useMemo(() => {
     const clauses: string[] = [];
     if (traceIdExpression && traceId) {
@@ -504,6 +609,49 @@ export const DBRowSidePanelInner = ({
       }
     },
     [traceSourceData, handleSourceStackPush, mainContent],
+  );
+
+  // "Open trace" on a span link: the link carries only the linked span's
+  // TraceId + SpanId, so resolve it against the current trace source.
+  const handleOpenLinkedTrace = useCallback(
+    (link: SpanLinkData) => {
+      if (!traceSourceData || !traceIdExpression || !spanIdExpression) {
+        return;
+      }
+      const rowId = [
+        SqlString.format('?=?', [
+          SqlString.raw(traceIdExpression),
+          link.TraceId,
+        ]),
+        SqlString.format('?=?', [SqlString.raw(spanIdExpression), link.SpanId]),
+      ].join(' AND ');
+      // Mark this frame so its breadcrumb switches from the `Trace <id>`
+      // fallback below to the landed span name once the row loads.
+      spanLinkFrameRowIdsRef.current.add(rowId);
+      handleSourceStackPush({
+        sourceId: traceSourceData.id,
+        rowId,
+        label: `Trace ${link.TraceId.slice(0, 8)}`,
+        sourceKind: traceSourceData.kind as SourceKind,
+        aliasWith: [],
+      });
+    },
+    [
+      traceSourceData,
+      traceIdExpression,
+      spanIdExpression,
+      handleSourceStackPush,
+    ],
+  );
+
+  const rowSidePanelContextValue = useMemo(
+    () => ({
+      // The displayed row belongs to the resolved leaf source, which can
+      // differ from the searched source after a cross-source hop.
+      ...deriveRowSidePanelContextForSource(parentContext, source),
+      onOpenLinkedTrace: handleOpenLinkedTrace,
+    }),
+    [parentContext, handleOpenLinkedTrace, source],
   );
 
   const { rumSessionId, rumServiceName } = useSessionId({
@@ -569,7 +717,9 @@ export const DBRowSidePanelInner = ({
       const isLeafSource = i === crumbSourceStack.length - 1;
       const isCurrent = isLeafSource && crumbNavStack.length === 0;
       items.push({
-        label: entry.label,
+        // Span-link hops resolve to the landed span name once loaded; every
+        // other frame keeps the label it was pushed with.
+        label: resolvedFrameLabels[entry.rowId] ?? entry.label,
         sourceKind: entry.sourceKind,
         onClick: isCurrent
           ? undefined
@@ -603,6 +753,7 @@ export const DBRowSidePanelInner = ({
     sourceIsTrace,
     mainContent,
     initialMainContent,
+    resolvedFrameLabels,
     source.kind,
     handleBreadcrumbNavigation,
     parentBreadcrumbs,
@@ -693,7 +844,7 @@ export const DBRowSidePanelInner = ({
   const showLogTraceActions = !sourceIsTrace && traceId && traceSourceId;
 
   return (
-    <>
+    <RowSidePanelContext value={rowSidePanelContextValue}>
       <Box px="sm" pt="sm" pb="xs">
         {controls}
         <Group gap="xs" wrap="wrap">
@@ -792,11 +943,11 @@ export const DBRowSidePanelInner = ({
             </>
           )}
           {showLogTraceActions && (
-            <Button
-              data-testid="side-panel-view-trace"
-              variant="subtle"
-              size="compact-xs"
-              onClick={() => {
+            <ViewTraceCalloutButton
+              disabled={!traceSourceData || !traceSpanRowId}
+              autoOpened={viewTraceCalloutAutoOpened}
+              onAutoOpen={handleViewTraceCalloutAutoOpen}
+              onView={() => {
                 if (traceSourceData && traceSpanRowId) {
                   handleSourceStackPush({
                     sourceId: traceSourceData.id,
@@ -804,13 +955,11 @@ export const DBRowSidePanelInner = ({
                     label: mainContent || 'Log',
                     sourceKind: traceSourceData.kind as SourceKind,
                     aliasWith: [],
+                    focusTimestamp: rowFocusTimestamp,
                   });
                 }
               }}
-              disabled={!traceSourceData || !traceSpanRowId}
-            >
-              View Trace →
-            </Button>
+            />
           )}
         </Group>
         <DBRowSidePanelHeader
@@ -897,6 +1046,7 @@ export const DBRowSidePanelInner = ({
             source={source}
             rowId={activeRowId}
             aliasWith={activeAliasWith}
+            dateRange={activeDateRange}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -961,6 +1111,7 @@ export const DBRowSidePanelInner = ({
             source={source}
             rowId={activeRowId}
             aliasWith={activeAliasWith}
+            dateRange={activeDateRange}
           />
         </ErrorBoundary>
       )}
@@ -1031,7 +1182,7 @@ export const DBRowSidePanelInner = ({
           </Box>
         </ErrorBoundary>
       )}
-    </>
+    </RowSidePanelContext>
   );
 };
 
@@ -1067,6 +1218,8 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
+  closeOnClickOutside = true,
+  keepOpenSelector,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -1092,6 +1245,20 @@ export default function DBRowSidePanelErrorBoundary({
     clearTraceWaterfallSearchState();
     onClose();
   }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+
+  useCloseOnClickOutside({
+    // Only close on outside click at the root level. When the user has
+    // navigated deeper (e.g. log row -> trace), Esc pops one level at a time
+    // via handlePanelBack; an outside click should not skip those levels and
+    // close the drawer entirely.
+    enabled:
+      closeOnClickOutside &&
+      rowId != null &&
+      sidePanelStack.sourceStack.length === 0 &&
+      sidePanelStack.navStack.length === 0,
+    keepOpenSelector,
+    onClose: _onClose,
+  });
 
   return (
     <Drawer

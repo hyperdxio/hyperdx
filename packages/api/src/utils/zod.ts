@@ -268,6 +268,7 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    seriesLimit: z.number().int().positive().optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -282,6 +283,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
 const externalDashboardBarChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('stacked_bar'),
+    seriesLimit: z.number().int().positive().optional(),
   });
 
 const externalDashboardBarRawSqlChartConfigSchema =
@@ -648,7 +650,7 @@ const zChannel = z.object({
 
 const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
-  groupBy: z.string().optional(),
+  groupBy: z.string().nullish(),
   savedSearchId: z.string().min(1),
 });
 

@@ -83,6 +83,7 @@ import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
+import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
@@ -156,6 +157,10 @@ export default function EditTimeChartForm({
     control,
     setValue,
     getValues,
+    // The callback form of `watch` is used to subscribe to field changes
+    // (without re-rendering) in useBuilderToSqlConversion; useWatch can't do this.
+    // eslint-disable-next-line react-hook-form/no-use-watch
+    watch,
     handleSubmit,
     register,
     setError,
@@ -229,6 +234,15 @@ export default function EditTimeChartForm({
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
 
+  // Carry the builder config over as a SQL template when switching to SQL mode
+  useBuilderToSqlConversion({
+    control,
+    getValues,
+    setValue,
+    watch,
+    tableSource,
+  });
+
   const activeTab = displayTypeToActiveTab(displayType);
 
   // When switching display types, remove the alert if the new display type doesn't support alerts
@@ -257,6 +271,7 @@ export default function EditTimeChartForm({
     fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    alternateRowBackground,
     seriesLimit,
     color,
     colorRules,
@@ -270,6 +285,7 @@ export default function EditTimeChartForm({
       'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'alternateRowBackground',
       'seriesLimit',
       'color',
       'colorRules',
@@ -299,6 +315,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      alternateRowBackground,
       seriesLimit,
       color,
       colorRules,
@@ -311,6 +328,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      alternateRowBackground,
       seriesLimit,
       color,
       colorRules,
@@ -610,6 +628,7 @@ export default function EditTimeChartForm({
         compareToPreviousPeriod,
         fitYAxisToData,
         groupByColumnsOnLeft,
+        alternateRowBackground,
         seriesLimit,
         color,
         colorRules,
@@ -628,6 +647,7 @@ export default function EditTimeChartForm({
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('alternateRowBackground', alternateRowBackground);
       // Persist `null` (not undefined) when cleared so the disabled state
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.

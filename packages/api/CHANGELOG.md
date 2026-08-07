@@ -1,5 +1,71 @@
 # @hyperdx/api
 
+## 2.33.0
+
+### Minor Changes
+
+- 874a5e95: feat(mcp): add source and webhook management tools so the ingest → dashboard flow can be automated end to end. New MCP tools: `clickstack_save_source` / `clickstack_delete_source` and `clickstack_save_webhook` / `clickstack_delete_webhook` (save creates when `id` is omitted and updates when provided). Webhook logic is now shared via `createWebhook` / `updateWebhook` / `deleteWebhook` controllers: `createWebhook` is used by the internal API, External API v2, and MCP; `updateWebhook` / `deleteWebhook` are shared by External API v2 and MCP (the internal API retains its own masked-secret update/delete flow).
+
+  `clickstack_describe_source` now returns a round-trippable `config` block — the exact flat shape `clickstack_save_source` accepts, including fields the curated summary previously omitted (correlation IDs `logSourceId`/`traceSourceId`/`metricSourceId`/`sessionSourceId`, `defaultTableSelectExpression`, `parentSpanIdExpression`, `spanKindExpression`, materialized views, etc.). This closes the read/write asymmetry that made a faithful source clone impossible: an agent can read a source's full config back and pass it straight into `clickstack_save_source` to clone or read-modify-write it.
+
+  fix(alerts): a generic/incidentio webhook persisted without a body (the body default is only applied by the UI form, not the API/MCP create paths) no longer crashes `sendGenericWebhook` on `Handlebars.compile(undefined)`. It now falls back to the default body template so the alert still fires.
+
+### Patch Changes
+
+- 017c296e: fix: Fix DataCloneError from MCP grouped bar/pie query
+- 0e280949: fix: MCP endpoint (`/api/mcp`) now returns 405 for GET and DELETE instead of aborting spec-compliant clients. The stateless Streamable HTTP transport doesn't offer a server-initiated SSE stream or client-terminable sessions, so it now responds `405 Method Not Allowed` (with `Allow: POST`) for those methods, which official MCP SDK clients (e.g. Claude Code) treat as "not offered, continue" rather than a failed connection.
+- 1b658f3c: fix: Handle per-connection failures in alerts task without exiting
+- Updated dependencies [fa1a0687]
+  - @hyperdx/common-utils@0.24.1
+
+## 2.32.0
+
+### Patch Changes
+
+- 01508d1d: fix: Improve and standardize webhook URL validation
+
+  ### `WEBHOOK_HOSTNAME_ALLOWLIST`
+
+  Use this optional setting to permit webhook delivery to a hostname or private/reserved IP address that the SSRF validator would otherwise block. Values are comma-separated. A hostname entry also permits its subdomains, while an IPv4 or IPv6 entry matches only that exact address. The allowlist does not bypass protocol validation, Slack hostname validation, or the exact host-and-port block for configured ClickHouse and MongoDB services.
+
+  For example, this permits `localhost`, any `*.hooks.localhost` hostname, the exact IPv4 address `10.0.0.1`, and the exact IPv6 address `fd00::1`:
+
+  ```env
+  WEBHOOK_HOSTNAME_ALLOWLIST=localhost,hooks.localhost,10.0.0.1,fd00::1
+  ```
+
+- 641175d8: Add MCP client name and version attributes to tool-invocation spans.
+- 00eef721: feat: Implement quantile for exponential histogram metrics
+- eadea332: feat: surface OpenTelemetry span links in the trace view. Trace sources gain an
+  optional `spanLinksValueExpression` field (auto-detected from the OTel `Links`
+  column), and the span detail panel shows a new "Span Links" section. Each link
+  has an "Open trace" action that opens the linked trace in place in the same
+  panel, with a breadcrumb trail you can step back through, and shows the link's
+  trace state and attributes as chips.
+- 5dd6facb: feat: Add exponential histogram metrics support to MCP
+- Updated dependencies [ad27a513]
+- Updated dependencies [00eef721]
+- Updated dependencies [00eef721]
+- Updated dependencies [7a4ad986]
+- Updated dependencies [eadea332]
+- Updated dependencies [9cb69915]
+- Updated dependencies [7d806fb8]
+- Updated dependencies [f5f9cd19]
+  - @hyperdx/common-utils@0.24.0
+
+## 2.31.0
+
+### Patch Changes
+
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+- 3d02a56a: fix: Disable redirects when delivering alert webhooks
+- 758ab638: Fix: Prevent grouped alerts from getting permanently stuck in the ALERT state by resetting history state to OK when thresholds are no longer exceeded.
+- Updated dependencies [ff05b3df]
+- Updated dependencies [1705b37a]
+- Updated dependencies [73819932]
+- Updated dependencies [7accfd2e]
+  - @hyperdx/common-utils@0.23.0
+
 ## 2.30.1
 
 ## 2.30.0

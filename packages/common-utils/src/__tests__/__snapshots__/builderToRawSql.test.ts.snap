@@ -1,0 +1,670 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a line chart 1`] = `
+"WITH
+  \`__hdx_series_limit\` AS (
+    SELECT
+      \`group\`
+    FROM
+      (
+        SELECT
+          tuple(ServiceName) AS \`group\`,
+          count() AS \`__hdx_series_rank\`
+        FROM
+          $__sourceTable
+        WHERE
+          (
+            timestamp >= $__fromTime_ms
+            AND timestamp <= $__toTime_ms
+          )
+          AND ((ServiceName ILIKE '%api%'))
+          AND $__filters
+          AND ServiceName IS NOT NULL
+        GROUP BY
+          ServiceName,
+          $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+      )
+    GROUP BY
+      \`group\`
+    ORDER BY
+      max(\`__hdx_series_rank\`) DESC,
+      \`group\`
+    LIMIT
+      10
+  )
+SELECT
+  count(),
+  AVG(toFloat64OrDefault(toString(Duration))),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+  AND tuple(ServiceName) IN (
+    SELECT
+      \`group\`
+    FROM
+      \`__hdx_series_limit\`
+  )
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a number chart 1`] = `
+"SELECT
+  count()
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a pie chart 1`] = `
+"SELECT
+  count(),
+  ServiceName
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+GROUP BY
+  ServiceName"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a stacked_bar chart 1`] = `
+"WITH
+  \`__hdx_series_limit\` AS (
+    SELECT
+      \`group\`
+    FROM
+      (
+        SELECT
+          tuple(ServiceName) AS \`group\`,
+          count() AS \`__hdx_series_rank\`
+        FROM
+          $__sourceTable
+        WHERE
+          (
+            timestamp >= $__fromTime_ms
+            AND timestamp <= $__toTime_ms
+          )
+          AND ((ServiceName ILIKE '%api%'))
+          AND $__filters
+          AND ServiceName IS NOT NULL
+        GROUP BY
+          ServiceName,
+          $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+      )
+    GROUP BY
+      \`group\`
+    ORDER BY
+      max(\`__hdx_series_rank\`) DESC,
+      \`group\`
+    LIMIT
+      10
+  )
+SELECT
+  count(),
+  AVG(toFloat64OrDefault(toString(Duration))),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+  AND tuple(ServiceName) IN (
+    SELECT
+      \`group\`
+    FROM
+      \`__hdx_series_limit\`
+  )
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a table chart 1`] = `
+"SELECT
+  count(),
+  AVG(toFloat64OrDefault(toString(Duration))),
+  ServiceName
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+GROUP BY
+  ServiceName
+HAVING
+  count() > 5
+ORDER BY
+  count() DESC
+LIMIT
+  200"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate generates a macro-based template for a line chart with group-by and lucene where 1`] = `
+"SELECT
+  count(),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate macro-izes the series-limit CTE and inlines its LIMIT 1`] = `
+"WITH
+  \`__hdx_series_limit\` AS (
+    SELECT
+      \`group\`
+    FROM
+      (
+        SELECT
+          tuple(ServiceName) AS \`group\`,
+          count() AS \`__hdx_series_rank\`
+        FROM
+          $__sourceTable
+        WHERE
+          (
+            timestamp >= $__fromTime_ms
+            AND timestamp <= $__toTime_ms
+          )
+          AND ((ServiceName ILIKE '%api%'))
+          AND $__filters
+          AND ServiceName IS NOT NULL
+        GROUP BY
+          ServiceName,
+          $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+      )
+    GROUP BY
+      \`group\`
+    ORDER BY
+      max(\`__hdx_series_rank\`) DESC,
+      \`group\`
+    LIMIT
+      5
+  )
+SELECT
+  count(),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+  AND tuple(ServiceName) IN (
+    SELECT
+      \`group\`
+    FROM
+      \`__hdx_series_limit\`
+  )
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) generates a macro-based template for a single-series gauge metric line chart 1`] = `
+"WITH
+  Source AS (
+    SELECT
+      *,
+      cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
+    FROM
+      $__sourceTable(gauge)
+    WHERE
+      (
+        TimeUnix >= $__fromTime_ms
+        AND TimeUnix <= $__toTime_ms
+      )
+      AND ((MetricName = 'my.metric'))
+      AND $__filters
+  ),
+  Bucketed AS (
+    SELECT
+      $__timeInterval(TimeUnix) AS \`__hdx_time_bucket2\`,
+      AttributesHash,
+      last_value(Value) AS LastValue,
+      any(ScopeAttributes) AS ScopeAttributes,
+      any(ResourceAttributes) AS ResourceAttributes,
+      any(Attributes) AS Attributes,
+      any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+      any(ScopeName) AS ScopeName,
+      any(ScopeVersion) AS ScopeVersion,
+      any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+      any(ScopeSchemaUrl) AS ScopeSchemaUrl,
+      any(ServiceName) AS ServiceName,
+      any(MetricDescription) AS MetricDescription,
+      any(MetricUnit) AS MetricUnit,
+      any(StartTimeUnix) AS StartTimeUnix,
+      any(Flags) AS Flags
+    FROM
+      Source
+    GROUP BY
+      AttributesHash,
+      __hdx_time_bucket2
+    ORDER BY
+      AttributesHash,
+      __hdx_time_bucket2
+  )
+SELECT
+  avg(toFloat64OrDefault(toString(LastValue))),
+  $__timeInterval(__hdx_time_bucket2) AS \`__hdx_time_bucket\`
+FROM
+  \`Bucketed\`
+WHERE
+  (
+    __hdx_time_bucket2 >= $__fromTime_ms
+    AND __hdx_time_bucket2 <= $__toTime_ms
+  )
+GROUP BY
+  $__timeInterval(__hdx_time_bucket2) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(__hdx_time_bucket2) AS \`__hdx_time_bucket\`
+SETTINGS
+  short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) generates a macro-based template for a single-series histogram metric line chart 1`] = `
+"WITH
+  source AS (
+    SELECT
+      MetricName,
+      ExplicitBounds,
+      $__timeInterval(TimeUnix) AS \`__hdx_time_bucket\`,
+      sumForEach(deltas) as rates
+    FROM
+      (
+        SELECT
+          TimeUnix,
+          MetricName,
+          ExplicitBounds,
+          attr_hash,
+          any(attr_hash) OVER prev_row AS prev_attr_hash,
+          count() OVER prev_row = 0
+          OR prev_attr_hash != attr_hash AS is_first_series_point,
+          any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+          any(counts) OVER prev_row AS prev_counts,
+          counts,
+          multiIf(
+            AggregationTemporality = 2
+            AND is_first_series_point,
+            arrayWithConstant(length(counts), toInt64(0)),
+            AggregationTemporality = 1
+            OR bounds_hash != prev_bounds_hash
+            OR arrayExists((x) -> x .2 < x .1, arrayZip(prev_counts, counts)),
+            counts,
+            counts - prev_counts
+          ) AS deltas
+        FROM
+          (
+            SELECT
+              TimeUnix,
+              MetricName,
+              AggregationTemporality,
+              ExplicitBounds,
+              ResourceAttributes,
+              Attributes,
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
+              cityHash64(ExplicitBounds) AS bounds_hash,
+              CAST(BucketCounts AS Array(Int64)) counts
+            FROM
+              $__sourceTable(histogram)
+            WHERE
+              (
+                TimeUnix >= toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second
+                AND TimeUnix <= toStartOfInterval($__toTime_ms, INTERVAL $__interval_s second) + INTERVAL $__interval_s second
+              )
+              AND ((MetricName = 'my.metric'))
+              AND $__filters
+            ORDER BY
+              attr_hash,
+              TimeUnix ASC
+          )
+        WINDOW
+          prev_row AS (
+            ORDER BY
+              attr_hash,
+              TimeUnix ROWS BETWEEN 1 PRECEDING
+              AND 1 PRECEDING
+          )
+      )
+    GROUP BY
+      __hdx_time_bucket,
+      MetricName,
+      ExplicitBounds
+    ORDER BY
+      __hdx_time_bucket
+  ),
+  points AS (
+    SELECT
+      \`__hdx_time_bucket\`,
+      MetricName,
+      arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
+      length(point) as n
+    FROM
+      source
+  ),
+  metrics AS (
+    SELECT
+      \`__hdx_time_bucket\`,
+      MetricName,
+      point[n] .1 AS total,
+      0.95 * total AS rank,
+      arrayFirstIndex(x -> if(x .1 > rank, 1, 0), point) AS upper_idx,
+      point[upper_idx] .1 AS upper_count,
+      ifNull(point[upper_idx] .2, inf) AS upper_bound,
+      CASE
+        WHEN upper_idx > 1 THEN point[upper_idx - 1] .2
+        WHEN point[upper_idx] .2 > 0 THEN 0
+        ELSE inf
+      END AS lower_bound,
+      if(lower_bound = 0, 0, point[upper_idx - 1] .1) AS lower_count,
+      CASE
+        WHEN upper_bound = inf THEN point[upper_idx - 1] .2
+        WHEN lower_bound = inf THEN point[1] .2
+        ELSE lower_bound + (upper_bound - lower_bound) * (
+          (rank - lower_count) / (upper_count - lower_count)
+        )
+      END AS "Value"
+    FROM
+      points
+    WHERE
+      length(point) > 1
+      AND total > 0
+  )
+SELECT
+  \`__hdx_time_bucket\`,
+  "Value"
+FROM
+  \`metrics\`
+WHERE
+  (
+    \`__hdx_time_bucket\` >= $__fromTime_ms
+    AND \`__hdx_time_bucket\` <= $__toTime_ms
+  )
+SETTINGS
+  short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) generates a macro-based template for a single-series sum metric line chart 1`] = `
+"WITH
+  Source AS (
+    SELECT
+      *,
+      cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
+      IF(
+        AggregationTemporality = 1,
+        Value, -- DELTA: Value is already the per-interval increase
+        greatest(
+          Value - lagInFrame(toNullable(Value), 1, NULL) OVER (
+            PARTITION BY
+              AttributesHash
+            ORDER BY
+              TimeUnix
+          ),
+          0
+        )
+      ) AS Rate,
+      IF(
+        AggregationTemporality = 1,
+        SUM(Value) OVER (
+          PARTITION BY
+            AttributesHash
+          ORDER BY
+            TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING
+            AND CURRENT ROW
+        ),
+        Value
+      ) AS Sum
+    FROM
+      $__sourceTable(sum)
+    WHERE
+      (
+        TimeUnix >= toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second
+        AND TimeUnix <= toStartOfInterval($__toTime_ms, INTERVAL $__interval_s second) + INTERVAL $__interval_s second
+      )
+      AND ((MetricName = 'my.metric'))
+      AND $__filters
+  ),
+  Bucketed AS (
+    SELECT
+      \`__hdx_time_bucket2\`,
+      AttributesHash,
+      Rate,
+      Sum,
+      ResourceAttributes,
+      ResourceSchemaUrl,
+      ScopeName,
+      ScopeVersion,
+      ScopeAttributes,
+      ScopeDroppedAttrCount,
+      ScopeSchemaUrl,
+      ServiceName,
+      MetricName,
+      MetricDescription,
+      MetricUnit,
+      Attributes,
+      StartTimeUnix,
+      Flags,
+      AggregationTemporality,
+      IsMonotonic
+    FROM
+      (
+        SELECT
+          $__timeInterval(TimeUnix) AS \`__hdx_time_bucket2\`,
+          AttributesHash,
+          -- Per-bucket increase: sum of raw per-row deltas. NULL
+          -- Source.Rate (first row of each partition) is ignored by sum().
+          sum(Source.Rate) AS Rate,
+          -- Last cumulative reading in the bucket (by time), used by
+          -- the no-aggFn last_value(Sum) outer projection. argMax is
+          -- deterministic w.r.t. TimeUnix ordering unlike last_value
+          -- which in a GROUP BY context is anyLast (order-dependent).
+          argMax(Source.Sum, TimeUnix) AS Sum,
+          any(ResourceAttributes) AS ResourceAttributes,
+          any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+          any(ScopeName) AS ScopeName,
+          any(ScopeVersion) AS ScopeVersion,
+          any(ScopeAttributes) AS ScopeAttributes,
+          any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+          any(ScopeSchemaUrl) AS ScopeSchemaUrl,
+          any(ServiceName) AS ServiceName,
+          any(MetricName) AS MetricName,
+          any(MetricDescription) AS MetricDescription,
+          any(MetricUnit) AS MetricUnit,
+          any(Attributes) AS Attributes,
+          any(StartTimeUnix) AS StartTimeUnix,
+          any(Flags) AS Flags,
+          any(AggregationTemporality) AS AggregationTemporality,
+          any(IsMonotonic) AS IsMonotonic
+        FROM
+          Source
+        GROUP BY
+          AttributesHash,
+          \`__hdx_time_bucket2\`
+        ORDER BY
+          AttributesHash,
+          \`__hdx_time_bucket2\`
+      )
+  )
+SELECT
+  avg(toFloat64OrDefault(toString(Rate))) AS "Value",
+  $__timeInterval(\`__hdx_time_bucket2\`) AS \`__hdx_time_bucket\`
+FROM
+  \`Bucketed\`
+WHERE
+  (
+    \`__hdx_time_bucket2\` >= $__fromTime_ms
+    AND \`__hdx_time_bucket2\` <= $__toTime_ms
+  )
+GROUP BY
+  $__timeInterval(\`__hdx_time_bucket2\`) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(\`__hdx_time_bucket2\`) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate series-level WHERE (aggCondition → -If combinators) keeps -If per series but does not push to WHERE when only some series are filtered 1`] = `
+"SELECT
+  countIf((ServiceName ILIKE '%api%')),
+  AVG(toFloat64OrDefault(toString(value))),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND $__filters
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate series-level WHERE (aggCondition → -If combinators) renders a single filtered series as an -If combinator 1`] = `
+"SELECT
+  countIf((ServiceName ILIKE '%api%')),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate series-level WHERE (aggCondition → -If combinators) renders one -If per series and OR-pushes conditions when every series is filtered 1`] = `
+"SELECT
+  countIf((ServiceName ILIKE '%api%')),
+  avgIf(
+    toFloat64OrDefault(toString(value)),
+    (ServiceName ILIKE '%web%')
+    AND toFloat64OrDefault(toString(value)) IS NOT NULL
+  ),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND (
+    (ServiceName ILIKE '%api%')
+    OR (ServiceName ILIKE '%web%')
+  )
+  AND $__filters
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate series-level WHERE (aggCondition → -If combinators) supports a sql-language series aggCondition 1`] = `
+"SELECT
+  countIf(ServiceName = 'api'),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND (ServiceName = 'api')
+  AND $__filters
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
+exports[`renderBuilderConfigAsSqlTemplate series-level WHERE (aggCondition → -If combinators) tightens the two argument lists of a parametric combinator 1`] = `
+"SELECT
+  quantileIf(0.95)(
+    toFloat64OrDefault(toString(value)),
+    (ServiceName ILIKE '%api%')
+    AND toFloat64OrDefault(toString(value)) IS NOT NULL
+  ),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;

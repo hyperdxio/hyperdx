@@ -450,6 +450,24 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       sql: "(NOT (hasToken(lower(Body), lower('red'))) AND NOT (hasToken(lower(Body), lower('blue'))))",
       english: 'NOT event has whole word red AND NOT event has whole word blue',
     },
+    {
+      lucene: 'http://a.com http://b.com',
+      sql: "((hasToken(lower(Body), lower('http')) AND hasToken(lower(Body), lower('a')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%http://a.com%'))) AND (hasToken(lower(Body), lower('http')) AND hasToken(lower(Body), lower('b')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%http://b.com%'))))",
+      english:
+        'event has whole word http://a.com AND event has whole word http://b.com',
+    },
+    {
+      lucene: 'https://a.com https://b.com',
+      sql: "((hasToken(lower(Body), lower('https')) AND hasToken(lower(Body), lower('a')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%https://a.com%'))) AND (hasToken(lower(Body), lower('https')) AND hasToken(lower(Body), lower('b')) AND hasToken(lower(Body), lower('com')) AND (lower(Body) LIKE lower('%https://b.com%'))))",
+      english:
+        'event has whole word https://a.com AND event has whole word https://b.com',
+    },
+    {
+      lucene: 'localhost:3000 localhost:4000',
+      sql: "((hasToken(lower(Body), lower('localhost')) AND hasToken(lower(Body), lower('3000')) AND (lower(Body) LIKE lower('%localhost:3000%'))) AND (hasToken(lower(Body), lower('localhost')) AND hasToken(lower(Body), lower('4000')) AND (lower(Body) LIKE lower('%localhost:4000%'))))",
+      english:
+        'event has whole word localhost:3000 AND event has whole word localhost:4000',
+    },
   ];
 
   it.each(testCases)(
@@ -601,6 +619,180 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       expect(sql).toContain("concatWithSeparator(';',Body,Message)");
     });
   });
+
+  describe('LIKE metacharacters in search terms', () => {
+    const escapingCases = [
+      {
+        lucene: 'ServiceName:user_service',
+        sql: "((ServiceName ILIKE '%user\\\\_service%'))",
+      },
+      {
+        lucene: 'ServiceName:100%',
+        sql: "((ServiceName ILIKE '%100\\\\%%'))",
+      },
+      {
+        lucene: '-ServiceName:user_service',
+        sql: "((ServiceName NOT ILIKE '%user\\\\_service%'))",
+      },
+      {
+        lucene: 'LogAttributes.error_code:5_0',
+        sql: "((`LogAttributes`['error_code'] ILIKE '%5\\\\_0%' AND indexHint(mapContains(`LogAttributes`, 'error_code'))))",
+      },
+      {
+        lucene: 'ResourceAttributesJSON.error:a_b',
+        sql: "((toString(`ResourceAttributesJSON`.`error`) ILIKE '%a\\\\_b%'))",
+      },
+      {
+        lucene: 'user_*',
+        sql: "((lower(Body) LIKE lower('user\\\\_%')))",
+      },
+    ];
+
+    it.each(escapingCases)(
+      'escapes wildcards in "$lucene"',
+      async ({ lucene, sql }) => {
+        const builder = new SearchQueryBuilder(lucene, serializer);
+        expect(await builder.build()).toBe(sql);
+      },
+    );
+
+    it('escapes the LIKE fallback but leaves the tokens raw', async () => {
+      const builder = new SearchQueryBuilder('user_service', serializer);
+      expect(await builder.build()).toBe(
+        "((hasToken(lower(Body), lower('user')) AND hasToken(lower(Body), lower('service')) AND (lower(Body) LIKE lower('%user\\\\_service%'))))",
+      );
+    });
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - range bounds', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'Duration') {
+      return { name: 'Duration', type: 'UInt64' };
+    } else if (column === 'Timestamp') {
+      return { name: 'Timestamp', type: 'DateTime64(9)' };
+    } else if (column === 'ServiceName') {
+      return { name: 'ServiceName', type: 'String' };
+    } else if (column === 'LogAttributes') {
+      return { name: 'LogAttributes', type: 'Map' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  const rangeCases = [
+    {
+      lucene: 'Duration:[100 TO 500]',
+      sql: '((Duration BETWEEN 100 AND 500))',
+    },
+    {
+      lucene: 'Duration:[* TO 500]',
+      sql: '((Duration <= 500))',
+    },
+    {
+      lucene: 'Duration:[100 TO *]',
+      sql: '((Duration >= 100))',
+    },
+    {
+      lucene: '-Duration:[* TO 500]',
+      sql: '((NOT (Duration <= 500)))',
+    },
+    {
+      lucene: 'ServiceName:[* TO *]',
+      sql: '(notEmpty(ServiceName) = 1)',
+    },
+    {
+      lucene: 'Duration:{100 TO 500}',
+      sql: '((Duration > 100 AND Duration < 500))',
+    },
+    {
+      lucene: 'Duration:[100 TO 500}',
+      sql: '((Duration >= 100 AND Duration < 500))',
+    },
+    {
+      lucene: 'Duration:{100 TO 500]',
+      sql: '((Duration > 100 AND Duration <= 500))',
+    },
+    {
+      lucene: '-Duration:{100 TO 500}',
+      sql: '((NOT (Duration > 100 AND Duration < 500)))',
+    },
+    {
+      lucene: 'Timestamp:[2024-01-01 TO 2024-06-01]',
+      sql: "((Timestamp BETWEEN '2024-01-01' AND '2024-06-01'))",
+    },
+    {
+      lucene: 'Timestamp:{2024-01-01 TO 2024-06-01}',
+      sql: "((Timestamp > '2024-01-01' AND Timestamp < '2024-06-01'))",
+    },
+    {
+      lucene: 'LogAttributes.duration_ms:{100 TO 500}',
+      sql: "((`LogAttributes`['duration_ms'] > 100 AND `LogAttributes`['duration_ms'] < 500 AND indexHint(mapContains(`LogAttributes`, 'duration_ms'))))",
+    },
+  ];
+
+  it.each(rangeCases)(
+    'converts "$lucene" to SQL "$sql"',
+    async ({ lucene, sql }) => {
+      const builder = new SearchQueryBuilder(lucene, serializer);
+      expect(await builder.build()).toBe(sql);
+    },
+  );
+
+  const englishCases = [
+    {
+      lucene: 'Duration:[100 TO 500]',
+      english: 'Duration is between 100 and 500',
+    },
+    {
+      lucene: 'Duration:{100 TO 500}',
+      english: 'Duration is between 100 (exclusive) and 500 (exclusive)',
+    },
+    {
+      lucene: 'Duration:[100 TO 500}',
+      english: 'Duration is between 100 and 500 (exclusive)',
+    },
+    {
+      lucene: 'Duration:{100 TO 500]',
+      english: 'Duration is between 100 (exclusive) and 500',
+    },
+    {
+      lucene: '-Duration:{100 TO 500}',
+      english: 'Duration is not between 100 (exclusive) and 500 (exclusive)',
+    },
+  ];
+
+  it.each(englishCases)(
+    'converts "$lucene" to english "$english"',
+    async ({ lucene, english }) => {
+      const actualEnglish = await genEnglishExplanation({
+        query: lucene,
+        tableConnection: {
+          tableName,
+          databaseName,
+          connectionId,
+        },
+        metadata,
+      });
+      expect(actualEnglish).toBe(english);
+    },
+  );
 });
 
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {

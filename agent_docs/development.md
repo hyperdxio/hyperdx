@@ -18,6 +18,10 @@ yarn dev        # or equivalently: make dev
 - `make dev-portal`: Start the dev portal manually (auto-started by `yarn dev`)
 - `yarn lint`: Run linting across all packages
 - `yarn dev:unit`: Run unit tests in watch mode (per package)
+- `yarn dev:mutation --mutate <file>`: Run mutation tests (common-utils only). A
+  surviving mutant means the tests execute that code but don't assert on it.
+  Always scope it with `--mutate`; a whole-package run takes tens of minutes.
+  See [CONTRIBUTING.md](../CONTRIBUTING.md#mutation-tests)
 
 ## Environment Configuration
 

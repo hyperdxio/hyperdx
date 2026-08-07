@@ -15,14 +15,20 @@ import type { RunRecord } from '@/harness/types';
 
 function buildRun(args: {
   scenario: string;
-  toolCalls: Array<{ name: string; isError: boolean; output?: string }>;
+  toolCalls: Array<{
+    name: string;
+    isError: boolean;
+    output?: string;
+    input?: unknown;
+  }>;
   finalAnswer: string;
+  mcp?: string;
 }): RunRecord {
   return {
     schemaVersion: 1,
     runId: `${args.scenario}-test-0`,
     scenario: args.scenario,
-    mcp: 'hyperdx',
+    mcp: args.mcp ?? 'hyperdx',
     model: 'claude-sonnet-4-6',
     plugin: 'none',
     runIndex: 0,
@@ -37,7 +43,7 @@ function buildRun(args: {
     tools: [],
     toolCalls: args.toolCalls.map(c => ({
       name: c.name,
-      input: null,
+      input: c.input ?? null,
       output: c.output ?? null,
       isError: c.isError,
       startedAt: '',
@@ -231,5 +237,175 @@ describe('gradeBatch tool-error penalty', () => {
     expect(
       lines.some(l => l.includes('error-root-cause/hyperdx/myplugin/0')),
     ).toBe(true);
+  });
+});
+
+describe('gradeBatch metric-adoption checks', () => {
+  const tmpRoot = join('/tmp', `hdx-eval-adoption-test-${Date.now()}`);
+
+  afterAll(() => {
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('populates the adoption block from tool-call args', async () => {
+    const batchDir = join(tmpRoot, 'adopted');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'hyperdx',
+      buildRun({
+        scenario: 'metric-saturation',
+        toolCalls: [
+          {
+            name: 'mcp__hyperdx__clickstack_list_metrics',
+            isError: false,
+            input: { sourceId: 's1' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.memory.used' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.gc.pause' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_timeseries',
+            isError: false,
+            input: {
+              metricType: 'gauge',
+              metric: 'process.runtime.jvm.memory.used',
+              groupBy: ['k8s.pod.name', 'jvm.memory.pool.name'],
+            },
+          },
+        ],
+        finalAnswer: 'JVM heap leak on recommendation-service.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade: GradeRecord = result.graded[0];
+    // All four adoption checks hit (queried a target metric, the JVM memory
+    // metric, a GC metric, and grouped memory by pod/pool in one call).
+    expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.hits.map(h => h.id).sort()).toEqual([
+      'grouped_memory_by_pod_or_pool',
+      'queried_gc_metric',
+      'queried_jvm_memory_metric',
+      'queried_target_metric',
+    ]);
+    expect(grade.adoption!.score).toBeCloseTo(1, 5);
+    expect(grade.adoption!.hits.every(h => h.satisfied)).toBe(true);
+  });
+
+  it('grants adoption to a clickhouse-arm run that queries the metrics via SQL', async () => {
+    const batchDir = join(tmpRoot, 'sql-adopted');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'clickhouse',
+      buildRun({
+        scenario: 'metric-saturation',
+        mcp: 'clickhouse',
+        toolCalls: [
+          {
+            name: 'mcp__clickhouse__run_select_query',
+            isError: false,
+            input: {
+              query:
+                "SELECT MetricName, avg(Value) FROM otel_metrics_exponential_histogram WHERE MetricName = 'jvm.gc.pause' GROUP BY MetricName",
+            },
+          },
+        ],
+        finalAnswer: 'JVM heap leak on recommendation-service.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade = result.graded[0];
+    // Args-based detection is arm-agnostic: naming the target metric in raw
+    // SQL counts the same as calling a dedicated metric tool…
+    expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.score).toBeGreaterThan(0);
+    expect(
+      grade.adoption!.hits.find(h => h.id === 'queried_gc_metric')!.satisfied,
+    ).toBe(true);
+    // …and adoption still never feeds the outcome score.
+    expect(grade.combinedScore).toBeCloseTo(grade.programmatic.score, 5);
+  });
+
+  it('scores zero adoption when no tool call names a target metric, without touching combinedScore', async () => {
+    const batchDir = join(tmpRoot, 'not-adopted');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'hyperdx',
+      buildRun({
+        scenario: 'metric-saturation',
+        toolCalls: [
+          {
+            name: 'mcp__hyperdx__clickstack_sql',
+            isError: false,
+            input: { sql: 'SELECT * FROM eval_metric-saturation_otel_traces' },
+          },
+        ],
+        finalAnswer: 'JVM heap leak on recommendation-service.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade = result.graded[0];
+    expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.score).toBe(0);
+    // Adoption is an independent signal: combinedScore tracks the outcome
+    // (programmatic, no judge, no tool errors) and ignores adoption entirely.
+    expect(grade.combinedScore).toBeCloseTo(grade.programmatic.score, 5);
+  });
+
+  it('adoption does NOT inflate combinedScore even at full adoption', async () => {
+    const batchDir = join(tmpRoot, 'adopt-vs-combined');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'hyperdx',
+      buildRun({
+        scenario: 'metric-saturation',
+        toolCalls: [
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.memory.used' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.gc.pause' },
+          },
+        ],
+        // Intentionally weak answer: adoption is high but the outcome score is
+        // low, proving the two axes are decoupled.
+        finalAnswer: 'Something is wrong somewhere.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade = result.graded[0];
+    expect(grade.adoption!.score).toBeGreaterThan(0);
+    expect(grade.combinedScore).toBeCloseTo(grade.programmatic.score, 5);
+    expect(grade.combinedScore).toBeLessThan(grade.adoption!.score);
+  });
+
+  it('omits the adoption block for scenarios without an adoption rubric', async () => {
+    const batchDir = join(tmpRoot, 'no-adoption-rubric');
+    writeBatch(
+      batchDir,
+      'error-root-cause',
+      'hyperdx',
+      buildRun({
+        scenario: 'error-root-cause',
+        toolCalls: [{ name: 'mcp__hyperdx__hyperdx_query', isError: false }],
+        finalAnswer: 'Root cause: payment-service connection timeout.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    expect(result.graded[0].adoption).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import { readFileSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -11,6 +11,41 @@ const packageJson = JSON.parse(
   readFileSync(join(__dirname, 'package.json'), 'utf-8'),
 );
 const { version } = packageJson;
+
+// Copy the repo-root CHANGELOG.md — the cross-package release summary, not the
+// app-only package changelog — into public/ so the in-app "What's new" viewer
+// can fetch it as a static asset. Done here (rather than a pre-script) because
+// Yarn 4 does not run arbitrary pre/post lifecycle scripts; next.config is
+// evaluated by both `next dev` (Turbopack) and `next build` (Webpack), so this
+// runs in every build mode. The ClickStack static export additionally needs
+// `.md` allow-listed in scripts/prepare-clickhouse-build-export.js, and the
+// Docker builder stages must COPY the file in (see the Dockerfiles).
+try {
+  copyFileSync(
+    join(__dirname, '..', '..', 'CHANGELOG.md'),
+    join(__dirname, 'public', 'CHANGELOG.md'),
+  );
+} catch (err) {
+  // The invariant is "the app must not ship without the asset", so key the
+  // failure on that rather than on which phase we think we are in. `next start`
+  // re-evaluates this config at runtime, where the source file is absent but
+  // public/CHANGELOG.md already exists from the build stage — that case is
+  // fine. Nothing having produced the asset at all is not.
+  //
+  // Deliberately not keyed on NEXT_PHASE alone: that is an undocumented Next
+  // internal, and if it were ever unset the build would fall through to a warn
+  // and ship an image whose "What's new" renders "Unable to load" for everyone.
+  if (!existsSync(join(__dirname, 'public', 'CHANGELOG.md'))) {
+    throw new Error(
+      `Failed to copy CHANGELOG.md into public/ and no previously copied file ` +
+        `exists, so the build would ship without it: ${err.message}`,
+    );
+  }
+  console.warn(
+    'Could not refresh public/CHANGELOG.md; using the existing copy:',
+    err.message,
+  );
+}
 
 // Support legacy consumers of next-runtime-env that expect this value under window.__ENV
 process.env.NEXT_PUBLIC_APP_VERSION = version;
@@ -86,6 +121,9 @@ const nextConfig = {
             key: 'X-Frame-Options',
             value: 'DENY',
           },
+          ...(process.env.NEXT_PUBLIC_NOINDEX === 'true'
+            ? [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]
+            : []),
         ],
       },
     ];

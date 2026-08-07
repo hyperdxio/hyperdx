@@ -10,6 +10,7 @@ import {
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
+import { runMongoshScript } from '../utils/db-helpers';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
@@ -838,8 +839,12 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         await dashboardPage.saveQueryAndFiltersAsDefault();
 
-        // Wait for save confirmation
-        await dashboardPage.page.waitForTimeout(1000);
+        // Wait for the save success notification rather than a blind sleep, so
+        // we only read the URL once the save has actually landed.
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
 
         // Extract dashboard ID
         const url = dashboardPage.page.url();
@@ -870,6 +875,84 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Verify saved query is restored when no URL params
         const searchInput = dashboardPage.searchInput;
         await expect(searchInput).toHaveValue(savedQuery);
+      });
+    },
+  );
+
+  test(
+    'should enter and exit read-only live kiosk mode',
+    { tag: ['@full-stack', '@dashboard'] },
+    async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const kioskDashboardName = `Kiosk Dashboard ${ts}`;
+
+      await test.step('Create and name a new dashboard', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.editDashboardName(kioskDashboardName);
+      });
+
+      await test.step('Add a basic chart tile', async () => {
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Kiosk Chart');
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Enter kiosk mode via the dashboard overflow menu', async () => {
+        await dashboardPage.enterKioskMode();
+      });
+
+      await test.step('Assert URL contains kiosk=true', async () => {
+        await expect(dashboardPage.page).toHaveURL(/kiosk=true/);
+      });
+
+      await test.step('Assert app nav, query controls, Add button, dashboard menu, tile action buttons, and resize handles are hidden', async () => {
+        await expect(dashboardPage.appNav).toBeHidden();
+        await expect(dashboardPage.searchInput).toBeHidden();
+        await expect(dashboardPage.addButton).toBeHidden();
+        await expect(dashboardPage.menuButton).toBeHidden();
+        await expect(dashboardPage.firstTileActionsButton).toBeHidden();
+        // Resize handles hidden/absent means the grid is locked (no drag/resize in
+        // kiosk mode). react-grid-layout may retain a handle element in the DOM
+        // when isResizable={false} but makes it invisible, so assert hidden rather
+        // than absent (toBeHidden() passes for both CSS-hidden and missing elements).
+        await expect(dashboardPage.tileResizeHandles).toBeHidden();
+      });
+
+      await test.step('Assert kiosk header with dashboard name and Live status are visible', async () => {
+        await expect(dashboardPage.kioskHeader).toBeVisible();
+        await expect(
+          dashboardPage.getKioskHeading(kioskDashboardName),
+        ).toBeVisible();
+        await expect(dashboardPage.kioskLiveStatus).toBeVisible();
+      });
+
+      await test.step('Assert tile and chart remain visible', async () => {
+        await expect(dashboardPage.getTiles().first()).toBeVisible();
+        await expect(dashboardPage.getChartContainers().first()).toBeVisible();
+      });
+
+      await test.step('Reload in kiosk mode and assert URL mode, live status, and read-only chrome persist', async () => {
+        await dashboardPage.reload();
+        await expect(dashboardPage.page).toHaveURL(/kiosk=true/);
+        await expect(dashboardPage.kioskLiveStatus).toBeVisible();
+        await expect(dashboardPage.appNav).toBeHidden();
+        await expect(dashboardPage.addButton).toBeHidden();
+        await expect(dashboardPage.menuButton).toBeHidden();
+      });
+
+      await test.step('Exit kiosk mode via the Exit kiosk mode button', async () => {
+        await dashboardPage.exitKioskMode();
+      });
+
+      await test.step('Assert kiosk param is removed from URL and dashboard chrome is restored', async () => {
+        await expect(dashboardPage.page).not.toHaveURL(/kiosk=true/);
+        await expect(dashboardPage.appNav).toBeVisible();
+        await expect(dashboardPage.searchInput).toBeVisible();
+        await expect(dashboardPage.addButton).toBeVisible();
+        await expect(dashboardPage.menuButton).toBeVisible();
       });
     },
   );
@@ -1666,6 +1749,122 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await expect(
           dashboardsListPage.getDashboardCard(uniqueName),
         ).toBeHidden();
+      });
+    },
+  );
+
+  // The Terraform export gate on this page has two halves: the feature/local-mode
+  // flag (covered once in ResourceTerraformPopover's unit test, since every call
+  // site routes through that component) and the per-resource eligibility
+  // predicate, which is only wired up here.
+  //
+  // Deliberately one test, not a visible case plus a hidden case. A lone
+  // `toBeHidden()` passes for any reason the button is missing — wrong page
+  // state, slow render, a renamed testid — so it would keep passing with
+  // `isImportableDashboard` deleted. Asserting visible on this same dashboard
+  // FIRST, then provisioning it and asserting hidden, makes the transition
+  // itself the assertion: it can only pass if the predicate does the work.
+  test(
+    'should withhold Terraform import once a dashboard becomes provisioned',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const uniqueName = `E2E Provisioned Dashboard ${Date.now()}`;
+      const terraformButton = page.locator(
+        '[data-testid^="terraform-popover-button-"]',
+      );
+      let dashboardId: string;
+
+      await test.step('Create a saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+        dashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Verify the export affordance is offered', async () => {
+        await expect(terraformButton).toBeVisible();
+      });
+
+      await test.step('Mark it provisioned', async () => {
+        // ProvisionDashboardsTask is the only thing that sets this in normal
+        // operation, so write it directly rather than running that job.
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'print(JSON.stringify(db.dashboards.updateOne(',
+            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
+            '  { $set: { provisioned: true } }',
+            ')));',
+          ].join('\n'),
+        );
+        // A zero-match write would make the assertion below pass for a reason
+        // that has nothing to do with the gate.
+        expect(out).toContain('"matchedCount":1');
+        expect(out).toContain('"modifiedCount":1');
+      });
+
+      await test.step('Verify it is withheld after reload', async () => {
+        await dashboardPage.gotoDashboard(dashboardId);
+        // Wait for THIS dashboard's data to land before asserting absence —
+        // otherwise the assertion races an unrendered page and passes for the
+        // wrong reason.
+        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        // Terraform and ProvisionDashboardsTask would both claim ownership of
+        // this dashboard, so the popover must not appear.
+        await expect(terraformButton).toBeHidden();
+      });
+    },
+  );
+
+  // The other half of the dashboard export gate. Same self-proving shape as the
+  // provisioned case: assert visible on this dashboard first, then make it
+  // ineligible and assert hidden, so the transition itself is the assertion.
+  test(
+    'should withhold Terraform import once a dashboard gains a PromQL tile',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const uniqueName = `E2E PromQL Dashboard ${Date.now()}`;
+      const terraformButton = page.locator(
+        '[data-testid^="terraform-popover-button-"]',
+      );
+      let dashboardId: string;
+
+      await test.step('Create a saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+        dashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Verify the export affordance is offered', async () => {
+        await expect(terraformButton).toBeVisible();
+      });
+
+      await test.step('Give it a PromQL tile', async () => {
+        // Written directly rather than built in the chart editor: the editor
+        // flow for a PromQL tile is long and this test is about the gate, not
+        // the editor.
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'print(JSON.stringify(db.dashboards.updateOne(',
+            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
+            "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
+            "      config: { configType: 'promql', promqlExpression: 'up',",
+            "                connection: 'c1', displayType: 'line' } }] } }",
+            ')));',
+          ].join('\n'),
+        );
+        expect(out).toContain('"matchedCount":1');
+        expect(out).toContain('"modifiedCount":1');
+      });
+
+      await test.step('Verify it is withheld after reload', async () => {
+        await dashboardPage.gotoDashboard(dashboardId);
+        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        // Importing this dashboard would delete the PromQL tile on the next
+        // apply, because the provider reads it back through external API v2.
+        await expect(terraformButton).toBeHidden();
       });
     },
   );

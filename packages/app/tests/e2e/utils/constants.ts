@@ -3,6 +3,11 @@ export const DEFAULT_TRACES_SOURCE_NAME = 'E2E Traces';
 export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
 
+// Log source deliberately left without a correlated metric source, so tests can
+// exercise the "not correlated" paths (the search side panel's infrastructure
+// tab, and the Kubernetes dashboard's correlation warning).
+export const K8S_LOGS_NO_METRICS_SOURCE_NAME = 'E2E K8s Logs No Metrics';
+
 // Source backed by `otel_logs_interesting_filter_keys`, used by the filter-key
 // edge case tests to exercise identifier escaping (dotted/hyphenated column
 // names, Map keys, and JSON paths) in search and dashboard filters.
@@ -14,6 +19,13 @@ export const INTERESTING_FILTER_KEYS_SOURCE_NAME =
 // 15-minute rollups) registered on the source definition. Used by the
 // filter-key edge case tests to exercise the rollup-backed facet path.
 export const METADATA_MV_LOGS_SOURCE_NAME = 'E2E Metadata MV Logs';
+
+// Log source backed by `e2e_otel_logs_distributed`, a Distributed table whose
+// DDL declares a column its target MergeTree table does not have. `SELECT *`
+// (used to load full row details) therefore fails, which is what surfaces the
+// Known Columns List hint in the row side panel and the expanded row.
+export const DISTRIBUTED_MISSING_COLUMN_SOURCE_NAME =
+  'E2E Distributed Missing Column';
 
 // Trace source pre-configured with a materialized view (e2e_otel_traces_1m),
 // used by the materialized-view acceleration tests.
@@ -35,6 +47,16 @@ export const E2E_TRACES_MV_TABLE = 'e2e_otel_traces_1m';
 export const E2E_SESSIONS_TABLE = 'e2e_hyperdx_sessions';
 export const E2E_METRICS_GAUGE_TABLE = 'e2e_otel_metrics_gauge';
 export const E2E_METRICS_SUM_TABLE = 'e2e_otel_metrics_sum';
+// A second database holding OTEL-shaped metric tables, so the metric table
+// autofill tests can switch the source form's database and see tables detected
+// from the new one. The table names differ from the `default` database's so an
+// assertion can tell which database a detected table came from. Created
+// (idempotently, structure copied from the `default` tables) by
+// `seed-clickhouse.ts` rather than `init-db-e2e.sh`, so an existing ClickHouse
+// volume picks it up without being reset.
+export const E2E_ALT_METRICS_DATABASE = 'e2e_metrics_alt';
+export const E2E_ALT_METRICS_GAUGE_TABLE = 'alt_otel_metrics_gauge';
+export const E2E_ALT_METRICS_SUM_TABLE = 'alt_otel_metrics_sum';
 // Table backing the INTERESTING_FILTER_KEYS_SOURCE_NAME source. Created in
 // `docker/clickhouse/local/init-db-e2e.sh` and seeded in `seed-clickhouse.ts`.
 export const E2E_INTERESTING_FILTER_KEYS_TABLE =

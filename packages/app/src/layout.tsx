@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { Button, Center, Group, Text } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 
@@ -19,14 +20,28 @@ import { useLocalStorage } from './utils';
  * @example SearchPage.getLayout = withAppNav;
  */
 function PageWrapper({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [bannerState, setBannerState] = useLocalStorage(
     'clickstack-banner-state',
     'opened',
   );
   const [hasMounted, setHasMounted] = React.useState(false); // prevents banner flash
   React.useEffect(() => setHasMounted(true), []);
+  const kioskQueryValue = router.query.kiosk;
+  const isDashboardKioskMode =
+    (router.pathname === '/dashboards' ||
+      router.pathname === '/dashboards/[dashboardId]') &&
+    (kioskQueryValue === 'true' ||
+      (Array.isArray(kioskQueryValue) && kioskQueryValue.includes('true')));
   const bannerIsActive =
-    hasMounted && IS_CLICKHOUSE_BUILD && bannerState === 'opened';
+    hasMounted &&
+    !isDashboardKioskMode &&
+    IS_CLICKHOUSE_BUILD &&
+    bannerState === 'opened';
+
+  React.useEffect(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, [isDashboardKioskMode]);
 
   return (
     <div className={bannerIsActive ? 'app-layout-with-banner' : 'app-layout'}>
@@ -58,7 +73,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
         </Group>
       )}
       <div className="d-flex" style={{ height: '100%', overflow: 'hidden' }}>
-        <AppNav />
+        {!isDashboardKioskMode && <AppNav />}
         <div
           id="app-content-scroll-container"
           className="w-100 min-w-0"

@@ -7,18 +7,13 @@ import {
   useRef,
 } from 'react';
 
-import { calculateInterval, renderMs } from './utils';
+import { renderMs, tickIntervalForWidth } from './utils';
 
 import styles from './TimelineChart.module.scss';
 
 export type TimelineXAxisHandle = {
   recompute: () => void;
 };
-
-// Minimum horizontal space reserved per tick label. The widest label we render
-// (e.g. "1.234s") is ~45px; the extra headroom keeps adjacent labels from
-// touching. Tune up for a sparser axis, down for a denser one.
-const MIN_TICK_PX = 56;
 
 export function TimelineXAxis({
   maxVal,
@@ -64,8 +59,7 @@ export function TimelineXAxis({
     // recompute after the layout/scale has changed. Both containers span the
     // same width, so measure one and drive both from the same spacing.
     const ticksWidthPx = gridContainer.getBoundingClientRect().width;
-    const maxTicks = Math.max(1, Math.floor(ticksWidthPx / MIN_TICK_PX));
-    const interval = calculateInterval(max, maxTicks);
+    const interval = tickIntervalForWidth(max, ticksWidthPx);
     const numTicks = Math.floor(max / interval);
     const percSpacing = (interval / max) * 100;
     const marginLeft = (i: number) =>
@@ -111,7 +105,7 @@ export function TimelineXAxis({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const label = tick.firstElementChild as HTMLDivElement;
       tick.style.marginLeft = marginLeft(i);
-      label.textContent = renderMs(i * interval);
+      label.textContent = renderMs(i * interval, interval);
     }
   }, [maxValRef, heightRef]);
 

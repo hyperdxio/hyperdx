@@ -7,7 +7,12 @@ import { z } from 'zod';
 export { default as objectHash } from 'object-hash';
 
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
-import { replaceMacros } from '@/macros';
+import {
+  getSourceDependentMacrosUsed,
+  getSourceTableMacroArgCounts,
+  hasMacro,
+  replaceMacros,
+} from '@/macros';
 import { QUERY_PARAMS, RawSqlQueryParam } from '@/rawSqlParams';
 import {
   BuilderChartConfig,
@@ -49,6 +54,14 @@ export function splitAndTrimCSV(input: string): string[] {
     .filter(column => column.length > 0);
 }
 
+function isQuoteEscapedByBackslash(input: string, index: number): boolean {
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && input[i] === '\\'; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
 // Replace splitAndTrimCSV, should remove splitAndTrimCSV later
 export function splitAndTrimWithBracket(input: string): string[] {
   let parenCount: number = 0;
@@ -58,14 +71,16 @@ export function splitAndTrimWithBracket(input: string): string[] {
 
   const res: string[] = [];
   let cur: string = '';
-  for (const c of input + ',') {
-    if (c === '"' && !inSingleQuote) {
+  for (let i = 0; i <= input.length; i++) {
+    const c = i === input.length ? ',' : input[i];
+
+    if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
       inDoubleQuote = !inDoubleQuote;
       cur += c;
       continue;
     }
 
-    if (c === "'" && !inDoubleQuote) {
+    if (c === "'" && !inDoubleQuote && !isQuoteEscapedByBackslash(input, i)) {
       inSingleQuote = !inSingleQuote;
       cur += c;
       continue;
@@ -106,9 +121,18 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
-type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
+export type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
 
-function classifyTimestampType(type: string | undefined): {
+/**
+ * Classify a ClickHouse timestamp type into its kind and sub-second precision.
+ *
+ * `kind: 'date'` means day precision — a value read from such a column lands at
+ * midnight and can't locate an event within its day. Callers that need an
+ * instant use this to skip those columns rather than silently anchor to midnight.
+ *
+ * Returns null for anything that isn't a Date/DateTime/DateTime64.
+ */
+export function classifyTimestampType(type: string | undefined): {
   kind: TimestampTypeKind;
   precision: number;
 } | null {
@@ -119,7 +143,8 @@ function classifyTimestampType(type: string | undefined): {
   if (/^Date(?:32)?$/i.test(inner)) {
     return { kind: 'date', precision: -1 };
   }
-  if (/^DateTime$/i.test(inner)) {
+  // DateTime[('<timezone>')]
+  if (/^DateTime$/i.test(inner) || /^DateTime\('[^']*'\)$/i.test(inner)) {
     return { kind: 'datetime', precision: 0 };
   }
   // DateTime64(<precision>[, '<timezone>'])
@@ -818,6 +843,44 @@ export function convertToCategoricalChartConfig(
   return convertedConfig;
 }
 
+/**
+ * Number charts collapse to a single aggregate value, so drop the time bucket
+ * (granularity) and any group-by.
+ */
+export function convertToNumberChartConfig(
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
+  return omit(config, ['granularity', 'groupBy']);
+}
+
+/**
+ * Table charts drop the time bucket (granularity) and, so the set of rows kept
+ * within the limit is stable, default to a row limit and a group-by ordering
+ * when the user hasn't set them.
+ */
+export function convertToTableChartConfig(
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Set a default limit if not already set
+  if (!convertedConfig.limit) {
+    convertedConfig.limit = { limit: 200 };
+  }
+
+  // Set a default orderBy if groupBy is set but orderBy is not,
+  // so that the set of rows within the limit is stable.
+  if (
+    convertedConfig.groupBy &&
+    typeof convertedConfig.groupBy === 'string' &&
+    !convertedConfig.orderBy
+  ) {
+    convertedConfig.orderBy = convertedConfig.groupBy;
+  }
+
+  return convertedConfig;
+}
+
 export const getFirstOrderingItem = (
   orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ) => {
@@ -1295,6 +1358,45 @@ export function displayTypeSupportsPromQLAlerts(
   return displayType ? false : false;
 }
 
+/**
+ * Resolves the chart's macros and reports which raw-SQL time-range/interval
+ * query params are present in the resolved SQL. Shared by
+ * `validateRawSqlForAlert` and `validateRawSqlChartConfig`, which each build
+ * their own error/warning messages from this on top.
+ *
+ * Returns `null` if the config isn't raw SQL or macro resolution fails
+ * (`replaceMacros` throws frequently while a user is still typing).
+ */
+function getRawSqlTimeRangeStatus(chartConfig: RawSqlChartConfig): {
+  isTimeSeries: boolean;
+  hasInterval: boolean;
+  hasTimeFilter: boolean;
+} | null {
+  try {
+    if (!isRawSqlSavedChartConfig(chartConfig)) {
+      return null;
+    }
+
+    const sql = replaceMacros(chartConfig);
+
+    return {
+      isTimeSeries: isTimeSeriesDisplayType(chartConfig.displayType),
+      hasInterval:
+        sql.includes(
+          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
+        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name),
+      hasTimeFilter:
+        sql.includes(
+          QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name,
+        ) &&
+        sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name),
+    };
+  } catch {
+    // replaceMacros will often fail as users type in the SQL template
+    return null;
+  }
+}
+
 export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
   errors: string[];
   warnings: string[];
@@ -1302,47 +1404,114 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  try {
-    if (!isRawSqlSavedChartConfig(chartConfig)) {
-      return { errors, warnings };
-    }
+  if (!isRawSqlSavedChartConfig(chartConfig)) {
+    return { errors, warnings };
+  }
 
-    if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+  if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+    errors.push(
+      `Display type ${chartConfig.displayType} does not support raw SQL alerts.`,
+    );
+  }
+
+  const status = getRawSqlTimeRangeStatus(chartConfig);
+  if (status) {
+    // Interval params are only required for time-series display types (Line, StackedBar).
+    // Number charts don't use interval bucketing.
+    if (status.isTimeSeries && !status.hasInterval) {
       errors.push(
-        `Display type ${chartConfig.displayType} does not support raw SQL alerts.`,
+        `SQL used for alerts must include an interval parameter or macro.`,
       );
     }
 
-    const sql = replaceMacros(chartConfig);
-
-    // Interval params are only required for time-series display types (Line, StackedBar).
-    // Number charts don't use interval bucketing.
-    if (isTimeSeriesDisplayType(chartConfig.displayType)) {
-      const hasInterval =
-        sql.includes(
-          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
-        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name);
-      if (!hasInterval) {
-        errors.push(
-          `SQL used for alerts must include an interval parameter or macro.`,
-        );
-      }
-    }
-
-    const hasTimeFilter =
-      sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
-      sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name);
-    if (!hasTimeFilter) {
+    if (!status.hasTimeFilter) {
       warnings.push(
         `SQL used for alerts should include start and end date parameters or macros.`,
       );
     }
+  }
 
-    return { errors, warnings };
-  } catch {
-    // replaceMacros will often fail as users type in the SQL template
+  return { errors, warnings };
+}
+
+/**
+ * General-purpose raw SQL chart validation, surfaced in the chart editor
+ * regardless of whether an alert is configured.
+ */
+export function validateRawSqlChartConfig(
+  chartConfig: RawSqlChartConfig,
+  { isDashboardTile = false }: { isDashboardTile?: boolean } = {},
+): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!isRawSqlSavedChartConfig(chartConfig)) {
     return { errors, warnings };
   }
+
+  try {
+    const status = getRawSqlTimeRangeStatus(chartConfig);
+    if (status) {
+      if (status.isTimeSeries && !status.hasInterval) {
+        errors.push(
+          'SQL must include an interval parameter or macro (e.g. $__interval_s) for this display type.',
+        );
+      }
+
+      if (!status.hasTimeFilter) {
+        warnings.push(
+          'SQL should include start and end date parameters or macros (e.g. $__timeFilter) so this chart respects the selected time range.',
+        );
+      }
+    }
+
+    if (isDashboardTile) {
+      if (!hasMacro(chartConfig.sqlTemplate, 'sourceTable')) {
+        warnings.push(
+          'SQL should include the $__sourceTable macro so this tile queries its configured source.',
+        );
+      }
+      if (!hasMacro(chartConfig.sqlTemplate, 'filters')) {
+        warnings.push(
+          'SQL should include the $__filters macro so dashboard filters apply to this tile.',
+        );
+      }
+    }
+
+    // $__filters/$__sourceTable only resolve correctly once a source is
+    // selected, regardless of dashboard-tile vs. chart-explorer context.
+    if (!chartConfig.from) {
+      const usedMacros = getSourceDependentMacrosUsed(chartConfig.sqlTemplate);
+      if (usedMacros.length > 0) {
+        errors.push(
+          `SQL uses ${usedMacros.map(m => `$__${m}`).join(' and ')} but no source is selected — select a source so ${usedMacros.length > 1 ? 'these macros' : 'this macro'} can resolve correctly.`,
+        );
+      }
+    } else {
+      // A metric type argument is required for a metrics source and
+      // disallowed otherwise — a mismatch here fails at query time.
+      const argCounts = getSourceTableMacroArgCounts(chartConfig.sqlTemplate);
+      const isMetricsSource = !!chartConfig.metricTables;
+
+      if (argCounts.some(count => count > 0) && !isMetricsSource) {
+        errors.push(
+          'SQL uses $__sourceTable(<metricType>) but the selected source is not a metrics source — use a bare $__sourceTable instead.',
+        );
+      }
+
+      if (argCounts.some(count => count === 0) && isMetricsSource) {
+        errors.push(
+          'SQL uses a bare $__sourceTable but the selected source is a metrics source — specify a metric type, e.g. $__sourceTable(gauge).',
+        );
+      }
+    }
+  } catch {
+    // hasMacro/getSourceDependentMacrosUsed throw on malformed macro args
+    // (e.g. an unmatched paren) while the user is still typing; fall back to
+    // whatever errors/warnings were already accumulated rather than crash.
+  }
+
+  return { errors, warnings };
 }
 
 export const isTimeSeriesDisplayType = (
@@ -1352,3 +1521,30 @@ export const isTimeSeriesDisplayType = (
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar
   );
 };
+
+// This type serves as options to fetch values from normal text indices.
+// This is a record of Column Name to required query parameters.
+export type TextIndexColumnQueryOptions = Map<
+  string,
+  {
+    indexName: string;
+    limit: number;
+  }
+>;
+
+// This type serves as options to fetch values from map text indices.
+// This is a record of Map Column Name to required query parameters.
+export type TextIndexMapColumnQueryOptions = Map<
+  string,
+  {
+    indexName: string;
+    limit: number;
+    separator: string;
+    keys: string[];
+  }
+>;
+
+export type MetadataMVQueryOptions = Map<
+  string,
+  Map<'NativeColumn' | string, string[]> // map from column name to keys
+>;

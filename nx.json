@@ -8,15 +8,20 @@
   },
   "targetDefaults": {
     "build": {
+      "cache": true,
       "dependsOn": ["^build"]
-    }
-  },
-  "tasksRunnerOptions": {
-    "default": {
-      "runner": "nx/tasks-runners/default",
-      "options": {
-        "cacheableOperations": ["build", "dev:build", "lint", "test"]
-      }
+    },
+    "ci:build": {
+      "dependsOn": ["^ci:build"]
+    },
+    "dev:build": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
     }
   },
   "namedInputs": {

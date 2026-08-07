@@ -95,16 +95,39 @@ describe('getVisibleLineData', () => {
     expect(visible.map(l => l.dataKey)).toEqual(['a', 'c']);
   });
 
-  it('drops series beyond HARD_LINES_LIMIT', () => {
+  it('caps to HARD_LINES_LIMIT when there is no selection', () => {
     const lineData = Array.from({ length: HARD_LINES_LIMIT + 5 }, (_, i) =>
       makeLine(`series-${i}`),
     );
     const visible = getVisibleLineData(lineData, undefined);
     expect(visible).toHaveLength(HARD_LINES_LIMIT);
-    // A series past the limit must never appear, even if selected.
+    expect(visible.map(l => l.dataKey)).not.toContain(
+      `series-${HARD_LINES_LIMIT + 2}`,
+    );
+  });
+
+  it('draws a selected series even when it ranks beyond HARD_LINES_LIMIT', () => {
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 5 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    // Selection wins over the cap: isolating a low-ranked series still draws it
+    // (cap-first order previously left the chart empty while its stats stayed
+    // in the legend table).
     const overLimitName = `series-${HARD_LINES_LIMIT + 2}`;
-    expect(getVisibleLineData(lineData, new Set([overLimitName]))).toHaveLength(
-      0,
+    expect(
+      getVisibleLineData(lineData, new Set([overLimitName])).map(
+        l => l.dataKey,
+      ),
+    ).toEqual([overLimitName]);
+  });
+
+  it('still caps an oversized manual selection to HARD_LINES_LIMIT', () => {
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 20 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    const everySeries = new Set(lineData.map(l => l.dataKey));
+    expect(getVisibleLineData(lineData, everySeries)).toHaveLength(
+      HARD_LINES_LIMIT,
     );
   });
 });
@@ -131,7 +154,15 @@ describe('buildActiveClickSeries', () => {
     // `b` is missing/non-numeric at this bucket, so it is excluded.
     const row = { ts_bucket: 1000, a: 42, b: null };
     expect(buildActiveClickSeries(visible, row)).toEqual([
-      { dataKey: 'a', name: 'Alpha', value: 42, color: '#a' },
+      {
+        dataKey: 'a',
+        name: 'Alpha',
+        value: 42,
+        color: '#a',
+        valueColumnName: 'a',
+        isPreviousPeriod: false,
+        previousValue: undefined,
+      },
     ]);
   });
 
@@ -141,5 +172,49 @@ describe('buildActiveClickSeries', () => {
     const result = buildActiveClickSeries(visible, row);
     expect(result.map(r => r.dataKey)).toEqual(['a']);
     expect(result[0].value).toBe(0);
+  });
+
+  it('pairs a current-period series with its previous-period value', () => {
+    // makeLine sets previousPeriodKey to `${dataKey}.prev`; when the bucket row
+    // carries a numeric value under that key, it is surfaced as previousValue
+    // so the pinned tooltip can render the percent-change chip.
+    const visible = [makeLine('a', 'Alpha')];
+    const row = { a: 100, 'a.prev': 80 };
+    const result = buildActiveClickSeries(visible, row);
+    expect(result[0]).toMatchObject({
+      dataKey: 'a',
+      value: 100,
+      previousValue: 80,
+      isPreviousPeriod: false,
+    });
+  });
+
+  it('leaves previousValue undefined when the previous bucket is non-numeric', () => {
+    const visible = [makeLine('a')];
+    const row = { a: 100, 'a.prev': null };
+    const result = buildActiveClickSeries(visible, row);
+    expect(result[0].previousValue).toBeUndefined();
+  });
+
+  it('marks a previous-period line (previousPeriodKey === dataKey) and gives it no comparison', () => {
+    // A dashed previous-period line's dataKey equals its previousPeriodKey.
+    // It must be flagged isPreviousPeriod (so the tooltip can fold it away)
+    // and never pair itself as its own comparison.
+    const prevLine: LineData = {
+      dataKey: 'a.prev',
+      currentPeriodKey: 'a',
+      previousPeriodKey: 'a.prev',
+      displayName: 'Alpha (previous)',
+      valueColumnName: 'a',
+      color: '#a',
+      isDashed: true,
+    };
+    const row = { 'a.prev': 80 };
+    const result = buildActiveClickSeries([prevLine], row);
+    expect(result[0]).toMatchObject({
+      dataKey: 'a.prev',
+      isPreviousPeriod: true,
+      previousValue: undefined,
+    });
   });
 });
