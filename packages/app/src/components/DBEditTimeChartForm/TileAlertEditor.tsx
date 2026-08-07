@@ -76,6 +76,10 @@ export function TileAlertEditor({
     control,
     name: 'alert.numConsecutiveWindows',
   });
+  const alertRenotifyIntervalMinutes = useWatch({
+    control,
+    name: 'alert.renotifyIntervalMinutes',
+  });
   const maxAlertScheduleOffsetMinutes = alert?.interval
     ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
     : 0;
@@ -243,6 +247,8 @@ export function TileAlertEditor({
             }
             numConsecutiveWindowsName="alert.numConsecutiveWindows"
             numConsecutiveWindows={alertnumConsecutiveWindows ?? undefined}
+            renotifyIntervalName="alert.renotifyIntervalMinutes"
+            renotifyIntervalMinutes={alertRenotifyIntervalMinutes ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="sm">
             Send to

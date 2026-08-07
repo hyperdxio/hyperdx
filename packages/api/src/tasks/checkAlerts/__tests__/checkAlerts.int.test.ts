@@ -2380,6 +2380,8 @@ describe('checkAlerts', () => {
 
       // check if webhook was triggered
       // We're only checking the general structure here since the exact text includes timestamps
+      // Transition + resolve only; the second ALERT window doesn't re-notify.
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
         1,
         'https://hooks.slack.com/services/123',
@@ -2397,7 +2399,7 @@ describe('checkAlerts', () => {
         2,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "My Search" - 1 lines found',
+          text: '✅ Alert for "My Search" - 0 lines found',
           blocks: [
             {
               text: expect.any(Object),
@@ -5207,9 +5209,8 @@ describe('checkAlerts', () => {
 
       // Check webhook calls:
       // 1-2: First run alerts for service-a and service-b
-      // 3: Second run alert for service-a
-      // 4: Second run resolution notification for service-b
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
+      // 3: Second run resolution notification for service-b (service-a doesn't re-notify)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
 
       // Verify the resolution notification was sent for service-b
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
@@ -5683,9 +5684,8 @@ describe('checkAlerts', () => {
 
       // Check webhook calls:
       // 1-2: First run alerts for service-a and service-b
-      // 3: Second run alert for service-a (continues alerting)
-      // 4: Second run resolution notification for service-b
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
+      // 3: Second run resolution notification for service-b (service-a doesn't re-notify)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
 
       // Verify the resolution notification was sent for service-b
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
@@ -9171,6 +9171,185 @@ describe('checkAlerts', () => {
         expect(serviceBHistories).toHaveLength(1);
         expect(serviceBHistories[0].state).toBe('PENDING');
         expect(serviceBHistories[0].fired).toBeFalsy();
+      });
+    });
+
+    describe('re-notification (renotifyIntervalMinutes)', () => {
+      // Data in every 5m window, so the alert stays ALERT and never resolves.
+      const insertSustainedBreach = () =>
+        bulkInsertLogs(
+          ['00:05:00', '00:10:00', '00:15:00', '00:20:00'].map(time => ({
+            ServiceName: 'api',
+            Timestamp: new Date(`2024-01-01T${time}Z`),
+            SeverityText: 'error',
+            Body: 'err',
+          })),
+        );
+
+      const EVALUATION_TIMES = [
+        '2024-01-01T00:12:00Z',
+        '2024-01-01T00:17:00Z',
+        '2024-01-01T00:22:00Z',
+        '2024-01-01T00:27:00Z',
+      ].map(t => new Date(t));
+
+      const runSustainedBreach = async (
+        renotifyIntervalMinutes?: number | null,
+      ) => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue({ text: 'ok' });
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            // threshold=1: ABOVE is inclusive, so 0 would breach empty windows too.
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+            renotifyIntervalMinutes,
+          },
+          { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+        );
+
+        await insertSustainedBreach();
+
+        // Notification count observed after each successive evaluation.
+        const notificationCounts: number[] = [];
+        for (const now of EVALUATION_TIMES) {
+          await processAlertAtTime(
+            now,
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+          notificationCounts.push(
+            jest.mocked(slack.postMessageToWebhook).mock.calls.length,
+          );
+        }
+
+        const histories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+
+        return { notificationCounts, histories };
+      };
+
+      it('notifies once on the OK->ALERT transition by default', async () => {
+        const { notificationCounts, histories } = await runSustainedBreach();
+
+        // One notification on the first breach, silence for the rest.
+        expect(notificationCounts).toEqual([1, 1, 1, 1]);
+        expect(histories.map(h => h.state)).toEqual([
+          'ALERT',
+          'ALERT',
+          'ALERT',
+          'ALERT',
+        ]);
+        // lastNotifiedAt stays pinned to the notifying window while silent.
+        expect(histories.map(h => h.lastNotifiedAt?.toISOString())).toEqual(
+          Array(4).fill('2024-01-01T00:10:00.000Z'),
+        );
+      });
+
+      it('notifies on every evaluation when renotifyIntervalMinutes is 0', async () => {
+        const { notificationCounts, histories } = await runSustainedBreach(0);
+
+        expect(notificationCounts).toEqual([1, 2, 3, 4]);
+        expect(histories.map(h => h.lastNotifiedAt?.toISOString())).toEqual([
+          '2024-01-01T00:10:00.000Z',
+          '2024-01-01T00:15:00.000Z',
+          '2024-01-01T00:20:00.000Z',
+          '2024-01-01T00:25:00.000Z',
+        ]);
+      });
+
+      it('re-notifies only after renotifyIntervalMinutes has elapsed', async () => {
+        // 10m interval, 5m ticks: notify 00:10, skip 00:15, notify 00:20, skip 00:25.
+        const { notificationCounts, histories } = await runSustainedBreach(10);
+
+        expect(notificationCounts).toEqual([1, 1, 2, 2]);
+        expect(histories.map(h => h.lastNotifiedAt?.toISOString())).toEqual([
+          '2024-01-01T00:10:00.000Z',
+          '2024-01-01T00:10:00.000Z',
+          '2024-01-01T00:20:00.000Z',
+          '2024-01-01T00:20:00.000Z',
+        ]);
+      });
+
+      it('notifies again on a new OK->ALERT transition after resolving', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue({ text: 'ok' });
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+        );
+
+        // Breach, then a quiet window, then breach again.
+        await bulkInsertLogs(
+          ['00:05:00', '00:15:00'].map(time => ({
+            ServiceName: 'api',
+            Timestamp: new Date(`2024-01-01T${time}Z`),
+            SeverityText: 'error',
+            Body: 'err',
+          })),
+        );
+
+        for (const now of EVALUATION_TIMES.slice(0, 3)) {
+          await processAlertAtTime(
+            now,
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+        }
+
+        const histories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+        expect(histories.map(h => h.state)).toEqual(['ALERT', 'OK', 'ALERT']);
+
+        // Second ALERT is a fresh transition after resolving, so it notifies.
+        expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
       });
     });
   });

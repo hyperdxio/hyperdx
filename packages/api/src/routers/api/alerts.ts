@@ -86,6 +86,7 @@ const formatAlertResponse = (
       'updatedAt',
       'executionErrors',
       'numConsecutiveWindows',
+      'renotifyIntervalMinutes',
     ]),
     tileId: alert.tileId ?? undefined,
   };
