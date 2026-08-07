@@ -5,6 +5,7 @@ import { act, renderHook } from '@testing-library/react';
 import {
   areFiltersEqual,
   parseQuery,
+  replaceFiltersInWhereClause,
   useSearchPageFilterState,
 } from '@/searchFilters';
 
@@ -1114,6 +1115,37 @@ describe('searchFilters', () => {
           { type: 'sql', condition: `ServiceName IN ('app')` },
         ]);
       });
+    });
+  });
+
+  describe('replaceFiltersInWhereClause', () => {
+    it('replaces all duplicate predicates for a field with the new sidebar value', () => {
+      // When the user manually writes (or a legacy search restores)
+      // host IN ('a') AND host IN ('b'), clicking a sidebar value for host
+      // should replace BOTH conjuncts, not append a third one — otherwise the
+      // query becomes host IN ('a') AND host IN ('b') AND host IN ('c') which
+      // is satisfied only by values that appear in all three lists simultaneously
+      // (usually an empty result set).
+      const result = replaceFiltersInWhereClause(
+        "host IN ('a') AND host IN ('b')",
+        'sql',
+        [{ type: 'sql', condition: "host IN ('c')" }],
+        new Set(),
+      );
+      expect(result).toBe("host IN ('c')");
+    });
+
+    it('replaces a single-occurrence predicate normally', () => {
+      const result = replaceFiltersInWhereClause(
+        "host IN ('a') AND level IN ('error')",
+        'sql',
+        [
+          { type: 'sql', condition: "host IN ('b')" },
+          { type: 'sql', condition: "level IN ('warn')" },
+        ],
+        new Set(),
+      );
+      expect(result).toBe("host IN ('b') AND level IN ('warn')");
     });
   });
 });

@@ -611,7 +611,9 @@ describe('modifier terms and negated ranges do not survive alongside new clause'
       },
     );
     // msg:"world" is pruned; msg:"hello"~2 is preserved verbatim (unmanageable).
-    expect(result).toBe('msg:"hello"~2 AND msg:"goodbye" AND ServiceName:"api"');
+    expect(result).toBe(
+      'msg:"hello"~2 AND msg:"goodbye" AND ServiceName:"api"',
+    );
   });
 
   it('preserves a modifier-only field verbatim and appends the new clause', () => {
@@ -625,7 +627,9 @@ describe('modifier terms and negated ranges do not survive alongside new clause'
         ServiceName: { included: new Set(['api']), excluded: new Set() },
       },
     );
-    expect(result).toBe('msg:"hello"~2 AND msg:"goodbye" AND ServiceName:"api"');
+    expect(result).toBe(
+      'msg:"hello"~2 AND msg:"goodbye" AND ServiceName:"api"',
+    );
   });
 
   it('replaces a plain range clause when the field also has a negated range', () => {
@@ -955,11 +959,13 @@ describe('IN (SELECT ...) subqueries are preserved, not treated as facets', () =
   });
 });
 
-describe('repeated SQL predicates for the same field are not merged into a union', () => {
-  it('leaves both conjuncts untouched when the same key appears twice', () => {
-    // host IN ('a') AND host IN ('b') is an intersection — the user wrote it
-    // intentionally. Merging into host IN ('a', 'b') would silently change the
-    // semantics to a union. The two conjuncts must be preserved verbatim.
+describe('repeated SQL predicates for the same field are all replaced by a sidebar click', () => {
+  it('replaces all conjuncts when the same key appears twice', () => {
+    // host IN ('a') AND host IN ('b') contains duplicate predicates for the
+    // same field (can arise from manual edits or legacy saved searches). When
+    // the user clicks a sidebar value for host, ALL existing host conjuncts
+    // must be replaced — leaving the old restrictions active causes the
+    // sidebar selection to return zero rows.
     const result = replaceFilterClauses(
       "host IN ('a') AND host IN ('b')",
       'sql',
@@ -967,9 +973,7 @@ describe('repeated SQL predicates for the same field are not merged into a union
         host: { included: new Set(['c']), excluded: new Set() },
       },
     );
-    expect(result).toBe(
-      "host IN ('a') AND host IN ('b') AND host IN ('c')",
-    );
+    expect(result).toBe("host IN ('c')");
   });
 
   it('still replaces a key that appears exactly once', () => {
@@ -984,7 +988,19 @@ describe('repeated SQL predicates for the same field are not merged into a union
     expect(result).toBe("host IN ('b') AND level IN ('warn')");
   });
 
-  it('leaves a duplicate key untouched while still replacing a single-occurrence key', () => {
+  it('replaces all conjuncts for a duplicate key while also replacing a single-occurrence key', () => {
+    const result = replaceFilterClauses(
+      "host IN ('a') AND host IN ('b') AND level IN ('error')",
+      'sql',
+      {
+        host: { included: new Set(['c']), excluded: new Set() },
+        level: { included: new Set(['warn']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe("host IN ('c') AND level IN ('warn')");
+  });
+
+  it('drops all duplicate conjuncts for a field when it is removed from the sidebar', () => {
     const result = replaceFilterClauses(
       "host IN ('a') AND host IN ('b') AND level IN ('error')",
       'sql',
@@ -992,9 +1008,7 @@ describe('repeated SQL predicates for the same field are not merged into a union
         level: { included: new Set(['warn']), excluded: new Set() },
       },
     );
-    expect(result).toBe(
-      "host IN ('a') AND host IN ('b') AND level IN ('warn')",
-    );
+    expect(result).toBe("level IN ('warn')");
   });
 });
 

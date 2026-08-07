@@ -843,7 +843,9 @@ function renderNode(
     }
 
     const startOp: string | undefined =
-      'start' in node && typeof node.start === 'string' ? node.start : undefined;
+      'start' in node && typeof node.start === 'string'
+        ? node.start
+        : undefined;
     const leftNegate = negate !== (startOp === 'NOT');
     const rightNegate =
       negate !== (node.operator === 'AND NOT' || node.operator === 'OR NOT');
@@ -1263,12 +1265,16 @@ function replaceSqlFacetClauses(
       }
     }
   }
-  // Only keys that appear exactly once are safe to replace.
-  const managedKeys = new Set<string>(
-    [...keyCount.entries()]
-      .filter(([, count]) => count === 1)
-      .map(([key]) => key),
-  );
+  // All keys that appear as facet conjuncts are managed (eligible for
+  // replacement). The previous `count === 1` guard was intended to avoid
+  // changing the semantics of a hand-written conjunction like
+  // `host IN ('a') AND host IN ('b')`, but it caused the sidebar to append
+  // a third predicate instead of replacing both — leaving the old restrictions
+  // active and causing the sidebar selection to return zero rows. Replacing all
+  // conjuncts for a field (however many there are) is the correct behaviour:
+  // the sidebar owns every facet it can parse, and duplicate IN lists are an
+  // unusual/erroneous state that replacement should clean up, not preserve.
+  const managedKeys = new Set<string>(keyCount.keys());
 
   for (const conjunct of splitSqlConjuncts(code)) {
     if (!conjunct.trim()) continue;
