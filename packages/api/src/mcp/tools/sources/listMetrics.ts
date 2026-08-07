@@ -3,11 +3,11 @@ import {
   concatChSql,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';

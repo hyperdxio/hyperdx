@@ -1,5 +1,4 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   MetricsDataType,
   SourceKind,
@@ -10,6 +9,7 @@ import ms from 'ms';
 import os from 'os';
 import pino from 'pino';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import Connection from '@/models/connection';
 import { Source, SourceDocument } from '@/models/source';

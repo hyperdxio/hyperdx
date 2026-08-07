@@ -3,6 +3,7 @@ import type {
   BaseResultSet,
   ClickHouseSettings,
   DataFormat,
+  Logger,
   ResponseHeaders,
   ResponseJSON,
   Row,
@@ -33,6 +34,7 @@ export type {
   BaseResultSet,
   ClickHouseSettings,
   DataFormat,
+  Logger,
   ResponseJSON,
   Row,
 };
@@ -631,6 +633,8 @@ export type ClickhouseClientOptions = {
   application?: string;
   /** Defines how long the client will wait for a response from the ClickHouse server before aborting the request, in milliseconds */
   requestTimeout?: number;
+  /** Logger for per-query SQL debug output. When omitted, query logging is silent. */
+  customLogger?: Logger;
 };
 
 export abstract class BaseClickhouseClient {
@@ -647,6 +651,7 @@ export abstract class BaseClickhouseClient {
    */
   protected maxRowReadOnly: boolean;
   protected requestTimeout: number = 3600000;
+  protected readonly customLogger?: Logger;
 
   constructor({
     host,
@@ -655,6 +660,7 @@ export abstract class BaseClickhouseClient {
     queryTimeout,
     application,
     requestTimeout,
+    customLogger,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
@@ -662,6 +668,7 @@ export abstract class BaseClickhouseClient {
     this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
     this.application = application;
+    this.customLogger = customLogger;
     if (requestTimeout != null && requestTimeout >= 0) {
       this.requestTimeout = requestTimeout;
     }
@@ -680,10 +687,12 @@ export abstract class BaseClickhouseClient {
     await this.client?.close();
   }
 
-  protected logDebugQuery(
+  protected logQuery(
     query: string,
     query_params: Record<string, any> = {},
   ): void {
+    if (!this.customLogger) return;
+
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
@@ -691,11 +700,11 @@ export abstract class BaseClickhouseClient {
       debugSql = query;
     }
 
-    console.debug('--------------------------------------------------------');
-
-    console.debug('Sending Query:', debugSql);
-
-    console.debug('--------------------------------------------------------');
+    this.customLogger.debug({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: debugSql },
+    });
   }
 
   protected async processClickhouseSettings({

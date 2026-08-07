@@ -15,10 +15,10 @@
  * endpoint" without dropping into raw SQL with self-JOINs. The builder
  * tools (table / timeseries / search) can't express the TraceId subselect.
  */
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
