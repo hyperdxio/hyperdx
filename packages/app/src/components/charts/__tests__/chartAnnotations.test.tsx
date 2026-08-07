@@ -234,6 +234,36 @@ describe('getAnnotationElements label collapsing', () => {
     expect(labelOf(lines[2])).toBe('1.2.0-beta');
   });
 
+  // Regression: a cluster spanning two services took the anchor's series color,
+  // so "2 deploys" rendered in one service's color while counting the other's
+  // release as that service's.
+  it('drops the series color when a cluster spans several series', () => {
+    const [anchor] = getAnnotationElements(
+      [
+        { ...deploy(0, '9.0.0'), group: 'semconv-api', color: '#blue' },
+        { ...deploy(10, 'v8.0.0'), group: 'gitops-api', color: '#gold' },
+      ],
+      collapsing,
+    );
+
+    expect(labelOf(anchor)).toBe('2 deploys');
+    // Neutral, and not either series' colour.
+    expect(lineProps(anchor).stroke).toBe('var(--color-text-muted)');
+  });
+
+  it('keeps the series color when a cluster is all one series', () => {
+    const [anchor] = getAnnotationElements(
+      [
+        { ...deploy(0, '9.0.0'), group: 'semconv-api', color: '#blue' },
+        { ...deploy(10, '9.1.0'), group: 'semconv-api', color: '#blue' },
+      ],
+      collapsing,
+    );
+
+    expect(labelOf(anchor)).toBe('2 deploys');
+    expect(lineProps(anchor).stroke).toBe('#blue');
+  });
+
   it('mutes the line of a marker whose label was collapsed away', () => {
     const [anchor, absorbed] = getAnnotationElements(
       [deploy(0, '1.0.0'), deploy(10, '2.0.0')],

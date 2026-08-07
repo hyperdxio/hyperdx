@@ -62,6 +62,11 @@ export function labelSeparationPx(
   );
 }
 
+// Colour for a cluster that covers several series. Legible, unlike the border
+// default, and deliberately not a palette colour so it can't be mistaken for
+// one of the series it summarises.
+const MIXED_SERIES_COLOR = 'var(--color-text-muted)';
+
 const STROKE_OPACITY = 0.9;
 // Members of a collapsed group still get a line (so the density is visible),
 // but a faint one, so the labelled anchor stays legible.
@@ -208,9 +213,22 @@ function collapseLabels(
       }
 
       const size = end - start;
-      collapsed.push(
-        size === 1 ? anchor : { ...anchor, label: `${size} ${noun}` },
-      );
+      if (size === 1) {
+        collapsed.push(anchor);
+      } else {
+        // A cluster covering several series can't wear one of their colors
+        // without claiming the others' events as that series'. Go neutral so
+        // the count stays true and the color stops implying an owner; the
+        // absorbed markers keep their own colors, so which series took part is
+        // still visible in the lines.
+        const spansSeries =
+          new Set(sorted.slice(start, end).map(a => a.group)).size > 1;
+        collapsed.push({
+          ...anchor,
+          label: `${size} ${noun}`,
+          color: spansSeries ? MIXED_SERIES_COLOR : anchor.color,
+        });
+      }
       for (let i = start + 1; i < end; i++) {
         collapsed.push({ ...sorted[i], label: undefined, muted: true });
       }
