@@ -86,11 +86,19 @@ export interface AlertProvider {
    * When errors are present (e.g. webhook failures), an ERROR-state history
    * row is additionally upserted for the evaluation window so the failure is
    * visible in the alert's evaluation history.
+   *
+   * `evaluatedDateRange` is the data range this evaluation queried
+   * (`[rangeStart, currentWindowStart)`, where windows that failed on earlier
+   * ticks appear as backfilled buckets). Stale ERROR rows from failed earlier
+   * ticks whose windows fall inside the range (exclusive of `rangeStart` — an
+   * ERROR row at exactly the previous anchor belongs to an already-evaluated
+   * window and is kept) are deleted, since this evaluation supersedes them.
    */
   updateAlertState(
     alertId: string,
     histories: IAlertHistory[],
     errors: IAlertError[],
+    evaluatedDateRange?: [Date, Date],
   ): Promise<void>;
 
   /**

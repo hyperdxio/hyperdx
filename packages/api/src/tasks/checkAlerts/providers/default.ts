@@ -373,6 +373,7 @@ export default class DefaultAlertProvider implements AlertProvider {
     alertId: string,
     histories: IAlertHistory[],
     errors: IAlertError[],
+    evaluatedDateRange?: [Date, Date],
   ) {
     // Save history records first (in parallel), then update alert state
     // Use Promise.allSettled to handle partial failures gracefully
@@ -417,12 +418,36 @@ export default class DefaultAlertProvider implements AlertProvider {
       { $set: { state: finalState, executionErrors: errors } },
     );
 
+    // All histories in one execution share the same createdAt (the current
+    // evaluation window start) and the same evaluation-level analytics.
+    const evaluationWindowStart = histories[0]?.createdAt;
+
+    // Failed earlier ticks may have left ERROR rows for windows this
+    // evaluation just covered (recordAlertErrors upserts one per failed
+    // window, and ERROR rows don't mark a window as evaluated, so those
+    // windows are retried — a same-window retry re-evaluates at the same
+    // createdAt, while later ticks fold them in as backfilled buckets
+    // stamped with the current window start). The query has now succeeded
+    // over the whole evaluated range, so remove the stale ERROR rows for
+    // every window it covered — otherwise a recovered window renders as
+    // ERROR until the TTL expires it (the evaluations view ranks ERROR
+    // above OK/ALERT). The range start is exclusive: an ERROR row at
+    // exactly the previous anchor belongs to an already-evaluated window
+    // (e.g. a webhook failure recorded alongside its normal rows) that is
+    // never retried, so it is a truthful record that must survive.
+    if (evaluationWindowStart != null && successfulHistories.length > 0) {
+      await AlertHistory.deleteMany({
+        alert: new mongoose.Types.ObjectId(alertId),
+        state: AlertState.ERROR,
+        createdAt: evaluatedDateRange
+          ? { $gt: evaluatedDateRange[0], $lte: evaluationWindowStart }
+          : evaluationWindowStart,
+      });
+    }
+
     // Notification (e.g. webhook) failures happened during this evaluation:
     // record them as an ERROR history row alongside the normal rows so the
-    // failure is visible in the alert's evaluation history. All histories in
-    // one execution share the same createdAt (the evaluation window start)
-    // and the same evaluation-level analytics.
-    const evaluationWindowStart = histories[0]?.createdAt;
+    // failure is visible in the alert's evaluation history.
     if (errors.length > 0 && evaluationWindowStart != null) {
       await this.upsertErrorHistory(
         alertId,
@@ -430,20 +455,6 @@ export default class DefaultAlertProvider implements AlertProvider {
         errors,
         histories[0]?.analytics,
       );
-    } else if (
-      evaluationWindowStart != null &&
-      successfulHistories.length > 0
-    ) {
-      // A failed earlier tick may have left an ERROR row for this window
-      // (recordAlertErrors upserts one, and ERROR rows don't mark the window
-      // as evaluated so it's retried). The window has now evaluated cleanly —
-      // remove the stale ERROR row so the window doesn't render as ERROR
-      // forever (the evaluations view ranks ERROR above OK).
-      await AlertHistory.deleteOne({
-        alert: new mongoose.Types.ObjectId(alertId),
-        createdAt: evaluationWindowStart,
-        state: AlertState.ERROR,
-      });
     }
   }
 
