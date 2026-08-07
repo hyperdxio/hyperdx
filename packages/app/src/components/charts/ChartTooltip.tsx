@@ -27,6 +27,16 @@ export function useChartTooltipZIndex({ pinned = false } = {}) {
 }
 
 /**
+ * z-index for the per-series action tooltips (Search / Copy / Focus) inside the
+ * pinned tooltip: one layer above the pinned popover so their labels aren't
+ * hidden behind it. Keeps the layering rule co-located with the hook above
+ * rather than as a bare `+ 1` at the call site.
+ */
+export function useChartTooltipActionZIndex() {
+  return useChartTooltipZIndex({ pinned: true }) + 1;
+}
+
+/**
  * Convert a chart-relative point (recharts' `activeCoordinate`) into
  * `position: fixed` viewport coordinates using the container's bounding rect.
  */
