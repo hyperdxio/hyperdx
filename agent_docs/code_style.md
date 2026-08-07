@@ -166,16 +166,22 @@ It is a bordered surface with the same header treatment as a custom dashboard
 tile (a full-bleed divider under the title). It replaces the older `ChartBox`;
 don't hand-roll a bordered `<div>`/`<Paper>` around a chart.
 
-`ChartCard` renders the card **chrome only**. It draws the header divider by
-providing `ChartContainerCardHeaderProvider`, so put a chart that renders a
-`ChartContainer` inside it (`DBTimeChart`, `DBHeatmapChart`, `DBListBarChart`,
-…). The tile-level controls (fullscreen, line/bar display switcher, kebab menu)
-belong to dashboard tiles and are intentionally **not** part of `ChartCard`.
+`ChartCard` renders the card **chrome only**. The header divider is drawn only
+when a descendant renders a `ChartContainer` with a `title` (or `toolbarItems`) —
+`ChartCard` supplies the `ChartContainerCardHeaderProvider` that switches that
+header into card mode — so put a chart that renders a `ChartContainer` inside it
+(`DBTimeChart`, `DBTableChart`, `DBHeatmapChart`, `DBListBarChart`, …). Content
+with its own heading (e.g. a bespoke table card) should still route that heading
+through a titled `ChartContainer` rather than a bare `Text`, so it gets the same
+card header — divider and top padding included — instead of sitting flush against
+the top border. The tile-level controls (fullscreen, line/bar display switcher,
+kebab menu) belong to dashboard tiles and are intentionally **not** part of
+`ChartCard`.
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `children` | `ReactNode` | The chart, usually a `DB*Chart` that renders a `ChartContainer` |
-| `style` | `CSSProperties` | Sizing/overflow override — pass a fixed `height`, or `flex: 1; height: 100%` to fill a flex row |
+| `children` | `ReactNode` | The chart, usually a `DB*Chart` (or a titled `ChartContainer`) |
+| `style` | `CSSProperties` | Sizing/overflow override — pass a fixed `height`, or `flex: 1; height: 100%` to fill a flex row (`paddingInline` is pinned to keep the divider aligned) |
 | `data-testid` | `string` | Test hook |
 
 ```tsx

@@ -39,6 +39,7 @@ import { TimePicker } from '@/components/TimePicker';
 import { withAppNav } from '@/layout';
 
 import { ChartCard } from './components/charts/ChartCard';
+import ChartContainer from './components/charts/ChartContainer';
 import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
@@ -796,59 +797,53 @@ function ClickhousePage() {
                   </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={12}>
-                  <ChartCard
-                    style={{
-                      height: 400,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <Text size="sm" mb="md">
-                      Slowest Queries
-                    </Text>
-                    <DBSqlRowTable
-                      renderRowDetails={row => {
-                        return (
-                          <ReactCodeMirror
-                            extensions={[clickhouseSql()]}
-                            editable={false}
-                            value={formatSql(String(row.query ?? ''))}
-                            theme={colorScheme === 'dark' ? 'dark' : 'light'}
-                            lang="sql"
-                            maxHeight="200px"
-                          />
-                        );
-                      }}
-                      config={{
-                        select: `event_time, query_kind, 
+                  <ChartCard style={{ height: 400 }}>
+                    <ChartContainer title="Slowest Queries">
+                      <DBSqlRowTable
+                        renderRowDetails={row => {
+                          return (
+                            <ReactCodeMirror
+                              extensions={[clickhouseSql()]}
+                              editable={false}
+                              value={formatSql(String(row.query ?? ''))}
+                              theme={colorScheme === 'dark' ? 'dark' : 'light'}
+                              lang="sql"
+                              maxHeight="200px"
+                            />
+                          );
+                        }}
+                        config={{
+                          select: `event_time, query_kind, 
                 read_rows,
                 formatReadableSize(memory_usage) as memory_usage,
                 query_duration_ms, 
                 query`,
-                        dateRange: searchedTimeRange,
-                        from,
-                        where: `(
+                          dateRange: searchedTimeRange,
+                          from,
+                          where: `(
                   type='ExceptionWhileProcessing' OR type='QueryFinish' 
                 )`,
-                        timestampValueExpression: 'event_time',
-                        connection,
-                        orderBy: [
-                          {
-                            valueExpression: 'query_duration_ms',
-                            ordering: 'DESC',
-                          },
-                        ],
-                        filters: [
-                          ...filters,
-                          {
-                            type: 'sql_ast',
-                            operator: '=',
-                            left: 'query_kind',
-                            right: `'Select'`,
-                          },
-                        ],
-                        limit: { limit: 100 },
-                      }}
-                    />
+                          timestampValueExpression: 'event_time',
+                          connection,
+                          orderBy: [
+                            {
+                              valueExpression: 'query_duration_ms',
+                              ordering: 'DESC',
+                            },
+                          ],
+                          filters: [
+                            ...filters,
+                            {
+                              type: 'sql_ast',
+                              operator: '=',
+                              left: 'query_kind',
+                              right: `'Select'`,
+                            },
+                          ],
+                          limit: { limit: 100 },
+                        }}
+                      />
+                    </ChartContainer>
                   </ChartCard>
                 </Grid.Col>
               </Grid>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Flex, SegmentedControl } from '@mantine/core';
+import { Box, Flex, SegmentedControl, Text } from '@mantine/core';
 import type { Meta } from '@storybook/nextjs';
 
 import { ChartCard } from './ChartCard';
@@ -119,14 +119,18 @@ export const RedRow = () => {
 };
 
 /**
- * With no title and no toolbar the header row is omitted entirely, so the card
- * degrades to a plain bordered surface (no divider).
+ * Non-chart content (e.g. a table card) still routes its heading through a
+ * titled `ChartContainer` so it gets the same card header — divider included —
+ * as the chart cards above, instead of a bare `Text` that would sit flush
+ * against the top border with no divider.
  */
-export const NoHeader = () => (
+export const TableCard = () => (
   <Box style={{ width: 480, height: 260 }}>
     <ChartCard>
-      <ChartContainer>
-        <FakeChart color="var(--color-chart-green)" />
+      <ChartContainer title="Slowest Queries">
+        <Text size="sm" c="dimmed" p="sm">
+          table rows…
+        </Text>
       </ChartContainer>
     </ChartCard>
   </Box>
