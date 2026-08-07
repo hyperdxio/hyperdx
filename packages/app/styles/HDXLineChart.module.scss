@@ -1,3 +1,18 @@
+/* stylelint-disable selector-pseudo-class-no-unknown */
+
+// Chart root wrapper. Also the scope for the nearest-series emphasis <style>
+// (matched via `[data-chart-id]`), so each chart's emphasis stays isolated.
+.chartRoot {
+  position: relative;
+}
+
+// On hover, hide the series area fills so overlapping lines stay readable. A
+// class toggle is cheaper than swapping each <Area>'s fill prop (which
+// re-created every Area). `!important` beats recharts' inline fill.
+.chartHovered :global(.recharts-area .recharts-area-area) {
+  fill: none !important;
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -60,6 +75,11 @@
 
 .chartTooltipContent {
   padding: 6px 12px;
+
+  // Bound the series list so a many-series bucket can't grow the tooltip past
+  // the chart. Header/footer are siblings, so only the series list scrolls.
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 // Hover-tooltip only: bound the series list so a many-series bucket can't grow

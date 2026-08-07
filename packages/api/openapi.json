@@ -1645,8 +1645,8 @@
           },
           "seriesLimit": {
             "type": "integer",
-            "minimum": 1,
-            "description": "Maximum number of series rendered (top-N by value). Omit for no limit.",
+            "minimum": 0,
+            "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.\n",
             "example": 5
           }
         }
@@ -1709,8 +1709,8 @@
           },
           "seriesLimit": {
             "type": "integer",
-            "minimum": 1,
-            "description": "Maximum number of series rendered (top-N by value). Omit for no limit.",
+            "minimum": 0,
+            "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.",
             "example": 5
           }
         }
@@ -1887,8 +1887,8 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1,
-            "description": "Maximum number of slices (SQL LIMIT). Without a custom \"orderBy\" the query keeps the groups with the largest aggregated values; with an \"orderBy\" it keeps the first slices in that order. Omit to fetch all groups.\n",
+            "minimum": 0,
+            "description": "Maximum number of slices (SQL LIMIT). Without a custom \"orderBy\" the query keeps the groups with the largest aggregated values; with an \"orderBy\" it keeps the first slices in that order. Omit or set 0 to fetch all groups.\n",
             "example": 10
           }
         }
@@ -1942,8 +1942,8 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1,
-            "description": "Maximum number of bars (SQL LIMIT). Without a custom \"orderBy\" the query keeps the groups with the largest aggregated values; with an \"orderBy\" it keeps the first bars in that order. Omit to fetch all groups.\n",
+            "minimum": 0,
+            "description": "Maximum number of bars (SQL LIMIT). Without a custom \"orderBy\" the query keeps the groups with the largest aggregated values; with an \"orderBy\" it keeps the first bars in that order. Omit or set 0 to fetch all groups.\n",
             "example": 10
           }
         }

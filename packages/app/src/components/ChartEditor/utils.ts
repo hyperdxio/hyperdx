@@ -146,6 +146,10 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        // Per-tile render cap for raw SQL time charts (drives the client-side
+        // series cap in formatResponseForTimeChart). See
+        // SharedChartSettingsSchema.seriesLimit.
+        'seriesLimit',
         'alert',
         'onClick',
       ]),
@@ -223,6 +227,9 @@ export function convertFormStateToChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        // Per-tile render cap for raw SQL time charts (see the save-config path
+        // above and SharedChartSettingsSchema.seriesLimit).
+        'seriesLimit',
         'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',

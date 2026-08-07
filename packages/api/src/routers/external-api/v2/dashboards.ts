@@ -631,8 +631,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           default: false
  *         seriesLimit:
  *           type: integer
- *           minimum: 1
- *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           minimum: 0
+ *           description: >
+ *             Maximum number of series rendered (top-N by value). Omit to use
+ *             the default render cap, set 0 for unlimited, or a positive N to
+ *             keep the top N series.
  *           example: 5
  *
  *     BarBuilderChartConfig:
@@ -683,8 +686,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         seriesLimit:
  *           type: integer
- *           minimum: 1
- *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           minimum: 0
+ *           description: >-
+ *             Maximum number of series rendered (top-N by value). Omit to use
+ *             the default render cap, set 0 for unlimited, or a positive N to
+ *             keep the top N series.
  *           example: 5
  *
  *     TableBuilderChartConfig:
@@ -832,12 +838,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         limit:
  *           type: integer
- *           minimum: 1
+ *           minimum: 0
  *           description: >
  *             Maximum number of slices (SQL LIMIT). Without a custom "orderBy"
  *             the query keeps the groups with the largest aggregated values;
  *             with an "orderBy" it keeps the first slices in that order. Omit
- *             to fetch all groups.
+ *             or set 0 to fetch all groups.
  *           example: 10
  *
  *     CategoricalBarBuilderChartConfig:
@@ -885,12 +891,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         limit:
  *           type: integer
- *           minimum: 1
+ *           minimum: 0
  *           description: >
  *             Maximum number of bars (SQL LIMIT). Without a custom "orderBy"
  *             the query keeps the groups with the largest aggregated values;
- *             with an "orderBy" it keeps the first bars in that order. Omit to
- *             fetch all groups.
+ *             with an "orderBy" it keeps the first bars in that order. Omit or
+ *             set 0 to fetch all groups.
  *           example: 10
  *
  *     HeatmapSelectItem:
