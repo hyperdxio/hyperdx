@@ -457,10 +457,18 @@ jobs:
         # --disallowedTools DENIES, and deny beats allow. /proc/self/environ
         # carries the whole environment, including the API key.
         #
-        # --bare skips hooks, plugin sync and CLAUDE.md discovery, and takes
-        # auth strictly from ANTHROPIC_API_KEY. /tmp as the working directory
-        # keeps the checkout — scripts, workflow, git config — outside the
-        # workspace entirely.
+        # Deliberately NOT --bare. It looked like free hardening (no hooks, no
+        # plugin sync, no CLAUDE.md discovery) but it left the model holding
+        # `Read` alone: it never registered the `Write` from --tools, so the
+        # generator printed the body to stdout, wrote no file, and exited 0.
+        # See run 31149802657. On a GitHub-hosted runner it was guarding against
+        # nothing anyway: there is no user settings file and no MCP server for
+        # --setting-sources user to pick up. That stops being true if this job
+        # ever moves to a self-hosted runner, where $HOME persists between jobs —
+        # confine the settings sources then rather than reaching for --bare.
+        #
+        # /tmp as the working directory keeps the checkout — scripts, workflow,
+        # git config — outside the workspace entirely.
         working-directory: /tmp
         run: |
           set -euo pipefail
@@ -480,7 +488,6 @@ jobs:
                 'Read the instructions in /tmp/inputs/instructions.md and follow them exactly to write /tmp/release-notes-body.md for this release.' \
                 | npx --yes @anthropic-ai/claude-code@2.1.220 \
                     --print \
-                    --bare \
                     --setting-sources user \
                     --tools "Read" "Write" \
                     --allowedTools "Read(//tmp/**)" "Edit(//tmp/release-notes-body.md)" \
