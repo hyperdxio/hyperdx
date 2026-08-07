@@ -1087,6 +1087,56 @@ func TestRenamedDatabaseName(t *testing.T) {
 	}
 }
 
+func TestFenceDatabasePattern(t *testing.T) {
+	tests := []struct {
+		database string
+		want     string
+	}{
+		// Literal underscores must be escaped so they don't act as LIKE
+		// single-character wildcards.
+		{"default", `default\_pre\_replicated\_%`},
+		{"otel_json", `otel\_json\_pre\_replicated\_%`},
+		{"my%db", `my\%db\_pre\_replicated\_%`},
+		{`my\db`, `my\\db\_pre\_replicated\_%`},
+	}
+	for _, tt := range tests {
+		if got := fenceDatabasePattern(tt.database); got != tt.want {
+			t.Errorf("fenceDatabasePattern(%q): got %q, want %q", tt.database, got, tt.want)
+		}
+	}
+
+	// Every name produced by renamedDatabaseName must fall inside the literal
+	// prefix the pattern matches.
+	name := renamedDatabaseName("otel_json", time.Unix(1753000000, 0))
+	prefix := "otel_json" + fenceSuffix
+	if !strings.HasPrefix(name, prefix) {
+		t.Errorf("renamedDatabaseName %q does not start with fence prefix %q", name, prefix)
+	}
+}
+
+func TestDecideFenceRecovery(t *testing.T) {
+	tests := []struct {
+		name         string
+		targetExists bool
+		tableCount   uint64
+		want         fenceRecovery
+	}{
+		{"empty fence is dropped even when target exists", true, 0, fenceDrop},
+		{"empty fence is dropped when target is missing", false, 0, fenceDrop},
+		{"non-empty fence is restored when target is missing", false, 3, fenceRestore},
+		{"non-empty fence is kept with a warning when target exists", true, 3, fenceWarn},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := decideFenceRecovery(tt.targetExists, tt.tableCount); got != tt.want {
+				t.Errorf("decideFenceRecovery(%v, %d): got %v, want %v",
+					tt.targetExists, tt.tableCount, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRewriteEnginesForReplicated(t *testing.T) {
 	t.Run("rewrites MergeTree and SummingMergeTree engines", func(t *testing.T) {
 		dir := t.TempDir()

@@ -463,11 +463,120 @@ func replicatedDatabaseDDL(database string) string {
 		database, database)
 }
 
+// fenceSuffix is the marker embedded in the fence name the target database is
+// renamed to during the Replicated conversion.
+const fenceSuffix = "_pre_replicated_"
+
 // renamedDatabaseName returns the fence name the target database is renamed
 // to during the Replicated conversion. The timestamp suffix avoids collisions
 // with leftovers from a previously crashed conversion.
 func renamedDatabaseName(database string, now time.Time) string {
-	return fmt.Sprintf("%s_pre_replicated_%d", database, now.Unix())
+	return fmt.Sprintf("%s%s%d", database, fenceSuffix, now.Unix())
+}
+
+// likeEscaper escapes the ClickHouse LIKE metacharacters (backslash first).
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `_`, `\_`, `%`, `\%`)
+
+// fenceDatabasePattern returns the LIKE pattern matching fence databases left
+// behind by a previous (possibly crashed) Replicated conversion of database.
+// The literal prefix is escaped so `_` in it does not act as a wildcard.
+func fenceDatabasePattern(database string) string {
+	return likeEscaper.Replace(database+fenceSuffix) + "%"
+}
+
+// listFenceDatabases returns the names of fence databases left behind by
+// previous Replicated conversions of database, oldest first (the timestamp
+// suffix makes lexicographic order chronological).
+func listFenceDatabases(ctx context.Context, db *sql.DB, database string) ([]string, error) {
+	rows, err := db.QueryContext(ctx,
+		"SELECT name FROM system.databases WHERE name LIKE ? ORDER BY name", fenceDatabasePattern(database))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list fence databases for %q: %w", database, err)
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to scan fence database name: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list fence databases for %q: %w", database, err)
+	}
+	return names, nil
+}
+
+// fenceRecovery describes what recoverFenceDatabases should do with a fence
+// database left behind by a previous (crashed) Replicated conversion.
+type fenceRecovery int
+
+const (
+	// fenceDrop: the fence is empty; drop it (junk from a crashed conversion).
+	fenceDrop fenceRecovery = iota
+	// fenceRestore: the fence has tables and the target database is missing;
+	// rename the fence back so its data becomes reachable again.
+	fenceRestore
+	// fenceWarn: the fence has tables but the target database already exists;
+	// never drop it, warn loudly so the stranded tables stay visible.
+	fenceWarn
+)
+
+// decideFenceRecovery is the pure decision function behind
+// recoverFenceDatabases, factored out for testability.
+func decideFenceRecovery(targetExists bool, fenceTableCount uint64) fenceRecovery {
+	if fenceTableCount == 0 {
+		return fenceDrop
+	}
+	if !targetExists {
+		return fenceRestore
+	}
+	return fenceWarn
+}
+
+// recoverFenceDatabases converges fence databases left behind when a previous
+// Replicated conversion crashed between the RENAME and a successful cleanup:
+//   - empty fence -> drop it (provably junk)
+//   - non-empty fence, target missing -> rename it back to the target name so
+//     the stranded tables become reachable again (the normal decision flow
+//     then keeps the non-empty database as-is)
+//   - non-empty fence, target exists -> keep it and warn loudly on every
+//     startup so stranded tables are surfaced persistently, never silently
+func recoverFenceDatabases(ctx context.Context, db *sql.DB, database string) error {
+	fences, err := listFenceDatabases(ctx, db, database)
+	if err != nil {
+		return err
+	}
+
+	for _, fence := range fences {
+		_, targetExists, err := getDatabaseEngine(ctx, db, database)
+		if err != nil {
+			return err
+		}
+		tableCount, err := countDatabaseTables(ctx, db, fence)
+		if err != nil {
+			return err
+		}
+
+		switch decideFenceRecovery(targetExists, tableCount) {
+		case fenceDrop:
+			log.Printf("Dropping empty fence database %q left behind by a previous Replicated conversion", fence)
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s` SYNC", fence)); err != nil {
+				return fmt.Errorf("failed to drop empty fence database %q: %w", fence, err)
+			}
+		case fenceRestore:
+			log.Printf("Restoring fence database %q with %d table(s) back to %q after an interrupted Replicated conversion", fence, tableCount, database)
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", fence, database)); err != nil {
+				return fmt.Errorf("failed to restore fence database %q to %q: %w", fence, database, err)
+			}
+		case fenceWarn:
+			log.Printf("WARNING: Fence database %q from a previous Replicated conversion still has %d table(s) and %q already exists; it will NOT be dropped. Move any needed tables into %q and drop %q manually.",
+				fence, tableCount, database, database, fence)
+		}
+	}
+	return nil
 }
 
 // getDatabaseEngine queries system.databases for the target database's engine.
@@ -513,7 +622,19 @@ func countDatabaseTables(ctx context.Context, db *sql.DB, database string) (uint
 // the original name, and the renamed database is dropped only after
 // re-verifying it is still empty. A table that raced the check therefore
 // survives in the renamed database instead of being destroyed.
+//
+// The conversion is also crash-safe: fence databases left behind by a
+// previous interrupted conversion are recovered first (empty -> dropped,
+// non-empty with the target missing -> renamed back, non-empty with the
+// target present -> kept with a persistent warning), and a failure to create
+// the Replicated database after the rename rolls the rename back so the
+// target database is never left absent with data stranded under the fence
+// name.
 func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) error {
+	if err := recoverFenceDatabases(ctx, db, database); err != nil {
+		return err
+	}
+
 	engine, exists, err := getDatabaseEngine(ctx, db, database)
 	if err != nil {
 		return err
@@ -542,7 +663,24 @@ func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) 
 			return fmt.Errorf("failed to rename database %q to %q: %w", database, renamed, err)
 		}
 		if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
-			return fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+			createErr := fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+			// Roll the rename back (best-effort) so the target database is
+			// not left absent — and no tables stranded under the fence name —
+			// while the seed fails and the container restarts. The rename is
+			// metadata-local, so it succeeds even when the CREATE failed
+			// because Keeper is unavailable. If the target reappeared in the
+			// meantime (e.g. clickhouse-operator created it), keep the fence;
+			// recoverFenceDatabases surfaces it on the next startup.
+			if _, targetExists, checkErr := getDatabaseEngine(ctx, db, database); checkErr != nil {
+				log.Printf("WARNING: Failed to check database %q while rolling back the Replicated conversion: %v. Database may be preserved as %q.", database, checkErr, renamed)
+			} else if targetExists {
+				log.Printf("WARNING: Database %q was recreated concurrently; the original database is preserved as %q.", database, renamed)
+			} else if _, renameErr := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", renamed, database)); renameErr != nil {
+				log.Printf("WARNING: Failed to roll back rename of %q to %q: %v. Database is preserved as %q.", renamed, database, renameErr, renamed)
+			} else {
+				log.Printf("Rolled back rename: restored %q from %q after failed Replicated conversion", database, renamed)
+			}
+			return createErr
 		}
 		// The renamed database is fenced off from name-based writers, so this
 		// re-check is stable: drop it only if it is provably still empty.

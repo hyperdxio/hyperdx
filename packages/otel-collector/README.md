@@ -159,6 +159,14 @@ metadata stored in Keeper):
   re-verifying it is still empty. A table created concurrently with the
   emptiness check is preserved in the renamed database (with a loud warning)
   instead of being cascade-dropped.
+
+  The conversion is also crash-safe. If creating the Replicated database
+  fails after the rename (e.g. Keeper not ready yet), the rename is rolled
+  back so the target database is never left absent. Fence databases left
+  behind by an interrupted conversion are recovered on the next startup:
+  empty fences are dropped, a non-empty fence is renamed back when the target
+  database is missing, and a non-empty fence whose target already exists is
+  kept and warned about on every startup (never dropped).
 - **Non-Replicated with tables** — never dropped (that would lose data); the
   seed logs a warning and continues against the existing database.
 
