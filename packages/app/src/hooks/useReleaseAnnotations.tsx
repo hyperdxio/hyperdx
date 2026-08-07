@@ -20,10 +20,10 @@ import { getChartColorInfo } from '@/utils';
 export const DEFAULT_VERSION_EXPRESSION =
   "ResourceAttributes['service.version']";
 
-const DEPLOY_EMPTY_NOTIFICATION_ID = 'deployment-markers-empty';
+const RELEASE_EMPTY_NOTIFICATION_ID = 'release-markers-empty';
 
 /** Distinct versions fetched per window. Far above any real release cadence. */
-const MAX_DEPLOY_ROWS = 500;
+const MAX_RELEASE_ROWS = 500;
 
 /**
  * Query bounds are floored/ceiled to this, so a live-tailing dashboard reuses
@@ -33,19 +33,19 @@ const MAX_DEPLOY_ROWS = 500;
 const BUCKET_MS = 60_000;
 
 // How far back before the visible window we look for the already-running
-// version. See `deploymentRowsToAnnotations` for why.
+// version. See `releaseRowsToAnnotations` for why.
 const MIN_LOOKBACK_MS = 30 * 60_000;
 const LOOKBACK_RATIO = 0.1;
 
-/** A row of the deployments query. Values arrive as strings from ClickHouse. */
-export type DeploymentRow = {
+/** A row of the releases query. Values arrive as strings from ClickHouse. */
+export type ReleaseRow = {
   firstSeen?: string | number | null;
   version?: string | null;
   service?: string | null;
 };
 
 /** Narrows the tile's filters to the ones worth sending. */
-type DeploymentScope = {
+type ReleaseScope = {
   where?: string;
   whereLanguage?: SearchConditionLanguage;
   filters?: Filter[];
@@ -54,13 +54,13 @@ type DeploymentScope = {
 /**
  * Whether releases can be derived from this source.
  *
- * Only log and trace sources qualify: the deployments query runs against the
+ * Only log and trace sources qualify: the releases query runs against the
  * *same table* the tile charts, which is what makes the tile's own filters
  * meaningful against it. Metric sources resolve their table from `metricTables`
  * per metric type, so there is no single table to re-aggregate, and a tile
  * filter written against metric columns would not apply to a log table.
  */
-export function canDeriveDeployments(
+export function canDeriveReleases(
   source: TSource | undefined,
 ): source is TSource {
   return (
@@ -99,11 +99,11 @@ export function resolveVersionExpression(source: TSource | undefined): string {
  * `SelectListSchema` accepts a raw string for exactly that case — which also
  * keeps `min()` over a `DateTime64` out of the aggregate-function machinery.
  */
-export function buildDeploymentChartConfig(
+export function buildReleaseChartConfig(
   source: TSource,
   versionExpression: string,
   dateRange: [Date, Date],
-  scope: DeploymentScope = {},
+  scope: ReleaseScope = {},
 ): BuilderChartConfigWithDateRange {
   const timestampExpression = getFirstTimestampValueExpression(
     source.timestampValueExpression,
@@ -162,7 +162,7 @@ export function buildDeploymentChartConfig(
     // the renderer appends them a second time.
     selectGroupBy: false,
     orderBy: 'firstSeen ASC',
-    limit: { limit: MAX_DEPLOY_ROWS },
+    limit: { limit: MAX_RELEASE_ROWS },
     dateRange,
   };
 }
@@ -186,18 +186,18 @@ const NO_SOURCE_CONFIG: BuilderChartConfigWithDateRange = {
  * Maps query rows to markers, keeping only versions whose first appearance
  * lands inside the visible window.
  *
- * The query range is widened backwards (see `useDeploymentAnnotations`) so the
+ * The query range is widened backwards (see `useReleaseAnnotations`) so the
  * version that was *already running* when the window opened also comes back —
  * its `min(timestamp)` would otherwise sit at the left edge and read as a
- * deploy that never happened. Anything first seen before `windowStart` is that
+ * release that never happened. Anything first seen before `windowStart` is that
  * incumbent, so it is dropped.
  *
  * Residual artifact: a service idle for longer than the lookback has no rows in
- * the widened prefix, so its first post-idle row still reads as a deploy at the
+ * the widened prefix, so its first post-idle row still reads as a release at the
  * left edge.
  */
-export function deploymentRowsToAnnotations(
-  rows: DeploymentRow[],
+export function releaseRowsToAnnotations(
+  rows: ReleaseRow[],
   { windowStart }: { windowStart: Date },
 ): ChartAnnotation[] {
   // Resolve the theme color once (it reads computed styles).
@@ -219,10 +219,10 @@ export function deploymentRowsToAnnotations(
       // Fallback only: the chart re-tints the marker to its service's series
       // color when that service is charted (see `getSeriesColorForGroup`).
       color,
-      kind: 'deployment',
-      groupNoun: 'deploys',
+      kind: 'release',
+      groupNoun: 'releases',
       group: row.service ?? undefined,
-      key: `deploy-annotation-${firstSeenMs}-${row.version}-${row.service ?? ''}`,
+      key: `release-annotation-${firstSeenMs}-${row.version}-${row.service ?? ''}`,
     });
   }
 
@@ -230,7 +230,7 @@ export function deploymentRowsToAnnotations(
 }
 
 /**
- * Returns deployment markers for a tile, derived from changes in the
+ * Returns release markers for a tile, derived from changes in the
  * `service.version` resource attribute.
  *
  * Scoped to the tile: the query runs against the tile's own source with the
@@ -242,17 +242,17 @@ export function deploymentRowsToAnnotations(
  * collapsing need the chart's x-axis domain). The query stays idle unless
  * `enabled` is true and the source can provide releases.
  */
-export function useDeploymentAnnotations(
+export function useReleaseAnnotations(
   dateRange: [Date, Date],
   enabled: boolean = false,
-  options?: DeploymentScope & {
+  options?: ReleaseScope & {
     source?: TSource;
     /** Overrides the source's own expression. Mainly a testing seam. */
     versionExpression?: string;
   },
 ): ChartAnnotation[] | undefined {
   const source = options?.source;
-  const isSupported = canDeriveDeployments(source);
+  const isSupported = canDeriveReleases(source);
   const versionExpression =
     options?.versionExpression ||
     resolveVersionExpression(isSupported ? source : undefined);
@@ -279,7 +279,7 @@ export function useDeploymentAnnotations(
       MIN_LOOKBACK_MS,
       (windowEndMs - windowStartMs) * LOOKBACK_RATIO,
     );
-    return buildDeploymentChartConfig(
+    return buildReleaseChartConfig(
       source,
       versionExpression,
       [new Date(windowStartMs - lookbackMs), new Date(windowEndMs)],
@@ -302,7 +302,7 @@ export function useDeploymentAnnotations(
     if (!enabled || !data?.data?.length) {
       return undefined;
     }
-    const mapped = deploymentRowsToAnnotations(data.data, {
+    const mapped = releaseRowsToAnnotations(data.data, {
       windowStart: new Date(windowStartMs),
     });
     return mapped.length ? mapped : undefined;
@@ -325,11 +325,11 @@ export function useDeploymentAnnotations(
     }
     hasWarnedRef.current = true;
     notifications.show({
-      id: DEPLOY_EMPTY_NOTIFICATION_ID,
+      id: RELEASE_EMPTY_NOTIFICATION_ID,
       color: 'yellow',
-      title: 'No deployments found',
+      title: 'No releases found',
       message:
-        'Deployment markers are derived from the OpenTelemetry `service.version` resource attribute. No version changes were found in this time range.',
+        'Release markers come from changes in the version attribute configured on this source. No version changes were found in this time range - if you deploy without changing the version, there is nothing to mark.',
     });
   }, [enabled, isFetching, data, annotations]);
 

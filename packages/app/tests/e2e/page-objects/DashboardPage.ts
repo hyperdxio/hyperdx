@@ -98,7 +98,7 @@ export class DashboardPage {
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
   private readonly enterKioskModeMenuItem: Locator;
-  private readonly toggleDeployAnnotationsMenuItem: Locator;
+  private readonly toggleReleaseAnnotationsMenuItem: Locator;
   private readonly exitKioskModeBtn: Locator;
   private readonly kioskHeaderContainer: Locator;
   private readonly kioskLiveStatusBadge: Locator;
@@ -163,8 +163,8 @@ export class DashboardPage {
     this.enterKioskModeMenuItem = page.getByTestId(
       'enter-kiosk-mode-menu-item',
     );
-    this.toggleDeployAnnotationsMenuItem = page.getByTestId(
-      'toggle-deploy-annotations-menu-item',
+    this.toggleReleaseAnnotationsMenuItem = page.getByTestId(
+      'toggle-release-annotations-menu-item',
     );
     this.exitKioskModeBtn = page.getByTestId('exit-kiosk-mode-button');
     this.kioskHeaderContainer = page.getByTestId('kiosk-header');
@@ -1306,12 +1306,12 @@ export class DashboardPage {
   /**
    * Open the dashboard overflow menu and toggle deployment markers on tile
    * charts. Expects the menu item with
-   * data-testid="toggle-deploy-annotations-menu-item", which only renders once
+   * data-testid="toggle-release-annotations-menu-item", which only renders once
    * the dashboard has at least one tile.
    */
-  async toggleDeployAnnotations() {
+  async toggleReleaseAnnotations() {
     await this.dashboardMenuButton.click();
-    await this.toggleDeployAnnotationsMenuItem.click();
+    await this.toggleReleaseAnnotationsMenuItem.click();
   }
 
   /**

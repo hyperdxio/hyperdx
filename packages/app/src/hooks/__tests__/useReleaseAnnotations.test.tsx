@@ -9,13 +9,13 @@ import {
 import { renderHook } from '@testing-library/react';
 
 import {
-  buildDeploymentChartConfig,
-  canDeriveDeployments,
+  buildReleaseChartConfig,
+  canDeriveReleases,
   DEFAULT_VERSION_EXPRESSION,
-  deploymentRowsToAnnotations,
+  releaseRowsToAnnotations,
   resolveVersionExpression,
-  useDeploymentAnnotations,
-} from '@/hooks/useDeploymentAnnotations';
+  useReleaseAnnotations,
+} from '@/hooks/useReleaseAnnotations';
 import { getChartColorInfo } from '@/utils';
 
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -91,23 +91,23 @@ const sessionSource: TSessionSource = {
   traceSourceId: 'trace-1',
 };
 
-describe('canDeriveDeployments', () => {
+describe('canDeriveReleases', () => {
   it('accepts log and trace sources', () => {
-    expect(canDeriveDeployments(logSource)).toBe(true);
-    expect(canDeriveDeployments(traceSource)).toBe(true);
+    expect(canDeriveReleases(logSource)).toBe(true);
+    expect(canDeriveReleases(traceSource)).toBe(true);
   });
 
   // The deployments query re-aggregates the tile's own table, which is what
   // makes the tile's filters meaningful against it. Metric sources resolve
   // their table per metric type, so there is no single table to re-aggregate.
   it('rejects metric, session and disabled sources', () => {
-    expect(canDeriveDeployments(metricSource)).toBe(false);
-    expect(canDeriveDeployments(sessionSource)).toBe(false);
-    expect(canDeriveDeployments({ ...logSource, disabled: true })).toBe(false);
+    expect(canDeriveReleases(metricSource)).toBe(false);
+    expect(canDeriveReleases(sessionSource)).toBe(false);
+    expect(canDeriveReleases({ ...logSource, disabled: true })).toBe(false);
   });
 
   it('rejects a missing source', () => {
-    expect(canDeriveDeployments(undefined)).toBe(false);
+    expect(canDeriveReleases(undefined)).toBe(false);
   });
 });
 
@@ -161,11 +161,11 @@ describe('resolveVersionExpression', () => {
   });
 });
 
-describe('buildDeploymentChartConfig', () => {
+describe('buildReleaseChartConfig', () => {
   const range: [Date, Date] = [new Date(1_000), new Date(2_000)];
 
   it('selects the first timestamp each version was seen at, grouped by version and service', () => {
-    const config = buildDeploymentChartConfig(
+    const config = buildReleaseChartConfig(
       logSource,
       DEFAULT_VERSION_EXPRESSION,
       range,
@@ -190,14 +190,14 @@ describe('buildDeploymentChartConfig', () => {
   // makes renderChartConfig append them a second time.
   it('disables automatic group-by projection', () => {
     expect(
-      buildDeploymentChartConfig(logSource, DEFAULT_VERSION_EXPRESSION, range)
+      buildReleaseChartConfig(logSource, DEFAULT_VERSION_EXPRESSION, range)
         .selectGroupBy,
     ).toBe(false);
   });
 
   it('omits the service column when the source has no service expression', () => {
     const noService = { ...logSource, serviceNameExpression: undefined };
-    const config = buildDeploymentChartConfig(
+    const config = buildReleaseChartConfig(
       noService,
       DEFAULT_VERSION_EXPRESSION,
       range,
@@ -216,13 +216,12 @@ describe('buildDeploymentChartConfig', () => {
     };
 
     expect(
-      buildDeploymentChartConfig(multi, DEFAULT_VERSION_EXPRESSION, range)
-        .select,
+      buildReleaseChartConfig(multi, DEFAULT_VERSION_EXPRESSION, range).select,
     ).toContain('min(TimestampTime) AS firstSeen');
   });
 
   it('honors a custom version expression', () => {
-    const config = buildDeploymentChartConfig(
+    const config = buildReleaseChartConfig(
       logSource,
       "LogAttributes['release']",
       range,
@@ -235,7 +234,7 @@ describe('buildDeploymentChartConfig', () => {
 
   describe('tile scoping', () => {
     it('sends no filters when the tile is unfiltered', () => {
-      const config = buildDeploymentChartConfig(
+      const config = buildReleaseChartConfig(
         logSource,
         DEFAULT_VERSION_EXPRESSION,
         range,
@@ -248,7 +247,7 @@ describe('buildDeploymentChartConfig', () => {
     // The whole point: a tile filtered to one service must not be annotated
     // with another service's releases.
     it("carries the tile's own where clause as a filter", () => {
-      const config = buildDeploymentChartConfig(
+      const config = buildReleaseChartConfig(
         logSource,
         DEFAULT_VERSION_EXPRESSION,
         range,
@@ -263,7 +262,7 @@ describe('buildDeploymentChartConfig', () => {
     });
 
     it('preserves a SQL tile where clause as a SQL filter', () => {
-      const config = buildDeploymentChartConfig(
+      const config = buildReleaseChartConfig(
         logSource,
         DEFAULT_VERSION_EXPRESSION,
         range,
@@ -276,7 +275,7 @@ describe('buildDeploymentChartConfig', () => {
     });
 
     it('appends dashboard filters and drops empty ones', () => {
-      const config = buildDeploymentChartConfig(
+      const config = buildReleaseChartConfig(
         logSource,
         DEFAULT_VERSION_EXPRESSION,
         range,
@@ -298,7 +297,7 @@ describe('buildDeploymentChartConfig', () => {
 
     // Lucene bare terms need the source's implicit column to render.
     it('carries the implicit column expression for Lucene filters', () => {
-      const config = buildDeploymentChartConfig(
+      const config = buildReleaseChartConfig(
         logSource,
         DEFAULT_VERSION_EXPRESSION,
         range,
@@ -309,12 +308,12 @@ describe('buildDeploymentChartConfig', () => {
   });
 });
 
-describe('deploymentRowsToAnnotations', () => {
+describe('releaseRowsToAnnotations', () => {
   const windowStart = new Date('2026-07-01T00:00:00.000Z');
   const inside = '2026-07-01T00:30:00.000Z';
 
   it('maps a version first seen inside the window to a marker', () => {
-    const [annotation] = deploymentRowsToAnnotations(
+    const [annotation] = releaseRowsToAnnotations(
       [{ firstSeen: inside, version: '1.43.1', service: 'checkout' }],
       { windowStart },
     );
@@ -323,15 +322,15 @@ describe('deploymentRowsToAnnotations', () => {
       time: new Date(inside).getTime(),
       label: '1.43.1',
       color: getChartColorInfo(),
-      kind: 'deployment',
-      groupNoun: 'deploys',
+      kind: 'release',
+      groupNoun: 'releases',
     });
   });
 
   // The query range is widened backwards so the version that was already
   // running shows up; it must not be drawn as a deploy at the left edge.
   it('drops the version that was already running when the window opened', () => {
-    const annotations = deploymentRowsToAnnotations(
+    const annotations = releaseRowsToAnnotations(
       [
         { firstSeen: '2026-06-30T23:00:00.000Z', version: '1.43.0' },
         { firstSeen: inside, version: '1.43.1' },
@@ -343,7 +342,7 @@ describe('deploymentRowsToAnnotations', () => {
   });
 
   it('keeps a version first seen exactly at the window start', () => {
-    const annotations = deploymentRowsToAnnotations(
+    const annotations = releaseRowsToAnnotations(
       [{ firstSeen: windowStart.toISOString(), version: '1.43.1' }],
       { windowStart },
     );
@@ -352,7 +351,7 @@ describe('deploymentRowsToAnnotations', () => {
   });
 
   it('drops rows with a missing or unparseable timestamp or version', () => {
-    const annotations = deploymentRowsToAnnotations(
+    const annotations = releaseRowsToAnnotations(
       [
         { firstSeen: null, version: '1.0.0' },
         { firstSeen: 'not a date', version: '1.0.0' },
@@ -367,7 +366,7 @@ describe('deploymentRowsToAnnotations', () => {
   });
 
   it('gives each marker a distinct key so React can reconcile them', () => {
-    const annotations = deploymentRowsToAnnotations(
+    const annotations = releaseRowsToAnnotations(
       [
         { firstSeen: inside, version: '1.43.1', service: 'checkout' },
         { firstSeen: inside, version: '1.43.1', service: 'payments' },
@@ -379,7 +378,7 @@ describe('deploymentRowsToAnnotations', () => {
   });
 });
 
-describe('useDeploymentAnnotations', () => {
+describe('useReleaseAnnotations', () => {
   const range: [Date, Date] = [
     new Date('2026-07-01T00:00:00.000Z'),
     new Date('2026-07-01T01:00:00.000Z'),
@@ -407,7 +406,7 @@ describe('useDeploymentAnnotations', () => {
     mockQuery([{ firstSeen: '2026-07-01T00:30:00.000Z', version: '1.0.0' }]);
 
     const { result } = renderHook(() =>
-      useDeploymentAnnotations(range, false, { source: logSource }),
+      useReleaseAnnotations(range, false, { source: logSource }),
     );
 
     expect(result.current).toBeUndefined();
@@ -415,14 +414,14 @@ describe('useDeploymentAnnotations', () => {
   });
 
   it('keeps the query idle when the tile has no source', () => {
-    renderHook(() => useDeploymentAnnotations(range, true));
+    renderHook(() => useReleaseAnnotations(range, true));
 
     expect(lastCall()[1]).toMatchObject({ enabled: false });
   });
 
   it('keeps the query idle for a source that cannot provide releases', () => {
     renderHook(() =>
-      useDeploymentAnnotations(range, true, { source: metricSource }),
+      useReleaseAnnotations(range, true, { source: metricSource }),
     );
 
     expect(lastCall()[1]).toMatchObject({ enabled: false });
@@ -435,13 +434,13 @@ describe('useDeploymentAnnotations', () => {
     ]);
 
     const { result } = renderHook(() =>
-      useDeploymentAnnotations(range, true, { source: logSource }),
+      useReleaseAnnotations(range, true, { source: logSource }),
     );
 
     expect(result.current).toHaveLength(1);
     expect(result.current?.[0]).toMatchObject({
       label: '1.43.1',
-      kind: 'deployment',
+      kind: 'release',
     });
   });
 
@@ -449,7 +448,7 @@ describe('useDeploymentAnnotations', () => {
     mockQuery([{ firstSeen: '2026-06-30T20:00:00.000Z', version: '1.43.0' }]);
 
     const { result } = renderHook(() =>
-      useDeploymentAnnotations(range, true, { source: logSource }),
+      useReleaseAnnotations(range, true, { source: logSource }),
     );
 
     expect(result.current).toBeUndefined();
@@ -457,7 +456,7 @@ describe('useDeploymentAnnotations', () => {
 
   it("uses the source's configured version expression", () => {
     renderHook(() =>
-      useDeploymentAnnotations(range, true, {
+      useReleaseAnnotations(range, true, {
         source: {
           ...logSource,
           serviceVersionExpression: "ResourceAttributes['container.image.tag']",
@@ -472,7 +471,7 @@ describe('useDeploymentAnnotations', () => {
 
   it("scopes the query with the tile's filters", () => {
     renderHook(() =>
-      useDeploymentAnnotations(range, true, {
+      useReleaseAnnotations(range, true, {
         source: logSource,
         where: 'ServiceName:"checkout"',
         whereLanguage: 'lucene',
@@ -485,9 +484,7 @@ describe('useDeploymentAnnotations', () => {
   });
 
   it('widens the query range backwards to spot the already-running version', () => {
-    renderHook(() =>
-      useDeploymentAnnotations(range, true, { source: logSource }),
-    );
+    renderHook(() => useReleaseAnnotations(range, true, { source: logSource }));
 
     const [queryStart, queryEnd] = lastCall()[0].dateRange;
 
@@ -512,7 +509,7 @@ describe('useDeploymentAnnotations', () => {
   it('reuses one config object as a live window slides within the minute', () => {
     const { rerender } = renderHook(
       ({ dateRange }) =>
-        useDeploymentAnnotations(dateRange, true, {
+        useReleaseAnnotations(dateRange, true, {
           source: logSource,
           filters: [{ type: 'sql', condition: "Env = 'prod'" }],
         }),
@@ -528,7 +525,7 @@ describe('useDeploymentAnnotations', () => {
   it('rebuilds the config once the window crosses a minute boundary', () => {
     const { rerender } = renderHook(
       ({ dateRange }) =>
-        useDeploymentAnnotations(dateRange, true, { source: logSource }),
+        useReleaseAnnotations(dateRange, true, { source: logSource }),
       { initialProps: { dateRange: liveRange } },
     );
     const first = mockedUseQueriedChartConfig.mock.calls[0][0];

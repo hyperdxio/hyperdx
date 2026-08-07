@@ -7,7 +7,7 @@ export const KNOWN_COLUMNS_EXPRESSION_HELP_TEXT =
   'For Distributed table sources whose target tables have non-matching column sets. Provide a list of columns supported across all target tables; it is used instead of SELECT * when fetching full row data (e.g. the row side panel). Leave blank to select all columns. This should be a comma-separated list of column names - do not include non-column expressions or aliases.';
 
 export const SERVICE_VERSION_EXPRESSION_HELP_TEXT =
-  "Identifies the running release of a service, used to place deployment markers on charts. Defaults to the OpenTelemetry service.version resource attribute. Point it elsewhere if your release identifier lives in another attribute - under GitOps it is often the container image tag. If services in this table use different attributes, fall back across them: coalesce(nullIf(ResourceAttributes['service.version'], ''), nullIf(ResourceAttributes['container.image.tag'], '')).";
+  "Identifies the running release of a service, used to place release markers on charts, so a deployment can be lined up against a change in the data. Defaults to the OpenTelemetry service.version resource attribute. Point it elsewhere if your release identifier lives in another attribute - under GitOps it is often the container image tag. If services in this table use different attributes, fall back across them: coalesce(nullIf(ResourceAttributes['service.version'], ''), nullIf(ResourceAttributes['container.image.tag'], '')).";
 
 // Placeholder written into from.databaseName / from.tableName when the
 // selected connection is Prometheus-only.

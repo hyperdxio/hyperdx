@@ -440,7 +440,7 @@ function formatExternalSource(source: SourceDocument) {
  *           example: ServiceName
  *         serviceVersionExpression:
  *           type: string
- *           description: Expression to extract the running release of a service, used to place deployment markers on charts. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
+ *           description: Expression to extract the running release of a service, used to place release markers on charts, so a deployment can be lined up against a change in the data. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
  *           nullable: true
  *           example: ResourceAttributes['service.version']
  *         severityTextExpression:
@@ -663,7 +663,7 @@ function formatExternalSource(source: SourceDocument) {
  *           example: ServiceName
  *         serviceVersionExpression:
  *           type: string
- *           description: Expression to extract the running release of a service, used to place deployment markers on charts. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
+ *           description: Expression to extract the running release of a service, used to place release markers on charts, so a deployment can be lined up against a change in the data. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
  *           nullable: true
  *           example: ResourceAttributes['service.version']
  *         resourceAttributesExpression:

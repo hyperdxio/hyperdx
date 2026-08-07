@@ -673,7 +673,7 @@ export const MemoChart = memo(function MemoChart({
   lineData: LineData[];
   referenceLines?: React.ReactNode;
   /**
-   * Event markers (alerts, deploys, …) drawn as dashed vertical lines with a
+   * Event markers (alerts, releases, …) drawn as dashed vertical lines with a
    * label above. Passed as data rather than pre-rendered elements so the chart
    * can clamp them to its own x-axis domain. Distinct from `referenceLines`
    * (threshold lines).

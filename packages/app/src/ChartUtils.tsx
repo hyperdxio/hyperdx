@@ -200,7 +200,7 @@ const PreviousPeriodSuffix = ' (previous)';
  * matched against the key's components rather than the whole key. Previous
  * period series are skipped; they mirror a current period series' color.
  *
- * Used to tint chart annotations (deployment markers) to match the series they
+ * Used to tint chart annotations (release markers) to match the series they
  * describe, so a marker for one service can't be read as another's.
  */
 export function getSeriesColorForGroup(

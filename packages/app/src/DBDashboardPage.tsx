@@ -151,7 +151,7 @@ import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
-import { useDeploymentAnnotations } from '@/hooks/useDeploymentAnnotations';
+import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -388,7 +388,7 @@ const Tile = forwardRef(
       onTimeRangeSelect,
       filters,
       showAlertAnnotations,
-      showDeployAnnotations,
+      showReleaseAnnotations,
       isLive,
       readOnly,
 
@@ -419,7 +419,7 @@ const Tile = forwardRef(
       // When true, draw alert firing/recovery annotations on this tile's chart.
       showAlertAnnotations?: boolean;
       // When true, draw release markers on this tile's chart.
-      showDeployAnnotations?: boolean;
+      showReleaseAnnotations?: boolean;
       isLive?: boolean;
       readOnly?: boolean;
 
@@ -665,9 +665,9 @@ const Tile = forwardRef(
     // query runs against the tile's own source with the tile's own predicates,
     // so a chart filtered to one service isn't annotated with another's
     // releases. Tiles sharing a source and filters share one query.
-    const deployAnnotations = useDeploymentAnnotations(
+    const releaseAnnotations = useReleaseAnnotations(
       isFullscreen ? fullscreenDateRange : dateRange,
-      showDeployAnnotations,
+      showReleaseAnnotations,
       {
         source,
         where: isBuilderSavedChartConfig(chart.config)
@@ -681,8 +681,8 @@ const Tile = forwardRef(
     );
 
     const annotations = useMemo(
-      () => mergeAnnotations(alertAnnotations, deployAnnotations),
-      [alertAnnotations, deployAnnotations],
+      () => mergeAnnotations(alertAnnotations, releaseAnnotations),
+      [alertAnnotations, releaseAnnotations],
     );
 
     const filterWarning = useMemo(() => {
@@ -1759,8 +1759,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     parseAsBoolean.withDefault(false),
   );
   // Same for release markers, derived from `service.version` changes.
-  const [showDeployAnnotations, setShowDeployAnnotations] = useQueryState(
-    'deployMarkers',
+  const [showReleaseAnnotations, setShowReleaseAnnotations] = useQueryState(
+    'releaseMarkers',
     parseAsBoolean.withDefault(false),
   );
 
@@ -2224,7 +2224,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           ]}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
-          showDeployAnnotations={showDeployAnnotations}
+          showReleaseAnnotations={showReleaseAnnotations}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={
             isKioskMode
@@ -2322,7 +2322,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
-      showDeployAnnotations,
+      showReleaseAnnotations,
       getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
@@ -2761,12 +2761,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   </Menu.Item>
                   <Menu.Item
                     leftSection={<IconRocket size={16} />}
-                    onClick={() => setShowDeployAnnotations(v => !v)}
-                    data-testid="toggle-deploy-annotations-menu-item"
+                    onClick={() => setShowReleaseAnnotations(v => !v)}
+                    data-testid="toggle-release-annotations-menu-item"
                   >
-                    {showDeployAnnotations
-                      ? 'Hide deployment markers'
-                      : 'Show deployment markers'}
+                    {showReleaseAnnotations
+                      ? 'Hide release markers'
+                      : 'Show release markers'}
                   </Menu.Item>
                 </>
               )}

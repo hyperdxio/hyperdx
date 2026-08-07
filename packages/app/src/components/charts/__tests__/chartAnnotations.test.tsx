@@ -180,8 +180,8 @@ describe('getAnnotationElements label collapsing', () => {
   const deploy = (seconds: number, label: string): ChartAnnotation => ({
     time: seconds * 1000,
     label,
-    kind: 'deployment',
-    groupNoun: 'deploys',
+    kind: 'release',
+    groupNoun: 'releases',
   });
 
   it('leaves markers with room for both labels individually labelled', () => {
@@ -199,11 +199,11 @@ describe('getAnnotationElements label collapsing', () => {
       collapsing,
     );
 
-    expect(lines.map(labelOf)).toEqual(['2 deploys', undefined]);
+    expect(lines.map(labelOf)).toEqual(['2 releases', undefined]);
   });
 
   // Regression: a fixed separation let long version strings render on top of
-  // each other ("2.0.0" and "2 deploys" colliding into "2.0.02 depl…").
+  // each other ("2.0.0" and "2 releases" colliding into "2.0.02 depl…").
   it('reserves more room for longer labels at the same spacing', () => {
     const lines = getAnnotationElements(
       [deploy(0, '2026.08.04-abcdef12'), deploy(60, '2026.08.04-abcdef34')],
@@ -211,7 +211,7 @@ describe('getAnnotationElements label collapsing', () => {
     );
 
     // Same 60px gap that leaves short labels alone is not enough for these.
-    expect(lines.map(labelOf)).toEqual(['2 deploys', undefined]);
+    expect(lines.map(labelOf)).toEqual(['2 releases', undefined]);
   });
 
   // Anchoring on the group's first member (not the running last one) is what
@@ -229,13 +229,13 @@ describe('getAnnotationElements label collapsing', () => {
     // 40 is inside the anchor's label footprint; 100 is clear of it and starts
     // its own group. Anchoring on the last member would have swallowed it.
     expect(lines).toHaveLength(3);
-    expect(labelOf(lines[0])).toBe('2 deploys');
+    expect(labelOf(lines[0])).toBe('2 releases');
     expect(labelOf(lines[1])).toBeUndefined();
     expect(labelOf(lines[2])).toBe('1.2.0-beta');
   });
 
   // Regression: a cluster spanning two services took the anchor's series color,
-  // so "2 deploys" rendered in one service's color while counting the other's
+  // so "2 releases" rendered in one service's color while counting the other's
   // release as that service's.
   it('drops the series color when a cluster spans several series', () => {
     const [anchor] = getAnnotationElements(
@@ -246,7 +246,7 @@ describe('getAnnotationElements label collapsing', () => {
       collapsing,
     );
 
-    expect(labelOf(anchor)).toBe('2 deploys');
+    expect(labelOf(anchor)).toBe('2 releases');
     // Neutral, and not either series' colour.
     expect(lineProps(anchor).stroke).toBe('var(--color-text-muted)');
   });
@@ -260,7 +260,7 @@ describe('getAnnotationElements label collapsing', () => {
       collapsing,
     );
 
-    expect(labelOf(anchor)).toBe('2 deploys');
+    expect(labelOf(anchor)).toBe('2 releases');
     expect(lineProps(anchor).stroke).toBe('#blue');
   });
 
@@ -295,7 +295,7 @@ describe('getAnnotationElements label collapsing', () => {
     );
 
     // Both are within each other's label footprint, but they are different
-    // kinds, so each keeps its own label rather than becoming "2 deploys".
+    // kinds, so each keeps its own label rather than becoming "2 releases".
     expect(lines.map(labelOf).sort()).toEqual(['1.0.0', 'Alert']);
   });
 

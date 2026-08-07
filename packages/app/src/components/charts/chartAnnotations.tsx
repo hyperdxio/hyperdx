@@ -3,7 +3,7 @@ import { Label, ReferenceLine } from 'recharts';
 
 /**
  * A single marker to overlay on a timeseries chart at a point in time.
- * Source-agnostic: alerts, deployments, incidents, config changes, etc. all map
+ * Source-agnostic: alerts, releases, incidents, config changes, etc. all map
  * to this shape.
  */
 export type ChartAnnotation = {
@@ -16,14 +16,14 @@ export type ChartAnnotation = {
   /** Stable React key; defaults to the resolved timestamp + index. */
   key?: string;
   /**
-   * Feature that produced the marker ('alert', 'deployment', …). Markers only
-   * ever share a collapsed label with others of the same kind, so a deploy is
+   * Feature that produced the marker ('alert', 'release', …). Markers only
+   * ever share a collapsed label with others of the same kind, so a release is
    * never counted as an alert.
    */
   kind?: string;
   /**
    * Plural noun for the collapsed label when several markers of this kind sit
-   * too close to label individually ("3 deploys"). Defaults to 'events'.
+   * too close to label individually ("3 releases"). Defaults to 'events'.
    */
   groupNoun?: string;
   /**
@@ -80,7 +80,7 @@ type PositionedAnnotation = ChartAnnotation & {
 };
 
 /**
- * Merges annotation lists from independent features (alerts, deployments, …)
+ * Merges annotation lists from independent features (alerts, releases, …)
  * into the single array the chart takes. Returns `undefined` when nothing is
  * left, matching the chart's "no annotations" prop state.
  */
@@ -172,7 +172,7 @@ function positionAnnotations(
 /**
  * Groups markers that are too close together to label individually, keeping one
  * labelled anchor per cluster and muting the rest. Grouping is per `kind`, so an
- * alert marker is never folded into a deploy's count.
+ * alert marker is never folded into a release's count.
  */
 function collapseLabels(
   positioned: PositionedAnnotation[],
