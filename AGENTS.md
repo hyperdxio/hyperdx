@@ -211,6 +211,69 @@ efficient and accurate:
    pushing the branch. Skip only for changes that don't warrant a release (docs,
    internal tooling, tests, CI).
 
+6. **The root `CHANGELOG.md` is generated at release time.** During each
+   release, CI writes an AI-generated cross-package summary section into the
+   root `CHANGELOG.md` on the "Release HyperDX" PR. Review and edit it there
+   like any other file — but keep the `<!-- hyperdx-release-notes … -->` comment
+   marker intact; it is how your edits are recognised when the release branch is
+   rebuilt. Use `###` or deeper for any heading you add — a `##` marks a release
+   boundary, and the next release refuses to splice rather than risk deleting
+   whatever ended up below it. Your edits are regenerated away when new
+   changesets land on `main` (the previous text is passed to the generator, so
+   phrasing is preserved best-effort, not guaranteed). They can also be lost
+   outright if a second push to `main` lands while a changelog run is still in
+   flight — the edit is held only in that run's artifact. If an edit matters,
+   re-check it on the release PR before merging. Don't edit the root
+   `CHANGELOG.md` in feature PRs; the only exception is the one-time seed that
+   introduced the file.
+
+### How the root changelog is generated
+
+Defined in `.github/workflows/release.yml`; the splicing logic lives in
+`.github/scripts/release-notes.mjs`.
+
+```
+push to main
+    |
+    v
+check_changesets
+    |  1. capture the branch's current CHANGELOG.md -> artifact
+    |     (must happen BEFORE the next step destroys it)
+    |  2. changesets/action force-rebuilds changeset-release/main from main
+    |     and opens/updates the "Release HyperDX" PR
+    v
+release_changelog_draft            contents: read - no push token
+    |
+    |  app version unchanged?  --yes-->  skip (CLI/common-utils-only release)
+    |  changeset hash matches?  --yes-->  reuse previous section verbatim
+    |                           --no-->  Claude writes a fresh body, given
+    |                                    the old section as context
+    v
+  body artifact                    the model's only output
+    |
+    v
+release_changelog_publish          contents: write - the model never ran here
+    |
+    |  branch moved since drafting?  --yes-->  skip, the newer run republishes
+    |  validate (no headings/markers/images/off-site links)
+    |  append the package list, splice into CHANGELOG.md
+    v
+push to changeset-release/main  ->  appears as a diff in the release PR,
+    |                               where a maintainer can edit it
+    v
+merge the release PR  ->  CHANGELOG.md lands on main  ->  served in "What's new"
+```
+
+The job split is a security boundary, not tidiness: the model reads changeset
+bodies, commit messages and PR bodies, which anyone opening a PR controls. Its
+job holds `ANTHROPIC_API_KEY` and a `contents: read` token, but no push
+credential and no ability to alter the script that does the splicing. Because
+the API key shares that process, the model gets no shell and its reads are
+confined to `/tmp` — an unrestricted `Read` reaches `/proc/self/environ`, and
+the output is published to a public branch. A tool allowlist alone would not be
+enough — `git log --output=<path> --format=format:<content>` writes an arbitrary
+file, which is why there is no `Bash` at all.
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:

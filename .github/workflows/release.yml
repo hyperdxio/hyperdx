@@ -62,6 +62,44 @@ jobs:
       # while the GitHub release/tag still succeeds. See HDX-4075.
       - name: Build common-utils
         run: make ci-build
+      # The changesets action force-rebuilds changeset-release/main from main
+      # on every run, destroying any commits on it — including human edits to
+      # the AI-generated root CHANGELOG.md. Capture the branch's current
+      # CHANGELOG.md first so the release_changelog job can reuse an existing
+      # (possibly human-edited) section when the changeset set is unchanged.
+      - name: Capture release-notes state before branch rebuild
+        # always(), matching the changesets/action step below: that step force-
+        # rebuilds changeset-release/main even when an earlier step in this job
+        # failed, so without this the only copy of a maintainer's edit would be
+        # skipped and then destroyed.
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/prev-release-notes
+          if git fetch origin changeset-release/main; then
+            git show FETCH_HEAD:CHANGELOG.md \
+              > /tmp/prev-release-notes/CHANGELOG.md || true
+          fi
+      - name: Upload previous release notes
+        if: always()
+        # continue-on-error, like the capture step above: this artifact is only
+        # an optimisation for the changelog jobs. Without it a transient
+        # artifact-service failure (or an upload conflict when this job is
+        # re-run, a documented recovery path here) would fail check_changesets
+        # — the job every other job needs, and the one that publishes to npm.
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: prev-release-notes
+          path: /tmp/prev-release-notes/
+          if-no-files-found: ignore
+          retention-days: 1
+          # Deliberately NOT overwrite: true. Artifacts are scoped to the run,
+          # not the attempt, so re-running this job after an unrelated failure
+          # would re-capture an already-rebuilt branch and replace the good
+          # capture — destroying the only copy of a maintainer's edit. Without
+          # overwrite the re-upload conflicts, which continue-on-error above
+          # turns into a warning, leaving the first attempt's capture intact.
       - name: Create Release Pull Request or Publish to npm
         if: always()
         id: changesets
@@ -75,6 +113,522 @@ jobs:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+
+  # ---------------------------------------------------------------------------
+  # Root changelog – write an AI-generated cross-package summary into the
+  # "Release HyperDX" PR.
+  #
+  # Split into two jobs on purpose. The model runs in `release_changelog_draft`
+  # with `contents: read` and no push credentials, and its only output is an
+  # artifact. `release_changelog_publish` then splices and pushes from a fresh
+  # checkout the model never touched. The model reads changeset bodies, commit
+  # messages and PR bodies — all attacker-controlled on a public repo — so it is
+  # treated as untrusted: an injected prompt must not be able to reach a
+  # credential, and must not be able to alter the script that does the splicing.
+  # Note that a prefix allowlist like `Bash(git log:*)` is NOT read-only
+  # (`git log --output=<path> --format=format:<content>` writes any file), which
+  # is why the boundary is the job, not the tool list.
+  #
+  # Fail-soft by design: no job that builds, publishes or notifies downstream
+  # depends on either of these, so a failure here cannot block a release. They
+  # are listed in slack-notify-failure's `needs` so genuine breakage is visible
+  # rather than silent — routine conditions (a merged release PR, a lost branch
+  # race, a superseded draft) are signalled as skips and warnings, not
+  # failures, precisely so that alert stays meaningful.
+  # ---------------------------------------------------------------------------
+  release_changelog_draft:
+    name: Draft Root Changelog
+    runs-on: ubuntu-24.04
+    needs: [check_changesets]
+    if: needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'true'
+    timeout-minutes: 20
+    concurrency:
+      # Queue rather than cancel. A cancelled job is not a failure and nothing
+      # needs this one, so under pushes arriving faster than a full generation
+      # cycle every draft would be cancelled in turn and the release PR would
+      # silently end up with no changelog section. Stale runs are discarded at
+      # the push instead (non-fast-forward) or by the publish staleness guard.
+      group: release-changelog-${{ github.workflow }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ steps.meta.outputs.skip }}
+      version: ${{ steps.meta.outputs.version }}
+      inputs: ${{ steps.meta.outputs.inputs }}
+      empty: ${{ steps.changesets_export.outputs.empty }}
+      branch_sha: ${{ steps.meta.outputs.branch_sha }}
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v6
+        with:
+          ref: changeset-release/main
+          fetch-depth: 0
+          # The model has filesystem read access in this job; do not leave a
+          # push token in .git/config for it to find. This job never pushes.
+          persist-credentials: false
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          # Read the version from the fixed group's canonical package, NOT the
+          # root package.json: version.sh:20 uses BSD `sed -i ''`, which is a
+          # no-op under the runner's GNU sed, so the root version has been
+          # frozen at 2.0.0 since Jan 2025 while app/api track releases.
+          # Comparing root versions would make this job skip on every release.
+          VERSION="$(node -p "require('./packages/app/package.json').version")"
+          PREV_VERSION="$(git show origin/main:packages/app/package.json \
+            | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")"
+          # Only releases that bump the fixed group (app/api/otel-collector) get
+          # a root changelog section. A CLI-only or common-utils-only release
+          # leaves the version unchanged, and generating for it would overwrite
+          # the already-published section for that version. Those packages have
+          # their own changelogs (and the CLI a GitHub Release).
+          if [ "$VERSION" = "$PREV_VERSION" ]; then
+            echo "App version unchanged (${VERSION}); skipping root changelog"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          # If this hash is unchanged since the last generation, the previous
+          # section (and any human edits to it) is reused instead of
+          # regenerated. Shared with the publish job's staleness guard.
+          INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prev_version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
+          # Commit this draft was built from. The version and the changeset hash
+          # are both unchanged by a rebuild that replays the same main state, and
+          # a changelog blob is unchanged by a rebuild that discards a section —
+          # so neither identifies "the branch I drafted against". The tip does:
+          # changesets/action force-pushes a fresh commit on every rebuild, so
+          # any rebuild at all moves it.
+          echo "branch_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "inputs=${INPUTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Download previous release notes
+        if: steps.meta.outputs.skip == 'false'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: prev-release-notes
+          path: /tmp/prev-release-notes
+
+      - name: Reuse existing section if inputs unchanged
+        if: steps.meta.outputs.skip == 'false'
+        id: reuse
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          INPUTS: ${{ steps.meta.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          # `extract` exits 2 for a missing file, a hash mismatch, or a section
+          # a maintainer emptied out — all of which mean "regenerate". Exit 1 is
+          # something else: a bad flag, an unreadable file, a parse error. Read
+          # as a cache miss it would degrade into "regenerate every release"
+          # with nothing in the log to say edit reuse had stopped working.
+          set +e
+          node .github/scripts/release-notes.mjs extract \
+            --changelog /tmp/prev-release-notes/CHANGELOG.md \
+            --version "$VERSION" \
+            --inputs "$INPUTS" \
+            > /tmp/release-notes-body.md
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 2 ]; then
+            echo "::error::release-notes extract failed with status ${STATUS}"
+            exit 1
+          fi
+          if [ "$STATUS" -eq 0 ]; then
+            # The reused body is a maintainer's edit, not model output, so it
+            # can legitimately contain things the validator rejects (a `---`
+            # thematic break, a link to some other host). Check it HERE and
+            # treat a failure as a cache miss, so the release regenerates with
+            # their text as context instead of the publish job going red with
+            # the edit recoverable only from an expiring artifact.
+            #
+            # Strip the generated package list first: it carries HTML comment
+            # markers that the validator would otherwise flag.
+            node .github/scripts/release-notes.mjs strip-package-list \
+              --body /tmp/release-notes-body.md
+            if node .github/scripts/release-notes.mjs validate \
+                --body /tmp/release-notes-body.md; then
+              echo "Reusing previous section (changeset set unchanged)"
+              echo "hit=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::warning::Previous section failed validation; regenerating with it as context"
+              cp /tmp/release-notes-body.md /tmp/previous-section.md
+              echo "hit=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract previous section as generator context
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          PREV_VERSION: ${{ steps.meta.outputs.prev_version }}
+        run: |
+          set -euo pipefail
+          # The reuse step writes this file when a maintainer's edit failed
+          # validation; that is better context than anything below, so keep it.
+          if [ -f /tmp/previous-section.md ]; then
+            echo "Using the section the reuse step set aside"
+            exit 0
+          fi
+          # The changeset set changed, so the section must be regenerated — but
+          # a maintainer may have edited the previous one. Hand it to the
+          # generator so their phrasing is preserved for changes it covers.
+          # Matched with --latest, not by version: a new changeset that raises
+          # the bump level also changes the version, so a version-keyed lookup
+          # would miss in exactly the case that triggers regeneration.
+          node .github/scripts/release-notes.mjs extract \
+            --changelog /tmp/prev-release-notes/CHANGELOG.md \
+            --latest \
+            > /tmp/previous-section.md \
+            || rm -f /tmp/previous-section.md
+          # On the first run of a cycle the newest captured section belongs to
+          # the PREVIOUS release. The prompt calls this file "the previous
+          # generation of this very section" and asks for its phrasing to be
+          # preserved, which would carry last release's bullets into the new
+          # notes — so keep it only when it really is this version's section.
+          # Compare against PREV_VERSION, not VERSION. A new changeset that
+          # raises the bump level changes VERSION mid-cycle, and that is exactly
+          # the case --latest exists to cover — the newest section is still this
+          # cycle's work, just filed under a version we have since superseded.
+          # Only a section matching the last RELEASED version is stale context.
+          if LATEST="$(node .github/scripts/release-notes.mjs latest-version \
+              --changelog /tmp/prev-release-notes/CHANGELOG.md)"; then
+            if [ -f /tmp/previous-section.md ] && [ "$LATEST" = "$PREV_VERSION" ]; then
+              echo "Newest captured section is the released ${PREV_VERSION}; generating from scratch"
+              rm -f /tmp/previous-section.md
+            fi
+          elif [ -f /tmp/previous-section.md ]; then
+            # No version to compare against, so there is no way to tell this
+            # cycle's section from the last release's. Handing over the wrong one
+            # carries last release's bullets into these notes; handing over
+            # nothing only costs some phrasing.
+            echo "::warning::Cannot determine the newest section's version; discarding it as context"
+            rm -f /tmp/previous-section.md
+          fi
+
+      - name: Export changesets for the generator
+        id: changesets_export
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/changesets
+          # `|| true` on each filter: merging the release PR mid-run consumes
+          # every changeset, and an empty grep exits 1 under pipefail.
+          git ls-tree -r --name-only origin/main -- .changeset \
+            | { grep '\.md$' || true; } \
+            | { grep -v '^\.changeset/README\.md$' || true; } \
+            | while read -r f; do
+                git show "origin/main:${f}" > "/tmp/changesets/$(basename "$f")"
+              done
+          if [ -z "$(ls -A /tmp/changesets)" ]; then
+            # Routine: the release PR was merged mid-run, which consumes every
+            # changeset. Signalled as an output, not exit 1 — a red Release run
+            # for an expected condition trains people to ignore red runs.
+            echo "::notice::No changesets on main (release PR already merged?); skipping generation"
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+            ls /tmp/changesets
+          fi
+
+      # Everything the generator needs is materialised here, by trusted shell,
+      # so the model itself needs no Bash at all. That is the point: a prefix
+      # allowlist over git is not read-only. `git log --output=<path>` writes an
+      # arbitrary file, and a `[diff] external = <cmd>` stanza written into
+      # .git/config makes a plain `git diff` execute it — which would be
+      # arbitrary code execution in the one process that holds
+      # ANTHROPIC_API_KEY.
+      - name: Collect generator inputs
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false' && steps.changesets_export.outputs.empty != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/inputs
+
+          # Which entries landed in which package this release.
+          git diff origin/main -- 'packages/*/CHANGELOG.md' \
+            > /tmp/inputs/package-changelogs.diff
+
+          # Changeset entries carry short commit ids; resolve them to PR numbers
+          # and titles so the model can cite `(#NNN)` without network access.
+          : > /tmp/inputs/pr-references.txt
+          grep -ohE '^\+- [0-9a-f]{8}:' /tmp/inputs/package-changelogs.diff \
+            | sed 's/^+- //; s/://' | sort -u \
+            | while read -r sha; do
+                pr="$(gh api "repos/${REPO}/commits/${sha}/pulls" \
+                  --jq '.[0] | "#\(.number) \(.title)"' 2>/dev/null || true)"
+                [ -n "$pr" ] && echo "${sha} ${pr}" >> /tmp/inputs/pr-references.txt
+              done || true
+
+          # The generator's own instructions and the style reference, copied out
+          # of the checkout so every path the model may read lives under /tmp
+          # and the allowlist below can be a single directory.
+          cp .github/prompts/release-changelog.md /tmp/inputs/instructions.md
+          cp CHANGELOG.md /tmp/inputs/CHANGELOG.md 2> /dev/null || true
+
+          echo "--- collected inputs ---"
+          wc -l /tmp/inputs/package-changelogs.diff /tmp/inputs/pr-references.txt
+
+      - name: Generate release notes with Claude
+        if:
+          steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
+          'false' && steps.changesets_export.outputs.empty != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # No github_token: nothing in the allowlist below can use one, and
+          # this process reads attacker-influenceable text.
+          #
+          # --setting-sources user matches deep-resolve.yml: without it, a
+          # `.claude/settings.json` on the checked-out branch could widen this
+          # allowlist or register hooks.
+          #
+          # Read and Write are confined to paths, not just named. This job holds
+          # ANTHROPIC_API_KEY, so an unrestricted Read is a path to it —
+          # /proc/self/environ carries the whole environment, and the body is
+          # published to a public branch, where a credential grep on a literal
+          # prefix is defeated by any encoding. Everything the model needs was
+          # copied under /tmp by the trusted step above; /proc and the runner's
+          # own temp are denied outright in case a later Read rule widens.
+          # No Bash at all: a prefix allowlist over git is not read-only.
+          claude_args: |
+            --setting-sources user
+            --allowedTools "Read(//tmp/**),Write(//tmp/release-notes-body.md)"
+            --disallowedTools "Read(//proc/**),Read(//sys/**),Read(//home/**),Read(//etc/**),Bash,WebFetch,WebSearch"
+          prompt: |
+            VERSION: ${{ steps.meta.outputs.version }}
+            REPO: ${{ github.repository }}
+
+            Read the instructions in /tmp/inputs/instructions.md and follow them
+            exactly to write /tmp/release-notes-body.md for this release.
+
+      - name: Upload generated body
+        # Nothing to hand over if generation was skipped for want of changesets.
+        if:
+          steps.meta.outputs.skip == 'false' &&
+          steps.changesets_export.outputs.empty != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes-body
+          path: /tmp/release-notes-body.md
+          retention-days: 1
+          overwrite: true
+
+  release_changelog_publish:
+    name: Publish Root Changelog
+    runs-on: ubuntu-24.04
+    needs: [release_changelog_draft]
+    # `empty` guards the routine merged-mid-run case: the draft uploads no
+    # artifact there, and download-artifact has no missing-artifact escape
+    # hatch, so without this the job fails on the path the draft calls routine.
+    if:
+      needs.release_changelog_draft.outputs.skip == 'false' &&
+      needs.release_changelog_draft.outputs.empty != 'true'
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # Merging the release PR between drafting and publishing deletes
+      # changeset-release/main (head-branch auto-deletion), and actions/checkout
+      # fails outright on a missing ref. That is a routine condition, so probe
+      # for the branch first and skip quietly rather than redden the release run
+      # and page on-call. Every later step is gated on the guard's `stale`
+      # output, which stays empty when the guard itself is skipped.
+      - name: Probe for the release branch
+        id: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # A 404 is the routine case. Anything else (rate limit, transport
+          # error) must fail loudly: read as "branch gone" it would silently
+          # stop publishing a changelog for every release.
+          if OUT="$(gh api "repos/${REPO}/git/ref/heads/changeset-release/main" \
+              --jq .ref 2>&1)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'Not Found' <<< "$OUT"; then
+            echo "::notice::changeset-release/main is gone (release PR merged?); nothing to publish"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not probe changeset-release/main: ${OUT}"
+            exit 1
+          fi
+
+      # Fresh checkout: the scripts and the working tree here were never
+      # visible to the model, so a compromised draft job cannot alter what runs.
+      - name: Checkout release branch
+        if: steps.probe.outputs.exists == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: changeset-release/main
+          fetch-depth: 0
+
+      # A later run can rebuild changeset-release/main between this run's draft
+      # and publish. Because this job re-checks-out the branch, the push would
+      # fast-forward cleanly onto that newer state and commit THIS run's
+      # (now stale) body — in the worst case an orphan section for a version the
+      # branch no longer builds, which insertSection never cleans up because it
+      # only replaces a matching version.
+      #
+      # The branch tip is the load-bearing key: a rebuild replaying the same
+      # main state leaves the version, the changeset hash AND the changelog blob
+      # all identical, so any of those alone can miss a rebuild entirely. The
+      # version and hash stay as a cheap, legible signal of WHAT moved in the
+      # warning. Skipping is self-correcting — the draft job queues rather than
+      # cancels, so the run that rebuilt the branch publishes its own section.
+      - name: Verify the release branch still matches the draft
+        id: guard
+        if: steps.probe.outputs.exists == 'true'
+        env:
+          DRAFT_VERSION: ${{ needs.release_changelog_draft.outputs.version }}
+          DRAFT_INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
+          DRAFT_BRANCH_SHA:
+            ${{ needs.release_changelog_draft.outputs.branch_sha }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./packages/app/package.json').version")"
+          INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
+          BRANCH_SHA="$(git rev-parse HEAD)"
+          if [ "$VERSION" != "$DRAFT_VERSION" ] \
+             || [ "$INPUTS" != "$DRAFT_INPUTS" ] \
+             || [ "$BRANCH_SHA" != "$DRAFT_BRANCH_SHA" ]; then
+            echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}, tip ${DRAFT_BRANCH_SHA}->${BRANCH_SHA}); skipping publish, the newer run will regenerate"
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download generated body
+        if: steps.guard.outputs.stale == 'false'
+        uses: actions/download-artifact@v8
+        with:
+          name: release-notes-body
+          path: /tmp
+
+      - name: Validate generated notes
+        if: steps.guard.outputs.stale == 'false'
+        # Every check lives in release-notes.mjs with a must-accept/must-reject
+        # corpus under `node --test`. It used to be inline greps here, which is
+        # how several CommonMark constructs slipped past unnoticed. These checks
+        # are fail-fast feedback, not the security boundary — that is
+        # ChangelogModal.tsx, which drops image nodes and allowlists link
+        # targets on the parsed AST.
+        run: |
+          set -euo pipefail
+          node .github/scripts/release-notes.mjs validate \
+            --body /tmp/release-notes-body.md
+
+      - name: Append package changelog list
+        if: steps.guard.outputs.stale == 'false'
+        env:
+          # Absolute URLs: this markdown is also rendered inside the in-app
+          # "What's new" modal, where relative links would resolve against the
+          # app origin and break.
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # A reuse hit hands back the previously published body, which already
+          # carries a package list; without stripping it first, every republish
+          # would stack another copy.
+          node .github/scripts/release-notes.mjs strip-package-list \
+            --body /tmp/release-notes-body.md
+          # A bullet list, not a GFM pipe table: the in-app modal renders this
+          # with react-markdown and no remark-gfm, where a table degrades to
+          # literal `| --- |` text. Plain CommonMark renders correctly in both
+          # the modal and on GitHub. (remark-gfm would also autolink bare URLs,
+          # creating links the validation step above never inspects.)
+          {
+            echo ""
+            # Markers, so a later strip removes only the generated list and not
+            # anything a maintainer wrote after it.
+            echo "<!-- hyperdx-package-list -->"
+            echo ""
+            echo "### 📦 Package changelogs"
+            echo ""
+            for pkg in packages/*/package.json; do
+              dir="$(dirname "$pkg")"
+              name="$(node -p "require('./${pkg}').name")"
+              version="$(node -p "require('./${pkg}').version")"
+              old="$(git show "origin/main:${pkg}" 2>/dev/null \
+                | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" \
+                || echo '')"
+              if [ "$version" != "$old" ]; then
+                anchor="${version//./}"
+                echo "- \`${name}\` ${old:-new} → ${version} — [changelog](${REPO_URL}/blob/main/${dir}/CHANGELOG.md#${anchor})"
+              fi
+            done
+            echo ""
+            echo "<!-- /hyperdx-package-list -->"
+          } >> /tmp/release-notes-body.md
+
+      - name: Splice into CHANGELOG.md and push
+        if: steps.guard.outputs.stale == 'false'
+        env:
+          VERSION: ${{ needs.release_changelog_draft.outputs.version }}
+          INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/release-notes.mjs insert \
+            --changelog CHANGELOG.md \
+            --body /tmp/release-notes-body.md \
+            --version "$VERSION" \
+            --inputs "$INPUTS" \
+            --date "$(date -u +%F)"
+          # --intent-to-add so `git status` sees the file even when insert had to
+          # scaffold it: a branch without a CHANGELOG.md leaves it untracked,
+          # which the porcelain check below would read as "nothing to push".
+          git add --intent-to-add CHANGELOG.md
+          # Belt and braces: this job must only ever touch the changelog.
+          # " M" is the ordinary edit; " A"/"AM" the scaffolded-from-nothing case
+          # (intent-to-add leaves the content unstaged, so the status is " A").
+          case "$(git status --porcelain)" in
+            '')
+              echo "CHANGELOG.md unchanged; nothing to push"
+              exit 0
+              ;;
+            ' M CHANGELOG.md' | ' A CHANGELOG.md' | 'AM CHANGELOG.md') ;;
+            *)
+              echo "::error::Unexpected working-tree changes:"
+              git status --porcelain
+              exit 1
+              ;;
+          esac
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(release): update root CHANGELOG.md"
+          # A push to main during generation force-rebuilds the branch, which
+          # rejects this push as non-fast-forward. That case is routine and the
+          # next run regenerates on top of the rebuilt branch. Anything else —
+          # a revoked permission, a new ruleset on changeset-release/* — must
+          # fail loudly rather than silently stop publishing every release.
+          # Note neither case recovers a maintainer's edit made during that
+          # window; see the caveat in AGENTS.md.
+          if ! PUSH_OUT="$(git push origin HEAD:changeset-release/main 2>&1)"; then
+            echo "$PUSH_OUT"
+            if grep -qiE 'non-fast-forward|fetch first|rejected.*(stale info|behind)' <<< "$PUSH_OUT"; then
+              echo "::warning::changeset-release/main moved during generation; the next run will regenerate"
+            else
+              echo "::error::Pushing the changelog failed for a reason other than losing the branch race."
+              exit 1
+            fi
+          fi
 
   # ---------------------------------------------------------------------------
   # Check if version already published (skip-if-exists)
@@ -771,6 +1325,8 @@ jobs:
     needs:
       [
         check_changesets,
+        release_changelog_draft,
+        release_changelog_publish,
         publish-app,
         publish-otel-collector,
         publish-local,
