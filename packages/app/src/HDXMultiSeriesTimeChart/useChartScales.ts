@@ -9,6 +9,7 @@ import {
   ChartAnnotation,
   getAnnotationElements,
 } from '@/components/charts/chartAnnotations';
+import { computeExemplarYBounds } from '@/components/Exemplars';
 
 import { hasSeriesSelection } from './chartData';
 
@@ -22,15 +23,24 @@ type UseChartScalesArgs = {
   graphResults: Record<string, unknown>[];
   lineData: LineData[];
   selectedSeriesNames: Set<string> | undefined;
+  /**
+   * Whether any exemplar marker could draw. visibleSeriesMax exists only to give
+   * the exemplar clamp an upper bound, and computing it is an O(rows x series)
+   * pass — which every time chart in the app was paying even with the overlay
+   * switched off for the whole deployment.
+   */
+  hasExemplars: boolean;
 };
 
 /**
- * Derive the chart's axis domains and the annotation elements that hang off the
- * x-domain.
+ * Derive the chart's axis domains, the exemplar clamp range, and the annotation
+ * elements that hang off the x-domain.
  *
  * Extracted from MemoChart because it is pure derivation from props — no state,
- * no event handlers, no recharts tree — and the y-domain rules (fit-to-data,
- * legend selection, zero-anchored bars) are easier to follow on their own.
+ * no event handlers, no recharts tree — and because the interaction between the
+ * y-domain and the exemplar clamp is subtle enough (an outlier marker must not be
+ * allowed to stretch the axis and crush the series flat) that it reads better
+ * with the three memos adjacent and alone.
  */
 export function useChartScales({
   annotations,
@@ -42,7 +52,31 @@ export function useChartScales({
   graphResults,
   lineData,
   selectedSeriesNames,
+  hasExemplars,
 }: UseChartScalesArgs) {
+  // Max value across the visible series. Used as the exemplar clamp's upper
+  // bound when the y-axis domain is 'auto', so a single slow-trace outlier (which
+  // can be 100x the p99 line) can't stretch the axis and crush the series flat —
+  // the marker pins to the top of the series range while its hover card still
+  // shows the true duration. See computeExemplarYBounds.
+  const visibleSeriesMax = useMemo(() => {
+    if (!hasExemplars) return 0;
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+    let max = -Infinity;
+    graphResults.forEach(dataPoint => {
+      lineData.forEach(ld => {
+        const seriesName = ld.displayName || ld.dataKey;
+        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
+          const value = dataPoint[ld.dataKey];
+          if (typeof value === 'number' && !isNaN(value)) {
+            max = Math.max(max, value);
+          }
+        }
+      });
+    });
+    return max;
+  }, [hasExemplars, graphResults, lineData, selectedSeriesNames]);
+
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = hasSeriesSelection(selectedSeriesNames);
 
@@ -52,8 +86,9 @@ export function useChartScales({
     const shouldFitYAxis =
       fitYAxisToData && displayType !== DisplayType.StackedBar;
 
-    // The domain follows the visible series only. With no selection and no fit,
-    // let Recharts auto-scale, which pins the lower bound to 0.
+    // The domain follows the visible series only — exemplar markers are clamped
+    // to the series max at render, so they never need to widen the axis. When
+    // there's no selection or fit, let Recharts auto-scale (lower pinned to 0).
     if (!hasSelection && !shouldFitYAxis) {
       return [0, 'auto'];
     }
@@ -101,9 +136,17 @@ export function useChartScales({
     displayType,
   ]);
 
+  // Bounds an exemplar marker is clamped into before rendering, derived from the
+  // domain the y-axis actually renders — see computeExemplarYBounds for why an
+  // unclamped marker can silently vanish.
+  const exemplarYBounds = useMemo(
+    () => computeExemplarYBounds(yAxisDomain, visibleSeriesMax),
+    [yAxisDomain, visibleSeriesMax],
+  );
+
   // Typed as the tuple it actually returns rather than the wider AxisDomain, so
-  // the annotation elements below can read [min, max] without asserting. Still
-  // assignable to XAxis's `domain`.
+  // the consumers below (annotation + exemplar clamping) can read [min, max]
+  // without asserting. Still assignable to XAxis's `domain`.
   const xAxisDomain: [number, number] = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
     let endTime = toStartOfInterval(dateRange[1], granularity);
@@ -138,6 +181,7 @@ export function useChartScales({
 
   return {
     yAxisDomain,
+    exemplarYBounds,
     xAxisDomain,
     annotationElements,
   };

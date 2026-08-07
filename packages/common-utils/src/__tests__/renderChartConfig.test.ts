@@ -2,7 +2,12 @@ import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
+  EXEMPLAR_QUERY_LIMIT,
+  exemplarScanBucketing,
+  isExemplarEligible,
+  isPromqlExemplarEligible,
   renderChartConfig,
+  renderMetricExemplarsChartConfig,
   timeFilterExpr,
 } from '@/core/renderChartConfig';
 import {
@@ -3581,4 +3586,522 @@ describe('renderChartConfig', () => {
   // attribute columns. Coverage of the variadic form lives in the regenerated
   // gauge / sum / histogram snapshots earlier in this file plus the
   // cross-scope integration test in packages/api/src/clickhouse/__tests__.
+});
+
+describe('isExemplarEligible', () => {
+  // The single rule the chart-editor toggle and the SQL renderer both delegate
+  // to; each clause below is a case where a marker can't be attributed to a
+  // point on the chart's y-axis.
+  const eligible = {
+    seriesCount: 1,
+    seriesReturnType: 'column' as const,
+    metricType: MetricsDataType.Histogram,
+    aggFn: 'quantile',
+    hasGroupBy: false,
+  };
+
+  it('accepts a single, non-ratio, non-grouped histogram series', () => {
+    expect(isExemplarEligible(eligible)).toBe(true);
+  });
+
+  it('accepts an unset seriesReturnType (defaults to a plain column series)', () => {
+    expect(
+      isExemplarEligible({ ...eligible, seriesReturnType: undefined }),
+    ).toBe(true);
+  });
+
+  it('rejects multi-series and zero-series charts', () => {
+    expect(isExemplarEligible({ ...eligible, seriesCount: 2 })).toBe(false);
+    expect(isExemplarEligible({ ...eligible, seriesCount: 0 })).toBe(false);
+  });
+
+  it('rejects a ratio chart', () => {
+    expect(isExemplarEligible({ ...eligible, seriesReturnType: 'ratio' })).toBe(
+      false,
+    );
+  });
+
+  it('rejects a grouped chart', () => {
+    expect(isExemplarEligible({ ...eligible, hasGroupBy: true })).toBe(false);
+  });
+
+  it('rejects non-histogram and missing metric types', () => {
+    expect(
+      isExemplarEligible({ ...eligible, metricType: MetricsDataType.Gauge }),
+    ).toBe(false);
+    expect(isExemplarEligible({ ...eligible, metricType: undefined })).toBe(
+      false,
+    );
+  });
+
+  it('rejects aggregations that leave the axis in another unit', () => {
+    // A count of observations or their sum is not on the same scale as one
+    // observation, so a duration marker clamped into that domain reads as a real
+    // point on it — the failure the PromQL path already guards against.
+    expect(isExemplarEligible({ ...eligible, aggFn: 'count' })).toBe(false);
+    expect(isExemplarEligible({ ...eligible, aggFn: 'sum' })).toBe(false);
+    expect(isExemplarEligible({ ...eligible, aggFn: 'count_distinct' })).toBe(
+      false,
+    );
+    expect(isExemplarEligible({ ...eligible, aggFn: 'increase' })).toBe(false);
+  });
+
+  it('accepts aggregations that stay on the observation scale', () => {
+    for (const aggFn of ['avg', 'max', 'min', 'quantile', 'none']) {
+      expect(isExemplarEligible({ ...eligible, aggFn })).toBe(true);
+    }
+  });
+
+  it('rejects a missing aggregation', () => {
+    // A caller that cannot say what it plots cannot promise a duration axis.
+    expect(isExemplarEligible({ ...eligible, aggFn: undefined })).toBe(false);
+  });
+
+  it('rejects a differently-cased metric type', () => {
+    // The comparison is by value, so a caller passing the app package's legacy
+    // MetricsDataType ('Histogram') must not silently read as eligible.
+    expect(isExemplarEligible({ ...eligible, metricType: 'Histogram' })).toBe(
+      false,
+    );
+  });
+});
+
+describe('isPromqlExemplarEligible', () => {
+  // The PromQL counterpart: an exemplar's value is a duration, so it may only be
+  // plotted on an axis that is also a duration.
+  it('accepts expressions that plot a duration', () => {
+    expect(
+      isPromqlExemplarEligible(
+        'histogram_quantile(0.95, sum(rate(http_latency_bucket[5m])) by (le))',
+      ),
+    ).toBe(true);
+    expect(isPromqlExemplarEligible('histogram_avg(rate(latency[5m]))')).toBe(
+      true,
+    );
+  });
+
+  it('rejects a count-valued expression', () => {
+    // The regression this guards: markers valued in milliseconds clamped into a
+    // requests/sec axis, reading as real points on that scale.
+    expect(isPromqlExemplarEligible('rate(http_requests_total[5m])')).toBe(
+      false,
+    );
+    // A raw `_bucket` series is observation *counts*, not durations.
+    expect(isPromqlExemplarEligible('rate(http_latency_bucket[5m])')).toBe(
+      false,
+    );
+    expect(isPromqlExemplarEligible('sum(up)')).toBe(false);
+  });
+
+  it('rejects an empty or missing expression', () => {
+    expect(isPromqlExemplarEligible(undefined)).toBe(false);
+    expect(isPromqlExemplarEligible('')).toBe(false);
+  });
+
+  it('rejects a duration expression wrapped in arithmetic', () => {
+    // The axis is then milliseconds while the exemplars are still seconds, so the
+    // markers would plot 1000x low and clamp to the axis floor as if real.
+    expect(
+      isPromqlExemplarEligible(
+        'histogram_quantile(0.95, sum(rate(a[5m])) by (le)) * 1000',
+      ),
+    ).toBe(false);
+    expect(
+      isPromqlExemplarEligible(
+        '1000 * histogram_quantile(0.95, sum(rate(a[5m])) by (le))',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects the function name appearing inside a label matcher', () => {
+    expect(
+      isPromqlExemplarEligible('rate(x{note="histogram_quantile("}[5m])'),
+    ).toBe(false);
+  });
+
+  it('accepts leading whitespace before the outermost call', () => {
+    expect(
+      isPromqlExemplarEligible('  histogram_quantile(0.95, rate(a[5m]))'),
+    ).toBe(true);
+  });
+});
+
+describe('exemplarScanBucketing', () => {
+  const hours = (n: number): [Date, Date] => [
+    new Date('2026-01-01T00:00:00Z'),
+    new Date(new Date('2026-01-01T00:00:00Z').getTime() + n * 3600_000),
+  ];
+
+  it('keeps the chart granularity when it fits the row budget', () => {
+    // 1 hour at 1 minute = 60 buckets, comfortably inside the 200-row budget.
+    expect(exemplarScanBucketing('1 minute', hours(1))).toEqual({
+      interval: '1 minute',
+      perBucket: 3,
+    });
+  });
+
+  it('widens the bucket when the granularity would outrun the budget', () => {
+    const { interval, perBucket } = exemplarScanBucketing(
+      '1 minute',
+      hours(48),
+    );
+    expect(interval).toBe('869 second');
+    expect(perBucket).toBe(1);
+  });
+
+  it('leaves room for the extra epoch-aligned bucket', () => {
+    // toStartOfInterval aligns to the epoch, not the range start, so an
+    // unaligned range spans one more bucket than ceil(range / bucket). Without
+    // headroom the trailing LIMIT clips the newest bucket.
+    const [start, end] = hours(48);
+    const { interval, perBucket } = exemplarScanBucketing('1 minute', [
+      start,
+      end,
+    ]);
+    const bucketSeconds = Number(interval.split(' ')[0]);
+    const rangeSeconds = (end.getTime() - start.getTime()) / 1000;
+    const worstCaseBuckets = Math.ceil(rangeSeconds / bucketSeconds) + 1;
+    expect(worstCaseBuckets * perBucket).toBeLessThanOrEqual(
+      EXEMPLAR_QUERY_LIMIT,
+    );
+  });
+
+  it('falls back safely for degenerate inputs', () => {
+    expect(exemplarScanBucketing('1 minute', undefined)).toEqual({
+      interval: '1 minute',
+      perBucket: 1,
+    });
+    const [start] = hours(1);
+    expect(exemplarScanBucketing('1 minute', [start, start])).toEqual({
+      interval: '1 minute',
+      perBucket: 1,
+    });
+    expect(exemplarScanBucketing('1 minute', [start, new Date(NaN)])).toEqual({
+      interval: '1 minute',
+      perBucket: 1,
+    });
+  });
+
+  it('rejects a granularity that is not a valid SQL interval', () => {
+    // The interval is spliced into the query as raw SQL, and granularity
+    // reaches this function from a URL param.
+    const { interval } = exemplarScanBucketing(
+      '1 minute) UNION ALL SELECT' as never,
+      hours(1),
+    );
+    expect(interval).toBe('1 minute');
+  });
+});
+
+describe('renderMetricExemplarsChartConfig', () => {
+  let mockMetadata: jest.Mocked<Metadata>;
+
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  beforeEach(() => {
+    mockMetadata = {
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
+      getColumn: jest.fn().mockResolvedValue(undefined),
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'TimeUnix' }),
+      getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
+      isClickHouseCloud: jest.fn().mockResolvedValue(false),
+    } as unknown as jest.Mocked<Metadata>;
+  });
+
+  const histogramConfig: ChartConfigWithOptDateRange = {
+    displayType: DisplayType.Line,
+    connection: 'test-connection',
+    metricTables: {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+      summary: 'otel_metrics_summary',
+      'exponential histogram': 'otel_metrics_exponential_histogram',
+    },
+    from: { databaseName: 'default', tableName: '' },
+    select: [
+      {
+        aggFn: 'quantile',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: 'Value',
+        level: 0.95,
+        metricName: 'http.server.duration',
+        metricType: MetricsDataType.Histogram,
+      },
+    ],
+    where: '',
+    whereLanguage: 'lucene',
+    timestampValueExpression: 'TimeUnix',
+    dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    granularity: '1 minute',
+  };
+
+  it('builds an ARRAY JOIN exemplar query against the metric-type table', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      histogramConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+
+    // Surfaces the exemplar columns
+    expect(sql).toContain('ARRAY JOIN');
+    expect(sql).toContain('`Exemplars.TraceId` AS ex_TraceId');
+    expect(sql).toContain('toUnixTimestamp64Milli(ex_TimeUnix)');
+    // Points at the histogram table and filters by metric name + time
+    expect(sql).toContain('otel_metrics_histogram');
+    expect(sql).toContain("MetricName = 'http.server.duration'");
+    expect(sql).toContain('TimeUnix');
+    // Drops empty trace ids and caps the result set
+    expect(sql).toContain('notEmpty(ex_TraceId)');
+    expect(sql).toContain(`LIMIT ${EXEMPLAR_QUERY_LIMIT}`);
+  });
+
+  // renderWhere bounds the row's TimeUnix, but the projected and bucketed value is
+  // the ARRAY JOINed ex_TimeUnix, and an exemplar's own timestamp falls in the
+  // collection interval before its data point's. Without an explicit ex_TimeUnix
+  // bound the scan returned pre-window exemplars and missed in-window ones whose
+  // data point landed just after the range end.
+  it('bounds the ARRAY JOINed exemplar time, not just the row time', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      histogramConfig,
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+
+    const start = new Date('2025-02-12').getTime();
+    const end = new Date('2025-02-14').getTime();
+    expect(sql).toContain(`ex_TimeUnix >= fromUnixTimestamp64Milli(${start})`);
+    expect(sql).toContain(`ex_TimeUnix <= fromUnixTimestamp64Milli(${end})`);
+  });
+
+  it('widens the row-level bound past the range end by one interval', async () => {
+    // So an exemplar inside the window whose data point lands just after it is
+    // still reachable; the exact ex_TimeUnix bound above then trims the overshoot.
+    const generated = await renderMetricExemplarsChartConfig(
+      histogramConfig,
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    // 1-minute granularity, so the row bound ends 60s after the range end.
+    const widened = new Date('2025-02-14').getTime() + 60_000;
+    expect(sql).toContain(`TimeUnix <= fromUnixTimestamp64Milli(${widened})`);
+  });
+
+  it('floors the row-bound widening at one minute on a fine granularity', async () => {
+    // A short window resolves to a 15s or 30s granularity, finer than a typical
+    // scrape — widening by that much would leave the newest exemplars out of reach
+    // again, which is the whole point of the widening.
+    const generated = await renderMetricExemplarsChartConfig(
+      { ...histogramConfig, granularity: '15 second' },
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    const widened = new Date('2025-02-14').getTime() + 60_000;
+    expect(sql).toContain(`TimeUnix <= fromUnixTimestamp64Milli(${widened})`);
+  });
+
+  it('returns null without a date range', async () => {
+    // renderWhere emits no time predicate then, leaving a whole-table ARRAY JOIN.
+    const { dateRange: _dropped, ...noRange } = histogramConfig;
+    const generated = await renderMetricExemplarsChartConfig(
+      noRange as typeof histogramConfig,
+      mockMetadata,
+    );
+    expect(generated).toBeNull();
+  });
+
+  it('spends the row budget per time bucket, not on the slowest traces overall', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      // 1 hour at 1-minute granularity: 60 buckets, so the budget stretches to
+      // several rows each.
+      {
+        ...histogramConfig,
+        dateRange: [
+          new Date('2025-02-12T00:00:00Z'),
+          new Date('2025-02-12T01:00:00Z'),
+        ],
+      },
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain(
+      'toStartOfInterval(toDateTime(ex_TimeUnix), INTERVAL 1 minute)',
+    );
+    // Ordering by bucket first is what makes the trailing LIMIT a backstop
+    // rather than a value-ranked cut of the whole range.
+    expect(sql).toContain('ORDER BY bucket ASC, value DESC');
+    expect(sql).toContain('LIMIT 3 BY bucket');
+  });
+
+  it('widens the scan bucket when the granularity would outrun the row budget', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      // 2 days at 1-minute granularity is 2880 buckets — far more than the
+      // budget covers. Widening keeps markers spread over the whole range
+      // instead of running out partway along the x-axis.
+      histogramConfig,
+      mockMetadata,
+    );
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain(
+      'toStartOfInterval(toDateTime(ex_TimeUnix), INTERVAL 869 second)',
+    );
+    expect(sql).toContain('LIMIT 1 BY bucket');
+  });
+
+  it("scopes exemplars to the series' aggCondition so markers match the plotted line", async () => {
+    const filteredConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'quantile',
+          level: 0.95,
+          valueExpression: 'Value',
+          metricName: 'http.server.duration',
+          metricType: MetricsDataType.Histogram,
+          aggCondition: "ServiceName = 'api'",
+          aggConditionLanguage: 'sql',
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      filteredConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain("ServiceName = 'api'");
+  });
+
+  it('ANDs the metric-name predicate even when the chart uses OR filters', async () => {
+    const orConfig = {
+      ...histogramConfig,
+      filtersLogicalOperator: 'OR',
+      filters: [
+        { type: 'sql', condition: "ServiceName = 'api'" },
+        { type: 'sql', condition: "ServiceName = 'web'" },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      orConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    // The required metric-name check must be ANDed as its own group, never
+    // folded into the user OR group (which would let the scan match other
+    // metrics whenever a user filter matches).
+    expect(sql).toContain("AND (MetricName = 'http.server.duration')");
+    // The user filters are still present and OR'd within their own group.
+    expect(sql).toContain("ServiceName = 'api'");
+    expect(sql).toContain("ServiceName = 'web'");
+    expect(sql).not.toMatch(/OR\s*\(?\s*MetricName/);
+  });
+
+  it('returns null for a ratio config (exemplars are meaningless on a ratio axis)', async () => {
+    const ratioConfig = {
+      ...histogramConfig,
+      seriesReturnType: 'ratio',
+      select: [histogramConfig.select[0], histogramConfig.select[0]],
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(ratioConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null for a multi-series config', async () => {
+    const multiConfig = {
+      ...histogramConfig,
+      select: [histogramConfig.select[0], histogramConfig.select[0]],
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(multiConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null when the chart has a Group By', async () => {
+    // A grouped chart draws one line per group, but the exemplar scan is not
+    // group-aware: it would pool exemplars from every group into one
+    // unattributable set. Drop the overlay instead.
+    const groupedConfig = {
+      ...histogramConfig,
+      groupBy: 'ServiceName',
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(groupedConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null for a non-histogram metric (value is on a different scale)', async () => {
+    const gaugeConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'avg',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'system.memory.usage',
+          metricType: MetricsDataType.Gauge,
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(gaugeConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('scans the exponential histogram table for a native-histogram metric', async () => {
+    // Exponential (OTLP) / native (Prometheus) histograms carry exemplars in
+    // the same `Exemplars.*` columns, on their own metric-type table.
+    const exponentialConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'quantile',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          level: 0.95,
+          metricName: 'traces.span.metrics.duration',
+          metricType: MetricsDataType.ExponentialHistogram,
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      exponentialConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain('otel_metrics_exponential_histogram');
+    expect(sql).toContain('`Exemplars.TraceId` AS ex_TraceId');
+  });
+
+  it('returns null for a non-metric config', async () => {
+    const logConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+    };
+    expect(
+      await renderMetricExemplarsChartConfig(logConfig, mockMetadata),
+    ).toBeNull();
+  });
 });

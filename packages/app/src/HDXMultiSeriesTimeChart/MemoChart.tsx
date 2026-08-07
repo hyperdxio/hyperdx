@@ -15,19 +15,21 @@ import {
   CartesianGrid,
   Legend,
   ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, Exemplar } from '@hyperdx/common-utils/dist/types';
 
 import { useChartSyncId } from '@/chartSync';
 import { findNearestSeriesKey, LineData } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { ChartOverlayControls } from '@/components/charts/ChartOverlayControls';
 import { toViewportPoint } from '@/components/charts/ChartTooltip';
+import { ExemplarDot } from '@/components/Exemplars';
 import type { NumberFormat } from '@/types';
 import { useFormatTime } from '@/useFormatTime';
 import { COLORS, formatNumber } from '@/utils';
@@ -51,6 +53,7 @@ import {
   Y_AXIS_WIDTH,
 } from './constants';
 import { useChartScales } from './useChartScales';
+import { useExemplarMarkers } from './useExemplarMarkers';
 
 // Debounce (ms) for the chart's ResponsiveContainer resize observer. Without
 // it the observer fires on every frame, and a resize → re-render → resize
@@ -108,6 +111,15 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
+  exemplars,
+  maxExemplars = 12,
+  onExemplarHover,
+  onExemplarHoverEnd,
+  onExemplarSelect,
+  pinnedExemplarKey = null,
+  onExemplarPinEnd,
+  onActiveExemplarMoved,
+  onExemplarsDropped,
 }: {
   // Matches what useChartScales narrows to, so the hook's stricter type is
   // actually checked at this boundary rather than satisfied by `any`.
@@ -145,9 +157,31 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
+  /** Exemplar markers to overlay on the chart (linked to traces). */
+  exemplars?: Exemplar[];
+  /** Target number of exemplar markers to show (0 = unlimited). */
+  maxExemplars?: number;
+  /** Invoked when the cursor enters an exemplar marker, with its pixel coords. */
+  onExemplarHover?: (exemplar: Exemplar, cx: number, cy: number) => void;
+  /** Invoked when the cursor leaves an exemplar marker. */
+  onExemplarHoverEnd?: () => void;
+  /** Invoked when an exemplar marker is clicked, with its pixel coords. */
+  onExemplarSelect?: (exemplar: Exemplar, cx: number, cy: number) => void;
+  /**
+   * Key of the exemplar whose card is pinned open, or null. A key rather than a
+   * boolean so the chart can tell when that marker stops being rendered — see
+   * the reset effect below. A pin also suppresses the series tooltip.
+   */
+  pinnedExemplarKey?: string | null;
+  /** Invoked when the pinned marker is no longer in the rendered set. */
+  onExemplarPinEnd?: () => void;
+  /** See useExemplarMarkers: re-anchors the open card when its marker moves. */
+  onActiveExemplarMoved?: (cx: number, cy: number) => void;
+  /** How many markers the render-layer clamps dropped; see useExemplarMarkers. */
+  onExemplarsDropped?: (count: number) => void;
 }) {
-  const _id = useId();
-  const id = _id.replace(/:/g, '');
+  const rawId = useId();
+  const id = rawId.replace(/:/g, '');
 
   // recharts sync group, scoped via context (see chartSync).
   const syncId = useChartSyncId();
@@ -248,18 +282,21 @@ export const MemoChart = memo(function MemoChart({
     captureActivePointY,
   ]);
 
-  // Axis domains and annotation elements — see useChartScales.
-  const { yAxisDomain, xAxisDomain, annotationElements } = useChartScales({
-    annotations,
-    dateRange,
-    granularity,
-    dateRangeEndInclusive,
-    displayType,
-    fitYAxisToData,
-    graphResults,
-    lineData,
-    selectedSeriesNames,
-  });
+  // Axis domains, the exemplar clamp range, and annotation elements — see
+  // useChartScales.
+  const { yAxisDomain, exemplarYBounds, xAxisDomain, annotationElements } =
+    useChartScales({
+      annotations,
+      dateRange,
+      granularity,
+      dateRangeEndInclusive,
+      displayType,
+      fitYAxisToData,
+      graphResults,
+      lineData,
+      selectedSeriesNames,
+      hasExemplars: !!exemplars?.length,
+    });
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -414,6 +451,31 @@ export const MemoChart = memo(function MemoChart({
     });
     return map;
   }, [lineData]);
+
+  // Exemplar marker layer — see useExemplarMarkers.
+  const {
+    activeExemplarKey,
+    exemplarPoints,
+    isExemplarHovered,
+    handleExemplarHoverStart,
+    handleExemplarHoverEnd,
+    handleExemplarSelect,
+  } = useExemplarMarkers({
+    exemplars,
+    maxExemplars,
+    granularity,
+    pinnedExemplarKey,
+    xAxisDomain,
+    exemplarYBounds,
+    onExemplarHover,
+    onExemplarHoverEnd,
+    onExemplarSelect,
+    onExemplarPinEnd,
+    onActiveExemplarMoved,
+    onExemplarsDropped,
+    suppressNextClickRef,
+    brushOriginRef: mouseDownPosRef,
+  });
 
   return (
     <div
@@ -655,23 +717,48 @@ export const MemoChart = memo(function MemoChart({
               Hidden once a point is clicked, where the pinned tooltip takes over.
               Portaled to body so HDXLineChartTooltip can self-position (see its
               docblock) and escape the chart's bounds near an edge. */}
-          {isClickActive == null && (
-            <Tooltip
-              content={
-                <HDXLineChartTooltip
-                  numberFormat={fallbackNumberFormat}
-                  numberFormatByKey={tooltipNumberFormatsByKey}
-                  lineDataMap={lineDataMap}
-                  previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-                  activePointYByKeyRef={activePointYByKeyRef}
-                  containerRef={containerRef}
-                />
-              }
-              portal={typeof document !== 'undefined' ? document.body : null}
-            />
-          )}
+          {isClickActive == null &&
+            !isExemplarHovered &&
+            pinnedExemplarKey == null && (
+              <Tooltip
+                content={
+                  <HDXLineChartTooltip
+                    numberFormat={fallbackNumberFormat}
+                    numberFormatByKey={tooltipNumberFormatsByKey}
+                    lineDataMap={lineDataMap}
+                    previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+                    activePointYByKeyRef={activePointYByKeyRef}
+                    containerRef={containerRef}
+                  />
+                }
+                portal={typeof document !== 'undefined' ? document.body : null}
+              />
+            )}
           {referenceLines}
           {annotationElements}
+          {exemplarPoints.map(p => (
+            <ReferenceDot
+              key={p.key}
+              // Already placed inside the x-domain by useExemplarMarkers, which
+              // also drops markers that belong to a different window.
+              x={p.x}
+              // Already placed inside the y-range by useExemplarMarkers.
+              y={p.y}
+              // Stated rather than assumed: both clamps exist because the default
+              // is "discard", and recharts 3 landed here recently.
+              ifOverflow="discard"
+              shape={
+                <ExemplarDot
+                  exemplar={p.exemplar}
+                  onHoverStart={handleExemplarHoverStart}
+                  onHoverEnd={handleExemplarHoverEnd}
+                  onSelect={handleExemplarSelect}
+                  isActive={p.key === activeExemplarKey}
+                  onPositionChange={onActiveExemplarMoved}
+                />
+              }
+            />
+          ))}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"
