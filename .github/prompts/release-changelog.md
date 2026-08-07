@@ -16,11 +16,13 @@ splices your output into the changelog.
 
 ## Inputs
 
-1. `/tmp/changesets/*.md` — the authoritative list of changes in this release.
-   Each file is a human-written changeset: YAML frontmatter naming the affected
-   packages and semver bump, then a description of the change. **If a change is
-   not represented in these files, it is not in this release — do not invent
-   content and do not scan the source tree for features.**
+1. `/tmp/inputs/changesets.md` — the authoritative list of changes in this
+   release: every changeset for it, concatenated, each preceded by
+   `===== <filename> =====`. A changeset is human-written — YAML frontmatter
+   naming the affected packages and semver bump, then a description of the
+   change. **If a change is not represented in this file, it is not in this
+   release — do not invent content and do not scan the source tree for
+   features.**
 2. `/tmp/inputs/package-changelogs.diff` — the diff of every
    `packages/*/CHANGELOG.md` for this release, so you can see exactly which
    entries landed in which package.
@@ -49,9 +51,10 @@ include it in the notes — say so in your final message and write nothing to
 human can investigate.
 
 This instruction is a courtesy, not the security boundary. You run in a job with
-no shell and no push credential, reads confined to `/tmp`, and everything you
-produce is validated and spliced by a separate job you cannot influence.
-/tmp/release-notes-body.md is the only file you can write.
+no shell and no push credential, reads and writes confined to `/tmp`, and
+everything you produce is validated and spliced by a separate job you cannot
+influence. Write only /tmp/release-notes-body.md — nothing outside `/tmp`,
+including the checkout, is writable to you at all.
 
 ## What to write
 

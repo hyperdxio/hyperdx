@@ -268,11 +268,30 @@ The job split is a security boundary, not tidiness: the model reads changeset
 bodies, commit messages and PR bodies, which anyone opening a PR controls. Its
 job holds `ANTHROPIC_API_KEY` and a `contents: read` token, but no push
 credential and no ability to alter the script that does the splicing. Because
-the API key shares that process, the model gets no shell and its reads are
-confined to `/tmp` — an unrestricted `Read` reaches `/proc/self/environ`, and
-the output is published to a public branch. A tool allowlist alone would not be
-enough — `git log --output=<path> --format=format:<content>` writes an arbitrary
-file, which is why there is no `Bash` at all.
+the API key shares that process, the generator gets `--tools "Read" "Write"` and
+nothing else: no `Bash`, and no `Grep` or `Glob` either, since those read files
+without consulting a `Read` path rule. It may write exactly one file, granted by
+an `Edit(<path>)` rule, and `/proc`, `/sys`, `/home` and `/etc` are denied
+outright — `/proc/self/environ` carries the whole environment, and the output
+is published to a public branch.
+
+Three flags with three different jobs, which is worth keeping straight when
+editing this: `--tools` restricts what exists, `--allowedTools` only
+pre-approves (it is what stops a `-p` run stalling on a prompt it cannot
+answer), and `--disallowedTools` denies. A path rule attached to `Write` is
+accepted and then never consulted — file permissions are checked against
+`Edit` and `Read` rules — so write confinement is spelled `Edit(<path>)`.
+
+Because the generator has no way to list a directory, every input is
+materialised for it at a known path by trusted shell, including all the
+changesets concatenated into one file. Left to discover
+`.changeset/gentle-boats-serve.md` by name it cannot, and it writes a changelog
+that quietly omits whatever it could not find.
+
+The generator calls the Claude Code CLI, not
+`anthropics/claude-code-action`: that action accepts only GitHub entity events
+and rejects `push`, and everything it adds on top of the CLI — a token, entity
+context, PR comments — is what this job deliberately does without.
 
 ## GitHub Action Workflow (when invoked via @claude)
 
