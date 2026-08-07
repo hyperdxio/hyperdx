@@ -253,9 +253,9 @@ function buildCellSummary(
     }
   }
 
-  // Adoption (transcript-aware tool usage). Only pairs whose grade carries an
+  // Adoption (metric keys in tool-call args). Only pairs whose grade carries an
   // `adoption` block contribute; the cell omits `adoption` entirely when the
-  // scenario has no transcript rubric.
+  // scenario has no adoption rubric.
   const adopted = pairs.filter(p => p.grade.adoption);
   let adoption: CellSummary['adoption'];
   if (adopted.length > 0) {

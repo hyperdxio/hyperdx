@@ -139,9 +139,18 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
-type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
+export type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
 
-function classifyTimestampType(type: string | undefined): {
+/**
+ * Classify a ClickHouse timestamp type into its kind and sub-second precision.
+ *
+ * `kind: 'date'` means day precision — a value read from such a column lands at
+ * midnight and can't locate an event within its day. Callers that need an
+ * instant use this to skip those columns rather than silently anchor to midnight.
+ *
+ * Returns null for anything that isn't a Date/DateTime/DateTime64.
+ */
+export function classifyTimestampType(type: string | undefined): {
   kind: TimestampTypeKind;
   precision: number;
 } | null {
