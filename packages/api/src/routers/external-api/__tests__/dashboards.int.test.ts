@@ -2824,6 +2824,95 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    // `exemplarTraceSourceId` is where a marker's "view trace" link points, so a
+    // well-formed id for the wrong kind of source saves a tile whose markers all
+    // lead nowhere. Format validation alone cannot catch that.
+    it('rejects an exemplarTraceSourceId that is not a Trace source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with exemplars on a metric trace source',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: metricSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'exemplarTraceSourceId must reference a Trace source',
+      );
+    });
+
+    it('rejects an exemplarTraceSourceId for a source that does not exist', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with exemplars on a missing source',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: new ObjectId().toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('Could not find');
+    });
+
+    it('accepts an exemplarTraceSourceId pointing at a Trace source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with exemplars',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).toMatchObject({
+        enableExemplars: true,
+        exemplarTraceSourceId: traceSource._id.toString(),
+      });
+    });
+
     it('round-trips a heatmap tile with only required fields', async () => {
       // Covers the minimal payload path: countExpression, heatmapScaleType,
       // where, whereLanguage, and numberFormat are all omitted on the
@@ -5033,6 +5122,245 @@ describe('External API v2 Dashboards - new format', () => {
               },
             },
           ],
+          tags: [],
+        })
+        .expect(200);
+    });
+
+    // Same reasoning as the heatmap case above: the trace source can be deleted
+    // or change kind long after the tile was accepted, and an optional marker
+    // link target must not make the whole dashboard unsaveable for edits made
+    // elsewhere on it.
+    it('does not re-validate the exemplar trace source for unchanged tiles', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar PUT scoping test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+            {
+              name: 'Other line tile',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count', where: '' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const exemplarTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Latency',
+      );
+      const otherTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Other line tile',
+      );
+
+      // The trace source stops being a Trace source after the fact. Written
+      // straight to the collection for the same reason the heatmap test does.
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar PUT scoping test - renamed',
+          tiles: [
+            { ...exemplarTile },
+            {
+              ...otherTile,
+              name: 'Other line tile, edited',
+              config: {
+                ...otherTile.config,
+                select: [{ aggFn: 'count', where: 'level:error' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+    });
+
+    // Deletion, not just a kind change. These were split for a while: the kind
+    // gate was exempted for unchanged tiles and the existence check was not, so
+    // deleting the source still wedged every later save. Only the exemplar
+    // reference dangles here — both tiles sit on a source that still exists, so a
+    // rejection could only come from the exemplar check.
+    it('does not re-validate a deleted exemplar trace source for unchanged tiles', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar deletion scoping test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+            {
+              name: 'Other line tile',
+              x: 6,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const exemplarTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Latency',
+      );
+      const otherTile = createResponse.body.data.tiles.find(
+        (t: { name: string }) => t.name === 'Other line tile',
+      );
+
+      await Source.collection.deleteOne({ _id: traceSource._id });
+
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar deletion scoping test - renamed',
+          tiles: [
+            { ...exemplarTile },
+            {
+              ...otherTile,
+              name: 'Other line tile, edited',
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+    });
+  });
+
+  describe('exemplar settings enabled on an existing tile', () => {
+    // The unchanged-tile exemption keys on the source id, but an id nobody was
+    // following is not the same as one about to draw markers: while exemplars
+    // were off the source could have been deleted or stopped being a Trace
+    // source with no effect at all.
+    it('validates the trace source when exemplars are switched on', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar enable test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: false,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const tile = createResponse.body.data.tiles[0];
+
+      // The source stops being a Trace source while nothing was following it.
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar enable test',
+          tiles: [
+            {
+              ...tile,
+              config: { ...tile.config, enableExemplars: true },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'exemplarTraceSourceId must reference a Trace source',
+      );
+    });
+
+    it('still exempts a tile whose exemplars were already on', async () => {
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Exemplar already-on test',
+          tiles: [
+            {
+              name: 'Latency',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: metricSource._id.toString(),
+                select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+                enableExemplars: true,
+                exemplarTraceSourceId: traceSource._id.toString(),
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardId = createResponse.body.data.id;
+      const tile = createResponse.body.data.tiles[0];
+
+      await Source.collection.updateOne(
+        { _id: traceSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      // enableExemplars stays true, so this is the exemption, not the transition.
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Exemplar already-on test - renamed',
+          tiles: [{ ...tile }],
           tags: [],
         })
         .expect(200);

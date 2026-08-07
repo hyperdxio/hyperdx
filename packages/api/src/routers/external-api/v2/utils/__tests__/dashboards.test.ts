@@ -400,3 +400,71 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
     expect(ext.tiles.map(t => t.id)).toEqual(['normal-tile']);
   });
 });
+
+/**
+ * The exemplar settings are only useful if they survive the tile conversion in
+ * both directions — accepting them at the schema and dropping them in the
+ * converter was the original bug this feature fixed, and the two tile types have
+ * separate blocks in both converters, so one can silently regress without the
+ * other.
+ */
+describe('exemplar settings round-trip', () => {
+  const traceSourceId = new mongoose.Types.ObjectId().toString();
+  const sourceId = new mongoose.Types.ObjectId().toString();
+
+  const externalTile = (displayType: 'line' | 'stacked_bar'): ConfigTile => ({
+    id: 'tile-1',
+    x: 0,
+    y: 0,
+    w: 6,
+    h: 4,
+    name: 'Latency',
+    config: {
+      displayType,
+      sourceId,
+      select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+      enableExemplars: true,
+      exemplarTraceSourceId: traceSourceId,
+    } as ConfigTile['config'],
+  });
+
+  it.each(['line', 'stacked_bar'] as const)(
+    'keeps both settings converting a %s tile inwards',
+    displayType => {
+      const { config } = convertToInternalTileConfig(externalTile(displayType));
+      expect(config).toMatchObject({
+        enableExemplars: true,
+        exemplarTraceSourceId: traceSourceId,
+      });
+    },
+  );
+
+  it.each(['line', 'stacked_bar'] as const)(
+    'returns both settings for a %s tile on the way out',
+    displayType => {
+      const internal = convertToInternalTileConfig(externalTile(displayType));
+      const dashboard = {
+        _id: new mongoose.Types.ObjectId(),
+        name: 'D',
+        tiles: [{ ...externalTile(displayType), config: internal.config }],
+        tags: [],
+      } as unknown as DashboardDocument;
+
+      const [tile] = convertToExternalDashboard(dashboard).tiles;
+      expect(tile.config).toMatchObject({
+        enableExemplars: true,
+        exemplarTraceSourceId: traceSourceId,
+      });
+    },
+  );
+
+  it('omits both when unset rather than emitting nulls', () => {
+    const bare = externalTile('line');
+    delete (bare.config as Record<string, unknown>).enableExemplars;
+    delete (bare.config as Record<string, unknown>).exemplarTraceSourceId;
+
+    const { config } = convertToInternalTileConfig(bare);
+    expect(config).not.toHaveProperty('enableExemplars');
+    expect(config).not.toHaveProperty('exemplarTraceSourceId');
+  });
+});
