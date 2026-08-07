@@ -3939,6 +3939,197 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('should round-trip the filter variable settings', async () => {
+      const filterId = new ObjectId().toString();
+      const storedFilter = {
+        id: filterId,
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        source: traceSource._id.toString(),
+      };
+      // Seeded on the dashboard so the id is preserved rather than reassigned,
+      // which keeps the assertions below about the filter the caller sent.
+      const dashboard = await createTestDashboard({ filters: [storedFilter] });
+      const payload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {},
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          ...payload,
+          filters: [
+            {
+              ...omit(storedFilter, 'source'),
+              sourceId: traceSource._id.toString(),
+              isBroadcastEnabled: false,
+              isVariableEnabled: true,
+              variableName: 'Service_Name',
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.filters[0]).toMatchObject({
+        id: filterId,
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'Service_Name',
+      });
+
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.filters?.[0]).toMatchObject({
+        id: filterId,
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'Service_Name',
+      });
+    });
+
+    it('should reject a filter variableName that is not a bare token', async () => {
+      const dashboard = await createTestDashboard({});
+      const payload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {},
+      );
+
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          ...payload,
+          filters: [
+            {
+              id: new ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Service Name',
+              expression: 'ServiceName',
+              sourceId: traceSource._id.toString(),
+              variableName: 'has space',
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    describe('filter variable name uniqueness', () => {
+      const externalFilter = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        sourceId: traceSource._id.toString(),
+        isVariableEnabled: true,
+        variableName: 'service',
+        ...overrides,
+      });
+
+      const expectPutFilters = async (
+        filters: unknown[],
+        expectedStatus: number,
+      ) => {
+        const dashboard = await createTestDashboard({});
+        const payload = createMockDashboardWithIds(
+          traceSource._id.toString(),
+          {},
+        );
+        await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+          .send({ ...payload, filters })
+          .expect(expectedStatus);
+      };
+
+      it('rejects two variable-enabled filters sharing a variable name', async () => {
+        await expectPutFilters([externalFilter(), externalFilter()], 400);
+      });
+
+      it('rejects a clash against a name derived from the filter name', async () => {
+        await expectPutFilters(
+          [
+            externalFilter({ name: 'Service Name', variableName: undefined }),
+            externalFilter({ variableName: 'Service_Name' }),
+          ],
+          400,
+        );
+      });
+
+      it('accepts distinct variable names', async () => {
+        await expectPutFilters(
+          [
+            externalFilter({ variableName: 'service' }),
+            externalFilter({ variableName: 'environment' }),
+          ],
+          200,
+        );
+      });
+
+      // A caller that never enabled the feature must not be blocked by this rule.
+      it('accepts duplicate names when the filters are not variable-enabled', async () => {
+        await expectPutFilters(
+          [
+            externalFilter({ isVariableEnabled: false }),
+            externalFilter({ isVariableEnabled: undefined }),
+          ],
+          200,
+        );
+      });
+
+      it('accepts identically named filters that carry no variable fields', async () => {
+        const legacyFilter = {
+          isVariableEnabled: undefined,
+          variableName: undefined,
+        };
+        await expectPutFilters(
+          [externalFilter(legacyFilter), externalFilter(legacyFilter)],
+          200,
+        );
+      });
+
+      it('rejects a duplicate on create', async () => {
+        const payload = createMockDashboardWithIds(
+          traceSource._id.toString(),
+          {},
+        );
+        await authRequest('post', BASE_URL)
+          .send({
+            ...payload,
+            filters: [
+              omit(externalFilter(), 'id'),
+              omit(externalFilter(), 'id'),
+            ],
+          })
+          .expect(400);
+      });
+
+      // `variableName` is optional in the schema, so without this check a caller
+      // could enable variables on a filter whose name yields no derivable token and
+      // persist a variable no tile could reference.
+      it('rejects a variable-enabled filter with no usable variable name', async () => {
+        await expectPutFilters(
+          [externalFilter({ name: '环境', variableName: undefined })],
+          400,
+        );
+      });
+
+      it('accepts an unusable filter name when an explicit variable name is sent', async () => {
+        await expectPutFilters(
+          [externalFilter({ name: '环境', variableName: 'env' })],
+          200,
+        );
+      });
+
+      it('accepts an unusable filter name when the filter is not variable-enabled', async () => {
+        await expectPutFilters(
+          [
+            externalFilter({
+              name: '环境',
+              variableName: undefined,
+              isVariableEnabled: false,
+            }),
+          ],
+          200,
+        );
+      });
+    });
+
     it('should clear existing dashboard filters when provided an empty filters array', async () => {
       const existingFilterId1 = new ObjectId().toString();
       const existingFilterId2 = new ObjectId().toString();

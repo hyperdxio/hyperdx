@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { getFilterVariableName, isFilterVariableEnabled } from './filters';
 import { DashboardContainerSchema } from './types';
 
 // Inputs shared by the internal `DashboardSchema` refinement and the
@@ -7,6 +8,14 @@ import { DashboardContainerSchema } from './types';
 // containerId/tabId reference shape, not on Builder-vs-RawSql config.
 type ContainerForValidation = z.infer<typeof DashboardContainerSchema>;
 type TileForValidation = { containerId?: string; tabId?: string };
+// Structural for the same reason as the helpers in `./filters`: the internal
+// and external filter shapes differ (`source` vs `sourceId`), and only these
+// three fields decide variable-name identity.
+type FilterForVariableValidation = {
+  name: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
 
 /**
  * Pass 1: container-id uniqueness and per-container tab-id uniqueness.
@@ -125,5 +134,63 @@ export function validateDashboardTileContainerRefs<T extends TileForValidation>(
         });
       }
     }
+  });
+}
+
+/**
+ * Variable names across a dashboard's filters must each resolve to something and
+ * be unique, mirroring the dashboard filter form's own check so the API cannot
+ * accept what the UI refuses (`validateVariableName` in `./filters`).
+ *
+ * Only filters with variables *enabled* participate, in both directions: a
+ * disabled filter is neither reported nor treated as taking a name. That
+ * matters because a name is derived from the display name when none is stored,
+ * so two legitimately identically-named filters on different sources would
+ * otherwise collide for users who never turned the feature on. Deliberately
+ * independent of the feature flag itself — the check is on stored data, and
+ * data that predates the flag can never trip it.
+ *
+ * Comparison is case-sensitive, matching the form.
+ *
+ * Issues raised:
+ * - A variable-enabled filter with no name and nothing token-safe to derive one
+ *   from (path `<filtersPath>[i].variableName`).
+ * - A second variable-enabled filter resolving to an already-taken name
+ *   (path `<filtersPath>[i].variableName`).
+ */
+export function validateDashboardFilterVariableNames(
+  filters: FilterForVariableValidation[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+  const seen = new Set<string>();
+
+  filters.forEach((filter, filterIdx) => {
+    if (!isFilterVariableEnabled(filter)) return;
+    const variableName = getFilterVariableName(filter);
+
+    // No explicit name, and the display name yields nothing token-safe to derive
+    // one from. Rejected rather than skipped: the filter is variable-*enabled*, so
+    // accepting it would persist a variable with no reference any tile could use —
+    // and the form refuses the same state via its own required check.
+    if (!variableName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Variable name is required for filter "${filter.name}"`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+      return;
+    }
+
+    if (seen.has(variableName)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Variable names must be unique: "${variableName}"`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+      return;
+    }
+    seen.add(variableName);
   });
 }
