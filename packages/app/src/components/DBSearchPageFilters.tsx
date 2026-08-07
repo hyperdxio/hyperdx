@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -905,7 +905,9 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+  const [isExpanded, setIsExpanded] = useState(isDefaultExpanded ?? false);
+  const hasUserToggledExpansionRef = useRef(false);
+  const previousDefaultExpandedRef = useRef(Boolean(isDefaultExpanded));
   const [showDistributions, setShowDistributions] = useState(false);
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
@@ -919,7 +921,7 @@ export const FilterGroup = ({
   const toggleShowDistributions = useCallback(() => {
     setShowDistributions(prev => {
       if (!prev) {
-        setExpanded(true);
+        setIsExpanded(true);
       }
       return !prev;
     });
@@ -929,16 +931,38 @@ export const FilterGroup = ({
     setShowDistributions(false);
   }, []);
 
-  useEffect(() => {
-    if (isDefaultExpanded) {
-      setExpanded(true);
-    }
-  }, [isDefaultExpanded]);
-
   const totalAppliedFiltersSize =
     selectedValues.included.size +
     selectedValues.excluded.size +
     (hasRange ? 1 : 0);
+
+  const shouldExpandForLoadMore =
+    !optionsLoading &&
+    options.length === 0 &&
+    totalAppliedFiltersSize === 0 &&
+    !hasLoadedMore &&
+    !loadMoreLoading;
+
+  useEffect(() => {
+    const becameDefaultExpanded =
+      !previousDefaultExpandedRef.current && Boolean(isDefaultExpanded);
+    previousDefaultExpandedRef.current = Boolean(isDefaultExpanded);
+
+    if (
+      becameDefaultExpanded ||
+      (shouldExpandForLoadMore && !hasUserToggledExpansionRef.current)
+    ) {
+      setIsExpanded(true);
+    }
+  }, [isDefaultExpanded, shouldExpandForLoadMore]);
+
+  const handleLoadMore = useCallback(
+    (key: string) => {
+      setIsExpanded(true);
+      onLoadMore(key);
+    },
+    [onLoadMore],
+  );
 
   const hasOptions = options.length > 0 || totalAppliedFiltersSize > 0;
 
@@ -953,7 +977,8 @@ export const FilterGroup = ({
       classNames={{ chevron: classes.chevron }}
       value={isExpanded ? displayName : null}
       onChange={v => {
-        setExpanded(v === displayName);
+        hasUserToggledExpansionRef.current = true;
+        setIsExpanded(v === displayName);
       }}
     >
       <Accordion.Item value={displayName} data-testid={dataTestId}>
@@ -1037,7 +1062,7 @@ export const FilterGroup = ({
                   onPinClick={valuePins.onPinClick}
                   isSharedPinned={valuePins.isSharedPinned}
                   onSharedPinClick={valuePins.onSharedPinClick}
-                  onLoadMore={onLoadMore}
+                  onLoadMore={handleLoadMore}
                   loadMoreLoading={loadMoreLoading}
                   hasLoadedMore={hasLoadedMore}
                   chartConfig={chartConfig}
@@ -1458,6 +1483,7 @@ const DBSearchPageFiltersComponent = ({
                 sqlKey: toQuotedClickHouseKeyExpression(
                   child.key,
                   knownColumns,
+                  { jsonColumns: jsonColumns ?? [] },
                 ),
               }))}
               selectedValues={group.children.reduce((acc, child) => {
@@ -1524,6 +1550,7 @@ const DBSearchPageFiltersComponent = ({
             const facetSqlKey = toQuotedClickHouseKeyExpression(
               facet.key,
               knownColumns,
+              { jsonColumns: jsonColumns ?? [] },
             );
             return (
               <FilterGroup
@@ -1602,6 +1629,7 @@ const DBSearchPageFiltersComponent = ({
       isLive,
       setFilterRange,
       tableMetadata,
+      jsonColumns,
       knownColumns,
       extraFacetKeys,
     ],

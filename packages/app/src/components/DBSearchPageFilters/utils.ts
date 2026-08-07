@@ -1,15 +1,32 @@
 // Utility functions for parsing and grouping map-like field names
 
-import SqlString from 'sqlstring';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  parseKeyPath,
+  parseRenderedJsonStringExpression,
+  quoteIdentifierIfNeeded,
+  renderJsonStringExpression,
+  stripClickHouseJsonTypeSuffix,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import { mergePath } from '@/utils';
 
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
+  const renderedJsonKey = parseRenderedJsonStringExpression(key);
+  if (renderedJsonKey) {
+    return renderedJsonKey.key === ''
+      ? `${renderedJsonKey.column}['']`
+      : `${renderedJsonKey.column}.${renderedJsonKey.key}`;
+  }
+
   // Remove toString() wrapper if present
   let cleanKey = key.replace(/^toString\((.+)\)$/, '$1');
+
+  // Typed JSON subcolumns use a terminal ClickHouse type suffix
+  // (ResourceAttributes.`k8s`.`namespace`.`name`.:String). The sidebar keeps
+  // clean, type-free keys in memory so persisted URL filters match facet keys.
+  cleanKey = stripClickHouseJsonTypeSuffix(cleanKey);
 
   // Convert backtick dot notation to clean dot notation
   // e.g., `host`.`arch` -> host.arch
@@ -187,16 +204,9 @@ export function toClickHouseKeyExpression(key: string): string {
   );
 }
 
-/**
- * Quote a single identifier if it isn't already a valid bare ClickHouse identifier.
- * @param id - The identifier to quote
- * @returns The quoted identifier if needed, otherwise the original identifier
- */
-function quoteIdentifierIfNeeded(id: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(id)
-    ? id
-    : SqlString.escapeId(id, true);
-}
+type KeyExpressionOptions = {
+  jsonColumns?: readonly string[];
+};
 
 /**
  * Coerce a filterState key into a ClickHouse expression suitable for raw SQL,
@@ -209,11 +219,22 @@ function quoteIdentifierIfNeeded(id: string): string {
 export function toQuotedClickHouseKeyExpression(
   key: string,
   knownColumns: Set<string>,
+  options: KeyExpressionOptions = {},
 ): string {
+  const jsonColumns = new Set(options.jsonColumns ?? []);
+
   // A whole-key match against a real column wins: quote the entire name as one
   // identifier (handles flat columns whose name contains dots/hyphens/etc.).
   if (knownColumns.has(key)) {
     return quoteIdentifierIfNeeded(key);
+  }
+
+  const parsedKey = parseMapFieldName(key);
+  if (parsedKey && jsonColumns.has(parsedKey.baseName)) {
+    return renderJsonStringExpression(
+      parsedKey.baseName,
+      parsedKey.propertyPath,
+    );
   }
 
   // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])
