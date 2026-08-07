@@ -420,6 +420,110 @@ describe('sources router', () => {
     expect(updatedSource.severityTextExpression).toBe('SeverityText');
   });
 
+  // Regression guard: a field present in the Zod schema but missing from the
+  // Mongoose discriminator is silently dropped on write, with no error. Only a
+  // round-trip through the database catches that.
+  describe('serviceVersionExpression', () => {
+    const VERSION_EXPR = "ResourceAttributes['container.image.tag']";
+
+    /** The single persisted source, narrowed to a kind that carries the field. */
+    const persisted = async (kind: SourceKind.Log | SourceKind.Trace) => {
+      const [source] = await Source.find({}).lean();
+      if (source?.kind !== kind) {
+        throw new Error(`Expected a ${kind} source, got ${source?.kind}`);
+      }
+      return source;
+    };
+
+    it('POST / - persists the expression on a log source', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, serviceVersionExpression: VERSION_EXPR })
+        .expect(200);
+
+      expect((await persisted(SourceKind.Log)).serviceVersionExpression).toBe(
+        VERSION_EXPR,
+      );
+    });
+
+    it('POST / - persists the expression on a trace source', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const traceSource: Omit<Extract<TSource, { kind: 'trace' }>, 'id'> = {
+        kind: SourceKind.Trace,
+        name: 'Test Trace Source',
+        connection: new Types.ObjectId().toString(),
+        from: { databaseName: 'test_db', tableName: 'otel_traces' },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, SpanName',
+        durationExpression: 'Duration',
+        durationPrecision: 9,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        serviceVersionExpression: VERSION_EXPR,
+      };
+
+      await agent.post('/sources').send(traceSource).expect(200);
+
+      expect((await persisted(SourceKind.Trace)).serviceVersionExpression).toBe(
+        VERSION_EXPR,
+      );
+    });
+
+    it('GET / - returns the expression', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, serviceVersionExpression: VERSION_EXPR })
+        .expect(200);
+
+      const response = await agent.get('/sources').expect(200);
+
+      expect(response.body[0]).toMatchObject({
+        serviceVersionExpression: VERSION_EXPR,
+      });
+    });
+
+    it('PUT /:id - updates the expression, and clears it when omitted', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const created = await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, serviceVersionExpression: VERSION_EXPR })
+        .expect(200);
+      const id = created.body.id;
+
+      await agent
+        .put(`/sources/${id}`)
+        .send({ ...MOCK_SOURCE, id, serviceVersionExpression: 'Version' })
+        .expect(200);
+      expect((await persisted(SourceKind.Log)).serviceVersionExpression).toBe(
+        'Version',
+      );
+
+      await agent
+        .put(`/sources/${id}`)
+        .send({ ...MOCK_SOURCE, id })
+        .expect(200);
+      expect(
+        (await persisted(SourceKind.Log)).serviceVersionExpression,
+      ).toBeUndefined();
+    });
+
+    it('POST / - is optional', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent.post('/sources').send(MOCK_SOURCE).expect(200);
+
+      expect(
+        (await persisted(SourceKind.Log)).serviceVersionExpression,
+      ).toBeUndefined();
+    });
+  });
+
   describe('seriesTable', () => {
     it('POST / - creates a metric source with seriesTable and it round-trips', async () => {
       const { agent } = await getLoggedInAgent(server);

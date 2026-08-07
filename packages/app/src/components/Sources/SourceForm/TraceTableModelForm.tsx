@@ -277,6 +277,17 @@ export function TraceTableModelForm(props: TableModelProps) {
       <ExpressionFormRow
         control={control}
         setValue={setValue}
+        name="serviceVersionExpression"
+        label="Service Version Expression"
+        placeholder="ResourceAttributes['service.version']"
+        helpText="Used to place deployment markers on charts. Defaults to the OpenTelemetry service.version resource attribute; point it elsewhere if your release identifier lives in another attribute, such as a container image tag."
+        columns={columns}
+        sourceKind={SourceKind.Trace}
+        tableConnection={tableConnection}
+      />
+      <ExpressionFormRow
+        control={control}
+        setValue={setValue}
         name="resourceAttributesExpression"
         label="Resource Attributes Expression"
         placeholder="ResourceAttributes"

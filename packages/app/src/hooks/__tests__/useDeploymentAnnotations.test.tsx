@@ -13,6 +13,7 @@ import {
   canDeriveDeployments,
   DEFAULT_VERSION_EXPRESSION,
   deploymentRowsToAnnotations,
+  resolveVersionExpression,
   useDeploymentAnnotations,
 } from '@/hooks/useDeploymentAnnotations';
 import { getChartColorInfo } from '@/utils';
@@ -107,6 +108,56 @@ describe('canDeriveDeployments', () => {
 
   it('rejects a missing source', () => {
     expect(canDeriveDeployments(undefined)).toBe(false);
+  });
+});
+
+describe('resolveVersionExpression', () => {
+  it('falls back to the OTel service.version resource attribute', () => {
+    expect(resolveVersionExpression(logSource)).toBe(
+      DEFAULT_VERSION_EXPRESSION,
+    );
+    expect(resolveVersionExpression(undefined)).toBe(
+      DEFAULT_VERSION_EXPRESSION,
+    );
+  });
+
+  // The point of the setting: GitOps teams whose release identifier is a
+  // container image tag shouldn't have to change instrumentation.
+  it("uses the source's own expression when configured", () => {
+    expect(
+      resolveVersionExpression({
+        ...logSource,
+        serviceVersionExpression: "ResourceAttributes['container.image.tag']",
+      }),
+    ).toBe("ResourceAttributes['container.image.tag']");
+  });
+
+  it('works on trace sources too', () => {
+    expect(
+      resolveVersionExpression({
+        ...traceSource,
+        serviceVersionExpression: "SpanAttributes['release']",
+      }),
+    ).toBe("SpanAttributes['release']");
+  });
+
+  it('treats a blank expression as unset', () => {
+    expect(
+      resolveVersionExpression({
+        ...logSource,
+        serviceVersionExpression: '  ',
+      }),
+    ).toBe(DEFAULT_VERSION_EXPRESSION);
+  });
+
+  // Metric and session sources have no such field; it must not throw.
+  it('falls back for sources that cannot carry the field', () => {
+    expect(resolveVersionExpression(metricSource)).toBe(
+      DEFAULT_VERSION_EXPRESSION,
+    );
+    expect(resolveVersionExpression(sessionSource)).toBe(
+      DEFAULT_VERSION_EXPRESSION,
+    );
   });
 });
 
@@ -402,6 +453,21 @@ describe('useDeploymentAnnotations', () => {
     );
 
     expect(result.current).toBeUndefined();
+  });
+
+  it("uses the source's configured version expression", () => {
+    renderHook(() =>
+      useDeploymentAnnotations(range, true, {
+        source: {
+          ...logSource,
+          serviceVersionExpression: "ResourceAttributes['container.image.tag']",
+        },
+      }),
+    );
+
+    expect(lastCall()[0].select).toContain(
+      "ResourceAttributes['container.image.tag'] AS version",
+    );
   });
 
   it("scopes the query with the tile's filters", () => {

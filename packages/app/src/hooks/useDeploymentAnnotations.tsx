@@ -71,6 +71,22 @@ export function canDeriveDeployments(
 }
 
 /**
+ * The expression that yields a service's running release for this source.
+ *
+ * Falls back to the OpenTelemetry `service.version` resource attribute, which
+ * covers teams following resource semconv. Teams whose version lives elsewhere
+ * — a container image tag under GitOps, a custom attribute — set
+ * `serviceVersionExpression` on the source instead of changing instrumentation.
+ */
+export function resolveVersionExpression(source: TSource | undefined): string {
+  const configured =
+    source != null && 'serviceVersionExpression' in source
+      ? source.serviceVersionExpression
+      : undefined;
+  return configured?.trim() || DEFAULT_VERSION_EXPRESSION;
+}
+
+/**
  * Builds the "when did each release first appear" query: one row per version
  * (per service), carrying the earliest timestamp it was seen at.
  *
@@ -231,13 +247,15 @@ export function useDeploymentAnnotations(
   enabled: boolean = false,
   options?: DeploymentScope & {
     source?: TSource;
+    /** Overrides the source's own expression. Mainly a testing seam. */
     versionExpression?: string;
   },
 ): ChartAnnotation[] | undefined {
   const source = options?.source;
-  const versionExpression =
-    options?.versionExpression || DEFAULT_VERSION_EXPRESSION;
   const isSupported = canDeriveDeployments(source);
+  const versionExpression =
+    options?.versionExpression ||
+    resolveVersionExpression(isSupported ? source : undefined);
 
   // Quantize before memoizing so a sliding "last 15 minutes" window produces a
   // stable config for a whole minute.
