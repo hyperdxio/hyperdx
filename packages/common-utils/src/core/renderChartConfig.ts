@@ -2241,6 +2241,101 @@ export async function renderRawSqlChartConfig(
   };
 }
 
+/**
+ * For a two-series ratio metric config (seriesReturnType === 'ratio',
+ * ratioMode !== 'share_of_total'), renders the complete CTE query:
+ *   WITH q0 AS (...), q1 AS (...)
+ *   SELECT (COALESCE(q0.val, 0) / q1.val) AS ratio, ...joinKeys
+ *   FROM q0 FULL OUTER JOIN q1 USING (...)
+ *
+ * Returns null when the config doesn't qualify for the native ratio path.
+ */
+export async function renderRatioChartConfig(
+  rawConfig: ChartConfigWithOptDateRange,
+  metadata: Metadata,
+  querySettings: QuerySettings | undefined,
+): Promise<ChSql | null> {
+  if (!isBuilderChartConfig(rawConfig)) return null;
+  if (rawConfig.seriesReturnType !== 'ratio') return null;
+  if (rawConfig.ratioMode === 'share_of_total') return null;
+  if (!isMetricChartConfig(rawConfig)) return null;
+  if (!Array.isArray(rawConfig.select) || rawConfig.select.length !== 2)
+    return null;
+
+  // Apply aliases
+  const config = setChartSelectsAlias(rawConfig);
+  if (!Array.isArray(config.select) || config.select.length !== 2) return null;
+
+  // Normalize groupBy: ensure all items have aliases for the USING clause
+  if (config.groupBy) {
+    if (typeof config.groupBy === 'string') {
+      config.groupBy = splitAndTrimWithBracket(config.groupBy).map(gb => ({
+        type: 'string' as const,
+        valueExpression: gb,
+        alias: gb,
+      }));
+    } else if (Array.isArray(config.groupBy)) {
+      config.groupBy = config.groupBy.map(gb => {
+        if (typeof gb === 'string') {
+          return {
+            type: 'string' as const,
+            valueExpression: gb,
+            alias: gb,
+          };
+        }
+        if (!gb.alias) {
+          return { ...gb, alias: gb.valueExpression };
+        }
+        return gb;
+      });
+    }
+  }
+
+  // Split and render each sub-query
+  const splits = splitChartConfigs(config);
+  if (splits.length !== 2) return null;
+
+  const queries = await Promise.all(
+    splits.map(c => renderChartConfig(c, metadata, querySettings)),
+  );
+
+  const q0Alias = config.select[0].alias ?? 'q0_val';
+  const originalQ1Alias = config.select[1].alias ?? 'q1_val';
+  const ratioAlias = `${q0Alias}/${originalQ1Alias}`;
+
+  // Build join keys
+  const joinKeys: string[] = [];
+  const isTimeSeries = isUsingGranularity(config);
+  if (isTimeSeries) {
+    joinKeys.push(FIXED_TIME_BUCKET_EXPR_ALIAS);
+  }
+  if (config.groupBy && Array.isArray(config.groupBy)) {
+    for (const gb of config.groupBy) {
+      if (typeof gb === 'string') {
+        joinKeys.push(gb);
+      } else {
+        joinKeys.push(gb.alias || gb.valueExpression);
+      }
+    }
+  }
+  const uniqueJoinKeys = Array.from(new Set(joinKeys));
+
+  // Build SELECT columns — only the ratio + dimensions (no raw operands)
+  const selectCols = [
+    chSql`(COALESCE(q0.${{ Identifier: q0Alias }}, 0) / q1.${{ Identifier: originalQ1Alias }}) AS ${{ Identifier: ratioAlias }}`,
+    ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
+  ];
+  const selectClause = concatChSql(', ', selectCols);
+
+  if (uniqueJoinKeys.length > 0) {
+    const joinKeysSql = uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`);
+    const usingClause = concatChSql(', ', joinKeysSql);
+    return chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 FULL OUTER JOIN q1 USING (${usingClause})`;
+  } else {
+    return chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 CROSS JOIN q1`;
+  }
+}
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -2253,6 +2348,15 @@ export async function renderChartConfig(
   }
   if (isRawSqlChartConfig(rawChartConfig)) {
     return renderRawSqlChartConfig(rawChartConfig, metadata);
+  }
+
+  const ratioCteSql = await renderRatioChartConfig(
+    rawChartConfig,
+    metadata,
+    querySettings,
+  );
+  if (ratioCteSql) {
+    return ratioCteSql;
   }
 
   // metric types require more rewriting since we know more about the schema
