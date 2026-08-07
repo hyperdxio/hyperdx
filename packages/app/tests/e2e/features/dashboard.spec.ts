@@ -11,6 +11,7 @@ import {
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
 import { runMongoshScript } from '../utils/db-helpers';
+import { getSqlEditor } from '../utils/locators';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
@@ -723,6 +724,115 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       ).toBeVisible();
     },
   );
+
+  test('should configure a filter as a dashboard variable', {}, async () => {
+    test.setTimeout(60000);
+
+    await test.step('Create a dashboard with a tile', async () => {
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.createTable({
+        chartName: 'Logs Table',
+        sourceName: DEFAULT_LOGS_SOURCE_NAME,
+        groupBy: 'ServiceName',
+      });
+    });
+
+    await test.step('Variable name is derived from the filter name', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFiltersButton.click();
+
+      // Enabled by default for new filters while the feature is on.
+      await expect(dashboardPage.broadcastFilterCheckbox).toBeChecked();
+      await expect(dashboardPage.variableEnabledCheckbox).toBeChecked();
+
+      await dashboardPage.page
+        .getByTestId('filter-name-input')
+        .fill('Service Name');
+      await expect(dashboardPage.variableNameInput).toHaveValue('Service_Name');
+    });
+
+    await test.step('Editing the variable name stops the auto-derivation', async () => {
+      await dashboardPage.variableNameInput.fill('svc');
+      await dashboardPage.page
+        .getByTestId('filter-name-input')
+        .fill('Service Name Renamed');
+      await expect(dashboardPage.variableNameInput).toHaveValue('svc');
+    });
+
+    await test.step('Unchecking broadcast hides the source scope', async () => {
+      await expect(dashboardPage.appliesToSourceSelector).toBeVisible();
+      await dashboardPage.broadcastFilterCheckbox.uncheck();
+      await expect(dashboardPage.appliesToSourceSelector).toBeHidden();
+      await dashboardPage.broadcastFilterCheckbox.check();
+      await expect(dashboardPage.appliesToSourceSelector).toBeVisible();
+    });
+
+    await test.step('Unchecking the variable hides its name', async () => {
+      await dashboardPage.variableEnabledCheckbox.uncheck();
+      await expect(dashboardPage.variableNameInput).toBeHidden();
+      await dashboardPage.variableEnabledCheckbox.check();
+      await expect(dashboardPage.variableNameInput).toBeVisible();
+    });
+
+    await test.step('Settings survive a save and reopen', async () => {
+      await dashboardPage.filtersSourceSelector.click();
+      await dashboardPage.page
+        .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+        .click();
+      const editor = getSqlEditor(dashboardPage.page, 'expression');
+      await editor.click();
+      await dashboardPage.page.keyboard.type('ServiceName');
+      await dashboardPage.page.getByTestId('save-filter-button').click();
+
+      const savedFilterItem = dashboardPage.getFilterItemByName(
+        'Service Name Renamed',
+      );
+      await expect(savedFilterItem).toBeVisible();
+      // The list row shows the token the filter is referenced by, next to its name.
+      await expect(savedFilterItem).toContainText('($svc)');
+
+      await dashboardPage.page
+        .getByTestId('edit-filter-button-Service Name Renamed')
+        .click();
+
+      await expect(dashboardPage.variableEnabledCheckbox).toBeChecked();
+      await expect(dashboardPage.variableNameInput).toHaveValue('svc');
+    });
+
+    await test.step('Renaming the filter keeps the stored variable name', async () => {
+      await dashboardPage.page
+        .getByTestId('filter-name-input')
+        .fill('Service Name Again');
+      await expect(dashboardPage.variableNameInput).toHaveValue('svc');
+      await dashboardPage.page.getByTestId('save-filter-button').click();
+      await expect(
+        dashboardPage.getFilterItemByName('Service Name Again'),
+      ).toBeVisible();
+    });
+
+    await test.step('A duplicate variable name is rejected', async () => {
+      await dashboardPage.addFiltersButton.click();
+      await dashboardPage.page.getByTestId('filter-name-input').fill('Other');
+      await dashboardPage.filtersSourceSelector.click();
+      await dashboardPage.page
+        .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+        .click();
+      const editor = getSqlEditor(dashboardPage.page, 'expression');
+      await editor.click();
+      await dashboardPage.page.keyboard.type('ServiceName');
+      await dashboardPage.variableNameInput.fill('svc');
+      await dashboardPage.page.getByTestId('save-filter-button').click();
+
+      await expect(
+        dashboardPage.page.getByText(
+          'This variable name is used by another filter on this dashboard (Service Name Again)',
+        ),
+      ).toBeVisible();
+      // The form stays open rather than persisting the clashing name.
+      await expect(dashboardPage.variableNameInput).toBeVisible();
+    });
+  });
 
   test('should save and restore query and filter values', {}, async () => {
     const testQuery = 'SeverityText:error';

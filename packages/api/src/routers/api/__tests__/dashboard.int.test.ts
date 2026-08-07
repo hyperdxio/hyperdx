@@ -600,6 +600,261 @@ describe('dashboard router', () => {
     expect(updatedAlertRecord.threshold).toBe(updatedThreshold);
   });
 
+  describe('dashboard filter variable fields', () => {
+    const makeVariableFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service Name',
+      expression: 'ServiceName',
+      source: new Types.ObjectId().toString(),
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'Service_Name',
+      ...overrides,
+    });
+
+    it('persists the variable fields on create', async () => {
+      const filter = makeVariableFilter();
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('leaves the variable fields absent when they are not sent', async () => {
+      // Absence is meaningful: `isBroadcastEnabled` is read as enabled when
+      // missing, so the server must not materialize a value on the way in.
+      const filter = {
+        id: new Types.ObjectId().toString(),
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        source: new Types.ObjectId().toString(),
+      };
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('isBroadcastEnabled');
+      expect(stored?.filters?.[0]).not.toHaveProperty('isVariableEnabled');
+      expect(stored?.filters?.[0]).not.toHaveProperty('variableName');
+    });
+
+    it('persists updated variable fields on PATCH', async () => {
+      const filter = makeVariableFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const updatedFilter = {
+        ...filter,
+        isBroadcastEnabled: true,
+        isVariableEnabled: false,
+      };
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [updatedFilter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([updatedFilter]);
+    });
+
+    it('leaves stored filters untouched on a PATCH that omits filters', async () => {
+      const filter = makeVariableFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ name: 'Renamed Dashboard' })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.name).toBe('Renamed Dashboard');
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('rejects a variableName that is not a bare token', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeVariableFilter({ variableName: 'has space' })],
+        })
+        .expect(400);
+    });
+
+    // The form blocks duplicates client-side, but the API is reachable directly,
+    // so the same rule has to hold server-side or a dashboard can end up with an
+    // ambiguous `$var` reference.
+    describe('variable name uniqueness', () => {
+      it('rejects two variable-enabled filters sharing a variable name on create', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ variableName: 'service' }),
+              makeVariableFilter({ variableName: 'service' }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects a duplicate introduced by PATCH', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [makeVariableFilter({ variableName: 'service' })],
+          })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [
+              makeVariableFilter({ variableName: 'service' }),
+              makeVariableFilter({ variableName: 'service' }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects a clash against a name derived from the filter name', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              // Derives to `Service_Name`.
+              makeVariableFilter({
+                name: 'Service Name',
+                variableName: undefined,
+              }),
+              makeVariableFilter({ variableName: 'Service_Name' }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('accepts distinct variable names', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ variableName: 'service' }),
+              makeVariableFilter({ variableName: 'environment' }),
+            ],
+          })
+          .expect(200);
+      });
+
+      // Nobody who never enabled the feature can be blocked by this rule, even
+      // though the rule itself always runs.
+      it('accepts duplicate names when the filters are not variable-enabled', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                variableName: 'service',
+                isVariableEnabled: false,
+              }),
+              makeVariableFilter({
+                variableName: 'service',
+                isVariableEnabled: undefined,
+              }),
+            ],
+          })
+          .expect(200);
+
+        expect(created.body.filters).toHaveLength(2);
+      });
+
+      // The shape a pre-feature dashboard has: no variable fields at all, and
+      // two filters that legitimately share a display name on different sources.
+      it('accepts identically named filters that carry no variable fields', async () => {
+        const legacyFilter = {
+          id: new Types.ObjectId().toString(),
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Service Name',
+          expression: 'ServiceName',
+          source: new Types.ObjectId().toString(),
+        };
+
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              legacyFilter,
+              { ...legacyFilter, id: new Types.ObjectId().toString() },
+            ],
+          })
+          .expect(200);
+      });
+
+      // Without this, a variable-enabled filter could persist with no token any
+      // tile could reference: the schema allows `variableName` to be omitted, and
+      // the display name has nothing token-safe to derive one from.
+      it('rejects a variable-enabled filter whose name yields no usable variable name', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ name: '环境', variableName: undefined }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('accepts an unusable filter name when an explicit variable name is sent', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ name: '环境', variableName: 'env' }),
+            ],
+          })
+          .expect(200);
+      });
+
+      it('accepts an unusable filter name when the filter is not variable-enabled', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                name: '环境',
+                variableName: undefined,
+                isVariableEnabled: false,
+              }),
+            ],
+          })
+          .expect(200);
+      });
+    });
+  });
+
   describe('preset dashboards', () => {
     const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
       kind: SourceKind.Log,
