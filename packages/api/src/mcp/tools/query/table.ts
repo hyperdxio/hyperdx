@@ -208,6 +208,8 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
+        'PREFER THIS over clickstack_sql for any single-source aggregation. Only drop to raw ' +
+        'SQL when the query needs JOINs, sub-queries, or CTEs this tool cannot express.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
         'Each select item can also have its own "where" for per-metric cohort ' +

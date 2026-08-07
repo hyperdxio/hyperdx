@@ -82,6 +82,9 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
         'Plot metrics over time as a line or stacked bar chart. ' +
         'Use this when you need to visualize trends, compare time-series, ' +
         'or monitor metric changes over a time window.\n\n' +
+        'PREFER THIS over clickstack_sql for any time-bucketed query — do not hand-roll ' +
+        'toStartOfInterval SQL. Only drop to raw SQL when the query needs JOINs, sub-queries, ' +
+        'or CTEs this tool cannot express.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first. ' +
         'Each select item defines one plotted series.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
