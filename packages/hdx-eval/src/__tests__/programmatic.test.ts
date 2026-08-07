@@ -1,7 +1,8 @@
 import {
+  metricKeyToRegex,
+  runAdoptionChecks,
   runProgrammaticChecks,
-  runTranscriptChecks,
-  serializeTranscript,
+  serializeToolCallArgs,
 } from '@/grading/programmatic';
 import { loadScenarioRubric } from '@/grading/rubric';
 import type { ToolCallRecord } from '@/harness/types';
@@ -156,156 +157,216 @@ describe('runProgrammaticChecks', () => {
   });
 });
 
-describe('serializeTranscript', () => {
-  it('serializes each call as `<name> <compact-json-args>`, one per line', () => {
-    const s = serializeTranscript([
-      toolCall('clickstack_list_metrics', { sourceId: 's1' }),
+describe('serializeToolCallArgs', () => {
+  it('serializes input args as compact JSON, excluding the tool name', () => {
+    const s = serializeToolCallArgs(
       toolCall('clickstack_describe_metric', {
         name: 'process.runtime.jvm.memory.used',
       }),
-    ]);
-    expect(s).toBe(
-      'clickstack_list_metrics {"sourceId":"s1"}\n' +
-        'clickstack_describe_metric {"name":"process.runtime.jvm.memory.used"}',
     );
+    expect(s).toBe('{"name":"process.runtime.jvm.memory.used"}');
+    expect(s).not.toContain('clickstack_describe_metric');
   });
 
-  it('emits the bare tool name when there are no args', () => {
-    expect(serializeTranscript([toolCall('clickstack_list_sources')])).toBe(
-      'clickstack_list_sources',
-    );
+  it('returns an empty string when there are no args', () => {
+    expect(serializeToolCallArgs(toolCall('clickstack_list_sources'))).toBe('');
   });
 
   it('passes through string input verbatim (no double-encoding)', () => {
-    expect(serializeTranscript([toolCall('raw', 'already a string')])).toBe(
-      'raw already a string',
+    expect(serializeToolCallArgs(toolCall('raw', 'already a string'))).toBe(
+      'already a string',
     );
-  });
-
-  it('returns an empty string for no tool calls', () => {
-    expect(serializeTranscript([])).toBe('');
   });
 
   it('does not throw on circular / unserializable input', () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
-    const s = serializeTranscript([toolCall('weird', circular)]);
-    expect(s).toBe('weird [unserializable]');
+    expect(serializeToolCallArgs(toolCall('weird', circular))).toBe(
+      '[unserializable]',
+    );
   });
 
-  it('truncates oversized args so one huge call cannot bloat the transcript', () => {
-    const big = 'x'.repeat(5000);
-    const s = serializeTranscript([toolCall('huge', { blob: big })]);
-    expect(s.length).toBeLessThan(2100);
+  it('truncates oversized args so one huge call cannot bloat matching', () => {
+    const big = 'x'.repeat(50_000);
+    const s = serializeToolCallArgs(toolCall('huge', { blob: big }));
+    expect(s.length).toBeLessThan(20_100);
     expect(s.endsWith('…')).toBe(true);
   });
 });
 
-describe('runTranscriptChecks', () => {
-  it('matches tool names in the serialized transcript', () => {
-    const result = runTranscriptChecks(
+describe('metricKeyToRegex', () => {
+  it('matches the dotted key and its underscore variant, case-insensitively', () => {
+    const rx = metricKeyToRegex('jvm.gc.pause');
+    expect(rx.test("MetricName = 'jvm.gc.pause'")).toBe(true);
+    expect(rx.test('rate(jvm_gc_pause[5m])')).toBe(true);
+    expect(rx.test('JVM.GC.PAUSE')).toBe(true);
+  });
+
+  it('requires the full key — separator prose does not match', () => {
+    const rx = metricKeyToRegex('jvm.gc.pause');
+    expect(rx.test('the gc pause distribution grew a tail')).toBe(false);
+    expect(rx.test('jvm gc pause')).toBe(false); // spaces are not separators
+    expect(rx.test('jvmXgcXpause')).toBe(false); // dots are not wildcards
+  });
+
+  it('escapes regex metacharacters in the key', () => {
+    const rx = metricKeyToRegex('queue.depth{p99}');
+    expect(rx.test('queue.depth{p99}')).toBe(true);
+    expect(() => rx.test('anything')).not.toThrow();
+  });
+});
+
+describe('runAdoptionChecks', () => {
+  const gcCheck = {
+    id: 'queried_gc_metric',
+    weight: 1,
+    metrics: ['jvm.gc.pause'],
+  };
+
+  it('counts a dedicated metric tool naming the metric in its args', () => {
+    const result = runAdoptionChecks(
       [
-        toolCall('clickstack_list_metrics', { sourceId: 's1' }),
-        toolCall('clickstack_sql', { sql: 'SELECT 1' }),
+        toolCall('mcp__hyperdx__clickstack_timeseries', {
+          metricType: 'histogram',
+          metricName: 'jvm.gc.pause',
+        }),
       ],
-      [
-        {
-          id: 'used_metric_tool',
-          weight: 1,
-          pattern: 'clickstack_list_metrics',
-        },
-      ],
+      [gcCheck],
     );
     expect(result.score).toBeCloseTo(1, 5);
     expect(result.hits[0].satisfied).toBe(true);
   });
 
-  it('matches on tool args, enabling "used the right metric" checks', () => {
-    const checks = [
-      {
-        id: 'named_jvm_memory',
-        weight: 1,
-        pattern: 'process\\.runtime\\.jvm\\.memory',
-      },
-    ];
-    const usedRight = runTranscriptChecks(
+  it('counts raw SQL naming the metric — detection is tool-name-agnostic', () => {
+    const result = runAdoptionChecks(
       [
-        toolCall('clickstack_describe_metric', {
-          name: 'process.runtime.jvm.memory.used',
+        toolCall('mcp__clickhouse__run_query', {
+          query:
+            "SELECT * FROM otel_metrics_exponential_histogram WHERE MetricName = 'jvm.gc.pause'",
         }),
       ],
-      checks,
+      [gcCheck],
     );
-    const usedWrong = runTranscriptChecks(
-      [
-        toolCall('clickstack_describe_metric', {
-          name: 'http.server.duration',
-        }),
-      ],
-      checks,
-    );
-    expect(usedRight.score).toBeCloseTo(1, 5);
-    expect(usedWrong.score).toBe(0);
+    expect(result.score).toBeCloseTo(1, 5);
   });
 
-  it('scores zero when the transcript is empty', () => {
-    const result = runTranscriptChecks(
-      [],
-      [{ id: 'used_metric_tool', weight: 1, pattern: 'clickstack' }],
-    );
+  it('ignores metric names that only appear in tool OUTPUT', () => {
+    const call: ToolCallRecord = {
+      ...toolCall('mcp__hyperdx__clickstack_list_metrics', { sourceId: 's1' }),
+      output: 'jvm.gc.pause\nprocess.runtime.jvm.memory.used',
+    };
+    const result = runAdoptionChecks([call], [gcCheck]);
     expect(result.score).toBe(0);
     expect(result.hits[0].satisfied).toBe(false);
   });
+
+  it('ignores tool NAMES — a metric-ish tool name is not adoption', () => {
+    const result = runAdoptionChecks(
+      [toolCall('query_jvm.gc.pause_tool', { sourceId: 's1' })],
+      [gcCheck],
+    );
+    expect(result.score).toBe(0);
+  });
+
+  it('scores zero when there are no tool calls', () => {
+    const result = runAdoptionChecks([], [gcCheck]);
+    expect(result.score).toBe(0);
+    expect(result.hits[0].satisfied).toBe(false);
+  });
+
+  it('alsoPattern must match the SAME call as the metric key', () => {
+    const grouped = {
+      id: 'grouped_memory_by_pod_or_pool',
+      weight: 1,
+      metrics: ['process.runtime.jvm.memory.used'],
+      alsoPattern: 'pool|pod',
+    };
+    // Metric in one call, "pod" in a different call → NOT satisfied.
+    const split = runAdoptionChecks(
+      [
+        toolCall('a', { metric: 'process.runtime.jvm.memory.used' }),
+        toolCall('b', { groupBy: 'k8s.pod.name' }),
+      ],
+      [grouped],
+    );
+    expect(split.hits[0].satisfied).toBe(false);
+    // Both in the same call (SQL, no dedicated tool) → satisfied.
+    const together = runAdoptionChecks(
+      [
+        toolCall('mcp__clickhouse__run_query', {
+          query:
+            "SELECT avg(Value) FROM otel_metrics_gauge WHERE MetricName = 'process.runtime.jvm.memory.used' GROUP BY Attributes['k8s.pod.name']",
+        }),
+      ],
+      [grouped],
+    );
+    expect(together.hits[0].satisfied).toBe(true);
+  });
+
+  it('throws on an invalid alsoPattern', () => {
+    expect(() =>
+      runAdoptionChecks(
+        [toolCall('a', { metric: 'jvm.gc.pause' })],
+        [{ id: 'bad', weight: 1, metrics: ['jvm.gc.pause'], alsoPattern: '(' }],
+      ),
+    ).toThrow(/alsoPattern/);
+  });
 });
 
-describe('rubric.transcript parsing', () => {
-  it('hydrates the metric-saturation transcript block', () => {
+describe('rubric.adoption parsing', () => {
+  it('hydrates the metric-saturation adoption block', () => {
     const rubric = loadScenarioRubric('metric-saturation');
-    expect(rubric.transcript).toBeDefined();
-    expect(rubric.transcript!.length).toBeGreaterThanOrEqual(1);
-    // Tuples hydrate into full ProgrammaticCheck objects with default flags.
-    const used = rubric.transcript!.find(c => c.id === 'used_metric_tool');
-    expect(used).toMatchObject({ weight: 1, flags: 'i' });
-    expect(typeof used!.pattern).toBe('string');
+    expect(rubric.adoption).toBeDefined();
+    expect(rubric.adoption!.length).toBeGreaterThanOrEqual(1);
+    const umbrella = rubric.adoption!.find(
+      c => c.id === 'queried_target_metric',
+    );
+    expect(umbrella).toMatchObject({ weight: 1 });
+    expect(umbrella!.metrics).toContain('process.runtime.jvm.memory.used');
   });
 
-  it('leaves transcript undefined for scenarios without the block', () => {
+  it('leaves adoption undefined for scenarios without the block', () => {
     const rubric = loadScenarioRubric('error-root-cause');
-    expect(rubric.transcript).toBeUndefined();
+    expect(rubric.adoption).toBeUndefined();
   });
 
-  it('the metric-saturation transcript checks all compile as valid regexes', () => {
-    const rubric = loadScenarioRubric('metric-saturation');
-    for (const c of rubric.transcript!) {
-      expect(() => new RegExp(c.pattern, c.flags ?? 'i')).not.toThrow();
+  it('every declared metric key compiles into a valid regex', () => {
+    for (const scenario of ['metric-saturation', 'deploy-regression']) {
+      const rubric = loadScenarioRubric(scenario);
+      for (const c of rubric.adoption!) {
+        for (const key of c.metrics) {
+          expect(() => metricKeyToRegex(key)).not.toThrow();
+        }
+      }
     }
   });
 });
 
-describe('metric-saturation adoption checks (SQL text must not count)', () => {
-  const rubric = () => loadScenarioRubric('metric-saturation').transcript!;
+describe('metric-saturation adoption checks (args-based, arm-agnostic)', () => {
+  const rubric = () => loadScenarioRubric('metric-saturation').adoption!;
   const satisfiedIds = (calls: ToolCallRecord[]) =>
-    runTranscriptChecks(calls, rubric())
+    runAdoptionChecks(calls, rubric())
       .hits.filter(h => h.satisfied)
       .map(h => h.id)
       .sort();
 
-  it('raw SQL mentioning metric names satisfies no adoption check', () => {
-    // A clickhouse-arm run that only reads metric names via SQL must not get
-    // adoption credit — adoption measures hyperdx MCP metric-tool usage.
+  it('raw SQL naming the target metrics gets adoption credit (clickhouse arm)', () => {
+    // The whole point of args-based detection: a clickhouse-arm run that
+    // investigates the metrics via SQL counts the same as metric-tool usage.
     const ids = satisfiedIds([
       toolCall('mcp__clickhouse__run_query', {
         query:
           "SELECT MetricName, Value FROM otel_metrics_gauge WHERE MetricName IN ('process.runtime.jvm.memory.used', 'jvm.gc.pause')",
       }),
-      toolCall('mcp__hyperdx__clickstack_sql', {
-        sql: "SELECT * FROM otel_metrics_histogram WHERE MetricName = 'jvm.gc.pause'",
-      }),
     ]);
-    expect(ids).toEqual([]);
+    expect(ids).toEqual([
+      'queried_gc_metric',
+      'queried_jvm_memory_metric',
+      'queried_target_metric',
+    ]);
   });
 
-  it('metric-tool calls naming the metrics satisfy all adoption checks', () => {
+  it('metric-tool calls naming the metrics satisfy the same checks (hyperdx arm)', () => {
     const ids = satisfiedIds([
       toolCall('mcp__hyperdx__clickstack_describe_metric', {
         sourceId: 's1',
@@ -319,17 +380,35 @@ describe('metric-saturation adoption checks (SQL text must not count)', () => {
       }),
     ]);
     expect(ids).toEqual([
-      'described_gc_pause_metric',
-      'described_jvm_memory_metric',
-      'used_metric_tool',
+      'queried_gc_metric',
+      'queried_jvm_memory_metric',
+      'queried_target_metric',
     ]);
   });
 
-  it('a log/trace timeseries mentioning gc pause in a filter does not count', () => {
-    // clickstack_timeseries only counts as a metric read when the call
-    // carries metricType — charting logs that mention "gc pause" must not.
+  it('grouping the memory metric by pod/pool in the same call satisfies the grouped check', () => {
     const ids = satisfiedIds([
       toolCall('mcp__hyperdx__clickstack_timeseries', {
+        metricType: 'gauge',
+        metric: 'process.runtime.jvm.memory.used',
+        groupBy: ['k8s.pod.name', 'jvm.memory.pool.name'],
+      }),
+    ]);
+    expect(ids).toContain('grouped_memory_by_pod_or_pool');
+  });
+
+  it('a bare list_metrics call (no metric named in args) does not count', () => {
+    const ids = satisfiedIds([
+      toolCall('mcp__hyperdx__clickstack_list_metrics', { sourceId: 's1' }),
+    ]);
+    expect(ids).toEqual([]);
+  });
+
+  it('a log search mentioning "gc pause" prose does not count', () => {
+    // Full metric keys are required — casual prose in a log-body filter must
+    // not earn metric-adoption credit.
+    const ids = satisfiedIds([
+      toolCall('mcp__hyperdx__clickstack_search', {
         sourceId: 'logs-source',
         where: "Body LIKE '%gc pause%'",
       }),

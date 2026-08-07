@@ -200,6 +200,23 @@
     sel.onchange = () => loadBatch(sel.value);
   }
 
+  let batchCopyResetTimer = null;
+  $('#batch-copy').onclick = async () => {
+    const name = $('#batch-select').value || state.batch;
+    if (!name) return;
+    const btn = $('#batch-copy');
+    try {
+      await navigator.clipboard.writeText(name);
+      btn.textContent = 'copied';
+    } catch {
+      btn.textContent = 'failed';
+    }
+    clearTimeout(batchCopyResetTimer);
+    batchCopyResetTimer = setTimeout(() => {
+      btn.textContent = 'copy';
+    }, 1200);
+  };
+
   function renderBatchMeta() {
     const sc = state.summary?.scenarios?.length ?? state.cells.length;
     const cells = state.cells.length;
@@ -299,7 +316,7 @@
                   'span',
                   {
                     class: 'tag adopt',
-                    title: 'metric-tool adoption (not part of combined score)',
+                    title: 'metric adoption (not part of combined score)',
                   },
                   `adopt ${pct(r.adoptionScore)}`,
                 )
@@ -361,7 +378,7 @@
         'combined',
         grade?.combinedScore != null ? grade.combinedScore.toFixed(3) : '—',
       ],
-      // Adoption is only present when the scenario rubric defines transcript
+      // Adoption is only present when the scenario rubric defines adoption
       // checks; omit the field entirely otherwise to avoid a dangling '—'.
       ...(grade?.adoption
         ? [['adoption', pct(grade.adoption.score)]]
@@ -654,8 +671,9 @@
       pane.appendChild(checks);
     }
 
-    // Adoption checks (transcript-aware tool usage). Reported alongside the
-    // outcome score but intentionally excluded from the combined score.
+    // Adoption checks (metric keys matched against tool-call args). Reported
+    // alongside the outcome score but intentionally excluded from the
+    // combined score.
     if (g.adoption?.hits) {
       const checks = el('div', { class: 'grade-section' });
       checks.appendChild(
@@ -690,7 +708,7 @@
         el(
           'div',
           { class: 'muted small', style: 'margin-top:0.6rem; font-size:11px' },
-          'Regexes run against the serialized tool-call transcript (tool names + args). Adoption is reported but NOT part of the combined score.',
+          'Scenario-declared metric keys matched against tool-call input args (any tool; names/outputs never count). Adoption is reported but NOT part of the combined score.',
         ),
       );
       pane.appendChild(checks);
