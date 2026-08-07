@@ -10,6 +10,7 @@ import {
   convertToTimeChartConfig,
   findNearestSeriesKey,
   formatResponseForCategoricalChart,
+  formatResponseForSeriesTotals,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
 import { COLORS } from '@/utils';
@@ -21,6 +22,12 @@ import { COLORS } from '@/utils';
 // `SEMANTIC_CHART_PALETTE` in `packages/app/src/utils.ts`.
 const SEMANTIC_INFO_HEX = '#437eef';
 const SEMANTIC_ERROR_HEX = '#ff725c';
+
+// A log source grouped by severity, which is what turns on semantic coloring.
+const LOG_SOURCE = {
+  kind: SourceKind.Log,
+  severityTextExpression: 'SeverityText',
+} as TSource;
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -300,17 +307,12 @@ describe('ChartUtils', () => {
         ],
       };
 
-      const source = {
-        kind: SourceKind.Log,
-        severityTextExpression: 'SeverityText',
-      } as TSource;
-
       const actual = formatResponseForTimeChart({
         currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
         generateEmptyBuckets: false,
-        source,
+        source: LOG_SOURCE,
       });
 
       expect(actual.lineData).toEqual([
@@ -1169,6 +1171,211 @@ describe('ChartUtils', () => {
       ]);
       // pointer 100 is 10px from both 'a' (90) and 'b' (110)
       expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('a');
+    });
+  });
+
+  describe('formatResponseForSeriesTotals', () => {
+    const SEVERITY_RESPONSE = {
+      data: [
+        {
+          'count()': '30',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-11-26T12:23:00Z',
+        },
+        {
+          'count()': '4',
+          SeverityText: 'debug',
+          __hdx_time_bucket: '2025-11-26T12:23:00Z',
+        },
+        {
+          'count()': '2',
+          SeverityText: 'error',
+          __hdx_time_bucket: '2025-11-26T12:23:00Z',
+        },
+        // Same series in a later bucket: totals must span the whole range.
+        {
+          'count()': '20',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-11-26T12:24:00Z',
+        },
+        {
+          'count()': '3',
+          SeverityText: 'error',
+          __hdx_time_bucket: '2025-11-26T12:24:00Z',
+        },
+      ],
+      meta: [
+        { name: 'count()', type: 'UInt64' },
+        { name: 'SeverityText', type: 'LowCardinality(String)' },
+        { name: '__hdx_time_bucket', type: 'DateTime' },
+      ],
+    };
+
+    it('sums each series across every bucket in the range', () => {
+      const { seriesTotals } = formatResponseForSeriesTotals({
+        response: SEVERITY_RESPONSE,
+        source: LOG_SOURCE,
+      });
+
+      expect(
+        seriesTotals.map(({ dataKey, total }) => ({ dataKey, total })),
+      ).toEqual([
+        { dataKey: 'info', total: 50 },
+        { dataKey: 'debug', total: 4 },
+        { dataKey: 'error', total: 5 },
+      ]);
+    });
+
+    it('keeps each raw severity value as its own series, like the chart does', () => {
+      const { seriesTotals } = formatResponseForSeriesTotals({
+        response: SEVERITY_RESPONSE,
+        source: LOG_SOURCE,
+      });
+
+      // 'debug' is info-colored but is a separate stacked series, so it must
+      // not be folded into 'info'.
+      expect(seriesTotals.map(s => s.dataKey)).toEqual([
+        'info',
+        'debug',
+        'error',
+      ]);
+      expect(seriesTotals.find(s => s.dataKey === 'debug')?.color).toBe(
+        SEMANTIC_INFO_HEX,
+      );
+      expect(seriesTotals.find(s => s.dataKey === 'error')?.color).toBe(
+        SEMANTIC_ERROR_HEX,
+      );
+    });
+
+    it('assigns palette colors when the groups are not log levels', () => {
+      const response = {
+        data: [
+          {
+            'count()': '7',
+            ServiceName: 'checkout',
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': '9',
+            ServiceName: 'shipping',
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+        ],
+        meta: [
+          { name: 'count()', type: 'UInt64' },
+          { name: 'ServiceName', type: 'LowCardinality(String)' },
+          { name: '__hdx_time_bucket', type: 'DateTime' },
+        ],
+      };
+
+      const { seriesTotals, groupColumns } = formatResponseForSeriesTotals({
+        response,
+      });
+
+      expect(groupColumns).toEqual(['ServiceName']);
+      expect(seriesTotals).toEqual([
+        {
+          dataKey: 'checkout',
+          displayName: 'checkout',
+          color: COLORS[0],
+          total: 7,
+        },
+        {
+          dataKey: 'shipping',
+          displayName: 'shipping',
+          color: COLORS[1],
+          total: 9,
+        },
+      ]);
+    });
+
+    // The whole reason this shares `formatResponseForTimeChart`'s pipeline: a
+    // totals view must never disagree with the chart it summarizes.
+    it.each([
+      ['a severity grouping', SEVERITY_RESPONSE, LOG_SOURCE],
+      [
+        'a non-severity grouping',
+        {
+          data: [
+            {
+              'count()': '7',
+              ServiceName: 'checkout',
+              __hdx_time_bucket: '2025-11-26T12:23:00Z',
+            },
+            {
+              'count()': '9',
+              ServiceName: 'shipping',
+              __hdx_time_bucket: '2025-11-26T12:23:00Z',
+            },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+          ],
+        },
+        undefined,
+      ],
+    ])(
+      'matches the chart series keys, colors, and order for %s',
+      (_label, response, source) => {
+        const { seriesTotals } = formatResponseForSeriesTotals({
+          response,
+          source,
+        });
+        const { lineData } = formatResponseForTimeChart({
+          currentPeriodResponse: response,
+          dateRange: [new Date(), new Date()],
+          granularity: '1 minute',
+          generateEmptyBuckets: false,
+          source,
+        });
+
+        expect(
+          seriesTotals.map(({ dataKey, displayName, color }) => ({
+            dataKey,
+            displayName,
+            color,
+          })),
+        ).toEqual(
+          lineData.map(({ dataKey, displayName, color }) => ({
+            dataKey,
+            displayName,
+            color,
+          })),
+        );
+      },
+    );
+
+    it('reports no group columns when the query is ungrouped', () => {
+      const { seriesTotals, groupColumns } = formatResponseForSeriesTotals({
+        response: {
+          data: [
+            { 'count()': '12', __hdx_time_bucket: '2025-11-26T12:23:00Z' },
+            { 'count()': '8', __hdx_time_bucket: '2025-11-26T12:24:00Z' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+          ],
+        },
+      });
+
+      expect(groupColumns).toEqual([]);
+      expect(seriesTotals).toEqual([
+        {
+          dataKey: 'count()',
+          displayName: 'count()',
+          color: COLORS[0],
+          total: 20,
+        },
+      ]);
+    });
+
+    it('throws when the response has no metadata', () => {
+      expect(() =>
+        formatResponseForSeriesTotals({ response: { data: [] } }),
+      ).toThrow('No meta data found in response');
     });
   });
 });

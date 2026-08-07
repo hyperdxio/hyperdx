@@ -96,6 +96,7 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchHistogramLegend from '@/components/SearchHistogramLegend';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -2495,6 +2496,14 @@ export function DBSearchPage() {
                         />
                       </Box>
                     )}
+                    {!hasQueryError && (
+                      <SearchHistogramLegend
+                        config={histogramTimeChartConfig}
+                        queryKeyPrefix={QUERY_KEY_PREFIX}
+                        sourceId={searchedConfig.source ?? undefined}
+                        onFocusSeries={handleFocusSeries}
+                      />
+                    )}
                     <Box flex="1" mih="0" px="sm">
                       <PatternTable
                         source={searchedSource}
@@ -2595,6 +2604,15 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                         </Box>
+                      )}
+                      {!hasQueryError && (
+                        <SearchHistogramLegend
+                          config={histogramTimeChartConfig}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          sourceId={searchedConfig.source ?? undefined}
+                          enableParallelQueries
+                          onFocusSeries={handleFocusSeries}
+                        />
                       )}
                     </>
                   )}

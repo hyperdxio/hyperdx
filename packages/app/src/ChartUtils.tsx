@@ -563,6 +563,23 @@ function setLineColors(
   });
 }
 
+/**
+ * Stack severity series in a consistent order: info at the bottom, then warn,
+ * then error on top. Series with no semantic color (any non-log-level grouping)
+ * all rank equally, so `sort` leaves them in the order the response produced.
+ */
+function sortLineDataByLogLevel(lineDataMap: {
+  [keyName: string]: LineDataWithOptionalColor;
+}): LineDataWithOptionalColor[] {
+  const logLevelColorOrder = getLogLevelColorOrder();
+  return Object.values(lineDataMap).sort((a, b) => {
+    return (
+      logLevelColorOrder.findIndex(color => color === a.color) -
+      logLevelColorOrder.findIndex(color => color === b.color)
+    );
+  });
+}
+
 function firstGroupColumnIsLogLevel(
   source: TSource | undefined,
   groupColumns: ColumnMetaType[],
@@ -736,13 +753,7 @@ export function formatResponseForTimeChart({
     });
   }
 
-  const logLevelColorOrder = getLogLevelColorOrder();
-  const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
-    return (
-      logLevelColorOrder.findIndex(color => color === a.color) -
-      logLevelColorOrder.findIndex(color => color === b.color)
-    );
-  });
+  const sortedLineData = sortLineDataByLogLevel(lineDataMap);
 
   if (generateEmptyBuckets && granularity != null) {
     const generatedTsBuckets = timeBucketByGranularity(
@@ -792,6 +803,88 @@ export function formatResponseForTimeChart({
     groupColumns: groupColumns.map(g => g.name),
     valueColumns: valueColumns.map(v => v.name),
     isSingleValueColumn,
+  };
+}
+
+/** One chart series collapsed to a single total over the whole date range. */
+export type SeriesTotal = {
+  /** The series key, identical to the chart's `Bar`/`Area` dataKey. */
+  dataKey: string;
+  displayName: string;
+  /** The color the chart draws this series with. */
+  color: string;
+  total: number;
+};
+
+/**
+ * Collapse a time-series response into one total per series, spanning the
+ * entire date range rather than a single bucket.
+ *
+ * This deliberately runs the same pipeline as `formatResponseForTimeChart`
+ * (identical series keys, the same stacking order, and `setLineColors` for
+ * colors) so a totals view can never disagree with the chart it summarizes —
+ * semantic colors when a group value looks like a log level, palette colors
+ * otherwise. Re-deriving any of that separately would drift the moment either
+ * side changed.
+ *
+ * Only the current period is summed: a previous-period comparison covers a
+ * different window, so folding it into a "total for this range" would be wrong.
+ */
+export function formatResponseForSeriesTotals({
+  response,
+  source,
+}: {
+  response: ResponseJSON<Record<string, any>>;
+  source?: TSource;
+}): {
+  seriesTotals: SeriesTotal[];
+  groupColumns: string[];
+  isSingleValueColumn: boolean;
+} {
+  const meta = response.meta;
+  if (meta == null) {
+    throw new Error('No meta data found in response');
+  }
+
+  const valueColumns = inferValueColumns(meta, new Set()) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
+
+  const tsBucketMap: Map<number, Record<string, any>> = new Map();
+  const lineDataMap: { [keyName: string]: LineDataWithOptionalColor } = {};
+
+  addResponseToFormattedData({
+    response,
+    lineDataMap,
+    tsBucketMap,
+    source,
+    isPreviousPeriod: false,
+    previousPeriodOffsetSeconds: 0,
+  });
+
+  const lineData = setLineColors(sortLineDataByLogLevel(lineDataMap));
+
+  const totalByDataKey = new Map<string, number>();
+  for (const bucket of tsBucketMap.values()) {
+    for (const line of lineData) {
+      const value = bucket[line.dataKey];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        totalByDataKey.set(
+          line.dataKey,
+          (totalByDataKey.get(line.dataKey) ?? 0) + value,
+        );
+      }
+    }
+  }
+
+  return {
+    seriesTotals: lineData.map(line => ({
+      dataKey: line.dataKey,
+      displayName: line.displayName || line.dataKey,
+      color: line.color,
+      total: totalByDataKey.get(line.dataKey) ?? 0,
+    })),
+    groupColumns: groupColumns.map(g => g.name),
+    isSingleValueColumn: valueColumns.length === 1,
   };
 }
 
