@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button, Popover, Stack, Text } from '@mantine/core';
 import { IconArrowRight, IconConnection } from '@tabler/icons-react';
 
@@ -24,6 +24,10 @@ type ViewTraceCalloutButtonProps = {
  * callout never fights it for the keypress. Because nothing transient is
  * stored, the nudge simply reappears the next time the panel opens on an
  * eligible log until it is acknowledged.
+ *
+ * Auto-open is latched per panel-open lifecycle rather than derived directly
+ * from `disabled` (see the `hasAutoOpened` note below), so paging between rows
+ * doesn't reopen the callout as each row's trace re-resolves.
  */
 export function ViewTraceCalloutButton({
   disabled,
@@ -34,6 +38,22 @@ export function ViewTraceCalloutButton({
     false,
   );
   const dismiss = useCallback(() => setDismissed(true), [setDismissed]);
+
+  // Latch the auto-open decision to this panel-open lifecycle. `disabled` is
+  // derived from per-row async query state, and the panel instance is reused as
+  // the user pages between rows — so `disabled` briefly flips back to true while
+  // each new row loads. Deriving `opened` directly from it would close and
+  // re-open the nudge on every row. Instead, once the trace resolves we mark the
+  // callout as shown and keep it open until acknowledged. This state resets
+  // naturally when the panel closes (the drawer unmounts its children) or the
+  // user lands on a row with no correlated trace (the button stops rendering).
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
+  useEffect(() => {
+    if (!disabled && !dismissed) {
+      setHasAutoOpened(true);
+    }
+  }, [disabled, dismissed]);
+  const opened = hasAutoOpened && !dismissed;
 
   return (
     <Popover
@@ -51,7 +71,7 @@ export function ViewTraceCalloutButton({
       // it is read. (Reviewed: PR #2815 — kept by design.)
       closeOnClickOutside={false}
       closeOnEscape={false}
-      opened={!disabled && !dismissed}
+      opened={opened}
     >
       <Popover.Target>
         <Button
