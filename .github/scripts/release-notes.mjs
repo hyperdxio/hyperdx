@@ -173,15 +173,28 @@ function linkAllowed(target) {
 // count so the structural checks below cannot fire on a legitimate example.
 // A fenced YAML snippet opening with `---`, or a snippet containing `## `,
 // renders fine and must not fail the publish job.
+// Returns the blanked prose plus whatever fence was still open at the end. An
+// unclosed fence blanks every remaining line, which would silently switch off
+// every prose check below for the rest of the body, so the caller fails on it.
 function blankCodeBlocks(text) {
   let fence = null;
-  return text
+  const prose = text
     .split('\n')
     .map(line => {
-      const open = line.match(/^\s{0,3}(```+|~~~+)/);
+      const open = line.match(/^\s{0,3}(`{3,}|~{3,})/);
       if (fence) {
-        const closed = open && line.trim().startsWith(fence[0]);
-        if (closed) fence = null;
+        // CommonMark: a closer uses the same character, runs at least as long
+        // as the opener, and carries nothing but whitespace after it. Matching
+        // on the first character alone let any ``` line close a ```` fence,
+        // which put the rest of that block through the prose checks.
+        if (
+          open &&
+          open[1][0] === fence[0] &&
+          open[1].length >= fence.length &&
+          /^\s{0,3}(`{3,}|~{3,})\s*$/.test(line)
+        ) {
+          fence = null;
+        }
         return '';
       }
       if (open) {
@@ -192,6 +205,7 @@ function blankCodeBlocks(text) {
       return /^(\t| {4})/.test(line) ? '' : line;
     })
     .join('\n');
+  return { prose, unclosedFence: fence };
 }
 
 // Blank the contents of inline code spans, preserving line structure. GitHub
@@ -209,11 +223,16 @@ export function validateBody(body) {
   // Structural checks run over prose only; link and image checks run over the
   // whole body, since a link inside a fence still needs to be legitimate if it
   // is ever copied out.
-  const prose = blankCodeBlocks(body);
+  const { prose, unclosedFence } = blankCodeBlocks(body);
   // Checks whose construct only renders outside a code span or block.
   const proseNoCode = blankInlineCode(prose);
 
   if (!body.trim()) fail('Body is blank.');
+  // Everything after an unopened-but-never-closed fence is blanked above, so
+  // without this the checks over `prose` silently pass on the rest of the body.
+  if (unclosedFence) {
+    fail(`Body has an unclosed \`${unclosedFence}\` code fence.`);
+  }
   if (Buffer.byteLength(body, 'utf-8') > MAX_BODY_BYTES) {
     fail(`Body exceeds ${MAX_BODY_BYTES} bytes.`);
   }

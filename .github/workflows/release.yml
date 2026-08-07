@@ -157,7 +157,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       inputs: ${{ steps.meta.outputs.inputs }}
       empty: ${{ steps.changesets_export.outputs.empty }}
-      changelog_sha: ${{ steps.meta.outputs.changelog_sha }}
+      branch_sha: ${{ steps.meta.outputs.branch_sha }}
     steps:
       - name: Checkout release branch
         uses: actions/checkout@v6
@@ -197,12 +197,13 @@ jobs:
           INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "prev_version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
-          # Blob SHA of the branch's CHANGELOG.md. Neither the app version nor
-          # the changeset hash changes when someone edits the changelog itself,
-          # so without this an older overlapping run would fast-forward its
-          # stale body straight over a newer maintainer edit.
-          echo "changelog_sha=$(git rev-parse "HEAD:CHANGELOG.md" 2>/dev/null || echo none)" \
-            >> "$GITHUB_OUTPUT"
+          # Commit this draft was built from. The version and the changeset hash
+          # are both unchanged by a rebuild that replays the same main state, and
+          # a changelog blob is unchanged by a rebuild that discards a section —
+          # so neither identifies "the branch I drafted against". The tip does:
+          # changesets/action force-pushes a fresh commit on every rebuild, so
+          # any rebuild at all moves it.
+          echo "branch_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "inputs=${INPUTS}" >> "$GITHUB_OUTPUT"
 
       - name: Download previous release notes
@@ -222,12 +223,23 @@ jobs:
         run: |
           set -euo pipefail
           # `extract` exits 2 for a missing file, a hash mismatch, or a section
-          # a maintainer emptied out — all of which mean "regenerate".
-          if node .github/scripts/release-notes.mjs extract \
-              --changelog /tmp/prev-release-notes/CHANGELOG.md \
-              --version "$VERSION" \
-              --inputs "$INPUTS" \
-              > /tmp/release-notes-body.md; then
+          # a maintainer emptied out — all of which mean "regenerate". Exit 1 is
+          # something else: a bad flag, an unreadable file, a parse error. Read
+          # as a cache miss it would degrade into "regenerate every release"
+          # with nothing in the log to say edit reuse had stopped working.
+          set +e
+          node .github/scripts/release-notes.mjs extract \
+            --changelog /tmp/prev-release-notes/CHANGELOG.md \
+            --version "$VERSION" \
+            --inputs "$INPUTS" \
+            > /tmp/release-notes-body.md
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 2 ]; then
+            echo "::error::release-notes extract failed with status ${STATUS}"
+            exit 1
+          fi
+          if [ "$STATUS" -eq 0 ]; then
             # The reused body is a maintainer's edit, not model output, so it
             # can legitimately contain things the validator rejects (a `---`
             # thematic break, a link to some other host). Check it HERE and
@@ -470,28 +482,33 @@ jobs:
       # A later run can rebuild changeset-release/main between this run's draft
       # and publish. Because this job re-checks-out the branch, the push would
       # fast-forward cleanly onto that newer state and commit THIS run's
-      # (now stale) version metadata — leaving an orphan section for a version
-      # the branch no longer builds, which insertSection never cleans up
-      # because it only replaces a matching version. Re-derive both keys from
-      # the fresh checkout and bail if either moved; the newer run publishes
-      # the correct section, so skipping here is self-correcting.
+      # (now stale) body — in the worst case an orphan section for a version the
+      # branch no longer builds, which insertSection never cleans up because it
+      # only replaces a matching version.
+      #
+      # The branch tip is the load-bearing key: a rebuild replaying the same
+      # main state leaves the version, the changeset hash AND the changelog blob
+      # all identical, so any of those alone can miss a rebuild entirely. The
+      # version and hash stay as a cheap, legible signal of WHAT moved in the
+      # warning. Skipping is self-correcting — the draft job queues rather than
+      # cancels, so the run that rebuilt the branch publishes its own section.
       - name: Verify the release branch still matches the draft
         id: guard
         if: steps.probe.outputs.exists == 'true'
         env:
           DRAFT_VERSION: ${{ needs.release_changelog_draft.outputs.version }}
           DRAFT_INPUTS: ${{ needs.release_changelog_draft.outputs.inputs }}
-          DRAFT_CHANGELOG_SHA:
-            ${{ needs.release_changelog_draft.outputs.changelog_sha }}
+          DRAFT_BRANCH_SHA:
+            ${{ needs.release_changelog_draft.outputs.branch_sha }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./packages/app/package.json').version")"
           INPUTS="$(.github/scripts/changeset-hash.sh origin/main)"
-          CHANGELOG_SHA="$(git rev-parse "HEAD:CHANGELOG.md" 2>/dev/null || echo none)"
+          BRANCH_SHA="$(git rev-parse HEAD)"
           if [ "$VERSION" != "$DRAFT_VERSION" ] \
              || [ "$INPUTS" != "$DRAFT_INPUTS" ] \
-             || [ "$CHANGELOG_SHA" != "$DRAFT_CHANGELOG_SHA" ]; then
-            echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}, changelog ${DRAFT_CHANGELOG_SHA}->${CHANGELOG_SHA}); skipping publish, the newer run will regenerate"
+             || [ "$BRANCH_SHA" != "$DRAFT_BRANCH_SHA" ]; then
+            echo "::warning::Release branch moved since drafting (version ${DRAFT_VERSION}->${VERSION}, inputs ${DRAFT_INPUTS}->${INPUTS}, tip ${DRAFT_BRANCH_SHA}->${BRANCH_SHA}); skipping publish, the newer run will regenerate"
             echo "stale=true" >> "$GITHUB_OUTPUT"
           else
             echo "stale=false" >> "$GITHUB_OUTPUT"

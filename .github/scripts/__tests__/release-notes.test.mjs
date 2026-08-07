@@ -627,6 +627,38 @@ test('validateBody ignores setext and definitions inside code blocks', () => {
   assert.deepEqual(validateBody(fenced), []);
 });
 
+test('validateBody tracks fence length, so an inner ``` does not end a ```` block', () => {
+  // Matching the closer on its first character alone ended the block at the
+  // inner fence, putting the rest of a legitimate example through the prose
+  // checks and reddening the publish job.
+  const nested = [
+    'Summary.',
+    '',
+    '````markdown',
+    '```',
+    '# a heading inside the example',
+    '```',
+    '````',
+    '',
+  ].join('\n');
+  assert.deepEqual(validateBody(nested), []);
+});
+
+test('validateBody rejects an unclosed code fence', () => {
+  // Everything after an unclosed fence is blanked, which would switch off the
+  // H1, setext, raw-HTML, autolink and bare-URL checks for the rest of the body.
+  const unclosed = 'Summary.\n\n```yaml\nkey: value\n';
+  assert.match(validateBody(unclosed).join('\n'), /unclosed .* code fence/);
+
+  // The construct it would otherwise hide is caught too, not silently passed.
+  const hidden =
+    'Summary.\n\n```yaml\nkey: value\n\nLook <img src="https://evil.example/b.png">\n';
+  assert.ok(validateBody(hidden).length > 0);
+
+  // A properly closed fence is still fine.
+  assert.deepEqual(validateBody('Summary.\n\n```yaml\nkey: value\n```\n'), []);
+});
+
 test('validateBody rejects a fenced ## because parseChangelog is not fence-aware', () => {
   // The splice would treat it as a section boundary and cut the section in two,
   // so validate has to agree with the parser rather than with CommonMark here.
