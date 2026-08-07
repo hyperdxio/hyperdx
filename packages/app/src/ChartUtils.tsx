@@ -18,6 +18,7 @@ import {
   convertToTableChartConfig,
   getAlignedDateRange,
   Granularity,
+  hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -39,7 +40,10 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
-import { DEFAULT_SERIES_LIMIT } from './defaults';
+import {
+  DEFAULT_SERIES_LIMIT,
+  MAX_RENDERED_TIME_CHART_SERIES,
+} from './defaults';
 import { getMetricNameSql } from './otelSemanticConventions';
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
@@ -111,13 +115,15 @@ export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
-  // Series capping is opt-in per tile via the chart's Display Settings; when
-  // unset, no __hdx_series_limit CTE is emitted and every series is fetched.
-  const seriesLimit = isBuilderChartConfig(config)
-    ? config.seriesLimit != null
-      ? Math.max(1, config.seriesLimit)
-      : undefined
-    : undefined;
+  // Builder group-by charts emit the __hdx_series_limit CTE only for a positive
+  // seriesLimit. null/undefined (default) and 0 (explicitly unlimited) both
+  // skip the CTE and fetch every series; the client-side render cap in
+  // formatResponseForTimeChart then applies the default/opt-out behavior
+  // (mirrors resolveRenderedSeriesCap on the SQL side).
+  const seriesLimit =
+    isBuilderChartConfig(config) && hasPositiveSeriesLimit(config.seriesLimit)
+      ? config.seriesLimit
+      : undefined;
 
   const granularity = getTimeChartGranularity(
     config.granularity,
@@ -612,55 +618,83 @@ function addResponseToFormattedData({
   const isSingleValueColumn = valueColumns.length === 1;
   const hasGroupColumns = groupColumns.length > 0;
 
+  // Hoist per-row-loop invariants: this runs once per row × value column,
+  // hundreds of thousands of times on a high-cardinality group-by.
+  const groupColumnNames = groupColumns.map(g => g.name);
+  const valueColumnNames = valueColumns.map(v => v.name);
+  // Single value column + group-by simplifies the key to just the group.
+  const omitValueColumnInKey = isSingleValueColumn && hasGroupColumns;
+  const applyLogLevelColor = firstGroupColumnIsLogLevel(source, groupColumns);
+  const timestampColumnName = timestampColumn.name;
+  const offsetSeconds = isPreviousPeriod ? previousPeriodOffsetSeconds : 0;
+
+  // A time chart has very few distinct bucket timestamps (one per granularity
+  // step) but potentially hundreds of thousands of rows, so `new Date(...)`
+  // parsing per row dominated the transform. Cache the parsed epoch-second
+  // bucket per raw timestamp value — same input always yields the same result,
+  // so this is behavior-preserving regardless of the value's format.
+  const tsSecondsByRaw = new Map<unknown, number>();
+
   for (const row of data) {
-    const date = new Date(row[timestampColumn.name]);
+    const rawTs = row[timestampColumnName];
+    let ts = tsSecondsByRaw.get(rawTs);
+    if (ts === undefined) {
+      ts = Math.round(new Date(rawTs).getTime() / 1000 + offsetSeconds);
+      tsSecondsByRaw.set(rawTs, ts);
+    }
 
-    // Previous period data needs to be shifted forward to align with current period
-    const offsetSeconds = isPreviousPeriod ? previousPeriodOffsetSeconds : 0;
-    const ts = Math.round(date.getTime() / 1000 + offsetSeconds);
+    let tsBucket = tsBucketMap.get(ts);
+    if (tsBucket == null) {
+      tsBucket = { [timestampColumnName]: ts };
+      tsBucketMap.set(ts, tsBucket);
+    }
 
-    for (const valueColumn of valueColumns) {
-      let tsBucket = tsBucketMap.get(ts);
-      if (tsBucket == null) {
-        tsBucket = { [timestampColumn.name]: ts };
-        tsBucketMap.set(ts, tsBucket);
-      }
+    // Group key parts, built once per row and shared across value columns.
+    // Array.join renders null/undefined as '' (matches the prior behavior).
+    const groupKeyParts = groupColumnNames.map(name => {
+      const v = row[name];
+      return typeof v === 'object' && v !== null ? JSON.stringify(v) : v;
+    });
+    const groupKeyPart = groupKeyParts.join(ChartKeyJoiner);
 
-      const currentPeriodKey = [
-        // Simplify the display name if there's only one series and a group by
-        ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
-        ...groupColumns.map(g => {
-          const v = row[g.name];
-          return typeof v === 'object' && v !== null ? JSON.stringify(v) : v;
-        }),
-      ].join(ChartKeyJoiner);
-      const previousPeriodKey = `${currentPeriodKey}${PreviousPeriodSuffix}`;
-      const keyName = isPreviousPeriod ? previousPeriodKey : currentPeriodKey;
+    for (const valueColumnName of valueColumnNames) {
+      const currentPeriodKey = omitValueColumnInKey
+        ? groupKeyPart
+        : hasGroupColumns
+          ? [valueColumnName, ...groupKeyParts].join(ChartKeyJoiner)
+          : valueColumnName;
+      const keyName = isPreviousPeriod
+        ? `${currentPeriodKey}${PreviousPeriodSuffix}`
+        : currentPeriodKey;
 
       // UInt64 are returned as strings, we'll convert to number
       // and accept a bit of floating point error
-      const rawValue = row[valueColumn.name];
+      const rawValue = row[valueColumnName];
       const value =
         typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
 
       // Mutate the existing bucket object to avoid repeated large object copies
       tsBucket[keyName] = value;
 
-      // Special handling for log level / trace severity colors
-      let color: string | undefined = undefined;
-      if (firstGroupColumnIsLogLevel(source, groupColumns)) {
-        color = logLevelColor(row[groupColumns[0].name]);
+      // Build the LineData entry once per key (not once per row): the object
+      // churn was the dominant cost on high-cardinality group-bys. Only the
+      // log-level color is row-dependent, so refresh just that on later rows.
+      const existing = lineDataMap[keyName];
+      if (existing == null) {
+        lineDataMap[keyName] = {
+          dataKey: keyName,
+          currentPeriodKey,
+          previousPeriodKey: `${currentPeriodKey}${PreviousPeriodSuffix}`,
+          displayName: keyName,
+          valueColumnName,
+          color: applyLogLevelColor
+            ? logLevelColor(row[groupColumnNames[0]])
+            : undefined,
+          isDashed: isPreviousPeriod,
+        };
+      } else if (applyLogLevelColor) {
+        existing.color = logLevelColor(row[groupColumnNames[0]]);
       }
-
-      lineDataMap[keyName] = {
-        dataKey: keyName,
-        currentPeriodKey,
-        previousPeriodKey,
-        displayName: keyName,
-        valueColumnName: valueColumn.name,
-        color,
-        isDashed: isPreviousPeriod,
-      };
     }
   }
 }
@@ -676,6 +710,7 @@ export function formatResponseForTimeChart({
   source,
   hiddenSeries = [],
   previousPeriodOffsetSeconds = 0,
+  maxSeries = MAX_RENDERED_TIME_CHART_SERIES,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
@@ -685,6 +720,12 @@ export function formatResponseForTimeChart({
   source?: TSource;
   hiddenSeries?: string[];
   previousPeriodOffsetSeconds?: number;
+  /**
+   * Render cap for the number of series. Defaults to
+   * MAX_RENDERED_TIME_CHART_SERIES; pass Number.POSITIVE_INFINITY to render
+   * every series (the "load all" escape hatch behind the hidden-series notice).
+   */
+  maxSeries?: number;
 }) {
   const meta = currentPeriodResponse.meta;
 
@@ -738,12 +779,147 @@ export function formatResponseForTimeChart({
   }
 
   const logLevelColorOrder = getLogLevelColorOrder();
-  const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
+  let sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -
       logLevelColorOrder.findIndex(color => color === b.color)
     );
   });
+
+  // Cap materialized series to protect browser memory: high-cardinality
+  // group-bys (esp. raw SQL, which has no server-side limit) can return tens of
+  // thousands of series while only a handful are drawn. Keep the top `maxSeries`
+  // by peak value; drop and count the rest. The cap counts LOGICAL series
+  // (grouped by `currentPeriodKey`) so a comparison chart's current/previous
+  // pair is kept or dropped together, not orphaned by a flat entry-list slice.
+  let hiddenSeriesCount = 0;
+
+  // The cap operates on the group-by GROUP, not on each rendered series. A
+  // single group can yield several series that must be kept or dropped together:
+  //   - the current + previous-period pair in comparison mode (same
+  //     currentPeriodKey, distinguished by isDashed), and
+  //   - one series per value column when a chart plots multiple aggregations
+  //     (e.g. avg + max), which the key builder prefixes with valueColumnName.
+  // Ranking each of those independently would let, say, a large-magnitude `max`
+  // column evict every `avg` series, or a previous-only line evict a current
+  // one. Derive a group identity by stripping the leading value-column segment
+  // from currentPeriodKey so all series of a group share one rankable key.
+  const groupKeyByDataKey = new Map<string, string>();
+  const logicalSeriesKeys: string[] = [];
+  const seenLogicalKeys = new Set<string>();
+  // Groups that have a current-period (non-dashed) entry. In comparison mode the
+  // current and previous periods are separate queries whose kept sets can
+  // differ. Current-period groups get priority when the cap trips (see the
+  // selection below), so a previous-only group can't evict a current-period
+  // series — but previous-only groups still count toward the total cap.
+  const currentPeriodGroupKeys = new Set<string>();
+  // The value-column prefix is only added to currentPeriodKey when a chart has
+  // BOTH multiple value columns AND group columns (see addResponseToFormattedData:
+  // omitValueColumnInKey). In every other shape the key has no such prefix, so
+  // stripping a leading `<valueColumnName> · ` would wrongly collapse a group
+  // whose own value merely starts with that text. Only strip when the builder
+  // actually added the prefix.
+  const keyHasValueColumnPrefix =
+    valueColumns.length > 1 && groupColumns.length > 0;
+  const groupKeyOf = (line: LineDataWithOptionalColor): string => {
+    if (!keyHasValueColumnPrefix) {
+      return line.currentPeriodKey;
+    }
+    const prefix = `${line.valueColumnName}${ChartKeyJoiner}`;
+    return line.currentPeriodKey.startsWith(prefix)
+      ? line.currentPeriodKey.slice(prefix.length)
+      : line.currentPeriodKey;
+  };
+  for (const line of sortedLineData) {
+    const groupKey = groupKeyOf(line);
+    groupKeyByDataKey.set(line.dataKey, groupKey);
+    if (!seenLogicalKeys.has(groupKey)) {
+      seenLogicalKeys.add(groupKey);
+      logicalSeriesKeys.push(groupKey);
+    }
+    if (!line.isDashed) {
+      currentPeriodGroupKeys.add(groupKey);
+    }
+  }
+
+  // The cap bounds the TOTAL number of logical groups materialized, so a
+  // comparison chart whose current and previous result sets are disjoint can't
+  // exceed maxSeries by keeping every previous-only group on top of the
+  // current-period top-N. Current-period groups still take priority: they're
+  // ranked and slotted first, then any remaining slots go to previous-only
+  // groups (also by peak). This keeps a current-period series from being
+  // evicted by a higher-peak previous-only one while still honoring the cap.
+  if (logicalSeriesKeys.length > maxSeries) {
+    hiddenSeriesCount = logicalSeriesKeys.length - maxSeries;
+
+    // Peak absolute value per logical group. Iterate only each bucket's
+    // populated cells so sparse results cost O(populated cells), not
+    // O(buckets * series).
+    const peakByGroup = new Map<string, number>();
+    for (const tsBucket of tsBucketMap.values()) {
+      for (const [key, raw] of Object.entries(tsBucket)) {
+        if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+          continue;
+        }
+        const groupKey = groupKeyByDataKey.get(key);
+        if (groupKey == null) {
+          continue;
+        }
+        const mag = Math.abs(raw);
+        const prev = peakByGroup.get(groupKey);
+        if (prev == null || mag > prev) {
+          peakByGroup.set(groupKey, mag);
+        }
+      }
+    }
+
+    // Rank by peak desc; index tiebreak preserves log-level color ordering.
+    const byPeakThenIndex = (
+      a: { groupKey: string; index: number },
+      b: { groupKey: string; index: number },
+    ) => {
+      const diff =
+        (peakByGroup.get(b.groupKey) ?? 0) - (peakByGroup.get(a.groupKey) ?? 0);
+      return diff !== 0 ? diff : a.index - b.index;
+    };
+    const currentRanked = logicalSeriesKeys
+      .map((groupKey, index) => ({ groupKey, index }))
+      .filter(({ groupKey }) => currentPeriodGroupKeys.has(groupKey))
+      .sort(byPeakThenIndex);
+    const previousOnlyRanked = logicalSeriesKeys
+      .map((groupKey, index) => ({ groupKey, index }))
+      .filter(({ groupKey }) => !currentPeriodGroupKeys.has(groupKey))
+      .sort(byPeakThenIndex);
+
+    // Current-period groups fill slots first; previous-only groups take any
+    // remainder. Slice the concatenation to the cap so the total is bounded.
+    const keptGroups = new Set(
+      [...currentRanked, ...previousOnlyRanked]
+        .slice(0, maxSeries)
+        .map(({ groupKey }) => groupKey),
+    );
+
+    // Keep every entry of a surviving group: its current + previous-period
+    // pair AND every value column, since keptGroups holds group identities.
+    const keptKeys = new Set(
+      sortedLineData
+        .filter(line => keptGroups.has(groupKeyOf(line)))
+        .map(line => line.dataKey),
+    );
+
+    sortedLineData = sortedLineData.filter(line =>
+      keptGroups.has(groupKeyOf(line)),
+    );
+
+    // Prune dropped keys from every bucket so graphResults stays small.
+    for (const tsBucket of tsBucketMap.values()) {
+      for (const key of Object.keys(tsBucket)) {
+        if (key !== timestampColumn.name && !keptKeys.has(key)) {
+          delete tsBucket[key];
+        }
+      }
+    }
+  }
 
   if (generateEmptyBuckets && granularity != null) {
     const generatedTsBuckets = timeBucketByGranularity(
@@ -786,6 +962,14 @@ export function formatResponseForTimeChart({
 
   const sortedLineDataWithColors = setLineColors(sortedLineData);
 
+  // Count of LOGICAL groups actually rendered, in the same unit as
+  // hiddenSeriesCount — so a comparison chart (current + previous entries per
+  // group) or a multi-value-column chart (one entry per value column per group)
+  // isn't multiply counted in the hidden-series notice.
+  const renderedSeriesCount = new Set(
+    sortedLineDataWithColors.map(line => groupKeyOf(line)),
+  ).size;
+
   return {
     graphResults,
     timestampColumn,
@@ -793,6 +977,8 @@ export function formatResponseForTimeChart({
     groupColumns: groupColumns.map(g => g.name),
     valueColumns: valueColumns.map(v => v.name),
     isSingleValueColumn,
+    hiddenSeriesCount,
+    renderedSeriesCount,
   };
 }
 
