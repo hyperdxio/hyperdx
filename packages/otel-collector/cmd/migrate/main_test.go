@@ -1114,6 +1114,32 @@ func TestFenceDatabasePattern(t *testing.T) {
 	}
 }
 
+func TestIsUnreplicatedMergeTreeEngine(t *testing.T) {
+	tests := map[string]bool{
+		// Plain MergeTree-family engines: data does not replicate.
+		"MergeTree":            true,
+		"SummingMergeTree":     true,
+		"ReplacingMergeTree":   true,
+		"AggregatingMergeTree": true,
+		// Replicated variants replicate data.
+		"ReplicatedMergeTree":        false,
+		"ReplicatedSummingMergeTree": false,
+		// SharedMergeTree (ClickHouse Cloud) manages replication itself.
+		"SharedMergeTree": false,
+		// Non-MergeTree engines are out of scope for the audit.
+		"MaterializedView": false,
+		"Dictionary":       false,
+		"TimeSeries":       false,
+		"Distributed":      false,
+		"View":             false,
+	}
+	for engine, want := range tests {
+		if got := isUnreplicatedMergeTreeEngine(engine); got != want {
+			t.Errorf("isUnreplicatedMergeTreeEngine(%q): got %v, want %v", engine, got, want)
+		}
+	}
+}
+
 func TestDecideFenceRecovery(t *testing.T) {
 	tests := []struct {
 		name         string

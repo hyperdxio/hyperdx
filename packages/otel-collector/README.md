@@ -160,13 +160,23 @@ metadata stored in Keeper):
   emptiness check is preserved in the renamed database (with a loud warning)
   instead of being cascade-dropped.
 
-  The conversion is also crash-safe. If creating the Replicated database
-  fails after the rename (e.g. Keeper not ready yet), the rename is rolled
-  back so the target database is never left absent. Fence databases left
-  behind by an interrupted conversion are recovered on the next startup:
+  Emptiness counts both attached and detached tables (`system.tables` +
+  `system.detached_tables`; dictionaries already appear in `system.tables`),
+  so nothing `DROP DATABASE` would destroy escapes the check. Because
+  `system.tables` visibility is grant-scoped, the seed must run as a user
+  with full visibility on the target database (the default in shipped
+  configurations).
+
+  The conversion is also crash-safe and race-safe. If creating the Replicated
+  database fails after the rename (e.g. Keeper not ready yet), the rename is
+  rolled back so the target database is never left absent. Fence databases
+  left behind by an interrupted conversion are recovered on the next startup:
   empty fences are dropped, a non-empty fence is renamed back when the target
   database is missing, and a non-empty fence whose target already exists is
-  kept and warned about on every startup (never dropped).
+  kept and warned about on every startup (never dropped). The engine is
+  re-read immediately before the rename and verified afterwards, so a stale
+  conversion decision on one collector replica never renames away a database
+  another replica just converted.
 - **Non-Replicated with tables** — never dropped (that would lose data); the
   seed logs a warning and continues against the existing database.
 
@@ -176,6 +186,15 @@ the seed rewrites the table engines in the schema to their replicated
 variants (`MergeTree` → `ReplicatedMergeTree`, `SummingMergeTree` →
 `ReplicatedSummingMergeTree`) so table **data** replicates across replicas
 (plain MergeTree tables in a Replicated database only replicate metadata).
+
+After seeding, the seed audits the Replicated database for MergeTree-family
+tables that still use a non-replicated engine (e.g. tables created before the
+conversion, which no-op through `CREATE TABLE IF NOT EXISTS`). It cannot
+convert them itself — that requires the server-side `convert_to_replicated`
+marker file and a restart — so it logs a loud per-table warning with the
+remediation on every startup instead of claiming unqualified success. The
+seed still exits 0: the deployment keeps working single-replica, and failing
+would crash-loop ingestion on a condition the seed cannot repair.
 
 Notes:
 

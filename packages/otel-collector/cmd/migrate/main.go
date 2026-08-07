@@ -593,15 +593,28 @@ func getDatabaseEngine(ctx context.Context, db *sql.DB, database string) (engine
 	return engine, true, nil
 }
 
-// countDatabaseTables returns the number of tables in the target database.
+// countDatabaseTables returns the number of attached plus detached tables in
+// the target database. This is the emptiness predicate gating the irreversible
+// DROP DATABASE during the Replicated conversion, so it must count everything
+// a drop would destroy: detached tables are invisible in system.tables but
+// their on-disk data is still deleted by DROP DATABASE (system.tables also
+// already includes dictionaries, with engine "Dictionary"). It errors when the
+// database does not exist, so a missing database can never read as "empty".
 func countDatabaseTables(ctx context.Context, db *sql.DB, database string) (uint64, error) {
-	var count uint64
-	err := db.QueryRowContext(ctx,
-		"SELECT count() FROM system.tables WHERE database = ?", database).Scan(&count)
+	var exists uint8
+	var attached, detached uint64
+	err := db.QueryRowContext(ctx, `SELECT
+		(SELECT count() FROM system.databases WHERE name = ?) > 0,
+		(SELECT count() FROM system.tables WHERE database = ?),
+		(SELECT count() FROM system.detached_tables WHERE database = ?)`,
+		database, database, database).Scan(&exists, &attached, &detached)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count tables in database %q: %w", database, err)
 	}
-	return count, nil
+	if exists == 0 {
+		return 0, fmt.Errorf("cannot count tables: database %q does not exist", database)
+	}
+	return attached + detached, nil
 }
 
 // ensureReplicatedDatabase makes sure the target database uses the Replicated
@@ -623,13 +636,16 @@ func countDatabaseTables(ctx context.Context, db *sql.DB, database string) (uint
 // re-verifying it is still empty. A table that raced the check therefore
 // survives in the renamed database instead of being destroyed.
 //
-// The conversion is also crash-safe: fence databases left behind by a
-// previous interrupted conversion are recovered first (empty -> dropped,
-// non-empty with the target missing -> renamed back, non-empty with the
-// target present -> kept with a persistent warning), and a failure to create
+// The conversion is also crash-safe and race-safe: fence databases left
+// behind by a previous interrupted conversion are recovered first (empty ->
+// dropped, non-empty with the target missing -> renamed back, non-empty with
+// the target present -> kept with a persistent warning); a failure to create
 // the Replicated database after the rename rolls the rename back so the
 // target database is never left absent with data stranded under the fence
-// name.
+// name; and the conversion re-reads the engine immediately before renaming
+// (and verifies the fenced database afterwards) so a stale convert decision
+// never renames away a database another replica just converted. See
+// convertDatabaseToReplicated.
 func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) error {
 	if err := recoverFenceDatabases(ctx, db, database); err != nil {
 		return err
@@ -657,52 +673,109 @@ func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) 
 			database, engine, tableCount)
 		return nil
 	case dbActionConvert:
-		renamed := renamedDatabaseName(database, time.Now())
-		log.Printf("Database %q uses the %s engine and is empty; renaming it to %q and recreating it with the Replicated engine", database, engine, renamed)
-		if _, err := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", database, renamed)); err != nil {
-			return fmt.Errorf("failed to rename database %q to %q: %w", database, renamed, err)
-		}
-		if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
-			createErr := fmt.Errorf("failed to create Replicated database %q: %w", database, err)
-			// Roll the rename back (best-effort) so the target database is
-			// not left absent — and no tables stranded under the fence name —
-			// while the seed fails and the container restarts. The rename is
-			// metadata-local, so it succeeds even when the CREATE failed
-			// because Keeper is unavailable. If the target reappeared in the
-			// meantime (e.g. clickhouse-operator created it), keep the fence;
-			// recoverFenceDatabases surfaces it on the next startup.
-			if _, targetExists, checkErr := getDatabaseEngine(ctx, db, database); checkErr != nil {
-				log.Printf("WARNING: Failed to check database %q while rolling back the Replicated conversion: %v. Database may be preserved as %q.", database, checkErr, renamed)
-			} else if targetExists {
-				log.Printf("WARNING: Database %q was recreated concurrently; the original database is preserved as %q.", database, renamed)
-			} else if _, renameErr := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", renamed, database)); renameErr != nil {
-				log.Printf("WARNING: Failed to roll back rename of %q to %q: %v. Database is preserved as %q.", renamed, database, renameErr, renamed)
-			} else {
-				log.Printf("Rolled back rename: restored %q from %q after failed Replicated conversion", database, renamed)
-			}
-			return createErr
-		}
-		// The renamed database is fenced off from name-based writers, so this
-		// re-check is stable: drop it only if it is provably still empty.
-		renamedCount, err := countDatabaseTables(ctx, db, renamed)
-		if err != nil {
-			return err
-		}
-		if renamedCount > 0 {
-			log.Printf("WARNING: Database %q gained %d table(s) concurrently with the Replicated conversion; it has been preserved as %q instead of being dropped. Move any needed tables into %q and drop %q manually.",
-				database, renamedCount, renamed, database, renamed)
-			return nil
-		}
-		if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s` SYNC", renamed)); err != nil {
-			return fmt.Errorf("failed to drop empty renamed database %q: %w", renamed, err)
-		}
-		return nil
+		return convertDatabaseToReplicated(ctx, db, database)
 	case dbActionCreate:
 		log.Printf("Database %q does not exist; creating it with the Replicated engine", database)
 	}
 
 	if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
 		return fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+	}
+	return nil
+}
+
+// convertDatabaseToReplicated converts an (empty, non-Replicated) target
+// database to the Replicated engine via rename-fence-verify-drop:
+//
+//  1. Re-read the engine immediately before acting: the dbActionConvert
+//     decision may be stale (another collector replica or the operator may
+//     have converted the database in the meantime), and renaming away a
+//     freshly converted Replicated database would swap out the active
+//     database under its writers.
+//  2. Atomically RENAME the old database aside, fencing name-based writers.
+//  3. Verify what was fenced really is non-Replicated; if a racer's
+//     conversion slipped between the re-read and the rename, undo the rename.
+//  4. Create the Replicated database under the original name; on failure,
+//     roll the rename back so the target is never left absent.
+//  5. Drop the fence only after re-verifying it is provably empty.
+func convertDatabaseToReplicated(ctx context.Context, db *sql.DB, database string) error {
+	engine, exists, err := getDatabaseEngine(ctx, db, database)
+	if err != nil {
+		return err
+	}
+	if exists && engine == replicatedEngineName {
+		log.Printf("Database %q was converted to the Replicated engine concurrently; nothing to do", database)
+		return nil
+	}
+	if !exists {
+		// Another actor is mid-conversion (renamed the database aside but has
+		// not recreated it yet). CREATE IF NOT EXISTS is concurrency-safe.
+		log.Printf("Database %q disappeared concurrently; creating it with the Replicated engine", database)
+		if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
+			return fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+		}
+		return nil
+	}
+
+	renamed := renamedDatabaseName(database, time.Now())
+	log.Printf("Database %q uses the %s engine and is empty; renaming it to %q and recreating it with the Replicated engine", database, engine, renamed)
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", database, renamed)); err != nil {
+		return fmt.Errorf("failed to rename database %q to %q: %w", database, renamed, err)
+	}
+
+	// Verify what was fenced: if a racer converted the database between the
+	// re-read above and the rename, the fence now holds their Replicated
+	// database. Undo the rename and keep the converted database. (On most
+	// ClickHouse versions renaming a Replicated database fails outright, in
+	// which case the rename error above already aborted the conversion; this
+	// check does not rely on that behavior.)
+	fencedEngine, fencedExists, err := getDatabaseEngine(ctx, db, renamed)
+	if err != nil {
+		return err
+	}
+	if fencedExists && fencedEngine == replicatedEngineName {
+		log.Printf("Renamed database %q already uses the Replicated engine (converted concurrently); renaming it back to %q", renamed, database)
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", renamed, database)); err != nil {
+			return fmt.Errorf("failed to rename Replicated database %q back to %q: %w", renamed, database, err)
+		}
+		return nil
+	}
+
+	if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
+		createErr := fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+		// Roll the rename back (best-effort) so the target database is
+		// not left absent — and no tables stranded under the fence name —
+		// while the seed fails and the container restarts. The rename is
+		// metadata-local, so it succeeds even when the CREATE failed
+		// because Keeper is unavailable. If the target reappeared in the
+		// meantime (e.g. clickhouse-operator created it), keep the fence;
+		// recoverFenceDatabases surfaces it on the next startup.
+		if _, targetExists, checkErr := getDatabaseEngine(ctx, db, database); checkErr != nil {
+			log.Printf("WARNING: Failed to check database %q while rolling back the Replicated conversion: %v. Database may be preserved as %q.", database, checkErr, renamed)
+		} else if targetExists {
+			log.Printf("WARNING: Database %q was recreated concurrently; the original database is preserved as %q.", database, renamed)
+		} else if _, renameErr := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", renamed, database)); renameErr != nil {
+			log.Printf("WARNING: Failed to roll back rename of %q to %q: %v. Database is preserved as %q.", renamed, database, renameErr, renamed)
+		} else {
+			log.Printf("Rolled back rename: restored %q from %q after failed Replicated conversion", database, renamed)
+		}
+		return createErr
+	}
+
+	// The renamed database is fenced off from name-based writers, so this
+	// re-check is stable: drop it only if it is provably still empty
+	// (including detached tables, whose data DROP DATABASE would destroy).
+	renamedCount, err := countDatabaseTables(ctx, db, renamed)
+	if err != nil {
+		return err
+	}
+	if renamedCount > 0 {
+		log.Printf("WARNING: Database %q gained %d table(s) concurrently with the Replicated conversion; it has been preserved as %q instead of being dropped. Move any needed tables into %q and drop %q manually.",
+			database, renamedCount, renamed, database, renamed)
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s` SYNC", renamed)); err != nil {
+		return fmt.Errorf("failed to drop empty renamed database %q: %w", renamed, err)
 	}
 	return nil
 }
@@ -742,6 +815,74 @@ func rewriteEnginesForReplicated(tempDir string) error {
 		}
 		return nil
 	})
+}
+
+// isUnreplicatedMergeTreeEngine reports whether a table engine is a
+// MergeTree-family engine whose data does not replicate across replicas
+// (e.g. MergeTree, SummingMergeTree), as opposed to Replicated*/Shared*
+// variants and non-MergeTree engines (MaterializedView, Dictionary,
+// TimeSeries, Distributed, ...).
+func isUnreplicatedMergeTreeEngine(engine string) bool {
+	return strings.HasSuffix(engine, "MergeTree") &&
+		!strings.HasPrefix(engine, "Replicated") &&
+		!strings.HasPrefix(engine, "Shared")
+}
+
+// tableEngine pairs a table name with its engine for the post-seed audit.
+type tableEngine struct {
+	Name   string
+	Engine string
+}
+
+// listUnreplicatedTables returns the MergeTree-family tables in the target
+// database whose engine is not a Replicated variant. In a Replicated database
+// such tables no-op through the seed's CREATE TABLE IF NOT EXISTS statements
+// (e.g. tables created before the conversion by the legacy exporter path), so
+// their data silently does not replicate; the caller surfaces them loudly.
+func listUnreplicatedTables(ctx context.Context, db *sql.DB, database string) ([]tableEngine, error) {
+	rows, err := db.QueryContext(ctx,
+		"SELECT name, engine FROM system.tables WHERE database = ? ORDER BY name", database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tables in database %q: %w", database, err)
+	}
+	defer rows.Close()
+
+	var unreplicated []tableEngine
+	for rows.Next() {
+		var t tableEngine
+		if err := rows.Scan(&t.Name, &t.Engine); err != nil {
+			return nil, fmt.Errorf("failed to scan table engine: %w", err)
+		}
+		if isUnreplicatedMergeTreeEngine(t.Engine) {
+			unreplicated = append(unreplicated, t)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list tables in database %q: %w", database, err)
+	}
+	return unreplicated, nil
+}
+
+// auditReplicatedTables warns, loudly and per table, about MergeTree-family
+// tables in the Replicated target database that do not use a Replicated
+// engine. The seed cannot convert them itself (MergeTree ->
+// ReplicatedMergeTree conversion requires the server-side convert_to_replicated
+// marker file and a restart), so it reports them on every startup instead of
+// claiming unqualified success. Audit failures only warn: this is an
+// observability query and must not fail an otherwise successful seed.
+func auditReplicatedTables(ctx context.Context, db *sql.DB, database string) {
+	unreplicated, err := listUnreplicatedTables(ctx, db, database)
+	if err != nil {
+		log.Printf("WARNING: Failed to audit table engines in Replicated database %q: %v", database, err)
+		return
+	}
+	for _, t := range unreplicated {
+		log.Printf("WARNING: Table %q.%q uses the non-replicated %s engine inside a Replicated database; its data will NOT replicate across replicas. Convert it manually via the convert_to_replicated marker file (https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replication#converting-from-mergetree-to-replicatedmergetree).",
+			database, t.Name, t.Engine)
+	}
+	if len(unreplicated) > 0 {
+		log.Printf("WARNING: Schema seed completed with %d non-replicated table(s) in Replicated database %q", len(unreplicated), database)
+	}
 }
 
 // swapLogsSchemaForCompat replaces the full-text-search logs schema with the
@@ -956,6 +1097,14 @@ func main() {
 		log.Printf("ERROR: Schema seed failed after %d attempts: %v", cfg.MaxRetries, err)
 		log.Println("========================================")
 		os.Exit(1)
+	}
+
+	// Audit the end state: pre-existing plain MergeTree tables in a
+	// Replicated database no-op through CREATE TABLE IF NOT EXISTS above and
+	// would otherwise stay silently unreplicated. The seed cannot fix them,
+	// so it reports them loudly instead of claiming unqualified success.
+	if targetIsReplicated {
+		auditReplicatedTables(ctx, db, cfg.Database)
 	}
 
 	log.Println("========================================")
