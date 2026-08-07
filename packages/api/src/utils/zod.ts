@@ -280,6 +280,11 @@ const externalDashboardLineRawSqlChartConfigSchema =
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    // Raw SQL Line tiles carry the client-side render cap too, so it must
+    // round-trip through the external API (GET→PUT) instead of being wiped.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardBarChartConfigSchema =
@@ -295,6 +300,11 @@ const externalDashboardBarRawSqlChartConfigSchema =
     displayType: z.literal('stacked_bar'),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    // Raw SQL StackedBar tiles carry the client-side render cap too, so it must
+    // round-trip through the external API (GET→PUT) instead of being wiped.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({

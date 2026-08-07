@@ -199,6 +199,9 @@ const convertToExternalTileChartConfig = (
           fitYAxisToData: config.fitYAxisToData,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
+          // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+          // null/undefined map to absent (the default-cap state).
+          seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.StackedBar:
         return {
@@ -210,6 +213,9 @@ const convertToExternalTileChartConfig = (
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           numberFormat: config.numberFormat,
+          // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+          // null/undefined map to absent (the default-cap state).
+          seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.Table:
         return {
@@ -640,6 +646,8 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            // Round-trip the render cap so a GET→PUT does not silently wipe it.
+            'seriesLimit',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
