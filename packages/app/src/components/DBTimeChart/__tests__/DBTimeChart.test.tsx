@@ -39,11 +39,11 @@ jest.mock('@/source', () => ({
     .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
 }));
 
-jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
+jest.mock('@/components/MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );
 
-jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
+jest.mock('@/components/charts/DateRangeIndicator', () => jest.fn(() => null));
 
 describe('DBTimeChart', () => {
   const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
