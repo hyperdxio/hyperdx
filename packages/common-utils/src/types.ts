@@ -1194,9 +1194,11 @@ export const BackgroundChartSchema = z.object({
 export type BackgroundChart = z.infer<typeof BackgroundChartSchema>;
 
 // When making changes here, consider if they need to be made to the external API
-// as well: the Zod schema (packages/api/src/utils/zod.ts) and the hand-written
+// as well: the Zod schema (packages/api/src/utils/zod.ts), the hand-written
 // OpenAPI JSDoc (packages/api/src/routers/external-api/v2/dashboards.ts), which
-// duplicates this shape for the generated spec.
+// duplicates this shape for the generated spec, and the MCP dashboard authoring
+// tile schemas (packages/api/src/mcp/tools/dashboards/schemas.ts), a separate
+// hand-maintained mirror that gates what save_dashboard / patch_dashboard accept.
 /**
  * Schema describing settings which are shared between Raw SQL
  * chart configs and Structured ChartBuilder chart configs
