@@ -46,6 +46,7 @@ export function registerSaveAlert({
     'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
+      annotations: { destructiveHint: true },
       description:
         'Create a new alert (omit id) or update an existing one (provide id). ' +
         'Alerts monitor a saved search or dashboard tile and fire when the ' +

@@ -204,6 +204,7 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
     'clickstack_table',
     {
       title: 'Aggregation Table',
+      annotations: { readOnlyHint: true },
       description:
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
