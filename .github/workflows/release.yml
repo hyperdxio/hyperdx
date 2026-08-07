@@ -168,6 +168,14 @@ jobs:
           # push token in .git/config for it to find. This job never pushes.
           persist-credentials: false
 
+      # The pinned CLI declares `node >=22`, and every other step here shells
+      # out to `node`. Without this the job silently inherits whatever the
+      # runner image ships, so an image bump could break a release.
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Compute release metadata
         id: meta
         run: |
@@ -381,6 +389,18 @@ jobs:
           cp .github/prompts/release-changelog.md /tmp/inputs/instructions.md
           cp CHANGELOG.md /tmp/inputs/CHANGELOG.md 2> /dev/null || true
 
+          # Every changeset in ONE file at a known path. The generator gets Read
+          # and Write and nothing else — no Glob, no LS — so it cannot discover
+          # `.changeset/gentle-boats-serve.md` by name, and left to infer the
+          # release from the diff alone it silently drops changes.
+          : > /tmp/inputs/changesets.md
+          for f in /tmp/changesets/*.md; do
+            [ -e "$f" ] || continue
+            printf '\n===== %s =====\n\n' "$(basename "$f")" \
+              >> /tmp/inputs/changesets.md
+            cat "$f" >> /tmp/inputs/changesets.md
+          done
+
           echo "--- collected inputs ---"
           wc -l /tmp/inputs/package-changelogs.diff /tmp/inputs/pr-references.txt
 
@@ -388,34 +408,102 @@ jobs:
         if:
           steps.meta.outputs.skip == 'false' && steps.reuse.outputs.hit ==
           'false' && steps.changesets_export.outputs.empty != 'true'
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # No github_token: nothing in the allowlist below can use one, and
-          # this process reads attacker-influenceable text.
-          #
-          # --setting-sources user matches deep-resolve.yml: without it, a
-          # `.claude/settings.json` on the checked-out branch could widen this
-          # allowlist or register hooks.
-          #
-          # Read and Write are confined to paths, not just named. This job holds
-          # ANTHROPIC_API_KEY, so an unrestricted Read is a path to it —
-          # /proc/self/environ carries the whole environment, and the body is
-          # published to a public branch, where a credential grep on a literal
-          # prefix is defeated by any encoding. Everything the model needs was
-          # copied under /tmp by the trusted step above; /proc and the runner's
-          # own temp are denied outright in case a later Read rule widens.
-          # No Bash at all: a prefix allowlist over git is not read-only.
-          claude_args: |
-            --setting-sources user
-            --allowedTools "Read(//tmp/**),Write(//tmp/release-notes-body.md)"
-            --disallowedTools "Read(//proc/**),Read(//sys/**),Read(//home/**),Read(//etc/**),Bash,WebFetch,WebSearch"
-          prompt: |
-            VERSION: ${{ steps.meta.outputs.version }}
-            REPO: ${{ github.repository }}
-
-            Read the instructions in /tmp/inputs/instructions.md and follow them
-            exactly to write /tmp/release-notes-body.md for this release.
+        # The CLI directly, not anthropics/claude-code-action. That action only
+        # accepts GitHub entity events — issues, pull_request*, workflow_dispatch,
+        # repository_dispatch, schedule, workflow_run — and throws
+        # "Unsupported event type: push" before running anything. Everything it
+        # would add on top of the CLI (a GitHub token, entity context, progress
+        # comments on a PR) is what this job deliberately does without, so the
+        # CLI is both the fix and the smaller surface.
+        #
+        # Pinned, not floating: this runs on the release path. The `stable`
+        # dist-tag is where to look when bumping.
+        #
+        # --setting-sources user matches deep-resolve.yml: without it, a
+        # `.claude/settings.json` on the checked-out branch could widen the
+        # allowlist or register hooks.
+        #
+        # Read and Write are confined to paths, not just named. This job holds
+        # ANTHROPIC_API_KEY, so an unrestricted Read is a path to it —
+        # /proc/self/environ carries the whole environment, and the body is
+        # published to a public branch, where a credential grep on a literal
+        # prefix is defeated by any encoding. Everything the model needs was
+        # copied under /tmp by the trusted step above; /proc and the runner's
+        # own temp are denied outright in case a later Read rule widens.
+        # No Bash at all: a prefix allowlist over git is not read-only.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          REPO: ${{ github.repository }}
+        # Three separate mechanisms, because they do different jobs:
+        #
+        # --tools is the one that RESTRICTS. It replaces the built-in tool set,
+        # so there is no Bash, Grep, Glob or Task to reach past the path rules
+        # below — an allowlist alone would leave Grep unscoped and able to pull
+        # matched lines out of the checkout. This job holds ANTHROPIC_API_KEY and
+        # reads attacker-influenceable text, and its output is published to a
+        # public branch, so a credential grep on a literal prefix (which any
+        # encoding defeats) is not the thing standing in the way.
+        #
+        # --allowedTools only PRE-APPROVES, it does not restrict: it is what
+        # keeps a `-p` run from stalling on a permission prompt it cannot
+        # answer. The single write is granted by `Edit(<file>)`, not
+        # `Write(<file>)` — file permissions are checked against Edit and Read
+        # rules only, and a Write rule is accepted but never consulted, which is
+        # why an earlier `Write(//tmp/release-notes-body.md)` granted nothing.
+        # Scoping it to the one file beats `--permission-mode acceptEdits`,
+        # which would auto-approve every path in the working directory.
+        #
+        # --disallowedTools DENIES, and deny beats allow. /proc/self/environ
+        # carries the whole environment, including the API key.
+        #
+        # --bare skips hooks, plugin sync and CLAUDE.md discovery, and takes
+        # auth strictly from ANTHROPIC_API_KEY. /tmp as the working directory
+        # keeps the checkout — scripts, workflow, git config — outside the
+        # workspace entirely.
+        working-directory: /tmp
+        run: |
+          set -euo pipefail
+          # Two attempts: an overloaded API or a registry blip is routine, and
+          # this job is wired into slack-notify-failure, so a transient failure
+          # must not page on-call.
+          for attempt in 1 2; do
+            # The reuse step redirects into this file, so its fall-through path
+            # leaves a body behind. Clear it before each attempt, or the
+            # assertion below passes on someone else's text.
+            rm -f /tmp/release-notes-body.md
+            # The prompt goes in on stdin: --tools and the two tool-rule flags
+            # are variadic, so a positional prompt would be swallowed as another
+            # tool name.
+            if printf 'VERSION: %s\nREPO: %s\n\n%s\n' \
+                "$VERSION" "$REPO" \
+                'Read the instructions in /tmp/inputs/instructions.md and follow them exactly to write /tmp/release-notes-body.md for this release.' \
+                | npx --yes @anthropic-ai/claude-code@2.1.220 \
+                    --print \
+                    --bare \
+                    --setting-sources user \
+                    --tools "Read" "Write" \
+                    --allowedTools "Read(//tmp/**)" "Edit(//tmp/release-notes-body.md)" \
+                    --disallowedTools "Read(//proc/**)" "Read(//sys/**)" \
+                      "Read(//home/**)" "Read(//etc/**)"; then
+              break
+            fi
+            if [ "$attempt" = 2 ]; then
+              echo "::error::The changelog generator failed twice; skipping this release's section"
+              exit 1
+            fi
+            echo "::warning::Changelog generator attempt ${attempt} failed; retrying"
+            sleep 30
+          done
+          # The CLI exits 0 when the model ends its turn without writing —
+          # including when it spots a prompt-injection attempt and follows the
+          # instructions to write nothing. Catch that here, in the job that ran
+          # the model, rather than as "Body is blank." two jobs downstream where
+          # the alert names the validator instead of the generator.
+          test -s /tmp/release-notes-body.md || {
+            echo "::error::The generator wrote no release notes body"
+            exit 1
+          }
 
       - name: Upload generated body
         # Nothing to hand over if generation was skipped for want of changesets.
