@@ -1,4 +1,11 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useQueryState } from 'nuqs';
@@ -39,6 +46,10 @@ import { parseAsJsonEncoded } from '@/utils/queryParsers';
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import {
+  deriveRowSidePanelContextForSource,
+  RowSidePanelContext,
+} from './DBRowSidePanel';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './SourceSchemaPreview';
@@ -109,6 +120,16 @@ function SpanDetailPanel({
   const { data: rowData } = useRowData({ source, rowId, aliasWith });
   const normalizedRow = rowData?.data?.[0];
 
+  // The selected event may come from a different source than the search this
+  // panel was opened from (e.g. a log event on a trace opened in the Traces
+  // view). Rebind search-url generation to the event's own source and drop
+  // filter/column actions that only make sense against the searched source
+  const parentContext = use(RowSidePanelContext);
+  const rowSidePanelContextValue = useMemo(
+    () => deriveRowSidePanelContextForSource(parentContext, source),
+    [parentContext, source],
+  );
+
   const hasK8sContext = useMemo(
     () => rowHasK8sContext(source, normalizedRow),
     [source, normalizedRow],
@@ -123,7 +144,7 @@ function SpanDetailPanel({
       : displayedTab;
 
   return (
-    <>
+    <RowSidePanelContext value={rowSidePanelContextValue}>
       <div style={{ position: 'relative' }}>
         <TabBar
           className="fs-8"
@@ -212,7 +233,7 @@ function SpanDetailPanel({
           <DBInfraPanel source={source} rowData={normalizedRow} />
         </Box>
       )}
-    </>
+    </RowSidePanelContext>
   );
 }
 

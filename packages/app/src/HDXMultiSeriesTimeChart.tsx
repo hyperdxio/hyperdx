@@ -28,8 +28,7 @@ import {
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Button, Popover, Tooltip as MantineTooltip } from '@mantine/core';
-import { IconZoomReset } from '@tabler/icons-react';
+import { Popover } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
@@ -39,6 +38,7 @@ import {
   getAnnotationElements,
   resolveAnnotationSeries,
 } from './components/charts/chartAnnotations';
+import { ChartOverlayControls } from './components/charts/ChartOverlayControls';
 import {
   ChartTooltipContainer,
   ChartTooltipHeader,
@@ -336,7 +336,7 @@ const LegendRenderer = memo<{
   const { payload, lineDataMap, allLineData, selectedSeries, onToggleSeries } =
     props;
 
-  const hasSelection = !!selectedSeries && selectedSeries.size > 0;
+  const hasSelection = hasSeriesSelection(selectedSeries);
 
   // Use allLineData to ensure all series are always shown in legend
   const allSeriesPayload = useMemo(() => {
@@ -516,11 +516,23 @@ export function buildActiveClickSeries(
  * lines and the drill-down click payload both derive from this same set so they
  * never diverge. Exported for unit testing.
  */
+/**
+ * Whether a series selection is active. The single source of truth for the
+ * "isolate to these series" predicate that gates line visibility, the y-axis
+ * domain, legend dimming, and the "Show All Series" control — so those can't
+ * drift out of sync.
+ */
+function hasSeriesSelection(
+  selectedSeriesNames: Set<string> | undefined,
+): selectedSeriesNames is Set<string> {
+  return !!selectedSeriesNames && selectedSeriesNames.size > 0;
+}
+
 export function getVisibleLineData(
   lineData: LineData[],
   selectedSeriesNames: Set<string> | undefined,
 ): LineData[] {
-  const hasSelection = !!selectedSeriesNames && selectedSeriesNames.size > 0;
+  const hasSelection = hasSeriesSelection(selectedSeriesNames);
   if (hasSelection) {
     return lineData
       .filter(ld => selectedSeriesNames.has(getSeriesDisplayName(ld)))
@@ -649,6 +661,7 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds,
   selectedSeriesNames,
   onToggleSeries,
+  onClearSeriesSelection,
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
@@ -678,6 +691,8 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds?: number;
   selectedSeriesNames?: Set<string>;
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
+  /** Clear the current series isolation; renders a "Show All Series" button when set. */
+  onClearSeriesSelection?: () => void;
   granularity: string;
   dateRangeEndInclusive?: boolean;
   /**
@@ -789,7 +804,7 @@ export const MemoChart = memo(function MemoChart({
   ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
-    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+    const hasSelection = hasSeriesSelection(selectedSeriesNames);
 
     // Fitting the y-axis lower bound to the data only applies to line charts.
     // Bar charts are always anchored at zero so the bar lengths stay
@@ -1056,24 +1071,19 @@ export const MemoChart = memo(function MemoChart({
       ref={containerRef}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
-      {onTimeRangeSelect != null && zoomOrigin != null ? (
-        <MantineTooltip label="Reset to the range before zooming in" withArrow>
-          <Button
-            variant="secondary"
-            size="compact-xs"
-            leftSection={<IconZoomReset size={14} />}
-            onClick={handleResetZoom}
-            style={{
-              position: 'absolute',
-              top: 4,
-              right: 8,
-              zIndex: 2,
-            }}
-          >
-            Reset zoom
-          </Button>
-        </MantineTooltip>
-      ) : null}
+      <ChartOverlayControls
+        onClearSelection={
+          onClearSeriesSelection != null &&
+          hasSeriesSelection(selectedSeriesNames)
+            ? onClearSeriesSelection
+            : undefined
+        }
+        onResetZoom={
+          onTimeRangeSelect != null && zoomOrigin != null
+            ? handleResetZoom
+            : undefined
+        }
+      />
       <ResponsiveContainer
         width="100%"
         height="100%"
