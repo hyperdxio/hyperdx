@@ -6,6 +6,202 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.34.0 — 2026-08-07
+
+<!-- hyperdx-release-notes version=2.34.0 inputs=7f6d7242c74d -->
+
+This release makes your HyperDX resources adoptable into infrastructure as code:
+dashboards, saved searches and saved-search alerts gain an "Export to Terraform"
+action, and Team Settings can download an import file covering the whole team.
+Metrics sources can now point at a `series` table to accelerate metric queries, a
+new `clickstack_emerging_signals` MCP tool tells an agent which log patterns are
+newly emerging or have disappeared between two windows, and Prometheus-backed
+connections gain an exemplar query endpoint. Search also got a round of
+correctness fixes — `_` and `%` are literal characters again, every URL in a
+query is escaped rather than just the first, and open or exclusive ranges no
+longer fail outright. Time charts now cap high-cardinality tiles to a bounded
+number of series with a load-all escape hatch — read the breaking change below
+before upgrading a chart or an API client that relies on getting every series.
+
+### 💥 Breaking Changes
+
+- **Time charts cap high-cardinality series by default**: a tile grouped by a
+  high-cardinality field no longer tries to draw every line — time charts now
+  materialise and render a bounded number of series per tile, which keeps the
+  browser responsive but means a chart that previously drew thousands of series
+  now shows the top N. Escape hatches are built in: a "+N more" affordance in
+  the hover and pinned tooltips, and a "load all series" action that lifts the
+  cap for a chart. Tooltips also bound how many rows they render per frame, so a
+  wide bucket can't mount thousands of popovers. Over the external dashboards
+  API the per-tile series limit is a three-state value across tile types — omit
+  it for the default cap, `0` for unlimited, or a positive N for the top N — so
+  a client that relied on omitting the field to get every series should now send
+  `0` (#2802).
+
+### ✨ New Features
+
+- **Export existing resources to Terraform**: dashboards, saved searches and
+  saved-search alerts gain an "Export to Terraform" button showing a
+  ready-to-paste `import {}` block plus collapsible provider setup, and a new
+  "API & Agents" section in Team Settings downloads an import file covering
+  dashboards, alerts, saved searches, sources, connections and webhooks. The
+  export is import-only by design — resource configuration comes from
+  `terraform plan -generate-config-out` reading through the ClickHouse provider,
+  not from HyperDX. Dashboards carrying a tile the provider cannot represent, and
+  PromQL sources, are reported as skipped rather than exported, and each listing
+  caps at 1000 rows and tells you which types were capped so a large team knows
+  its export is partial. Terraform addresses derive from resource ids rather than
+  names, so renaming a resource and re-exporting won't produce a
+  destroy-and-recreate plan (#2741).
+- **Configure a `series` table to accelerate metrics**: metrics sources can now
+  name a `series` table, giving metric queries a smaller table to resolve series
+  from (#2763).
+- **`clickstack_emerging_signals` MCP tool**: an agent can now diff mined log and
+  event patterns between an earlier baseline window and the current one, surfacing
+  which patterns are newly emerging and which have disappeared — a direct answer
+  to "what changed?" during an incident (#2701).
+- **Prometheus exemplar queries**: a new `/v1/prometheus/query_exemplars`
+  endpoint proxies to Prometheus's native `/api/v1/query_exemplars` for
+  Prometheus-backed connections, and answers with an empty success for
+  ClickHouse-backed ones, where exemplars are read from the metric table instead.
+  A wide dashboard range is narrowed to the supported exemplar window rather than
+  rejected (#2806).
+- **Replay a dashboard tile's query in Search**: log and trace tiles whose event
+  query can be faithfully reconstructed gain a Replay search action, which opens
+  a new Search tab with the tile's source, query, filters and the dashboard's
+  time range preserved — so you can go from a spike on a dashboard to the events
+  behind it without rebuilding the query by hand (#2648).
+
+### 🔧 Improvements
+
+- **"What's new" shows the cross-package release summary**: the in-app changelog
+  now renders the release-level highlights from the root changelog instead of the
+  app-only package changelog, so you see the whole release rather than just the
+  frontend changes (#2737).
+- **`seriesLimit` over the external API and MCP**: the top-N series cap on line
+  and stacked bar tiles is now readable and settable through External API v2 and
+  MCP, so a dashboard authored by an agent can carry the same series cap as one
+  built in the UI (#2772).
+- **The row side panel remembers your tab**: opening the next row keeps you on
+  the tab you were working in — Column Values, say — instead of resetting to
+  Overview, including when you pick a neighbouring row out of Surrounding
+  Context. Navigations that target a specific tab (such as View Trace) still win,
+  and a remembered tab a row doesn't offer falls back to that row's default
+  (#2752).
+- **"View Trace" is easier to spot in the log side panel**: the action is now a
+  right-aligned outlined button with the trace source icon instead of subtle
+  inline text in the dimmed metadata row. The first time you open a log that has
+  a correlated trace, a one-time popover points you at the button; acknowledging
+  it ("Got it") or clicking View Trace dismisses it for good on that browser
+  (#2815).
+- **Chart tooltips and legends behave better**: a new "Show All Series" button
+  clears a focused series, tooltip action buttons no longer render behind the
+  tooltip, the legend's "+N more" list is capped in height and scrolls, and chart
+  hover tooltips no longer paint over the date range picker (#2822, #2803).
+- **Percentile context in the heatmap tooltip**: hovering a heatmap cell now
+  shows where that bucket sits in the distribution (#2789).
+- **Only supported aggregations offered for histogram metrics**: the chart
+  builder hides aggregation functions a Histogram metric can't use, so you no
+  longer pick one and get an error back (#2793).
+- **Prometheus proxy responses hardened and failures counted**: every proxied
+  response is relabelled `application/json` and carries
+  `X-Content-Type-Options: nosniff` — set before anything can return, so the
+  proxy's own error bodies get it too — since a member-configured connection host
+  otherwise returns untrusted content on your origin. Proxy failures now
+  increment `prometheusQueryErrors`, counted on 5xx only so malformed PromQL
+  doesn't read as a backend fault, where all four proxied endpoints previously
+  reported zero errors; a client that navigates away mid-body no longer counts as
+  a backend error either (#2806).
+- **Theme refinements**: primary HyperDX buttons use the solid brand green rather
+  than a subtle tinted fill, tab lists get a true 1px line with matching 1px
+  hover borders on inactive tabs, code blocks use the dedicated code background
+  token, and the segmented control's active indicator gains a border, small
+  radius and its own background (#2814).
+- **Clearer `SELECT *` error state on distributed tables**: the error is easier
+  to act on and now also shows on expanded rows (#2771).
+
+### 🐛 Bug Fixes
+
+- **`_` and `%` in a search term are literal again**: search terms were
+  interpolated straight into the ILIKE pattern, so ClickHouse read them as
+  wildcards — `ServiceName:user_service` also matched `user-service` and
+  `user.service`, and the negated `-ServiceName:user_service` dropped those same
+  rows. Token-index lookups still receive the raw term (#2774).
+- **Every URL in a search is escaped, not just the first**: a query naming two or
+  more URLs left the later colons unescaped, so Lucene read them as field
+  queries — `http://a.com http://b.com` compiled the second URL to
+  `http ILIKE '%//b.com%'`, a predicate on a bare `http` identifier rather than a
+  search of the log body (#2764).
+- **Open, exclusive and non-numeric range bounds are honoured**:
+  `Duration:[* TO 500]` compiled to `Duration BETWEEN '*' AND 500`, which
+  ClickHouse rejects with `TYPE_MISMATCH`; exclusive and half-open ranges like
+  `Duration:{100 TO 500}` were all serialised as an inclusive `BETWEEN`; and
+  bounds parsed with `parseFloat` turned
+  `Timestamp:[2024-01-01 TO 2024-06-01]` into `BETWEEN 2024 AND 2024`, matching
+  nothing. The plain-English explanation of a search now marks excluded bounds
+  too (#2779).
+- **Timestamp columns carrying a timezone or type wrapper are detected**:
+  `DateTime('UTC')` wasn't classified as a DateTime, so a source listing both a
+  `Date` partition column and a `DateTime` column bucketed charts on the `Date`,
+  collapsing a whole day into one bar at midnight. Time filters now also wrap
+  bounds in `toDate()` for `Date32` and `Nullable(Date)` columns, which
+  previously lost the entire start day (#2780).
+- **Series limits rank by the plotted ratio**: a chart using the "ratio" series
+  return type with a series limit ranked its top-N by the bare numerator, so a
+  low-volume group with a high ratio could lose its slot to a high-volume group
+  with a much lower one. Ranking now uses the same division the chart displays;
+  non-ratio charts generate identical SQL to before (#2759).
+- **Query results no longer lose rows**: when ClickHouse's streamed response
+  headers spanned two chunks, the result rows that followed were dropped
+  (#2766).
+- **SQL expressions containing escaped quotes split correctly**: a
+  backslash-escaped quote no longer causes an expression to be split in the wrong
+  place (#2767).
+- **Rate limits are keyed on the access key**: the external API and MCP limiters
+  bucketed on the raw `Authorization` header value, and because any text is
+  accepted before `Bearer `, varying that prefix handed each request a fresh
+  quota. Limits now key on the access key itself, falling back to the client IP
+  when a request carries no usable key (#2781).
+- **Invitation revocation is scoped to your team**:
+  `DELETE /team/invitation/:id` deleted by id alone, so any authenticated user
+  who knew an id could revoke another team's pending invitation. Unknown or
+  out-of-team ids now return 404. `Authorization` and `Cookie` headers are also
+  redacted from API request logs (#2741).
+- **Updating a missing alert or dashboard returns not-found**: updates against an
+  id that doesn't exist now answer 404 rather than appearing to succeed, so an
+  API client can tell a real write from a no-op (#2784, #2768).
+- **Changing an alert's source clears stale references**: source-specific fields
+  left behind by the previous source are cleared instead of pointing at
+  something the new source doesn't have (#2783).
+- **Searching a log attached to a trace works from the Traces view**: clicking
+  "Search" on a log while viewing its trace raised a SQL error instead of running
+  the search against the log's own source (#2825).
+- **"View Trace" row lookups are bounded to a time window**: the side panel's
+  lookup for the row behind a trace is now scoped to a time range instead of
+  being left open-ended, so it resolves without scanning a large source end to
+  end (#2816).
+- **Search no longer defaults to an incompatible source**: the search page won't
+  pre-select a source whose kind it can't search (#2769).
+- **Metric tables are only auto-detected when the database changes**: table
+  auto-detection no longer re-runs on unrelated edits to a metrics source, so the
+  tables you picked stay picked (#2817).
+- **Assorted polish**: relative timestamps abbreviate every unit, so lists no
+  longer mix `5m ago` with `2 years ago` or render `3mo.s ago` (#2773), and long
+  values in the JSON attributes viewer no longer paint over the key column
+  (#2813).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.33.0 → 2.34.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2340)
+- `@hyperdx/app` 2.33.0 → 2.34.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2340)
+- `@hyperdx/common-utils` 0.24.1 → 0.25.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0250)
+- `@hyperdx/hdx-eval` 0.3.0 → 0.3.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/hdx-eval/CHANGELOG.md#031)
+- `@hyperdx/otel-collector` 2.33.0 → 2.34.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2340)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.32.0 — 2026-07-27
 
 <!-- hyperdx-release-notes version=2.32.0 inputs=backfill -->
