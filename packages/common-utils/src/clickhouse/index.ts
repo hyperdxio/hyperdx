@@ -38,7 +38,6 @@ export type {
   ResponseJSON,
   Row,
 };
-export { DefaultLogger } from '@clickhouse/client-common';
 
 export enum JSDataType {
   Array = 'array',
