@@ -419,6 +419,17 @@ export const DBRowSidePanelInner = ({
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
 
+  // Owns the View Trace nudge's auto-open latch. Kept here (above the loading
+  // gate that unmounts the row content on every navigation) so the one-time
+  // callout doesn't reset and re-open as the user pages between rows. Resets
+  // when the panel closes and this component unmounts.
+  const [viewTraceCalloutAutoOpened, setViewTraceCalloutAutoOpened] =
+    useState(false);
+  const handleViewTraceCalloutAutoOpen = useCallback(
+    () => setViewTraceCalloutAutoOpened(true),
+    [],
+  );
+
   // Capture the root event body once for the root breadcrumb label.
   const [initialMainContent, setInitialMainContent] = useState<
     string | undefined
@@ -896,6 +907,8 @@ export const DBRowSidePanelInner = ({
           {showLogTraceActions && (
             <ViewTraceCalloutButton
               disabled={!traceSourceData || !traceSpanRowId}
+              autoOpened={viewTraceCalloutAutoOpened}
+              onAutoOpen={handleViewTraceCalloutAutoOpen}
               onView={() => {
                 if (traceSourceData && traceSpanRowId) {
                   handleSourceStackPush({

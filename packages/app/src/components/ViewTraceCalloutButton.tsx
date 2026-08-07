@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Button, Popover, Stack, Text } from '@mantine/core';
 import { IconArrowRight, IconConnection } from '@tabler/icons-react';
 
@@ -11,6 +11,14 @@ type ViewTraceCalloutButtonProps = {
   disabled: boolean;
   /** Navigate to the correlated trace. Only reachable when not disabled. */
   onView: () => void;
+  /**
+   * Whether the nudge has already auto-opened during this panel-open lifecycle.
+   * Owned by the parent so it survives the per-row loading gate that unmounts
+   * this button (see `onAutoOpen`).
+   */
+  autoOpened: boolean;
+  /** Raise the auto-open latch in the parent the first time a trace resolves. */
+  onAutoOpen: () => void;
 };
 
 /**
@@ -25,13 +33,18 @@ type ViewTraceCalloutButtonProps = {
  * stored, the nudge simply reappears the next time the panel opens on an
  * eligible log until it is acknowledged.
  *
- * Auto-open is latched per panel-open lifecycle rather than derived directly
- * from `disabled` (see the `hasAutoOpened` note below), so paging between rows
- * doesn't reopen the callout as each row's trace re-resolves.
+ * Auto-open is latched for the panel-open lifecycle (via `autoOpened`/
+ * `onAutoOpen`) rather than derived directly from `disabled`, so paging between
+ * rows doesn't reopen the callout as each row's trace re-resolves. The latch
+ * lives in the parent because the side panel unmounts this button behind a
+ * "Loading..." gate while each new row loads, which would reset any state held
+ * here.
  */
 export function ViewTraceCalloutButton({
   disabled,
   onView,
+  autoOpened,
+  onAutoOpen,
 }: ViewTraceCalloutButtonProps) {
   const [dismissed, setDismissed] = useLocalStorage(
     VIEW_TRACE_CALLOUT_DISMISSED_KEY,
@@ -39,21 +52,12 @@ export function ViewTraceCalloutButton({
   );
   const dismiss = useCallback(() => setDismissed(true), [setDismissed]);
 
-  // Latch the auto-open decision to this panel-open lifecycle. `disabled` is
-  // derived from per-row async query state, and the panel instance is reused as
-  // the user pages between rows — so `disabled` briefly flips back to true while
-  // each new row loads. Deriving `opened` directly from it would close and
-  // re-open the nudge on every row. Instead, once the trace resolves we mark the
-  // callout as shown and keep it open until acknowledged. This state resets
-  // naturally when the panel closes (the drawer unmounts its children) or the
-  // user lands on a row with no correlated trace (the button stops rendering).
-  const [hasAutoOpened, setHasAutoOpened] = useState(false);
   useEffect(() => {
-    if (!disabled && !dismissed) {
-      setHasAutoOpened(true);
+    if (!disabled && !dismissed && !autoOpened) {
+      onAutoOpen();
     }
-  }, [disabled, dismissed]);
-  const opened = hasAutoOpened && !dismissed;
+  }, [disabled, dismissed, autoOpened, onAutoOpen]);
+  const opened = autoOpened && !dismissed;
 
   return (
     <Popover
