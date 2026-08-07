@@ -560,10 +560,7 @@ export function useAliasMapFromChartConfig(
       // PromQL queries use prometheusQuery() which node-sql-parser can't parse.
       // Return a fixed alias map since the column names are known.
       // Check configType directly since the TS type may not include PromQL here.
-      if (
-        'configType' in config &&
-        (config as { configType: string }).configType === 'promql'
-      ) {
+      if ('configType' in config && config.configType === 'promql') {
         return {
           __hdx_time_bucket: '__hdx_time_bucket',
           value: 'value',

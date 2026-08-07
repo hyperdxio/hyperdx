@@ -75,12 +75,16 @@ function HeatmapSQLPreview({
   config: BuilderChartConfigWithOptTimestamp;
   dateRange: [Date, Date];
 }) {
-  if (!config.timestampValueExpression) {
+  const { timestampValueExpression } = config;
+  if (!timestampValueExpression) {
     return null;
   }
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(
-    config as BuilderChartConfigWithDateRange,
-  );
+  const configWithTimestamp: BuilderChartConfigWithDateRange = {
+    ...config,
+    timestampValueExpression,
+  };
+  const { heatmapConfig, scaleType } =
+    toHeatmapChartConfig(configWithTimestamp);
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
   const boundsConfig = buildHeatmapBoundsConfig({

@@ -185,8 +185,8 @@ function ChartTooltipOverlay({
   useEffect(() => {
     if (!isOpen) return;
     const handleScroll = (e: Event) => {
-      const target = e.target as Node | null;
-      if (target != null && dropdownRef.current?.contains(target)) {
+      const target = e.target;
+      if (target instanceof Node && dropdownRef.current?.contains(target)) {
         return;
       }
       onDismiss();
