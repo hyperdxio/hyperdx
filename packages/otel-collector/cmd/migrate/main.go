@@ -426,9 +426,12 @@ const (
 	// dbActionNone: the database already uses the Replicated engine.
 	dbActionNone
 	// dbActionConvert: the database exists with a non-Replicated engine and is
-	// empty; drop it and recreate it as Replicated. This mirrors
-	// clickhouse-operator's enableDatabaseSync conversion so the collector and
-	// operator agree on the engine no matter which side runs first.
+	// empty; convert it to Replicated. This mirrors clickhouse-operator's
+	// enableDatabaseSync conversion so the collector and operator agree on the
+	// engine no matter which side runs first. The conversion renames the old
+	// database aside first (atomic fence) and only drops it after re-verifying
+	// it is still empty, so a table created concurrently with the emptiness
+	// check is preserved instead of being cascade-dropped.
 	dbActionConvert
 	// dbActionKeep: the database exists with a non-Replicated engine and
 	// already has tables. Never drop it (that would lose data); keep it as-is.
@@ -460,6 +463,13 @@ func replicatedDatabaseDDL(database string) string {
 		database, database)
 }
 
+// renamedDatabaseName returns the fence name the target database is renamed
+// to during the Replicated conversion. The timestamp suffix avoids collisions
+// with leftovers from a previously crashed conversion.
+func renamedDatabaseName(database string, now time.Time) string {
+	return fmt.Sprintf("%s_pre_replicated_%d", database, now.Unix())
+}
+
 // getDatabaseEngine queries system.databases for the target database's engine.
 // exists is false when the database does not exist.
 func getDatabaseEngine(ctx context.Context, db *sql.DB, database string) (engine string, exists bool, err error) {
@@ -489,11 +499,20 @@ func countDatabaseTables(ctx context.Context, db *sql.DB, database string) (uint
 // engine before the schema seed runs:
 //   - missing            -> create it as Replicated
 //   - already Replicated -> nothing to do
-//   - other engine, empty -> drop + recreate as Replicated (mirrors
+//   - other engine, empty -> convert to Replicated (mirrors
 //     clickhouse-operator's enableDatabaseSync conversion; resolves the
 //     startup race between the collector seed and the operator)
 //   - other engine, has tables -> keep as-is and warn; dropping it would lose
 //     data
+//
+// The conversion never drops a database based on the initial emptiness check
+// alone: the emptiness check and the drop are not atomic, so a table created
+// in between by another schema manager or collector replica would be
+// cascade-dropped. Instead the old database is atomically RENAMEd aside
+// (fencing all name-based writers), the Replicated database is created under
+// the original name, and the renamed database is dropped only after
+// re-verifying it is still empty. A table that raced the check therefore
+// survives in the renamed database instead of being destroyed.
 func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) error {
 	engine, exists, err := getDatabaseEngine(ctx, db, database)
 	if err != nil {
@@ -517,10 +536,29 @@ func ensureReplicatedDatabase(ctx context.Context, db *sql.DB, database string) 
 			database, engine, tableCount)
 		return nil
 	case dbActionConvert:
-		log.Printf("Database %q uses the %s engine and is empty; dropping and recreating it with the Replicated engine", database, engine)
-		if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s` SYNC", database)); err != nil {
-			return fmt.Errorf("failed to drop database %q: %w", database, err)
+		renamed := renamedDatabaseName(database, time.Now())
+		log.Printf("Database %q uses the %s engine and is empty; renaming it to %q and recreating it with the Replicated engine", database, engine, renamed)
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("RENAME DATABASE `%s` TO `%s`", database, renamed)); err != nil {
+			return fmt.Errorf("failed to rename database %q to %q: %w", database, renamed, err)
 		}
+		if _, err := db.ExecContext(ctx, replicatedDatabaseDDL(database)); err != nil {
+			return fmt.Errorf("failed to create Replicated database %q: %w", database, err)
+		}
+		// The renamed database is fenced off from name-based writers, so this
+		// re-check is stable: drop it only if it is provably still empty.
+		renamedCount, err := countDatabaseTables(ctx, db, renamed)
+		if err != nil {
+			return err
+		}
+		if renamedCount > 0 {
+			log.Printf("WARNING: Database %q gained %d table(s) concurrently with the Replicated conversion; it has been preserved as %q instead of being dropped. Move any needed tables into %q and drop %q manually.",
+				database, renamedCount, renamed, database, renamed)
+			return nil
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s` SYNC", renamed)); err != nil {
+			return fmt.Errorf("failed to drop empty renamed database %q: %w", renamed, err)
+		}
+		return nil
 	case dbActionCreate:
 		log.Printf("Database %q does not exist; creating it with the Replicated engine", database)
 	}

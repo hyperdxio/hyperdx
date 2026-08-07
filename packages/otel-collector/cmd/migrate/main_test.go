@@ -1070,6 +1070,23 @@ func TestReplicatedDatabaseDDL(t *testing.T) {
 	}
 }
 
+func TestRenamedDatabaseName(t *testing.T) {
+	now := time.Unix(1753000000, 0)
+	got := renamedDatabaseName("default", now)
+	want := "default_pre_replicated_1753000000"
+	if got != want {
+		t.Errorf("renamedDatabaseName: got %q, want %q", got, want)
+	}
+
+	// The timestamp suffix must make names from different conversion attempts
+	// distinct, so a leftover from a crashed run never collides with the
+	// rename target of a later run.
+	other := renamedDatabaseName("default", now.Add(time.Second))
+	if other == got {
+		t.Errorf("renamedDatabaseName: expected distinct names across attempts, got %q twice", got)
+	}
+}
+
 func TestRewriteEnginesForReplicated(t *testing.T) {
 	t.Run("rewrites MergeTree and SummingMergeTree engines", func(t *testing.T) {
 		dir := t.TempDir()

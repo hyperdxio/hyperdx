@@ -1,4 +1,8 @@
 SELECT engine FROM system.databases WHERE name = 'default' FORMAT CSV;
+-- The Atomic -> Replicated conversion renames the old database aside and
+-- drops it after re-verifying emptiness; a clean conversion must not leave
+-- the fence database behind.
+SELECT name FROM system.databases WHERE name LIKE 'default_pre_replicated_%' FORMAT CSV;
 SELECT name, engine
 FROM system.tables
 WHERE database = 'default'

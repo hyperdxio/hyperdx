@@ -150,10 +150,15 @@ metadata stored in Keeper):
   `ENGINE = Replicated('/clickhouse/databases/<name>', '{shard}', '{replica}')`
   (the operator's path convention).
 - **Already Replicated** — no-op.
-- **Non-Replicated and empty** — dropped and recreated as Replicated. This
-  mirrors the operator's conversion of the empty Atomic `default` database, so
-  the collector and operator agree on the engine no matter which side runs
-  first.
+- **Non-Replicated and empty** — converted to Replicated. This mirrors the
+  operator's conversion of the empty Atomic `default` database, so the
+  collector and operator agree on the engine no matter which side runs first.
+  The conversion is race-safe: the old database is atomically renamed aside
+  (`<name>_pre_replicated_<ts>`), the Replicated database is created under
+  the original name, and the renamed database is dropped only after
+  re-verifying it is still empty. A table created concurrently with the
+  emptiness check is preserved in the renamed database (with a loud warning)
+  instead of being cascade-dropped.
 - **Non-Replicated with tables** — never dropped (that would lose data); the
   seed logs a warning and continues against the existing database.
 
