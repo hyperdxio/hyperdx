@@ -12,6 +12,7 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   DEFAULT_DATABASE,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
+  SERVICE_VERSION_EXPRESSION_HELP_TEXT,
 } from './constants';
 import { ExpressionFormRow } from './ExpressionFormRow';
 import { FormRow } from './FormRow';
@@ -124,7 +125,7 @@ export function LogTableModelForm(props: TableModelProps) {
           name="serviceVersionExpression"
           label="Service Version Expression"
           placeholder="ResourceAttributes['service.version']"
-          helpText="Used to place deployment markers on charts. Defaults to the OpenTelemetry service.version resource attribute; point it elsewhere if your release identifier lives in another attribute, such as a container image tag."
+          helpText={SERVICE_VERSION_EXPRESSION_HELP_TEXT}
           columns={columns}
           sourceKind={SourceKind.Log}
           tableConnection={tableConnection}
