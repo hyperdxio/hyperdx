@@ -59,6 +59,7 @@ import {
   Group,
   Modal,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -137,6 +138,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import { TraceRedMetricsChart } from './components/Search/TraceRedMetricsChart';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -1057,6 +1059,12 @@ export function DBSearchPage() {
       'delta',
       'pattern',
     ]).withDefault('results'),
+  );
+
+  // RED metrics vs heatmap for the trace results chart area. Owned here so the
+  // switch can live inline in the search stats row instead of a dedicated row.
+  const [traceChartMode, setTraceChartMode] = useState<'red' | 'heatmap'>(
+    'red',
   );
 
   const [patternColumn, setPatternColumn] = useQueryState(
@@ -2556,6 +2564,23 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
+                            {searchedSource != null &&
+                              isTraceSource(searchedSource) &&
+                              searchedSource.durationExpression && (
+                                <SegmentedControl
+                                  size="xs"
+                                  value={traceChartMode}
+                                  onChange={v =>
+                                    setTraceChartMode(
+                                      v === 'heatmap' ? 'heatmap' : 'red',
+                                    )
+                                  }
+                                  data={[
+                                    { label: 'RED', value: 'red' },
+                                    { label: 'Heatmap', value: 'heatmap' },
+                                  ]}
+                                />
+                              )}
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
@@ -2576,26 +2601,51 @@ export function DBSearchPage() {
                           </Group>
                         </Group>
                       </Box>
-                      {!hasQueryError && (
-                        <Box
-                          className={searchPageStyles.timeChartContainer}
-                          mih="0"
-                        >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
-                            enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={handleTimeRangeSelect}
-                            onFocusSeries={handleFocusSeries}
-                            enableParallelQueries
-                          />
-                        </Box>
-                      )}
+                      {!hasQueryError &&
+                        (searchedSource != null &&
+                        isTraceSource(searchedSource) &&
+                        searchedSource.durationExpression ? (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                            style={{ height: 240 }}
+                          >
+                            <TraceRedMetricsChart
+                              mode={traceChartMode}
+                              histogramTimeChartConfig={
+                                histogramTimeChartConfig
+                              }
+                              heatmapChartConfig={{
+                                ...chartConfig,
+                                dateRange: searchedTimeRange,
+                                with: aliasWith,
+                              }}
+                              source={searchedSource}
+                              isReady={isReady}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                          >
+                            <DBTimeChart
+                              sourceId={searchedConfig.source ?? undefined}
+                              showLegend={false}
+                              config={histogramTimeChartConfig}
+                              enabled={isReady}
+                              showDisplaySwitcher={false}
+                              showMVOptimizationIndicator={false}
+                              showDateRangeIndicator={false}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                              enableParallelQueries
+                            />
+                          </Box>
+                        ))}
                     </>
                   )}
                   {hasQueryError && queryError ? (
