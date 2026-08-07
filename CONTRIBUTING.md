@@ -123,6 +123,48 @@ common-utils) to test and run:
 yarn dev:unit
 ```
 
+### Mutation Tests
+
+Coverage tells you a line ran; it doesn't tell you a test would fail if that
+line were wrong. [Stryker](https://stryker-mutator.io/) edits the source in
+small ways (flips a comparison, empties a return) and reports which edits the
+test suite failed to catch. A surviving mutant is a missing assertion.
+
+Set up in `common-utils` only for now. From `packages/common-utils`:
+
+```bash
+# The file you're working on — seconds to a couple of minutes
+yarn dev:mutation --mutate src/filters.ts
+
+# Everything you've changed off main
+yarn dev:mutation --mutate "$(git diff --name-only --diff-filter=d --relative origin/main... -- 'src/**/*.ts' | grep -v __tests__ | paste -sd, -)"
+
+# The whole package (slow — tens of minutes)
+yarn dev:mutation
+```
+
+Scope it to what you're working on. Runs are roughly linear in mutants, and the
+whole package is ~365 files. Results are cached between runs, so a re-run after
+editing one file only re-tests that file.
+
+Read the `Survived` entries: each one shows the edit that was made and the tests
+that ran anyway. `NoCoverage` means no unit test reaches that code at all — some
+of those are covered by integration tests, which this doesn't run. An HTML
+report lands in `reports/mutation/`.
+
+The score is not a coverage number for the whole file. Module-level code —
+constants, regexes, lookup tables — isn't mutated at all (`ignoreStatic`, about
+10% of the mutants here) and is left out of the denominator, so a high score
+says nothing about whether those are asserted on.
+
+Not wired into CI. It's a tool for while you're writing tests, not a gate.
+
+One wrinkle worth knowing about: the root `package.json` pins
+`@stryker-mutator/core/minimatch` to `^9`. Our blanket `brace-expansion`
+resolution forces v2 (CJS) everywhere, and minimatch v10's ESM build needs
+`brace-expansion` v5's named exports, so Stryker crashes on startup without the
+pin. Drop it if that blanket resolution is ever narrowed.
+
 ## AI-Assisted Development
 
 HyperDX includes an [MCP server](https://modelcontextprotocol.io/) that lets AI assistants query observability data, manage dashboards, and

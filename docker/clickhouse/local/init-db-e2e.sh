@@ -55,6 +55,37 @@ ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
 TTL toDateTime(Timestamp) + toIntervalDay(30)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
+-- Distributed table over the e2e logs table whose DDL declares a column
+-- (\`ColumnMissingFromShard\`) that its underlying MergeTree table does NOT have.
+-- This is the real-world shape of a Distributed table that was ALTERed to add a
+-- column while one of its target tables was left behind: reading the declared
+-- columns works, but \`SELECT *\` (how the app loads full row details) fails with
+-- UNKNOWN_IDENTIFIER on the shard. The 'E2E Distributed Missing Column' fixture
+-- source points here so the E2E tests can assert the row-level error state and
+-- its Known Columns List hint. It routes to e2e_otel_logs, so it reuses that
+-- table's seeded rows and needs no seeding of its own.
+CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_logs_distributed
+(
+  \`Timestamp\` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+  \`TraceId\` String CODEC(ZSTD(1)),
+  \`SpanId\` String CODEC(ZSTD(1)),
+  \`TraceFlags\` UInt8,
+  \`SeverityText\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`SeverityNumber\` UInt8,
+  \`ServiceName\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`Body\` String CODEC(ZSTD(1)),
+  \`ResourceSchemaUrl\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`ResourceAttributes\` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+  \`ScopeSchemaUrl\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`ScopeName\` String CODEC(ZSTD(1)),
+  \`ScopeVersion\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`ScopeAttributes\` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+  \`LogAttributes\` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+  \`EventName\` String CODEC(ZSTD(1)),
+  \`ColumnMissingFromShard\` String CODEC(ZSTD(1))
+)
+ENGINE = Distributed('hdx_cluster', '${DATABASE}', 'e2e_otel_logs', rand());
+
 CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_traces
 (
     \`Timestamp\` DateTime64(9) CODEC(Delta(8), ZSTD(1)),

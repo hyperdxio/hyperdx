@@ -51,8 +51,12 @@ export default mongoose.model<IDashboard>(
       timestamps: true,
       toJSON: { getters: true },
     },
-  ).index(
-    { name: 1, team: 1 },
-    { unique: true, partialFilterExpression: { provisioned: true } },
-  ),
+  )
+    .index(
+      { name: 1, team: 1 },
+      { unique: true, partialFilterExpression: { provisioned: true } },
+    )
+    // Serves team-scoped listings (IaC import manifest, external API list);
+    // the partial {name, team} index above only covers provisioned dashboards.
+    .index({ team: 1, _id: 1 }),
 );

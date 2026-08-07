@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import ReactMarkdown from 'react-markdown';
+import { isImportableAlert } from '@hyperdx/common-utils/dist/iac';
 import {
   AlertSource,
   AlertState,
@@ -40,6 +41,7 @@ import {
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import EmptyState from '@/components/EmptyState';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
@@ -266,6 +268,22 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       </Group>
 
       <Group>
+        {/* Eligibility comes from the shared predicate rather than an inline
+            source check, so this and the bulk export can't diverge on which
+            alerts the provider can actually model. */}
+        {isImportableAlert(alert) && (
+          <ResourceTerraformPopover
+            resource={{
+              type: 'alert',
+              id: alert._id,
+              // No fallback to the saved search's name: the name only labels
+              // the generated block, and the manifest the bulk export reads
+              // carries the alert's own name, so a fallback here would make
+              // the two surfaces disagree about what they call this alert.
+              name: alert.name ?? undefined,
+            }}
+          />
+        )}
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
       </Group>

@@ -149,9 +149,13 @@ export async function getDashboard(dashboardId: string, teamId: ObjectId) {
     getDashboardAlertsByTile(teamId, dashboardId),
   ]);
 
+  if (_dashboard == null) {
+    return null;
+  }
+
   return healLegacyDashboardTileColors({
-    ..._dashboard?.toJSON(),
-    tiles: _dashboard?.tiles.map(t => ({
+    ..._dashboard.toJSON(),
+    tiles: _dashboard.tiles.map(t => ({
       ...t,
       config: { ...t.config, alert: alerts[t.id]?.[0] },
     })),

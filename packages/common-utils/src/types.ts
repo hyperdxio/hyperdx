@@ -1695,6 +1695,7 @@ export const TeamSchema = z
     apiKey: z.string(),
     hookId: z.string(),
     collectorAuthenticationEnforced: z.boolean(),
+    isMetricsSeriesTableEnabled: z.boolean(),
   })
   .merge(TeamClickHouseSettingsSchema);
 
@@ -1905,6 +1906,8 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   // Optional fields for metrics
   serviceNameExpression: z.string().optional(),
   logSourceId: z.string().optional(),
+  // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
+  seriesTable: z.string().optional(),
 });
 
 // PromQL source form schema
@@ -2206,6 +2209,7 @@ export const TeamApiResponseSchema = z.object({
   apiKey: z.string(),
   name: z.string(),
   createdAt: z.string(),
+  isMetricsSeriesTableEnabled: z.boolean(),
 });
 
 export type TeamApiResponse = z.infer<typeof TeamApiResponseSchema>;
@@ -2295,3 +2299,61 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// IaC (Terraform) export
+//
+// Shared so `GET /iac/import-manifest` and the generators in
+// packages/common-utils/src/iac.ts cannot drift apart. Every listing is
+// id + name only — the endpoint deliberately projects nothing heavier.
+const IacManifestEntrySchema = z.object({
+  // Constrained, not a bare string: `id` is the only manifest value that
+  // reaches generated HCL inside a quoted string literal, and the client parse
+  // is what the export treats as its trust boundary. See assertResourceId in
+  // ./iac.ts, which enforces the same shape at the emit sink.
+  id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+  name: z.string().optional(),
+});
+
+export const IacImportManifestSchema = z.object({
+  dashboards: z.array(
+    IacManifestEntrySchema.extend({
+      // Set when a tile would not survive the import round trip, so the
+      // dashboard must not be offered. Computed server-side: the manifest
+      // deliberately does not ship tile configs. See isUnexportableTile.
+      unexportableTiles: z.boolean().optional(),
+    }),
+  ),
+  alerts: z.array(
+    IacManifestEntrySchema.extend({
+      // Only saved-search alerts are modelled by the Terraform provider.
+      source: z.string().optional(),
+      savedSearchId: z.string().optional(),
+    }),
+  ),
+  savedSearches: z.array(IacManifestEntrySchema),
+  sources: z.array(
+    IacManifestEntrySchema.extend({
+      // The provider models only the ClickHouse-backed kinds, so the client
+      // needs `kind` to filter PromQL sources out. See isImportableSource.
+      kind: z.string().optional(),
+    }),
+  ),
+  connections: z.array(
+    IacManifestEntrySchema.extend({
+      // Tri-state, mirroring the Connection model: undefined = unknown
+      // provenance, true = platform-provisioned, false = self-managed.
+      // Only an explicit `false` makes a connection safe to import.
+      platformProvisioned: z.boolean().optional(),
+    }),
+  ),
+  webhooks: z.array(IacManifestEntrySchema),
+  // Manifest keys whose listing hit IAC_MANIFEST_LIMIT, so the export for
+  // those types is partial. Per-type rather than one global boolean: warning
+  // that the file is incomplete because of a type the user did not tick is a
+  // false alarm. Defaulted so a response predating the field still parses —
+  // app and API ship in one image, but a multi-replica rolling deploy can
+  // briefly serve a new bundle against an old API.
+  truncatedTypes: z.array(z.string()).default([]),
+});
+
+export type IacImportManifest = z.infer<typeof IacImportManifestSchema>;

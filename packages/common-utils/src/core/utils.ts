@@ -54,6 +54,14 @@ export function splitAndTrimCSV(input: string): string[] {
     .filter(column => column.length > 0);
 }
 
+function isQuoteEscapedByBackslash(input: string, index: number): boolean {
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && input[i] === '\\'; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
 // Replace splitAndTrimCSV, should remove splitAndTrimCSV later
 export function splitAndTrimWithBracket(input: string): string[] {
   let parenCount: number = 0;
@@ -63,14 +71,16 @@ export function splitAndTrimWithBracket(input: string): string[] {
 
   const res: string[] = [];
   let cur: string = '';
-  for (const c of input + ',') {
-    if (c === '"' && !inSingleQuote) {
+  for (let i = 0; i <= input.length; i++) {
+    const c = i === input.length ? ',' : input[i];
+
+    if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
       inDoubleQuote = !inDoubleQuote;
       cur += c;
       continue;
     }
 
-    if (c === "'" && !inDoubleQuote) {
+    if (c === "'" && !inDoubleQuote && !isQuoteEscapedByBackslash(input, i)) {
       inSingleQuote = !inSingleQuote;
       cur += c;
       continue;
@@ -111,9 +121,18 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
-type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
+export type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
 
-function classifyTimestampType(type: string | undefined): {
+/**
+ * Classify a ClickHouse timestamp type into its kind and sub-second precision.
+ *
+ * `kind: 'date'` means day precision — a value read from such a column lands at
+ * midnight and can't locate an event within its day. Callers that need an
+ * instant use this to skip those columns rather than silently anchor to midnight.
+ *
+ * Returns null for anything that isn't a Date/DateTime/DateTime64.
+ */
+export function classifyTimestampType(type: string | undefined): {
   kind: TimestampTypeKind;
   precision: number;
 } | null {
@@ -124,7 +143,8 @@ function classifyTimestampType(type: string | undefined): {
   if (/^Date(?:32)?$/i.test(inner)) {
     return { kind: 'date', precision: -1 };
   }
-  if (/^DateTime$/i.test(inner)) {
+  // DateTime[('<timezone>')]
+  if (/^DateTime$/i.test(inner) || /^DateTime\('[^']*'\)$/i.test(inner)) {
     return { kind: 'datetime', precision: 0 };
   }
   // DateTime64(<precision>[, '<timezone>'])

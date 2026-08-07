@@ -81,13 +81,13 @@ const formatAlertResponse = (
       'thresholdType',
       'state',
       'source',
-      'tileId',
       'note',
       'createdAt',
       'updatedAt',
       'executionErrors',
       'numConsecutiveWindows',
     ]),
+    tileId: alert.tileId ?? undefined,
   };
 };
 
@@ -247,9 +247,11 @@ router.put(
       const { id } = req.params;
       const alertInput = req.body;
       await validateAlertInput(teamId, alertInput);
-      res.json({
-        data: await updateAlert(id, teamId, alertInput),
-      });
+      const alert = await updateAlert(id, teamId, alertInput);
+      if (alert == null) {
+        return res.sendStatus(404);
+      }
+      return res.json({ data: alert });
     } catch (e) {
       next(e);
     }

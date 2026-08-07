@@ -10,6 +10,7 @@ import {
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
+import { runMongoshScript } from '../utils/db-helpers';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
@@ -1748,6 +1749,122 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await expect(
           dashboardsListPage.getDashboardCard(uniqueName),
         ).toBeHidden();
+      });
+    },
+  );
+
+  // The Terraform export gate on this page has two halves: the feature/local-mode
+  // flag (covered once in ResourceTerraformPopover's unit test, since every call
+  // site routes through that component) and the per-resource eligibility
+  // predicate, which is only wired up here.
+  //
+  // Deliberately one test, not a visible case plus a hidden case. A lone
+  // `toBeHidden()` passes for any reason the button is missing — wrong page
+  // state, slow render, a renamed testid — so it would keep passing with
+  // `isImportableDashboard` deleted. Asserting visible on this same dashboard
+  // FIRST, then provisioning it and asserting hidden, makes the transition
+  // itself the assertion: it can only pass if the predicate does the work.
+  test(
+    'should withhold Terraform import once a dashboard becomes provisioned',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const uniqueName = `E2E Provisioned Dashboard ${Date.now()}`;
+      const terraformButton = page.locator(
+        '[data-testid^="terraform-popover-button-"]',
+      );
+      let dashboardId: string;
+
+      await test.step('Create a saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+        dashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Verify the export affordance is offered', async () => {
+        await expect(terraformButton).toBeVisible();
+      });
+
+      await test.step('Mark it provisioned', async () => {
+        // ProvisionDashboardsTask is the only thing that sets this in normal
+        // operation, so write it directly rather than running that job.
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'print(JSON.stringify(db.dashboards.updateOne(',
+            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
+            '  { $set: { provisioned: true } }',
+            ')));',
+          ].join('\n'),
+        );
+        // A zero-match write would make the assertion below pass for a reason
+        // that has nothing to do with the gate.
+        expect(out).toContain('"matchedCount":1');
+        expect(out).toContain('"modifiedCount":1');
+      });
+
+      await test.step('Verify it is withheld after reload', async () => {
+        await dashboardPage.gotoDashboard(dashboardId);
+        // Wait for THIS dashboard's data to land before asserting absence —
+        // otherwise the assertion races an unrendered page and passes for the
+        // wrong reason.
+        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        // Terraform and ProvisionDashboardsTask would both claim ownership of
+        // this dashboard, so the popover must not appear.
+        await expect(terraformButton).toBeHidden();
+      });
+    },
+  );
+
+  // The other half of the dashboard export gate. Same self-proving shape as the
+  // provisioned case: assert visible on this dashboard first, then make it
+  // ineligible and assert hidden, so the transition itself is the assertion.
+  test(
+    'should withhold Terraform import once a dashboard gains a PromQL tile',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const uniqueName = `E2E PromQL Dashboard ${Date.now()}`;
+      const terraformButton = page.locator(
+        '[data-testid^="terraform-popover-button-"]',
+      );
+      let dashboardId: string;
+
+      await test.step('Create a saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+        dashboardId = dashboardPage.getCurrentDashboardId();
+      });
+
+      await test.step('Verify the export affordance is offered', async () => {
+        await expect(terraformButton).toBeVisible();
+      });
+
+      await test.step('Give it a PromQL tile', async () => {
+        // Written directly rather than built in the chart editor: the editor
+        // flow for a PromQL tile is long and this test is about the gate, not
+        // the editor.
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'print(JSON.stringify(db.dashboards.updateOne(',
+            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
+            "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
+            "      config: { configType: 'promql', promqlExpression: 'up',",
+            "                connection: 'c1', displayType: 'line' } }] } }",
+            ')));',
+          ].join('\n'),
+        );
+        expect(out).toContain('"matchedCount":1');
+        expect(out).toContain('"modifiedCount":1');
+      });
+
+      await test.step('Verify it is withheld after reload', async () => {
+        await dashboardPage.gotoDashboard(dashboardId);
+        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        // Importing this dashboard would delete the PromQL tile on the next
+        // apply, because the provider reads it back through external API v2.
+        await expect(terraformButton).toBeHidden();
       });
     },
   );
