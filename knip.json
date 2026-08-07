@@ -41,12 +41,13 @@
     "docker/hyperdx/**",
     ".claude/**"
   ],
-  "ignoreBinaries": ["make", "migrate"],
+  "ignoreBinaries": ["make", "migrate", "stryker"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",
     "concurrently",
     "dotenv",
-    "babel-plugin-react-compiler"
+    "babel-plugin-react-compiler",
+    "@stryker-mutator/core"
   ],
   "include": ["nsExports"],
   "exclude": ["enumMembers", "duplicates"]
