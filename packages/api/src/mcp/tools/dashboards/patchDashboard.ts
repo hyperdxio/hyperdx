@@ -30,6 +30,7 @@ export function registerPatchDashboard({
     'clickstack_patch_dashboard',
     {
       title: 'Patch Dashboard',
+      annotations: { readOnlyHint: false, destructiveHint: false },
       description:
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +

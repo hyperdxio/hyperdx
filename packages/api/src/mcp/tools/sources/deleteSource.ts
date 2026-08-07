@@ -15,6 +15,7 @@ export function registerDeleteSource({
     'clickstack_delete_source',
     {
       title: 'Delete Source',
+      annotations: { readOnlyHint: false, destructiveHint: true },
       description:
         'Permanently delete a data source by ID. Other sources may reference ' +
         'it (e.g. a trace source linked to a log source) — those links are ' +

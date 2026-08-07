@@ -637,6 +637,7 @@ export function registerDescribeSource({
     'clickstack_describe_source',
     {
       title: 'Describe Source Schema',
+      annotations: { readOnlyHint: true },
       description:
         'CALL THIS BEFORE WRITING QUERIES — prevents unknown-column errors.\n\n' +
         'Returns the full column schema, map-attribute keys, and sampled low-cardinality ' +

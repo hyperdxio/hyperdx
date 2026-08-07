@@ -16,6 +16,7 @@ export function registerDeleteWebhook({
     'clickstack_delete_webhook',
     {
       title: 'Delete Webhook',
+      annotations: { readOnlyHint: false, destructiveHint: true },
       description:
         'Permanently delete a webhook by ID. Blocked while any alert still ' +
         'references it — reassign or delete those alerts first. Use ' +

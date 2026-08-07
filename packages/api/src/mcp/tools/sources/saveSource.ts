@@ -25,6 +25,7 @@ export function registerSaveSource({
     'clickstack_save_source',
     {
       title: 'Create or Update Source',
+      annotations: { readOnlyHint: false, destructiveHint: false },
       description:
         'Create a new data source (omit id) or update an existing one ' +
         '(provide id) so shipped telemetry becomes queryable. Update is a ' +
