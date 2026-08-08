@@ -66,6 +66,9 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
         'Browse individual log/event/trace rows. ' +
         'Use this when you need to see raw events, investigate specific log lines, ' +
         'or drill into individual records matching a filter.\n\n' +
+        'PREFER THIS over clickstack_sql for browsing/filtering rows from a single source. ' +
+        'Only drop to raw SQL when the query needs JOINs, sub-queries, or CTEs this tool ' +
+        'cannot express.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'For aggregated metrics, use clickstack_table instead. ' +
         'For pattern discovery, use clickstack_event_patterns instead.\n\n' +

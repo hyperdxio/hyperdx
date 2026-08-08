@@ -17,6 +17,7 @@ import {
   resolveBatchDir,
 } from './grading/grade';
 import { DEFAULT_JUDGE_SPEC, parseJudgeSpec } from './grading/judgeModel';
+import { preflightMcps } from './harness/preflight';
 import { runCell } from './harness/runRun';
 import { type McpKind, PLUGIN_NONE, type PromptVariant } from './harness/types';
 import {
@@ -465,6 +466,14 @@ program
     'Run programmatic checks only during auto-grading (skip LLM judge)',
   )
   .option(
+    '--no-preflight',
+    'Skip the MCP reachability preflight check. By default the runner probes ' +
+      'each MCP server (initialize + tools/list) before spawning any agents ' +
+      'and aborts if a server is unreachable or serves no tools — this ' +
+      'prevents an entire batch of silent zero-tool-call runs when an API ' +
+      'server is down.',
+  )
+  .option(
     '--email <email>',
     `HyperDX account email for post-run inspection (default: ${DEFAULT_EVAL_EMAIL})`,
     DEFAULT_EVAL_EMAIL,
@@ -495,6 +504,7 @@ program
         report: boolean;
         judgeModel?: string;
         judge: boolean;
+        preflight: boolean;
         email: string;
         password: string;
       },
@@ -659,6 +669,35 @@ program
           );
         } finally {
           await client.close();
+        }
+      }
+
+      // Preflight: probe every MCP server before spawning any agents. A dead
+      // API server (or one serving zero tools) otherwise yields an entire
+      // batch of silent zero-tool-call runs that look like real (bad) scores
+      // but actually reflect an unreachable server — wasting a full suite.
+      if (cmdOpts.preflight) {
+        const probes = await preflightMcps(
+          mcpKinds.map(k => ({ mcp: k, def: getMcpDefinition(config, k) })),
+        );
+        for (const p of probes) {
+          if (p.ok) {
+            const tools =
+              p.toolCount !== undefined ? ` (${p.toolCount} tools)` : '';
+            console.log(`Preflight ${p.mcp}: OK${tools}`);
+          } else {
+            console.error(`Preflight ${p.mcp}: FAILED — ${p.error}`);
+          }
+        }
+        const failed = probes.filter(p => !p.ok);
+        if (failed.length > 0) {
+          throw new Error(
+            `MCP preflight failed for: ${failed
+              .map(p => p.mcp)
+              .join(', ')}. Fix the server(s) above (usually: the dev stack ` +
+              `for that slot is not running) and re-run, or pass ` +
+              `--no-preflight to bypass this check.`,
+          );
         }
       }
 
