@@ -206,7 +206,7 @@ const CurlGenerator = function (
   options?: CurlAdditionalOptions,
 ): string {
   let curlSnippet = 'curl ';
-  curlSnippet += params.url;
+  curlSnippet += escapeStringPosix(params.url);
   curlSnippet += getCurlMethod(params.method);
   curlSnippet += getCurlHeaders(params.headers);
   curlSnippet +=
