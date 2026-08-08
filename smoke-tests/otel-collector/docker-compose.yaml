@@ -209,11 +209,21 @@ services:
         condition: service_healthy
 
   # Regression test for a real bug caught in review of PR #2788 --
-  # OIDC_ISSUER_URL set without
-  # OIDC_AUDIENCE used to load a config that failed the extension's own
-  # validation, crashing on a less obvious error. entrypoint.sh now checks
-  # for this and fails fast with a clear message instead. This container is
-  # expected to exit immediately, not become ready -- see oidc-auth.bats.
+  # OIDC_ISSUER_URL set without OIDC_AUDIENCE used to load a config that
+  # failed the extension's own validation, crashing on a less obvious error.
+  # entrypoint.sh now checks for this and fails fast with a clear message
+  # instead. This container is expected to exit immediately, not become
+  # ready -- see oidc-auth.bats.
+  #
+  # HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true is required here, not
+  # just copied from the other services: without it, entrypoint.sh runs a
+  # ClickHouse schema migration *before* reaching the OIDC_AUDIENCE check
+  # (this service has no depends_on: ch-server, unlike every other collector
+  # here), so the first real failure caught was this test flaking against
+  # ch-server startup timing rather than testing the audience check at all.
+  # CLICKHOUSE_ENDPOINT deliberately points at an unreachable address to
+  # make that independence explicit rather than incidental -- this test
+  # should never need ClickHouse to be reachable, or even exist.
   otel-collector-oidc-missing-audience:
     build:
       context: ../..
@@ -223,10 +233,11 @@ services:
         OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.155.0}
         OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.61.0}
     environment:
-      - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
+      - CLICKHOUSE_ENDPOINT=tcp://127.0.0.1:1/?dial_timeout=1s
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=
       - HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=oidc_auth_missing_audience
+      - HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true
       - HYPERDX_LOG_LEVEL=info
       - OIDC_ISSUER_URL=http://otel-collector-oidc-mock:8080
       # OIDC_AUDIENCE intentionally left unset
