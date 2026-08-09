@@ -1,4 +1,7 @@
-import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
+import {
+  normalizeNoOpAlertScheduleFields,
+  toAlertChannels,
+} from '@/utils/alerts';
 
 describe('normalizeNoOpAlertScheduleFields', () => {
   it('drops no-op schedule fields for pre-migration alerts', () => {
@@ -91,5 +94,28 @@ describe('normalizeNoOpAlertScheduleFields', () => {
     expect(normalized).toEqual({
       scheduleStartAt: null,
     });
+  });
+});
+
+describe('toAlertChannels', () => {
+  const wh = (id: string) => ({ type: 'webhook' as const, webhookId: id });
+
+  it('prefers the channels array', () => {
+    expect(
+      toAlertChannels({ channel: wh('legacy'), channels: [wh('a'), wh('b')] }),
+    ).toEqual([wh('a'), wh('b')]);
+  });
+
+  it('falls back to the legacy singular channel', () => {
+    expect(toAlertChannels({ channel: wh('legacy') })).toEqual([wh('legacy')]);
+    expect(toAlertChannels({ channel: wh('legacy'), channels: [] })).toEqual([
+      wh('legacy'),
+    ]);
+  });
+
+  it('always returns at least one row for the form to render', () => {
+    expect(toAlertChannels()).toEqual([wh('')]);
+    expect(toAlertChannels({})).toEqual([wh('')]);
+    expect(toAlertChannels({ channel: { type: null } })).toEqual([wh('')]);
   });
 });

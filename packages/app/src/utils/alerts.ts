@@ -128,16 +128,36 @@ export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
   webhook: 'Webhook',
 };
 
+const EMPTY_ALERT_CHANNEL = { type: 'webhook', webhookId: '' } as const;
+
+/**
+ * Form value for an alert's notification channels. Alerts saved before
+ * multi-channel support only carry the singular `channel`, and the form always
+ * needs at least one row to render.
+ */
+export function toAlertChannels(alert?: {
+  channel?: { type?: string | null; webhookId?: string } | null;
+  channels?: { type?: string | null; webhookId?: string }[] | null;
+}): { type: 'webhook'; webhookId: string }[] {
+  const source =
+    alert?.channels != null && alert.channels.length > 0
+      ? alert.channels
+      : alert?.channel != null
+        ? [alert.channel]
+        : [];
+  const channels = source
+    .filter(c => c.type === 'webhook')
+    .map(c => ({ type: 'webhook' as const, webhookId: c.webhookId ?? '' }));
+  return channels.length > 0 ? channels : [{ ...EMPTY_ALERT_CHANNEL }];
+}
+
 export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',
   scheduleOffsetMinutes: 0,
   scheduleStartAt: null,
-  channel: {
-    type: 'webhook',
-    webhookId: '',
-  },
+  channels: [{ ...EMPTY_ALERT_CHANNEL }],
   note: null,
 };
 

@@ -34,6 +34,7 @@ import {
   buildVariableCompletions,
   toMacroCompletion,
 } from '@/components/SQLEditor/variableCompletions';
+import { toAlertChannels } from '@/utils/alerts';
 
 import { ChartEditorFormState } from './types';
 
@@ -391,6 +392,16 @@ export function convertSavedChartConfigToFormState(
 ): ChartEditorFormState {
   return {
     ...config,
+    // Normalise the alert's channels up front: tile alerts saved before
+    // multi-channel support only carry the singular `channel`. Clearing it
+    // here keeps a stale value from being submitted alongside an edited list.
+    ...(config.alert != null && {
+      alert: {
+        ...config.alert,
+        channel: undefined,
+        channels: toAlertChannels(config.alert),
+      },
+    }),
     configType: isPromqlSavedChartConfig(config)
       ? 'promql'
       : isRawSqlSavedChartConfig(config)

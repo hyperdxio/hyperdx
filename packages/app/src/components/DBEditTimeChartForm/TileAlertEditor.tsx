@@ -64,7 +64,7 @@ export function TileAlertEditor({
 }) {
   const [opened, { toggle }] = useDisclosure(true);
 
-  const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertChannelType = useWatch({ control, name: 'alert.channels.0.type' });
   const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
   const alertThreshold = useWatch({ control, name: 'alert.threshold' });
   const alertThresholdMax = useWatch({ control, name: 'alert.thresholdMax' });
@@ -214,7 +214,7 @@ export function TileAlertEditor({
             </Text>
             <Controller
               control={control}
-              name="alert.channel.type"
+              name="alert.channels.0.type"
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}

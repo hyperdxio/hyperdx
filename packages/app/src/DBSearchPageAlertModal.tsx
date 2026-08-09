@@ -16,7 +16,7 @@ import {
   SearchConditionLanguage,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
-  zAlertChannel,
+  zAlertChannels,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -53,6 +53,7 @@ import {
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
   normalizeNoOpAlertScheduleFields,
+  toAlertChannels,
 } from '@/utils/alerts';
 
 import { AlertNoteField } from './components/AlertNoteField';
@@ -76,7 +77,7 @@ const SavedSearchAlertFormSchema = z
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
-    channel: zAlertChannel,
+    channels: zAlertChannels,
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
@@ -123,6 +124,7 @@ const AlertForm = ({
     defaultValues: defaultValues
       ? {
           ...defaultValues,
+          channels: toAlertChannels(defaultValues),
           scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
           scheduleStartAt: defaultValues.scheduleStartAt ?? null,
           // Persisted null -> undefined for the NumberInput.
@@ -136,10 +138,7 @@ const AlertForm = ({
           scheduleStartAt: null,
           thresholdType: AlertThresholdType.ABOVE,
           source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: '',
-          },
+          channels: [{ type: 'webhook', webhookId: '' }],
           note: null,
         },
     resolver: zodResolver(SavedSearchAlertFormSchema),
@@ -147,7 +146,7 @@ const AlertForm = ({
 
   const groupBy = useWatch({ control, name: 'groupBy' });
   const thresholdType = useWatch({ control, name: 'thresholdType' });
-  const channelType = useWatch({ control, name: 'channel.type' });
+  const channelType = useWatch({ control, name: 'channels.0.type' });
   const interval = useWatch({ control, name: 'interval' });
   const scheduleOffsetMinutes = useWatch({
     control,
@@ -178,7 +177,10 @@ const AlertForm = ({
             // this form was opened with. This binds the submission to the
             // originally-edited alert rather than whatever the parent's alerts
             // list happens to index at submit time.
-            { ...data, id: defaultValues?.id },
+            // `channel` is cleared (JSON drops undefined): the API derives it
+            // from channels[0], and echoing a stale value back would conflict
+            // with an edited list.
+            { ...data, channel: undefined, id: defaultValues?.id },
             defaultValues,
             {
               preserveExplicitScheduleOffsetMinutes:
@@ -264,7 +266,7 @@ const AlertForm = ({
             </Text>
             <Controller
               control={control}
-              name="channel.type"
+              name="channels.0.type"
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}

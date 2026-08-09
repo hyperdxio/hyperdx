@@ -1,19 +1,33 @@
 import { useMemo } from 'react';
 import {
+  ArrayPath,
   Control,
   Controller,
+  FieldArray,
   FieldValues,
   Path,
-  useController,
+  useFieldArray,
+  useWatch,
 } from 'react-hook-form';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
   type AlertChannelType,
   AlertThresholdType,
+  MAX_ALERT_CHANNELS,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, ComboboxData, Group, Modal, Select } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  ComboboxData,
+  Group,
+  Modal,
+  Select,
+  Stack,
+  Text,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { IconPlus, IconTrash, IconWebhook } from '@tabler/icons-react';
 
 import api from '@/api';
 import { WebhookForm } from '@/components/TeamSettings/WebhookForm';
@@ -23,27 +37,37 @@ type Webhook = {
   name: string;
 };
 
-const WebhookChannelForm = <T extends FieldValues>({
-  control,
-  name,
-}: {
-  control?: Control<T>;
-  name?: string;
-}) => {
-  const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
+const useAlertWebhooks = () =>
+  api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
     WebhookService.IncidentIO,
   ]);
-  const [opened, { open, close }] = useDisclosure(false);
+
+const WebhookChannelForm = <T extends FieldValues>({
+  control,
+  name,
+  onRemove,
+  takenWebhookIds,
+}: {
+  control?: Control<T>;
+  name?: string;
+  onRemove?: () => void;
+  /** Webhooks already chosen by the alert's other channels. */
+  takenWebhookIds?: string[];
+}) => {
+  const { data: webhooks } = useAlertWebhooks();
 
   const hasWebhooks = Array.isArray(webhooks?.data) && webhooks.data.length > 0;
 
   const options = useMemo<ComboboxData>(() => {
+    const taken = new Set(takenWebhookIds ?? []);
     const webhookOptions =
       webhooks?.data.map((sw: Webhook) => ({
         value: sw._id,
         label: sw.name,
+        // The API rejects duplicate channels, so don't offer one twice.
+        disabled: taken.has(sw._id),
       })) || [];
 
     return [
@@ -54,55 +78,142 @@ const WebhookChannelForm = <T extends FieldValues>({
       },
       ...webhookOptions,
     ];
-  }, [webhooks]);
+  }, [webhooks, takenWebhookIds]);
 
-  const { field } = useController({
+  return (
+    <Group gap="md" align="flex-start" wrap="nowrap">
+      <Controller
+        control={control}
+        name={name! as Path<T>}
+        render={({ field, fieldState }) => (
+          <Select
+            data-testid="select-webhook"
+            comboboxProps={{
+              withinPortal: false,
+            }}
+            required
+            size="xs"
+            flex={1}
+            placeholder={
+              hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
+            }
+            data={options}
+            {...field}
+            error={fieldState.error?.message}
+          />
+        )}
+      />
+      {onRemove && (
+        <ActionIcon
+          data-testid="remove-webhook-channel-button"
+          aria-label="Remove notification channel"
+          size="md"
+          variant="danger"
+          onClick={onRemove}
+        >
+          <IconTrash size={14} />
+        </ActionIcon>
+      )}
+    </Group>
+  );
+};
+
+export const AlertChannelForm = <T extends FieldValues>({
+  control,
+  type,
+  namePrefix = '',
+}: {
+  control: Control<T>;
+  type: AlertChannelType;
+  namePrefix?: string;
+}) => {
+  const channelsName = `${namePrefix}channels` as ArrayPath<T>;
+  const { fields, append, remove, update } = useFieldArray<T>({
     control,
-    name: name! as Path<T>,
+    name: channelsName,
   });
+  // `fields` holds the values from the last render, so watch for the live ones
+  // the duplicate check needs.
+  const channels = useWatch({
+    control,
+    name: channelsName as unknown as Path<T>,
+  }) as { webhookId?: string }[] | undefined;
+  const { refetch: refetchWebhooks } = useAlertWebhooks();
+  const [opened, { open, close }] = useDisclosure(false);
 
+  const selectedWebhookIds = useMemo(
+    () => (channels ?? []).map(c => c?.webhookId ?? ''),
+    [channels],
+  );
+
+  const newChannel = () =>
+    ({ type: 'webhook', webhookId: '' }) as FieldArray<T, ArrayPath<T>>;
+
+  // A webhook created from here lands in the first empty row, or a new one if
+  // every row is already filled — so the user never has to re-pick it.
   const handleWebhookCreated = async (webhookId?: string) => {
     await refetchWebhooks();
     if (webhookId) {
-      field.onChange(webhookId);
-      field.onBlur();
+      const emptyIndex = selectedWebhookIds.findIndex(id => !id);
+      const value = { type: 'webhook', webhookId } as FieldArray<
+        T,
+        ArrayPath<T>
+      >;
+      if (emptyIndex >= 0) {
+        update(emptyIndex, value);
+      } else if (fields.length < MAX_ALERT_CHANNELS) {
+        append(value);
+      }
     }
     close();
   };
 
+  if (type !== 'webhook') {
+    return null;
+  }
+
   return (
-    <div>
-      <Group gap="md" justify="space-between" align="flex-start">
-        <Controller
+    <Stack gap="xs">
+      {fields.map((field, index) => (
+        <WebhookChannelForm
+          key={field.id}
           control={control}
-          name={name! as Path<T>}
-          render={({ field, fieldState }) => (
-            <Select
-              data-testid="select-webhook"
-              comboboxProps={{
-                withinPortal: false,
-              }}
-              required
-              size="xs"
-              flex={1}
-              placeholder={
-                hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
-              }
-              data={options}
-              {...field}
-              error={fieldState.error?.message}
-            />
+          name={`${namePrefix}channels.${index}.webhookId`}
+          takenWebhookIds={selectedWebhookIds.filter(
+            (id, i) => i !== index && !!id,
           )}
+          // A single channel is not removable: an alert with no target would
+          // fire into the void, and the API rejects it anyway.
+          onRemove={fields.length > 1 ? () => remove(index) : undefined}
         />
+      ))}
+      <Group gap="xs">
+        <Button
+          data-testid="add-alert-channel-button"
+          size="xs"
+          variant="subtle"
+          color="gray"
+          leftSection={<IconPlus size={14} />}
+          disabled={fields.length >= MAX_ALERT_CHANNELS}
+          onClick={() => append(newChannel())}
+        >
+          Add another channel
+        </Button>
         <Button
           data-testid="add-new-webhook-button"
           size="xs"
           variant="subtle"
           color="gray"
+          leftSection={<IconWebhook size={14} />}
           onClick={open}
         >
           Add New Incoming Webhook
         </Button>
+        {fields.length >= MAX_ALERT_CHANNELS && (
+          <Text size="xs" opacity={0.5}>
+            Limit of {MAX_ALERT_CHANNELS} channels reached
+          </Text>
+        )}
       </Group>
 
       <Modal
@@ -116,29 +227,8 @@ const WebhookChannelForm = <T extends FieldValues>({
       >
         <WebhookForm onClose={close} onSuccess={handleWebhookCreated} />
       </Modal>
-    </div>
+    </Stack>
   );
-};
-
-export const AlertChannelForm = <T extends FieldValues>({
-  control,
-  type,
-  namePrefix = '',
-}: {
-  control: Control<T>;
-  type: AlertChannelType;
-  namePrefix?: string;
-}) => {
-  if (type === 'webhook') {
-    return (
-      <WebhookChannelForm
-        control={control}
-        name={`${namePrefix}channel.webhookId`}
-      />
-    );
-  }
-
-  return null;
 };
 
 export const getAlertReferenceLines = ({
