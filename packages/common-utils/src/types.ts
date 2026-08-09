@@ -700,6 +700,48 @@ export const zAlertChannel = z.object({
   webhookId: z.string().nonempty("Webhook ID can't be empty"),
 });
 
+export const MAX_ALERT_CHANNELS = 10;
+
+export const zAlertChannels = z
+  .array(zAlertChannel)
+  .min(1, 'At least one notification channel is required')
+  .max(
+    MAX_ALERT_CHANNELS,
+    `An alert supports at most ${MAX_ALERT_CHANNELS} notification channels`,
+  );
+
+/**
+ * Cross-field rule shared by every alert input schema (internal API, external
+ * v2 API): exactly one of the legacy singular `channel` or the plural
+ * `channels` must be provided, and `channels` must not contain duplicates.
+ */
+export const validateAlertChannelSelection = (
+  alert: {
+    channel?: unknown;
+    channels?: { type: string; webhookId: string }[];
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const hasChannel = alert.channel != null;
+  const hasChannels = alert.channels != null;
+  if (hasChannel === hasChannels) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['channels'],
+      message: 'Provide exactly one of "channel" or "channels"',
+    });
+    return;
+  }
+  const keys = (alert.channels ?? []).map(c => `${c.type}:${c.webhookId}`);
+  if (new Set(keys).size !== keys.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['channels'],
+      message: 'Duplicate notification channels are not allowed',
+    });
+  }
+};
+
 export const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().optional(),
@@ -806,7 +848,8 @@ export const AlertBaseObjectSchema = z.object({
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   thresholdMax: z.number().optional(),
-  channel: zAlertChannel,
+  channel: zAlertChannel.optional(),
+  channels: zAlertChannels.optional(),
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
@@ -827,7 +870,9 @@ export const AlertBaseSchema = AlertBaseObjectSchema;
 
 const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-).superRefine(validateAlertThresholdMax);
+)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateAlertChannelSelection);
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
@@ -835,7 +880,9 @@ export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
 
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-).superRefine(validateAlertThresholdMax);
+)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateAlertChannelSelection);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
@@ -2250,6 +2297,13 @@ export type AssistantResponseConfigSchema = z.infer<
 // --------------------------
 
 // Alerts
+// Looser than zAlertChannel: a page item echoes whatever was persisted, which
+// includes rows written before multi-channel that have a null type and no webhook.
+const alertsPageItemChannelSchema = z.object({
+  type: z.string().optional().nullable(),
+  webhookId: z.string().optional(),
+});
+
 export const AlertsPageItemSchema = z.object({
   _id: z.string(),
   interval: AlertIntervalSchema,
@@ -2258,10 +2312,8 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({
-    type: z.string().optional().nullable(),
-    webhookId: z.string().optional(),
-  }),
+  channel: alertsPageItemChannelSchema,
+  channels: z.array(alertsPageItemChannelSchema).optional(),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
