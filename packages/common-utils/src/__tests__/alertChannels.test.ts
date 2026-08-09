@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   MAX_ALERT_CHANNELS,
+  SavedChartConfigSchema,
   validateAlertChannelSelection,
   zAlertChannels,
 } from '@/types';
@@ -52,5 +53,52 @@ describe('alert channel schemas', () => {
   it('rejects duplicate channels', () => {
     expect(refine({ channels: [wh('a'), wh('a')] })).toHaveLength(1);
     expect(refine({ channels: [wh('a'), wh('b')] })).toHaveLength(0);
+  });
+});
+
+// Tile alerts are validated through the saved-chart-config schema, not the
+// API's alertSchema, so the "must have a target" rule has to hold here too --
+// an alert saved with no channel fires and notifies nobody.
+describe('tile alerts embedded in a saved chart config', () => {
+  const tile = (alert: Record<string, unknown>) => ({
+    name: 'Tile',
+    displayType: 'line',
+    connection: '65f5e4a3b9e77c001a789012',
+    source: '65f5e4a3b9e77c001a789013',
+    select: [],
+    where: '',
+    whereLanguage: 'lucene',
+    alert,
+  });
+
+  const baseAlert = {
+    threshold: 1,
+    thresholdType: 'above',
+    interval: '5m',
+  };
+
+  it('rejects a tile alert with no channel and no channels', () => {
+    expect(SavedChartConfigSchema.safeParse(tile(baseAlert)).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts a tile alert with channels', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        tile({
+          ...baseAlert,
+          channels: [{ type: 'webhook', webhookId: 'w1' }],
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it('accepts a legacy tile alert with only the singular channel', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        tile({ ...baseAlert, channel: { type: 'webhook', webhookId: 'w1' } }),
+      ).success,
+    ).toBe(true);
   });
 });

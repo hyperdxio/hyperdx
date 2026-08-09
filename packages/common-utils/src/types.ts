@@ -902,6 +902,20 @@ export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
 });
 
+// Tile alerts embedded in a saved chart config are validated through
+// SavedChartConfigSchema, not through the API's alertSchema, so the channel rule
+// has to be attached here as well. Without it, making `channel` optional would
+// let a tile alert be saved through the dashboards endpoint with no target at
+// all — it would fire and notify nobody. Only the channel rule is applied (not
+// the schedule/threshold refinements), so existing saved dashboards that never
+// passed those checks keep parsing.
+const AlertBaseChannelCheckedSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertChannelSelection,
+);
+const ChartAlertBaseChannelCheckedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertChannelSelection,
+);
+
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
 )
@@ -1623,8 +1637,8 @@ const BuilderSavedChartConfigWithoutAlertSchema = z
 const BuilderSavedChartConfigSchema =
   BuilderSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1640,8 +1654,8 @@ const RawSqlSavedChartConfigWithoutAlertSchema =
 const RawSqlSavedChartConfigSchema =
   RawSqlSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1653,8 +1667,8 @@ const PromqlSavedChartConfigWithoutAlertSchema =
 const PromqlSavedChartConfigSchema =
   PromqlSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
