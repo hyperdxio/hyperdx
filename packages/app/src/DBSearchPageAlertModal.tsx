@@ -301,7 +301,11 @@ const AlertForm = ({
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
-          <AlertChannelForm control={control} type={channelType} />
+          <AlertChannelForm
+            control={control}
+            type={channelType}
+            channelsName="channels"
+          />
           <AlertNoteField control={control} name="note" />
           {groupBy &&
             (thresholdType === AlertThresholdType.BELOW ||

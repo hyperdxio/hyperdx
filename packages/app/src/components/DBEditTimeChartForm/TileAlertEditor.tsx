@@ -250,7 +250,7 @@ export function TileAlertEditor({
           <AlertChannelForm
             control={control}
             type={alertChannelType}
-            namePrefix="alert."
+            channelsName="alert.channels"
           />
           <AlertNoteField
             control={control}

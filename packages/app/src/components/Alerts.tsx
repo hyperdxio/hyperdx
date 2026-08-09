@@ -31,10 +31,12 @@ import { IconPlus, IconTrash, IconWebhook } from '@tabler/icons-react';
 
 import api from '@/api';
 import { WebhookForm } from '@/components/TeamSettings/WebhookForm';
+import { getWebhookChannelIcon } from '@/utils/webhookIcons';
 
 type Webhook = {
   _id: string;
   name: string;
+  service?: string;
 };
 
 const useAlertWebhooks = () =>
@@ -80,6 +82,16 @@ const WebhookChannelForm = <T extends FieldValues>({
     ];
   }, [webhooks, takenWebhookIds]);
 
+  // Which destination a webhook posts to matters when picking one, and the
+  // name alone doesn't say. Keyed by id so the option renderer can look it up.
+  const serviceById = useMemo(
+    () =>
+      new Map<string, string | undefined>(
+        (webhooks?.data ?? []).map((sw: Webhook) => [sw._id, sw.service]),
+      ),
+    [webhooks],
+  );
+
   return (
     <Group gap="md" align="flex-start" wrap="nowrap">
       <Controller
@@ -98,6 +110,23 @@ const WebhookChannelForm = <T extends FieldValues>({
               hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
             }
             data={options}
+            leftSection={
+              field.value ? (
+                getWebhookChannelIcon(serviceById.get(field.value))
+              ) : (
+                <IconWebhook size={16} />
+              )
+            }
+            renderOption={({ option }) =>
+              option.value ? (
+                <Group gap="xs" wrap="nowrap">
+                  {getWebhookChannelIcon(serviceById.get(option.value))}
+                  <span>{option.label}</span>
+                </Group>
+              ) : (
+                <span>{option.label}</span>
+              )
+            }
             {...field}
             error={fieldState.error?.message}
           />
@@ -121,23 +150,22 @@ const WebhookChannelForm = <T extends FieldValues>({
 export const AlertChannelForm = <T extends FieldValues>({
   control,
   type,
-  namePrefix = '',
+  channelsName,
 }: {
   control: Control<T>;
   type: AlertChannelType;
-  namePrefix?: string;
+  /** Path of the alert's channels array, e.g. "channels" or "alert.channels". */
+  channelsName: ArrayPath<T> & Path<T>;
 }) => {
-  const channelsName = `${namePrefix}channels` as ArrayPath<T>;
   const { fields, append, remove, update } = useFieldArray<T>({
     control,
     name: channelsName,
   });
   // `fields` holds the values from the last render, so watch for the live ones
   // the duplicate check needs.
-  const channels = useWatch({
-    control,
-    name: channelsName as unknown as Path<T>,
-  }) as { webhookId?: string }[] | undefined;
+  const channels = useWatch({ control, name: channelsName }) as
+    | { webhookId?: string }[]
+    | undefined;
   const { refetch: refetchWebhooks } = useAlertWebhooks();
   const [opened, { open, close }] = useDisclosure(false);
 
@@ -178,7 +206,7 @@ export const AlertChannelForm = <T extends FieldValues>({
         <WebhookChannelForm
           key={field.id}
           control={control}
-          name={`${namePrefix}channels.${index}.webhookId`}
+          name={`${channelsName}.${index}.webhookId`}
           takenWebhookIds={selectedWebhookIds.filter(
             (id, i) => i !== index && !!id,
           )}
