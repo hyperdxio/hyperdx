@@ -232,6 +232,12 @@ describe('External API Alerts', () => {
             type: 'webhook',
             webhookId: expect.any(String),
           },
+          channels: [
+            {
+              type: 'webhook',
+              webhookId: expect.any(String),
+            },
+          ],
           teamId: expect.any(String),
           tileId: expect.any(String),
           dashboardId: expect.any(String),
@@ -1387,6 +1393,142 @@ describe('External API Alerts', () => {
       ).expect(200);
 
       expect(getResponse.body.data.numConsecutiveWindows).toBeNull();
+    });
+  });
+  describe('Multiple notification channels', () => {
+    const makeWebhookNamed = async (name: string) =>
+      await Webhook.findOneAndUpdate(
+        { name, service: WebhookService.Slack, team: team._id },
+        {
+          name,
+          service: WebhookService.Slack,
+          url: 'https://hooks.slack.com/test',
+          team: team._id,
+        },
+        { upsert: true, new: true },
+      );
+
+    const baseSavedSearchAlert = async () => {
+      const savedSearch = await createTestSavedSearch();
+      return {
+        source: 'saved_search',
+        savedSearchId: savedSearch._id.toString(),
+        interval: '5m',
+        threshold: 1,
+        thresholdType: 'above',
+      };
+    };
+
+    it('creates an alert with multiple channels and echoes both shapes', async () => {
+      const [w1, w2] = await Promise.all([
+        makeWebhookNamed('multi-1'),
+        makeWebhookNamed('multi-2'),
+      ]);
+      const base = await baseSavedSearchAlert();
+      const resp = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          ...base,
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+        })
+        .expect(200);
+      expect(resp.body.data.channels).toEqual([
+        { type: 'webhook', webhookId: w1._id.toString() },
+        { type: 'webhook', webhookId: w2._id.toString() },
+      ]);
+      // Legacy field mirrors the first entry for pre-multi-channel clients.
+      expect(resp.body.data.channel).toEqual({
+        type: 'webhook',
+        webhookId: w1._id.toString(),
+      });
+    });
+
+    it('legacy single-channel payloads still work and gain channels in the response', async () => {
+      const webhook = await createTestWebhook();
+      const base = await baseSavedSearchAlert();
+      const resp = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          ...base,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        })
+        .expect(200);
+      expect(resp.body.data.channels).toEqual([
+        { type: 'webhook', webhookId: webhook._id.toString() },
+      ]);
+    });
+
+    it('round-trips a multi-channel alert through PUT unchanged', async () => {
+      const [w1, w2] = await Promise.all([
+        makeWebhookNamed('rt-1'),
+        makeWebhookNamed('rt-2'),
+      ]);
+      const base = await baseSavedSearchAlert();
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          ...base,
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+        })
+        .expect(200);
+
+      // Echo the response body straight back, as a read-modify-write client
+      // would: it carries both `channel` and `channels`.
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send({ ...created.body.data, ...base, threshold: 42 })
+        .expect(200);
+
+      const after = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(after.body.data.channels).toHaveLength(2);
+      expect(after.body.data.threshold).toBe(42);
+    });
+
+    it('rejects invalid channel combinations', async () => {
+      const webhook = await createTestWebhook();
+      const base = await baseSavedSearchAlert();
+      const ch = { type: 'webhook', webhookId: webhook._id.toString() };
+      // channel disagrees with channels[0]
+      const other = await makeWebhookNamed('mismatch-1');
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          ...base,
+          channel: ch,
+          channels: [{ type: 'webhook', webhookId: other._id.toString() }],
+        })
+        .expect(400);
+      // neither
+      await authRequest('post', ALERTS_BASE_URL).send(base).expect(400);
+      // duplicates
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({ ...base, channels: [ch, ch] })
+        .expect(400);
+      // over the cap
+      const many = Array.from({ length: 11 }, (_, i) => ({
+        type: 'webhook',
+        webhookId: new ObjectId().toString(),
+      }));
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({ ...base, channels: many })
+        .expect(400);
+      // cross-team webhook hidden among valid ones
+      const otherTeamWebhook = await createTestWebhook({
+        teamId: new ObjectId(),
+      });
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          ...base,
+          channels: [
+            ch,
+            { type: 'webhook', webhookId: otherTeamWebhook._id.toString() },
+          ],
+        })
+        .expect(400);
     });
   });
 });

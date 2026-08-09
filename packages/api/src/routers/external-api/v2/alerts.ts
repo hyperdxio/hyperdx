@@ -116,6 +116,15 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         - $ref: '#/components/schemas/AlertChannelWebhook'
  *       discriminator:
  *         propertyName: type
+ *     AlertChannels:
+ *       type: array
+ *       description: >
+ *         Notification channels to trigger when the alert fires or resolves.
+ *         Between 1 and 10 channels; duplicates are rejected.
+ *       minItems: 1
+ *       maxItems: 10
+ *       items:
+ *         $ref: '#/components/schemas/AlertChannel'
  *     Alert:
  *       type: object
  *       properties:
@@ -174,7 +183,10 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "above"
  *         channel:
  *           $ref: '#/components/schemas/AlertChannel'
- *           description: Alert notification channel configuration.
+ *           description: First notification channel, mirrored from "channels" for pre-multi-channel clients.
+ *         channels:
+ *           $ref: '#/components/schemas/AlertChannels'
+ *           description: All notification channels to trigger when the alert fires or resolves.
  *         name:
  *           type: string
  *           description: Human-friendly alert name.
@@ -243,21 +255,29 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       allOf:
  *         - $ref: '#/components/schemas/Alert'
  *         - type: object
+ *           description: >
+ *             At least one of "channel" or "channels" must be provided. Sending both is
+ *             allowed only when "channel" matches the first entry of "channels", so a
+ *             response body can be echoed back unchanged. Responses always include both,
+ *             with "channel" mirroring the first entry of "channels".
  *           required:
  *             - threshold
  *             - interval
  *             - thresholdType
- *             - channel
  *
  *     UpdateAlertRequest:
  *       allOf:
  *         - $ref: '#/components/schemas/Alert'
  *         - type: object
+ *           description: >
+ *             At least one of "channel" or "channels" must be provided. Sending both is
+ *             allowed only when "channel" matches the first entry of "channels", so a
+ *             response body can be echoed back unchanged. Responses always include both,
+ *             with "channel" mirroring the first entry of "channels".
  *           required:
  *             - threshold
  *             - interval
  *             - thresholdType
- *             - channel
  *
  *     AlertResponseEnvelope:
  *       type: object
@@ -513,6 +533,20 @@ router.get(
  *                 name: "Error Spike Alert"
  *                 message: "Error rate has exceeded 100 in the last hour"
  *                 numConsecutiveWindows: 3
+ *             multiChannelAlert:
+ *               summary: Create an alert that notifies several webhooks
+ *               value:
+ *                 savedSearchId: "65f5e4a3b9e77c001a345678"
+ *                 threshold: 10
+ *                 interval: "5m"
+ *                 source: "saved_search"
+ *                 thresholdType: "above"
+ *                 channels:
+ *                   - type: "webhook"
+ *                     webhookId: "65f5e4a3b9e77c001a789012"
+ *                   - type: "webhook"
+ *                     webhookId: "65f5e4a3b9e77c001a789013"
+ *                 name: "Error Spike Alert"
  *     responses:
  *       '200':
  *         description: Successfully created alert

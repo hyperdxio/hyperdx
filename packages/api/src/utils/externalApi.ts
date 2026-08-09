@@ -18,6 +18,7 @@ import {
   AlertDocument,
   AlertInterval,
   AlertState,
+  getAlertChannels,
   IAlert,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
@@ -253,6 +254,7 @@ export type ExternalAlert = {
   source?: string;
   state: AlertState;
   channel: AlertChannel;
+  channels: AlertChannel[];
   teamId: string;
   tileId?: string;
   dashboardId?: string;
@@ -337,6 +339,8 @@ export function translateAlertDocumentToExternalAlert(
     ? alert.toJSON()
     : { ...alert };
 
+  const channels = getAlertChannels(alertObj);
+
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
     id: alertObj._id.toString(),
@@ -354,7 +358,8 @@ export function translateAlertDocumentToExternalAlert(
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,
-    channel: alertObj.channel,
+    channel: channels[0] ?? { type: null },
+    channels,
     teamId: alertObj.team.toString(),
     tileId: alertObj.tileId ?? undefined,
     dashboardId: alertObj.dashboard?.toString(),
