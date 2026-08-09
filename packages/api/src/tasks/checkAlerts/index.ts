@@ -66,6 +66,7 @@ import {
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
   WebhookRedirectError,
 } from '@/tasks/checkAlerts/errors';
+import { handleSendGenericWebhook } from '@/tasks/checkAlerts/notifications';
 import {
   AlertDetails,
   AlertProvider,
@@ -76,7 +77,6 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
-  handleSendGenericWebhook,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
 import { tasksTracer } from '@/tasks/tracer';

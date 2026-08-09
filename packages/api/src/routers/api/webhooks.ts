@@ -17,7 +17,7 @@ import Webhook, { WebhookService } from '@/models/webhook';
 import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
-} from '@/tasks/checkAlerts/template';
+} from '@/tasks/checkAlerts/notifications';
 import { isDuplicateKeyError } from '@/utils/errors';
 import {
   validateWebhookUrl,
