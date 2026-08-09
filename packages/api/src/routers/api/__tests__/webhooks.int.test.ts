@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
-import * as template from '@/tasks/checkAlerts/template';
+import * as notifications from '@/tasks/checkAlerts/notifications';
 
 const MOCK_WEBHOOK = {
   name: 'Test Webhook',
@@ -1221,10 +1221,10 @@ describe('webhooks router', () => {
 
     beforeEach(() => {
       genericSpy = jest
-        .spyOn(template, 'handleSendGenericWebhook')
+        .spyOn(notifications, 'handleSendGenericWebhook')
         .mockResolvedValue(undefined);
       slackSpy = jest
-        .spyOn(template, 'handleSendSlackWebhook')
+        .spyOn(notifications, 'handleSendSlackWebhook')
         .mockResolvedValue(undefined);
     });
 
