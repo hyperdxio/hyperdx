@@ -52,7 +52,11 @@ export function registerSaveAlert({
       description:
         'Create a new alert (omit id) or update an existing one (provide id). ' +
         'Alerts monitor a saved search or dashboard tile and fire when the ' +
-        'metric crosses a threshold. A webhook notification channel is required.',
+        'metric crosses a threshold. At least one webhook notification channel ' +
+        'is required: pass "channels" for 1-10 targets, or the legacy singular ' +
+        '"channel" for one. Updates replace the alert configuration rather than ' +
+        'merging it, so read the alert first and resend its full "channels" ' +
+        'array to avoid dropping channels you did not mean to remove.',
       inputSchema: mcpSaveAlertSchema,
     },
     async input => {

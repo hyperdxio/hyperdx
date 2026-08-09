@@ -274,6 +274,10 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *             allowed only when "channel" matches the first entry of "channels", so a
  *             response body can be echoed back unchanged. Responses always include both,
  *             with "channel" mirroring the first entry of "channels".
+ *             Updates replace the alert's configuration rather than merging it: sending
+ *             only the legacy "channel" field for an alert that has several channels
+ *             reduces it to that one channel. Fetch the alert and resend the complete
+ *             "channels" array to preserve them.
  *           required:
  *             - threshold
  *             - interval
