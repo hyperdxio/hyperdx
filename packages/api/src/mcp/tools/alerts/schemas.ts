@@ -2,6 +2,7 @@ import {
   ALERT_INTERVAL_TO_MINUTES,
   type AlertInterval,
   isRangeThresholdType,
+  MAX_ALERT_CHANNELS,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -98,7 +99,15 @@ export const mcpSaveAlertSchema = z.object({
     .describe('Absolute UTC anchor for window alignment (ISO 8601).'),
 
   // Channel
-  channel: mcpAlertChannelSchema,
+  channel: mcpAlertChannelSchema.optional(),
+  channels: z
+    .array(mcpAlertChannelSchema)
+    .min(1)
+    .max(MAX_ALERT_CHANNELS)
+    .optional()
+    .describe(
+      `Notification channels (1-${MAX_ALERT_CHANNELS}). Provide this or "channel"; if both, "channel" must match the first entry.`,
+    ),
 
   // Metadata
   name: z
@@ -122,6 +131,24 @@ export type McpSaveAlertInput = z.infer<typeof mcpSaveAlertSchema>;
 // Returns a human-readable error string, or null when valid.
 // ---------------------------------------------------------------------------
 export function validateSaveAlertInput(data: McpSaveAlertInput): string | null {
+  // Channel selection. Mirrors validateAlertChannelSelection in common-utils:
+  // both fields may be sent when they agree, so a response can be echoed back.
+  const hasChannel = data.channel != null;
+  const hasChannels = data.channels != null;
+  if (!hasChannel && !hasChannels) {
+    return 'Provide either "channel" or "channels"';
+  }
+  if (hasChannel && hasChannels) {
+    const first = data.channels?.[0];
+    if (first == null || first.webhookId !== data.channel?.webhookId) {
+      return 'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"';
+    }
+  }
+  const webhookIds = (data.channels ?? []).map(c => c.webhookId);
+  if (new Set(webhookIds).size !== webhookIds.length) {
+    return 'Duplicate notification channels are not allowed';
+  }
+
   // Source-specific required fields
   if (data.source === 'tile') {
     if (!data.dashboardId) {

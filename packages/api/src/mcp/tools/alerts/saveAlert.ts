@@ -25,14 +25,16 @@ import {
 } from './schemas';
 
 /**
- * Convert the flat MCP channel object into the discriminated-union
- * `AlertChannel` that the controller layer expects.
+ * Convert the flat MCP channel objects into the discriminated-union
+ * `AlertChannel[]` that the controller layer expects. `channel` and `channels`
+ * are already checked to agree by validateSaveAlertInput.
  */
-function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
-  return {
-    type: 'webhook',
-    webhookId: ch.webhookId,
-  };
+function toAlertChannels(input: McpSaveAlertInput): AlertChannel[] {
+  const flat = input.channels ?? (input.channel ? [input.channel] : []);
+  return flat.map(c => ({
+    type: 'webhook' as const,
+    webhookId: c.webhookId,
+  }));
 }
 
 export function registerSaveAlert({
@@ -68,12 +70,12 @@ export function registerSaveAlert({
       }
 
       // Build the alert input matching the shape expected by controllers.
-      const channel = toAlertChannel(input.channel);
       const source =
         input.source === 'tile' ? AlertSource.TILE : AlertSource.SAVED_SEARCH;
       const alertInput: AlertInput = {
         source,
-        channel,
+        // `channel` is omitted; makeAlert mirrors it from channels[0].
+        channels: toAlertChannels(input),
         interval: input.interval,
         threshold: input.threshold,
         thresholdType: input.thresholdType as AlertThresholdType,

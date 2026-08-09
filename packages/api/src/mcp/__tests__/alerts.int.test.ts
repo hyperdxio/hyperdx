@@ -510,6 +510,101 @@ describe('MCP Alert Tools', () => {
       });
     });
 
+    describe('multiple channels', () => {
+      const namedWebhook = (name: string) =>
+        Webhook.create({
+          team: team._id,
+          name,
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+        });
+
+      it('should create an alert with several channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const [w1, w2] = await Promise.all([
+          namedWebhook('mcp-multi-1'),
+          namedWebhook('mcp-multi-2'),
+        ]);
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+          name: 'MCP Multi Channel Alert',
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.channels).toEqual([
+          { type: 'webhook', webhookId: w1._id.toString() },
+          { type: 'webhook', webhookId: w2._id.toString() },
+        ]);
+        expect(output.channel).toEqual({
+          type: 'webhook',
+          webhookId: w1._id.toString(),
+        });
+      });
+
+      it('should reject channel and channels that disagree', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const [w1, w2] = await Promise.all([
+          namedWebhook('mcp-mismatch-1'),
+          namedWebhook('mcp-mismatch-2'),
+        ]);
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: w1._id.toString() },
+          channels: [{ type: 'webhook', webhookId: w2._id.toString() }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('must match the first entry');
+      });
+
+      it('should reject duplicate channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const webhook = await namedWebhook('mcp-dupe');
+        const ch = { type: 'webhook', webhookId: webhook._id.toString() };
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: [ch, ch],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Duplicate');
+      });
+
+      it('should reject a payload with neither channel nor channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+        });
+
+        expect(result.isError).toBe(true);
+      });
+    });
+
     describe('update', () => {
       it('should update an existing alert', async () => {
         const savedSearch = await createTestSavedSearch();
