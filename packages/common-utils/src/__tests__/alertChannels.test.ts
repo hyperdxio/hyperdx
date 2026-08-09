@@ -34,11 +34,19 @@ describe('alert channel schemas', () => {
     ).toBe(false);
   });
 
-  it('requires exactly one of channel / channels', () => {
+  it('requires at least one of channel / channels', () => {
     expect(refine({ channel: wh('a') })).toHaveLength(0);
     expect(refine({ channels: [wh('a')] })).toHaveLength(0);
     expect(refine({})).toHaveLength(1);
+  });
+
+  // Responses carry both fields, so a GET-then-PUT client echoes both back.
+  it('accepts channel + channels when they agree, rejects a mismatch', () => {
+    expect(
+      refine({ channel: wh('a'), channels: [wh('a'), wh('b')] }),
+    ).toHaveLength(0);
     expect(refine({ channel: wh('a'), channels: [wh('b')] })).toHaveLength(1);
+    expect(refine({ channel: wh('a'), channels: [] })).toHaveLength(1);
   });
 
   it('rejects duplicate channels', () => {

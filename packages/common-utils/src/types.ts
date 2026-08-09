@@ -710,27 +710,51 @@ export const zAlertChannels = z
     `An alert supports at most ${MAX_ALERT_CHANNELS} notification channels`,
   );
 
+const alertChannelKey = (channel: { type?: unknown; webhookId?: unknown }) =>
+  `${String(channel.type)}:${String(channel.webhookId)}`;
+
 /**
  * Cross-field rule shared by every alert input schema (internal API, external
- * v2 API): exactly one of the legacy singular `channel` or the plural
+ * v2 API): at least one of the legacy singular `channel` or the plural
  * `channels` must be provided, and `channels` must not contain duplicates.
+ *
+ * Both may be sent together only when they agree — `channel` must equal
+ * `channels[0]`. Responses carry both fields, so read-modify-write clients
+ * echo both back untouched; rejecting that outright would break every
+ * GET-then-PUT caller. A genuine disagreement is still an error rather than a
+ * silent precedence rule, so no client can be surprised about which one won.
  */
 export const validateAlertChannelSelection = (
   alert: {
-    channel?: unknown;
+    channel?: { type?: unknown; webhookId?: unknown } | null;
     channels?: { type: string; webhookId: string }[];
   },
   ctx: z.RefinementCtx,
 ) => {
   const hasChannel = alert.channel != null;
   const hasChannels = alert.channels != null;
-  if (hasChannel === hasChannels) {
+  if (!hasChannel && !hasChannels) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['channels'],
-      message: 'Provide exactly one of "channel" or "channels"',
+      message: 'Provide either "channel" or "channels"',
     });
     return;
+  }
+  if (hasChannel && hasChannels) {
+    const first = alert.channels?.[0];
+    if (
+      first == null ||
+      alertChannelKey(alert.channel!) !== alertChannelKey(first)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['channels'],
+        message:
+          'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"',
+      });
+      return;
+    }
   }
   const keys = (alert.channels ?? []).map(c => `${c.type}:${c.webhookId}`);
   if (new Set(keys).size !== keys.length) {
