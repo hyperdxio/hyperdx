@@ -19,6 +19,7 @@ export class DashboardsListPage {
   private readonly emptyCreateDashboardButton: Locator;
   private readonly emptyImportDashboardButton: Locator;
   private readonly confirmConfirmButton: Locator;
+  private readonly confirmCancelButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -40,6 +41,7 @@ export class DashboardsListPage {
       'empty-import-dashboard-button',
     );
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
+    this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
   }
 
   async goto() {
@@ -91,11 +93,42 @@ export class DashboardsListPage {
     await this.page.waitForURL('**/dashboards/**');
   }
 
-  async deleteDashboardFromCard(name: string) {
+  /**
+   * Open the delete confirmation dialog for a dashboard card without
+   * confirming. Use together with `cancelDeleteDashboard` or
+   * `confirmDeleteDashboard` to test the full modal flow.
+   */
+  async openDeleteDashboardDialogFromCard(name: string) {
     const card = this.getDashboardCard(name);
     await card.locator('[data-variant="secondary"]').click();
     await this.page.getByRole('menuitem', { name: 'Delete' }).click();
+  }
+
+  /**
+   * Cancel the open delete confirmation dialog.
+   */
+  async cancelDeleteDashboard() {
+    await this.confirmCancelButton.click();
+  }
+
+  /**
+   * Confirm the open delete confirmation dialog.
+   */
+  async confirmDeleteDashboard() {
     await this.confirmConfirmButton.click();
+  }
+
+  /**
+   * The shared confirm modal used for dashboard deletion. Exposed so specs
+   * can assert it is visible/hidden.
+   */
+  get deleteConfirmModal(): Locator {
+    return this.page.getByTestId('confirm-modal');
+  }
+
+  async deleteDashboardFromCard(name: string) {
+    await this.openDeleteDashboardDialogFromCard(name);
+    await this.confirmDeleteDashboard();
   }
 
   async deleteDashboardFromRow(name: string) {

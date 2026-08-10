@@ -672,9 +672,54 @@ export class DashboardPage {
     await this.removeDefaultQueryAndFiltersMenuItem.click();
   }
 
-  async deleteDashboard() {
+  /**
+   * Open the "Delete Dashboard" confirm dialog via the dashboard overflow menu
+   * without confirming. The caller can then assert the modal is visible and
+   * choose to cancel (`cancelDeleteDashboardDialog`) or confirm
+   * (`confirmDeleteDashboard`).
+   */
+  async openDeleteDashboardDialog() {
     await this.dashboardMenuButton.click();
     await this.deleteDashboardMenuItem.click();
+  }
+
+  /**
+   * Click the cancel button inside the delete-dashboard confirm modal.
+   */
+  async cancelDeleteDashboardDialog() {
+    await this.confirmCancelButton.click();
+  }
+
+  /**
+   * Click the confirm button inside the delete-dashboard confirm modal.
+   */
+  async confirmDeleteDashboard() {
+    await this.confirmConfirmButton.click();
+  }
+
+  /**
+   * Open the delete-dashboard dialog and immediately confirm it.
+   * Convenience wrapper for tests that only need the happy path.
+   */
+  async deleteDashboard() {
+    await this.openDeleteDashboardDialog();
+    await this.confirmDeleteDashboard();
+  }
+
+  /**
+   * The shared confirm modal. Exposed so specs can assert it is
+   * visible/hidden during the delete-dashboard flow.
+   */
+  get deleteConfirmModal(): Locator {
+    return this.confirmModal;
+  }
+
+  /**
+   * The dashboard page shell container. Used to verify the dashboard is
+   * still present after cancelling a deletion.
+   */
+  get dashboardPageContainer(): Locator {
+    return this.page.getByTestId('dashboard-page');
   }
 
   /**
