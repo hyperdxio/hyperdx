@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
+import { builderToolBulletList, SQL_FALLBACK_CRITERIA } from './builderCatalog';
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import { endTimeSchema, startTimeSchema } from './schemas';
 
@@ -65,13 +66,11 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'Execute raw ClickHouse SQL. LAST-RESORT TOOL — do NOT reach for this first.\n\n' +
         'Default to the builder tools for querying; they are more reliable and produce ' +
         'richer, structured results:\n' +
-        '  • clickstack_table — aggregations, top-N, single-value KPIs, breakdowns\n' +
-        '  • clickstack_timeseries — trends and metrics over time\n' +
-        '  • clickstack_search — browsing individual rows\n' +
-        '  • clickstack_event_patterns / clickstack_event_deltas — pattern & cohort analysis\n\n' +
+        builderToolBulletList() +
+        '\n\n' +
         'ONLY use raw SQL when the query genuinely cannot be expressed by a builder tool — ' +
-        'i.e. it requires JOINs, sub-queries, CTEs, window functions, or tables not registered ' +
-        'as sources. A single-table aggregation, top-N, time-series, or row browse is ALWAYS a ' +
+        `i.e. it requires ${SQL_FALLBACK_CRITERIA}. ` +
+        'A single-table aggregation, top-N, time-series, or row browse is ALWAYS a ' +
         'builder-tool job, never raw SQL. If you are unsure, try the builder tool first and only ' +
         'fall back to SQL if it cannot express what you need.\n\n' +
         'Requires connectionId (not sourceId) — call clickstack_list_sources to find connections. ' +

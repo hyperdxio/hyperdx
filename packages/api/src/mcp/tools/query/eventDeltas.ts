@@ -18,6 +18,7 @@ import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
+import { preferOverSqlNudge } from './builderCatalog';
 import { clickHouseErrorResult, parseTimeRange } from './helpers';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -180,6 +181,8 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         'specific attribute (use clickstack_table groupBy), when you want raw ' +
         'rows (use clickstack_search), or when you need a time-series shape ' +
         '(use clickstack_timeseries).\n\n' +
+        preferOverSqlNudge('clickstack_event_deltas') +
+        '\n\n' +
         'OUTPUT SHAPE: an array of properties, each with rank, key, score, ' +
         'semanticBoost (true for well-known OTel attrs like service.name / ' +
         'http.method / error.type / status), targetCount and baselineCount ' +
