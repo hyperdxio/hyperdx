@@ -795,6 +795,103 @@ describe('CustomSchemaSQLSerializerV2 - range bounds', () => {
   );
 });
 
+describe('CustomSchemaSQLSerializerV2 - numeric and Bool field searches', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'NumericAttributes') {
+      return { name: 'NumericAttributes', type: 'Map(String, Float64)' };
+    } else if (column === 'BoolAttributes') {
+      return { name: 'BoolAttributes', type: 'Map(String, Bool)' };
+    } else if (column === 'IsError') {
+      return { name: 'IsError', type: 'Bool' };
+    } else if (column === 'Duration') {
+      return { name: 'Duration', type: 'UInt64' };
+    } else if (column === 'MatIsError') {
+      return { name: 'MatIsError', type: 'Bool' };
+    } else if (column === 'MatDuration') {
+      return { name: 'MatDuration', type: 'UInt64' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest.fn().mockImplementation(
+    async () =>
+      new Map([
+        ["LogAttributes['is_error']", 'MatIsError'],
+        ["LogAttributes['duration']", 'MatDuration'],
+      ]),
+  );
+  metadata.getColumns = jest.fn().mockImplementation(async () => []);
+  metadata.getSkipIndices = jest.fn().mockImplementation(async () => []);
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  const mapCases = [
+    {
+      lucene: 'NumericAttributes.count:250',
+      sql: "((`NumericAttributes`['count'] = CAST('250', 'Float64') AND indexHint(mapContains(`NumericAttributes`, 'count'))))",
+    },
+    {
+      lucene: 'NumericAttributes.count:"250"',
+      sql: "((`NumericAttributes`['count'] = CAST('250', 'Float64') AND indexHint(mapContains(`NumericAttributes`, 'count'))))",
+    },
+    {
+      lucene: '-NumericAttributes.count:250',
+      sql: "((`NumericAttributes`['count'] != CAST('250', 'Float64')))",
+    },
+    {
+      lucene: 'BoolAttributes.cached:true',
+      sql: "((`BoolAttributes`['cached'] = 1 AND indexHint(mapContains(`BoolAttributes`, 'cached'))))",
+    },
+    {
+      lucene: 'BoolAttributes.cached:"false"',
+      sql: "((`BoolAttributes`['cached'] = 0 AND indexHint(mapContains(`BoolAttributes`, 'cached'))))",
+    },
+    {
+      lucene: '-BoolAttributes.cached:true',
+      sql: "((`BoolAttributes`['cached'] != 1))",
+    },
+    {
+      lucene: 'IsError:true',
+      sql: '((`IsError` = 1))',
+    },
+    {
+      lucene: 'Duration:250',
+      sql: "((`Duration` = CAST('250', 'Float64')))",
+    },
+    {
+      lucene: 'MatIsError:true',
+      sql: "((`MatIsError` = 1 AND indexHint(mapContains(`LogAttributes`, 'is_error'))))",
+    },
+    {
+      lucene: 'MatIsError:"true"',
+      sql: "((`MatIsError` = 1 AND indexHint(mapContains(`LogAttributes`, 'is_error'))))",
+    },
+    {
+      lucene: 'MatDuration:250',
+      sql: "((`MatDuration` = CAST('250', 'Float64') AND indexHint(mapContains(`LogAttributes`, 'duration'))))",
+    },
+  ];
+
+  it.each(mapCases)(
+    'converts "$lucene" to SQL "$sql"',
+    async ({ lucene, sql }) => {
+      const builder = new SearchQueryBuilder(lucene, serializer);
+      expect(await builder.build()).toBe(sql);
+    },
+  );
+});
+
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
   const metadata = getMetadata(
     new ClickhouseClient({ host: 'http://localhost:8123' }),
