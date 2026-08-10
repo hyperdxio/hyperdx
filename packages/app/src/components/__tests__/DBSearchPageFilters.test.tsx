@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import {
   cleanedFacetName,
+  DBSearchPageFilters,
   FilterGroup,
   type FilterGroupProps,
 } from '@/components/DBSearchPageFilters';
@@ -14,6 +15,40 @@ import {
   parseMapFieldName,
 } from '@/components/DBSearchPageFilters/utils';
 import { useGetValuesDistribution } from '@/hooks/useMetadata';
+
+const mockUseFetchFacets = jest.fn();
+
+jest.mock('@/components/DBSearchPageFilters/hooks', () => ({
+  useFetchFacets: () => mockUseFetchFacets(),
+}));
+
+jest.mock('@/pinnedFilters', () => ({
+  usePinnedFiltersApi: () => ({ data: { team: null } }),
+}));
+
+jest.mock('@/searchFilters', () => ({
+  IS_ROOT_SPAN_COLUMN_NAME: 'isRootSpan',
+  usePinnedFilters: () => ({
+    toggleFilterPin: jest.fn(),
+    toggleFieldPin: jest.fn(),
+    isFilterPinned: jest.fn().mockReturnValue(false),
+    isFieldPinned: (field: string) => field === 'ServiceName',
+    getPinnedFields: () => ['ServiceName'],
+    pinnedFilters: {},
+    toggleSharedFieldPin: jest.fn(),
+    isSharedFieldPinned: jest.fn().mockReturnValue(false),
+    toggleSharedFilterPin: jest.fn(),
+    isSharedFilterPinned: jest.fn().mockReturnValue(false),
+    resetPersonalPins: jest.fn(),
+    resetSharedFilters: jest.fn(),
+    hasPersonalPins: true,
+    hasSharedPins: false,
+  }),
+}));
+
+jest.mock('@/source', () => ({
+  useSource: () => ({ data: undefined }),
+}));
 
 describe('cleanClickHouseExpression', () => {
   it('should remove toString wrapper', () => {
@@ -53,7 +88,71 @@ jest.mock('@/hooks/useMetadata', () => ({
   useGetValuesDistribution: jest
     .fn()
     .mockReturnValue({ data: undefined, isFetching: false, error: undefined }),
+  useColumns: jest.fn().mockReturnValue({ data: [] }),
+  useJsonColumns: jest.fn().mockReturnValue({ data: [] }),
+  useTableMetadata: jest.fn().mockReturnValue({ data: undefined }),
 }));
+
+describe('DBSearchPageFilters', () => {
+  it('renders a pinned scalar field before an unpinned map group', () => {
+    mockUseFetchFacets.mockReturnValue({
+      data: {
+        keys: [],
+        keyValues: [
+          {
+            key: "ResourceAttributes['service.name']",
+            value: ['frontend'],
+          },
+          { key: 'ServiceName', value: ['api'] },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+      error: undefined,
+      loadMoreFacetsForKey: jest.fn(),
+      loadMoreLoadingKeys: new Set(),
+      extraFacetKeys: new Set(),
+    });
+
+    renderWithMantine(
+      <DBSearchPageFilters
+        filters={{}}
+        clearFilter={jest.fn()}
+        setFilterValue={jest.fn()}
+        setFilterRange={jest.fn()}
+        isLive={false}
+        chartConfig={{
+          from: {
+            databaseName: 'test_db',
+            tableName: 'test_table',
+          },
+          select: '',
+          where: '',
+          whereLanguage: 'sql',
+          timestampValueExpression: '',
+          connection: 'test_connection',
+          dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        }}
+        analysisMode="results"
+        setAnalysisMode={jest.fn()}
+        sourceId="test-source"
+        showDelta={false}
+        denoiseResults={false}
+        setDenoiseResults={jest.fn()}
+      />,
+    );
+
+    const pinnedField = screen.getByTestId('filter-group-ServiceName');
+    const mapGroup = screen.getByTestId(
+      'nested-filter-group-ResourceAttributes',
+    );
+
+    expect(
+      pinnedField.compareDocumentPosition(mapGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+});
 
 describe('cleanedFacetName', () => {
   describe('basic functionality', () => {
