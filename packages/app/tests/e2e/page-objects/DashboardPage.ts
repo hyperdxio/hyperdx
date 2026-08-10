@@ -143,7 +143,9 @@ export class DashboardPage {
     this.aliasInput = page.getByTestId('series-alias-input');
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.markdownTextarea = page.locator('textarea[name="markdown"]');
-    this.confirmModal = page.getByTestId('confirm-modal');
+    this.confirmModal = page
+      .getByRole('dialog')
+      .filter({ has: page.getByTestId('confirm-confirm-button') });
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');

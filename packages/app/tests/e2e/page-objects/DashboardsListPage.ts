@@ -123,7 +123,9 @@ export class DashboardsListPage {
    * can assert it is visible/hidden.
    */
   get deleteConfirmModal(): Locator {
-    return this.page.getByTestId('confirm-modal');
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.confirmConfirmButton });
   }
 
   async deleteDashboardFromCard(name: string) {

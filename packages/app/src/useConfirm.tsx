@@ -7,7 +7,6 @@ type ConfirmOptions = {
 };
 
 type ConfirmState = {
-  opened: boolean;
   message: React.ReactNode;
   confirmLabel?: string;
   confirmVariant?: 'primary' | 'danger';
@@ -36,9 +35,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const dismiss = () => {
-      if (stateRef.current?.opened) {
-        stateRef.current.onClose();
-      }
+      stateRef.current?.onClose();
     };
     router.events.on('routeChangeStart', dismiss);
     return () => router.events.off('routeChangeStart', dismiss);
@@ -47,20 +44,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const confirm = React.useCallback<ConfirmFn>(
     (message, confirmLabel, options) => {
       return new Promise<boolean>(resolve => {
-        const close = (result: boolean) => {
-          resolve(result);
-          setState(current =>
-            current == null ? current : { ...current, opened: false },
-          );
-        };
-
         setState({
-          opened: true,
           message,
           confirmLabel,
           confirmVariant: options?.variant ?? 'primary',
-          onConfirm: () => close(true),
-          onClose: () => close(false),
+          onConfirm: () => {
+            resolve(true);
+            setState(null);
+          },
+          onClose: () => {
+            resolve(false);
+            setState(null);
+          },
         });
       });
     },
@@ -71,37 +66,33 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       <Modal
-        opened={state?.opened ?? false}
+        data-testid="confirm-modal"
+        opened={!!state}
         onClose={state?.onClose ?? (() => {})}
-        onExitTransitionEnd={() => {
-          setState(current => (current?.opened === false ? null : current));
-        }}
         centered
         withCloseButton={false}
       >
-        <div data-testid="confirm-modal">
-          <Text size="sm" opacity={0.7}>
-            {state?.message}
-          </Text>
-          <Group justify="flex-end" mt="md" gap="xs">
-            <Button
-              data-testid="confirm-cancel-button"
-              size="xs"
-              variant="secondary"
-              onClick={state?.onClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              data-testid="confirm-confirm-button"
-              size="xs"
-              variant={state?.confirmVariant ?? 'primary'}
-              onClick={state?.onConfirm}
-            >
-              {state?.confirmLabel || 'Confirm'}
-            </Button>
-          </Group>
-        </div>
+        <Text size="sm" opacity={0.7}>
+          {state?.message}
+        </Text>
+        <Group justify="flex-end" mt="md" gap="xs">
+          <Button
+            data-testid="confirm-cancel-button"
+            size="xs"
+            variant="secondary"
+            onClick={state?.onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            data-testid="confirm-confirm-button"
+            size="xs"
+            variant={state?.confirmVariant ?? 'primary'}
+            onClick={state?.onConfirm}
+          >
+            {state?.confirmLabel || 'Confirm'}
+          </Button>
+        </Group>
       </Modal>
     </ConfirmContext.Provider>
   );
