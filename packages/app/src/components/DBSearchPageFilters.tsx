@@ -470,7 +470,6 @@ const FilterGroupBody = ({
 
   useEffect(() => {
     if (!isLive) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDateRange(chartConfig.dateRange);
     }
   }, [chartConfig.dateRange, isLive]);
@@ -685,7 +684,7 @@ const FilterGroupBody = ({
           isPercentageLoading={isFetchingDistribution}
           percentage={
             showDistributions && distributionData
-              ? distributionData.get(option.value.toString()) ?? 0
+              ? (distributionData.get(option.value.toString()) ?? 0)
               : undefined
           }
         />
