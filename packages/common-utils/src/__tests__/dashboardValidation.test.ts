@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-import { validateDashboardFilterVariableNames } from '@/dashboardValidation';
+import {
+  validateDashboardFilterModes,
+  validateDashboardFilterVariableNames,
+} from '@/dashboardValidation';
 
 type TestFilter = {
   name: string;
@@ -176,5 +179,101 @@ describe('validateDashboardFilterVariableNames', () => {
     );
 
     expect(issues[0].path).toEqual(['body', 'filters', 1, 'variableName']);
+  });
+});
+
+type ModeFilter = {
+  name: string;
+  isBroadcastEnabled?: boolean;
+  isVariableEnabled?: boolean;
+};
+
+const collectModeIssues = (
+  filters: ModeFilter[],
+  paths?: { filtersPath?: (string | number)[] },
+) => {
+  const schema = z
+    .object({})
+    .superRefine((_, ctx) => validateDashboardFilterModes(filters, ctx, paths));
+  const result = schema.safeParse({});
+  return result.success ? [] : result.error.issues;
+};
+
+describe('validateDashboardFilterModes', () => {
+  it('accepts an empty filter list', () => {
+    expect(collectModeIssues([])).toEqual([]);
+  });
+
+  // The shape every filter had before the two flags existed. Rejecting these
+  // would break every dashboard already stored.
+  it('accepts a filter that carries neither flag', () => {
+    expect(collectModeIssues([{ name: 'Service' }])).toEqual([]);
+  });
+
+  it('accepts a filter with either mode on', () => {
+    expect(
+      collectModeIssues([
+        { name: 'Broadcast only', isBroadcastEnabled: true },
+        {
+          name: 'Variable only',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        },
+        {
+          name: 'Both',
+          isBroadcastEnabled: true,
+          isVariableEnabled: true,
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('rejects a filter with both modes off', () => {
+    const issues = collectModeIssues([
+      {
+        name: 'Service',
+        isBroadcastEnabled: false,
+        isVariableEnabled: false,
+      },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'isBroadcastEnabled']);
+    expect(issues[0].message).toBe(
+      'Filter "Service" must broadcast its value, be available as a variable, or both',
+    );
+  });
+
+  it('treats an omitted variable flag as off', () => {
+    expect(
+      collectModeIssues([{ name: 'Service', isBroadcastEnabled: false }]),
+    ).toHaveLength(1);
+  });
+
+  it('reports every offending filter, by index', () => {
+    const issues = collectModeIssues([
+      { name: 'Fine', isBroadcastEnabled: true },
+      { name: 'Broken A', isBroadcastEnabled: false },
+      { name: 'Broken B', isBroadcastEnabled: false, isVariableEnabled: false },
+    ]);
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['filters', 1, 'isBroadcastEnabled'],
+      ['filters', 2, 'isBroadcastEnabled'],
+    ]);
+  });
+
+  it('honors a custom filters path', () => {
+    const issues = collectModeIssues(
+      [{ name: 'Service', isBroadcastEnabled: false }],
+      { filtersPath: ['body', 'filters'] },
+    );
+
+    expect(issues[0].path).toEqual([
+      'body',
+      'filters',
+      0,
+      'isBroadcastEnabled',
+    ]);
   });
 });

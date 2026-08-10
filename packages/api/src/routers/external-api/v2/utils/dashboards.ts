@@ -4,6 +4,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
+  validateDashboardFilterModes,
   validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
@@ -1414,10 +1415,10 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // would be rejected against an empty `data.containers ?? []`).
       validateDashboardContainersStructure(data.containers ?? [], ctx);
 
-      // Mirrors the dashboard filter form's uniqueness check. Only filters with
-      // variables enabled participate, so a caller that never turned the feature
-      // on cannot be rejected by it.
+      // Mirrors the dashboard filter form's validations. Backwards compatible
+      // with pre-`isBroadcastEnabled` payloads.
       validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+      validateDashboardFilterModes(data.filters ?? [], ctx);
     });
 }
 

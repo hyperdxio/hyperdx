@@ -4,6 +4,7 @@ import {
   filterStateToPredicate,
   filtersToQuery,
   getFilterVariableName,
+  hasFilterEffect,
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
   isRenderablePinnedFilter,
@@ -923,6 +924,40 @@ describe('filters', () => {
     it('respects an explicit flag', () => {
       expect(isFilterVariableEnabled({ isVariableEnabled: true })).toBe(true);
       expect(isFilterVariableEnabled({ isVariableEnabled: false })).toBe(false);
+    });
+  });
+
+  describe('hasFilterEffect', () => {
+    it('holds for a filter that predates both flags', () => {
+      expect(hasFilterEffect({})).toBe(true);
+    });
+
+    it('holds when either mode is on', () => {
+      expect(
+        hasFilterEffect({ isBroadcastEnabled: true, isVariableEnabled: false }),
+      ).toBe(true);
+      expect(
+        hasFilterEffect({ isBroadcastEnabled: false, isVariableEnabled: true }),
+      ).toBe(true);
+      expect(
+        hasFilterEffect({ isBroadcastEnabled: true, isVariableEnabled: true }),
+      ).toBe(true);
+    });
+
+    it('fails only when broadcasting is explicitly off and no variable is set', () => {
+      expect(hasFilterEffect({ isBroadcastEnabled: false })).toBe(false);
+      expect(
+        hasFilterEffect({
+          isBroadcastEnabled: false,
+          isVariableEnabled: false,
+        }),
+      ).toBe(false);
+      expect(
+        hasFilterEffect({
+          isBroadcastEnabled: false,
+          isVariableEnabled: undefined,
+        }),
+      ).toBe(false);
     });
   });
 

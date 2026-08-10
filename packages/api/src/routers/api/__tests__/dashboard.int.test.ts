@@ -775,10 +775,12 @@ describe('dashboard router', () => {
               makeVariableFilter({
                 variableName: 'service',
                 isVariableEnabled: false,
+                isBroadcastEnabled: true,
               }),
               makeVariableFilter({
                 variableName: 'service',
                 isVariableEnabled: undefined,
+                isBroadcastEnabled: true,
               }),
             ],
           })
@@ -847,10 +849,132 @@ describe('dashboard router', () => {
                 name: '环境',
                 variableName: undefined,
                 isVariableEnabled: false,
+                isBroadcastEnabled: true,
               }),
             ],
           })
           .expect(200);
+      });
+    });
+
+    describe('at least one mode enabled', () => {
+      it('rejects a filter with both modes off on create', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                isBroadcastEnabled: false,
+                isVariableEnabled: false,
+              }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('treats an omitted variable flag as off', () =>
+        agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                isBroadcastEnabled: false,
+                isVariableEnabled: undefined,
+                variableName: undefined,
+              }),
+            ],
+          })
+          .expect(400));
+
+      it('rejects the state when PATCH introduces it', async () => {
+        const filter = makeVariableFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [{ ...filter, isVariableEnabled: false }],
+          })
+          .expect(400);
+
+        // The stored filter is untouched by the rejected PATCH.
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      it('accepts broadcast-only and variable-only filters', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                variableName: 'broadcast_only',
+                isBroadcastEnabled: true,
+                isVariableEnabled: false,
+              }),
+              makeVariableFilter({
+                variableName: 'variable_only',
+                isBroadcastEnabled: false,
+                isVariableEnabled: true,
+              }),
+            ],
+          })
+          .expect(200);
+      });
+
+      // Backwards compatibility: a missing `isBroadcastEnabled` reads as
+      // enabled, so no dashboard written before the field existed can be
+      // rejected — nor can one round-tripped by a client that drops it.
+      it('accepts a filter that carries neither flag', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                isBroadcastEnabled: undefined,
+                isVariableEnabled: undefined,
+                variableName: undefined,
+              }),
+            ],
+          })
+          .expect(200);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters?.[0]).not.toHaveProperty('isBroadcastEnabled');
+      });
+
+      it('reports the offending filter by index', async () => {
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ variableName: 'ok' }),
+              makeVariableFilter({
+                name: 'Broken',
+                variableName: 'broken',
+                isBroadcastEnabled: false,
+                isVariableEnabled: false,
+              }),
+            ],
+          })
+          .expect(400);
+
+        // Only the second filter is flagged, and the path points at it.
+        expect(response.body[0].errors.issues).toEqual([
+          expect.objectContaining({
+            message:
+              'Filter "Broken" must broadcast its value, be available as a variable, or both',
+            path: ['filters', 1, 'isBroadcastEnabled'],
+          }),
+        ]);
       });
     });
   });

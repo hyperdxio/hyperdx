@@ -4130,6 +4130,95 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
+    describe('filter requires at least one mode', () => {
+      const modeFilter = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        sourceId: traceSource._id.toString(),
+        ...overrides,
+      });
+
+      const putFilters = async (filters: unknown[]) => {
+        const dashboard = await createTestDashboard({});
+        const payload = createMockDashboardWithIds(
+          traceSource._id.toString(),
+          {},
+        );
+        return authRequest('put', `${BASE_URL}/${dashboard._id}`).send({
+          ...payload,
+          filters,
+        });
+      };
+
+      it('rejects a filter with both modes off', async () => {
+        const response = await putFilters([
+          modeFilter({ isBroadcastEnabled: false, isVariableEnabled: false }),
+        ]);
+
+        expect(response.status).toBe(400);
+        // Quote-free slice of the message: the body nests a serialized error,
+        // so the quotes around the filter name come back re-escaped.
+        expect(JSON.stringify(response.body)).toContain(
+          'must broadcast its value, be available as a variable, or both',
+        );
+      });
+
+      it('treats an omitted variable flag as off', async () => {
+        const response = await putFilters([
+          modeFilter({ isBroadcastEnabled: false }),
+        ]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it('rejects it on create too', async () => {
+        const payload = createMockDashboardWithIds(
+          traceSource._id.toString(),
+          {},
+        );
+        await authRequest('post', BASE_URL)
+          .send({
+            ...payload,
+            filters: [
+              omit(
+                modeFilter({
+                  isBroadcastEnabled: false,
+                  isVariableEnabled: false,
+                }),
+                'id',
+              ),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('accepts broadcast-only and variable-only filters', async () => {
+        const response = await putFilters([
+          modeFilter({ isBroadcastEnabled: true, isVariableEnabled: false }),
+          modeFilter({
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'service',
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+      });
+
+      // Backwards compatibility: a missing `isBroadcastEnabled` reads as
+      // enabled, so a caller that never sends the field cannot be rejected.
+      it('accepts a filter that carries neither flag', async () => {
+        const response = await putFilters([modeFilter()]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).not.toHaveProperty(
+          'isBroadcastEnabled',
+        );
+      });
+    });
+
     it('should clear existing dashboard filters when provided an empty filters array', async () => {
       const existingFilterId1 = new ObjectId().toString();
       const existingFilterId2 = new ObjectId().toString();

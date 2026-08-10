@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { getFilterVariableName, isFilterVariableEnabled } from './filters';
+import {
+  getFilterVariableName,
+  hasFilterEffect,
+  isFilterVariableEnabled,
+} from './filters';
 import { DashboardContainerSchema } from './types';
 
 // Inputs shared by the internal `DashboardSchema` refinement and the
@@ -14,6 +18,11 @@ type TileForValidation = { containerId?: string; tabId?: string };
 type FilterForVariableValidation = {
   name: string;
   variableName?: string;
+  isVariableEnabled?: boolean;
+};
+type FilterForModeValidation = {
+  name: string;
+  isBroadcastEnabled?: boolean;
   isVariableEnabled?: boolean;
 };
 
@@ -192,5 +201,26 @@ export function validateDashboardFilterVariableNames(
       return;
     }
     seen.add(variableName);
+  });
+}
+
+/**
+ * A filter has to do something with the value it collects: broadcast it as a
+ * condition on matching tiles, expose it to tiles as `$variableName`, or both.
+ */
+export function validateDashboardFilterModes<T extends FilterForModeValidation>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (hasFilterEffect(filter)) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Filter "${filter.name}" must broadcast its value, be available as a variable, or both`,
+      path: [...filtersPath, filterIdx, 'isBroadcastEnabled'],
+    });
   });
 }

@@ -914,6 +914,21 @@ export class DashboardPage {
     await this.fillFilterForm(name, sourceName, expression, metricType);
   }
 
+  /**
+   * Toggle "Broadcast filter condition" on an already-saved filter and save.
+   * Assumes the filters list modal is open.
+   */
+  async setFilterBroadcastEnabled(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.broadcastFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /** The warning icon shown when a filter neither broadcasts nor is a variable. */
+  getFilterNoEffectIcon(name: string) {
+    return this.page.getByTestId(`dashboard-filter-no-effect-${name}`);
+  }
+
   getFilterItemByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-item-${name}`);
   }

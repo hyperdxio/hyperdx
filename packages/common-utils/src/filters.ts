@@ -759,6 +759,17 @@ export function isFilterVariableEnabled(filter: {
 }
 
 /**
+ * Whether a filter does anything at all with the value it collects — broadcast
+ * it as a condition, expose it as `$variableName`, or both.
+ */
+export function hasFilterEffect(filter: {
+  isBroadcastEnabled?: boolean;
+  isVariableEnabled?: boolean;
+}): boolean {
+  return isFilterBroadcastEnabled(filter) || isFilterVariableEnabled(filter);
+}
+
+/**
  * The token a filter is referenced by, falling back to the value derived
  * from its display name.
  */

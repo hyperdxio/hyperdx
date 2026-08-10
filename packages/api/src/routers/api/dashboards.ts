@@ -1,4 +1,7 @@
-import { validateDashboardFilterVariableNames } from '@hyperdx/common-utils/dist/dashboardValidation';
+import {
+  validateDashboardFilterModes,
+  validateDashboardFilterVariableNames,
+} from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
   DashboardSchema,
   DashboardWithoutIdSchema,
@@ -32,21 +35,22 @@ import { objectIdSchema } from '@/utils/zod';
 const router = express.Router();
 
 /**
- * Filter variable-name uniqueness, applied at the request body rather than on
- * `DashboardSchema` itself: that schema is deliberately a plain `ZodObject` so
- * call sites can keep chaining `.omit()` / `.partial()`, and `types.ts` cannot
- * import `dashboardValidation` (which imports `types`) without a cycle.
+ * Additional filter validation (uniqueness, at least one mode enabled).
  */
-const addFilterVariableNameIssues = (
+const addFilterIssues = (
   data: {
     filters?: {
       name: string;
       variableName?: string;
+      isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
     }[];
   },
   ctx: z.RefinementCtx,
-) => validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+) => {
+  validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+  validateDashboardFilterModes(data.filters ?? [], ctx);
+};
 
 /**
  * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
@@ -90,7 +94,7 @@ router.post(
   '/',
   migrateLegacyDashboardTileColors,
   validateRequest({
-    body: DashboardWithoutIdSchema.superRefine(addFilterVariableNameIssues),
+    body: DashboardWithoutIdSchema.superRefine(addFilterIssues),
   }),
   async (req, res, next) => {
     try {
@@ -120,7 +124,7 @@ router.patch(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: DashboardSchema.partial().superRefine(addFilterVariableNameIssues),
+    body: DashboardSchema.partial().superRefine(addFilterIssues),
   }),
   async (req, res, next) => {
     try {

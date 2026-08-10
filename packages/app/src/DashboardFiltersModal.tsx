@@ -4,6 +4,7 @@ import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   deriveVariableName,
   getFilterVariableName,
+  hasFilterEffect,
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
   validateVariableName,
@@ -128,10 +129,17 @@ const DashboardFilterEditForm = ({
   onClose,
   onCancel,
 }: DashboardFilterEditFormProps) => {
-  const { handleSubmit, register, formState, control, reset, setValue } =
-    useForm<DashboardFilter>({
-      defaultValues: toFormValues(filter),
-    });
+  const {
+    handleSubmit,
+    register,
+    formState,
+    control,
+    reset,
+    setValue,
+    trigger,
+  } = useForm<DashboardFilter>({
+    defaultValues: toFormValues(filter),
+  });
 
   // Gates the auto-fill of Variable Name from Name below. Seeded true for a filter
   // that already has a stored name, because renaming an existing filter must not
@@ -172,6 +180,37 @@ const DashboardFilterEditForm = ({
     if (!showVariableOptions || !formIsVariableEnabled) return true;
     return validateVariableName({ value, otherFilters }) ?? true;
   };
+
+  /**
+   * Registered on the variable checkbox — the lower of the pair — so the
+   * message lands under both controls rather than between them.
+   *
+   * Skipped when the controls are hidden: the form cannot express the invalid
+   * state there (broadcast defaults on, and neither box is reachable), so all
+   * an error could do is block a save the user has no way to fix.
+   */
+  const validateFilterModes = () => {
+    if (!showVariableOptions) return true;
+    return (
+      hasFilterEffect({
+        isBroadcastEnabled: formIsBroadCastEnabled,
+        isVariableEnabled: formIsVariableEnabled,
+      }) ||
+      'A filter must broadcast its value, be available as a variable, or both'
+    );
+  };
+
+  // The rule spans two checkboxes but its error lives on one, so react-hook-form
+  // won't re-run it when the *other* box changes. Re-trigger on both.
+  useEffect(() => {
+    if (!showVariableOptions) return;
+    void trigger('isVariableEnabled');
+  }, [
+    formIsBroadCastEnabled,
+    formIsVariableEnabled,
+    showVariableOptions,
+    trigger,
+  ]);
 
   const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({
@@ -236,7 +275,10 @@ const DashboardFilterEditForm = ({
           })}
         >
           <Stack>
-            <CustomInputWrapper label="Name" error={formState.errors.name}>
+            <CustomInputWrapper
+              label="Display name"
+              error={formState.errors.name}
+            >
               <TextInput
                 placeholder="Name"
                 data-testid="filter-name-input"
@@ -381,6 +423,7 @@ const DashboardFilterEditForm = ({
                   label="Available as variable"
                   description="Expose the selected value a $variable."
                   data-testid="filter-variable-enabled-checkbox"
+                  rules={{ validate: validateFilterModes }}
                 />
                 {formIsVariableEnabled && (
                   <Box ml={showVariableOptions ? 'xl' : undefined}>
