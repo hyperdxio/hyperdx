@@ -7,6 +7,8 @@ type ConfirmOptions = {
 };
 
 type ConfirmState = {
+  requestId: symbol;
+  opened: boolean;
   message: React.ReactNode;
   confirmLabel?: string;
   confirmVariant?: 'primary' | 'danger';
@@ -35,7 +37,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const dismiss = () => {
-      stateRef.current?.onClose();
+      if (stateRef.current?.opened) {
+        stateRef.current.onClose();
+      }
     };
     router.events.on('routeChangeStart', dismiss);
     return () => router.events.off('routeChangeStart', dismiss);
@@ -44,18 +48,24 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const confirm = React.useCallback<ConfirmFn>(
     (message, confirmLabel, options) => {
       return new Promise<boolean>(resolve => {
+        const requestId = Symbol();
+        const close = (result: boolean) => {
+          resolve(result);
+          setState(current =>
+            current?.requestId === requestId
+              ? { ...current, opened: false }
+              : current,
+          );
+        };
+
         setState({
+          requestId,
+          opened: true,
           message,
           confirmLabel,
           confirmVariant: options?.variant ?? 'primary',
-          onConfirm: () => {
-            resolve(true);
-            setState(null);
-          },
-          onClose: () => {
-            resolve(false);
-            setState(null);
-          },
+          onConfirm: () => close(true),
+          onClose: () => close(false),
         });
       });
     },
@@ -66,8 +76,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       <Modal
-        opened={!!state}
+        opened={state?.opened ?? false}
         onClose={state?.onClose ?? (() => {})}
+        onExitTransitionEnd={() => {
+          const exitedRequestId = state?.requestId;
+          setState(current =>
+            current != null &&
+            current.requestId === exitedRequestId &&
+            !current.opened
+              ? null
+              : current,
+          );
+        }}
         centered
         withCloseButton={false}
       >
