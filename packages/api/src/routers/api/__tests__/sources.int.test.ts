@@ -7,8 +7,12 @@ import express from 'express';
 import { Types } from 'mongoose';
 import request from 'supertest';
 
-import { getLoggedInAgent, getServer } from '@/fixtures';
+import {
+  getLoggedInAgent as getFixtureLoggedInAgent,
+  getServer,
+} from '@/fixtures';
 import { appErrorHandler } from '@/middleware/error';
+import Connection from '@/models/connection';
 import { Source } from '@/models/source';
 import sourcesRouter from '@/routers/api/sources';
 
@@ -41,6 +45,27 @@ const MOCK_METRIC_SOURCE: Omit<Extract<TSource, { kind: 'metric' }>, 'id'> = {
     summary: 'otel_metrics_summary',
     'exponential histogram': 'otel_metrics_exponential_histogram',
   },
+};
+
+const createTestConnection = (team: Types.ObjectId, id: string) =>
+  Connection.create({
+    _id: id,
+    team,
+    name: 'Test Connection',
+    host: 'http://localhost:8123',
+    username: 'default',
+    password: 'password',
+  });
+
+const getLoggedInAgent = async (server: ReturnType<typeof getServer>) => {
+  const result = await getFixtureLoggedInAgent(server);
+
+  await Promise.all([
+    createTestConnection(result.team._id, MOCK_SOURCE.connection),
+    createTestConnection(result.team._id, MOCK_METRIC_SOURCE.connection),
+  ]);
+
+  return result;
 };
 
 describe('sources router', () => {
@@ -101,6 +126,87 @@ describe('sources router', () => {
     // Verify source was created in database
     const sources = await Source.find({});
     expect(sources).toHaveLength(1);
+  });
+
+  describe('connection validation', () => {
+    it('POST / - returns 400 for a malformed connection id', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, connection: 'not-an-object-id' })
+        .expect(400);
+    });
+
+    it('POST / - returns 400 for a nonexistent connection id', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          connection: new Types.ObjectId().toString(),
+        })
+        .expect(400);
+    });
+
+    it('POST / - returns 400 for another team connection', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const otherConnection = await createTestConnection(
+        new Types.ObjectId(),
+        new Types.ObjectId().toString(),
+      );
+
+      await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          connection: otherConnection._id.toString(),
+        })
+        .expect(400);
+    });
+
+    it('PUT /:id - rejects an inaccessible connection without changing the source', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+      const otherConnection = await createTestConnection(
+        new Types.ObjectId(),
+        new Types.ObjectId().toString(),
+      );
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          connection: otherConnection._id.toString(),
+        })
+        .expect(400);
+
+      const unchanged = await Source.findById(source._id);
+      expect(unchanged?.name).toBe(MOCK_SOURCE.name);
+      expect(unchanged?.connection.toString()).toBe(MOCK_SOURCE.connection);
+    });
+
+    it('PUT /:id - returns 400 for a nonexistent connection id', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          connection: new Types.ObjectId().toString(),
+        })
+        .expect(400);
+    });
   });
 
   it('POST / - returns 400 when request body is invalid', async () => {
@@ -284,7 +390,7 @@ describe('sources router', () => {
     const metricSource = await Source.create({
       kind: SourceKind.Metric,
       name: 'Test Metric Source',
-      connection: new Types.ObjectId().toString(),
+      connection: MOCK_METRIC_SOURCE.connection,
       from: {
         databaseName: 'test_db',
         tableName: 'otel_metrics',
@@ -346,7 +452,7 @@ describe('sources router', () => {
     const metricSource = await Source.create({
       kind: SourceKind.Metric,
       name: 'Test Metric Source',
-      connection: new Types.ObjectId().toString(),
+      connection: MOCK_METRIC_SOURCE.connection,
       from: {
         databaseName: 'test_db',
         tableName: 'otel_metrics',
@@ -693,7 +799,7 @@ describe('sources router', () => {
     it('successfully updates a legacy Session source when timestampValueExpression is provided', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
-      const connectionId = new Types.ObjectId();
+      const connectionId = new Types.ObjectId(MOCK_SOURCE.connection);
       const result = await Source.collection.insertOne({
         kind: SourceKind.Session,
         name: 'Legacy Session',
@@ -841,6 +947,10 @@ describe('sources router', () => {
 
     it('POST / - creates a source when team id is a string', async () => {
       const app = getLocalAppModeApp();
+      await createTestConnection(
+        new Types.ObjectId('_local_team_'),
+        MOCK_SOURCE.connection,
+      );
 
       const response = await request(app)
         .post('/sources')
@@ -858,6 +968,10 @@ describe('sources router', () => {
 
     it('PUT /:id - updates a source when team id is a string', async () => {
       const app = getLocalAppModeApp();
+      await createTestConnection(
+        new Types.ObjectId('_local_team_'),
+        MOCK_SOURCE.connection,
+      );
 
       const source = await Source.create({
         ...MOCK_SOURCE,
@@ -991,7 +1105,7 @@ describe('sources router', () => {
       const traceSource: Omit<Extract<TSource, { kind: 'trace' }>, 'id'> = {
         kind: SourceKind.Trace,
         name: 'Trace with text index pref',
-        connection: new Types.ObjectId().toString(),
+        connection: MOCK_SOURCE.connection,
         from: { databaseName: 'test_db', tableName: 'otel_traces' },
         timestampValueExpression: 'Timestamp',
         defaultTableSelectExpression: '*',

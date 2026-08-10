@@ -2,6 +2,7 @@ import { SourceSchemaNoId } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
+import { validateConnectionId } from '@/controllers/connection';
 import { createSource, getSource, updateSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
@@ -9,7 +10,6 @@ import {
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
-import { validateConnectionId } from '@/routers/external-api/v2/sources';
 import { isDuplicateKeyError } from '@/utils/errors';
 
 import { buildSourceInput, mcpSaveSourceSchema } from './schemas';
