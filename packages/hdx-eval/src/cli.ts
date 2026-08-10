@@ -626,6 +626,38 @@ program
         anchorMs = anchor.anchorMs;
       }
 
+      // Preflight: probe every MCP server before doing any expensive or
+      // destructive setup (seed detection / reseeding) and before spawning
+      // any agents. A dead API server (or one serving zero tools) otherwise
+      // yields an entire batch of silent zero-tool-call runs that look like
+      // real (bad) scores but actually reflect an unreachable server —
+      // wasting a full suite. Running it first also avoids truncating and
+      // repopulating scenario tables (via --reseed/--live) only to abort.
+      if (cmdOpts.preflight) {
+        const probes = await preflightMcps(
+          mcpKinds.map(k => ({ mcp: k, def: getMcpDefinition(config, k) })),
+        );
+        for (const p of probes) {
+          if (p.ok) {
+            const tools =
+              p.toolCount !== undefined ? ` (${p.toolCount} tools)` : '';
+            console.log(`Preflight ${p.mcp}: OK${tools}`);
+          } else {
+            console.error(`Preflight ${p.mcp}: FAILED — ${p.error}`);
+          }
+        }
+        const failed = probes.filter(p => !p.ok);
+        if (failed.length > 0) {
+          throw new Error(
+            `MCP preflight failed for: ${failed
+              .map(p => p.mcp)
+              .join(', ')}. Fix the server(s) above (usually: the dev stack ` +
+              `for that slot is not running) and re-run, or pass ` +
+              `--no-preflight to bypass this check.`,
+          );
+        }
+      }
+
       // ── Re-seed ───────────────────────────────────────────────────
       // Default: skip reseed IF data already exists. Auto-seeds on first
       // run when scenario tables are empty or missing.
@@ -669,35 +701,6 @@ program
           );
         } finally {
           await client.close();
-        }
-      }
-
-      // Preflight: probe every MCP server before spawning any agents. A dead
-      // API server (or one serving zero tools) otherwise yields an entire
-      // batch of silent zero-tool-call runs that look like real (bad) scores
-      // but actually reflect an unreachable server — wasting a full suite.
-      if (cmdOpts.preflight) {
-        const probes = await preflightMcps(
-          mcpKinds.map(k => ({ mcp: k, def: getMcpDefinition(config, k) })),
-        );
-        for (const p of probes) {
-          if (p.ok) {
-            const tools =
-              p.toolCount !== undefined ? ` (${p.toolCount} tools)` : '';
-            console.log(`Preflight ${p.mcp}: OK${tools}`);
-          } else {
-            console.error(`Preflight ${p.mcp}: FAILED — ${p.error}`);
-          }
-        }
-        const failed = probes.filter(p => !p.ok);
-        if (failed.length > 0) {
-          throw new Error(
-            `MCP preflight failed for: ${failed
-              .map(p => p.mcp)
-              .join(', ')}. Fix the server(s) above (usually: the dev stack ` +
-              `for that slot is not running) and re-run, or pass ` +
-              `--no-preflight to bypass this check.`,
-          );
         }
       }
 
