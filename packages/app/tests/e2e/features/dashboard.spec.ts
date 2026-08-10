@@ -1736,8 +1736,21 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await dashboardPage.editDashboardName(uniqueName);
       });
 
-      await test.step('Delete the dashboard via the dashboard menu', async () => {
-        await dashboardPage.deleteDashboard();
+      await test.step('Open the delete dashboard dialog via the dashboard menu', async () => {
+        await dashboardPage.openDeleteDashboardDialog();
+        await expect(dashboardPage.deleteConfirmModal).toBeVisible();
+      });
+
+      await test.step('Cancel the deletion and verify the dashboard is still open', async () => {
+        await dashboardPage.cancelDeleteDashboardDialog();
+        await expect(dashboardPage.deleteConfirmModal).toBeHidden();
+        await expect(dashboardPage.dashboardPageContainer).toBeVisible();
+      });
+
+      await test.step('Reopen the delete dialog and confirm deletion', async () => {
+        await dashboardPage.openDeleteDashboardDialog();
+        await expect(dashboardPage.deleteConfirmModal).toBeVisible();
+        await dashboardPage.confirmDeleteDashboard();
       });
 
       await test.step('Verify navigation to the dashboards listing page', async () => {
