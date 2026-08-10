@@ -22,7 +22,7 @@ function ConfirmTrigger({
     <button
       onClick={() =>
         onResult(
-          confirm('Delete this dashboard?', 'Delete dashboard', {
+          confirm('Delete this dashboard?', 'Delete Dashboard', {
             variant: 'danger',
           }),
         )
@@ -57,14 +57,14 @@ describe('ConfirmProvider', () => {
       );
 
       const confirmButton = await screen.findByTestId('confirm-confirm-button');
-      expect(confirmButton).toHaveTextContent('Delete dashboard');
+      expect(confirmButton).toHaveTextContent('Delete Dashboard');
       expect(confirmButton).toHaveAttribute('data-variant', 'danger');
 
       fireEvent.click(screen.getByTestId(actionTestId));
 
       await expect(result).resolves.toBe(expectedResult);
       expect(screen.getByTestId('confirm-confirm-button')).toHaveTextContent(
-        'Delete dashboard',
+        'Delete Dashboard',
       );
       expect(screen.getByTestId('confirm-confirm-button')).toHaveAttribute(
         'data-variant',

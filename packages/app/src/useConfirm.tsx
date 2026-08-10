@@ -7,7 +7,6 @@ type ConfirmOptions = {
 };
 
 type ConfirmState = {
-  requestId: symbol;
   opened: boolean;
   message: React.ReactNode;
   confirmLabel?: string;
@@ -48,18 +47,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const confirm = React.useCallback<ConfirmFn>(
     (message, confirmLabel, options) => {
       return new Promise<boolean>(resolve => {
-        const requestId = Symbol();
         const close = (result: boolean) => {
           resolve(result);
           setState(current =>
-            current?.requestId === requestId
-              ? { ...current, opened: false }
-              : current,
+            current == null ? current : { ...current, opened: false },
           );
         };
 
         setState({
-          requestId,
           opened: true,
           message,
           confirmLabel,
@@ -79,14 +74,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         opened={state?.opened ?? false}
         onClose={state?.onClose ?? (() => {})}
         onExitTransitionEnd={() => {
-          const exitedRequestId = state?.requestId;
-          setState(current =>
-            current != null &&
-            current.requestId === exitedRequestId &&
-            !current.opened
-              ? null
-              : current,
-          );
+          setState(current => (current?.opened === false ? null : current));
         }}
         centered
         withCloseButton={false}

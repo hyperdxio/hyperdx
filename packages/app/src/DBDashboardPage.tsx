@@ -2583,7 +2583,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     const confirmed = await confirm(
       'Are you sure you want to delete this dashboard? This action cannot be undone.',
-      'Delete dashboard',
+      'Delete Dashboard',
       { variant: 'danger' },
     );
     if (!confirmed) return;
@@ -2881,7 +2881,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             color="red"
             onClick={handleDeleteDashboard}
           >
-            Delete dashboard
+            Delete Dashboard
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>

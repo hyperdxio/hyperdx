@@ -148,7 +148,7 @@ export class DashboardPage {
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
     this.deleteDashboardMenuItem = page.getByRole('menuitem', {
-      name: 'Delete dashboard',
+      name: 'Delete Dashboard',
     });
     this.saveDefaultQueryAndFiltersMenuItem = page.getByTestId(
       'save-default-query-filters-menu-item',
