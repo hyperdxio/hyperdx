@@ -56,6 +56,7 @@ import ChartErrorState, {
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
+import ResultOverflowBanner from './charts/ResultOverflowBanner';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 /** A single group column / value pair decoded from a chart series key. */
@@ -323,6 +324,13 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * Caps the number of rows the underlying query returns (see
+   * useQueriedChartConfig). Used by dashboard tiles to guard against runaway
+   * high-cardinality queries. When set and the cap is exceeded, an overflow
+   * banner is rendered below the chart header.
+   */
+  maxResultRows?: number;
 };
 
 function DBTimeChartComponent({
@@ -348,6 +356,7 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  maxResultRows,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -486,7 +495,19 @@ function DBTimeChartComponent({
       enableQueryChunking: !disableQueryChunking,
       enableParallelQueries:
         enableParallelQueries && me?.team?.parallelizeWhenPossible,
+      maxResultRows,
     });
+
+  // Whether the query exceeded the row cap. Gated on completion so the banner
+  // doesn't flap mid-stream while chunks accumulate toward the cap, AND on
+  // freshness (!isPlaceholderData) so a stale "Result truncated" banner from a
+  // prior query doesn't linger while the user's narrowed query is in flight —
+  // otherwise narrowing to escape the cap reads as "my fix didn't work" until
+  // the new result settles.
+  const didOverflow =
+    !isPlaceholderData && data?.isComplete
+      ? (data?.didOverflow ?? false)
+      : false;
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
     const previousPeriodDateRange =
@@ -911,6 +932,11 @@ function DBTimeChartComponent({
           key="db-time-chart-hidden-series-indicator"
           hiddenSeriesCount={hiddenSeriesCount}
           renderedSeriesCount={renderedSeriesCount}
+          rowCount={data?.rows}
+          // When the row cap truncated the result, the series counts describe
+          // only the capped subset — tell the indicator not to claim "all
+          // series were loaded", which would contradict the overflow banner.
+          resultWasCapped={didOverflow}
           // Offered only while still capped AND when load-all would actually
           // raise the cap (loadAllHandler is undefined otherwise), so the
           // notice never advertises a no-op click.
@@ -939,11 +965,26 @@ function DBTimeChartComponent({
     queriedConfig,
     hiddenSeriesCount,
     renderedSeriesCount,
+    data?.rows,
+    didOverflow,
     loadAllHandler,
   ]);
 
   return (
-    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+    <ChartContainer
+      title={title}
+      toolbarItems={toolbarItemsMemo}
+      belowHeader={
+        maxResultRows != null ? (
+          <ResultOverflowBanner
+            didOverflow={didOverflow}
+            cap={maxResultRows}
+            rows={data?.rows}
+            series={hiddenSeriesCount + renderedSeriesCount}
+          />
+        ) : undefined
+      }
+    >
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...

@@ -12,6 +12,7 @@ import {
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
+import ResultOverflowBanner from './charts/ResultOverflowBanner';
 
 const PieChartTooltip = memo(
   ({
@@ -98,10 +99,27 @@ export const DBPieChart = (props: CategoricalChartProps) => {
     error,
     chartData,
     responseFormatError,
+    didOverflow,
+    maxResultRows,
+    rows,
+    series,
   } = useCategoricalChart(props);
 
   return (
-    <ChartContainer title={title} toolbarItems={toolbarItems}>
+    <ChartContainer
+      title={title}
+      toolbarItems={toolbarItems}
+      belowHeader={
+        maxResultRows != null ? (
+          <ResultOverflowBanner
+            didOverflow={didOverflow}
+            cap={maxResultRows}
+            rows={rows}
+            series={series}
+          />
+        ) : undefined
+      }
+    >
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...

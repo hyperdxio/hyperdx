@@ -37,6 +37,7 @@ import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
+import { didResultOverflow, resolveResultRowLimitSetting } from '@/defaults';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
@@ -54,6 +55,15 @@ interface AdditionalUseQueriedChartConfigOptions {
    */
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * When set to a positive number, caps the number of rows the query is allowed
+   * to return via the ClickHouse `max_result_rows` + `result_overflow_mode =
+   * 'break'` settings, and reports whether the cap was hit via
+   * `data.didOverflow`. Used by dashboard tiles as a last-line guard against a
+   * high-cardinality query streaming an unbounded number of rows into the
+   * browser. Omit (or pass 0/undefined) to leave the query uncapped.
+   */
+  maxResultRows?: number;
 }
 
 type TimeWindow = {
@@ -63,6 +73,11 @@ type TimeWindow = {
 
 type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
   isComplete: boolean;
+  /**
+   * True when the query exceeded the `maxResultRows` cap and the returned rows
+   * are a truncated slice of a larger result. Undefined when no cap was applied.
+   */
+  didOverflow?: boolean;
 };
 
 type TChunk = {
@@ -142,6 +157,7 @@ async function* fetchDataInChunks({
   enableParallelQueries = false,
   metadata,
   querySettings,
+  maxResultRows,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
@@ -150,6 +166,7 @@ async function* fetchDataInChunks({
   enableParallelQueries?: boolean;
   metadata: Metadata;
   querySettings: QuerySettings | undefined;
+  maxResultRows?: number;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -189,9 +206,35 @@ async function* fetchDataInChunks({
   }
 
   // Readonly = 2 means the query is readonly but can still specify query settings.
-  const clickHouseSettings = isRawSqlChartConfig(config)
+  const clickHouseSettings: Record<string, string> = isRawSqlChartConfig(config)
     ? { readonly: '2' }
     : {};
+
+  // Cap the number of rows any single (possibly chunked) query returns. We ask
+  // ClickHouse for one row of headroom above the logical cap
+  // (`max_result_rows = cap + 1`, via resolveResultRowLimitSetting) with
+  // `result_overflow_mode = 'break'`, so a complete result of exactly `cap`
+  // rows comes back whole (no false overflow warning) while a larger result
+  // trips the break and returns cap + 1 rows. The caller detects the overflow
+  // via the returned `rows` count (see didResultOverflow) and warns the user.
+  //
+  // `max_result_rows` alone is a WEAK guard: `result_overflow_mode = 'break'`
+  // only stops between result blocks, so a result that fits in one block (up to
+  // ~65k rows) is returned whole and nothing is actually capped. We therefore
+  // ALSO cap the aggregation cardinality with `max_rows_to_group_by` +
+  // `group_by_overflow_mode = 'any'`, which bounds the number of unique GROUP BY
+  // keys the query materializes ("any" keeps the first N keys and folds the
+  // rest away instead of erroring). This is the setting that actually protects
+  // memory for a high-cardinality group-by. Both are block-aligned, so the real
+  // result can overshoot the cap by up to one block — detection stays tolerant
+  // (rows > cap). Only positive finite caps are applied.
+  const resultRowLimit = resolveResultRowLimitSetting(maxResultRows);
+  if (resultRowLimit != null) {
+    clickHouseSettings.max_result_rows = String(resultRowLimit);
+    clickHouseSettings.result_overflow_mode = 'break';
+    clickHouseSettings.max_rows_to_group_by = String(resultRowLimit);
+    clickHouseSettings.group_by_overflow_mode = 'any';
+  }
 
   if (enableParallelQueries) {
     // fetch in parallel
@@ -242,6 +285,7 @@ async function* fetchDataInChunks({
       metadata,
       opts: {
         abort_signal: signal,
+        clickhouse_settings: clickHouseSettings,
       },
       querySettings,
     });
@@ -317,6 +361,7 @@ export function useQueriedChartConfig(
       config,
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
+      options?.maxResultRows ?? 0,
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
@@ -430,7 +475,15 @@ export function useQueriedChartConfig(
         enableParallelQueries: options?.enableParallelQueries,
         metadata,
         querySettings: source?.querySettings,
+        maxResultRows: options?.maxResultRows,
       });
+
+      // A chunked range applies the cap per chunk, so the accumulated total can
+      // legitimately exceed the cap without any single chunk overflowing. Track
+      // whether ANY individual chunk hit the cap (the definitive per-query
+      // signal) and OR it with the whole-result check below.
+      const cap = options?.maxResultRows;
+      let anyChunkOverflowed = false;
 
       let accumulatedChunks: TQueryFnData = emptyValue;
       for await (const chunk of chunks) {
@@ -438,7 +491,13 @@ export function useQueriedChartConfig(
           break;
         }
 
+        if (didResultOverflow({ rows: chunk.chunk.rows, cap })) {
+          anyChunkOverflowed = true;
+        }
+
         accumulatedChunks = appendChunk(accumulatedChunks, chunk);
+        accumulatedChunks.didOverflow =
+          cap == null ? undefined : anyChunkOverflowed;
 
         // When refetching, the cache is not updated until all chunks are fetched.
         if (!isRefetch) {
