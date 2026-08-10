@@ -144,7 +144,7 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
-import { DEFAULT_MAX_TILE_RESULT_ROWS } from '@/defaults';
+import { resolveTileMaxResultRows } from '@/defaults';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
 import useDashboardContainers, {
   TabDeleteAction,
@@ -1101,16 +1101,10 @@ const Tile = forwardRef(
             }
           : undefined;
 
-        // The row cap only applies to raw SQL tiles. Builder (line/bar/pie)
-        // tiles already bound cardinality via the per-tile series limit, and
-        // builder tables page rows through useOffsetPaginatedQuery. Raw SQL
-        // tiles rendered as a time/categorical chart have no such guard, so a
-        // pathological query can stream an unbounded result into the browser —
-        // this caps it and lets the tile surface an overflow banner.
-        const tileMaxResultRows =
-          effectiveQueriedConfig && isRawSqlChartConfig(effectiveQueriedConfig)
-            ? DEFAULT_MAX_TILE_RESULT_ROWS
-            : undefined;
+        // Only raw SQL tiles get a row cap (see resolveTileMaxResultRows).
+        const tileMaxResultRows = resolveTileMaxResultRows(
+          effectiveQueriedConfig,
+        );
 
         // Markdown charts may not have queriedConfig, if config.source is not set
         const effectiveMarkdownConfig = effectiveQueriedConfig ?? chart.config;

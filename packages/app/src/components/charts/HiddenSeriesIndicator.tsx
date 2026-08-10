@@ -4,17 +4,11 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 interface HiddenSeriesIndicatorProps {
   hiddenSeriesCount: number;
   renderedSeriesCount: number;
-  /**
-   * Total rows returned by the query — shown alongside the series counts so the
-   * user can see both dimensions (rows vs series). Omit if unknown.
-   */
+  /** Total rows returned, shown alongside the series counts. Omit if unknown. */
   rowCount?: number;
   /**
-   * True when the underlying query hit the server-side row cap (see
-   * ResultOverflowBanner). When set, this notice must NOT claim "all series were
-   * loaded" — the result is a capped subset, so the series counts describe only
-   * what came back, not the full cardinality. Prevents the two banners from
-   * making contradictory completeness claims on the same tile.
+   * True when the query hit the row cap (see ResultOverflowBanner). Then the
+   * copy drops the "all series were loaded" claim, since the result is a subset.
    */
   resultWasCapped?: boolean;
   /** Render every series, bypassing the cap. Omit to keep the notice passive. */
@@ -22,15 +16,9 @@ interface HiddenSeriesIndicatorProps {
 }
 
 /**
- * Client-side SERIES cap notice. The loaded result draws only the top-N series
- * (by peak value) to keep the page responsive — this surfaces how many were
- * hidden and, when `onLoadAll` is provided, lets the user draw all of them
- * anyway. Normally the RECOVERABLE case: all fetched data is present, it's just
- * not all drawn. Contrast ResultOverflowBanner, which reports that the query may
- * not have fetched everything (row cap). When `resultWasCapped` is true both
- * conditions hold at once, so the copy drops the "all series were loaded" claim
- * to avoid contradicting the overflow banner. Copy deliberately uses "drawn"
- * here vs the row-cap banner's "missing data" so the two stay distinct.
+ * Notice that the chart drew only the top-N series (by peak value) to stay
+ * readable; `onLoadAll` lets the user draw all of them. Contrast
+ * ResultOverflowBanner (row cap — data the query may not have fetched).
  */
 export default function HiddenSeriesIndicator({
   hiddenSeriesCount,
@@ -44,14 +32,11 @@ export default function HiddenSeriesIndicator({
   }
 
   const total = renderedSeriesCount + hiddenSeriesCount;
-  // Row count is secondary detail (series is the primary unit for this notice).
   const rowsDetail =
     typeof rowCount === 'number'
       ? ` (from ${rowCount.toLocaleString()} rows)`
       : '';
-  // When the result was capped, the loaded data is already a subset — don't
-  // claim "all series were loaded" (that's the overflow banner's job to
-  // qualify). Otherwise state completeness so the recoverable case is clear.
+  // When capped, don't claim "all series were loaded" (the result is a subset).
   const completenessClause = resultWasCapped
     ? `Of the ${total.toLocaleString()} series in the loaded (capped) result, ` +
       `only the ${renderedSeriesCount.toLocaleString()} largest (by peak value) ` +
@@ -67,7 +52,11 @@ export default function HiddenSeriesIndicator({
       : 'Increase the series limit, or narrow the query with a stricter GROUP BY or WHERE filter, to see more.');
 
   const icon = (
-    <IconAlertTriangle size={16} color="var(--color-text-warning)" />
+    <IconAlertTriangle
+      size={16}
+      color="var(--color-text-warning)"
+      data-testid="hidden-series-indicator-icon"
+    />
   );
 
   return (

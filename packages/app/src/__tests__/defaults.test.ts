@@ -1,7 +1,13 @@
+import type { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+
 import {
   DEFAULT_MAX_TILE_RESULT_ROWS,
   didResultOverflow,
+  hasOuterLimit,
+  resolveDidOverflow,
   resolveResultRowLimitSetting,
+  resolveResultRowLimitSettings,
+  resolveTileMaxResultRows,
 } from '@/defaults';
 
 describe('resolveResultRowLimitSetting', () => {
@@ -68,7 +74,163 @@ describe('didResultOverflow', () => {
     expect(didResultOverflow({ rows: undefined, cap })).toBe(false);
   });
 
+  it('does not flag a NaN row count', () => {
+    // NaN > cap is false, so this is correct today; asserted to lock it in.
+    expect(didResultOverflow({ rows: Number.NaN, cap })).toBe(false);
+  });
+
   it('exposes a sane default cap', () => {
     expect(DEFAULT_MAX_TILE_RESULT_ROWS).toBe(5000);
+  });
+});
+
+describe('resolveTileMaxResultRows', () => {
+  const rawSqlConfig = {
+    configType: 'sql',
+    sqlTemplate: 'SELECT 1',
+    connection: 'c',
+  } as unknown as ChartConfigWithOptDateRange;
+  const builderConfig = {
+    connection: 'c',
+    from: { databaseName: 'default', tableName: 't' },
+    select: [{ aggFn: 'count', valueExpression: '' }],
+    where: '',
+    groupBy: 'k',
+  } as unknown as ChartConfigWithOptDateRange;
+
+  it('caps raw SQL tiles at the default', () => {
+    expect(resolveTileMaxResultRows(rawSqlConfig)).toBe(
+      DEFAULT_MAX_TILE_RESULT_ROWS,
+    );
+  });
+
+  it('does NOT cap builder tiles (they bound cardinality elsewhere)', () => {
+    expect(resolveTileMaxResultRows(builderConfig)).toBeUndefined();
+  });
+
+  it('returns undefined for an absent config', () => {
+    expect(resolveTileMaxResultRows(undefined)).toBeUndefined();
+    expect(resolveTileMaxResultRows(null)).toBeUndefined();
+  });
+});
+
+describe('hasOuterLimit', () => {
+  it('detects a trailing LIMIT (with optional offset / comma / semicolon / comment)', () => {
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50')).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t ORDER BY c DESC LIMIT 50')).toBe(
+      true,
+    );
+    expect(hasOuterLimit('SELECT * FROM t limit 10')).toBe(true); // case-insensitive
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50;')).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50  \n  ')).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 10, 50')).toBe(true); // offset,count
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50 OFFSET 10')).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50 -- trailing comment')).toBe(
+      true,
+    );
+  });
+
+  it('returns false when there is no outer LIMIT', () => {
+    expect(hasOuterLimit('SELECT * FROM t')).toBe(false);
+    expect(hasOuterLimit('SELECT k, count() FROM t GROUP BY k')).toBe(false);
+  });
+
+  it('does not treat a LIMIT inside a subquery as an outer LIMIT', () => {
+    // Anchored to end-of-string: an inner LIMIT followed by more query is not
+    // matched, so the cardinality cap can still apply.
+    expect(
+      hasOuterLimit('SELECT * FROM (SELECT * FROM t LIMIT 10) GROUP BY k'),
+    ).toBe(false);
+  });
+
+  it('returns false for empty / non-string input', () => {
+    expect(hasOuterLimit('')).toBe(false);
+    expect(hasOuterLimit(undefined)).toBe(false);
+  });
+});
+
+describe('resolveResultRowLimitSettings', () => {
+  it('returns undefined for a non-positive / absent cap', () => {
+    expect(resolveResultRowLimitSettings(undefined)).toBeUndefined();
+    expect(resolveResultRowLimitSettings(0)).toBeUndefined();
+    expect(resolveResultRowLimitSettings(-1)).toBeUndefined();
+  });
+
+  it('applies both the result-row and cardinality caps when there is no outer LIMIT', () => {
+    const res = resolveResultRowLimitSettings(5000, { hasOuterLimit: false });
+    expect(res).toEqual({
+      cardinalityCapApplied: true,
+      settings: {
+        max_result_rows: '5001',
+        result_overflow_mode: 'break',
+        max_rows_to_group_by: '5001',
+        // 'break' (deterministic stop), never 'any' (folds keys → corrupts top-N)
+        group_by_overflow_mode: 'break',
+      },
+    });
+  });
+
+  it('applies only the order-preserving result-row cap when there is an outer LIMIT', () => {
+    const res = resolveResultRowLimitSettings(5000, { hasOuterLimit: true });
+    expect(res).toEqual({
+      cardinalityCapApplied: false,
+      settings: {
+        max_result_rows: '5001',
+        result_overflow_mode: 'break',
+      },
+    });
+  });
+
+  it('defaults to applying the cardinality cap when the option is omitted', () => {
+    expect(resolveResultRowLimitSettings(10)?.cardinalityCapApplied).toBe(true);
+  });
+});
+
+describe('resolveDidOverflow', () => {
+  it('is false until the result is complete (no mid-stream flap)', () => {
+    expect(
+      resolveDidOverflow({
+        isPlaceholderData: false,
+        isComplete: false,
+        didOverflow: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('is false while showing stale placeholder data (no lingering banner)', () => {
+    expect(
+      resolveDidOverflow({
+        isPlaceholderData: true,
+        isComplete: true,
+        didOverflow: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('reflects the result once complete and fresh', () => {
+    expect(
+      resolveDidOverflow({
+        isPlaceholderData: false,
+        isComplete: true,
+        didOverflow: true,
+      }),
+    ).toBe(true);
+    expect(
+      resolveDidOverflow({
+        isPlaceholderData: false,
+        isComplete: true,
+        didOverflow: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('treats an undefined didOverflow as false', () => {
+    expect(
+      resolveDidOverflow({
+        isPlaceholderData: false,
+        isComplete: true,
+        didOverflow: undefined,
+      }),
+    ).toBe(false);
   });
 });

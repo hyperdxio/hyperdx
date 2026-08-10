@@ -1,4 +1,8 @@
-import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { isRawSqlChartConfig } from '@hyperdx/common-utils/dist/guards';
+import type {
+  BuilderChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
 
 // Limit defaults
 export const DEFAULT_SEARCH_ROW_LIMIT = 200;
@@ -34,30 +38,65 @@ export const MAX_EXPANDED_TOOLTIP_ROWS = 500;
 // (HARD_LINES_LIMIT); drawn lines remain bounded by HARD_LINES_LIMIT regardless.
 export const MAX_LOADABLE_TIME_CHART_SERIES = 5000;
 
-// Soft ceiling on the number of rows a single dashboard-tile query returns.
-// This is a last-line defense against a pathological high-cardinality group-by
-// streaming hundreds of thousands of rows into the browser — well above the
-// series/draw caps, which bound what is *rendered*, whereas this bounds what is
-// *transferred* (and materialized server-side).
-//
-// The cap is enforced by two complementary ClickHouse settings, both asked for
-// with one row of HEADROOM above the logical cap (`cap + 1`, see
-// `resolveResultRowLimitSetting`) so a complete result of exactly `cap` rows
-// comes back whole and is NOT flagged, while a larger result trips the cap:
-//   1. `max_result_rows = cap + 1` + `result_overflow_mode = 'break'` — bounds
-//      the RESULT rows. Weak on its own: break only stops between result blocks,
-//      so a result that fits in one block (up to ~65k rows) is returned whole.
-//   2. `max_rows_to_group_by = cap + 1` + `group_by_overflow_mode = 'any'` —
-//      bounds the aggregation CARDINALITY (unique GROUP BY keys). "any" keeps the
-//      first N keys and folds the rest away instead of erroring. This is the
-//      setting that actually protects memory for a high-cardinality group-by.
-//
-// IMPORTANT: both are *soft*, block-aligned caps — ClickHouse checks them only
-// after each data part, so the real result can overshoot `cap + 1` by up to one
-// block. They are NOT exact truncations. When a query returns more than `cap`
-// rows we surface an overflow banner on the tile (see `didResultOverflow`) so
-// the user knows the result was capped and the chart may be missing data.
+// Soft ceiling on rows a single dashboard-tile query returns — a last-line
+// guard against a high-cardinality query streaming hundreds of thousands of
+// rows into the browser. Bounds what is *transferred*, unlike the series/draw
+// caps which bound what is *rendered*. Enforced by the ClickHouse settings in
+// resolveResultRowLimitSettings; overflow is surfaced via didResultOverflow.
 export const DEFAULT_MAX_TILE_RESULT_ROWS = 5000;
+
+export interface ResultRowLimitSettings {
+  /** `clickhouse_settings` to merge into the query request. */
+  settings: Record<string, string>;
+  /** True when the cardinality/memory guard (`max_rows_to_group_by`) applied. */
+  cardinalityCapApplied: boolean;
+}
+
+// Matches an outer `LIMIT` at the very end of a statement (tolerating a trailing
+// `;` and single-line comment). Anchored to end-of-string, so a LIMIT inside a
+// subquery/CTE is not matched. Conservative on purpose: a miss only falls back
+// to the safe result-row cap.
+const OUTER_LIMIT_RE =
+  /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?\s*;?\s*(?:--[^\n]*)?\s*$/i;
+
+/** Whether a raw SQL string ends in an outer `LIMIT` clause. */
+export function hasOuterLimit(sql: string | undefined): boolean {
+  if (typeof sql !== 'string' || sql.length === 0) {
+    return false;
+  }
+  return OUTER_LIMIT_RE.test(sql.trimEnd());
+}
+
+/**
+ * ClickHouse settings that enforce the row cap. Always applies the
+ * order-preserving result-row cap (`max_result_rows` + `result_overflow_mode`).
+ * Adds the cardinality/memory cap (`max_rows_to_group_by`) ONLY when the query
+ * has no outer LIMIT — that cap truncates the GROUP BY before an outer
+ * `ORDER BY … LIMIT`, which would silently corrupt the top-N. Uses `cap + 1`
+ * headroom so a complete result of exactly `cap` rows isn't flagged. Returns
+ * undefined for a non-positive/absent cap.
+ */
+export function resolveResultRowLimitSettings(
+  cap: number | undefined,
+  {
+    hasOuterLimit: queryHasOuterLimit = false,
+  }: { hasOuterLimit?: boolean } = {},
+): ResultRowLimitSettings | undefined {
+  const limit = resolveResultRowLimitSetting(cap);
+  if (limit == null) {
+    return undefined;
+  }
+  const settings: Record<string, string> = {
+    max_result_rows: String(limit),
+    result_overflow_mode: 'break',
+  };
+  const cardinalityCapApplied = !queryHasOuterLimit;
+  if (cardinalityCapApplied) {
+    settings.max_rows_to_group_by = String(limit);
+    settings.group_by_overflow_mode = 'break';
+  }
+  return { settings, cardinalityCapApplied };
+}
 
 /**
  * Translate a logical row cap into the `max_result_rows` value to send to
@@ -76,25 +115,12 @@ export function resolveResultRowLimitSetting(
 }
 
 /**
- * Decide whether a tile query exceeded the `max_result_rows` /
- * `result_overflow_mode = 'break'` cap.
- *
- * The query is run with one row of headroom (`max_result_rows = cap + 1`; see
- * `resolveResultRowLimitSetting`), so a complete result of ≤ cap rows returns
- * as-is and does NOT flag; only a result larger than `cap` trips the break and
- * comes back with more than `cap` rows (≥ cap + 1, possibly more since break is
- * block-aligned). Hence the sole reliable signal is `rows > cap`.
- *
- * We deliberately do NOT use `rows_before_limit_at_least`: ClickHouse only
- * populates it when the query itself has a LIMIT stage, and it then reports the
- * row count BEFORE that user LIMIT — not before our result-size break. A raw
- * SQL tile whose query ends in `... LIMIT 50` over a large aggregation returns
- * exactly 50 rows (nothing truncated by us) yet reports
- * `rows_before_limit_at_least = <pre-LIMIT group count>`, which would wrongly
- * trip the banner. `rows > cap` cannot false-positive that way because the tile
- * genuinely received ≤ cap rows.
- *
- * A non-positive/absent cap disables detection.
+ * Whether a tile query exceeded the row cap. Since the query runs with `cap + 1`
+ * headroom, `rows > cap` is the reliable signal (a complete result of ≤ cap rows
+ * comes back whole and is not flagged). We deliberately ignore
+ * `rows_before_limit_at_least`: it reports the count before the query's own
+ * LIMIT, so a tile ending in `... LIMIT 50` over a big aggregation would falsely
+ * trip. A non-positive/absent cap disables detection.
  */
 export function didResultOverflow({
   rows,
@@ -110,6 +136,40 @@ export function didResultOverflow({
     return true;
   }
   return false;
+}
+
+/**
+ * The row cap a dashboard tile should apply, or undefined for none. Only raw SQL
+ * tiles are capped — builder tiles already bound cardinality via the series
+ * limit, and builder tables page rows through useOffsetPaginatedQuery.
+ */
+export function resolveTileMaxResultRows(
+  config: ChartConfigWithOptDateRange | undefined | null,
+): number | undefined {
+  return config && isRawSqlChartConfig(config)
+    ? DEFAULT_MAX_TILE_RESULT_ROWS
+    : undefined;
+}
+
+/**
+ * Whether a chart's result overflowed the row cap, gated so the banner is
+ * stable and never stale (shared by DBTimeChart and CategoricalChart):
+ * `isComplete` avoids flapping mid-stream, `!isPlaceholderData` avoids a stale
+ * banner lingering while a narrowed query is in flight.
+ */
+export function resolveDidOverflow({
+  isPlaceholderData,
+  isComplete,
+  didOverflow,
+}: {
+  isPlaceholderData: boolean | undefined;
+  isComplete: boolean | undefined;
+  didOverflow: boolean | undefined;
+}): boolean {
+  if (isPlaceholderData || !isComplete) {
+    return false;
+  }
+  return didOverflow ?? false;
 }
 
 /**

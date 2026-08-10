@@ -37,7 +37,11 @@ import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
-import { didResultOverflow, resolveResultRowLimitSetting } from '@/defaults';
+import {
+  didResultOverflow,
+  hasOuterLimit,
+  resolveResultRowLimitSettings,
+} from '@/defaults';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
@@ -56,12 +60,9 @@ interface AdditionalUseQueriedChartConfigOptions {
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
   /**
-   * When set to a positive number, caps the number of rows the query is allowed
-   * to return via the ClickHouse `max_result_rows` + `result_overflow_mode =
-   * 'break'` settings, and reports whether the cap was hit via
-   * `data.didOverflow`. Used by dashboard tiles as a last-line guard against a
-   * high-cardinality query streaming an unbounded number of rows into the
-   * browser. Omit (or pass 0/undefined) to leave the query uncapped.
+   * When positive, caps the rows the query may return (see
+   * resolveResultRowLimitSettings) and reports whether the cap was hit via
+   * `data.didOverflow`. Omit / 0 to leave uncapped.
    */
   maxResultRows?: number;
 }
@@ -210,30 +211,16 @@ async function* fetchDataInChunks({
     ? { readonly: '2' }
     : {};
 
-  // Cap the number of rows any single (possibly chunked) query returns. We ask
-  // ClickHouse for one row of headroom above the logical cap
-  // (`max_result_rows = cap + 1`, via resolveResultRowLimitSetting) with
-  // `result_overflow_mode = 'break'`, so a complete result of exactly `cap`
-  // rows comes back whole (no false overflow warning) while a larger result
-  // trips the break and returns cap + 1 rows. The caller detects the overflow
-  // via the returned `rows` count (see didResultOverflow) and warns the user.
-  //
-  // `max_result_rows` alone is a WEAK guard: `result_overflow_mode = 'break'`
-  // only stops between result blocks, so a result that fits in one block (up to
-  // ~65k rows) is returned whole and nothing is actually capped. We therefore
-  // ALSO cap the aggregation cardinality with `max_rows_to_group_by` +
-  // `group_by_overflow_mode = 'any'`, which bounds the number of unique GROUP BY
-  // keys the query materializes ("any" keeps the first N keys and folds the
-  // rest away instead of erroring). This is the setting that actually protects
-  // memory for a high-cardinality group-by. Both are block-aligned, so the real
-  // result can overshoot the cap by up to one block — detection stays tolerant
-  // (rows > cap). Only positive finite caps are applied.
-  const resultRowLimit = resolveResultRowLimitSetting(maxResultRows);
-  if (resultRowLimit != null) {
-    clickHouseSettings.max_result_rows = String(resultRowLimit);
-    clickHouseSettings.result_overflow_mode = 'break';
-    clickHouseSettings.max_rows_to_group_by = String(resultRowLimit);
-    clickHouseSettings.group_by_overflow_mode = 'any';
+  // Cap the rows any single (possibly chunked) query returns. The chosen
+  // settings depend on whether the raw SQL has its own outer LIMIT (which would
+  // be corrupted by the group-by cardinality cap) — see
+  // resolveResultRowLimitSettings. Builder configs have no sqlTemplate.
+  const rawSql = isRawSqlChartConfig(config) ? config.sqlTemplate : undefined;
+  const resultRowLimitSettings = resolveResultRowLimitSettings(maxResultRows, {
+    hasOuterLimit: hasOuterLimit(rawSql),
+  });
+  if (resultRowLimitSettings != null) {
+    Object.assign(clickHouseSettings, resultRowLimitSettings.settings);
   }
 
   if (enableParallelQueries) {
@@ -478,10 +465,9 @@ export function useQueriedChartConfig(
         maxResultRows: options?.maxResultRows,
       });
 
-      // A chunked range applies the cap per chunk, so the accumulated total can
-      // legitimately exceed the cap without any single chunk overflowing. Track
-      // whether ANY individual chunk hit the cap (the definitive per-query
-      // signal) and OR it with the whole-result check below.
+      // The cap applies per chunk, so `didOverflow` is the OR of the per-chunk
+      // `rows > cap` check (raw SQL never chunks, so its one chunk is the whole
+      // result).
       const cap = options?.maxResultRows;
       let anyChunkOverflowed = false;
 

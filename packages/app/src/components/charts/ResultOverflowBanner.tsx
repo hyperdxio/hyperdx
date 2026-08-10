@@ -6,33 +6,17 @@ interface ResultOverflowBannerProps {
   didOverflow: boolean | undefined;
   /** The row cap that was applied, shown in the message. */
   cap: number;
-  /**
-   * Rows actually returned by the (capped) query — shown so the user sees the
-   * concrete size. Because the cap is block-aligned this is ~cap, not the true
-   * uncapped total. Omit if unknown.
-   */
+  /** Rows returned by the capped query (≈cap since the cap is block-aligned). */
   rows?: number;
-  /**
-   * Distinct series (groups) present in the capped result — shown alongside
-   * rows so this banner is directly comparable to the hidden-series indicator.
-   * Omit if unknown.
-   */
+  /** Distinct series (groups) in the capped result. Omit if unknown. */
   series?: number;
 }
 
 /**
- * Server-side ROW cap banner, rendered just below a chart's header (via
- * ChartContainer's `belowHeader` slot) when the tile's query hit the row /
- * group-by cap (see DEFAULT_MAX_TILE_RESULT_ROWS). Because detection is based on
- * the returned row count alone (`rows > cap`), it cannot prove the server
- * actually dropped rows — a block-aligned break or a non-aggregating query can
- * legitimately return a complete result that merely exceeds the cap. So the copy
- * says the chart *may be missing data* rather than asserting truncation. The fix
- * is always the same: narrow the query. Contrast HiddenSeriesIndicator, which
- * loads the full result and only limits how many series are *drawn* (recoverable
- * via "load all"); this banner is about data the query may not have fetched at
- * all. Kept to one small line so it doesn't crowd the chart; the full guidance
- * lives in the tooltip.
+ * Row-cap banner shown below a chart's header when the tile's query hit the cap
+ * (see DEFAULT_MAX_TILE_RESULT_ROWS). Detection is `rows > cap`, which can't
+ * prove rows were dropped, so the copy says the chart *may be* missing data.
+ * Contrast HiddenSeriesIndicator (limits only how many series are drawn).
  */
 export default function ResultOverflowBanner({
   didOverflow,
@@ -44,9 +28,7 @@ export default function ResultOverflowBanner({
     return null;
   }
 
-  // Rows is the primary unit for this banner; prefer the concrete returned-row
-  // count, fall back to the cap. Both are approximate (the cap is block-aligned),
-  // so always prefix with "~". Series is secondary detail.
+  // Approximate (block-aligned cap), so prefix with "~".
   const rowsShown = (rows ?? cap).toLocaleString();
   const seriesText =
     typeof series === 'number' ? ` (~${series.toLocaleString()} series)` : '';
@@ -68,15 +50,12 @@ export default function ResultOverflowBanner({
         py={4}
         px="xs"
         styles={{
-          // Keep the alert to a single tight line regardless of the tile body's
-          // fs-7 / monospace context; the chart gets the remaining height.
           wrapper: { alignItems: 'center' },
           body: { minWidth: 0 },
           message: { margin: 0 },
           icon: { marginRight: 8, width: 14, height: 14 },
         }}
-        // Sits inside react-grid-layout's drag subtree; stop propagation so a
-        // click on the banner doesn't start a tile drag.
+        // Stop propagation so a click doesn't start a react-grid-layout drag.
         onMouseDown={e => e.stopPropagation()}
       >
         <Text

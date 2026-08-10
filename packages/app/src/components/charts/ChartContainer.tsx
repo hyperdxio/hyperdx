@@ -9,11 +9,7 @@ interface ChartContainerProps {
   toolbarItems?: React.ReactNode[];
   children: React.ReactNode;
   disableReactiveContainer?: boolean;
-  /**
-   * Optional content rendered directly below the header row and above the chart
-   * body — e.g. a per-tile warning banner. Takes its natural height; the chart
-   * body flexes to fill the remaining space.
-   */
+  /** Content between the header and chart body — e.g. a per-tile warning banner. */
   belowHeader?: React.ReactNode;
 }
 
@@ -201,11 +197,9 @@ function ChartContainer({
             style={{
               position: 'relative',
               width: '100%',
-              // Flex-fill the remaining height (after the header and any
-              // belowHeader banner) instead of a rigid 100%, so a banner
-              // squishes the chart rather than clipping its bottom. minHeight:0
-              // lets the absolutely-positioned inner chart shrink below its
-              // intrinsic size.
+              // Flex-fill remaining height (vs rigid 100%) so a belowHeader
+              // banner squishes the chart instead of clipping it; minHeight:0
+              // lets the absolute inner chart shrink.
               flex: 1,
               minHeight: 0,
             }}
