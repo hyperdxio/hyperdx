@@ -1565,22 +1565,15 @@ const DBSearchPageFiltersComponent = ({
           />
         );
       });
-      const groupedElementsByGroup = new Map(
-        grouped.map((group, index) => [group, groupedElements[index]]),
-      );
-      const nonGroupedElementsByFacet = new Map(
-        nonGrouped.map((facet, index) => [facet, nonGroupedElements[index]]),
+      const elements = [...groupedElements, ...nonGroupedElements];
+      const elementsByFacet = new Map(
+        [...grouped, ...nonGrouped].map((facet, index) => [
+          facet,
+          elements[index],
+        ]),
       );
 
-      return (
-        <>
-          {ordered.map(item =>
-            'children' in item
-              ? groupedElementsByGroup.get(item)
-              : nonGroupedElementsByFacet.get(item),
-          )}
-        </>
-      );
+      return <>{ordered.map(facet => elementsByFacet.get(facet))}</>;
     },
     [
       filterState,
