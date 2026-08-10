@@ -451,8 +451,10 @@ export const SelectSQLStatementSchema = z.object({
   limit: LimitSchema.optional(),
   // Nullish (not just optional): the chart editor clears the value to `null`
   // so the cleared state survives JSON round-tripping (e.g. through the URL
-  // query state). `null` and `undefined` both mean "disabled" downstream.
-  seriesLimit: z.number().int().positive().nullish(),
+  // query state). See SharedChartSettingsSchema.seriesLimit for full semantics
+  // (0 = unlimited, null/undefined = default cap). On builder group-by time
+  // charts a positive value additionally drives the __hdx_series_limit CTE.
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -1237,6 +1239,20 @@ const SharedChartSettingsSchema = z.object({
   // types ignore the field. Off by default, so existing tiles are unchanged.
   // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
   alternateRowBackground: z.boolean().optional(),
+  // Per-tile cap on the number of series a time chart renders. Shared level so
+  // it applies to BOTH builder and raw SQL time charts (raw SQL cannot inject
+  // the __hdx_series_limit CTE, so there the cap is enforced client-side in
+  // `formatResponseForTimeChart`). Semantics:
+  //   - null / undefined: use the default client render cap
+  //     (MAX_RENDERED_TIME_CHART_SERIES) — high-cardinality tiles stay
+  //     protected without opting in.
+  //   - a positive integer N: keep the top N series (by peak value).
+  //   - 0: unlimited — render every series (deliberate opt-out; a
+  //     high-cardinality group-by can then exhaust browser memory).
+  // On builder pie/bar charts this instead becomes a plain SQL LIMIT, and on
+  // builder group-by time charts a positive value also drives the
+  // __hdx_series_limit CTE (see SelectSQLStatementSchema.seriesLimit).
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:
@@ -2299,3 +2315,61 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// IaC (Terraform) export
+//
+// Shared so `GET /iac/import-manifest` and the generators in
+// packages/common-utils/src/iac.ts cannot drift apart. Every listing is
+// id + name only — the endpoint deliberately projects nothing heavier.
+const IacManifestEntrySchema = z.object({
+  // Constrained, not a bare string: `id` is the only manifest value that
+  // reaches generated HCL inside a quoted string literal, and the client parse
+  // is what the export treats as its trust boundary. See assertResourceId in
+  // ./iac.ts, which enforces the same shape at the emit sink.
+  id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+  name: z.string().optional(),
+});
+
+export const IacImportManifestSchema = z.object({
+  dashboards: z.array(
+    IacManifestEntrySchema.extend({
+      // Set when a tile would not survive the import round trip, so the
+      // dashboard must not be offered. Computed server-side: the manifest
+      // deliberately does not ship tile configs. See isUnexportableTile.
+      unexportableTiles: z.boolean().optional(),
+    }),
+  ),
+  alerts: z.array(
+    IacManifestEntrySchema.extend({
+      // Only saved-search alerts are modelled by the Terraform provider.
+      source: z.string().optional(),
+      savedSearchId: z.string().optional(),
+    }),
+  ),
+  savedSearches: z.array(IacManifestEntrySchema),
+  sources: z.array(
+    IacManifestEntrySchema.extend({
+      // The provider models only the ClickHouse-backed kinds, so the client
+      // needs `kind` to filter PromQL sources out. See isImportableSource.
+      kind: z.string().optional(),
+    }),
+  ),
+  connections: z.array(
+    IacManifestEntrySchema.extend({
+      // Tri-state, mirroring the Connection model: undefined = unknown
+      // provenance, true = platform-provisioned, false = self-managed.
+      // Only an explicit `false` makes a connection safe to import.
+      platformProvisioned: z.boolean().optional(),
+    }),
+  ),
+  webhooks: z.array(IacManifestEntrySchema),
+  // Manifest keys whose listing hit IAC_MANIFEST_LIMIT, so the export for
+  // those types is partial. Per-type rather than one global boolean: warning
+  // that the file is incomplete because of a type the user did not tick is a
+  // false alarm. Defaulted so a response predating the field still parses —
+  // app and API ship in one image, but a multi-replica rolling deploy can
+  // briefly serve a new bundle against an old API.
+  truncatedTypes: z.array(z.string()).default([]),
+});
+
+export type IacImportManifest = z.infer<typeof IacImportManifestSchema>;

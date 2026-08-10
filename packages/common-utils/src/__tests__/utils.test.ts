@@ -12,6 +12,7 @@ import {
   getDistributedTableArgs,
   getFirstOrderingItem,
   hasNonEmptyOrderBy,
+  hasPositiveSeriesLimit,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
@@ -287,6 +288,23 @@ describe('utils', () => {
         'ServiceName DESC',
       ];
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+  });
+
+  describe('hasPositiveSeriesLimit', () => {
+    it('is true only for positive integers', () => {
+      expect(hasPositiveSeriesLimit(1)).toBe(true);
+      expect(hasPositiveSeriesLimit(250)).toBe(true);
+    });
+
+    it('is false for 0 (unlimited) and null/undefined (unset)', () => {
+      expect(hasPositiveSeriesLimit(0)).toBe(false);
+      expect(hasPositiveSeriesLimit(null)).toBe(false);
+      expect(hasPositiveSeriesLimit(undefined)).toBe(false);
+    });
+
+    it('is false for negative values', () => {
+      expect(hasPositiveSeriesLimit(-5)).toBe(false);
     });
   });
 

@@ -93,6 +93,7 @@ import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -2187,6 +2188,14 @@ export function DBSearchPage() {
                   {savedSearch.tags?.length || 0}
                 </Button>
               </Tags>
+
+              <ResourceTerraformPopover
+                resource={{
+                  type: 'saved_search',
+                  id: savedSearch.id,
+                  name: savedSearch.name,
+                }}
+              />
 
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
