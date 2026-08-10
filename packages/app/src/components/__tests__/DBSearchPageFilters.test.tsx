@@ -147,6 +147,9 @@ describe('DBSearchPageFilters', () => {
       'nested-filter-group-ResourceAttributes',
     );
 
+    // #region agent log
+    require('fs').appendFileSync('/opt/cursor/logs/debug.log', JSON.stringify({ hypothesisId: 'C', location: 'DBSearchPageFilters.test.tsx:ordering assertion', message: 'Rendered facet positions', data: { relation: pinnedField.compareDocumentPosition(mapGroup), sameParent: pinnedField.parentElement === mapGroup.parentElement }, timestamp: Date.now() }) + '\n');
+    // #endregion
     expect(
       pinnedField.compareDocumentPosition(mapGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,

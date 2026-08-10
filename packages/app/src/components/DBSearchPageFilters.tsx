@@ -1331,6 +1331,10 @@ const DBSearchPageFiltersComponent = ({
       return 0;
     });
 
+    // #region agent log
+    if (process.env.NODE_ENV === 'test')
+      require('fs').appendFileSync('/opt/cursor/logs/debug.log', JSON.stringify({ hypothesisId: 'A,B', location: 'DBSearchPageFilters.tsx:shownFacets', message: 'Facet priority output', data: { keys: _facets.map(facet => facet.key) }, timestamp: Date.now() }) + '\n');
+    // #endregion
     return _facets;
   }, [
     facetsWithPinnedValues,
@@ -1427,6 +1431,10 @@ const DBSearchPageFiltersComponent = ({
         options ?? {};
       const { grouped, nonGrouped } = groupFacetsByBaseName(facets);
 
+      // #region agent log
+      if (process.env.NODE_ENV === 'test')
+        require('fs').appendFileSync('/opt/cursor/logs/debug.log', JSON.stringify({ hypothesisId: 'B', location: 'DBSearchPageFilters.tsx:renderFacetList', message: 'Grouped render partitions', data: { input: facets.map(facet => facet.key), grouped: grouped.map(group => group.key), nonGrouped: nonGrouped.map(facet => facet.key) }, timestamp: Date.now() }) + '\n');
+      // #endregion
       const makeValuePins = (key: string): ValuePinHandlers => ({
         onPinClick: (value: string | boolean) => toggleFilterPin(key, value),
         isPinned: (value: string | boolean) => isFilterPinned(key, value),
