@@ -552,6 +552,18 @@ describe('renderChartConfig', () => {
       expect(sqlWithRangeOnly).not.toContain('__hdx_series_limit');
     });
 
+    it('does not emit a series-limit CTE when seriesLimit is 0 (unlimited)', async () => {
+      // 0 = unlimited; must skip the CTE rather than emit `LIMIT 0`.
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, seriesLimit: 0 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
     it('pins the series-limit CTE to seriesLimitDateRange while the outer query stays windowed', async () => {
       // The chunking caller pins all chunks to one shared ranking range
       // (the newest window); the render layer is agnostic to which range.

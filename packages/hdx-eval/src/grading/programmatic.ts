@@ -1,59 +1,107 @@
 import type { ToolCallRecord } from '@/harness/types';
 
 import type {
+  AdoptionCheck,
   ProgrammaticCheck,
   ProgrammaticHit,
   ProgrammaticResult,
 } from './types';
 
-/** Cap per-line length so a single huge tool arg can't bloat the transcript. */
-const MAX_ARGS_CHARS = 2000;
+/**
+ * Cap per-call args length so one enormous payload can't bloat matching.
+ * Generous (20k) because adoption checks must still find a metric name deep
+ * inside a long multi-CTE SQL query.
+ */
+const MAX_ARGS_CHARS = 20_000;
 
 /**
- * Serialize a run's tool-call transcript into a stable, regex-friendly
- * string for transcript-aware programmatic checks. One call per line, in the
- * order they were made, formatted as `<toolName> <compact-JSON-args>`.
- *
- * Only tool **names + input args** are included — outputs are intentionally
- * omitted (large, noisy, and nondeterministic). Args are compact JSON so a
- * rubric can assert on both the tool used (name) and how it was used (args),
- * e.g. "used a metric tool" or "described the JVM memory metric".
+ * Serialize a single tool call's **input args** into a stable, regex-friendly
+ * string. Compact JSON (or the raw string for string inputs). Tool names and
+ * outputs are intentionally excluded — adoption checks must only see how the
+ * agent *asked*, never what the tools returned or what the tool was called.
  */
-export function serializeTranscript(toolCalls: ToolCallRecord[]): string {
-  return toolCalls
-    .map(call => {
-      let args = '';
-      if (call.input !== undefined && call.input !== null) {
-        try {
-          args =
-            typeof call.input === 'string'
-              ? call.input
-              : JSON.stringify(call.input);
-        } catch {
-          // Circular / non-serializable input — fall back to a marker so the
-          // tool name is still gradeable.
-          args = '[unserializable]';
-        }
-      }
-      if (args.length > MAX_ARGS_CHARS) {
-        args = args.slice(0, MAX_ARGS_CHARS) + '…';
-      }
-      return args ? `${call.name} ${args}` : call.name;
-    })
-    .join('\n');
+export function serializeToolCallArgs(call: ToolCallRecord): string {
+  let args = '';
+  if (call.input !== undefined && call.input !== null) {
+    try {
+      args =
+        typeof call.input === 'string'
+          ? call.input
+          : JSON.stringify(call.input);
+    } catch {
+      // Circular / non-serializable input — nothing gradeable.
+      args = '[unserializable]';
+    }
+  }
+  if (args.length > MAX_ARGS_CHARS) {
+    args = args.slice(0, MAX_ARGS_CHARS) + '…';
+  }
+  return args;
 }
 
 /**
- * Run transcript-aware checks against a run's tool-call transcript. Thin
- * wrapper over {@link runProgrammaticChecks} that serializes the transcript
- * first. Result shape is identical to answer checks so reports can treat both
+ * Compile a metric name/key into a separator-tolerant, case-insensitive
+ * regex: every regex metachar is escaped, then each `.` boundary accepts
+ * either `.` or `_` (so `jvm.gc.pause` also matches `jvm_gc_pause`). Full
+ * keys are required — prose like "gc pause" in a log-search filter does not
+ * match.
+ */
+export function metricKeyToRegex(key: string): RegExp {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(escaped.replace(/\\\./g, '[._]'), 'i');
+}
+
+/**
+ * Run metric-adoption checks against a run's tool calls. A check is
+ * satisfied when some **single** tool call's input args contain any of the
+ * check's metric keys (and match `alsoPattern`, when present). Detection is
+ * args-only and tool-name-agnostic, so a raw SQL query naming the metric
+ * counts the same as a dedicated metric tool — the grader never branches on
+ * which MCP/arm produced the call.
+ *
+ * Result shape is identical to answer checks so reports can treat both
  * uniformly.
  */
-export function runTranscriptChecks(
+export function runAdoptionChecks(
   toolCalls: ToolCallRecord[],
-  checks: ProgrammaticCheck[],
+  checks: AdoptionCheck[],
 ): ProgrammaticResult {
-  return runProgrammaticChecks(serializeTranscript(toolCalls), checks);
+  const argsTexts = toolCalls.map(serializeToolCallArgs);
+
+  const hits: ProgrammaticHit[] = [];
+  let totalWeight = 0;
+  let hitWeight = 0;
+
+  for (const check of checks) {
+    totalWeight += check.weight;
+    const metricRegexes = check.metrics.map(metricKeyToRegex);
+    let also: RegExp | null = null;
+    if (check.alsoPattern !== undefined) {
+      try {
+        also = new RegExp(check.alsoPattern, 'i');
+      } catch (err) {
+        throw new Error(
+          `Invalid alsoPattern in adoption check '${check.id}': ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    const matched = argsTexts.some(
+      args =>
+        metricRegexes.some(rx => rx.test(args)) && (!also || also.test(args)),
+    );
+    if (matched) hitWeight += check.weight;
+    hits.push({
+      id: check.id,
+      weight: check.weight,
+      matched,
+      satisfied: matched,
+    });
+  }
+
+  const score = totalWeight === 0 ? 0 : hitWeight / totalWeight;
+  return { hits, score };
 }
 
 export function runProgrammaticChecks(
