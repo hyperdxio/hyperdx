@@ -16,7 +16,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           # Full history so `nx affected` can diff against the PR base ref.
+          # Blobless, not treeless: `nx affected` runs `git diff --name-only`,
+          # which needs the trees. `tree:0` makes that diff pay a lazy fetch
+          # round trip and comes out slower than the bytes it saves.
           fetch-depth: 0
+          filter: blob:none
       - name: Setup node
         uses: actions/setup-node@v6
         with:
