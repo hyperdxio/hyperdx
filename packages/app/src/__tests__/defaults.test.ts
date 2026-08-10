@@ -151,6 +151,12 @@ describe('hasOuterLimit', () => {
         'SELECT * FROM t LIMIT 50 WITH TIES SETTINGS max_threads=4',
       ),
     ).toBe(true);
+    // SETTINGS wrapped onto multiple lines must still be consumed (greptile P1).
+    expect(
+      hasOuterLimit(
+        'SELECT k, count() c FROM t GROUP BY k ORDER BY c DESC LIMIT 50 SETTINGS\n  max_threads=4,\n  max_memory_usage=1000',
+      ),
+    ).toBe(true);
   });
 
   it('detects an outer LIMIT followed by a trailing block comment', () => {

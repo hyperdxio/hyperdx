@@ -57,9 +57,10 @@ export interface ResultRowLimitSettings {
 // (repeatedly) before the LIMIT test so a query like
 // `... LIMIT 50 SETTINGS max_threads=4` or `... LIMIT 50 /* note */` still
 // counts as having an outer LIMIT (missing it would wrongly enable the group-by
-// cap and corrupt the top-N).
+// cap and corrupt the top-N). SETTINGS uses `[\s\S]+` (not `.+`) so a clause
+// wrapped onto multiple lines is still fully consumed.
 const TRAILING_CLAUSE_RE =
-  /(?:\s+settings\s+.+|\s+format\s+\w+|\s*;|\s*--[^\n]*|\s*\/\*[\s\S]*?\*\/)+\s*$/i;
+  /(?:\s+settings\s+[\s\S]+|\s+format\s+\w+|\s*;|\s*--[^\n]*|\s*\/\*[\s\S]*?\*\/)+\s*$/i;
 // Outer `LIMIT` at the end (after trailing clauses are stripped):
 // `LIMIT n [,m] [OFFSET n] [WITH TIES]` or `LIMIT n BY col…`. Anchored to
 // end-of-string, so a LIMIT inside a subquery/CTE is not matched. Conservative:
