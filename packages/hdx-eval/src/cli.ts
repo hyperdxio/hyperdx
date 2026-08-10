@@ -610,6 +610,14 @@ program
   .option('--no-grade', 'Skip automatic grading after runs complete')
   .option('--no-report', 'Skip automatic report generation after grading')
   .option(
+    '--batch <dir>',
+    'Write runs into this existing/shared batch dir name instead of creating a ' +
+      'fresh timestamped one. Lets several `run` invocations (e.g. one per ' +
+      'scenario in a suite) accumulate into a SINGLE batch so a later ' +
+      '`report`/`report-pr` aggregates them into one verdict. Combine with ' +
+      '--no-grade/--no-report while looping, then grade+report the batch once.',
+  )
+  .option(
     '--judge-model <id>',
     'Judge model ID (used when auto-grading)',
     'claude-opus-4-7',
@@ -647,6 +655,7 @@ program
         promptVariant: string;
         grade: boolean;
         report: boolean;
+        batch?: string;
         judgeModel: string;
         judge: boolean;
         email: string;
@@ -812,7 +821,11 @@ program
         }
       }
 
-      const batchDir = batchDirName();
+      // --batch lets several `run` invocations accumulate into one shared batch
+      // dir (e.g. a suite loop running one scenario per invocation), so a later
+      // report aggregates every scenario into a single verdict. Falls back to a
+      // fresh timestamped dir for the normal single-scenario flow.
+      const batchDir = cmdOpts.batch ?? batchDirName();
       console.log(`\nBatch: runs/${batchDir}`);
       console.log(`Scenario: ${scenario.name}`);
       console.log(`MCPs: ${mcpKinds.join(', ')}`);
@@ -1208,10 +1221,20 @@ program
   )
   .option('--run-url <url>', 'Workflow run URL to link in the comment')
   .option('--commit <sha>', 'Commit SHA the evals ran against')
+  .option(
+    '--progress <note>',
+    'Render as an in-progress suite update with this progress note (e.g. ' +
+      '"3/6 scenarios complete") instead of a final verdict.',
+  )
   .action(
     (
       batch: string,
-      cmdOpts: { out?: string; runUrl?: string; commit?: string },
+      cmdOpts: {
+        out?: string;
+        runUrl?: string;
+        commit?: string;
+        progress?: string;
+      },
     ) => {
       const dir = resolveBatchDir(batch);
       const summaryPath = join(dir, '_summary.json');
@@ -1228,6 +1251,7 @@ program
         batchLabel: summary.batchDir.split(/[\\/]/).pop(),
         runUrl: cmdOpts.runUrl,
         commitSha: cmdOpts.commit,
+        progress: cmdOpts.progress,
       });
       if (cmdOpts.out) {
         fs.writeFileSync(cmdOpts.out, comment + '\n', 'utf8');

@@ -97,23 +97,32 @@ services:
       HDX_EVAL_CH_URL: http://hyperdx:8123
       # The API's self-view of its bundled ClickHouse (all-in-one container).
       HDX_EVAL_CONNECTION_CH_URL: http://localhost:8123
-      # M1 knobs — low volume so the skeleton finishes in minutes.
-      HDX_EVAL_SCENARIO: ${HDX_EVAL_SCENARIO:-latency-spike}
+      # Suite knobs. HDX_EVAL_SCENARIOS is a comma list (empty → full suite);
+      # HDX_EVAL_SCENARIO is kept for single-scenario back-compat.
+      HDX_EVAL_SCENARIOS: ${HDX_EVAL_SCENARIOS:-}
+      HDX_EVAL_SCENARIO: ${HDX_EVAL_SCENARIO:-}
       HDX_EVAL_VOLUME_FACTOR: ${HDX_EVAL_VOLUME_FACTOR:-0.01}
       HDX_EVAL_RUNS: ${HDX_EVAL_RUNS:-1}
       HDX_EVAL_MAX_TURNS: ${HDX_EVAL_MAX_TURNS:-15}
       HDX_EVAL_TIMEOUT_MS: ${HDX_EVAL_TIMEOUT_MS:-600000}
       HDX_EVAL_MCP: ${HDX_EVAL_MCP:-hyperdx}
+      # Cells per scenario run concurrently (one (mcp,runIndex) pair per cell).
+      HDX_EVAL_CONCURRENCY: ${HDX_EVAL_CONCURRENCY:-1}
       HDX_EVAL_OUT_COMMENT: /work/eval-output/verdict.md
       HDX_EVAL_RUN_URL: ${HDX_EVAL_RUN_URL:-}
       HDX_EVAL_COMMIT_SHA: ${HDX_EVAL_COMMIT_SHA:-}
       HDX_EVAL_ANCHOR: ${HDX_EVAL_ANCHOR:-2026-06-01T00:00:00Z}
-      # M2 Parquet snapshot fast-seed path. When HDX_EVAL_SNAPSHOT_DIR is set,
-      # the runner loads a cached snapshot (fast) or generates+exports one
-      # (miss). The workflow backs this dir with actions/cache keyed on the
-      # seed-logic hash. Empty by default → M1 low-volume live seed.
+      # Progressive sticky PR comment (updated after each scenario). No-op when
+      # any of these is empty (e.g. local runs, forks without token access).
+      HDX_EVAL_GH_TOKEN: ${HDX_EVAL_GH_TOKEN:-}
+      HDX_EVAL_GH_REPO: ${HDX_EVAL_GH_REPO:-}
+      HDX_EVAL_GH_PR: ${HDX_EVAL_GH_PR:-}
+      # Parquet snapshot fast-seed path. When HDX_EVAL_SNAPSHOT_DIR is set, the
+      # runner loads a cached snapshot (fast) or generates+exports one (miss).
+      # The workflow backs this dir with actions/cache keyed on the seed-logic
+      # hash. Default generate factor 0.5 → suite-scale subset (see run-evals.sh).
       HDX_EVAL_SNAPSHOT_DIR: ${HDX_EVAL_SNAPSHOT_DIR:-}
-      HDX_EVAL_SNAPSHOT_VOLUME_FACTOR: ${HDX_EVAL_SNAPSHOT_VOLUME_FACTOR:-1}
+      HDX_EVAL_SNAPSHOT_VOLUME_FACTOR: ${HDX_EVAL_SNAPSHOT_VOLUME_FACTOR:-0.5}
     volumes:
       # Persist runs + rendered verdict to the host so CI can upload artifacts
       # and post the PR comment.

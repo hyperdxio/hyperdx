@@ -136,4 +136,17 @@ describe('renderVerdictComment', () => {
     expect(md).toContain('https://github.com/o/r/actions/runs/1');
     expect(md).toContain('abcdef1');
   });
+
+  it('renders an in-progress badge + note when progress is set', () => {
+    const md = renderVerdictComment(computeVerdict(summary), {
+      progress: '3/6 scenarios complete',
+    });
+    // In-progress suites show a RUNNING badge (not PASS/FAIL) and the note.
+    expect(md).toContain('⏳ RUNNING');
+    expect(md).not.toContain('✅ PASS');
+    expect(md).not.toContain('❌ FAIL');
+    expect(md).toContain('**Progress:** 3/6 scenarios complete');
+    // Still carries the stable marker so it upserts the same sticky comment.
+    expect(md).toContain('<!-- hdx-eval-verdict -->');
+  });
 });

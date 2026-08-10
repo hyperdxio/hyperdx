@@ -28,8 +28,10 @@ FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 # curl + ca-certificates for health probing and the uv installer.
 # git is occasionally needed by tooling that resolves workspace metadata.
+# jq builds/escapes the JSON body for the progressive PR-comment upsert
+# (docker/hdx-eval-runner/post-comment.sh).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates git \
+    && apt-get install -y --no-install-recommends curl ca-certificates git jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (Astral) for the optional stdio ClickHouse MCP. Pinned copy in
@@ -64,7 +66,8 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
 COPY packages/hdx-eval ./packages/hdx-eval
 COPY scripts ./scripts
 COPY docker/hdx-eval-runner/run-evals.sh ./docker/hdx-eval-runner/run-evals.sh
-RUN chmod +x ./docker/hdx-eval-runner/run-evals.sh
+COPY docker/hdx-eval-runner/post-comment.sh ./docker/hdx-eval-runner/post-comment.sh
+RUN chmod +x ./docker/hdx-eval-runner/run-evals.sh ./docker/hdx-eval-runner/post-comment.sh
 
 # The harness writes MCP configs with secrets to a temp dir and cleans them up;
 # it also writes runs/ under the package. Nothing else needs to be writable.

@@ -106,9 +106,20 @@ export function renderVerdictComment(
     runUrl?: string;
     /** Commit SHA the evals ran against. */
     commitSha?: string;
+    /**
+     * Live progress note for a suite still in flight (e.g.
+     * "3/6 scenarios complete"). When set, the comment is rendered as an
+     * in-progress update rather than a final verdict.
+     */
+    progress?: string;
   } = {},
 ): string {
-  const badge = verdict.pass ? '✅ PASS' : '❌ FAIL';
+  const inProgress = Boolean(opts.progress);
+  const badge = inProgress
+    ? '⏳ RUNNING'
+    : verdict.pass
+      ? '✅ PASS'
+      : '❌ FAIL';
   const lines: string[] = [];
   lines.push('<!-- hdx-eval-verdict -->');
   lines.push(`## MCP Eval Results — ${badge}`);
@@ -117,6 +128,10 @@ export function renderVerdictComment(
     '_Advisory only (Milestone 1 CI skeleton) — this check does not block merges._',
   );
   lines.push('');
+  if (opts.progress) {
+    lines.push(`**Progress:** ${opts.progress}`);
+    lines.push('');
+  }
   lines.push(verdict.reason);
   lines.push('');
 

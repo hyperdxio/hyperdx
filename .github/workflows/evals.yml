@@ -13,18 +13,21 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      scenario:
-        description: 'Scenario to run'
+      scenarios:
+        description: 'Comma-separated scenarios to run (empty = full suite)'
         type: string
-        default: latency-spike
+        default: ''
       volume_factor:
         description:
-          'Snapshot generation volume factor (1 = full; lower = cheaper test
-          seed)'
+          'Snapshot generation volume factor (1 = full; 0.5 = suite subset)'
         type: string
-        default: '1'
+        default: '0.5'
       runs:
         description: 'Runs per (scenario, MCP) cell'
+        type: string
+        default: '1'
+      concurrency:
+        description: 'Cells run concurrently within each scenario'
         type: string
         default: '1'
 
@@ -42,22 +45,29 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      # M2: single scenario for the fast-seed test, FULL volume via snapshot.
-      HDX_EVAL_SCENARIO: ${{ github.event.inputs.scenario || 'latency-spike' }}
+      # Full suite: empty HDX_EVAL_SCENARIOS → run-evals.sh runs every scenario.
+      # workflow_dispatch can pass a comma list to narrow it.
+      HDX_EVAL_SCENARIOS: ${{ github.event.inputs.scenarios || '' }}
       HDX_EVAL_RUNS: ${{ github.event.inputs.runs || '1' }}
+      HDX_EVAL_CONCURRENCY: ${{ github.event.inputs.concurrency || '1' }}
       HDX_EVAL_OUTPUT_DIR: ${{ github.workspace }}/eval-output
       HDX_EVALS_OUTPUT_DIR: ${{ github.workspace }}/eval-output
       HDX_EVALS_RUNS_DIR: ${{ github.workspace }}/eval-output/runs
-      # M2 Parquet snapshot fast-seed path.
+      # Parquet snapshot fast-seed path.
       HDX_EVALS_SNAPSHOT_DIR: ${{ github.workspace }}/eval-snapshot
       # Path INSIDE the runner container (matches the compose mount target).
       HDX_EVAL_SNAPSHOT_DIR: /work/eval-snapshot
-      # Generate at FULL volume on a snapshot miss (the point of M2). Override
-      # via workflow_dispatch input for a cheaper test.
+      # Suite subset: half volume on a snapshot miss (see run-evals.sh rationale).
+      # workflow_dispatch can override (e.g. 1 for full volume).
       HDX_EVAL_SNAPSHOT_VOLUME_FACTOR:
-        ${{ github.event.inputs.volume_factor || '1' }}
+        ${{ github.event.inputs.volume_factor || '0.5' }}
       # Stable anchor so cached snapshot timestamps stay valid across runs.
       HDX_EVAL_ANCHOR: '2026-06-01T00:00:00Z'
+      # Full suite in the same order run-evals.sh uses (light → heavy). Drives
+      # the per-scenario cache matrix below.
+      HDX_EVAL_SUITE:
+        'dashboard-build latency-spike segmented-regression error-root-cause
+        noisy-signals service-health-check'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -98,16 +108,18 @@ jobs:
           echo "hash=$HASH" >> "$GITHUB_OUTPUT"
           echo "Seed-logic hash: $HASH"
 
-      # Restore (and, at job end, save) the full-volume Parquet snapshot keyed
-      # on the seed-logic hash + scenario. No restore-keys: a stale snapshot is
-      # never partially reused across a logic change — a miss regenerates.
-      - name: Restore/save eval seed snapshot
+      # Restore (and, at job end, save) the WHOLE-SUITE Parquet snapshot dir
+      # (all scenarios under one dir, each in its own <scenario>/ subdir) keyed
+      # on the seed-logic hash + volume factor. At factor 0.5 the full suite is
+      # ~2-4 GB, comfortably under the 10 GB actions/cache cap. No restore-keys:
+      # a stale snapshot is never partially reused across a logic change — a
+      # miss regenerates every scenario that run and saves them together.
+      - name: Restore/save eval seed snapshot (suite)
         uses: actions/cache@v4
         with:
           path: ${{ env.HDX_EVALS_SNAPSHOT_DIR }}
           key:
-            eval-seed-${{ env.HDX_EVAL_SCENARIO }}-v${{
-            env.HDX_EVAL_SNAPSHOT_VOLUME_FACTOR }}-${{
+            eval-seed-suite-v${{ env.HDX_EVAL_SNAPSHOT_VOLUME_FACTOR }}-${{
             steps.seedhash.outputs.hash }}
 
       # Build both DISTINCT images with GHA layer caching. The HyperDX
@@ -160,11 +172,26 @@ jobs:
             github.run_id }}
           HDX_EVAL_COMMIT_SHA:
             ${{ github.event.pull_request.head.sha || github.sha }}
+          # Progressive sticky PR comment: the runner upserts one comment after
+          # each scenario. Only wired on same-repo PRs (forks can't get a
+          # write token via the default GITHUB_TOKEN). The final comment is also
+          # posted by the sticky mshick step below as a belt-and-suspenders.
+          HDX_EVAL_GH_TOKEN:
+            ${{ github.event.pull_request.head.repo.fork == false &&
+            github.event_name == 'pull_request' && github.token || '' }}
+          HDX_EVAL_GH_REPO: ${{ github.repository }}
+          HDX_EVAL_GH_PR: ${{ github.event.pull_request.number }}
         run: |
           docker compose -f docker-compose.evals.yml run --rm \
             -e ANTHROPIC_API_KEY \
             -e HDX_EVAL_RUN_URL \
             -e HDX_EVAL_COMMIT_SHA \
+            -e HDX_EVAL_SCENARIOS \
+            -e HDX_EVAL_RUNS \
+            -e HDX_EVAL_CONCURRENCY \
+            -e HDX_EVAL_GH_TOKEN \
+            -e HDX_EVAL_GH_REPO \
+            -e HDX_EVAL_GH_PR \
             eval-runner
 
       - name: Dump HyperDX logs on failure
