@@ -53,26 +53,37 @@ export interface ResultRowLimitSettings {
 }
 
 // Clauses ClickHouse allows AFTER an outer `LIMIT` (SETTINGS/FORMAT), plus a
-// trailing `;` and single-line comment. Stripped from the end before the LIMIT
-// test so a query like `... LIMIT 50 SETTINGS max_threads=4` still counts as
-// having an outer LIMIT (missing it would wrongly enable the group-by cap and
-// corrupt the top-N).
+// trailing `;`, single-line comment, and block comment. Stripped from the end
+// (repeatedly) before the LIMIT test so a query like
+// `... LIMIT 50 SETTINGS max_threads=4` or `... LIMIT 50 /* note */` still
+// counts as having an outer LIMIT (missing it would wrongly enable the group-by
+// cap and corrupt the top-N).
 const TRAILING_CLAUSE_RE =
-  /(?:\s+settings\s+.+|\s+format\s+\w+|\s*;|\s*--[^\n]*)+\s*$/i;
-// Outer `LIMIT` at the end: `LIMIT n [,m] [OFFSET n] [WITH TIES]`. Anchored to
-// end-of-string (after trailing clauses are stripped), so a LIMIT inside a
-// subquery/CTE is not matched. Conservative: a miss only falls back to the safe
-// result-row cap.
+  /(?:\s+settings\s+.+|\s+format\s+\w+|\s*;|\s*--[^\n]*|\s*\/\*[\s\S]*?\*\/)+\s*$/i;
+// Outer `LIMIT` at the end (after trailing clauses are stripped):
+// `LIMIT n [,m] [OFFSET n] [WITH TIES]` or `LIMIT n BY col…`. Anchored to
+// end-of-string, so a LIMIT inside a subquery/CTE is not matched. Conservative:
+// a miss only falls back to the safe result-row cap.
 const OUTER_LIMIT_RE =
   /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?(?:\s+with\s+ties)?\s*$/i;
+// `LIMIT n BY <cols>` (ClickHouse LIMIT BY) at the end — still an outer LIMIT
+// that runs after ORDER BY. Anchored to end-of-string; the column list may not
+// contain a `)` (which would indicate a subquery's LIMIT BY, not an outer one).
+// A `LIMIT … BY … LIMIT m` shape is already caught by OUTER_LIMIT_RE via its
+// trailing `LIMIT m`.
+const OUTER_LIMIT_BY_RE =
+  /\blimit\s+\d+(?:\s*,\s*\d+)?\s+by\s+[\w.,\s'"[\]]+$/i;
 
-/** Whether a raw SQL string ends in an outer `LIMIT` clause. */
+/** Whether a raw SQL string ends in an outer `LIMIT` (incl. `LIMIT … BY`). */
 export function hasOuterLimit(sql: string | undefined): boolean {
   if (typeof sql !== 'string' || sql.length === 0) {
     return false;
   }
   const withoutTrailing = sql.trimEnd().replace(TRAILING_CLAUSE_RE, '');
-  return OUTER_LIMIT_RE.test(withoutTrailing);
+  return (
+    OUTER_LIMIT_RE.test(withoutTrailing) ||
+    OUTER_LIMIT_BY_RE.test(withoutTrailing)
+  );
 }
 
 /**
@@ -90,7 +101,7 @@ export function resolveResultRowLimitSettings(
     hasOuterLimit: queryHasOuterLimit = false,
   }: { hasOuterLimit?: boolean } = {},
 ): ResultRowLimitSettings | undefined {
-  const limit = resolveResultRowLimitSetting(cap);
+  const limit = resolveMaxResultRowsValue(cap);
   if (limit == null) {
     return undefined;
   }
@@ -113,7 +124,7 @@ export function resolveResultRowLimitSettings(
  * and returns at least `cap + 1` rows. Returns undefined for a non-positive /
  * absent cap (no limit applied).
  */
-export function resolveResultRowLimitSetting(
+export function resolveMaxResultRowsValue(
   cap: number | undefined,
 ): number | undefined {
   if (cap == null || !Number.isFinite(cap) || cap <= 0) {

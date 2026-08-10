@@ -5,30 +5,28 @@ import {
   didResultOverflow,
   hasOuterLimit,
   resolveDidOverflow,
-  resolveResultRowLimitSetting,
+  resolveMaxResultRowsValue,
   resolveResultRowLimitSettings,
   resolveTileMaxResultRows,
 } from '@/defaults';
 
-describe('resolveResultRowLimitSetting', () => {
+describe('resolveMaxResultRowsValue', () => {
   it('requests one row of headroom above the cap', () => {
     // cap + 1 lets a complete result of exactly `cap` rows come back whole,
     // while anything larger trips the break.
-    expect(resolveResultRowLimitSetting(5000)).toBe(5001);
-    expect(resolveResultRowLimitSetting(1)).toBe(2);
+    expect(resolveMaxResultRowsValue(5000)).toBe(5001);
+    expect(resolveMaxResultRowsValue(1)).toBe(2);
   });
 
   it('floors non-integer caps before adding headroom', () => {
-    expect(resolveResultRowLimitSetting(99.9)).toBe(100);
+    expect(resolveMaxResultRowsValue(99.9)).toBe(100);
   });
 
   it('returns undefined for a non-positive / absent cap (no limit applied)', () => {
-    expect(resolveResultRowLimitSetting(undefined)).toBeUndefined();
-    expect(resolveResultRowLimitSetting(0)).toBeUndefined();
-    expect(resolveResultRowLimitSetting(-10)).toBeUndefined();
-    expect(
-      resolveResultRowLimitSetting(Number.POSITIVE_INFINITY),
-    ).toBeUndefined();
+    expect(resolveMaxResultRowsValue(undefined)).toBeUndefined();
+    expect(resolveMaxResultRowsValue(0)).toBeUndefined();
+    expect(resolveMaxResultRowsValue(-10)).toBeUndefined();
+    expect(resolveMaxResultRowsValue(Number.POSITIVE_INFINITY)).toBeUndefined();
   });
 });
 
@@ -155,11 +153,40 @@ describe('hasOuterLimit', () => {
     ).toBe(true);
   });
 
+  it('detects an outer LIMIT followed by a trailing block comment', () => {
+    // /* ... */ after the LIMIT must not defeat detection (greptile P1).
+    expect(
+      hasOuterLimit(
+        'SELECT k, count() c FROM t GROUP BY k ORDER BY c DESC LIMIT 50 /* dashboard note */',
+      ),
+    ).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50 /* note */;')).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50\n/* multi\nline */')).toBe(
+      true,
+    );
+  });
+
+  it('detects an outer LIMIT … BY clause', () => {
+    expect(hasOuterLimit('SELECT * FROM t ORDER BY c LIMIT 10 BY host')).toBe(
+      true,
+    );
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 2 BY host, region;')).toBe(
+      true,
+    );
+    // `LIMIT … BY … LIMIT m` is caught via the trailing regular LIMIT.
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 1 BY host LIMIT 50')).toBe(
+      true,
+    );
+  });
+
   it('does not treat a LIMIT inside a subquery as an outer LIMIT', () => {
     // Anchored to end-of-string: an inner LIMIT followed by more query is not
     // matched, so the cardinality cap can still apply.
     expect(
       hasOuterLimit('SELECT * FROM (SELECT * FROM t LIMIT 10) GROUP BY k'),
+    ).toBe(false);
+    expect(
+      hasOuterLimit('SELECT * FROM (SELECT * FROM t LIMIT 5 BY h) GROUP BY k'),
     ).toBe(false);
   });
 

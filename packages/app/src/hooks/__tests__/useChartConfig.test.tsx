@@ -1571,6 +1571,44 @@ describe('useChartConfig', () => {
       expect(result.current.isPending).toBe(false);
     });
 
+    it('passes the row-cap clickhouse_settings on the parallel path', async () => {
+      const { config, mockResponse1, mockResponse2, mockResponse3 } =
+        setupParallelQueries();
+
+      mockClickhouseClient.queryChartConfig
+        .mockResolvedValueOnce(mockResponse1)
+        .mockResolvedValueOnce(mockResponse2)
+        .mockResolvedValueOnce(mockResponse3);
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            enableQueryChunking: true,
+            enableParallelQueries: true,
+            maxResultRows: 5000,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+        timeout: 1000,
+      });
+      await waitFor(() => expect(result.current.isFetching).toBe(false), {
+        timeout: 1000,
+      });
+
+      // Every parallel chunk query carries the cap settings (builder config has
+      // no outer LIMIT, so the cardinality cap applies too), each with cap + 1.
+      for (const call of mockClickhouseClient.queryChartConfig.mock.calls) {
+        expect(call[0].opts?.clickhouse_settings).toEqual({
+          max_result_rows: '5001',
+          result_overflow_mode: 'break',
+          max_rows_to_group_by: '5001',
+          group_by_overflow_mode: 'break',
+        });
+      }
+    });
+
     it('streams parallel query results in order', async () => {
       const { config, mockResponse1, mockResponse2, mockResponse3 } =
         setupParallelQueries();
