@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
+import { appendFileSync } from 'node:fs';
 import {
   TableMetadata,
   tcFromSource,
@@ -470,6 +471,7 @@ const FilterGroupBody = ({
 
   useEffect(() => {
     if (!isLive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDateRange(chartConfig.dateRange);
     }
   }, [chartConfig.dateRange, isLive]);
@@ -684,7 +686,7 @@ const FilterGroupBody = ({
           isPercentageLoading={isFetchingDistribution}
           percentage={
             showDistributions && distributionData
-              ? (distributionData.get(option.value.toString()) ?? 0)
+              ? distributionData.get(option.value.toString()) ?? 0
               : undefined
           }
         />
@@ -1154,7 +1156,6 @@ const DBSearchPageFiltersComponent = ({
 
   useEffect(() => {
     if (!isLive) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDateRange(chartConfig.dateRange);
     }
   }, [chartConfig.dateRange, isLive]);
@@ -1333,7 +1334,16 @@ const DBSearchPageFiltersComponent = ({
 
     // #region agent log
     if (process.env.NODE_ENV === 'test')
-      require('fs').appendFileSync('/opt/cursor/logs/debug.log', JSON.stringify({ hypothesisId: 'A,B', location: 'DBSearchPageFilters.tsx:shownFacets', message: 'Facet priority output', data: { keys: _facets.map(facet => facet.key) }, timestamp: Date.now() }) + '\n');
+      appendFileSync(
+        '/opt/cursor/logs/debug.log',
+        JSON.stringify({
+          hypothesisId: 'A,B',
+          location: 'DBSearchPageFilters.tsx:shownFacets',
+          message: 'Facet priority output',
+          data: { keys: _facets.map(facet => facet.key) },
+          timestamp: 0,
+        }) + '\n',
+      );
     // #endregion
     return _facets;
   }, [
@@ -1429,11 +1439,24 @@ const DBSearchPageFiltersComponent = ({
     ) => {
       const { keyPrefix = '', isDefaultExpanded: forceExpanded } =
         options ?? {};
-      const { grouped, nonGrouped } = groupFacetsByBaseName(facets);
+      const { grouped, nonGrouped, ordered } = groupFacetsByBaseName(facets);
 
       // #region agent log
       if (process.env.NODE_ENV === 'test')
-        require('fs').appendFileSync('/opt/cursor/logs/debug.log', JSON.stringify({ hypothesisId: 'B', location: 'DBSearchPageFilters.tsx:renderFacetList', message: 'Grouped render partitions', data: { input: facets.map(facet => facet.key), grouped: grouped.map(group => group.key), nonGrouped: nonGrouped.map(facet => facet.key) }, timestamp: Date.now() }) + '\n');
+        appendFileSync(
+          '/opt/cursor/logs/debug.log',
+          JSON.stringify({
+            hypothesisId: 'B',
+            location: 'DBSearchPageFilters.tsx:renderFacetList',
+            message: 'Grouped render partitions',
+            data: {
+              input: facets.map(facet => facet.key),
+              grouped: grouped.map(group => group.key),
+              nonGrouped: nonGrouped.map(facet => facet.key),
+            },
+            timestamp: 0,
+          }) + '\n',
+        );
       // #endregion
       const makeValuePins = (key: string): ValuePinHandlers => ({
         onPinClick: (value: string | boolean) => toggleFilterPin(key, value),
@@ -1451,140 +1474,142 @@ const DBSearchPageFiltersComponent = ({
         isSharedFieldPinned: isSharedFieldPinned(key),
       });
 
+      const groupedElements = grouped.map(group => (
+        <NestedFilterGroup
+          key={`${keyPrefix}${group.key}`}
+          data-testid={`${keyPrefix}nested-filter-group-${group.key}`}
+          name={group.key}
+          // sqlKey is the canonical (quoted/bracket) SQL form used wherever
+          // the key becomes raw SQL (distribution query, "Add column"
+          // SELECT); child.key stays clean for the UI.
+          childFilters={group.children.map(child => ({
+            ...child,
+            sqlKey: toQuotedClickHouseKeyExpression(child.key, knownColumns),
+          }))}
+          selectedValues={group.children.reduce((acc, child) => {
+            acc[child.key] = getFilterStateEntry(filterState, child.key) ?? {
+              included: new Set(),
+              excluded: new Set(),
+            };
+            return acc;
+          }, {} as FilterState)}
+          onChange={(key, value) => setFilterValue(key, value)}
+          onClearClick={key => clearFilter(key)}
+          onOnlyClick={(key, value) => setFilterValue(key, value, 'only')}
+          onExcludeClick={(key, value) => setFilterValue(key, value, 'exclude')}
+          onPinClick={(key, value) => toggleFilterPin(key, value)}
+          isPinned={(key, value) => isFilterPinned(key, value)}
+          onSharedPinClick={(key, value) => toggleSharedFilterPin(key, value)}
+          isSharedPinned={(key, value) => isSharedFilterPinned(key, value)}
+          onFieldPinClick={key => toggleFieldPin(key)}
+          isFieldPinned={key => isFieldPinned(key)}
+          onToggleSharedFieldPin={key => toggleSharedFieldPin(key)}
+          isSharedFieldPinned={key => isSharedFieldPinned(key)}
+          showFilterCounts={showFilterCounts}
+          onColumnToggle={onColumnToggle}
+          displayedColumns={displayedColumns}
+          onLoadMore={loadMoreFacetsForKey}
+          loadMoreLoading={group.children.reduce(
+            (acc, child) => {
+              acc[child.key] = loadMoreLoadingKeys.has(child.key);
+              return acc;
+            },
+            {} as Record<string, boolean>,
+          )}
+          hasLoadedMore={group.children.reduce(
+            (acc, child) => {
+              acc[child.key] = extraFacetKeys.has(child.key);
+              return acc;
+            },
+            {} as Record<string, boolean>,
+          )}
+          isDefaultExpanded={
+            forceExpanded ??
+            group.children.some(child => {
+              const entry = getFilterStateEntry(filterState, child.key);
+              return (
+                (entry &&
+                  (entry.included.size > 0 || entry.excluded.size > 0)) ||
+                isFieldPinned(child.key) ||
+                isSharedFieldPinned(child.key)
+              );
+            })
+          }
+          chartConfig={chartConfig}
+          isLive={isLive}
+        />
+      ));
+      const nonGroupedElements = nonGrouped.map(facet => {
+        const facetSqlKey = toQuotedClickHouseKeyExpression(
+          facet.key,
+          knownColumns,
+        );
+        return (
+          <FilterGroup
+            key={`${keyPrefix}${facet.key}`}
+            data-testid={`${keyPrefix}filter-group-${facet.key}`}
+            name={cleanedFacetName(facet.key)}
+            distributionKey={facetSqlKey}
+            showFilterCounts={showFilterCounts}
+            options={facet.value.map(value => ({
+              value,
+              label: value.toString(),
+            }))}
+            optionsLoading={isFacetsLoading}
+            selectedValues={
+              getFilterStateEntry(filterState, facet.key) ?? {
+                included: new Set(),
+                excluded: new Set(),
+              }
+            }
+            onChange={value => setFilterValue(facet.key, value)}
+            onClearClick={() => clearFilter(facet.key)}
+            onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
+            onExcludeClick={value =>
+              setFilterValue(facet.key, value, 'exclude')
+            }
+            valuePins={makeValuePins(facet.key)}
+            fieldPins={makeFieldPins(facet.key)}
+            onColumnToggle={
+              onColumnToggle ? () => onColumnToggle(facetSqlKey) : undefined
+            }
+            isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
+            onLoadMore={loadMoreFacetsForKey}
+            loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+            hasLoadedMore={extraFacetKeys.has(facet.key)}
+            isDefaultExpanded={(() => {
+              const entry = getFilterStateEntry(filterState, facet.key);
+              return (
+                forceExpanded ??
+                (isFieldPrimary(tableMetadata, facet.key) ||
+                  isFieldPinned(facet.key) ||
+                  isSharedFieldPinned(facet.key) ||
+                  (entry != null &&
+                    (entry.included.size > 0 ||
+                      entry.excluded.size > 0 ||
+                      entry.range != null)))
+              );
+            })()}
+            chartConfig={chartConfig}
+            isLive={isLive}
+            onRangeChange={range => setFilterRange(facet.key, range)}
+          />
+        );
+      });
+      const groupedElementsByGroup = new Map(
+        grouped.map((group, index) => [group, groupedElements[index]]),
+      );
+      const nonGroupedElementsByFacet = new Map(
+        nonGrouped.map((facet, index) => [facet, nonGroupedElements[index]]),
+      );
+
       return (
         <>
-          {grouped.map(group => (
-            <NestedFilterGroup
-              key={`${keyPrefix}${group.key}`}
-              data-testid={`${keyPrefix}nested-filter-group-${group.key}`}
-              name={group.key}
-              // sqlKey is the canonical (quoted/bracket) SQL form used wherever
-              // the key becomes raw SQL (distribution query, "Add column"
-              // SELECT); child.key stays clean for the UI.
-              childFilters={group.children.map(child => ({
-                ...child,
-                sqlKey: toQuotedClickHouseKeyExpression(
-                  child.key,
-                  knownColumns,
-                ),
-              }))}
-              selectedValues={group.children.reduce((acc, child) => {
-                acc[child.key] = getFilterStateEntry(
-                  filterState,
-                  child.key,
-                ) ?? {
-                  included: new Set(),
-                  excluded: new Set(),
-                };
-                return acc;
-              }, {} as FilterState)}
-              onChange={(key, value) => setFilterValue(key, value)}
-              onClearClick={key => clearFilter(key)}
-              onOnlyClick={(key, value) => setFilterValue(key, value, 'only')}
-              onExcludeClick={(key, value) =>
-                setFilterValue(key, value, 'exclude')
-              }
-              onPinClick={(key, value) => toggleFilterPin(key, value)}
-              isPinned={(key, value) => isFilterPinned(key, value)}
-              onSharedPinClick={(key, value) =>
-                toggleSharedFilterPin(key, value)
-              }
-              isSharedPinned={(key, value) => isSharedFilterPinned(key, value)}
-              onFieldPinClick={key => toggleFieldPin(key)}
-              isFieldPinned={key => isFieldPinned(key)}
-              onToggleSharedFieldPin={key => toggleSharedFieldPin(key)}
-              isSharedFieldPinned={key => isSharedFieldPinned(key)}
-              showFilterCounts={showFilterCounts}
-              onColumnToggle={onColumnToggle}
-              displayedColumns={displayedColumns}
-              onLoadMore={loadMoreFacetsForKey}
-              loadMoreLoading={group.children.reduce(
-                (acc, child) => {
-                  acc[child.key] = loadMoreLoadingKeys.has(child.key);
-                  return acc;
-                },
-                {} as Record<string, boolean>,
-              )}
-              hasLoadedMore={group.children.reduce(
-                (acc, child) => {
-                  acc[child.key] = extraFacetKeys.has(child.key);
-                  return acc;
-                },
-                {} as Record<string, boolean>,
-              )}
-              isDefaultExpanded={
-                forceExpanded ??
-                group.children.some(child => {
-                  const entry = getFilterStateEntry(filterState, child.key);
-                  return (
-                    (entry &&
-                      (entry.included.size > 0 || entry.excluded.size > 0)) ||
-                    isFieldPinned(child.key) ||
-                    isSharedFieldPinned(child.key)
-                  );
-                })
-              }
-              chartConfig={chartConfig}
-              isLive={isLive}
-            />
-          ))}
-          {nonGrouped.map(facet => {
-            const facetSqlKey = toQuotedClickHouseKeyExpression(
-              facet.key,
-              knownColumns,
-            );
-            return (
-              <FilterGroup
-                key={`${keyPrefix}${facet.key}`}
-                data-testid={`${keyPrefix}filter-group-${facet.key}`}
-                name={cleanedFacetName(facet.key)}
-                distributionKey={facetSqlKey}
-                showFilterCounts={showFilterCounts}
-                options={facet.value.map(value => ({
-                  value,
-                  label: value.toString(),
-                }))}
-                optionsLoading={isFacetsLoading}
-                selectedValues={
-                  getFilterStateEntry(filterState, facet.key) ?? {
-                    included: new Set(),
-                    excluded: new Set(),
-                  }
-                }
-                onChange={value => setFilterValue(facet.key, value)}
-                onClearClick={() => clearFilter(facet.key)}
-                onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
-                onExcludeClick={value =>
-                  setFilterValue(facet.key, value, 'exclude')
-                }
-                valuePins={makeValuePins(facet.key)}
-                fieldPins={makeFieldPins(facet.key)}
-                onColumnToggle={
-                  onColumnToggle ? () => onColumnToggle(facetSqlKey) : undefined
-                }
-                isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
-                onLoadMore={loadMoreFacetsForKey}
-                loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-                hasLoadedMore={extraFacetKeys.has(facet.key)}
-                isDefaultExpanded={(() => {
-                  const entry = getFilterStateEntry(filterState, facet.key);
-                  return (
-                    forceExpanded ??
-                    (isFieldPrimary(tableMetadata, facet.key) ||
-                      isFieldPinned(facet.key) ||
-                      isSharedFieldPinned(facet.key) ||
-                      (entry != null &&
-                        (entry.included.size > 0 ||
-                          entry.excluded.size > 0 ||
-                          entry.range != null)))
-                  );
-                })()}
-                chartConfig={chartConfig}
-                isLive={isLive}
-                onRangeChange={range => setFilterRange(facet.key, range)}
-              />
-            );
-          })}
+          {ordered.map(item =>
+            'children' in item
+              ? groupedElementsByGroup.get(item)
+              : nonGroupedElementsByFacet.get(item),
+          )}
         </>
       );
     },

@@ -6,6 +6,11 @@ import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import { mergePath } from '@/utils';
 
+type Facet = { key: string; value: (string | boolean)[] };
+type FacetGroup = Facet & {
+  children: (Facet & { propertyPath: string })[];
+};
+
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
   // Remove toString() wrapper if present
@@ -62,33 +67,23 @@ function isBracketFormMapKey(key: string): boolean {
 // `LogAttributes['time']` refer to the same logical field and must collapse
 // into a single child. When merging, we keep the bracket-form key so
 // `child.key` remains a valid ClickHouse expression for "Load more" SQL.
-export function groupFacetsByBaseName(
-  facets: { key: string; value: (string | boolean)[] }[],
-) {
-  const grouped: Map<
-    string,
-    {
-      key: string;
-      value: (string | boolean)[];
-      children: {
-        key: string;
-        value: (string | boolean)[];
-        propertyPath: string;
-      }[];
-    }
-  > = new Map();
-  const nonGrouped: { key: string; value: (string | boolean)[] }[] = [];
+export function groupFacetsByBaseName(facets: Facet[]) {
+  const grouped = new Map<string, FacetGroup>();
+  const nonGrouped: Facet[] = [];
+  const ordered: (Facet | FacetGroup)[] = [];
 
   for (const facet of facets) {
     const parsed = parseMapFieldName(facet.key);
     if (parsed) {
       const { baseName, propertyPath } = parsed;
       if (!grouped.has(baseName)) {
-        grouped.set(baseName, {
+        const group: FacetGroup = {
           key: baseName,
           value: [], // Base name doesn't have direct values
           children: [],
-        });
+        };
+        grouped.set(baseName, group);
+        ordered.push(group);
       }
       const group = grouped.get(baseName)!;
       const existing = group.children.find(
@@ -116,10 +111,11 @@ export function groupFacetsByBaseName(
       }
     } else {
       nonGrouped.push(facet);
+      ordered.push(facet);
     }
   }
 
-  return { grouped: Array.from(grouped.values()), nonGrouped };
+  return { grouped: Array.from(grouped.values()), nonGrouped, ordered };
 }
 
 // Look up a filterState entry by either bracket-form or dot-form map sub-key.
