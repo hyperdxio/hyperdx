@@ -56,9 +56,7 @@ describe('ConfirmProvider', () => {
         screen.getByRole('button', { name: 'Open confirmation' }),
       );
 
-      const confirmButton = await screen.findByTestId(
-        'confirm-confirm-button',
-      );
+      const confirmButton = await screen.findByTestId('confirm-confirm-button');
       expect(confirmButton).toHaveTextContent('Delete dashboard');
       expect(confirmButton).toHaveAttribute('data-variant', 'danger');
 
