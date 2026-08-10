@@ -7,6 +7,7 @@ import {
   bulkInsertMetricsGauge,
   bulkInsertMetricsHistogram,
   bulkInsertMetricsSum,
+  bulkInsertMetricsSummary,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   DEFAULT_METRICS_TABLE,
@@ -426,6 +427,96 @@ describe('MCP Source Tools', () => {
       expect(describedMetric.kinds[0].usage).toContain('Exponential histogram');
       expect(describedMetric.nextSteps.query).toContain(
         'metricType: "exponential histogram"',
+      );
+    });
+
+    it('discovers summary metrics and directs querying to clickstack_sql', async () => {
+      // Summary metrics are discoverable (list/describe) but not queryable:
+      // the query renderer has no summary translation, so every discovery
+      // surface must redirect the agent to clickstack_sql.
+      const metricSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+          [MetricsDataType.Summary.toLowerCase()]:
+            DEFAULT_METRICS_TABLE.SUMMARY,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Metrics With Summary',
+      });
+      const now = new Date();
+      await bulkInsertMetricsSummary([
+        {
+          MetricName: 'http_request_duration_seconds',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          Attributes: { endpoint: '/api/v1/users' },
+          ServiceName: 'svc-a',
+          TimeUnix: now,
+          Count: 10,
+          Sum: 1.5,
+        },
+      ]);
+
+      const describeSourceResult = await callTool(
+        client,
+        'clickstack_describe_source',
+        { sourceId: metricSource._id.toString() },
+      );
+      expect(describeSourceResult.isError).toBeFalsy();
+      const describedSource = JSON.parse(getFirstText(describeSourceResult));
+      // The summary table is listed and its metric names are sampled, but
+      // the representative discovery table stays a queryable kind.
+      expect(describedSource.source.metricTables.summary).toBe(
+        DEFAULT_METRICS_TABLE.SUMMARY,
+      );
+      expect(describedSource.source.discoveryMetricKind).toBe('gauge');
+      expect(describedSource.source.metricNames.summary).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'http_request_duration_seconds' }),
+        ]),
+      );
+      expect(describedSource.usage.metricNames).toContain('clickstack_sql');
+
+      const listResult = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'summary',
+      });
+      expect(listResult.isError).toBeFalsy();
+      const listedMetrics = JSON.parse(getFirstText(listResult));
+      expect(listedMetrics.metrics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'http_request_duration_seconds',
+            kind: 'summary',
+          }),
+        ]),
+      );
+      expect(listedMetrics.summaryNote).toContain('clickstack_sql');
+
+      const describeMetricResult = await callTool(
+        client,
+        'clickstack_describe_metric',
+        {
+          sourceId: metricSource._id.toString(),
+          metricName: 'http_request_duration_seconds',
+          kind: 'summary',
+        },
+      );
+      expect(describeMetricResult.isError).toBeFalsy();
+      const describedMetric = JSON.parse(getFirstText(describeMetricResult));
+      expect(describedMetric.kinds[0]).toMatchObject({ kind: 'summary' });
+      // Attribute discovery is table-generic and must work on the summary
+      // table like any other kind.
+      expect(describedMetric.kinds[0].attributeKeys.Attributes).toContain(
+        'endpoint',
+      );
+      expect(describedMetric.kinds[0].usage).toContain('clickstack_sql');
+      expect(describedMetric.nextSteps.query).toContain('clickstack_sql');
+      expect(describedMetric.nextSteps.query).not.toContain(
+        'clickstack_timeseries({',
       );
     });
 
