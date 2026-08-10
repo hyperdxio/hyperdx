@@ -59,6 +59,8 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
     'clickstack_sql',
     {
       title: 'Raw SQL Query',
+      // Enforces ClickHouse readonly=2, so effectively read-only.
+      annotations: { readOnlyHint: true },
       description:
         'Execute raw ClickHouse SQL. ' +
         'ADVANCED: only use this when you need capabilities the builder tools cannot express — ' +

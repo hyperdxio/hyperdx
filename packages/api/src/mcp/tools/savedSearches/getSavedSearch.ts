@@ -17,6 +17,7 @@ export function registerGetSavedSearch({
     'clickstack_get_saved_search',
     {
       title: 'Get Saved Search(es)',
+      annotations: { readOnlyHint: true },
       description:
         'Without an ID: list all saved searches as a high-level summary ' +
         '(id, name, tags). ' +

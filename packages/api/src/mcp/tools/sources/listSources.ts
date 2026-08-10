@@ -17,6 +17,7 @@ export function registerListSources({
     'clickstack_list_sources',
     {
       title: 'List Sources & Connections',
+      annotations: { readOnlyHint: true },
       description:
         'List all data sources (logs, metrics, traces) and database connections available to this team. ' +
         'Returns source IDs, names, kinds, and connection IDs as a lightweight catalog.\n\n' +
