@@ -52,19 +52,27 @@ export interface ResultRowLimitSettings {
   cardinalityCapApplied: boolean;
 }
 
-// Matches an outer `LIMIT` at the very end of a statement (tolerating a trailing
-// `;` and single-line comment). Anchored to end-of-string, so a LIMIT inside a
-// subquery/CTE is not matched. Conservative on purpose: a miss only falls back
-// to the safe result-row cap.
+// Clauses ClickHouse allows AFTER an outer `LIMIT` (SETTINGS/FORMAT), plus a
+// trailing `;` and single-line comment. Stripped from the end before the LIMIT
+// test so a query like `... LIMIT 50 SETTINGS max_threads=4` still counts as
+// having an outer LIMIT (missing it would wrongly enable the group-by cap and
+// corrupt the top-N).
+const TRAILING_CLAUSE_RE =
+  /(?:\s+settings\s+.+|\s+format\s+\w+|\s*;|\s*--[^\n]*)+\s*$/i;
+// Outer `LIMIT` at the end: `LIMIT n [,m] [OFFSET n] [WITH TIES]`. Anchored to
+// end-of-string (after trailing clauses are stripped), so a LIMIT inside a
+// subquery/CTE is not matched. Conservative: a miss only falls back to the safe
+// result-row cap.
 const OUTER_LIMIT_RE =
-  /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?\s*;?\s*(?:--[^\n]*)?\s*$/i;
+  /\blimit\s+\d+(?:\s*,\s*\d+)?(?:\s+offset\s+\d+)?(?:\s+with\s+ties)?\s*$/i;
 
 /** Whether a raw SQL string ends in an outer `LIMIT` clause. */
 export function hasOuterLimit(sql: string | undefined): boolean {
   if (typeof sql !== 'string' || sql.length === 0) {
     return false;
   }
-  return OUTER_LIMIT_RE.test(sql.trimEnd());
+  const withoutTrailing = sql.trimEnd().replace(TRAILING_CLAUSE_RE, '');
+  return OUTER_LIMIT_RE.test(withoutTrailing);
 }
 
 /**

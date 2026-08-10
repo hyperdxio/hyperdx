@@ -135,12 +135,41 @@ describe('hasOuterLimit', () => {
     expect(hasOuterLimit('SELECT k, count() FROM t GROUP BY k')).toBe(false);
   });
 
+  it('detects an outer LIMIT followed by trailing SETTINGS / FORMAT / WITH TIES', () => {
+    // ClickHouse allows these after LIMIT; missing them would wrongly enable the
+    // group-by cap and corrupt the top-N (greptile P1).
+    expect(
+      hasOuterLimit('SELECT * FROM t LIMIT 50 SETTINGS max_threads=4'),
+    ).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50 SETTINGS a=1, b=2;')).toBe(
+      true,
+    );
+    expect(hasOuterLimit('SELECT * FROM t LIMIT 50 FORMAT JSON')).toBe(true);
+    expect(hasOuterLimit('SELECT * FROM t ORDER BY c LIMIT 50 WITH TIES')).toBe(
+      true,
+    );
+    expect(
+      hasOuterLimit(
+        'SELECT * FROM t LIMIT 50 WITH TIES SETTINGS max_threads=4',
+      ),
+    ).toBe(true);
+  });
+
   it('does not treat a LIMIT inside a subquery as an outer LIMIT', () => {
     // Anchored to end-of-string: an inner LIMIT followed by more query is not
     // matched, so the cardinality cap can still apply.
     expect(
       hasOuterLimit('SELECT * FROM (SELECT * FROM t LIMIT 10) GROUP BY k'),
     ).toBe(false);
+  });
+
+  it('does not treat a trailing SETTINGS / FORMAT without a LIMIT as an outer LIMIT', () => {
+    expect(
+      hasOuterLimit(
+        'SELECT k, count() FROM t GROUP BY k SETTINGS max_threads=4',
+      ),
+    ).toBe(false);
+    expect(hasOuterLimit('SELECT * FROM t FORMAT JSON')).toBe(false);
   });
 
   it('returns false for empty / non-string input', () => {
