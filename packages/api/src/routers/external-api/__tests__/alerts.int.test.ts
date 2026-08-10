@@ -1489,6 +1489,42 @@ describe('External API Alerts', () => {
       expect(after.body.data.threshold).toBe(42);
     });
 
+    // Updates are a full replace, not a merge. A client that predates
+    // `channels` sends only `channel`, which reduces the alert to that one
+    // target -- documented behaviour, pinned here so it can't change silently.
+    it('collapses to one channel when a legacy client sends only `channel`', async () => {
+      const [w1, w2] = await Promise.all([
+        makeWebhookNamed('legacy-1'),
+        makeWebhookNamed('legacy-2'),
+      ]);
+      const base = await baseSavedSearchAlert();
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          ...base,
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+        })
+        .expect(200);
+      expect(created.body.data.channels).toHaveLength(2);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send({
+          ...base,
+          channel: { type: 'webhook', webhookId: w1._id.toString() },
+        })
+        .expect(200);
+
+      const after = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(after.body.data.channels).toEqual([
+        { type: 'webhook', webhookId: w1._id.toString() },
+      ]);
+    });
+
     it('rejects invalid channel combinations', async () => {
       const webhook = await createTestWebhook();
       const base = await baseSavedSearchAlert();
