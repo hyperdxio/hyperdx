@@ -1301,20 +1301,6 @@ const DBSearchPageFiltersComponent = ({
       return aIsPk && !bIsPk ? -1 : bIsPk && !aIsPk ? 1 : 0;
     });
 
-    // prioritize facets that are pinned (either personal or shared)
-    _facets.sort((a, b) => {
-      const aPinned = isFieldPinned(a.key) || isSharedFieldPinned(a.key);
-      const bPinned = isFieldPinned(b.key) || isSharedFieldPinned(b.key);
-      return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
-    });
-
-    // among pinned, prioritize shared over personal
-    _facets.sort((a, b) => {
-      const aShared = isSharedFieldPinned(a.key);
-      const bShared = isSharedFieldPinned(b.key);
-      return aShared && !bShared ? -1 : bShared && !aShared ? 1 : 0;
-    });
-
     // prioritize facets that have checked items
     _facets.sort((a, b) => {
       const aChecked = filterState?.[a.key]?.included.size > 0;
@@ -1329,6 +1315,20 @@ const DBSearchPageFiltersComponent = ({
       if (aRange && !bRange) return -1;
       if (!aRange && bRange) return 1;
       return 0;
+    });
+
+    // prioritize facets that are pinned (either personal or shared)
+    _facets.sort((a, b) => {
+      const aPinned = isFieldPinned(a.key) || isSharedFieldPinned(a.key);
+      const bPinned = isFieldPinned(b.key) || isSharedFieldPinned(b.key);
+      return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
+    });
+
+    // among pinned, prioritize shared over personal
+    _facets.sort((a, b) => {
+      const aShared = isSharedFieldPinned(a.key);
+      const bShared = isSharedFieldPinned(b.key);
+      return aShared && !bShared ? -1 : bShared && !aShared ? 1 : 0;
     });
 
     return _facets;
