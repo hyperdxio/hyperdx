@@ -1,4 +1,3 @@
-import { appendFileSync } from 'node:fs';
 import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -148,21 +147,6 @@ describe('DBSearchPageFilters', () => {
       'nested-filter-group-ResourceAttributes',
     );
 
-    // #region agent log
-    appendFileSync(
-      '/opt/cursor/logs/debug.log',
-      JSON.stringify({
-        hypothesisId: 'C',
-        location: 'DBSearchPageFilters.test.tsx:ordering assertion',
-        message: 'Rendered facet positions',
-        data: {
-          relation: pinnedField.compareDocumentPosition(mapGroup),
-          sameParent: pinnedField.parentElement === mapGroup.parentElement,
-        },
-        timestamp: 0,
-      }) + '\n',
-    );
-    // #endregion
     expect(
       pinnedField.compareDocumentPosition(mapGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,

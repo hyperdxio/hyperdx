@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
-import { appendFileSync } from 'node:fs';
 import {
   TableMetadata,
   tcFromSource,
@@ -1156,6 +1155,7 @@ const DBSearchPageFiltersComponent = ({
 
   useEffect(() => {
     if (!isLive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDateRange(chartConfig.dateRange);
     }
   }, [chartConfig.dateRange, isLive]);
@@ -1332,19 +1332,6 @@ const DBSearchPageFiltersComponent = ({
       return 0;
     });
 
-    // #region agent log
-    if (process.env.NODE_ENV === 'test')
-      appendFileSync(
-        '/opt/cursor/logs/debug.log',
-        JSON.stringify({
-          hypothesisId: 'A,B',
-          location: 'DBSearchPageFilters.tsx:shownFacets',
-          message: 'Facet priority output',
-          data: { keys: _facets.map(facet => facet.key) },
-          timestamp: 0,
-        }) + '\n',
-      );
-    // #endregion
     return _facets;
   }, [
     facetsWithPinnedValues,
@@ -1441,23 +1428,6 @@ const DBSearchPageFiltersComponent = ({
         options ?? {};
       const { grouped, nonGrouped, ordered } = groupFacetsByBaseName(facets);
 
-      // #region agent log
-      if (process.env.NODE_ENV === 'test')
-        appendFileSync(
-          '/opt/cursor/logs/debug.log',
-          JSON.stringify({
-            hypothesisId: 'B',
-            location: 'DBSearchPageFilters.tsx:renderFacetList',
-            message: 'Grouped render partitions',
-            data: {
-              input: facets.map(facet => facet.key),
-              grouped: grouped.map(group => group.key),
-              nonGrouped: nonGrouped.map(facet => facet.key),
-            },
-            timestamp: 0,
-          }) + '\n',
-        );
-      // #endregion
       const makeValuePins = (key: string): ValuePinHandlers => ({
         onPinClick: (value: string | boolean) => toggleFilterPin(key, value),
         isPinned: (value: string | boolean) => isFilterPinned(key, value),
