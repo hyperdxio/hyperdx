@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
-import { preferOverSqlNudge } from './builderCatalog';
+import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import { parseTimeRange } from './helpers';
 import { runEventPatterns } from './runEventPatterns';
 import {
@@ -87,7 +87,7 @@ export function registerEventPatterns({
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
         'a follow-up clickstack_search call to browse matching raw events.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
-        preferOverSqlNudge('clickstack_event_patterns') +
+        PREFER_BUILDER_OVER_SQL_NUDGE +
         '\n\n' +
         'When to use which tool:\n' +
         '  - clickstack_event_patterns: clustering / recurring shapes / noise analysis\n' +

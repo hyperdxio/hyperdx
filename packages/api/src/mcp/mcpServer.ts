@@ -6,7 +6,7 @@ import dashboardPrompts from './prompts/dashboards/index';
 import alertsTools from './tools/alerts/index';
 import dashboardsTools from './tools/dashboards/index';
 import {
-  builderToolBulletList,
+  BUILDER_TOOLS_LIST,
   SQL_FALLBACK_CRITERIA,
 } from './tools/query/builderCatalog';
 import queryTools from './tools/query/index';
@@ -23,7 +23,7 @@ const SERVER_INSTRUCTIONS = [
   'TOOL SELECTION POLICY — read before querying:',
   'Default to the builder query tools. They are more reliable and produce',
   'structured, chart-ready results:',
-  builderToolBulletList(),
+  BUILDER_TOOLS_LIST,
   '',
   'Do NOT reach for clickstack_sql first. Raw SQL is a last resort, reserved for',
   `queries the builder tools genuinely cannot express — ${SQL_FALLBACK_CRITERIA}.`,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
-import { builderToolBulletList, SQL_FALLBACK_CRITERIA } from './builderCatalog';
+import { BUILDER_TOOLS_LIST, SQL_FALLBACK_CRITERIA } from './builderCatalog';
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import { endTimeSchema, startTimeSchema } from './schemas';
 
@@ -66,7 +66,7 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'Execute raw ClickHouse SQL. LAST-RESORT TOOL — do NOT reach for this first.\n\n' +
         'Default to the builder tools for querying; they are more reliable and produce ' +
         'richer, structured results:\n' +
-        builderToolBulletList() +
+        BUILDER_TOOLS_LIST +
         '\n\n' +
         'ONLY use raw SQL when the query genuinely cannot be expressed by a builder tool — ' +
         `i.e. it requires ${SQL_FALLBACK_CRITERIA}. ` +
