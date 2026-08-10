@@ -94,7 +94,7 @@ jest.mock('@/hooks/useMetadata', () => ({
 }));
 
 describe('DBSearchPageFilters', () => {
-  it('renders a pinned scalar field before an unpinned map group', () => {
+  it('renders a pinned scalar field before an active map group', () => {
     mockUseFetchFacets.mockReturnValue({
       data: {
         keys: [],
@@ -116,7 +116,12 @@ describe('DBSearchPageFilters', () => {
 
     renderWithMantine(
       <DBSearchPageFilters
-        filters={{}}
+        filters={{
+          "ResourceAttributes['service.name']": {
+            included: new Set(['frontend']),
+            excluded: new Set(),
+          },
+        }}
         setFilters={jest.fn()}
         clearFilter={jest.fn()}
         clearAllFilters={jest.fn()}
