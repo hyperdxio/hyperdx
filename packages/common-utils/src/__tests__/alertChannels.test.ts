@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  AlertSchema,
   MAX_ALERT_CHANNELS,
   SavedChartConfigSchema,
   validateAlertChannelSelection,
@@ -100,5 +101,45 @@ describe('tile alerts embedded in a saved chart config', () => {
         tile({ ...baseAlert, channel: { type: 'webhook', webhookId: 'w1' } }),
       ).success,
     ).toBe(true);
+  });
+});
+
+// The rule above is exercised through a hand-built RefinementCtx; these drive
+// it through a real parse, which is how the API actually reaches it.
+describe('AlertSchema channel selection', () => {
+  const wh = (id: string) => ({ type: 'webhook' as const, webhookId: id });
+
+  const savedSearchAlert = (channelFields: Record<string, unknown>) => ({
+    source: 'saved_search',
+    savedSearchId: '65f5e4a3b9e77c001a345678',
+    interval: '5m',
+    threshold: 1,
+    thresholdType: 'above',
+    ...channelFields,
+  });
+
+  const parse = (channelFields: Record<string, unknown>) =>
+    AlertSchema.safeParse(savedSearchAlert(channelFields)).success;
+
+  it('accepts either field alone, and both when they agree', () => {
+    expect(parse({ channel: wh('a') })).toBe(true);
+    expect(parse({ channels: [wh('a'), wh('b')] })).toBe(true);
+    expect(parse({ channel: wh('a'), channels: [wh('a'), wh('b')] })).toBe(
+      true,
+    );
+  });
+
+  it('rejects the invalid combinations', () => {
+    expect(parse({})).toBe(false);
+    expect(parse({ channel: wh('a'), channels: [wh('b')] })).toBe(false);
+    expect(parse({ channels: [wh('a'), wh('a')] })).toBe(false);
+    expect(parse({ channels: [] })).toBe(false);
+    expect(
+      parse({
+        channels: Array.from({ length: MAX_ALERT_CHANNELS + 1 }, (_, i) =>
+          wh(`w${i}`),
+        ),
+      }),
+    ).toBe(false);
   });
 });
