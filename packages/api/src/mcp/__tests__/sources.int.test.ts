@@ -515,6 +515,11 @@ describe('MCP Source Tools', () => {
       );
       expect(describedMetric.kinds[0].usage).toContain('clickstack_sql');
       expect(describedMetric.nextSteps.query).toContain('clickstack_sql');
+      // The redirect must name the database-qualified table — clickstack_sql
+      // has no source context to resolve a bare table name against.
+      expect(describedMetric.nextSteps.query).toContain(
+        `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUMMARY}`,
+      );
       expect(describedMetric.nextSteps.query).not.toContain(
         'clickstack_timeseries({',
       );

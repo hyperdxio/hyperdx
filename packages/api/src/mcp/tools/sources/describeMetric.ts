@@ -649,9 +649,15 @@ async function describeMetricImpl(
     if (kind === 'summary') {
       // Summary metrics have no renderer support, so the next step is
       // clickstack_sql rather than a builder-tool example.
+      // clickstack_sql runs with no source context, so qualify the table
+      // with the source's database — a bare table name would resolve
+      // against the connection user's default database.
+      const qualifiedTable = databaseName
+        ? `${databaseName}.${tableName}`
+        : tableName;
       return (
         'summary metrics cannot be queried with clickstack_timeseries / clickstack_table — ' +
-        `use clickstack_sql against the "${tableName}" table with this source's connectionId ` +
+        `use clickstack_sql against the "${qualifiedTable}" table with this source's connectionId ` +
         '(see clickstack_list_sources).'
       );
     }
