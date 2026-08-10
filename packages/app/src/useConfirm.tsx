@@ -66,33 +66,34 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       <Modal
-        data-testid="confirm-modal"
         opened={!!state}
         onClose={state?.onClose ?? (() => {})}
         centered
         withCloseButton={false}
       >
-        <Text size="sm" opacity={0.7}>
-          {state?.message}
-        </Text>
-        <Group justify="flex-end" mt="md" gap="xs">
-          <Button
-            data-testid="confirm-cancel-button"
-            size="xs"
-            variant="secondary"
-            onClick={state?.onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            data-testid="confirm-confirm-button"
-            size="xs"
-            variant={state?.confirmVariant ?? 'primary'}
-            onClick={state?.onConfirm}
-          >
-            {state?.confirmLabel || 'Confirm'}
-          </Button>
-        </Group>
+        <div data-testid="confirm-modal">
+          <Text size="sm" opacity={0.7}>
+            {state?.message}
+          </Text>
+          <Group justify="flex-end" mt="md" gap="xs">
+            <Button
+              data-testid="confirm-cancel-button"
+              size="xs"
+              variant="secondary"
+              onClick={state?.onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              data-testid="confirm-confirm-button"
+              size="xs"
+              variant={state?.confirmVariant ?? 'primary'}
+              onClick={state?.onConfirm}
+            >
+              {state?.confirmLabel || 'Confirm'}
+            </Button>
+          </Group>
+        </div>
       </Modal>
     </ConfirmContext.Provider>
   );
