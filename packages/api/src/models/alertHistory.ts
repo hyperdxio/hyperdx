@@ -13,6 +13,7 @@ export interface IAlertHistory {
   lastValues: { startTime: Date; count: number }[];
   group?: string; // For group-by alerts, stores the group identifier
   fired?: boolean;
+  lastNotifiedAt?: Date;
 }
 
 const AlertHistorySchema = new Schema<IAlertHistory>({
@@ -48,6 +49,10 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
   },
   fired: {
     type: Boolean,
+    required: false,
+  },
+  lastNotifiedAt: {
+    type: Date,
     required: false,
   },
 });

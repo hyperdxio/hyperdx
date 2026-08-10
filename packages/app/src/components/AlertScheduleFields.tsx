@@ -38,6 +38,8 @@ type AlertScheduleFieldsProps<T extends FieldValues> = {
   offsetWindowLabel: string;
   numConsecutiveWindowsName?: FieldPath<T>;
   numConsecutiveWindows?: number;
+  renotifyIntervalName?: FieldPath<T>;
+  renotifyIntervalMinutes?: number;
 };
 
 export function AlertScheduleFields<T extends FieldValues>({
@@ -50,6 +52,8 @@ export function AlertScheduleFields<T extends FieldValues>({
   offsetWindowLabel,
   numConsecutiveWindowsName,
   numConsecutiveWindows,
+  renotifyIntervalName,
+  renotifyIntervalMinutes,
 }: AlertScheduleFieldsProps<T>) {
   const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
   const scheduleStartAtValue = useWatch({
@@ -60,7 +64,8 @@ export function AlertScheduleFields<T extends FieldValues>({
   const hasAdvancedScheduleValues =
     (scheduleOffsetMinutes ?? 0) > 0 ||
     hasScheduleStartAtAnchor ||
-    (numConsecutiveWindows ?? 1) > 1;
+    (numConsecutiveWindows ?? 1) > 1 ||
+    renotifyIntervalMinutes != null;
   const [opened, setOpened] = useState(hasAdvancedScheduleValues);
 
   useEffect(() => {
@@ -146,6 +151,46 @@ export function AlertScheduleFields<T extends FieldValues>({
                 {(numConsecutiveWindows ?? 1) === 1
                   ? 'window'
                   : 'consecutive windows'}
+              </Text>
+            </Group>
+          )}
+          {renotifyIntervalName && (
+            <Group gap="xs" mt="xs">
+              <Group gap={4}>
+                <Text size="sm" opacity={0.7}>
+                  Re-notify every
+                </Text>
+                <Tooltip
+                  label="How often to repeat the notification while the alert keeps firing. Leave blank to notify only when it first triggers, or set 0 to notify on every evaluation. A resolved notification is always sent."
+                  multiline
+                  w={260}
+                  withArrow
+                  zIndex={10050}
+                >
+                  <Box style={{ lineHeight: 1, cursor: 'help' }}>
+                    <IconInfoCircle size={14} opacity={0.4} />
+                  </Box>
+                </Tooltip>
+              </Group>
+              <Controller
+                control={control}
+                name={renotifyIntervalName}
+                render={({ field }) => (
+                  <NumberInput
+                    {...field}
+                    value={field.value ?? ''}
+                    onChange={v =>
+                      field.onChange(typeof v === 'number' ? v : undefined)
+                    }
+                    min={0}
+                    placeholder="Never"
+                    size="xs"
+                    w={90}
+                  />
+                )}
+              />
+              <Text size="sm" opacity={0.7}>
+                minutes
               </Text>
             </Group>
           )}

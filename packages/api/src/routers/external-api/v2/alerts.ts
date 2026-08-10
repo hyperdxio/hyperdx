@@ -198,6 +198,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           nullable: true
  *           description: Fire the alert only after its condition has been met for this many consecutive evaluation windows. While the condition is met but fewer than this many consecutive windows have violated, the alert is in the PENDING state.
  *           example: 3
+ *         renotifyIntervalMinutes:
+ *           type: integer
+ *           minimum: 0
+ *           nullable: true
+ *           description: How often to repeat the notification while the alert keeps firing. Omit or set to null to notify only once when the alert transitions from OK to ALERT, 0 to notify on every evaluation, or a positive number to re-notify at most once every that many minutes. A resolve notification is always sent when the alert returns to OK.
+ *           example: 60
  *
  *     AlertResponse:
  *       allOf:
