@@ -117,8 +117,13 @@ describe('DBSearchPageFilters', () => {
     renderWithMantine(
       <DBSearchPageFilters
         filters={{}}
+        setFilters={jest.fn()}
         clearFilter={jest.fn()}
+        clearAllFilters={jest.fn()}
         setFilterValue={jest.fn()}
+        setOnlyFilters={jest.fn()}
+        replaceFilterValue={jest.fn()}
+        retainFiltersByColumns={jest.fn()}
         setFilterRange={jest.fn()}
         isLive={false}
         chartConfig={{
