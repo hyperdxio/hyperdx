@@ -2578,6 +2578,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const deleteDashboard = useDeleteDashboard();
+  const handleDeleteDashboard = useCallback(async () => {
+    if (!dashboard?.id) return;
+
+    const confirmed = await confirm(
+      'Are you sure you want to delete this dashboard? This action cannot be undone.',
+      'Delete dashboard',
+      { variant: 'danger' },
+    );
+    if (!confirmed) return;
+
+    deleteDashboard.mutate(dashboard.id, {
+      onSuccess: () => {
+        router.push('/dashboards/list');
+      },
+    });
+  }, [confirm, dashboard?.id, deleteDashboard, router]);
 
   const handleUpdateTags = useCallback(
     (newTags: string[]) => {
@@ -2863,15 +2879,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Menu.Item
             leftSection={<IconTrash size={16} />}
             color="red"
-            onClick={() =>
-              deleteDashboard.mutate(dashboard?.id ?? '', {
-                onSuccess: () => {
-                  router.push('/dashboards/list');
-                },
-              })
-            }
+            onClick={handleDeleteDashboard}
           >
-            Delete Dashboard
+            Delete dashboard
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
