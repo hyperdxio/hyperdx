@@ -253,6 +253,7 @@ export function registerListMetrics({
     'clickstack_list_metrics',
     {
       title: 'List Metric Names',
+      annotations: { readOnlyHint: true },
       description:
         'DISCOVERY: Use this after clickstack_describe_source when you need more metric ' +
         'names than the per-kind sample shows, or when you want to narrow by ' +

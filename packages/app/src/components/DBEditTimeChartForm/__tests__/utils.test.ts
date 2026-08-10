@@ -427,7 +427,6 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
-    // @ts-expect-error union types..
     expect(result!.seriesLimit).toBe(3);
   });
 
@@ -442,7 +441,6 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
-    // @ts-expect-error union types..
     expect(result!.seriesLimit).toBeUndefined();
   });
 

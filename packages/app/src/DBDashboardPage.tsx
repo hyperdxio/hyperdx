@@ -174,6 +174,7 @@ import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import {
+  buildDashboardReplaySearchUrl,
   buildEventsSearchUrl,
   buildTableRowSearchUrl,
   DEFAULT_CHART_CONFIG,
@@ -696,6 +697,14 @@ const Tile = forwardRef(
       );
     }, [filters, queriedConfig, source]);
 
+    const replaySearchUrl = useMemo(() => {
+      return buildDashboardReplaySearchUrl({
+        source,
+        config: queriedConfig,
+        dateRange,
+      });
+    }, [dateRange, queriedConfig, source]);
+
     const hoverToolbar = useMemo(() => {
       if (readOnly) return null;
 
@@ -716,6 +725,25 @@ const Tile = forwardRef(
           key="hover-toolbar"
           my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
+          {replaySearchUrl && (
+            <Tooltip label="Replay search" position="top" withArrow>
+              <ActionIcon
+                component={Link}
+                href={replaySearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                prefetch={false}
+                data-testid={`tile-replay-search-button-${chart.id}`}
+                aria-label="Replay search (opens in new tab)"
+                variant="subtle"
+                size="sm"
+                mr={4}
+              >
+                <IconSearch size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+
           {displayTypeSupportsAlerts &&
             (alert ? (
               // Existing alert: bell with a colored status dot indicator.
@@ -872,6 +900,7 @@ const Tile = forwardRef(
       alertIndicatorColor,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.id,
       chart.containerId,
@@ -901,6 +930,17 @@ const Tile = forwardRef(
         onMoveToGroup && moveTargets && moveTargets.length > 0;
       return (
         <>
+          {replaySearchUrl && (
+            <Menu.Item
+              component={Link}
+              href={replaySearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              leftSection={<IconSearch size={14} />}
+            >
+              Replay search
+            </Menu.Item>
+          )}
           {showAlerts && (
             <>
               <Menu.Item
@@ -1006,6 +1046,7 @@ const Tile = forwardRef(
       alert,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.containerId,
       chart.tabId,
@@ -2537,6 +2578,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const deleteDashboard = useDeleteDashboard();
+  const handleDeleteDashboard = useCallback(async () => {
+    if (!dashboard?.id) return;
+
+    const confirmed = await confirm(
+      'Are you sure you want to delete this dashboard? This action cannot be undone.',
+      'Delete Dashboard',
+      { variant: 'danger' },
+    );
+    if (!confirmed) return;
+
+    deleteDashboard.mutate(dashboard.id, {
+      onSuccess: () => {
+        router.push('/dashboards/list');
+      },
+    });
+  }, [confirm, dashboard?.id, deleteDashboard, router]);
 
   const handleUpdateTags = useCallback(
     (newTags: string[]) => {
@@ -2822,13 +2879,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Menu.Item
             leftSection={<IconTrash size={16} />}
             color="red"
-            onClick={() =>
-              deleteDashboard.mutate(dashboard?.id ?? '', {
-                onSuccess: () => {
-                  router.push('/dashboards/list');
-                },
-              })
-            }
+            onClick={handleDeleteDashboard}
           >
             Delete Dashboard
           </Menu.Item>

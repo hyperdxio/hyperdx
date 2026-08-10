@@ -451,8 +451,10 @@ export const SelectSQLStatementSchema = z.object({
   limit: LimitSchema.optional(),
   // Nullish (not just optional): the chart editor clears the value to `null`
   // so the cleared state survives JSON round-tripping (e.g. through the URL
-  // query state). `null` and `undefined` both mean "disabled" downstream.
-  seriesLimit: z.number().int().positive().nullish(),
+  // query state). See SharedChartSettingsSchema.seriesLimit for full semantics
+  // (0 = unlimited, null/undefined = default cap). On builder group-by time
+  // charts a positive value additionally drives the __hdx_series_limit CTE.
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -1237,6 +1239,20 @@ const SharedChartSettingsSchema = z.object({
   // types ignore the field. Off by default, so existing tiles are unchanged.
   // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
   alternateRowBackground: z.boolean().optional(),
+  // Per-tile cap on the number of series a time chart renders. Shared level so
+  // it applies to BOTH builder and raw SQL time charts (raw SQL cannot inject
+  // the __hdx_series_limit CTE, so there the cap is enforced client-side in
+  // `formatResponseForTimeChart`). Semantics:
+  //   - null / undefined: use the default client render cap
+  //     (MAX_RENDERED_TIME_CHART_SERIES) — high-cardinality tiles stay
+  //     protected without opting in.
+  //   - a positive integer N: keep the top N series (by peak value).
+  //   - 0: unlimited — render every series (deliberate opt-out; a
+  //     high-cardinality group-by can then exhaust browser memory).
+  // On builder pie/bar charts this instead becomes a plain SQL LIMIT, and on
+  // builder group-by time charts a positive value also drives the
+  // __hdx_series_limit CTE (see SelectSQLStatementSchema.seriesLimit).
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:

@@ -1,5 +1,11 @@
 # @hyperdx/hdx-eval
 
+## 0.3.1
+
+### Patch Changes
+
+- 1dfcbcb8: feat(evals): add deploy-regression scenario (metrics-neutral) — a checkout-api staged-rollout defect fully solvable from traces/logs, with corroborating-only metrics to measure organic metric-tool adoption
+
 ## 0.3.0
 
 ### Minor Changes
