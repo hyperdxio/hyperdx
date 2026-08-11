@@ -22,14 +22,19 @@ export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
 // 2. The persisted `Filter[]`: Uses the quoted/bracketed ClickHouse form so it emits
 // valid SQL verbatim. Persisted in URL params, local storage, and MongoDB for saved searches.
 
-// Convert the clean FilterState keys to valid SQL (quoted/bracket) keys.
+// Convert the clean FilterState keys to valid SQL (quoted/bracket/dot) keys.
+// `jsonColumns` lets a sub-key of a JSON column serialize as dot access
+// (`ResourceAttributes.`region``) instead of the illegal bracket access
+// (`ResourceAttributes['region']`) ClickHouse rejects on a JSON column. HDX-5085.
 export const escapeFilterStateKeys = (
   filters: FilterState,
   knownColumns: Set<string>,
+  jsonColumns: ReadonlySet<string> = new Set(),
 ): FilterState => {
   const escaped: FilterState = {};
   for (const [key, value] of Object.entries(filters)) {
-    escaped[toQuotedClickHouseKeyExpression(key, knownColumns)] = value;
+    escaped[toQuotedClickHouseKeyExpression(key, knownColumns, jsonColumns)] =
+      value;
   }
   return escaped;
 };
@@ -83,6 +88,7 @@ export const useSearchPageFilterState = ({
   onFilterChange,
   dateTimeColumns,
   knownColumns,
+  jsonColumns,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
@@ -93,15 +99,26 @@ export const useSearchPageFilterState = ({
    * (eg. service-name --> `service-name`).
    **/
   knownColumns: Set<string>;
+  /**
+   * JSON-typed top-level column names on the table, used to serialize sub-key
+   * filters as dot access (`ResourceAttributes.`region``) instead of the
+   * bracket access ClickHouse rejects on a JSON column. HDX-5085.
+   **/
+  jsonColumns?: ReadonlySet<string>;
 }) => {
-  // Access knownColumns through a ref so the returned mutators (which depend on
-  // updateFilterQuery) keep stable identities across knownColumns reference
-  // changes. The known columns are only used by the mutators, which are called
-  // on user input, not render, so avoid re-render by using a stable ref.
+  // Access knownColumns/jsonColumns through refs so the returned mutators (which
+  // depend on updateFilterQuery) keep stable identities across reference
+  // changes. These are only used by the mutators, which are called on user
+  // input, not render, so avoid re-render by using stable refs.
   const knownColumnsRef = useRef<Set<string>>(knownColumns);
   useEffect(() => {
     knownColumnsRef.current = knownColumns;
   }, [knownColumns]);
+
+  const jsonColumnsRef = useRef<ReadonlySet<string>>(jsonColumns ?? new Set());
+  useEffect(() => {
+    jsonColumnsRef.current = jsonColumns ?? new Set();
+  }, [jsonColumns]);
 
   // Persisted filters carry canonical (escaped) keys; convert back to the clean
   // keys the sidebar/comparisons use as they enter in-memory FilterState.
@@ -133,6 +150,7 @@ export const useSearchPageFilterState = ({
       const escapedFilters = escapeFilterStateKeys(
         newFilters,
         knownColumnsRef.current,
+        jsonColumnsRef.current,
       );
       onFilterChange(filtersToQuery(escapedFilters, { dateTimeColumns }));
     },

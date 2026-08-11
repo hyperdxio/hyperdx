@@ -165,3 +165,79 @@ describe('parsed-JSON "Add to Filters" -> valid SQL pipeline (HDX-4427)', () => 
     expect(entry.included).toEqual(new Set(["O'Brien"]));
   });
 });
+
+// HDX-5085: filtering a sub-key of a *native* JSON column (e.g. from clicking
+// "Add to Filters" then "Exclude" in the sidebar) must serialize as dot access,
+// not the bracket access ClickHouse rejects on a JSON column with "First
+// argument for function 'arrayElement' must be array, got 'JSON'".
+describe('JSON-column sub-key filter -> valid dot-access SQL pipeline (HDX-5085)', () => {
+  // ResourceAttributes is a native JSON column here (unlike the Map columns
+  // above), so its sub-keys must render with dot access.
+  const jsonKnownColumns = new Set(['ResourceAttributes', 'ServiceName']);
+  const jsonColumns = new Set(['ResourceAttributes']);
+
+  const runJsonFilter = (
+    key: string,
+    values: { included?: string[]; excluded?: string[] },
+  ) => {
+    const state: FilterState = {
+      [key]: {
+        included: new Set<string | boolean>(values.included ?? []),
+        excluded: new Set<string | boolean>(values.excluded ?? []),
+      },
+    };
+    return filtersToQuery(
+      escapeFilterStateKeys(state, jsonKnownColumns, jsonColumns),
+    );
+  };
+
+  it('excludes a JSON sub-key value with dot access, not bracket access', () => {
+    expect(
+      runJsonFilter('ResourceAttributes.region', {
+        excluded: ['eu-central-1'],
+      }),
+    ).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes.`region` NOT IN ('eu-central-1')",
+      },
+    ]);
+  });
+
+  it('never emits the illegal bracket subscript on a JSON column', () => {
+    const query = runJsonFilter('ResourceAttributes.region', {
+      included: ['us-east-1'],
+      excluded: ['eu-central-1'],
+    });
+    expect(query.length).toBeGreaterThan(0);
+    for (const filter of query) {
+      expect(filter.type).toBe('sql');
+      if (filter.type === 'sql') {
+        expect(filter.condition).not.toContain("ResourceAttributes['");
+        expect(isValidFilterCondition(filter.condition, 'sql')).toBe(true);
+      }
+    }
+  });
+
+  it('renders a nested JSON path with backtick-quoted segments', () => {
+    expect(
+      runJsonFilter('ResourceAttributes.host.name', { included: ['web-1'] }),
+    ).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes.`host`.`name` IN ('web-1')",
+      },
+    ]);
+  });
+
+  it('round-trips the JSON sub-key back to its clean dot form', () => {
+    const query = runJsonFilter('ResourceAttributes.region', {
+      excluded: ['eu-central-1'],
+    });
+    const back = parseQuery(query).filters;
+    const restoredKeys = Object.keys(back).map(cleanClickHouseExpression);
+    expect(restoredKeys).toEqual(['ResourceAttributes.region']);
+    const entry = back[Object.keys(back)[0]];
+    expect(entry.excluded).toEqual(new Set(['eu-central-1']));
+  });
+});

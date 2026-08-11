@@ -1138,6 +1138,12 @@ const DBSearchPageFiltersComponent = ({
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
   const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
+  // Set form for O(1) membership checks when serializing sub-key filters on
+  // JSON columns to dot access. HDX-5085.
+  const jsonColumnsSet = useMemo(
+    () => new Set(jsonColumns ?? []),
+    [jsonColumns],
+  );
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -1458,6 +1464,7 @@ const DBSearchPageFiltersComponent = ({
                 sqlKey: toQuotedClickHouseKeyExpression(
                   child.key,
                   knownColumns,
+                  jsonColumnsSet,
                 ),
               }))}
               selectedValues={group.children.reduce((acc, child) => {
@@ -1524,6 +1531,7 @@ const DBSearchPageFiltersComponent = ({
             const facetSqlKey = toQuotedClickHouseKeyExpression(
               facet.key,
               knownColumns,
+              jsonColumnsSet,
             );
             return (
               <FilterGroup
@@ -1603,6 +1611,7 @@ const DBSearchPageFiltersComponent = ({
       setFilterRange,
       tableMetadata,
       knownColumns,
+      jsonColumnsSet,
       extraFacetKeys,
     ],
   );

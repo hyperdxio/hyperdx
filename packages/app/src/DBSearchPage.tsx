@@ -29,6 +29,8 @@ import HyperDX from '@hyperdx/browser';
 import {
   ClickHouseQueryError,
   ColumnMeta,
+  filterColumnMetaByType,
+  JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
@@ -1318,6 +1320,20 @@ export function DBSearchPage() {
         : new Set<string>(),
     [inputSourceColumns],
   );
+  // JSON-typed columns for the active source. Sub-key filters on these must
+  // serialize as dot access (`ResourceAttributes.`region``) rather than the
+  // bracket access ClickHouse rejects on a JSON column. HDX-5085.
+  const jsonColumns = useMemo(
+    () =>
+      inputSourceColumns
+        ? new Set(
+            filterColumnMetaByType(inputSourceColumns, [JSDataType.JSON])?.map(
+              c => c.name,
+            ) ?? [],
+          )
+        : new Set<string>(),
+    [inputSourceColumns],
+  );
 
   const watchedSource = useWatch({
     control,
@@ -1353,6 +1369,7 @@ export function DBSearchPage() {
     onFilterChange: handleSetFilters,
     dateTimeColumns,
     knownColumns,
+    jsonColumns,
   });
 
   useEffect(() => {

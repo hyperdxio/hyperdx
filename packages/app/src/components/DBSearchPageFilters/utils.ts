@@ -149,22 +149,33 @@ const isSqlFunctionCallExpression = (key: string): boolean =>
   /^[A-Za-z_]\w*\(/.test(key);
 
 // Coerce a filterState key into a ClickHouse expression suitable for raw SQL.
-// A dot-form Map sub-key like `LogAttributes.host.name` is rewritten to bracket
-// form `LogAttributes['host.name']` via `mergePath` so the conversion stays
-// consistent with the keys produced by the facet-discovery path. Bracket form,
-// backtick-quoted JSON paths, raw SQL function-call expressions
-// (`toString(...)`, `JSONExtractString(...)`), and plain column names are
-// returned unchanged. Use this when handing a filterState key off to a SQL
-// caller (e.g. "Load more" via metadata.getKeyValues), since `setFilterValue`
-// normalizes Map sub-keys to dot form which ClickHouse cannot resolve as map
-// access.
+// A dot-form sub-key like `LogAttributes.host.name` is rewritten via `mergePath`
+// so the conversion stays consistent with the keys produced by the
+// facet-discovery path. Bracket form, backtick-quoted JSON paths, raw SQL
+// function-call expressions (`toString(...)`, `JSONExtractString(...)`), and
+// plain column names are returned unchanged. Use this when handing a filterState
+// key off to a SQL caller (e.g. "Load more" via metadata.getKeyValues), since
+// `setFilterValue` normalizes sub-keys to dot form which ClickHouse cannot
+// resolve as map/JSON access.
 //
-// `parseMapFieldName` already guarantees `parsed.baseName` is a Map (its only
-// callers are the dot-form facet keys that originate from Map columns), so
-// `mergePath` must treat it as one. Without the third argument, a numeric-
-// looking sub-key like `LogAttributes.1` collapses into the Array branch and
-// emits the illegal `LogAttributes[2]`. HDX-4369.
-export function toClickHouseKeyExpression(key: string): string {
+// The base column's type decides the accessor:
+//   - JSON columns take dot access with backtick-quoted segments
+//     (`ResourceAttributes.`region``). ClickHouse rejects bracket subscripts on
+//     a JSON column with "First argument for function 'arrayElement' must be
+//     array, got 'JSON'", so a dot-form key like `ResourceAttributes.region`
+//     must NOT be turned into `ResourceAttributes['region']`. HDX-5085.
+//   - Map columns take bracket access (`LogAttributes['host.name']`). Passing
+//     the base as a Map (rather than letting `mergePath` fall through to its
+//     default branch) also keeps a numeric-looking sub-key like
+//     `LogAttributes.1` from collapsing into the illegal array subscript
+//     `LogAttributes[2]`. HDX-4369.
+//
+// Callers that know the schema should pass `jsonColumns`; otherwise the base is
+// treated as a Map, preserving the historical behavior.
+export function toClickHouseKeyExpression(
+  key: string,
+  jsonColumns: ReadonlySet<string> = new Set(),
+): string {
   if (
     key.includes("['") ||
     key.includes('["') ||
@@ -180,6 +191,13 @@ export function toClickHouseKeyExpression(key: string): string {
   }
   const parsed = parseMapFieldName(key);
   if (!parsed) return key;
+  if (jsonColumns.has(parsed.baseName)) {
+    return mergePath(
+      [parsed.baseName, parsed.propertyPath],
+      [parsed.baseName],
+      [],
+    );
+  }
   return mergePath(
     [parsed.baseName, parsed.propertyPath],
     [],
@@ -205,10 +223,15 @@ function quoteIdentifierIfNeeded(id: string): string {
  * `knownColumns` is the set of real top-level column names on the table. Only
  * keys matching a known column or accessing a map key of a known column will
  * be quoted.
+ *
+ * `jsonColumns` is the set of JSON-typed top-level columns; sub-keys of these
+ * render as dot access (`ResourceAttributes.`region``) rather than bracket
+ * access, since ClickHouse cannot subscript a JSON column. HDX-5085.
  */
 export function toQuotedClickHouseKeyExpression(
   key: string,
   knownColumns: Set<string>,
+  jsonColumns: ReadonlySet<string> = new Set(),
 ): string {
   // A whole-key match against a real column wins: quote the entire name as one
   // identifier (handles flat columns whose name contains dots/hyphens/etc.).
@@ -216,8 +239,9 @@ export function toQuotedClickHouseKeyExpression(
     return quoteIdentifierIfNeeded(key);
   }
 
-  // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])
-  const expr = toClickHouseKeyExpression(key);
+  // Normalize dot-form to the accessor for the base column's type: Map access
+  // (ResourceAttributes['host.name']) or JSON dot access (ResourceAttributes.`region`).
+  const expr = toClickHouseKeyExpression(key, jsonColumns);
 
   // Already quoted: leave untouched
   if (expr.startsWith('`') || expr.startsWith('"')) {

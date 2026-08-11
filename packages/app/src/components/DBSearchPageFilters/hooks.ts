@@ -60,6 +60,13 @@ function useFacets({
   );
   const { data: jsonColumns } = useJsonColumns(tableConnection);
   const { data: mapColumns } = useMapColumns(tableConnection);
+  // Set form for JSON-aware key serialization: sub-keys of JSON columns must
+  // render as dot access rather than the bracket access ClickHouse rejects on a
+  // JSON column. HDX-5085.
+  const jsonColumnsSet = useMemo(
+    () => new Set(jsonColumns ?? []),
+    [jsonColumns],
+  );
 
   const {
     data: allFields,
@@ -135,12 +142,16 @@ function useFacets({
 
     const sqlKeyToUiKey = new Map<string, string>();
     const escapedKeysToFetch = keysToFetch.map(key => {
-      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+      const sqlKey = toQuotedClickHouseKeyExpression(
+        key,
+        knownColumns,
+        jsonColumnsSet,
+      );
       sqlKeyToUiKey.set(sqlKey, key);
       return sqlKey;
     });
     return { escapedKeysToFetch, sqlKeyToUiKey };
-  }, [isColumnsLoading, keysToFetch, knownColumns]);
+  }, [isColumnsLoading, keysToFetch, knownColumns, jsonColumnsSet]);
 
   const facetsChartConfig = useMemo(
     () =>
@@ -174,7 +185,11 @@ function useFacets({
   const loadMoreFacetsForKey = useCallback(
     async (key: string): Promise<Facet | undefined> => {
       try {
-        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+        const sqlKey = toQuotedClickHouseKeyExpression(
+          key,
+          knownColumns,
+          jsonColumnsSet,
+        );
         if (mode === 'exact') {
           const strippedFilterState: FilterState = { ...filterState };
           delete strippedFilterState[key];
@@ -184,7 +199,11 @@ function useFacets({
               ...chartConfig,
               dateRange,
               filters: filtersToQuery(
-                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                escapeFilterStateKeys(
+                  strippedFilterState,
+                  knownColumns,
+                  jsonColumnsSet,
+                ),
                 { dateTimeColumns },
               ),
             },
@@ -231,6 +250,7 @@ function useFacets({
       chartConfig,
       dateRange,
       knownColumns,
+      jsonColumnsSet,
       source,
       filterState,
       dateTimeColumns,

@@ -181,6 +181,45 @@ describe('toClickHouseKeyExpression', () => {
     );
   });
 
+  // HDX-5085: a sub-key on a JSON-typed column must serialize as dot access,
+  // not bracket access. ClickHouse rejects `ResourceAttributes['region']` on a
+  // JSON column with "First argument for function 'arrayElement' must be array,
+  // got 'JSON'". When the base column is known to be JSON, emit dot notation
+  // with backtick-quoted segments instead.
+  describe('JSON columns (HDX-5085)', () => {
+    const jsonColumns = new Set(['ResourceAttributes']);
+
+    it('rewrites a dot-form JSON sub-key to dot access, not bracket access', () => {
+      expect(
+        toClickHouseKeyExpression('ResourceAttributes.region', jsonColumns),
+      ).toBe('ResourceAttributes.`region`');
+    });
+
+    it('renders a nested JSON path with each segment backtick-quoted', () => {
+      expect(
+        toClickHouseKeyExpression('ResourceAttributes.host.name', jsonColumns),
+      ).toBe('ResourceAttributes.`host`.`name`');
+    });
+
+    it('still uses bracket form for a Map column not listed as JSON', () => {
+      expect(
+        toClickHouseKeyExpression('LogAttributes.region', jsonColumns),
+      ).toBe("LogAttributes['region']");
+    });
+
+    it('falls back to bracket form when no JSON columns are provided', () => {
+      expect(toClickHouseKeyExpression('ResourceAttributes.region')).toBe(
+        "ResourceAttributes['region']",
+      );
+    });
+
+    it('leaves an already-backtick JSON path unchanged', () => {
+      expect(
+        toClickHouseKeyExpression('ResourceAttributes.`region`', jsonColumns),
+      ).toBe('ResourceAttributes.`region`');
+    });
+  });
+
   // HDX-4427: "Add to Filters" on a value inside parsed JSON from a String
   // column builds a JSONExtract* function call as the filter key. These are
   // already valid ClickHouse expressions and must pass through untouched.
@@ -318,6 +357,43 @@ describe('toQuotedClickHouseKeyExpression', () => {
       expect(
         toQuotedClickHouseKeyExpression("LogAttributes['host.name']", cols),
       ).toBe("LogAttributes['host.name']");
+    });
+  });
+
+  // HDX-5085: a sub-key on a JSON column must serialize as dot access.
+  describe('with jsonColumns (JSON-aware)', () => {
+    const cols = new Set(['ResourceAttributes']);
+    const jsonCols = new Set(['ResourceAttributes']);
+
+    it('renders a JSON sub-key as dot access instead of bracket access', () => {
+      expect(
+        toQuotedClickHouseKeyExpression(
+          'ResourceAttributes.region',
+          cols,
+          jsonCols,
+        ),
+      ).toBe('ResourceAttributes.`region`');
+    });
+
+    it('renders a nested JSON path with backtick-quoted segments', () => {
+      expect(
+        toQuotedClickHouseKeyExpression(
+          'ResourceAttributes.host.name',
+          cols,
+          jsonCols,
+        ),
+      ).toBe('ResourceAttributes.`host`.`name`');
+    });
+
+    it('uses bracket access for a Map column absent from jsonColumns', () => {
+      const mapCols = new Set(['LogAttributes']);
+      expect(
+        toQuotedClickHouseKeyExpression(
+          'LogAttributes.region',
+          mapCols,
+          jsonCols,
+        ),
+      ).toBe("LogAttributes['region']");
     });
   });
 });
