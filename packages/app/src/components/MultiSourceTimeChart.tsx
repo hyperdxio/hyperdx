@@ -35,6 +35,8 @@ export type MultiSourceChartSpec = {
   source: TSource;
   /** Per-source count() histogram config (canonical WHERE, no groupBy). */
   config: BuilderChartConfigWithDateRange;
+  /** When set, the source doesn't run (mirrors MultiSourceStreamSpec). */
+  disabledReason?: string;
 };
 
 // Placeholder for unused hook slots; never queried (enabled: false).
@@ -92,7 +94,7 @@ function useHistogramSlot(
       placeholderData: keepPreviousData,
       enableQueryChunking: true,
       enableParallelQueries: enableParallelQueries && parallelizeWhenPossible,
-      enabled: enabled && spec != null,
+      enabled: enabled && spec != null && spec.disabledReason == null,
     },
   );
 

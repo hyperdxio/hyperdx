@@ -101,6 +101,7 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 import { InputControlled } from '@/components/InputControlled';
 import MultiSourceColumnPicker from '@/components/MultiSourceColumnPicker';
 import MultiSourceRowTableWithSidebar from '@/components/MultiSourceRowTable';
+import MultiSourceSearchFilters from '@/components/MultiSourceSearchFilters';
 import {
   MultiSourceTimeChart,
   MultiSourceTotalCountChart,
@@ -123,6 +124,7 @@ import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   resolveExtraColumnsForSource,
+  unresolvedFilterColumns,
   useMultiSourceColumns,
 } from '@/hooks/useMultiSourceSearch';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
@@ -1351,8 +1353,123 @@ export function DBSearchPage() {
     [debouncedSubmit, setValue],
   );
 
+  const watchedSource = useWatch({
+    control,
+    name: 'source',
+    // Watch will reset when changing saved search, so we need to default to the URL
+    defaultValue: searchedConfig.source ?? undefined,
+  });
+
+  // --- Multi-source search: selection & schema state ------------------------
+  // 2+ resolved sources in the ?sources= param engage multi mode: one
+  // independent query pipeline per source, merged client-side. The single
+  // `source` (primary) keeps every existing code path working; multi mode
+  // only swaps what gets rendered below. Declared before the filter-state
+  // hooks so they can work against the union of the selected schemas.
+  const { sources: searchedMultiSources } = useResolvedSourcesParam(
+    rawSearchedConfig.sources,
+    { kinds: ALLOWED_SOURCE_KINDS },
+  );
+  const isMultiSource = searchedMultiSources.length > 1;
+  // Delta/pattern analyses are per-source; multi mode pins the results view.
+  const effectiveAnalysisMode = isMultiSource ? 'results' : analysisMode;
+  // Raw SQL WHERE names concrete columns of a concrete table — reinterpreting
+  // it per source risks silently-wrong results, so multi mode requires Lucene.
+  const isMultiSourceSqlBlocked =
+    isMultiSource &&
+    (searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene') ===
+      'sql' &&
+    !!searchedConfig.where;
+
+  // A hand-authored URL may carry only ?sources=; backfill the primary so the
+  // single-source machinery (form, chart config) has one.
+  useEffect(() => {
+    if (!rawSearchedConfig.source && searchedMultiSources.length > 0) {
+      setSearchedConfig({ source: searchedMultiSources[0].id });
+    }
+  }, [rawSearchedConfig.source, searchedMultiSources, setSearchedConfig]);
+
+  const watchedSources = useWatch({ control, name: 'sources' });
+  const formSourceCount = watchedSources?.length ?? 0;
+  // The multi-select UI stays visible while the user is composing a selection
+  // (even before a second source is added).
+  const [multiPickerOpen, setMultiPickerOpen] = useState(false);
+  const isMultiSelectUI = multiPickerOpen || formSourceCount > 1;
+  const formIsMulti = formSourceCount > 1;
+
+  const enterMultiSourceSelect = useCallback(() => {
+    setValue('sources', watchedSource ? [watchedSource] : []);
+    setMultiPickerOpen(true);
+  }, [setValue, watchedSource]);
+
+  // Keep the primary `source` field in sync with the selection and re-run the
+  // search when the selection changes.
+  const prevWatchedSourcesRef = useRef<string[] | null>(null);
+  useEffect(() => {
+    const current = watchedSources ?? [];
+    const prev = prevWatchedSourcesRef.current;
+    if (prev != null && JSON.stringify(prev) === JSON.stringify(current)) {
+      return;
+    }
+    prevWatchedSourcesRef.current = current;
+    if (prev == null) {
+      // Initial hydration from the URL — nothing changed.
+      return;
+    }
+    if (current.length > 0 && current[0] !== watchedSource) {
+      setValue('source', current[0]);
+    }
+    if ((prev?.length ?? 0) <= 1 && current.length > 1) {
+      // Entering multi mode: the single-source SELECT/ORDER BY strings don't
+      // translate to the canonical multi-source shape.
+      setValue('select', '');
+      setValue('orderBy', '');
+    }
+    debouncedSubmit();
+  }, [watchedSources, watchedSource, setValue, debouncedSubmit]);
+
+  // Collapse the picker back to the single-source select when the user
+  // reduces a real multi selection to one source. Keyed on the >1 → ≤1
+  // transition so it can't fire in the just-opened composing state (picker
+  // open, one source selected, second not yet picked).
+  const prevFormSourceCountRef = useRef(formSourceCount);
+  useEffect(() => {
+    const prev = prevFormSourceCountRef.current;
+    prevFormSourceCountRef.current = formSourceCount;
+    if (prev > 1 && formSourceCount <= 1) {
+      setMultiPickerOpen(false);
+    }
+  }, [formSourceCount]);
+
+  // Per-source top-level columns: powers the add-column picker, the
+  // per-source `column vs NULL` projection for user-picked extras, and
+  // per-source filter resolvability. Driven by the form's draft selection
+  // while composing (so the picker has options before the search is
+  // submitted), falling back to the searched selection.
+  const formMultiSources = useMemo(
+    () =>
+      (watchedSources ?? [])
+        .map(id => inputSourceObjs?.find(s => s.id === id))
+        .filter((s): s is TSource => s != null),
+    [watchedSources, inputSourceObjs],
+  );
+  const {
+    columnsBySourceId,
+    unionColumns,
+    dateTimeColumns: multiDateTimeColumns,
+  } = useMultiSourceColumns(
+    formMultiSources.length > 1
+      ? formMultiSources
+      : isMultiSource
+        ? searchedMultiSources
+        : [],
+  );
+  // --- End multi-source selection & schema state -----------------------------
+
   // Top-level column names for the active source, used to quote
-  // filter keys that contain special characters.
+  // filter keys that contain special characters. In multi mode this is the
+  // union across the selected sources, so filter keys from any of them
+  // escape correctly.
   const { data: inputSourceColumns } = useColumns(
     {
       databaseName: inputSourceObj?.from?.databaseName ?? '',
@@ -1361,20 +1478,19 @@ export function DBSearchPage() {
     },
     { enabled: !!inputSourceObj },
   );
-  const knownColumns = useMemo(
-    () =>
-      inputSourceColumns
-        ? new Set(inputSourceColumns.map(c => c.name))
-        : new Set<string>(),
-    [inputSourceColumns],
-  );
+  const knownColumns = useMemo(() => {
+    if (isMultiSource) {
+      const union = new Set<string>();
+      for (const names of columnsBySourceId.values()) {
+        for (const name of names) union.add(name);
+      }
+      return union;
+    }
+    return inputSourceColumns
+      ? new Set(inputSourceColumns.map(c => c.name))
+      : new Set<string>();
+  }, [inputSourceColumns, isMultiSource, columnsBySourceId]);
 
-  const watchedSource = useWatch({
-    control,
-    name: 'source',
-    // Watch will reset when changing saved search, so we need to default to the URL
-    defaultValue: searchedConfig.source ?? undefined,
-  });
   const prevSourceRef = useRef(watchedSource);
   // Set when the user switches sources via the dropdown. The follow-up
   // effect waits for the new source's columns to load and then drops any
@@ -1397,11 +1513,21 @@ export function DBSearchPage() {
   const { dateTimeColumns, onResolvedColumnsChange } =
     useResolvedDateTimeColumns(inputSourceColumns);
 
+  // In multi mode, date/time-typed filter keys may come from any selected
+  // source's schema.
+  const effectiveDateTimeColumns = useMemo(
+    () =>
+      isMultiSource && multiDateTimeColumns.size > 0
+        ? new Map([...dateTimeColumns, ...multiDateTimeColumns])
+        : dateTimeColumns,
+    [isMultiSource, dateTimeColumns, multiDateTimeColumns],
+  );
+
   const filters = useWatch({ name: 'filters', control });
   const searchFilters = useSearchPageFilterState({
     searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
-    dateTimeColumns,
+    dateTimeColumns: effectiveDateTimeColumns,
     knownColumns,
   });
 
@@ -1539,105 +1665,7 @@ export function DBSearchPage() {
   const { data: chartConfig, isLoading: isChartConfigLoading } =
     useSearchedConfigToChartConfig(chartSearchConfig, defaultSearchConfig);
 
-  // --- Multi-source search -------------------------------------------------
-  // 2+ resolved sources in the ?sources= param engage multi mode: one
-  // independent query pipeline per source, merged client-side. The single
-  // `source` (primary) keeps every existing code path working; multi mode
-  // only swaps what gets rendered below.
-  const { sources: searchedMultiSources } = useResolvedSourcesParam(
-    rawSearchedConfig.sources,
-    { kinds: ALLOWED_SOURCE_KINDS },
-  );
-  const isMultiSource = searchedMultiSources.length > 1;
-  // Delta/pattern analyses are per-source; multi mode pins the results view.
-  const effectiveAnalysisMode = isMultiSource ? 'results' : analysisMode;
-  // Raw SQL WHERE names concrete columns of a concrete table — reinterpreting
-  // it per source risks silently-wrong results, so multi mode requires Lucene.
-  const isMultiSourceSqlBlocked =
-    isMultiSource &&
-    (searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene') ===
-      'sql' &&
-    !!searchedConfig.where;
-
-  // A hand-authored URL may carry only ?sources=; backfill the primary so the
-  // single-source machinery (form, chart config) has one.
-  useEffect(() => {
-    if (!rawSearchedConfig.source && searchedMultiSources.length > 0) {
-      setSearchedConfig({ source: searchedMultiSources[0].id });
-    }
-  }, [rawSearchedConfig.source, searchedMultiSources, setSearchedConfig]);
-
-  const watchedSources = useWatch({ control, name: 'sources' });
-  const formSourceCount = watchedSources?.length ?? 0;
-  // The multi-select UI stays visible while the user is composing a selection
-  // (even before a second source is added).
-  const [multiPickerOpen, setMultiPickerOpen] = useState(false);
-  const isMultiSelectUI = multiPickerOpen || formSourceCount > 1;
-  const formIsMulti = formSourceCount > 1;
-
-  const enterMultiSourceSelect = useCallback(() => {
-    setValue('sources', watchedSource ? [watchedSource] : []);
-    setMultiPickerOpen(true);
-  }, [setValue, watchedSource]);
-
-  // Keep the primary `source` field in sync with the selection and re-run the
-  // search when the selection changes.
-  const prevWatchedSourcesRef = useRef<string[] | null>(null);
-  useEffect(() => {
-    const current = watchedSources ?? [];
-    const prev = prevWatchedSourcesRef.current;
-    if (prev != null && JSON.stringify(prev) === JSON.stringify(current)) {
-      return;
-    }
-    prevWatchedSourcesRef.current = current;
-    if (prev == null) {
-      // Initial hydration from the URL — nothing changed.
-      return;
-    }
-    if (current.length > 0 && current[0] !== watchedSource) {
-      setValue('source', current[0]);
-    }
-    if ((prev?.length ?? 0) <= 1 && current.length > 1) {
-      // Entering multi mode: the single-source SELECT/ORDER BY strings don't
-      // translate to the canonical multi-source shape.
-      setValue('select', '');
-      setValue('orderBy', '');
-    }
-    debouncedSubmit();
-  }, [watchedSources, watchedSource, setValue, debouncedSubmit]);
-
-  // Collapse the picker back to the single-source select when the user
-  // reduces a real multi selection to one source. Keyed on the >1 → ≤1
-  // transition so it can't fire in the just-opened composing state (picker
-  // open, one source selected, second not yet picked).
-  const prevFormSourceCountRef = useRef(formSourceCount);
-  useEffect(() => {
-    const prev = prevFormSourceCountRef.current;
-    prevFormSourceCountRef.current = formSourceCount;
-    if (prev > 1 && formSourceCount <= 1) {
-      setMultiPickerOpen(false);
-    }
-  }, [formSourceCount]);
-
-  // Per-source top-level columns: powers the add-column picker and the
-  // per-source `column vs NULL` projection for user-picked extras. Driven by
-  // the form's draft selection while composing (so the picker has options
-  // before the search is submitted), falling back to the searched selection.
-  const formMultiSources = useMemo(
-    () =>
-      (watchedSources ?? [])
-        .map(id => inputSourceObjs?.find(s => s.id === id))
-        .filter((s): s is TSource => s != null),
-    [watchedSources, inputSourceObjs],
-  );
-  const { columnsBySourceId, unionColumns } = useMultiSourceColumns(
-    formMultiSources.length > 1
-      ? formMultiSources
-      : isMultiSource
-        ? searchedMultiSources
-        : [],
-  );
-
+  // --- Multi-source search: query specs -------------------------------------
   // In multi mode the `select` param holds the extra column names picked by
   // the user (the canonical columns are always projected).
   const multiExtraColumnNames = useMemo(
@@ -1661,13 +1689,46 @@ export function DBSearchPage() {
     [setValue, debouncedSubmit],
   );
 
+  // Sidebar filters apply per source. A source whose table lacks a filtered
+  // column can't answer the filtered search — it's excluded entirely (with a
+  // visible reason on its status chip) rather than silently returning rows
+  // that ignore the filter.
+  const multiSourceFilters = useMemo(
+    () => (isMultiSource ? (searchedConfig.filters ?? []) : []),
+    [isMultiSource, searchedConfig.filters],
+  );
+  const multiDisabledReasons = useMemo(() => {
+    const reasons = new Map<string, string>();
+    if (!isMultiSource || multiSourceFilters.length === 0) return reasons;
+    for (const source of searchedMultiSources) {
+      const missing = unresolvedFilterColumns(
+        multiSourceFilters,
+        columnsBySourceId.get(source.id),
+      );
+      if (missing.length > 0) {
+        reasons.set(
+          source.id,
+          `${source.name} is excluded: the active filter uses ${missing.join(
+            ', ',
+          )}, which it doesn't have`,
+        );
+      }
+    }
+    return reasons;
+  }, [
+    isMultiSource,
+    multiSourceFilters,
+    searchedMultiSources,
+    columnsBySourceId,
+  ]);
+
   const multiSourceStreamSpecs = useMemo(() => {
     if (!isMultiSource || isMultiSourceSqlBlocked) return [];
-    // Extra columns need each source's DESCRIBE to resolve column-vs-NULL;
-    // hold the row queries until they've loaded so we don't fire a throwaway
-    // query per source with every extra projected as NULL.
+    // Extra columns and filters both need each source's DESCRIBE (to resolve
+    // column-vs-NULL and filter resolvability); hold the row queries until
+    // they've loaded so we don't fire throwaway or erroring queries.
     if (
-      multiExtraColumnNames.length > 0 &&
+      (multiExtraColumnNames.length > 0 || multiSourceFilters.length > 0) &&
       columnsBySourceId.size < searchedMultiSources.length
     ) {
       return [];
@@ -1676,12 +1737,14 @@ export function DBSearchPage() {
     const where = searchedConfig.where ?? '';
     return searchedMultiSources.map(source => ({
       source,
+      disabledReason: multiDisabledReasons.get(source.id),
       config: {
         ...buildMultiSourceSearchConfig(
           source,
           {
             where,
             whereLanguage: 'lucene',
+            filters: multiSourceFilters,
             orderBy: multiSourceDefaultOrderBy(source),
           },
           {
@@ -1701,19 +1764,29 @@ export function DBSearchPage() {
     searchedMultiSources,
     searchedConfig.where,
     multiExtraColumnNames,
+    multiSourceFilters,
+    multiDisabledReasons,
     columnsBySourceId,
     searchedTimeRange,
   ]);
 
   const multiHistogramSpecs = useMemo(() => {
     if (!isMultiSource || isMultiSourceSqlBlocked) return [];
+    if (
+      multiSourceFilters.length > 0 &&
+      columnsBySourceId.size < searchedMultiSources.length
+    ) {
+      return [];
+    }
     const where = searchedConfig.where ?? '';
     return searchedMultiSources.map(source => ({
       source,
+      disabledReason: multiDisabledReasons.get(source.id),
       config: {
         ...buildMultiSourceSearchConfig(source, {
           where,
           whereLanguage: 'lucene',
+          filters: multiSourceFilters,
         }),
         select: ALERT_COUNT_DEFAULT_SELECT,
         orderBy: undefined,
@@ -1731,6 +1804,9 @@ export function DBSearchPage() {
     isMultiSourceSqlBlocked,
     searchedMultiSources,
     searchedConfig.where,
+    multiSourceFilters,
+    multiDisabledReasons,
+    columnsBySourceId,
     searchedTimeRange,
   ]);
   // --- End multi-source search ---------------------------------------------
@@ -2218,18 +2294,26 @@ export function DBSearchPage() {
     ],
   );
 
-  // Multi-source rows span schemas, so single-source affordances
-  // (add-to-search, column toggles) are omitted — the side panel hides them.
-  // Passing no `source` with no toggle callbacks is required: with a null
-  // context source, deriveRowSidePanelContextForSource treats every row as
-  // same-source and would leave stale single-source callbacks enabled.
+  // Multi-source rows span schemas, so the single-source column toggles are
+  // omitted — the side panel hides them. Property-add-to-filter IS wired:
+  // filters resolve per source, and a source that lacks the column is
+  // excluded with a visible reason. Passing no `source` is required: with a
+  // null context source, deriveRowSidePanelContextForSource treats every row
+  // as same-source, which is exactly the cross-source semantics filters now
+  // have.
   const multiRowTableContext = useMemo(
     () => ({
+      onPropertyAddClick: searchFilters.setFilterValue,
       generateSearchUrl,
       isChildModalOpen: isDrawerChildModalOpen,
       setChildModalOpen: setDrawerChildModalOpen,
     }),
-    [generateSearchUrl, isDrawerChildModalOpen, setDrawerChildModalOpen],
+    [
+      searchFilters.setFilterValue,
+      generateSearchUrl,
+      isDrawerChildModalOpen,
+      setDrawerChildModalOpen,
+    ],
   );
 
   const inputSourceTableConnection = useMemo(
@@ -2693,14 +2777,12 @@ export function DBSearchPage() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
-        {!isMultiSource && (
-          <ActiveFilterPills
-            searchFilters={searchFilters}
-            chartConfig={filtersChartConfig}
-            dateTimeColumns={dateTimeColumns}
-            mt={6}
-          />
-        )}
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          chartConfig={filtersChartConfig}
+          dateTimeColumns={effectiveDateTimeColumns}
+          mt={6}
+        />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
@@ -2742,6 +2824,20 @@ export function DBSearchPage() {
                 height: '100%',
               }}
             >
+              {!isFilterSidebarCollapsed &&
+                isMultiSource &&
+                !isMultiSourceSqlBlocked && (
+                  <ErrorBoundary message="Unable to render search filters">
+                    <MultiSourceSearchFilters
+                      specs={multiHistogramSpecs}
+                      dateRange={searchedTimeRange}
+                      isLive={isLive ?? true}
+                      knownColumns={knownColumns}
+                      searchFilters={searchFilters}
+                      onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    />
+                  </ErrorBoundary>
+                )}
               {!isFilterSidebarCollapsed && !isMultiSource && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
@@ -2875,25 +2971,26 @@ export function DBSearchPage() {
                           align="center"
                           style={{ width: '100%' }}
                         >
-                          <MultiSourceTotalCountChart
-                            specs={multiHistogramSpecs}
-                            enabled={isReady}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            enableParallelQueries
-                          />
-                          <Group gap="sm" align="center">
-                            {(searchedConfig.filters?.length ?? 0) > 0 && (
-                              <Text size="xs" c="dimmed">
-                                Sidebar filters aren't applied when searching
-                                multiple sources
-                              </Text>
-                            )}
-                            {shouldShowLiveModeHint && (
-                              <ResumeLiveTailButton
-                                handleResumeLiveTail={handleResumeLiveTail}
+                          <Group gap={4} align="center">
+                            {isFilterSidebarCollapsed && (
+                              <ExpandFiltersButton
+                                onExpand={() =>
+                                  setIsFilterSidebarCollapsed(false)
+                                }
                               />
                             )}
+                            <MultiSourceTotalCountChart
+                              specs={multiHistogramSpecs}
+                              enabled={isReady}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              enableParallelQueries
+                            />
                           </Group>
+                          {shouldShowLiveModeHint && (
+                            <ResumeLiveTailButton
+                              handleResumeLiveTail={handleResumeLiveTail}
+                            />
+                          )}
                         </Group>
                       </Box>
                       <Box

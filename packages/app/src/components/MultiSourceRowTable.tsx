@@ -14,7 +14,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Group, Loader, Text, Tooltip } from '@mantine/core';
-import { IconAlertTriangle } from '@tabler/icons-react';
+import { IconAlertTriangle, IconFilterOff } from '@tabler/icons-react';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
@@ -41,6 +41,11 @@ import { getMultiSourceColor, SourceBadge } from './MultiSourceBadge';
 export type MultiSourceStreamSpec = {
   source: TSource;
   config: BuilderChartConfigWithDateRange;
+  /**
+   * When set, the source doesn't run at all (e.g. an active filter references
+   * a column its table lacks); shown on the source's status chip.
+   */
+  disabledReason?: string;
 };
 
 // Placeholder config for unused hook slots. The metadata hooks inside
@@ -109,7 +114,11 @@ function useSourceStream(
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? configWithDefaults, {
-      enabled: enabled && spec != null && mergedConfig != null,
+      enabled:
+        enabled &&
+        spec != null &&
+        spec.disabledReason == null &&
+        mergedConfig != null,
       isLive,
       queryKeyPrefix,
       enableSmallFirstWindow,
@@ -177,10 +186,23 @@ function StreamStatusChips({ streams }: { streams: SourceStream[] }) {
       {streams.map((stream, i) => {
         if (stream.spec == null) return null;
         const name = stream.spec.source.name;
+        const disabledReason = stream.spec.disabledReason;
         return (
-          <Group key={stream.spec.source.id} gap={4} wrap="nowrap">
+          <Group
+            key={stream.spec.source.id}
+            gap={4}
+            wrap="nowrap"
+            style={disabledReason != null ? { opacity: 0.55 } : undefined}
+          >
             <SourceBadge name={name} color={getMultiSourceColor(i)} />
             {stream.isFetching && <Loader size={10} color="gray" />}
+            {disabledReason != null && (
+              <Tooltip label={disabledReason} multiline maw={420}>
+                <Text component="span" c="dimmed" lh={1}>
+                  <IconFilterOff size={13} />
+                </Text>
+              </Tooltip>
+            )}
             {stream.isError && (
               <Tooltip
                 label={`${name} failed to load and is excluded from these results: ${
@@ -258,7 +280,7 @@ export default function MultiSourceRowTableWithSidebar({
         window: stream.data?.window ?? null,
         lastPageRowCount: stream.data?.lastPageRowCount ?? null,
         hasNextPage: stream.hasNextPage,
-        isActive: !stream.isError,
+        isActive: !stream.isError && stream.spec.disabledReason == null,
         dateRange: stream.spec.config.dateRange,
       })),
     [streams],
