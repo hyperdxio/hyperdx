@@ -24,15 +24,8 @@ import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 import { SpansReverseLinksSubpanel } from './SpansReverseLinksSubpanel';
 
 const EMPTY_OBJ = {};
-export function RowOverviewPanel({
-  source,
-  rowId,
-  aliasWith,
-  dateRange,
-  hideHeader = false,
-  flush = false,
-  'data-testid': dataTestId,
-}: {
+
+interface DBRowOverviewPanelProps {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
@@ -42,7 +35,22 @@ export function RowOverviewPanel({
   // surrounding chrome (e.g. the tab bar in the trace span detail panel).
   flush?: boolean;
   'data-testid'?: string;
-}) {
+  // All spans belonging to the current trace, used to find spans that
+  // reference the currently selected span (reverse span links). This must
+  // be the full trace's span list, NOT just the single selected row.
+  allTraceRows?: Array<Record<string, any>>;
+}
+
+export function RowOverviewPanel({
+  source,
+  rowId,
+  aliasWith,
+  dateRange,
+  hideHeader = false,
+  flush = false,
+  'data-testid': dataTestId,
+  allTraceRows,
+}: DBRowOverviewPanelProps) {
   const contentPx = flush ? 0 : 'md';
   const { data } = useRowData({ source, rowId, aliasWith, dateRange });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
@@ -196,12 +204,14 @@ export function RowOverviewPanel({
     return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
   }, [firstRow?.__hdx_span_links]);
 
+  // P1 fix: scan the FULL trace's spans (allTraceRows), not data.data,
+  // which only ever contains the single selected row from useRowData.
   const hasReverseSpanLinks = useMemo(() => {
-    if (!firstRow?.SpanId || !Array.isArray(data?.data)) {
+    if (!firstRow?.SpanId || !Array.isArray(allTraceRows)) {
       return false;
     }
     const currentSpanId = String(firstRow.SpanId);
-    for (const row of data.data) {
+    for (const row of allTraceRows) {
       if (!row || typeof row !== 'object') continue;
       const sl = row.__hdx_span_links;
       if (!Array.isArray(sl)) continue;
@@ -217,7 +227,7 @@ export function RowOverviewPanel({
       }
     }
     return false;
-  }, [data?.data, firstRow?.SpanId]);
+  }, [allTraceRows, firstRow?.SpanId]);
 
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
@@ -377,7 +387,7 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px="md">
                 <SpansReverseLinksSubpanel
-                  rows={data?.data}
+                  rows={allTraceRows}
                   currentSpanId={firstRow?.SpanId as string | undefined}
                   onOpenTrace={onOpenLinkedTrace}
                 />
