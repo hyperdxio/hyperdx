@@ -12,6 +12,7 @@ import { Box, Group, Select } from '@mantine/core';
 import { FilterLinkToggle } from '@/components/FilterLinkToggle';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import { useGetKeyValues } from '@/hooks/useMetadata';
+import { useLocalStorage } from '@/utils';
 
 type KubernetesFiltersProps = {
   dateRange: [Date, Date];
@@ -129,7 +130,13 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   // "Link" mode (opt-in, off by default): narrow each dropdown's values by the
   // other selections + the free-text search. Off by default because contingent
   // value lookups can't use the cheap per-key rollups and cost far more at scale.
-  const [linked, setLinked] = useState(false);
+  // Persisted separately from the dashboard filter bar's key: the K8s facets
+  // are cheap (a few keys on one metrics table) while dashboard facets can be
+  // arbitrary expressions over large tables, so the preferences may differ.
+  const [linked, setLinked] = useLocalStorage<boolean>(
+    'hdx-k8s-filters-linked',
+    false,
+  );
 
   const resourceAttr = metricSource.resourceAttributesExpression;
   const valueByField: Record<string, string | null> = {

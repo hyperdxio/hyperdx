@@ -11,8 +11,10 @@ type FilterLinkToggleProps = {
 /**
  * Opt-in toggle that "links" a set of filter dropdowns so each one's selectable
  * values are narrowed by the others' current selections (faceted / filter-aware
- * values). Off by default because contingent value lookups can't be served from
- * the cheap per-key rollups and are far more expensive at scale.
+ * values). Only filters from the same source link to each other — a selection
+ * can't narrow a dropdown whose values come from a different table. Off by
+ * default because contingent value lookups can't be served from the cheap
+ * per-key rollups and are far more expensive at scale.
  */
 export function FilterLinkToggle({
   linked,
@@ -26,8 +28,8 @@ export function FilterLinkToggle({
       w={250}
       label={
         linked
-          ? 'Filters are linked: each dropdown only shows values that match the other selections. Click to unlink.'
-          : 'Link filters: narrow each dropdown to values that match the other selections (filter-aware). May be slower on large datasets.'
+          ? 'Filters are linked: each dropdown only shows values that match the other selections from the same source. Click to unlink.'
+          : 'Link filters: narrow each dropdown to values that match the other selections from the same source (filter-aware). May be slower on large datasets.'
       }
     >
       <ActionIcon
