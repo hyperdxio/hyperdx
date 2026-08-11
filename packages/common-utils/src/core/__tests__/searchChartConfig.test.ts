@@ -1,5 +1,7 @@
 import {
   ALERT_COUNT_DEFAULT_SELECT,
+  buildMultiSourceSearchConfig,
+  buildMultiSourceSelect,
   buildSearchChartConfig,
 } from '@/core/searchChartConfig';
 import { DisplayType, Filter, SourceKind, TSource } from '@/types';
@@ -475,5 +477,112 @@ describe('buildSearchChartConfig', () => {
 
       expect(config.select).toEqual(ALERT_COUNT_DEFAULT_SELECT);
     });
+  });
+});
+
+describe('buildMultiSourceSelect', () => {
+  it('projects the canonical aliases from a Log source semantic expressions', () => {
+    const source = makeLogSource({
+      displayedTimestampValueExpression: 'Timestamp',
+      serviceNameExpression: 'ServiceName',
+      severityTextExpression: 'SeverityText',
+      bodyExpression: 'Body',
+    });
+
+    expect(buildMultiSourceSelect(source)).toBe(
+      'Timestamp AS "__hdx_timestamp", ' +
+        'ServiceName AS "__hdx_service", ' +
+        'SeverityText AS "__hdx_severity", ' +
+        'Body AS "__hdx_body"',
+    );
+  });
+
+  it('falls back to the first timestamp expression and NULL for missing semantics', () => {
+    const source = makeLogSource({
+      timestampValueExpression: 'TimestampTime, Timestamp',
+      implicitColumnExpression: undefined,
+    });
+
+    expect(buildMultiSourceSelect(source)).toBe(
+      'TimestampTime AS "__hdx_timestamp", ' +
+        'NULL AS "__hdx_service", ' +
+        'NULL AS "__hdx_severity", ' +
+        'NULL AS "__hdx_body"',
+    );
+  });
+
+  it('maps Trace sources onto status/span-name and a milliseconds duration', () => {
+    const source = makeTraceSource({
+      serviceNameExpression: 'ServiceName',
+      statusCodeExpression: 'StatusCode',
+      spanNameExpression: 'SpanName',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+    });
+
+    expect(buildMultiSourceSelect(source, { includeDuration: true })).toBe(
+      'Timestamp AS "__hdx_timestamp", ' +
+        'ServiceName AS "__hdx_service", ' +
+        'StatusCode AS "__hdx_severity", ' +
+        'SpanName AS "__hdx_body", ' +
+        '(Duration)/1e6 AS "__hdx_duration_ms"',
+    );
+  });
+
+  it('projects NULL duration for Log sources when duration is included', () => {
+    const source = makeLogSource({ bodyExpression: 'Body' });
+
+    expect(buildMultiSourceSelect(source, { includeDuration: true })).toContain(
+      'NULL AS "__hdx_duration_ms"',
+    );
+  });
+
+  it('appends extra columns, projecting NULL where a source lacks the column', () => {
+    const source = makeLogSource({ bodyExpression: 'Body' });
+
+    const select = buildMultiSourceSelect(source, {
+      extraColumns: [
+        { name: 'ServiceName', expression: 'ServiceName' },
+        { name: 'StatusCode', expression: null },
+      ],
+    });
+
+    expect(select).toContain('ServiceName AS "ServiceName"');
+    expect(select).toContain('NULL AS "StatusCode"');
+  });
+});
+
+describe('buildMultiSourceSearchConfig', () => {
+  it('keeps the standard search config assembly but swaps in the canonical SELECT', () => {
+    const source = makeLogSource({
+      bodyExpression: 'Body',
+      tableFilterExpression: "ServiceName != 'noisy'",
+    });
+
+    const config = buildMultiSourceSearchConfig(source, {
+      where: 'error',
+      whereLanguage: 'lucene',
+      orderBy: 'TimestampTime DESC',
+    });
+
+    expect(config.select).toBe(buildMultiSourceSelect(source));
+    expect(config.from).toEqual(source.from);
+    expect(config.connection).toBe('conn-1');
+    expect(config.where).toBe('error');
+    expect(config.whereLanguage).toBe('lucene');
+    expect(config.orderBy).toBe('TimestampTime DESC');
+    // Source-level behaviors (e.g. tableFilterExpression) still apply.
+    expect(config.filters).toEqual([
+      { type: 'sql', condition: "ServiceName != 'noisy'" },
+    ]);
+  });
+
+  it('never resolves to defaultTableSelectExpression', () => {
+    const config = buildMultiSourceSearchConfig(makeTraceSource(), {
+      where: '',
+    });
+
+    expect(config.select).not.toContain('SpanName,');
+    expect(config.select).toContain('AS "__hdx_timestamp"');
   });
 });

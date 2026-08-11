@@ -211,6 +211,13 @@ jest.mock('../components/ChartSQLPreview', () => ({
   SQLPreview: () => <div />,
 }));
 jest.mock('../components/DBSqlRowTableWithSidebar', () => () => <div />);
+// Multi-source components pull in DBRowSidePanel (and its deep import graph),
+// which this test isolates away just like DBSqlRowTableWithSidebar above.
+jest.mock('../components/MultiSourceRowTable', () => () => <div />);
+jest.mock('../components/MultiSourceTimeChart', () => ({
+  MultiSourceTimeChart: () => <div />,
+  MultiSourceTotalCountChart: () => <div />,
+}));
 jest.mock('../components/PatternTable', () => () => <div />);
 jest.mock('../components/Search/DBSearchHeatmapChart', () => ({
   DBSearchHeatmapChart: () => <div />,

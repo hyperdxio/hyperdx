@@ -31,7 +31,11 @@ import {
   ColumnMeta,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  ALERT_COUNT_DEFAULT_SELECT,
+  buildMultiSourceSearchConfig,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
   isBrowser,
@@ -95,21 +99,34 @@ import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
+import MultiSourceColumnPicker from '@/components/MultiSourceColumnPicker';
+import MultiSourceRowTableWithSidebar from '@/components/MultiSourceRowTable';
+import {
+  MultiSourceTimeChart,
+  MultiSourceTotalCountChart,
+} from '@/components/MultiSourceTimeChart';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
+import { SourceMultiSelectControlled } from '@/components/SourceMultiSelect';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
+import { MAX_SEARCH_SOURCES } from '@/defaults';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import {
+  resolveExtraColumnsForSource,
+  useMultiSourceColumns,
+} from '@/hooks/useMultiSourceSearch';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import { useResolvedSourcesParam } from '@/hooks/useResolvedSourcesParam';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -181,6 +198,10 @@ const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
+  // Multi-source search: the full selection (2+ engages multi mode). The
+  // single `source` field stays the primary (= sources[0]) so every
+  // single-source code path keeps working unchanged.
+  sources: z.array(z.string()),
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']),
   orderBy: z.string(),
@@ -865,6 +886,25 @@ function optimizeDefaultOrderBy(
     : `${orderByArr[0]} DESC`;
 }
 
+/**
+ * Per-source default ORDER BY for multi-source search. Same resolution as
+ * useDefaultOrderBy minus the table sorting-key optimization (which needs a
+ * metadata query per source): the source's explicit orderByExpression, else
+ * its timestamp expression(s) DESC. Time-window pagination requires the first
+ * term to be the source's timestamp, which this guarantees.
+ */
+function multiSourceDefaultOrderBy(source: TSource): string {
+  const isEventSource =
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace;
+  const explicit = isEventSource ? source.orderByExpression?.trim() : undefined;
+  if (explicit) return explicit;
+  return optimizeDefaultOrderBy(
+    source.timestampValueExpression ?? '',
+    isEventSource ? source.displayedTimestampValueExpression : undefined,
+    undefined,
+  );
+}
+
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({
     id: sourceID,
@@ -895,6 +935,9 @@ function formatDroppedFiltersMessage(count: number): string {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
+  // JSON-encoded (not comma-separated) because source names may contain
+  // commas; `source` is always written alongside it as the primary.
+  sources: parseAsJsonEncoded<string[]>(),
   where: parseAsStringEncoded,
   select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
@@ -1116,6 +1159,7 @@ export function DBSearchPage() {
           (savedSearchId || directTraceId || rawSearchedConfig.source
             ? ''
             : defaultSourceId),
+        sources: searchedConfig.sources ?? [],
         filters: searchedConfig.filters ?? [],
         orderBy: searchedConfig.orderBy ?? '',
       },
@@ -1184,6 +1228,7 @@ export function DBSearchPage() {
         whereLanguage:
           searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
         source: searchedConfig?.source ?? undefined,
+        sources: searchedConfig?.sources ?? [],
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
       });
@@ -1198,6 +1243,7 @@ export function DBSearchPage() {
     // to an existing source.
     const isSearchConfigEmpty =
       !rawSearchedConfig.source &&
+      !rawSearchedConfig.sources?.length &&
       !where &&
       !select &&
       !whereLanguage &&
@@ -1240,6 +1286,7 @@ export function DBSearchPage() {
     savedSearch,
     searchedConfig,
     rawSearchedConfig.source,
+    rawSearchedConfig.sources,
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
@@ -1268,12 +1315,15 @@ export function DBSearchPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
+      ({ select, where, whereLanguage, source, sources, filters, orderBy }) => {
         setSearchedConfig({
           select,
           where,
           whereLanguage,
           source,
+          // Writer discipline: only 2+ selections persist the list; a single
+          // selection clears it so old-style URLs stay canonical.
+          sources: sources.length > 1 ? sources : null,
           filters,
           orderBy,
         });
@@ -1489,6 +1539,202 @@ export function DBSearchPage() {
   const { data: chartConfig, isLoading: isChartConfigLoading } =
     useSearchedConfigToChartConfig(chartSearchConfig, defaultSearchConfig);
 
+  // --- Multi-source search -------------------------------------------------
+  // 2+ resolved sources in the ?sources= param engage multi mode: one
+  // independent query pipeline per source, merged client-side. The single
+  // `source` (primary) keeps every existing code path working; multi mode
+  // only swaps what gets rendered below.
+  const { sources: searchedMultiSources } = useResolvedSourcesParam(
+    rawSearchedConfig.sources,
+    { kinds: ALLOWED_SOURCE_KINDS },
+  );
+  const isMultiSource = searchedMultiSources.length > 1;
+  // Delta/pattern analyses are per-source; multi mode pins the results view.
+  const effectiveAnalysisMode = isMultiSource ? 'results' : analysisMode;
+  // Raw SQL WHERE names concrete columns of a concrete table — reinterpreting
+  // it per source risks silently-wrong results, so multi mode requires Lucene.
+  const isMultiSourceSqlBlocked =
+    isMultiSource &&
+    (searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene') ===
+      'sql' &&
+    !!searchedConfig.where;
+
+  // A hand-authored URL may carry only ?sources=; backfill the primary so the
+  // single-source machinery (form, chart config) has one.
+  useEffect(() => {
+    if (!rawSearchedConfig.source && searchedMultiSources.length > 0) {
+      setSearchedConfig({ source: searchedMultiSources[0].id });
+    }
+  }, [rawSearchedConfig.source, searchedMultiSources, setSearchedConfig]);
+
+  const watchedSources = useWatch({ control, name: 'sources' });
+  const formSourceCount = watchedSources?.length ?? 0;
+  // The multi-select UI stays visible while the user is composing a selection
+  // (even before a second source is added).
+  const [multiPickerOpen, setMultiPickerOpen] = useState(false);
+  const isMultiSelectUI = multiPickerOpen || formSourceCount > 1;
+  const formIsMulti = formSourceCount > 1;
+
+  const enterMultiSourceSelect = useCallback(() => {
+    setValue('sources', watchedSource ? [watchedSource] : []);
+    setMultiPickerOpen(true);
+  }, [setValue, watchedSource]);
+
+  // Keep the primary `source` field in sync with the selection and re-run the
+  // search when the selection changes.
+  const prevWatchedSourcesRef = useRef<string[] | null>(null);
+  useEffect(() => {
+    const current = watchedSources ?? [];
+    const prev = prevWatchedSourcesRef.current;
+    if (prev != null && JSON.stringify(prev) === JSON.stringify(current)) {
+      return;
+    }
+    prevWatchedSourcesRef.current = current;
+    if (prev == null) {
+      // Initial hydration from the URL — nothing changed.
+      return;
+    }
+    if (current.length > 0 && current[0] !== watchedSource) {
+      setValue('source', current[0]);
+    }
+    if ((prev?.length ?? 0) <= 1 && current.length > 1) {
+      // Entering multi mode: the single-source SELECT/ORDER BY strings don't
+      // translate to the canonical multi-source shape.
+      setValue('select', '');
+      setValue('orderBy', '');
+    }
+    debouncedSubmit();
+  }, [watchedSources, watchedSource, setValue, debouncedSubmit]);
+
+  // Collapse the picker back to the single-source select when the user
+  // reduces a real multi selection to one source. Keyed on the >1 → ≤1
+  // transition so it can't fire in the just-opened composing state (picker
+  // open, one source selected, second not yet picked).
+  const prevFormSourceCountRef = useRef(formSourceCount);
+  useEffect(() => {
+    const prev = prevFormSourceCountRef.current;
+    prevFormSourceCountRef.current = formSourceCount;
+    if (prev > 1 && formSourceCount <= 1) {
+      setMultiPickerOpen(false);
+    }
+  }, [formSourceCount]);
+
+  // Per-source top-level columns: powers the add-column picker and the
+  // per-source `column vs NULL` projection for user-picked extras. Driven by
+  // the form's draft selection while composing (so the picker has options
+  // before the search is submitted), falling back to the searched selection.
+  const formMultiSources = useMemo(
+    () =>
+      (watchedSources ?? [])
+        .map(id => inputSourceObjs?.find(s => s.id === id))
+        .filter((s): s is TSource => s != null),
+    [watchedSources, inputSourceObjs],
+  );
+  const { columnsBySourceId, unionColumns } = useMultiSourceColumns(
+    formMultiSources.length > 1
+      ? formMultiSources
+      : isMultiSource
+        ? searchedMultiSources
+        : [],
+  );
+
+  // In multi mode the `select` param holds the extra column names picked by
+  // the user (the canonical columns are always projected).
+  const multiExtraColumnNames = useMemo(
+    () =>
+      isMultiSource ? splitAndTrimWithBracket(searchedConfig.select ?? '') : [],
+    [isMultiSource, searchedConfig.select],
+  );
+
+  // The add-column picker edits the form's draft select (like the SELECT
+  // editor it replaces), then auto-submits.
+  const inputSelect = useWatch({ name: 'select', control });
+  const multiPickerValue = useMemo(
+    () => (formIsMulti ? splitAndTrimWithBracket(inputSelect ?? '') : []),
+    [formIsMulti, inputSelect],
+  );
+  const onMultiColumnsChange = useCallback(
+    (columns: string[]) => {
+      setValue('select', columns.join(', '));
+      debouncedSubmit();
+    },
+    [setValue, debouncedSubmit],
+  );
+
+  const multiSourceStreamSpecs = useMemo(() => {
+    if (!isMultiSource || isMultiSourceSqlBlocked) return [];
+    // Extra columns need each source's DESCRIBE to resolve column-vs-NULL;
+    // hold the row queries until they've loaded so we don't fire a throwaway
+    // query per source with every extra projected as NULL.
+    if (
+      multiExtraColumnNames.length > 0 &&
+      columnsBySourceId.size < searchedMultiSources.length
+    ) {
+      return [];
+    }
+    const includeDuration = searchedMultiSources.some(isTraceSource);
+    const where = searchedConfig.where ?? '';
+    return searchedMultiSources.map(source => ({
+      source,
+      config: {
+        ...buildMultiSourceSearchConfig(
+          source,
+          {
+            where,
+            whereLanguage: 'lucene',
+            orderBy: multiSourceDefaultOrderBy(source),
+          },
+          {
+            includeDuration,
+            extraColumns: resolveExtraColumnsForSource(
+              multiExtraColumnNames,
+              columnsBySourceId.get(source.id),
+            ),
+          },
+        ),
+        dateRange: searchedTimeRange,
+      },
+    }));
+  }, [
+    isMultiSource,
+    isMultiSourceSqlBlocked,
+    searchedMultiSources,
+    searchedConfig.where,
+    multiExtraColumnNames,
+    columnsBySourceId,
+    searchedTimeRange,
+  ]);
+
+  const multiHistogramSpecs = useMemo(() => {
+    if (!isMultiSource || isMultiSourceSqlBlocked) return [];
+    const where = searchedConfig.where ?? '';
+    return searchedMultiSources.map(source => ({
+      source,
+      config: {
+        ...buildMultiSourceSearchConfig(source, {
+          where,
+          whereLanguage: 'lucene',
+        }),
+        select: ALERT_COUNT_DEFAULT_SELECT,
+        orderBy: undefined,
+        granularity: 'auto' as const,
+        dateRange: searchedTimeRange,
+        displayType: DisplayType.StackedBar,
+        // Match the single-source histogram: reflect the user's exact range
+        // so chart and table counts agree (see histogramTimeChartConfig).
+        alignDateRangeToGranularity: false,
+        dateRangeEndInclusive: true,
+      },
+    }));
+  }, [
+    isMultiSource,
+    isMultiSourceSqlBlocked,
+    searchedMultiSources,
+    searchedConfig.where,
+    searchedTimeRange,
+  ]);
+  // --- End multi-source search ---------------------------------------------
+
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
     const hasQueryError = Object.values(_queryErrors).length > 0;
@@ -1662,12 +1908,15 @@ export function DBSearchPage() {
   }, [chartConfig, searchedTimeRange]);
 
   // Stable key for persisting column widths in localStorage. Scoped per saved
-  // search when one is loaded, else per source for ad-hoc searches.
+  // search when one is loaded, else per source (or source set) for ad-hoc
+  // searches.
   const columnSizeTableId = savedSearchId
     ? `db-search-saved-${savedSearchId}`
-    : searchedConfig.source
-      ? `db-search-source-${searchedConfig.source}`
-      : undefined;
+    : isMultiSource
+      ? `db-search-multi-${searchedMultiSources.map(s => s.id).join('-')}`
+      : searchedConfig.source
+        ? `db-search-source-${searchedConfig.source}`
+        : undefined;
 
   const displayedColumns = useMemo(() => {
     // `select` is typed as `string | DerivedColumn[]` upstream, but in the
@@ -1969,6 +2218,20 @@ export function DBSearchPage() {
     ],
   );
 
+  // Multi-source rows span schemas, so single-source affordances
+  // (add-to-search, column toggles) are omitted — the side panel hides them.
+  // Passing no `source` with no toggle callbacks is required: with a null
+  // context source, deriveRowSidePanelContextForSource treats every row as
+  // same-source and would leave stale single-source callbacks enabled.
+  const multiRowTableContext = useMemo(
+    () => ({
+      generateSearchUrl,
+      isChildModalOpen: isDrawerChildModalOpen,
+      setChildModalOpen: setDrawerChildModalOpen,
+    }),
+    [generateSearchUrl, isDrawerChildModalOpen, setDrawerChildModalOpen],
+  );
+
   const inputSourceTableConnection = useMemo(
     () => tcFromSource(inputSourceObj),
     [inputSourceObj],
@@ -2220,22 +2483,49 @@ export function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <SourceSelectControlled
-            key={`${savedSearchId}`}
-            size="xs"
-            control={control}
-            name="source"
-            onCreate={openNewSourceModal}
-            onEdit={onEditCurrentSource}
-            onManageSources={onManageSources}
-            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
-            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
-              inputSourceObj,
-            )}
-            allowedSourceKinds={ALLOWED_SOURCE_KINDS}
-            data-testid="source-selector"
-            style={{ minWidth: 150 }}
-          />
+          {isMultiSelectUI ? (
+            <SourceMultiSelectControlled
+              size="xs"
+              control={control}
+              name="sources"
+              allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+              placeholder="Select sources"
+              maxValues={MAX_SEARCH_SOURCES}
+              data-testid="source-multi-selector"
+              style={{ minWidth: 220, maxWidth: 440 }}
+            />
+          ) : (
+            <>
+              <SourceSelectControlled
+                key={`${savedSearchId}`}
+                size="xs"
+                control={control}
+                name="source"
+                onCreate={openNewSourceModal}
+                onEdit={onEditCurrentSource}
+                onManageSources={onManageSources}
+                onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+                isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+                  inputSourceObj,
+                )}
+                allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+                data-testid="source-selector"
+                style={{ minWidth: 150 }}
+              />
+              <Tooltip label="Search across multiple sources" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  mt={4}
+                  onClick={enterMultiSourceSelect}
+                  aria-label="Search across multiple sources"
+                  data-testid="add-search-source"
+                >
+                  <IconPlus size={14} />
+                </ActionIcon>
+              </Tooltip>
+            </>
+          )}
           <SourceSchemaPreview
             source={inputSourceObj}
             controlled
@@ -2243,44 +2533,62 @@ export function DBSearchPage() {
             onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="select"
-              defaultValue={defaultSearchConfig.select}
-              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-              onSubmit={onSubmit}
-              label="SELECT"
-              size="xs"
-              allowMultiline
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
+            {formIsMulti ? (
+              <MultiSourceColumnPicker
+                unionColumns={unionColumns}
+                totalSources={formSourceCount}
+                value={multiPickerValue}
+                onChange={onMultiColumnsChange}
+              />
+            ) : (
+              <SQLInlineEditorControlled
+                tableConnection={inputSourceTableConnection}
+                control={control}
+                name="select"
+                defaultValue={defaultSearchConfig.select}
+                placeholder={defaultSearchConfig.select || 'SELECT Columns'}
+                onSubmit={onSubmit}
+                label="SELECT"
+                size="xs"
+                allowMultiline
+                dateRange={searchedTimeRange}
+                sourceId={inputSource}
+              />
+            )}
           </Box>
-          <Box style={{ maxWidth: 400, width: '20%' }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="orderBy"
-              defaultValue={defaultSearchConfig.orderBy}
-              onSubmit={onSubmit}
-              label="ORDER BY"
-              size="xs"
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
+          {!formIsMulti && (
+            <Box style={{ maxWidth: 400, width: '20%' }}>
+              <SQLInlineEditorControlled
+                tableConnection={inputSourceTableConnection}
+                control={control}
+                name="orderBy"
+                defaultValue={defaultSearchConfig.orderBy}
+                onSubmit={onSubmit}
+                label="ORDER BY"
+                size="xs"
+                dateRange={searchedTimeRange}
+                sourceId={inputSource}
+              />
+            </Box>
+          )}
           <>
             {!savedSearchId ? (
-              <Button
-                data-testid="save-search-button"
-                variant="secondary"
-                size="xs"
-                onClick={onSaveSearch}
-                style={{ flexShrink: 0 }}
+              <Tooltip
+                label="Saved searches don't support multiple sources yet"
+                disabled={!formIsMulti}
+                position="bottom"
               >
-                Save
-              </Button>
+                <Button
+                  data-testid="save-search-button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={onSaveSearch}
+                  disabled={formIsMulti}
+                  style={{ flexShrink: 0 }}
+                >
+                  Save
+                </Button>
+              </Tooltip>
             ) : (
               <Button
                 data-testid="update-search-button"
@@ -2295,18 +2603,25 @@ export function DBSearchPage() {
               </Button>
             )}
             {!IS_LOCAL_MODE && (
-              <Button
-                data-testid="alerts-button"
-                variant="secondary"
-                size="xs"
-                onClick={openAlertModal}
-                style={{ flexShrink: 0 }}
+              <Tooltip
+                label="Alerts run against a single source today"
+                disabled={!formIsMulti}
+                position="bottom"
               >
-                <Group gap={4}>
-                  Alerts
-                  <AlertStatusIcon alerts={savedSearch?.alerts} />
-                </Group>
-              </Button>
+                <Button
+                  data-testid="alerts-button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={openAlertModal}
+                  disabled={formIsMulti}
+                  style={{ flexShrink: 0 }}
+                >
+                  <Group gap={4}>
+                    Alerts
+                    <AlertStatusIcon alerts={savedSearch?.alerts} />
+                  </Group>
+                </Button>
+              </Tooltip>
             )}
           </>
         </Flex>
@@ -2346,7 +2661,7 @@ export function DBSearchPage() {
               setInputValue={setDisplayedTimeInputValue}
               onSearch={onTimePickerSearch}
               onRelativeSearch={onTimePickerRelativeSearch}
-              showLive={analysisMode === 'results'}
+              showLive={effectiveAnalysisMode === 'results'}
               isLiveMode={isLive}
               // Default to relative time mode if the user has made changes to interval and reloaded.
               defaultRelativeTimeMode={
@@ -2378,12 +2693,14 @@ export function DBSearchPage() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
-        <ActiveFilterPills
-          searchFilters={searchFilters}
-          chartConfig={filtersChartConfig}
-          dateTimeColumns={dateTimeColumns}
-          mt={6}
-        />
+        {!isMultiSource && (
+          <ActiveFilterPills
+            searchFilters={searchFilters}
+            chartConfig={filtersChartConfig}
+            dateTimeColumns={dateTimeColumns}
+            mt={6}
+          />
+        )}
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
@@ -2425,7 +2742,7 @@ export function DBSearchPage() {
                 height: '100%',
               }}
             >
-              {!isFilterSidebarCollapsed && (
+              {!isFilterSidebarCollapsed && !isMultiSource && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
                     denoiseResults={denoiseResults}
@@ -2447,7 +2764,7 @@ export function DBSearchPage() {
                   />
                 </ErrorBoundary>
               )}
-              {analysisMode === 'pattern' &&
+              {effectiveAnalysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
@@ -2523,7 +2840,7 @@ export function DBSearchPage() {
                     </Box>
                   </Flex>
                 )}
-              {analysisMode === 'delta' &&
+              {effectiveAnalysisMode === 'delta' &&
                 searchedSource != null &&
                 isTraceSource(searchedSource) && (
                   <DBSearchHeatmapChart
@@ -2537,7 +2854,89 @@ export function DBSearchPage() {
                     onAddFilter={searchFilters.setFilterValue}
                   />
                 )}
-              {analysisMode === 'results' && (
+              {effectiveAnalysisMode === 'results' && isMultiSource && (
+                <Flex direction="column" mih="0" miw={0}>
+                  {isMultiSourceSqlBlocked ? (
+                    <Paper m="md" p="md" maw={640}>
+                      <Text size="sm" fw="bold" mb="xs">
+                        SQL search isn't supported across multiple sources
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        A SQL WHERE clause references the columns of one
+                        specific table. Switch the search language to Lucene to
+                        search across sources, or go back to a single source.
+                      </Text>
+                    </Paper>
+                  ) : (
+                    <>
+                      <Box className={searchPageStyles.searchStatsContainer}>
+                        <Group
+                          justify="space-between"
+                          align="center"
+                          style={{ width: '100%' }}
+                        >
+                          <MultiSourceTotalCountChart
+                            specs={multiHistogramSpecs}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            enableParallelQueries
+                          />
+                          <Group gap="sm" align="center">
+                            {(searchedConfig.filters?.length ?? 0) > 0 && (
+                              <Text size="xs" c="dimmed">
+                                Sidebar filters aren't applied when searching
+                                multiple sources
+                              </Text>
+                            )}
+                            {shouldShowLiveModeHint && (
+                              <ResumeLiveTailButton
+                                handleResumeLiveTail={handleResumeLiveTail}
+                              />
+                            )}
+                          </Group>
+                        </Group>
+                      </Box>
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
+                        <MultiSourceTimeChart
+                          specs={multiHistogramSpecs}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          enableParallelQueries
+                          onTimeRangeSelect={handleTimeRangeSelect}
+                        />
+                      </Box>
+                      <Box
+                        flex="1"
+                        mih="0"
+                        px="sm"
+                        data-testid="search-results-panel"
+                      >
+                        <MultiSourceRowTableWithSidebar
+                          streams={multiSourceStreamSpecs}
+                          isLive={isLive ?? true}
+                          enabled={isReady}
+                          extraColumnNames={multiExtraColumnNames}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          onScroll={onTableScroll}
+                          onSidebarOpen={onSidebarOpen}
+                          onExpandedRowsChange={onExpandedRowsChange}
+                          collapseAllRows={collapseAllRows}
+                          enableSmallFirstWindow
+                          tableId={columnSizeTableId}
+                          context={multiRowTableContext}
+                          keepOpenSelector={
+                            SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
+                          }
+                        />
+                      </Box>
+                    </>
+                  )}
+                </Flex>
+              )}
+              {effectiveAnalysisMode === 'results' && !isMultiSource && (
                 <Flex direction="column" mih="0" miw={0}>
                   {chartConfig && histogramTimeChartConfig && (
                     <>

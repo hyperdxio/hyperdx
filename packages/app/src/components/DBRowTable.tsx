@@ -103,6 +103,7 @@ import {
   useLocalStorage,
   usePrevious,
 } from '@/utils';
+import { MULTI_SOURCE_ROW_FIELDS } from '@/utils/multiSourceMerge';
 
 import ChartErrorState, {
   ChartErrorStateVariant,
@@ -124,6 +125,7 @@ import {
   useExpandableRows,
 } from './ExpandableRowTable';
 import LogLevel from './LogLevel';
+import { SourceBadge } from './MultiSourceBadge';
 
 import styles from '@styles/LogTable.module.scss';
 
@@ -167,6 +169,7 @@ function getResolvedColumnSize(
   const jsType = opts.columnTypeMap.get(column)?._type;
   if (jsType === JSDataType.Date) return 170;
   if (column === opts.logLevelColumn) return 115;
+  if (column === MULTI_SOURCE_ROW_FIELDS.SOURCE_NAME) return 140;
   return 160;
 }
 
@@ -614,6 +617,30 @@ export const RawLogTable = memo(
               }
 
               const strValue = typeof value === 'string' ? value : `${value}`;
+
+              // Multi-source search tags each merged row with its origin
+              // source; render it as a colored badge (color assigned by the
+              // merge layer, consistent with the histogram series).
+              if (column === MULTI_SOURCE_ROW_FIELDS.SOURCE_NAME) {
+                return (
+                  <SourceBadge
+                    name={strValue}
+                    color={
+                      info.row.original[MULTI_SOURCE_ROW_FIELDS.SOURCE_COLOR]
+                    }
+                  />
+                );
+              }
+
+              // Multi-source rows project NULL where a source lacks the
+              // field (e.g. Duration or a picked column for log rows); show a
+              // quiet dash instead of the literal "null".
+              if (
+                value == null &&
+                info.row.original[MULTI_SOURCE_ROW_FIELDS.SOURCE_ID] != null
+              ) {
+                return <span className="text-muted">—</span>;
+              }
 
               if (column === logLevelColumn) {
                 return <LogLevel level={strValue} />;
