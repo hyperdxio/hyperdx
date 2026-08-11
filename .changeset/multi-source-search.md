@@ -4,7 +4,7 @@
 ---
 
 Search across multiple sources at once. The search page's source selector can
-now expand into a multi-select (up to 5 log/trace sources): results interleave
+now expand into a multi-select (up to 3 log/trace sources): results interleave
 into one timestamp-ordered timeline with a per-row source badge, normalized
 columns (Timestamp, Source, Service, Level, Message, and Duration when traces
 are included), a histogram stacked by source, and an add-column picker over the

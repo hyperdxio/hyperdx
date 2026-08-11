@@ -29,13 +29,8 @@ export function useMultiSourceSlots<Item, Opts, Result>(
   const s0 = useSlot(items[0], opts);
   const s1 = useSlot(items[1], opts);
   const s2 = useSlot(items[2], opts);
-  const s3 = useSlot(items[3], opts);
-  const s4 = useSlot(items[4], opts);
   const count = Math.min(items.length, MAX_SEARCH_SOURCES);
-  return useMemo(
-    () => [s0, s1, s2, s3, s4].slice(0, count),
-    [s0, s1, s2, s3, s4, count],
-  );
+  return useMemo(() => [s0, s1, s2].slice(0, count), [s0, s1, s2, count]);
 }
 
 const EMPTY_SOURCE_PARAMS = {
