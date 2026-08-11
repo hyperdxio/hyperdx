@@ -59,6 +59,7 @@ import {
   Group,
   Modal,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -137,6 +138,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import { TraceRedMetricsChart } from './components/Search/TraceRedMetricsChart';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -1059,6 +1061,12 @@ export function DBSearchPage() {
     ]).withDefault('results'),
   );
 
+  // RED metrics vs heatmap for the trace results chart area. Owned here so the
+  // switch can live inline in the search stats row instead of a dedicated row.
+  const [traceChartMode, setTraceChartMode] = useState<'red' | 'heatmap'>(
+    'red',
+  );
+
   const [patternColumn, setPatternColumn] = useQueryState(
     'patternColumn',
     parseAsString,
@@ -1808,6 +1816,23 @@ export function DBSearchPage() {
 
   const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
+  // The trace results chart shows RED metrics (and a heatmap) only for a trace
+  // source that exposes a duration column; otherwise the single histogram
+  // stays. Derived once, as the narrowed source or null, so the stats-row
+  // toggle and the chart branch can't drift apart on which one renders.
+  const traceRedMetricsSource =
+    searchedSource != null &&
+    isTraceSource(searchedSource) &&
+    searchedSource.durationExpression
+      ? searchedSource
+      : null;
+
+  // Reset to the default RED view when the source changes, so returning to a
+  // trace source after viewing another one doesn't silently reopen in Heatmap.
+  useEffect(() => {
+    setTraceChartMode('red');
+  }, [searchedSource?.id]);
+
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
       return undefined;
@@ -2556,6 +2581,21 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
+                            {traceRedMetricsSource != null && (
+                              <SegmentedControl
+                                size="xs"
+                                value={traceChartMode}
+                                onChange={v =>
+                                  setTraceChartMode(
+                                    v === 'heatmap' ? 'heatmap' : 'red',
+                                  )
+                                }
+                                data={[
+                                  { label: 'RED', value: 'red' },
+                                  { label: 'Heatmap', value: 'heatmap' },
+                                ]}
+                              />
+                            )}
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
@@ -2576,26 +2616,50 @@ export function DBSearchPage() {
                           </Group>
                         </Group>
                       </Box>
-                      {!hasQueryError && (
-                        <Box
-                          className={searchPageStyles.timeChartContainer}
-                          mih="0"
-                        >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
-                            enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={handleTimeRangeSelect}
-                            onFocusSeries={handleFocusSeries}
-                            enableParallelQueries
-                          />
-                        </Box>
-                      )}
+                      {!hasQueryError &&
+                        (traceRedMetricsSource != null ? (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                            h={240}
+                          >
+                            <TraceRedMetricsChart
+                              mode={traceChartMode}
+                              histogramTimeChartConfig={
+                                histogramTimeChartConfig
+                              }
+                              heatmapChartConfig={{
+                                ...chartConfig,
+                                dateRange: searchedTimeRange,
+                                with: aliasWith,
+                              }}
+                              source={traceRedMetricsSource}
+                              isReady={isReady}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                          >
+                            <DBTimeChart
+                              sourceId={searchedConfig.source ?? undefined}
+                              showLegend={false}
+                              config={histogramTimeChartConfig}
+                              enabled={isReady}
+                              showDisplaySwitcher={false}
+                              showMVOptimizationIndicator={false}
+                              showDateRangeIndicator={false}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                              enableParallelQueries
+                            />
+                          </Box>
+                        ))}
                     </>
                   )}
                   {hasQueryError && queryError ? (
