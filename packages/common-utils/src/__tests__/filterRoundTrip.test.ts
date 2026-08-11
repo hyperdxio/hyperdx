@@ -1,4 +1,5 @@
 import {
+  coerceBooleanValue,
   type FilterState,
   filterStateToWhereClause,
   getUnrepresentableWhereReason,
@@ -161,11 +162,15 @@ describe('parseWhereClauseToFilterState (lucene)', () => {
     });
   });
 
-  it('coerces boolean values', () => {
+  it('does not coerce string "true"/"false" to booleans at parse time', () => {
+    // Lucene always stores values as quoted strings. `isRootSpan:"true"` is the
+    // string "true", not the boolean. Coercing at parse time corrupts string
+    // columns — see Bug 6. The string is preserved as-is; callers that know
+    // the column is Boolean can apply coerceBooleanValue themselves.
     expect(
       parseWhereClauseToFilterState('isRootSpan:"true"', 'lucene'),
     ).toEqual({
-      isRootSpan: { included: new Set([true]), excluded: new Set() },
+      isRootSpan: { included: new Set(['true']), excluded: new Set() },
     });
   });
 
@@ -957,6 +962,56 @@ describe('IN (SELECT ...) subqueries are preserved, not treated as facets', () =
     );
     expect(state).toEqual({});
   });
+
+  it('does not render a checkbox for a SELECT-only subquery value', () => {
+    const state = parseWhereClauseToFilterState(
+      'ServiceName IN (SELECT max(name))',
+      'sql',
+    );
+    expect(state).toEqual({});
+  });
+
+  it('does not destroy a SELECT-only subquery when a different facet is added', () => {
+    const result = replaceFilterClauses(
+      'ServiceName IN (SELECT max(name))',
+      'sql',
+      {
+        SeverityText: { included: new Set(['error']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe(
+      "ServiceName IN (SELECT max(name)) AND SeverityText IN ('error')",
+    );
+  });
+});
+
+describe('SQL NOT-wrapped IN facets are replaced instead of preserved', () => {
+  it('parses NOT (col IN (...)) as an excluded facet value', () => {
+    const state = parseWhereClauseToFilterState(
+      "ServiceName = 'api' AND NOT (svc IN ('a'))",
+      'sql',
+    );
+    expect(state).toEqual({
+      svc: { included: new Set(), excluded: new Set(['a']) },
+    });
+  });
+
+  it('prunes NOT (col IN (...)) when the sidebar replaces the same field', () => {
+    const result = replaceFilterClauses("NOT (svc IN ('a'))", 'sql', {
+      svc: { included: new Set(['b']), excluded: new Set() },
+    });
+    expect(result).toBe("svc IN ('b')");
+  });
+
+  it('flips a NOT-wrapped NOT IN facet back to an included value', () => {
+    const state = parseWhereClauseToFilterState(
+      "NOT (svc NOT IN ('a'))",
+      'sql',
+    );
+    expect(state).toEqual({
+      svc: { included: new Set(['a']), excluded: new Set() },
+    });
+  });
 });
 
 describe('repeated SQL predicates for the same field are all replaced by a sidebar click', () => {
@@ -1190,7 +1245,19 @@ describe('getUnrepresentableWhereReason', () => {
     ).not.toBeNull();
   });
 
-  it('does not flag AND or same-field OR', () => {
+  it('flags a same-field OR with a negated term', () => {
+    expect(
+      getUnrepresentableWhereReason('a:"1" OR NOT a:"2"', 'lucene'),
+    ).not.toBeNull();
+    expect(
+      getUnrepresentableWhereReason('a:"1" OR -a:"2"', 'lucene'),
+    ).not.toBeNull();
+    expect(
+      getUnrepresentableWhereReason('NOT a:"1" OR a:"2"', 'lucene'),
+    ).not.toBeNull();
+  });
+
+  it('does not flag AND or same-field OR without negation', () => {
     expect(
       getUnrepresentableWhereReason(
         'ServiceName:"api" AND SeverityText:"error"',
@@ -1260,6 +1327,25 @@ describe('lucene NOT keyword negation', () => {
     ).toEqual({});
   });
 
+  it('does not collect a same-field OR NOT or OR -field as facets', () => {
+    expect(
+      parseWhereClauseToFilterState('a:"1" OR NOT a:"2"', 'lucene'),
+    ).toEqual({});
+    expect(parseWhereClauseToFilterState('a:"1" OR -a:"2"', 'lucene')).toEqual(
+      {},
+    );
+    expect(
+      parseWhereClauseToFilterState('NOT a:"1" OR a:"2"', 'lucene'),
+    ).toEqual({});
+  });
+
+  it('preserves same-field OR NOT expression verbatim when replacing sibling facet', () => {
+    const result = replaceFilterClauses('a:"1" OR NOT a:"2"', 'lucene', {
+      b: { included: new Set(['3']), excluded: new Set() },
+    });
+    expect(result).toBe('(a:"1" OR NOT a:"2") AND b:"3"');
+  });
+
   it('round-trips NOT via excluded emission', () => {
     const state = parseWhereClauseToFilterState(
       'term AND NOT ServiceName:"api"',
@@ -1268,5 +1354,604 @@ describe('lucene NOT keyword negation', () => {
     expect(filterStateToWhereClause(state, { language: 'lucene' })).toBe(
       '-ServiceName:"api"',
     );
+  });
+});
+
+// unquoted / wildcard / comparison Lucene terms must not be deleted
+// when a sidebar click targets a *different* field.
+//
+// Root cause: collectFromAst added ALL explicit-field names to managedFields,
+// including fields whose only representation is an unquoted term (e.g.
+// `ServiceName:api*`).  renderNode then pruned every managed field.  When
+// newState did NOT contain that field, nothing re-emitted it, silently deleting
+// user query content.
+//
+// Fix: managedFields is intersected with newState's keys, so only fields that
+// the caller is explicitly replacing are pruned.
+describe('unquoted / wildcard / comparison terms are preserved when a sidebar click targets a different field (Bug 10)', () => {
+  it('preserves a wildcard term when only a sibling field is replaced', () => {
+    // ServiceName:api* is unquoted; sidebar replaces SeverityText only.
+    const result = replaceFilterClauses(
+      'ServiceName:api* AND SeverityText:"error"',
+      'lucene',
+      {
+        SeverityText: { included: new Set(['warn']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe('ServiceName:api* AND SeverityText:"warn"');
+  });
+
+  it('preserves a plain unquoted term when only a sibling field is replaced', () => {
+    // SeverityText:error is unquoted; sidebar replaces ServiceName only.
+    const result = replaceFilterClauses(
+      'SeverityText:error AND ServiceName:"api"',
+      'lucene',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe('SeverityText:error AND ServiceName:"web"');
+  });
+
+  it('preserves a comparison-operator term when only a sibling field is replaced', () => {
+    // Duration:>100 is an unquoted comparison term; sidebar replaces ServiceName only.
+    const result = replaceFilterClauses(
+      'Duration:>100 AND ServiceName:"api"',
+      'lucene',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe('Duration:>100 AND ServiceName:"web"');
+  });
+
+  it('still replaces the targeted field even when it is unquoted in the query', () => {
+    // The sidebar is replacing SeverityText — the unquoted SeverityText:error
+    // should be pruned and re-emitted as SeverityText:"warn".
+    const result = replaceFilterClauses(
+      'SeverityText:error AND ServiceName:"api"',
+      'lucene',
+      {
+        SeverityText: { included: new Set(['warn']), excluded: new Set() },
+        ServiceName: { included: new Set(['api']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe('SeverityText:"warn" AND ServiceName:"api"');
+  });
+
+  it('preserves multiple unrelated unquoted terms alongside the replaced field', () => {
+    const result = replaceFilterClauses(
+      'ServiceName:api* AND Duration:>100 AND SeverityText:"error"',
+      'lucene',
+      {
+        SeverityText: { included: new Set(['warn']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe(
+      'ServiceName:api* AND Duration:>100 AND SeverityText:"warn"',
+    );
+  });
+});
+
+// multi-line SQL where clauses were duplicated by a sidebar click.
+//
+// Root cause: splitSqlConjuncts only matched the literal ' AND ' (single space
+// on each side), so a newline before AND (e.g. "Body LIKE '%x%'\nAND
+// ServiceName IN ('api')") was not treated as a separator. The whole text was
+// returned as a single conjunct that could not be parsed as a facet, so
+// replaceSqlFacetClauses appended the new clause instead of replacing,
+// duplicating the query on every click.
+//
+// Fix: splitSqlConjuncts now treats any whitespace (spaces, tabs, newlines)
+// surrounding AND as a separator, matching `\s+AND\s+`.
+describe('multi-line SQL where clauses split correctly at AND', () => {
+  it('splits a newline-before-AND query into two conjuncts', () => {
+    const result = replaceFilterClauses(
+      "Body LIKE '%x%'\nAND ServiceName IN ('api')",
+      'sql',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    // ServiceName IN ('api') should be replaced, not duplicated.
+    expect(result).toBe("Body LIKE '%x%' AND ServiceName IN ('web')");
+  });
+
+  it('splits a newline-after-AND query into two conjuncts', () => {
+    const result = replaceFilterClauses(
+      "Body LIKE '%x%' AND\nServiceName IN ('api')",
+      'sql',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe("Body LIKE '%x%' AND ServiceName IN ('web')");
+  });
+
+  it('splits when AND is surrounded by newlines on both sides', () => {
+    const result = replaceFilterClauses(
+      "Body LIKE '%x%'\nAND\nServiceName IN ('api')",
+      'sql',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe("Body LIKE '%x%' AND ServiceName IN ('web')");
+  });
+
+  it('does not duplicate when a second sidebar click follows a first', () => {
+    // Simulate: user has multi-line query, clicks web (first click), then api.
+    const after1stClick = replaceFilterClauses(
+      "Body LIKE '%x%'\nAND ServiceName IN ('api')",
+      'sql',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    // Second click: switch to 'mobile'
+    const after2ndClick = replaceFilterClauses(after1stClick, 'sql', {
+      ServiceName: { included: new Set(['mobile']), excluded: new Set() },
+    });
+    expect(after2ndClick).toBe("Body LIKE '%x%' AND ServiceName IN ('mobile')");
+  });
+
+  it('parses a multi-line SQL where clause into the correct FilterState', () => {
+    const state = parseWhereClauseToFilterState(
+      "Body LIKE '%x%'\nAND ServiceName IN ('api')",
+      'sql',
+    );
+    expect(state).toEqual({
+      ServiceName: { included: new Set(['api']), excluded: new Set() },
+    });
+  });
+
+  it('preserves a BETWEEN clause that spans lines without treating its AND as a separator', () => {
+    // duration BETWEEN 1 AND 100 is a managed facet; when duration is also
+    // present in newState, the whole BETWEEN clause (including its own AND)
+    // must be treated as a single conjunct — not split on the BETWEEN's AND.
+    const result = replaceFilterClauses(
+      "duration BETWEEN 1\nAND 100\nAND ServiceName IN ('api')",
+      'sql',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+        duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 1, max: 100 },
+        },
+      },
+    );
+    // Both conjuncts are managed; ServiceName is replaced, duration re-emitted.
+    expect(result).toBe(
+      "ServiceName IN ('web') AND duration BETWEEN 1 AND 100",
+    );
+  });
+
+  it('handles tab-separated AND', () => {
+    const result = replaceFilterClauses(
+      "Body LIKE '%x%'\tAND\tServiceName IN ('api')",
+      'sql',
+      {
+        ServiceName: { included: new Set(['web']), excluded: new Set() },
+      },
+    );
+    expect(result).toBe("Body LIKE '%x%' AND ServiceName IN ('web')");
+  });
+});
+
+// Regression tests for Bug 3: SQL newline-adjacent OR is detected and
+// the residual is parenthesized before the AND join.
+//
+// Root cause: hasTopLevelOrSql only matched the literal 4-char sequence
+// ' OR ' (single space on each side), so `a = 1\nOR b = 2` was NOT
+// detected as containing a top-level OR.  The residual was left bare and
+// the new predicate was appended as-is, producing:
+//
+//   a = 1\nOR b = 2 AND svc IN ('x')
+//
+// which SQL parses as `a = 1 OR (b = 2 AND svc IN ('x'))` — exactly the
+// mis-parse the function's docstring warns about.
+//
+// Fix: hasTopLevelOrSql now matches any whitespace-surrounded OR keyword
+// (`\s+OR\s+`), consistent with the same fix applied to splitSqlConjuncts.
+describe('SQL newline-adjacent OR is parenthesized before AND join (Bug 3 / hasTopLevelOrSql)', () => {
+  it('wraps a newline-before-OR residual in parens', () => {
+    // `a = 1\nOR b = 2` is a raw/non-facet expression that is kept verbatim
+    // as the residual.  Since it contains a top-level OR (separated by \n),
+    // replaceFilterClauses must parenthesize it before appending the new clause.
+    const result = replaceFilterClauses('a = 1\nOR b = 2', 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    expect(result).toBe("(a = 1\nOR b = 2) AND svc IN ('x')");
+  });
+
+  it('wraps a newline-after-OR residual in parens', () => {
+    const result = replaceFilterClauses('a = 1 OR\nb = 2', 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    expect(result).toBe("(a = 1 OR\nb = 2) AND svc IN ('x')");
+  });
+
+  it('wraps when OR is surrounded by newlines on both sides', () => {
+    const result = replaceFilterClauses('a = 1\nOR\nb = 2', 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    expect(result).toBe("(a = 1\nOR\nb = 2) AND svc IN ('x')");
+  });
+
+  it('handles lowercase or separated by newline', () => {
+    const result = replaceFilterClauses('a = 1\nor b = 2', 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    expect(result).toBe("(a = 1\nor b = 2) AND svc IN ('x')");
+  });
+
+  it('does not double-wrap when the OR is already inside parentheses', () => {
+    const result = replaceFilterClauses('(a = 1\nOR b = 2)', 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    // The OR is inside parens — no additional wrapping needed.
+    expect(result).toBe("(a = 1\nOR b = 2) AND svc IN ('x')");
+  });
+
+  it('does not treat an OR inside a single-quoted string as top-level', () => {
+    // "msg = 'a\nOR b'" — the OR is inside a string literal and must not
+    // trigger parenthesization.
+    const result = replaceFilterClauses("msg = 'a\nOR b'", 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    expect(result).toBe("msg = 'a\nOR b' AND svc IN ('x')");
+  });
+
+  it('mergeFilterStateIntoWhereClause also parenthesizes a newline-adjacent OR', () => {
+    const result = mergeFilterStateIntoWhereClause('a = 1\nOR b = 2', 'sql', {
+      svc: { included: new Set(['x']), excluded: new Set() },
+    });
+    expect(result).toBe("(a = 1\nOR b = 2) AND svc IN ('x')");
+  });
+});
+
+// Regression tests for Bug 4: Lucene field-name escaping is now reversible;
+// backslashes no longer multiply on every sidebar click.
+//
+// Root cause: escapeLuceneFieldName escaped spaces as `\ ` (and similarly for
+// `(`, `)`, `{`, `}`, `[`, `]`), but decodeLuceneFieldName (before the fix)
+// only reversed `\:` and `\"`.  On the first click a key like
+// `LogAttributes['my key']` was written as `LogAttributes.my\ key:"v"`.
+// The Lucene parser preserved the backslash-space sequence in ast.field.
+// decodeSpecialTokens left it intact.  So the field parsed back as
+// `LogAttributes.my\ key` — which did NOT match the FilterState key
+// `LogAttributes.my key`.  On the next click, `escapeLuceneFieldName` ran
+// again on `LogAttributes.my\ key` and escaped the already-escaped backslash
+// to `\\`, yielding `LogAttributes.my\\ key:"v"` → backslash growth.
+//
+// Fix: decodeLuceneFieldName now reverses all nine escape sequences produced
+// by escapeLuceneFieldName (space, `(`, `)`, `"`, `{`, `}`, `[`, `]`, and
+// `\\`), and decodeFieldName combines it with decodeSpecialTokens.
+describe('Lucene field-name with space round-trips correctly; backslashes do not multiply (Bug 4 / decodeLuceneFieldName)', () => {
+  it('emits a parseable where clause for a key with a space', () => {
+    const state: FilterState = {
+      "LogAttributes['my key']": {
+        included: new Set(['a']),
+        excluded: new Set(),
+      },
+    };
+    const emitted = filterStateToWhereClause(state, { language: 'lucene' });
+    // Must be parseable.
+    expect(() => parse(emitted)).not.toThrow();
+    // Must contain exactly one backslash-escaped space, not two.
+    expect(emitted).toBe(String.raw`LogAttributes.my\ key:"a"`);
+  });
+
+  it('parses the emitted clause back to the original key (round-trip)', () => {
+    const state: FilterState = {
+      "LogAttributes['my key']": {
+        included: new Set(['a']),
+        excluded: new Set(),
+      },
+    };
+    const emitted = filterStateToWhereClause(state, { language: 'lucene' });
+    const parsed = parseWhereClauseToFilterState(emitted, 'lucene');
+    // The parsed key must match the dot-form key that filterStateToWhereClause
+    // uses internally (parseKeyPath normalises the bracket form to dots).
+    expect(parsed).toEqual({
+      'LogAttributes.my key': {
+        included: new Set(['a']),
+        excluded: new Set(),
+      },
+    });
+  });
+
+  it('replaces the clause on the first sidebar click without leaving a stale clause', () => {
+    const step1 = replaceFilterClauses('', 'lucene', {
+      "LogAttributes['my key']": {
+        included: new Set(['a']),
+        excluded: new Set(),
+      },
+    });
+    // Should produce exactly one backslash-space, not two (\\\ ).
+    expect(step1).toBe(String.raw`LogAttributes.my\ key:"a"`);
+  });
+
+  it('does not grow backslashes on a second sidebar click', () => {
+    // Simulate first click.
+    const step1 = replaceFilterClauses('', 'lucene', {
+      "LogAttributes['my key']": {
+        included: new Set(['a']),
+        excluded: new Set(),
+      },
+    });
+    // Second click: change value from 'a' to 'b'.
+    const step2 = replaceFilterClauses(step1, 'lucene', {
+      "LogAttributes['my key']": {
+        included: new Set(['b']),
+        excluded: new Set(),
+      },
+    });
+    // Must still have exactly one backslash-space, not four (\\\\\ ).
+    expect(step2).toBe(String.raw`LogAttributes.my\ key:"b"`);
+  });
+
+  it('does not grow backslashes on a third sidebar click', () => {
+    const key = "LogAttributes['my key']";
+    let query = '';
+    for (const value of ['a', 'b', 'c']) {
+      query = replaceFilterClauses(query, 'lucene', {
+        [key]: { included: new Set([value]), excluded: new Set() },
+      });
+    }
+    // After 3 round-trips the backslash count must not have grown.
+    expect(query).toBe(String.raw`LogAttributes.my\ key:"c"`);
+  });
+
+  it('the checkbox reads back as checked after the first sidebar click', () => {
+    // Bug: after the first click the parsed key was `LogAttributes.my\ key`
+    // (with backslash) and never matched the FilterState key
+    // `LogAttributes['my key']` (dot-form: `LogAttributes.my key`).
+    // The checkbox was therefore always shown as unchecked.
+    const emitted = replaceFilterClauses('', 'lucene', {
+      "LogAttributes['my key']": {
+        included: new Set(['a']),
+        excluded: new Set(),
+      },
+    });
+    const parsed = parseWhereClauseToFilterState(emitted, 'lucene');
+    // The dot-form of the key must appear in the parsed state.
+    expect(parsed['LogAttributes.my key']?.included).toEqual(new Set(['a']));
+  });
+
+  it('handles a key with multiple spaces without backslash growth', () => {
+    const key = "LogAttributes['my long key']";
+    let query = '';
+    for (const value of ['x', 'y']) {
+      query = replaceFilterClauses(query, 'lucene', {
+        [key]: { included: new Set([value]), excluded: new Set() },
+      });
+    }
+    // Only single backslash-space sequences, not doubled.
+    expect(query).toBe(String.raw`LogAttributes.my\ long\ key:"y"`);
+  });
+});
+
+// Regression tests for Bug 5: Language switch (emitLanguage) must not join a
+// source-language residual with target-language facets.
+//
+// Root cause: replaceFilterClauses with emitLanguage parses out facet clauses
+// in the *source* language and re-emits them in the *target* language. The
+// non-facet parts of the source text ("residual") are preserved verbatim.
+// When the residual is SQL-specific syntax (e.g. `ServiceName = 'api'`) and
+// the target language is Lucene, the result is a syntactically mixed string
+// (`ServiceName = 'api' AND level:"error"`) — neither valid SQL nor valid Lucene.
+// The reverse direction (SQL target with a Lucene residual) produces invalid SQL.
+//
+// Fix: when translating (emitLanguage is set) and the residual belongs to the
+// source language that is being left behind, the residual must be preserved
+// verbatim and returned as-is without being joined to the new-language facets.
+// Concretely, switching SQL→Lucene must not produce a hybrid string; likewise
+// for Lucene→SQL when the residual contains Lucene-only syntax.
+describe('language switch (emitLanguage) does not produce mixed-syntax output (Bug 5)', () => {
+  it('SQL→Lucene: non-facet SQL residual is not joined with Lucene facets', () => {
+    // `ServiceName = 'api'` is non-facet SQL. `level IN ('error')` is a facet
+    // and gets translated to `level:"error"`. The SQL residual must NOT be
+    // joined with the Lucene clause — doing so yields a hybrid string like
+    // `ServiceName = 'api' AND level:"error"` which is neither valid SQL nor
+    // valid Lucene.
+    //
+    // Fix: when there is a non-empty SQL residual and the emit language is not
+    // SQL, replaceSqlFacetClauses returns the residual verbatim (preserving the
+    // original non-facet content) without appending the Lucene facets. The
+    // translated facets are discarded — the caller cannot automatically translate
+    // non-facet SQL to Lucene, so preserving the source is the safe choice.
+    const result = replaceFilterClauses(
+      "ServiceName = 'api' AND level IN ('error')",
+      'sql',
+      { level: { included: new Set(['error']), excluded: new Set() } },
+      { emitLanguage: 'lucene' },
+    );
+    // The result must NOT be a mixed-language string — no Lucene syntax joined
+    // with SQL assignment syntax.
+    expect(result).not.toMatch(/ServiceName = 'api' AND level:"error"/);
+    // The SQL residual is preserved verbatim; the untranslatable part is kept.
+    expect(result).toBe("ServiceName = 'api'");
+  });
+
+  it('Lucene→SQL: non-facet Lucene residual is not joined with SQL facets', () => {
+    // `error 404` is Lucene free-text (implicit-field term). `ServiceName:"api"`
+    // is a facet and gets translated to `ServiceName IN ('api')`. The free-text
+    // residual does NOT map to any SQL construct, but it is language-neutral
+    // (just raw text) so it can be safely preserved on both sides.
+    // This case is already handled correctly; we test the strictly-Lucene case:
+    // a Lucene range like `duration:[10 TO 500]` in the residual would be invalid SQL.
+    const result = replaceFilterClauses(
+      'duration:[10 TO 500] AND ServiceName:"api"',
+      'lucene',
+      { ServiceName: { included: new Set(['api']), excluded: new Set() } },
+      { emitLanguage: 'sql' },
+    );
+    // The translated facet must be present in SQL form.
+    expect(result).toContain("ServiceName IN ('api')");
+    // The Lucene range syntax `duration:[10 TO 500]` must NOT appear alongside
+    // a SQL clause — it is invalid SQL and would cause a query error.
+    expect(result).not.toMatch(/duration:\[10 TO 500\] AND ServiceName IN/);
+  });
+
+  it('SQL→Lucene: only facet clauses are translated; pure-facet source becomes pure Lucene', () => {
+    // When the entire source is a parseable SQL facet, the output should be
+    // valid Lucene only — no SQL syntax remnants.
+    const result = replaceFilterClauses(
+      "level IN ('error')",
+      'sql',
+      { level: { included: new Set(['error']), excluded: new Set() } },
+      { emitLanguage: 'lucene' },
+    );
+    expect(result).toBe('level:"error"');
+  });
+
+  it('Lucene→SQL: only facet clauses are translated; pure-facet source becomes pure SQL', () => {
+    const result = replaceFilterClauses(
+      'level:"error"',
+      'lucene',
+      { level: { included: new Set(['error']), excluded: new Set() } },
+      { emitLanguage: 'sql' },
+    );
+    expect(result).toBe("level IN ('error')");
+  });
+
+  it('SQL→Lucene: switching back after a switch does not accumulate syntax from both languages', () => {
+    // Simulate the user's round-trip: SQL query → switch to Lucene → switch back.
+    // The final result after switching back to SQL should be equivalent SQL,
+    // not a growing mixture of both syntaxes.
+    const original = "level IN ('error') AND ServiceName IN ('api')";
+
+    // First switch: SQL → Lucene
+    const afterToLucene = replaceFilterClauses(
+      original,
+      'sql',
+      {
+        level: { included: new Set(['error']), excluded: new Set() },
+        ServiceName: { included: new Set(['api']), excluded: new Set() },
+      },
+      { emitLanguage: 'lucene' },
+    );
+    // Must be valid Lucene: no SQL IN (...) syntax.
+    expect(afterToLucene).not.toContain(' IN (');
+    expect(afterToLucene).toContain('level:"error"');
+
+    // Second switch: Lucene → SQL
+    const afterBackToSql = replaceFilterClauses(
+      afterToLucene,
+      'lucene',
+      {
+        level: { included: new Set(['error']), excluded: new Set() },
+        ServiceName: { included: new Set(['api']), excluded: new Set() },
+      },
+      { emitLanguage: 'sql' },
+    );
+    // Must be valid SQL: no Lucene field:"value" syntax.
+    expect(afterBackToSql).not.toMatch(/\w+:"\w+"/);
+    expect(afterBackToSql).toContain("level IN ('error')");
+  });
+});
+
+// Regression tests for Bug 6: coerceBooleanValue must not convert the string
+// literals "true"/"false" to actual booleans when the source is Lucene.
+//
+// Root cause: parseWhereClauseToFilterState (lucene) calls coerceBooleanValue
+// on every quoted term value. So `msg:"true"` parses to
+// { msg: { included: Set([true]) } } — the boolean `true`, not the string.
+// When filterStateToWhereClause re-emits that state as SQL it calls
+// filtersToQuery, whose formatValue branch emits `typeof v !== 'string' ? v`
+// — so boolean `true` is emitted bare (without quotes), producing:
+//
+//   msg IN (true)
+//
+// This is a ClickHouse type error when `msg` is a String column (boolean `true`
+// cannot be compared to a String). There is also no way to filter a string
+// column for the literal value "true" because the sidebar always coerces it to
+// a boolean.
+//
+// Fix: coerceBooleanValue should only be applied when the context is a boolean
+// column (e.g. `isRootSpan`). For Lucene parsing, the Lucene boolean coercion
+// should be opt-in (keyed on the column type), or else the string "true"/"false"
+// must be kept as a string so that SQL emission wraps it in quotes.
+describe('coerceBooleanValue does not corrupt string "true"/"false" values (Bug 6)', () => {
+  it('parseWhereClauseToFilterState keeps the string "true" as a string in Lucene', () => {
+    // msg:"true" must parse to { msg: { included: Set(["true"]) } },
+    // NOT { msg: { included: Set([true]) } } (boolean).
+    const state = parseWhereClauseToFilterState('msg:"true"', 'lucene');
+    // The value must be the string "true", not the boolean true.
+    expect(state.msg?.included).toEqual(new Set(['true']));
+    // Confirm it is NOT the boolean:
+    const values = Array.from(state.msg?.included ?? []);
+    expect(typeof values[0]).toBe('string');
+  });
+
+  it('parseWhereClauseToFilterState keeps the string "false" as a string in Lucene', () => {
+    const state = parseWhereClauseToFilterState('flag:"false"', 'lucene');
+    expect(state.flag?.included).toEqual(new Set(['false']));
+    const values = Array.from(state.flag?.included ?? []);
+    expect(typeof values[0]).toBe('string');
+  });
+
+  it('filterStateToWhereClause (SQL) wraps "true" string in quotes, not bare boolean', () => {
+    // If a FilterState has the string "true" as a value, emitting SQL must
+    // produce `msg IN ('true')`, not `msg IN (true)`.
+    const state: FilterState = {
+      msg: {
+        included: new Set<string | boolean>(['true']),
+        excluded: new Set(),
+      },
+    };
+    const sql = filterStateToWhereClause(state, { language: 'sql' });
+    expect(sql).toBe("msg IN ('true')");
+    // Must not contain the unquoted boolean:
+    expect(sql).not.toMatch(/IN \(true\)/);
+  });
+
+  it('Lucene→SQL translation of msg:"true" emits quoted string, not bare boolean', () => {
+    // Full round-trip: parse `msg:"true"` from Lucene, re-emit as SQL.
+    // Must produce `msg IN ('true')`, not `msg IN (true)`.
+    const result = replaceFilterClauses(
+      'msg:"true"',
+      'lucene',
+      { msg: { included: new Set(['true']), excluded: new Set() } },
+      { emitLanguage: 'sql' },
+    );
+    expect(result).toBe("msg IN ('true')");
+    expect(result).not.toMatch(/IN \(true\)/);
+  });
+
+  it('Lucene→SQL translation of msg:"-false" (excluded) emits quoted string', () => {
+    const result = replaceFilterClauses(
+      '-flag:"false"',
+      'lucene',
+      { flag: { included: new Set(), excluded: new Set(['false']) } },
+      { emitLanguage: 'sql' },
+    );
+    expect(result).toBe("flag NOT IN ('false')");
+    expect(result).not.toMatch(/NOT IN \(false\)/);
+  });
+
+  it('isRootSpan:"true" parses as a string and emits quoted SQL (no type error for Boolean columns)', () => {
+    // After the fix, coerceBooleanValue is no longer called at parse time.
+    // isRootSpan:"true" parses to the string "true". When emitted as SQL it
+    // becomes `isRootSpan IN ('true')`. ClickHouse will implicitly cast the
+    // string 'true' to the Boolean column type, so this is still correct for
+    // Boolean columns — and it is now also correct for String columns.
+    const state = parseWhereClauseToFilterState('isRootSpan:"true"', 'lucene');
+    // Must be the string 'true', not the boolean true.
+    expect(state.isRootSpan?.included).toEqual(new Set(['true']));
+
+    const sql = filterStateToWhereClause(state, { language: 'sql' });
+    // Must be quoted — no bare boolean:
+    expect(sql).toBe("isRootSpan IN ('true')");
+    expect(sql).not.toMatch(/IN \(true\)/);
+  });
+
+  it('coerceBooleanValue preserves non-boolean strings unchanged', () => {
+    expect(coerceBooleanValue('hello')).toBe('hello');
+    expect(coerceBooleanValue('TRUE')).toBe('TRUE'); // uppercase not coerced
+    expect(coerceBooleanValue('True')).toBe('True'); // mixed-case not coerced
+    expect(coerceBooleanValue(123 as unknown as string)).toBe(123); // pass-through
   });
 });

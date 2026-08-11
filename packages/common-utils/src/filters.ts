@@ -189,6 +189,49 @@ const escapeLuceneFieldName = (key: string): string =>
     .replace(/ /g, '\\ ');
 
 /**
+ * Reverse `escapeLuceneFieldName`: strip the backslash-escapes that
+ * `escapeLuceneFieldName` introduced so the raw key can be matched against
+ * FilterState entries.
+ *
+ * The Lucene parser preserves backslash-escape sequences in field names (e.g.
+ * `my\ key` stays `my\ key` in `ast.field`). `decodeSpecialTokens` handles
+ * `\:` (via the HDX_COLON round-trip) and `\"`, but not the other nine
+ * characters that `escapeLuceneFieldName` escapes. Without this decoder, a
+ * key like `LogAttributes['my key']` emits `LogAttributes.my\ key:"v"`, the
+ * parser returns the field as `LogAttributes.my\ key`, and `decodeSpecialTokens`
+ * leaves the backslash intact — so the key never matches the FilterState entry
+ * and the backslash multiplies on every subsequent render.
+ *
+ * Decoding order: unescape `\\` last (so `\\(` → `\(` → `(` doesn't
+ * accidentally strip a legitimate backslash introduced by a prior step).
+ * Colons and double-quotes are decoded by `decodeSpecialTokens` already but
+ * are included here for completeness — double-decoding is safe because the
+ * HDX_COLON / `\"` rules never produce a bare `\:` or `\"`.
+ */
+const decodeLuceneFieldName = (raw: string): string =>
+  raw
+    .replace(/\\ /g, ' ')
+    .replace(/\\\(/g, '(')
+    .replace(/\\\)/g, ')')
+    .replace(/\\"/g, '"')
+    .replace(/\\\{/g, '{')
+    .replace(/\\\}/g, '}')
+    .replace(/\\\[/g, '[')
+    .replace(/\\\]/g, ']')
+    .replace(/\\\\/g, '\\');
+
+/**
+ * Fully decode a Lucene field name back to its original form.  Combines
+ * `decodeSpecialTokens` (which reverses the HDX_COLON / `\"` encoding applied
+ * before parsing) with `decodeLuceneFieldName` (which strips the
+ * backslash-escapes added by `escapeLuceneFieldName`).  Every place that
+ * extracts a field name from the AST should use this instead of calling
+ * `decodeSpecialTokens` directly on the field.
+ */
+const decodeFieldName = (raw: string): string =>
+  decodeLuceneFieldName(decodeSpecialTokens(raw));
+
+/**
  * Render a FilterState as a single `where` clause string in the given query
  * language.
  *
@@ -285,10 +328,8 @@ type CollectedRange = {
  * the runtime values the grammar always sets (to `null` when absent).
  */
 function hasTermModifiers(node: lucene.NodeTerm): boolean {
-  const n = node as unknown as Record<string, unknown>;
-  return (
-    n['proximity'] != null || n['boost'] != null || n['similarity'] != null
-  );
+  const hasProximity = 'proximity' in node && node.proximity != null;
+  return hasProximity || node.boost != null || node.similarity != null;
 }
 
 /**
@@ -304,6 +345,46 @@ function hasTermModifiers(node: lucene.NodeTerm): boolean {
  * semantics across fields), so we treat the whole OR sub-tree as unmanaged —
  * neither side is collected, and `renderNode` will preserve the raw text.
  */
+/**
+ * Walk an OR subtree and return true if `collectFromAst` would yield at least
+ * one negated term from this side.  Used by the same-field OR branch to detect
+ * mixed included/excluded clauses (e.g. `a:"1" OR -a:"2"`, `a:"1" OR NOT a:"2"`,
+ * `NOT a:"1" OR a:"2"`) which FilterState cannot faithfully represent because
+ * excluded values are emitted with AND semantics that narrow the OR branch.
+ *
+ * Mirrors the negation logic of `collectFromAst` without mutating the caller's
+ * collections.
+ */
+function orSideHasNegatedTerm(
+  ast: lucene.AST | lucene.Node,
+  negate = false,
+): boolean {
+  if (isNodeTerm(ast)) {
+    if (ast.field === IMPLICIT_FIELD) return false;
+    const negatedField = ast.field.startsWith('-');
+    return negatedField !== negate;
+  }
+  if (isNodeRangedTerm(ast)) {
+    if (ast.field === IMPLICIT_FIELD) return false;
+    return negate;
+  }
+  if (isLeftOnlyAST(ast)) {
+    return orSideHasNegatedTerm(ast.left, negate !== (ast.start === 'NOT'));
+  }
+  if (isBinaryAST(ast)) {
+    const startOp: string | undefined =
+      'start' in ast && typeof ast.start === 'string' ? ast.start : undefined;
+    const leftNegate = negate !== (startOp === 'NOT');
+    const rightNegate =
+      negate !== (ast.operator === 'AND NOT' || ast.operator === 'OR NOT');
+    return (
+      orSideHasNegatedTerm(ast.left, leftNegate) ||
+      orSideHasNegatedTerm(ast.right, rightNegate)
+    );
+  }
+  return false;
+}
+
 function collectFromAst(
   ast: lucene.AST | lucene.Node,
   terms: CollectedTerm[],
@@ -318,7 +399,7 @@ function collectFromAst(
     // literal `-` prefix is sliced off the field name.
     const negatedField = ast.field.startsWith('-');
     const negated = negatedField !== negate;
-    const field = decodeSpecialTokens(
+    const field = decodeFieldName(
       negatedField ? ast.field.slice(1) : ast.field,
     );
     // Implicit-field terms (free-text, quoted phrases) are never managed facets.
@@ -346,7 +427,7 @@ function collectFromAst(
 
     terms.push({ field, value: decodeSpecialTokens(ast.term), negated });
   } else if (isNodeRangedTerm(ast)) {
-    const field = decodeSpecialTokens(ast.field);
+    const field = decodeFieldName(ast.field);
     if (field === IMPLICIT_FIELD) return;
     // A negated range (`NOT duration:[10 TO 20]`) can't be represented in
     // FilterState, so leave it unmanaged and preserve it verbatim. But still
@@ -379,7 +460,7 @@ function collectFromAst(
       'field' in ast &&
       typeof ast.field === 'string' &&
       ast.field !== IMPLICIT_FIELD
-        ? decodeSpecialTokens(ast.field)
+        ? decodeFieldName(ast.field)
         : null;
 
     if (groupField) {
@@ -392,18 +473,21 @@ function collectFromAst(
     // Cross-field OR: if this OR node connects clauses for *different* fields,
     // we cannot represent that in FilterState, so leave both sides unmanaged
     // (Bug 2).  Same-field OR (e.g. `level:"info" OR level:"warn"`) is fine —
-    // both leaves map to the same field and end up as multiple `included` values.
+    // both leaves map to the same field and end up as multiple `included`
+    // values, which filterStateToWhereClause re-emits as a single OR group.
+    //
+    // However a same-field OR that mixes included and excluded sides
+    // (e.g. `a:"1" OR NOT a:"2"` or `a:"1" OR -a:"2"`) cannot be faithfully
+    // represented: FilterState has AND semantics, so an excluded value is
+    // emitted as `-a:"2"` ANDed with the included group, narrowing the OR
+    // branch. Leave the OR unmanaged so renderNode preserves the raw text.
+    //
     // `OR NOT` is an OR too (a:"1" OR NOT b:"2" is cross-field and unrepresentable).
     if (ast.operator === 'OR' || ast.operator === 'OR NOT') {
       const leftFields = new Set<string>();
       const rightFields = new Set<string>();
-      const leftManaged = new Set<string>();
-      const rightManaged = new Set<string>();
-      collectFromAst(ast.left, [], [], leftFields);
-      collectFromAst(ast.right, [], [], rightFields);
-      // Merge managed fields from each side for the lookup
-      for (const f of leftFields) leftManaged.add(f);
-      for (const f of rightFields) rightManaged.add(f);
+      collectExplicitFields(ast.left, leftFields);
+      collectExplicitFields(ast.right, rightFields);
       const isSameField =
         leftFields.size > 0 &&
         rightFields.size > 0 &&
@@ -415,6 +499,26 @@ function collectFromAst(
         // Cross-field OR — do not add either side to managed, leave raw.
         return;
       }
+
+      // Inspect each side without mutating the caller's managedFields. A side
+      // contributes a negated term when its outer NOT wrapper, the `-` prefix
+      // on its field, or a transitive negation inside the subtree flips it.
+      // The right subtree of an `OR NOT` operator is also negated.
+      const startOp: string | undefined =
+        'start' in ast && typeof ast.start === 'string' ? ast.start : undefined;
+      const leftNegate = negate !== (startOp === 'NOT');
+      const rightNegate = negate !== (ast.operator === 'OR NOT');
+      if (
+        orSideHasNegatedTerm(ast.left, leftNegate) ||
+        orSideHasNegatedTerm(ast.right, rightNegate)
+      ) {
+        // Same-field OR with a negated side is unrepresentable in FilterState
+        // (its AND semantics would narrow the OR branch). Leave both sides
+        // unmanaged so the original expression is preserved verbatim.
+        return;
+      }
+      // Plain same-field OR: fall through to the generic binary collection
+      // below so ranges and unquoted terms on the same field are also picked up.
     }
 
     // A `start: 'NOT'` on the binary node negates its left subtree (`NOT a AND
@@ -499,7 +603,16 @@ export function parseWhereClauseToFilterState(
   language: 'lucene' | 'sql',
 ): FilterState {
   if (language === 'sql') {
-    return parseQuery([{ type: 'sql', condition: whereText }]).filters;
+    // Split the where text into top-level conjuncts before calling parseQuery
+    // so that a multi-line query like "Body LIKE '%x%'\nAND ServiceName IN
+    // ('api')" is not treated as a single compound filter whose key is the
+    // entire text up to the IN keyword. Each conjunct is passed to parseQuery
+    // individually, matching what replaceSqlFacetClauses does internally.
+    const { code } = stripSqlComments(whereText.trim());
+    const conjuncts = splitSqlConjuncts(code).filter(c => c.trim());
+    return parseQuery(
+      conjuncts.map(c => ({ type: 'sql' as const, condition: c })),
+    ).filters;
   }
 
   try {
@@ -530,11 +643,16 @@ export function parseWhereClauseToFilterState(
 
     for (const t of terms) {
       const entry = getEntry(t.field);
-      const value = coerceBooleanValue(t.value);
+      // Do NOT coerce "true"/"false" strings to booleans here. Lucene always
+      // stores values as quoted strings, so `msg:"true"` is the string "true",
+      // not the boolean. Coercing at parse time would cause SQL emission to
+      // produce bare `msg IN (true)` — a type error for String columns. Boolean
+      // coercion is the responsibility of the caller when it knows the column
+      // type is Boolean (e.g. `isRootSpan`).
       if (t.negated) {
-        entry.excluded.add(value);
+        entry.excluded.add(t.value);
       } else {
-        entry.included.add(value);
+        entry.included.add(t.value);
       }
     }
     for (const r of ranges) {
@@ -588,12 +706,12 @@ function collectExplicitFields(
       node.field.startsWith('-') || node.field.startsWith('+')
         ? node.field.slice(1)
         : node.field;
-    const field = decodeSpecialTokens(raw);
+    const field = decodeFieldName(raw);
     if (field !== IMPLICIT_FIELD) out.add(field);
     return;
   }
   if (isNodeRangedTerm(node)) {
-    const field = decodeSpecialTokens(node.field);
+    const field = decodeFieldName(node.field);
     if (field !== IMPLICIT_FIELD) out.add(field);
     return;
   }
@@ -602,7 +720,7 @@ function collectExplicitFields(
       'field' in node &&
       typeof node.field === 'string' &&
       node.field !== IMPLICIT_FIELD
-        ? decodeSpecialTokens(node.field)
+        ? decodeFieldName(node.field)
         : null;
     if (groupField) {
       // Field-group syntax: all inner leaves belong to the group's field.
@@ -620,22 +738,25 @@ function collectExplicitFields(
 
 /**
  * Return true when a lucene AST contains an OR (or OR NOT) node connecting
- * clauses for different explicit fields. Such a query cannot be represented as
- * a FilterState (which has AND semantics across fields), so the sidebar would
+ * clauses for different explicit fields OR a same-field OR with a negated side.
+ * Such a query cannot be represented as a FilterState (which has AND semantics
+ * across fields and between included/excluded sets), so the sidebar would
  * either silently drop it or mislead.
  */
-function hasCrossFieldOr(node: lucene.AST | lucene.Node): boolean {
+function hasUnrepresentableOr(node: lucene.AST | lucene.Node): boolean {
   if (isNodeTerm(node) || isNodeRangedTerm(node)) return false;
-  if (isLeftOnlyAST(node)) return hasCrossFieldOr(node.left);
+  if (isLeftOnlyAST(node)) return hasUnrepresentableOr(node.left);
   if (isBinaryAST(node)) {
     const groupField =
       'field' in node &&
       typeof node.field === 'string' &&
       node.field !== IMPLICIT_FIELD
-        ? decodeSpecialTokens(node.field)
+        ? decodeFieldName(node.field)
         : null;
     if (groupField) {
-      return hasCrossFieldOr(node.left) || hasCrossFieldOr(node.right);
+      return (
+        hasUnrepresentableOr(node.left) || hasUnrepresentableOr(node.right)
+      );
     }
     if (node.operator === 'OR' || node.operator === 'OR NOT') {
       const leftFields = new Set<string>();
@@ -649,8 +770,21 @@ function hasCrossFieldOr(node: lucene.AST | lucene.Node): boolean {
         rightFields.size === 1 &&
         [...leftFields][0] === [...rightFields][0];
       if (!isSameField) return true;
+
+      const startOp: string | undefined =
+        'start' in node && typeof node.start === 'string'
+          ? node.start
+          : undefined;
+      const leftNegate = startOp === 'NOT';
+      const rightNegate = node.operator === 'OR NOT';
+      if (
+        orSideHasNegatedTerm(node.left, leftNegate) ||
+        orSideHasNegatedTerm(node.right, rightNegate)
+      ) {
+        return true;
+      }
     }
-    return hasCrossFieldOr(node.left) || hasCrossFieldOr(node.right);
+    return hasUnrepresentableOr(node.left) || hasUnrepresentableOr(node.right);
   }
   return false;
 }
@@ -658,9 +792,9 @@ function hasCrossFieldOr(node: lucene.AST | lucene.Node): boolean {
 /**
  * Return a non-null reason when a `where` clause parses but contains facet-like
  * content the sidebar FilterState cannot faithfully represent — currently a
- * cross-field OR (e.g. `ServiceName:"api" OR SeverityText:"error"`). The UI
- * should surface this instead of showing a misleading or silently-emptied
- * filter sidebar. `sql` always returns null.
+ * cross-field OR or a same-field OR with a negated term. The UI should surface
+ * this instead of showing a misleading or silently-emptied filter sidebar.
+ * `sql` always returns null.
  */
 export function getUnrepresentableWhereReason(
   whereText: string,
@@ -670,8 +804,8 @@ export function getUnrepresentableWhereReason(
   if (language === 'sql') return null;
   try {
     const ast = parse(whereText);
-    if (hasCrossFieldOr(ast)) {
-      return 'This query contains OR conditions between different fields, which cannot be shown as sidebar filters.';
+    if (hasUnrepresentableOr(ast)) {
+      return 'This query contains OR conditions that cannot be shown as sidebar filters.';
     }
     return null;
   } catch {
@@ -751,13 +885,13 @@ function renderNode(
       const rawField = node.field.startsWith('-')
         ? node.field.slice(1)
         : node.field;
-      const field = decodeSpecialTokens(rawField);
+      const field = decodeFieldName(rawField);
       if (field !== IMPLICIT_FIELD && isManagedField(field)) {
         return { text: '', fullyManaged: true };
       }
       return { text: src.slice(span.start, span.end), fullyManaged: false };
     }
-    const field = decodeSpecialTokens(
+    const field = decodeFieldName(
       node.field.startsWith('-') ? node.field.slice(1) : node.field,
     );
     // Terms with modifiers (proximity, boost, fuzzy) are not managed.
@@ -773,7 +907,7 @@ function renderNode(
   if (isNodeRangedTerm(node)) {
     const span = rangeClauseSpan(node, src);
     if (!span) return { text: '', fullyManaged: false };
-    const field = decodeSpecialTokens(node.field);
+    const field = decodeFieldName(node.field);
     // Negated ranges (NOT duration:[...]) are not representable in FilterState
     // and must be preserved verbatim even when the field is otherwise managed.
     if (!negate && field !== IMPLICIT_FIELD && isManagedField(field)) {
@@ -804,7 +938,7 @@ function renderNode(
       'field' in node &&
       typeof node.field === 'string' &&
       node.field !== IMPLICIT_FIELD
-        ? decodeSpecialTokens(node.field)
+        ? decodeFieldName(node.field)
         : null;
 
     if (groupField) {
@@ -917,6 +1051,13 @@ function hasTopLevelOr(text: string): boolean {
  * identifiers). Used to decide whether the residual must be wrapped in parens
  * before joining it with AND — without the wrapping, `a = 1 OR b = 2 AND c IN
  * ('v')` would be mis-parsed as `a = 1 OR (b = 2 AND c IN ('v'))`.
+ *
+ * fix: the original check matched only the literal 4-char sequence
+ * ' OR ' (single spaces), so `a = 1\nOR b = 2` was not detected as containing
+ * a top-level OR and the residual was not parenthesized — producing the exact
+ * mis-parse the function's docstring warns about. The check now matches any
+ * whitespace-surrounded OR keyword (`\s+OR\s+`), consistent with the fix
+ * applied to splitSqlConjuncts for the same class of issue.
  */
 function hasTopLevelOrSql(text: string): boolean {
   let parenDepth = 0;
@@ -955,8 +1096,20 @@ function hasTopLevelOrSql(text: string): boolean {
       parenDepth--;
       continue;
     }
-    if (parenDepth === 0 && text.slice(i, i + 4).toUpperCase() === ' OR ') {
-      return true;
+    if (parenDepth === 0 && /[\s]/.test(ch)) {
+      // Skip whitespace, then check for OR keyword followed by whitespace.
+      let j = i;
+      while (j < text.length && /[\s]/.test(text[j])) j++;
+      if (
+        text.slice(j, j + 2).toUpperCase() === 'OR' &&
+        j + 2 < text.length &&
+        /[\s]/.test(text[j + 2])
+      ) {
+        return true;
+      }
+      // Advance i to avoid re-scanning the same whitespace. The loop's own
+      // i++ will land on the char after the whitespace run.
+      i = j - 1;
     }
   }
   return false;
@@ -1000,14 +1153,45 @@ function replaceLuceneFacetClauses(
     });
   }
 
-  // Managed fields are every facet field currently present in the text, so a
-  // caller that intentionally drops a field (e.g. source-change cleanup) also
-  // removes its clauses rather than leaving them to resurface.
-  // We use the wider `managedFields` set (which includes unquoted explicit-field
-  // terms and field-group fields, but excludes cross-field OR branches) so that
-  // e.g. an unquoted `level:error` is removed when the sidebar sets level:"warn".
-  const managedFields = new Set<string>();
-  collectFromAst(parse(whereText), [], [], managedFields);
+  // Build the set of fields renderNode is allowed to prune.
+  //
+  // we must NOT prune a field whose only representation in the
+  // query is an unquoted / wildcard / comparison term (e.g. `ServiceName:api*`
+  // or `Duration:>100`) when newState does NOT contain that field.  Previously,
+  // collectFromAst added those fields to managedFields unconditionally, so a
+  // sidebar click for a *different* field (e.g. SeverityText) would cause
+  // renderNode to silently delete `ServiceName:api*` even though the caller
+  // never asked for it to be removed.
+  //
+  // Fields that have a faithfully round-trippable representation (quoted terms
+  // or ranges) are always pruneable — the caller depends on this for the
+  // "drop field" use-case (e.g. removing `host:"a"` when host is absent from
+  // newState). Fields that appear in the text *only* as unquoted / wildcard /
+  // comparison terms cannot be faithfully represented in FilterState, so we
+  // only prune them when the caller is explicitly replacing them (i.e. they
+  // are present in newState).
+  const collectedTerms: CollectedTerm[] = [];
+  const collectedRanges: CollectedRange[] = [];
+  const allFieldsInQuery = new Set<string>();
+  collectFromAst(ast, collectedTerms, collectedRanges, allFieldsInQuery);
+
+  // Fields that have at least one faithfully representable value (quoted or range).
+  const representableFields = new Set<string>([
+    ...collectedTerms.map(t => t.field),
+    ...collectedRanges.map(r => r.field),
+  ]);
+  const newStateFields = new Set(Object.keys(newState));
+
+  // A field is prunable when:
+  //   (a) it has a round-trippable representation (always prunable — supports
+  //       the "drop field" use-case), OR
+  //   (b) it only appears as an unquoted/wildcard/comparison term AND the
+  //       caller is explicitly replacing it via newState.
+  const managedFields = new Set<string>(
+    [...allFieldsInQuery].filter(
+      f => representableFields.has(f) || newStateFields.has(f),
+    ),
+  );
   const residual = renderNode(ast, whereText, field =>
     managedFields.has(field),
   ).text;
@@ -1023,16 +1207,25 @@ function replaceLuceneFacetClauses(
   // If the residual contains a top-level OR operator it must be parenthesized
   // before joining with AND, otherwise `a OR b AND c:"v"` would be parsed as
   // `a OR (b AND c:"v")` — narrowing the OR branch incorrectly.
-  const safeResidual = hasTopLevelOr(residual)
+  const safeResidual = hasTopLevelOr(trimmedResidual)
     ? `(${trimmedResidual})`
     : trimmedResidual;
   return `${safeResidual} AND ${newClauses}`;
 }
 
 /**
- * Split a SQL `where` string into top-level conjuncts, splitting on ` AND `
- * outside quotes and parentheses. The ` AND ` that belongs to a `BETWEEN ...
- * AND ...` range is not a separator, so a BETWEEN conjunct stays intact.
+ * Split a SQL `where` string into top-level conjuncts, splitting on `AND`
+ * (surrounded by any whitespace — spaces, tabs, newlines) outside quotes and
+ * parentheses. The `AND` that belongs to a `BETWEEN ... AND ...` range is not
+ * a separator, so a BETWEEN conjunct stays intact.
+ *
+ * fix: the original implementation only matched the literal 5-char
+ * sequence ` AND ` (single space on each side), so a newline before or after
+ * AND (e.g. `Body LIKE '%x%'\nAND ServiceName IN ('api')`) was not treated as
+ * a separator. The entire multi-line expression was returned as a single
+ * conjunct, which then couldn't be parsed as a facet predicate, so
+ * `replaceSqlFacetClauses` left the whole text as residual and appended the
+ * new clause — duplicating the query on every sidebar click.
  */
 function splitSqlConjuncts(text: string): string[] {
   const conjuncts: string[] = [];
@@ -1041,6 +1234,31 @@ function splitSqlConjuncts(text: string): string[] {
   let inBacktick = false;
   let parenDepth = 0;
   let sawBetween = false;
+
+  /**
+   * Starting at position `i` in `text`, if the text matches
+   * `\s+ AND \s` (whitespace, the keyword AND, at least one more whitespace
+   * character) case-insensitively, return the index of the character
+   * immediately after the AND keyword (i.e. the first whitespace of the
+   * trailing run). Returns -1 when there is no match.
+   *
+   * The trailing whitespace is deliberately *not* consumed here: the main loop
+   * re-processes it naturally, so the next conjunct is trimmed on push.
+   */
+  function matchAndSeparator(pos: number): number {
+    if (pos >= text.length) return -1;
+    // Must start with at least one whitespace character.
+    if (!/[\s]/.test(text[pos])) return -1;
+    let j = pos;
+    while (j < text.length && /[\s]/.test(text[j])) j++;
+    // Must be followed by AND (case-insensitive).
+    if (text.slice(j, j + 3).toUpperCase() !== 'AND') return -1;
+    // The character after AND must be whitespace (guards against matching
+    // inside identifiers like CANDIDATE or COMMAND).
+    if (j + 3 >= text.length || !/[\s]/.test(text[j + 3])) return -1;
+    // Return the index of the first char after AND.
+    return j + 3;
+  }
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -1094,26 +1312,39 @@ function splitSqlConjuncts(text: string): string[] {
       continue;
     }
 
-    if (!sawBetween && text.slice(i, i + 8).toUpperCase() === 'BETWEEN ') {
+    // BETWEEN detection: the keyword can be followed by any whitespace.
+    // We check for `BETWEEN` followed by at least one whitespace character so
+    // we don't accidentally match a column name that starts with BETWEEN.
+    if (
+      !sawBetween &&
+      text.slice(i, i + 7).toUpperCase() === 'BETWEEN' &&
+      i + 7 < text.length &&
+      /[\s]/.test(text[i + 7])
+    ) {
       sawBetween = true;
-      current += 'BETWEEN ';
-      i += 7;
+      // Consume the keyword (the leading char is `char`; advance i to the end
+      // of `BETWEEN` so the loop's i++ lands on the trailing whitespace).
+      current += text.slice(i, i + 7);
+      i += 6;
       continue;
     }
 
-    if (text.slice(i, i + 5).toUpperCase() === ' AND ') {
+    // AND separator detection: any whitespace + AND + any whitespace.
+    const afterAnd = matchAndSeparator(i);
+    if (afterAnd !== -1) {
       if (sawBetween) {
-        // The range's own `AND` — not a conjunct separator.
+        // The range's own AND — not a conjunct separator.
         sawBetween = false;
+        // Re-emit as a single normalised space so the conjunct stays intact.
         current += ' AND ';
-        i += 4;
+        i = afterAnd; // land on first char of trailing whitespace (will be trimmed)
         continue;
       }
       if (current.trim()) {
         conjuncts.push(current.trim());
       }
       current = '';
-      i += 4;
+      i = afterAnd; // skip to char after AND; trailing whitespace trimmed on push
       continue;
     }
 
@@ -1303,6 +1534,16 @@ function replaceSqlFacetClauses(
   const newClauses = emit();
   if (!residual) return `${newClauses}${commentSuffix}`;
   if (!newClauses) return `${residual}${commentSuffix}`;
+  // when the emit language differs from the source language (i.e.,
+  // we are translating SQL → Lucene), the residual is SQL syntax and the new
+  // clauses are Lucene syntax. Joining them produces a syntactically mixed
+  // string that is neither valid SQL nor valid Lucene. In that case, return
+  // only the residual (preserving the original non-facet content verbatim) and
+  // discard the new clauses — the caller must handle the translation at a higher
+  // level, or the user must re-type the non-facet portion.
+  if (emitLanguage != null && emitLanguage !== 'sql') {
+    return `${residual}${commentSuffix}`;
+  }
   // If the residual contains a top-level OR operator it must be parenthesized
   // before joining with AND, otherwise `a = 1 OR b = 2 AND c IN ('v')` would be
   // parsed as `a = 1 OR (b = 2 AND c IN ('v'))` — narrowing the OR branch.
@@ -1538,6 +1779,47 @@ function containsOutsideQuotes(
   return false;
 }
 
+const SQL_IDENTIFIER_CHAR_REGEX = /[A-Za-z0-9_]/;
+
+function containsSqlKeywordOutsideQuotes(
+  text: string,
+  keywords: string[],
+): boolean {
+  let inString = false;
+  const upperKeywords = keywords.map(keyword => keyword.toUpperCase());
+
+  for (let i = 0; i < text.length; i++) {
+    if (isQuoteBoundary(text, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(text, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    for (const keyword of upperKeywords) {
+      if (text.slice(i, i + keyword.length).toUpperCase() !== keyword) {
+        continue;
+      }
+      const before = i > 0 ? text[i - 1] : '';
+      const after =
+        i + keyword.length < text.length ? text[i + keyword.length] : '';
+      if (
+        !SQL_IDENTIFIER_CHAR_REGEX.test(before) &&
+        !SQL_IDENTIFIER_CHAR_REGEX.test(after)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function containsOperatorOutsideQuotes(part: string): boolean {
   return containsOutsideQuotes(part, [
     { char: '=' },
@@ -1573,6 +1855,68 @@ function splitOnFirstOutsideQuotes(
     }
   }
   return null;
+}
+
+function stripSqlWrappingParens(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('(') || !trimmed.endsWith(')')) return null;
+
+  let inString = false;
+  let parenDepth = 0;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    if (isQuoteBoundary(trimmed, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(trimmed, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (trimmed[i] === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (trimmed[i] === ')') {
+      parenDepth--;
+      if (parenDepth === 0 && i < trimmed.length - 1) {
+        return null;
+      }
+    }
+  }
+
+  return parenDepth === 0 ? trimmed.slice(1, -1).trim() : null;
+}
+
+function normalizeSqlFacetPart(part: string): {
+  part: string;
+  negated: boolean;
+} {
+  let trimmed = part.trim();
+  let negated = false;
+
+  const notMatch = trimmed.match(/^NOT\b/i);
+  if (notMatch) {
+    const afterNot = trimmed.slice(notMatch[0].length).trim();
+    const unwrapped = stripSqlWrappingParens(afterNot);
+    if (unwrapped != null) {
+      trimmed = unwrapped;
+      negated = true;
+    }
+  }
+
+  let unwrapped = stripSqlWrappingParens(trimmed);
+  while (unwrapped != null) {
+    trimmed = unwrapped;
+    unwrapped = stripSqlWrappingParens(trimmed);
+  }
+
+  return { part: trimmed, negated };
 }
 
 // Helper function to extract simple IN/NOT IN clauses from a condition
@@ -1628,19 +1972,22 @@ function extractInClauses(condition: string): Array<{
 
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
+    const normalized = normalizeSqlFacetPart(part);
+    const normalizedPart = normalized.part;
+
     // Skip parts that contain OR (not supported) or comparison operators,
     // but only when those operators appear outside of quoted strings.
-    if (containsOperatorOutsideQuotes(part)) {
+    if (containsOperatorOutsideQuotes(normalizedPart)) {
       continue;
     }
 
-    const isExclude = containsOutsideQuotes(part, [' NOT IN ']);
-    const hasIn = isExclude || containsOutsideQuotes(part, [' IN ']);
+    const isExclude = containsOutsideQuotes(normalizedPart, [' NOT IN ']);
+    const hasIn = isExclude || containsOutsideQuotes(normalizedPart, [' IN ']);
 
     if (hasIn) {
       // Split on the first unquoted ' IN ' / ' NOT IN '
       const splitResult = splitOnFirstOutsideQuotes(
-        part,
+        normalizedPart,
         isExclude ? ' NOT IN ' : ' IN ',
       );
       if (!splitResult) continue;
@@ -1655,17 +2002,17 @@ function extractInClauses(condition: string): Array<{
       // re-emitting the column. Reject any parenthesized list containing SQL
       // clause keywords outside quoted strings.
       if (
-        containsOutsideQuotes(trimmedValues, [
-          ' SELECT ',
-          ' FROM ',
-          ' WHERE ',
-          ' GROUP ',
-          ' ORDER ',
-          ' UNION ',
-          ' HAVING ',
-          ' JOIN ',
-          ' LIMIT ',
-          ' DISTINCT ',
+        containsSqlKeywordOutsideQuotes(trimmedValues, [
+          'SELECT',
+          'FROM',
+          'WHERE',
+          'GROUP',
+          'ORDER',
+          'UNION',
+          'HAVING',
+          'JOIN',
+          'LIMIT',
+          'DISTINCT',
         ])
       ) {
         continue;
@@ -1695,7 +2042,7 @@ function extractInClauses(condition: string): Array<{
       results.push({
         key: keyStr,
         values: valuesArray,
-        isExclude,
+        isExclude: isExclude !== normalized.negated,
       });
     }
   }

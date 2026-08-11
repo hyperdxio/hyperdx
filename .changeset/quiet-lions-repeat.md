@@ -1,11 +1,24 @@
 ---
+'@hyperdx/app': minor
 '@hyperdx/common-utils': minor
 ---
 
-Fix legacy `filters` migration to merge with the existing `where` clause instead of replacing it, so filters are never dropped when both are present.
+Unify the filter sidebar and query input into a single `where` clause so they always stay in sync.
 
-- Add `mergeFilterStateIntoWhereClause` to AND existing `where` text with migrated filters (verbatim preservation, OR-wrapping of the residual, SQL-safe when needed).
-- Fix invalid/incomplete Lucene clauses (e.g. mid-edit `service:`) so `replaceLuceneFacetClauses` now emits the new clause instead of no-oping, and `replaceFilterClauses` reports them via `getWhereParseError`.
-- Support Lucene `NOT` negation (`NOT field:"v"`, `field:"v" AND NOT other:"w"`) in facet parsing so the sidebar shows an excluded (indeterminate) state instead of a checked one.
-- Add `getUnrepresentableWhereReason` so cross-field `OR` queries can be surfaced to the user rather than silently misrepresented as AND.
-- Add `emitLanguage` to `replaceFilterClauses` so facet clauses can be rewritten across query languages (Lucene ↔ SQL) while preserving non-facet text — used by the UI on language switch.
+Previously the sidebar filters and the query box held independent state — selecting a value in the sidebar applied it to the search but it never appeared in the query input, and the two could silently drift out of sync. This change makes the `where` clause the single source of truth for both.
+
+**What changed (user-visible):**
+
+- Clicking a value in the sidebar rewrites the matching facet clause directly in the query box (e.g. clicking `error` in the Level facet writes `level:"error"` into the box).
+- Editing the query box also updates the sidebar checkboxes — the sidebar reads its checked state back from the `where` text.
+- Free-text and complex query content is preserved — only the specific facet clauses are rewritten.
+- Works for both query dialects (Lucene and SQL).
+- The separate `filters` URL param is removed; a one-time migration moves any legacy persisted filters into the `where` clause on first load.
+
+**New internals in `@hyperdx/common-utils`:**
+
+- `parseWhereClauseToFilterState` — parse a `where` string back into `FilterState`.
+- `filterStateToWhereClause` — render `FilterState` to a `where` string.
+- `replaceFilterClauses` — surgically replace only the facet clauses in a `where` string, preserving everything else. Supports an `emitLanguage` option to translate facets across query dialects.
+- `mergeFilterStateIntoWhereClause` — AND a legacy `filters` state into an existing `where` clause without dropping either side (used for the one-time URL-param migration).
+- `dateTimeValueExpr` extracted to `common-utils/core/dateTimeValue.ts` to avoid duplication between `filters.ts` and `queryParser.ts`.

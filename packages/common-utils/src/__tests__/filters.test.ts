@@ -774,6 +774,8 @@ describe('filters', () => {
       ['Duration BETWEEN 100 AND 5000', 'BETWEEN (numeric)'],
       ["LogAttributes['x'] IN ('y')", 'map-access column'],
       ["Body IN ('a AND b')", 'value containing AND'],
+      // NOT (col IN (...)) is normalised to col NOT IN (...) — renderable.
+      ["NOT (ServiceName IN ('x'))", 'NOT-paren form of NOT IN'],
     ])('accepts a single renderable predicate: %s (%s)', condition => {
       expect(isRenderablePinnedFilter(sql(condition))).toBe(true);
     });
@@ -791,7 +793,6 @@ describe('filters', () => {
         'ServiceName NOT BETWEEN 1 AND 2',
         'NOT folded into the key (renders inverted)',
       ],
-      ["NOT (ServiceName IN ('x'))", 'leading NOT folded into the key'],
       ['', 'empty condition'],
     ])('rejects %s (%s)', condition => {
       expect(isRenderablePinnedFilter(sql(condition))).toBe(false);
