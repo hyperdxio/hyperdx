@@ -34,15 +34,16 @@ import {
   IconLayoutSidebarRight,
   IconX,
 } from '@tabler/icons-react';
-
-import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
+import {
+  DBTraceWaterfallChartContainer,
+  useFilteredEventsAroundFocus,
+} from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
-
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
@@ -54,7 +55,6 @@ import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
-
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
 type EventRowWhere = {
@@ -75,6 +75,7 @@ const eventRowWhereSchema = z.object({
   aliasWith: z.array(WithClauseSchema),
   traceId: z.string().optional(),
 });
+
 const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
   eventRowWhereSchema.parse,
 );
@@ -105,6 +106,7 @@ function SpanDetailPanel({
   onClose,
   isSideLayout,
   onToggleLayout,
+  allTraceRows,
 }: {
   source: TSource;
   rowId: string;
@@ -112,14 +114,17 @@ function SpanDetailPanel({
   onClose: () => void;
   isSideLayout: boolean;
   onToggleLayout: () => void;
+  // All spans belonging to the current trace (not just the selected span),
+  // used by RowOverviewPanel to render the "Referenced By" reverse-span-link
+  // section. Passed down from DBTracePanel, where the trace's full span list
+  // is already fetched for the waterfall chart.
+  allTraceRows?: Array<Record<string, any>>;
 }) {
   const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(
     SpanDetailTab.Overview,
   );
-
   const { data: rowData } = useRowData({ source, rowId, aliasWith });
   const normalizedRow = rowData?.data?.[0];
-
   // The selected event may come from a different source than the search this
   // panel was opened from (e.g. a log event on a trace opened in the Traces
   // view). Rebind search-url generation to the event's own source and drop
@@ -129,12 +134,10 @@ function SpanDetailPanel({
     () => deriveRowSidePanelContextForSource(parentContext, source),
     [parentContext, source],
   );
-
   const hasK8sContext = useMemo(
     () => rowHasK8sContext(source, normalizedRow),
     [source, normalizedRow],
   );
-
   // If the selected span loses k8s context (e.g. switching spans) while the
   // Infrastructure tab is active, fall back to Overview so we don't show a
   // blank panel. Derived rather than synced via an effect.
@@ -217,6 +220,7 @@ function SpanDetailPanel({
           source={source}
           rowId={rowId}
           aliasWith={aliasWith}
+          allTraceRows={allTraceRows}
           flush
         />
       )}
@@ -289,6 +293,7 @@ export default function DBTracePanel({
       : childSourceData?.kind === SourceKind.Log
         ? childSourceData
         : null;
+
   const traceSourceData =
     parentSourceData?.kind === SourceKind.Trace
       ? parentSourceData
@@ -335,6 +340,7 @@ export default function DBTracePanel({
         '',
     },
   });
+
   useEffect(() => {
     if (
       parentSourceData &&
@@ -363,10 +369,8 @@ export default function DBTracePanel({
 
   const { size: rightPanelSize, startResize: startHorizontalResize } =
     useResizable(35, 'right');
-
   const { size: bottomPanelSize, startResize: startVerticalResize } =
     useResizable(40, 'top');
-
   const detailPanelSize = isSideLayout ? rightPanelSize : bottomPanelSize;
 
   const handleCloseSpanDetails = useCallback(() => {
@@ -380,6 +384,22 @@ export default function DBTracePanel({
     }
     return traceSourceData;
   }, [selectedSpan, logSourceData, traceSourceData]);
+
+  // Fetch the full set of spans for this trace so the span detail panel can
+  // determine which spans reference the currently selected span ("Referenced
+  // By" / reverse span links). This reuses the same hook the waterfall chart
+  // uses for its trace-side rows, so we're not issuing a materially different
+  // query. Only enabled once we have a real trace source + traceId; the
+  // `tableSource` fallback below only exists to satisfy the hook's non-null
+  // parameter type while disabled and is never actually queried.
+  const isTraceReady = traceSourceData?.kind === SourceKind.Trace && !!traceId;
+  const { rows: allTraceRows } = useFilteredEventsAroundFocus({
+    tableSource: traceSourceData ?? logSourceData ?? ({} as any),
+    focusDate,
+    dateRange,
+    traceId: traceId ?? '',
+    enabled: isTraceReady,
+  });
 
   return (
     <div
@@ -488,7 +508,6 @@ export default function DBTracePanel({
             />
           )}
         </div>
-
         {selectedSpan != null && (
           <Box
             className={
@@ -501,7 +520,6 @@ export default function DBTracePanel({
             }
           />
         )}
-
         {traceSourceData != null &&
           selectedSpan != null &&
           selectedSpanSource != null && (
@@ -531,6 +549,7 @@ export default function DBTracePanel({
                 onToggleLayout={() =>
                   setDetailLayout(isSideLayout ? 'bottom' : 'side')
                 }
+                allTraceRows={allTraceRows}
               />
             </div>
           )}

@@ -173,21 +173,17 @@ function getConfig(
     SpanId: source.spanIdExpression ?? '',
     ParentSpanId:
       source.kind === SourceKind.Trace
-        ? (source.parentSpanIdExpression ?? '')
+        ? source.parentSpanIdExpression ?? ''
         : '',
     StatusCode:
-      source.kind === SourceKind.Trace
-        ? (source.statusCodeExpression ?? '')
-        : '',
+      source.kind === SourceKind.Trace ? source.statusCodeExpression ?? '' : '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText:
-      source.kind === SourceKind.Log
-        ? (source.severityTextExpression ?? '')
-        : '',
+      source.kind === SourceKind.Log ? source.severityTextExpression ?? '' : '',
     SpanAttributes: source.eventAttributesExpression ?? '',
     SpanEvents:
       source.kind === SourceKind.Trace
-        ? (source.spanEventsValueExpression ?? '')
+        ? source.spanEventsValueExpression ?? ''
         : '',
   };
 
@@ -424,7 +420,7 @@ export function useEventsAroundFocus({
   };
 }
 
-function useFilteredEventsAroundFocus(
+export function useFilteredEventsAroundFocus(
   args: Parameters<typeof useEventsAroundFocus>[0],
 ) {
   const filtered = useEventsAroundFocus(args);
@@ -625,11 +621,11 @@ export function DBTraceWaterfallChartContainer({
       traceWhereLanguage:
         traceWhereLanguage === 'sql' || traceWhereLanguage === 'lucene'
           ? traceWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
+          : getStoredLanguage() ?? 'lucene',
       logWhereLanguage:
         logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
           ? logWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
+          : getStoredLanguage() ?? 'lucene',
     },
   });
 
@@ -1093,7 +1089,7 @@ export function DBTraceWaterfallChartContainer({
           type === SourceKind.Log
             ? getChartColorSuccess()
             : serviceName
-              ? (serviceColorMap.get(serviceName) ?? '#6A7077')
+              ? serviceColorMap.get(serviceName) ?? '#6A7077'
               : '#6A7077';
 
         return {
@@ -1515,9 +1511,9 @@ export function DBTraceWaterfallChartContainer({
           flattenedNodes.length > 0 ? (
             <div className="my-3">All items are hidden by filters</div>
           ) : (
-            (emptyState ?? (
+            emptyState ?? (
               <div className="my-3">No matching spans or logs found</div>
-            ))
+            )
           )
         ) : (
           <TimelineChart
