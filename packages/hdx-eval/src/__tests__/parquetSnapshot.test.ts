@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import {
+  loadScenarioSnapshot,
   manifestPath,
   readManifest,
   seedLogicHash,
@@ -12,6 +13,7 @@ import {
   snapshotTableFields,
   writeManifest,
 } from '@/clickhouse/parquetSnapshot';
+import { scenarioTables } from '@/clickhouse/schema';
 
 describe('seedLogicHash', () => {
   it('is a stable 64-char hex sha256', () => {
@@ -82,5 +84,74 @@ describe('manifest round-trip', () => {
 
   it('returns null when no manifest is present', () => {
     expect(readManifest(dir)).toBeNull();
+  });
+});
+
+describe('loadScenarioSnapshot — materialized view restoration', () => {
+  let dir: string;
+  beforeEach(() => {
+    // Empty snapshot dir: every per-table file is absent, so the load loop
+    // skips all inserts (no HTTP needed) and we reach backfillRollups.
+    dir = mkdtempSync(join(tmpdir(), 'hdx-eval-load-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const http = { url: 'http://unused', username: 'u', password: 'p' };
+
+  function makeCallbacks(overrides?: { failBackfill?: boolean }) {
+    const calls: string[] = [];
+    const tables = scenarioTables('latency-spike');
+    return {
+      calls,
+      cb: {
+        ensure: async () => {
+          calls.push('ensure');
+          return tables;
+        },
+        truncate: async () => {
+          calls.push('truncate');
+        },
+        dropMaterializedViews: async () => {
+          calls.push('drop');
+        },
+        backfillRollups: async () => {
+          calls.push('backfill');
+          if (overrides?.failBackfill) throw new Error('backfill blew up');
+        },
+        createMaterializedViews: async () => {
+          calls.push('create');
+        },
+      },
+    };
+  }
+
+  it('recreates the MVs on the success path (after backfill)', async () => {
+    const { calls, cb } = makeCallbacks();
+    await loadScenarioSnapshot({
+      http,
+      dir,
+      scenarioName: 'latency-spike',
+      ...cb,
+    });
+    // drop must precede create, and create must run after backfill.
+    expect(calls).toEqual(['ensure', 'truncate', 'drop', 'backfill', 'create']);
+  });
+
+  it('still recreates the MVs when the load throws (finally guarantee)', async () => {
+    const { calls, cb } = makeCallbacks({ failBackfill: true });
+    await expect(
+      loadScenarioSnapshot({
+        http,
+        dir,
+        scenarioName: 'latency-spike',
+        ...cb,
+      }),
+    ).rejects.toThrow('backfill blew up');
+    // The failure must NOT leave the MVs detached: create still ran, last.
+    expect(calls).toContain('drop');
+    expect(calls).toContain('create');
+    expect(calls[calls.length - 1]).toBe('create');
   });
 });

@@ -217,21 +217,31 @@ export async function loadScenarioSnapshot(args: {
   const files: LoadResult['files'] = [];
   let totalRows = 0;
 
-  for (const field of snapshotTableFields()) {
-    const table = tables[field];
-    const filePath = join(args.dir, snapshotFileName(table));
-    if (!existsSync(filePath)) continue; // table had zero rows at export time
+  // Once the MVs are dropped we MUST recreate them no matter what — if an
+  // insert or the rollup backfill throws mid-load and we bailed here, later
+  // live inserts would stop maintaining the metadata rollups, leaving MCP
+  // queries with stale/empty metadata. The finally re-attaches them on every
+  // path (success or failure) so the tables are never left detached.
+  try {
+    for (const field of snapshotTableFields()) {
+      const table = tables[field];
+      const filePath = join(args.dir, snapshotFileName(table));
+      if (!existsSync(filePath)) continue; // table had zero rows at export time
 
-    await insertParquetFile(args.http, table, filePath);
-    const rows = await tableRowCount(args.http, table);
-    files.push({ table, rows });
-    totalRows += rows;
+      await insertParquetFile(args.http, table, filePath);
+      const rows = await tableRowCount(args.http, table);
+      files.push({ table, rows });
+      totalRows += rows;
+    }
+
+    // Rebuild the rollups in one shot from the loaded raw tables.
+    await args.backfillRollups(tables);
+  } finally {
+    // Re-attach the MVs for consistency with a live-seeded scenario. Runs even
+    // if the load above threw, so a failed load never leaves the rollups
+    // unmaintained for subsequent inserts.
+    await args.createMaterializedViews(tables);
   }
-
-  // Rebuild the rollups in one shot from the loaded raw tables, then re-attach
-  // the MVs for consistency with a live-seeded scenario.
-  await args.backfillRollups(tables);
-  await args.createMaterializedViews(tables);
 
   return { files, totalRows };
 }
