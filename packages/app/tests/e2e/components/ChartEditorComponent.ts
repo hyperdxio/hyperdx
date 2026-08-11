@@ -247,6 +247,36 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Expand the "Generated SQL" accordion in the preview panel. Safe to call
+   * when it is already open.
+   */
+  async openGeneratedSql() {
+    const control = this.page.getByRole('button', { name: 'Generated SQL' });
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+    await this.generatedSqlContent().waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** CodeMirror content of the rendered "Generated SQL" preview. */
+  generatedSqlContent(): Locator {
+    return this.page.getByTestId('chart-sql-preview').locator('.cm-content');
+  }
+
+  /**
+   * The generated SQL as a single whitespace-collapsed line, so assertions
+   * don't depend on how sql-formatter happened to wrap the query.
+   */
+  async getGeneratedSqlText(): Promise<string> {
+    const text = await this.generatedSqlContent().innerText();
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
    * Type a SQL query into the CodeMirror SQL editor, replacing any existing
    * contents first. Call switchToSqlMode() first to make the editor visible.
    *
