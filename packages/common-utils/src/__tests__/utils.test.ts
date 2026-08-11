@@ -1217,6 +1217,59 @@ describe('utils', () => {
       expect(template.filters?.[3].appliesToSourceIds).toBeUndefined();
     });
 
+    // Variable settings are dashboard-local — unlike `source` and
+    // `appliesToSourceIds` they reference nothing in the workspace, so they need
+    // no name↔ID remapping and must survive export verbatim.
+    it('should export filter variable settings unchanged while still remapping sources', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Variables Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-variable',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service Name',
+            expression: 'ServiceName',
+            source: 'source1',
+            appliesToSourceIds: ['source1'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'Service_Name',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-variable',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service Name',
+          expression: 'ServiceName',
+          source: 'Logs',
+          appliesToSourceIds: ['Logs'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'Service_Name',
+        },
+      ]);
+    });
+
     it('should convert a dashboard without filters to a dashboard template', () => {
       const dashboard: z.infer<typeof DashboardSchema> = {
         id: 'dashboard1',

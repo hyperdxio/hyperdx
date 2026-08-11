@@ -209,6 +209,135 @@ describe('useDashboardFilters', () => {
     );
   });
 
+  describe('getFilterQueriesForSource', () => {
+    const conditionsFor = (queries: Filter[]) =>
+      queries.map(q => ('condition' in q ? q.condition : ''));
+
+    it('applies an unscoped filter to every tile', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(
+        conditionsFor(result.current.getFilterQueriesForSource('logs')),
+      ).toEqual(["toString(environment) IN ('production')"]);
+      expect(
+        conditionsFor(result.current.getFilterQueriesForSource('traces')),
+      ).toEqual(["toString(environment) IN ('production')"]);
+    });
+
+    it('applies a scoped filter only to tiles on a listed source', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], appliesToSourceIds: ['logs'] },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.getFilterQueriesForSource('logs')).toHaveLength(1);
+      expect(result.current.getFilterQueriesForSource('traces')).toEqual([]);
+    });
+
+    it('applies a broadcast-disabled filter to no tile', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], isBroadcastEnabled: false },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.getFilterQueriesForSource('logs')).toEqual([]);
+      expect(result.current.getFilterQueriesForSource('traces')).toEqual([]);
+      expect(result.current.getFilterQueriesForSource(undefined)).toEqual([]);
+      // The value still exists for the filter bar and for variable use.
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+    });
+
+    it('applies a broadcast-disabled filter to no tile even when it is scoped', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        {
+          ...mockFilters[0],
+          isBroadcastEnabled: false,
+          appliesToSourceIds: ['logs'],
+        },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.getFilterQueriesForSource('logs')).toEqual([]);
+    });
+
+    it('keeps broadcasting when the field is absent or explicitly true', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], isBroadcastEnabled: true },
+      ];
+
+      const { result: withTrue } = renderHook(() =>
+        useDashboardFilters(filters),
+      );
+      const { result: withMissing } = renderHook(() =>
+        useDashboardFilters([mockFilters[0]]),
+      );
+
+      expect(withTrue.current.getFilterQueriesForSource('logs')).toHaveLength(
+        1,
+      );
+      expect(
+        withMissing.current.getFilterQueriesForSource('logs'),
+      ).toHaveLength(1);
+    });
+
+    it('broadcasts when a sibling definition on the same expression still broadcasts', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], id: 'a', isBroadcastEnabled: false },
+        {
+          ...mockFilters[0],
+          id: 'b',
+          isBroadcastEnabled: true,
+          appliesToSourceIds: ['traces'],
+        },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.getFilterQueriesForSource('traces')).toHaveLength(
+        1,
+      );
+      expect(result.current.getFilterQueriesForSource('logs')).toEqual([]);
+    });
+  });
+
+  describe('filterQueries', () => {
+    it('omits broadcast-disabled filters', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "service.name IN ('api')" },
+      ];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], isBroadcastEnabled: false },
+        mockFilters[1],
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.filterQueries).toHaveLength(1);
+      const query = result.current.filterQueries[0];
+      expect('condition' in query ? query.condition : '').toEqual(
+        "toString(service.name) IN ('api')",
+      );
+      // Preset dashboards never persist the field, so they keep broadcasting.
+      expect(Object.keys(result.current.filterValues)).toEqual([
+        'environment',
+        'service.name',
+      ]);
+    });
+  });
+
   describe('ignoredFilterExpressions', () => {
     it('is empty when no URL filters are set', () => {
       const { result } = renderHook(() => useDashboardFilters(mockFilters));
