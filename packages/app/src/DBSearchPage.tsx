@@ -100,7 +100,6 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import MultiSourceColumnPicker from '@/components/MultiSourceColumnPicker';
-import MultiSourceRowTableWithSidebar from '@/components/MultiSourceRowTable';
 import MultiSourceSearchFilters from '@/components/MultiSourceSearchFilters';
 import {
   MultiSourceTimeChart,
@@ -111,6 +110,7 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
+import SearchResultsTable from '@/components/SearchResultsTable';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { SourceMultiSelectControlled } from '@/components/SourceMultiSelect';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
@@ -152,7 +152,6 @@ import {
 } from '@/utils';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
-import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
@@ -1722,8 +1721,28 @@ export function DBSearchPage() {
     columnsBySourceId,
   ]);
 
-  const multiSourceStreamSpecs = useMemo(() => {
-    if (!isMultiSource || isMultiSourceSqlBlocked) return [];
+  // The single-source chart config, pinned to the searched time range.
+  const dbSqlRowTableConfig = useMemo(() => {
+    if (chartConfig == null) {
+      return undefined;
+    }
+
+    return {
+      ...chartConfig,
+      dateRange: searchedTimeRange,
+    };
+  }, [chartConfig, searchedTimeRange]);
+
+  // The search's query plan: one spec per selected source. A single source is
+  // just N=1 — its spec carries the user's own SELECT/ORDER BY, so the results
+  // table renders exactly what the user asked for. The canonical aliases only
+  // come into play when there is more than one source to reconcile.
+  const searchStreamSpecs = useMemo(() => {
+    if (!isMultiSource) {
+      if (dbSqlRowTableConfig == null || searchedSource == null) return [];
+      return [{ source: searchedSource, config: dbSqlRowTableConfig }];
+    }
+    if (isMultiSourceSqlBlocked) return [];
     // Extra columns and filters both need each source's DESCRIBE (to resolve
     // column-vs-NULL and filter resolvability); hold the row queries until
     // they've loaded so we don't fire throwaway or erroring queries.
@@ -1762,6 +1781,8 @@ export function DBSearchPage() {
     isMultiSource,
     isMultiSourceSqlBlocked,
     searchedMultiSources,
+    searchedSource,
+    dbSqlRowTableConfig,
     searchedConfig.where,
     multiExtraColumnNames,
     multiSourceFilters,
@@ -1971,17 +1992,6 @@ export function DBSearchPage() {
     // Reset the collapse trigger after a short delay
     setTimeout(() => setCollapseAllRows(false), 100);
   }, [interval, updateRelativeTimeInputValue, setIsLive]);
-
-  const dbSqlRowTableConfig = useMemo(() => {
-    if (chartConfig == null) {
-      return undefined;
-    }
-
-    return {
-      ...chartConfig,
-      dateRange: searchedTimeRange,
-    };
-  }, [chartConfig, searchedTimeRange]);
 
   // Stable key for persisting column widths in localStorage. Scoped per saved
   // search when one is loaded, else per source (or source set) for ad-hoc
@@ -3011,12 +3021,11 @@ export function DBSearchPage() {
                         px="sm"
                         data-testid="search-results-panel"
                       >
-                        <MultiSourceRowTableWithSidebar
-                          streams={multiSourceStreamSpecs}
+                        <SearchResultsTable
+                          sources={searchStreamSpecs}
                           isLive={isLive ?? true}
                           enabled={isReady}
                           extraColumnNames={multiExtraColumnNames}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
                           onScroll={onTableScroll}
                           onSidebarOpen={onSidebarOpen}
                           onExpandedRowsChange={onExpandedRowsChange}
@@ -3221,32 +3230,26 @@ export function DBSearchPage() {
                       px="sm"
                       data-testid="search-results-panel"
                     >
-                      {chartConfig &&
-                        searchedConfig.source &&
-                        dbSqlRowTableConfig && (
-                          <DBSqlRowTableWithSideBar
-                            context={rowTableContext}
-                            config={dbSqlRowTableConfig}
-                            sourceId={searchedConfig.source}
-                            tableId={columnSizeTableId}
-                            keepOpenSelector={
-                              SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
-                            }
-                            onSidebarOpen={onSidebarOpen}
-                            onExpandedRowsChange={onExpandedRowsChange}
-                            enabled={isReady}
-                            isLive={isLive ?? true}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onScroll={onTableScroll}
-                            onError={handleTableError}
-                            denoiseResults={denoiseResults}
-                            collapseAllRows={collapseAllRows}
-                            onSortingChange={onSortingChange}
-                            initialSortBy={initialSortBy}
-                            enableSmallFirstWindow
-                            onResolvedColumnsChange={onResolvedColumnsChange}
-                          />
-                        )}
+                      <SearchResultsTable
+                        sources={searchStreamSpecs}
+                        context={rowTableContext}
+                        tableId={columnSizeTableId}
+                        keepOpenSelector={
+                          SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
+                        }
+                        onSidebarOpen={onSidebarOpen}
+                        onExpandedRowsChange={onExpandedRowsChange}
+                        enabled={isReady}
+                        isLive={isLive ?? true}
+                        onScroll={onTableScroll}
+                        onError={handleTableError}
+                        denoiseResults={denoiseResults}
+                        collapseAllRows={collapseAllRows}
+                        sortOrder={initialSortBy}
+                        onSortingChange={onSortingChange}
+                        enableSmallFirstWindow
+                        onResolvedColumnsChange={onResolvedColumnsChange}
+                      />
                     </Box>
                   )}
                 </Flex>

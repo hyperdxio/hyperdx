@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
+  ColumnMetaType,
   convertCHDataTypeToJSType,
   isJSDataTypeJSONStringifiable,
   JSDataType,
@@ -15,6 +16,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Group, Loader, Text, Tooltip } from '@mantine/core';
 import { IconAlertTriangle, IconFilterOff } from '@tabler/icons-react';
+import { SortingState } from '@tanstack/react-table';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
@@ -33,12 +35,25 @@ import DBRowSidePanel, {
   RowSidePanelContext,
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
-import { RawLogTable, useConfigWithAdditionalSelect } from './DBRowTable';
+import {
+  DenoisedPatternsSummary,
+  getSelectLength,
+  RawLogTable,
+  selectColumnMapWithoutAdditionalKeys,
+  useConfigWithAdditionalSelect,
+  useDenoisedRows,
+} from './DBRowTable';
 import { RowOverviewPanelWrapper } from './DBSqlRowTableWithSidebar';
 import { getMultiSourceColor, SourceBadge } from './MultiSourceBadge';
 
-/** One selected source plus its fully-built (canonical-SELECT) chart config. */
-export type MultiSourceStreamSpec = {
+/**
+ * One selected source plus its fully-built chart config.
+ *
+ * With a single source the config carries that source's own SELECT (the user
+ * authored it); with several, each config projects the canonical
+ * MULTI_SOURCE_ALIASES so the merged rows share one shape.
+ */
+export type SearchStreamSpec = {
   source: TSource;
   config: BuilderChartConfigWithDateRange;
   /**
@@ -66,7 +81,7 @@ const EMPTY_CHSQL = { sql: '', params: {} };
 const EMPTY_EXTRA_COLUMNS: string[] = [];
 
 type SourceStream = {
-  spec: MultiSourceStreamSpec | undefined;
+  spec: SearchStreamSpec | undefined;
   data: ReturnType<typeof useOffsetPaginatedQuery>['data'];
   fetchNextPage: ReturnType<typeof useOffsetPaginatedQuery>['fetchNextPage'];
   hasNextPage: boolean;
@@ -74,6 +89,8 @@ type SourceStream = {
   isError: boolean;
   error: Error | ClickHouseQueryError | null;
   getRowWhere: (row: Record<string, any>) => RowWhereResult;
+  /** Row-identity columns appended to the SELECT, trimmed off for display. */
+  additionalKeysLength: number | undefined;
 };
 
 /**
@@ -84,7 +101,7 @@ type SourceStream = {
  * disabled.
  */
 function useSourceStream(
-  spec: MultiSourceStreamSpec | undefined,
+  spec: SearchStreamSpec | undefined,
   {
     enabled,
     isLive,
@@ -118,7 +135,9 @@ function useSourceStream(
         enabled &&
         spec != null &&
         spec.disabledReason == null &&
-        mergedConfig != null,
+        mergedConfig != null &&
+        // An empty SELECT renders invalid SQL; wait for one to resolve.
+        getSelectLength(spec.config.select) > 0,
       isLive,
       queryKeyPrefix,
       enableSmallFirstWindow,
@@ -157,6 +176,7 @@ function useSourceStream(
       isError,
       error: error ?? null,
       getRowWhere,
+      additionalKeysLength: mergedConfig?.additionalKeysLength,
     }),
     [
       spec,
@@ -167,6 +187,7 @@ function useSourceStream(
       isError,
       error,
       getRowWhere,
+      mergedConfig?.additionalKeysLength,
     ],
   );
 }
@@ -223,11 +244,16 @@ function StreamStatusChips({ streams }: { streams: SourceStream[] }) {
   );
 }
 
-export default function MultiSourceRowTableWithSidebar({
-  streams: specs,
+export default function SearchResultsTable({
+  sources: specs,
   isLive,
   enabled = true,
   extraColumnNames = EMPTY_EXTRA_COLUMNS,
+  denoiseResults = false,
+  sortOrder,
+  onSortingChange,
+  onError,
+  onResolvedColumnsChange,
   onScroll,
   onSidebarOpen,
   onExpandedRowsChange,
@@ -236,14 +262,29 @@ export default function MultiSourceRowTableWithSidebar({
   tableId,
   context,
   keepOpenSelector,
-  queryKeyPrefix,
+  // Row queries are keyed separately from the page's chart/count queries, so
+  // "is the search fetching?" (live-tail pause, latency telemetry) keeps
+  // measuring the same thing it always has.
+  queryKeyPrefix = 'dbSqlRowTable',
 }: {
-  /** 2..MAX_SEARCH_SOURCES selected sources with their built configs. */
-  streams: MultiSourceStreamSpec[];
+  /** 1..MAX_SEARCH_SOURCES selected sources with their built configs. */
+  sources: SearchStreamSpec[];
   isLive: boolean;
   enabled?: boolean;
-  /** User-picked extra columns projected into every source's SELECT. */
+  /** User-picked extra columns projected into every source's SELECT (N>1). */
   extraColumnNames?: string[];
+  /** Drop noisy event patterns from the results (single source only). */
+  denoiseResults?: boolean;
+  /** Current sort, for the single-source case where sorting is supported. */
+  sortOrder?: SortingState;
+  onSortingChange?: (v: SortingState | null) => void;
+  /**
+   * Surface a query failure to the page. Only called with a single source —
+   * with several, a failing source is isolated to its own status chip rather
+   * than failing the whole search.
+   */
+  onError?: (error: Error | ClickHouseQueryError) => void;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
   onScroll?: (scrollTop: number) => void;
   onSidebarOpen?: (rowId: string) => void;
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
@@ -264,11 +305,17 @@ export default function MultiSourceRowTableWithSidebar({
   const streams = useMemo(
     () =>
       slots.filter(
-        (s): s is SourceStream & { spec: MultiSourceStreamSpec } =>
-          s.spec != null,
+        (s): s is SourceStream & { spec: SearchStreamSpec } => s.spec != null,
       ),
     [slots],
   );
+
+  // With one source the table shows that source's own SELECT, sorts, and
+  // denoises — everything the single-source search has always done. The
+  // canonical aliases, source badges, and cross-source merge only come into
+  // play once a second source is selected.
+  const isSingleSource = specs.length === 1;
+  const singleStream = isSingleSource ? streams[0] : undefined;
 
   const snapshots: StreamSnapshot[] = useMemo(
     () =>
@@ -286,15 +333,28 @@ export default function MultiSourceRowTableWithSidebar({
     [streams],
   );
 
+  // One source needs no merge: its rows already arrive timestamp-ordered from
+  // its own ORDER BY, and there is no other stream to hold a frontier against.
   const merged = useMemo(
-    () => mergeStreams(snapshots, 'DESC', MULTI_SOURCE_ALIASES.timestamp),
-    [snapshots],
+    () =>
+      isSingleSource
+        ? null
+        : mergeStreams(snapshots, 'DESC', MULTI_SOURCE_ALIASES.timestamp),
+    [isSingleSource, snapshots],
   );
 
-  // Merge column meta across streams by canonical alias name, preferring a
-  // resolved type over the Nullable(Nothing) a `NULL AS "alias"` projection
-  // reports.
   const columnTypeMap = useMemo(() => {
+    if (singleStream != null) {
+      // The user's SELECT columns, positionally trimmed of the row-identity
+      // columns the query appends (same resolution as DBSqlRowTable).
+      return selectColumnMapWithoutAdditionalKeys(
+        singleStream.data?.meta,
+        singleStream.additionalKeysLength,
+      );
+    }
+    // Merge column meta across streams by canonical alias name, preferring a
+    // resolved type over the Nullable(Nothing) a `NULL AS "alias"` projection
+    // reports.
     const map = new Map<string, { _type: JSDataType | null }>();
     for (const stream of streams) {
       for (const col of stream.data?.meta ?? []) {
@@ -309,12 +369,15 @@ export default function MultiSourceRowTableWithSidebar({
       _type: JSDataType.String,
     });
     return map;
-  }, [streams]);
+  }, [streams, singleStream]);
 
   const includeDuration = specs.some(s => s.source.kind === SourceKind.Trace);
 
-  const displayedColumns = useMemo(
-    () => [
+  const displayedColumns = useMemo(() => {
+    if (isSingleSource) {
+      return Array.from(columnTypeMap.keys());
+    }
+    return [
       MULTI_SOURCE_ALIASES.timestamp,
       MULTI_SOURCE_ROW_FIELDS.SOURCE_NAME,
       MULTI_SOURCE_ALIASES.service,
@@ -322,21 +385,23 @@ export default function MultiSourceRowTableWithSidebar({
       ...(includeDuration ? [MULTI_SOURCE_ALIASES.durationMs] : []),
       ...extraColumnNames,
       MULTI_SOURCE_ALIASES.body,
-    ],
-    [includeDuration, extraColumnNames],
-  );
+    ];
+  }, [isSingleSource, columnTypeMap, includeDuration, extraColumnNames]);
 
   // Stringify object-typed cells (Map/Array/JSON) the same way DBSqlRowTable
   // does — both for display and because useRowWhere expects the stringified
   // form when rebuilding a row WHERE clause.
   const rows = useMemo(() => {
+    const baseRows = singleStream
+      ? (singleStream.data?.data ?? [])
+      : (merged?.rows ?? []);
     const objectColumns = [...columnTypeMap.entries()]
       .filter(([, v]) => isJSDataTypeJSONStringifiable(v._type))
       .map(([name]) => name);
     if (objectColumns.length === 0) {
-      return merged.rows;
+      return baseRows;
     }
-    return merged.rows.map(row => {
+    return baseRows.map(row => {
       const newRow = { ...row };
       for (const col of objectColumns) {
         if (!(col in newRow) || newRow[col] == null) continue;
@@ -348,13 +413,28 @@ export default function MultiSourceRowTableWithSidebar({
       }
       return newRow;
     });
-  }, [merged.rows, columnTypeMap]);
+  }, [singleStream, merged?.rows, columnTypeMap]);
+
+  const patternColumn = displayedColumns[displayedColumns.length - 1];
+  const denoise = useDenoisedRows({
+    config: singleStream?.spec.config ?? STUB_CONFIG,
+    sourceId: singleStream?.spec.source.id,
+    processedRows: rows,
+    patternColumn,
+    // Denoising mines patterns from one table's body column; it has no
+    // cross-source meaning, so it only runs with a single source.
+    denoiseResults: denoiseResults && isSingleSource,
+    isLive,
+  });
 
   // Row identity dispatches to the row's own stream: each stream has its own
-  // result meta / alias map / primary-key columns. The client-side tag fields
+  // result meta / alias map / primary-key columns. The client-side source tags
   // are stripped first — they aren't real columns.
   const generateRowId = useCallback(
     (row: Record<string, any>): RowWhereResult => {
+      if (singleStream != null) {
+        return singleStream.getRowWhere(row);
+      }
       const {
         [MULTI_SOURCE_ROW_FIELDS.SOURCE_ID]: sourceId,
         [MULTI_SOURCE_ROW_FIELDS.SOURCE_NAME]: _name,
@@ -367,26 +447,48 @@ export default function MultiSourceRowTableWithSidebar({
       }
       return stream.getRowWhere(dbRow);
     },
-    [streams],
+    [streams, singleStream],
   );
 
   // Advance only the stream(s) holding the frontier back; the leaders keep
   // their fetched-but-held rows until the laggards catch up.
   const fetchNextPage = useCallback(() => {
-    for (const sourceId of merged.laggingSourceIds) {
+    if (singleStream != null) {
+      singleStream.fetchNextPage({ cancelRefetch: false });
+      return;
+    }
+    for (const sourceId of merged?.laggingSourceIds ?? []) {
       const stream = streams.find(s => s.spec.source.id === sourceId);
       stream?.fetchNextPage({ cancelRefetch: false });
     }
-  }, [merged.laggingSourceIds, streams]);
+  }, [singleStream, merged?.laggingSourceIds, streams]);
 
   const hasNextPage = streams.some(s => !s.isError && s.hasNextPage);
   const isFetching = streams.some(s => s.isFetching);
+  const isLoading = denoiseResults
+    ? isFetching || denoise.isFetching
+    : isFetching;
   const allFailed = streams.length > 0 && streams.every(s => s.isError);
   const firstError = streams.find(s => s.error != null)?.error ?? undefined;
 
-  // Side panel wiring — the same URL-param contract as
-  // DBSqlRowTableWithSideBar, except the panel's source comes from the
-  // clicked row rather than the (single) searched source.
+  // A single source's failure is the whole search's failure, so the page owns
+  // the error UI (and drops out of live tail), exactly as before.
+  useEffect(() => {
+    if (singleStream?.isError && singleStream.error != null) {
+      onError?.(singleStream.error);
+    }
+  }, [singleStream?.isError, singleStream?.error, onError]);
+
+  const singleMeta = singleStream?.data?.meta;
+  useEffect(() => {
+    if (singleMeta != null && singleMeta.length > 0) {
+      onResolvedColumnsChange?.(singleMeta);
+    }
+  }, [singleMeta, onResolvedColumnsChange]);
+
+  // Side panel wiring — the same URL-param contract as the legacy table,
+  // except the panel's source comes from the clicked row rather than being
+  // fixed for the page.
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [rowSource, setRowSource] = useQueryState('rowSource');
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
@@ -397,10 +499,14 @@ export default function MultiSourceRowTableWithSidebar({
       if (!rowWhere.where) return;
       setRowId(rowWhere.where);
       setAliasWith(rowWhere.aliasWith);
-      setRowSource(row[MULTI_SOURCE_ROW_FIELDS.SOURCE_ID] ?? null);
+      setRowSource(
+        row[MULTI_SOURCE_ROW_FIELDS.SOURCE_ID] ??
+          singleStream?.spec.source.id ??
+          null,
+      );
       onSidebarOpen?.(rowWhere.where);
     },
-    [generateRowId, setRowId, setRowSource, onSidebarOpen],
+    [generateRowId, setRowId, setRowSource, onSidebarOpen, singleStream],
   );
 
   const onCloseSidebar = useCallback(() => {
@@ -408,16 +514,23 @@ export default function MultiSourceRowTableWithSidebar({
     setRowSource(null);
   }, [setRowId, setRowSource]);
 
+  const sourceForRow = useCallback(
+    (id: unknown) =>
+      specs.find(s => s.source.id === id)?.source ??
+      // Links predating the rowSource param (and every single-source link)
+      // carry only rowWhere; there is exactly one source it can belong to.
+      (isSingleSource ? specs[0]?.source : undefined),
+    [specs, isSingleSource],
+  );
+
   const panelSource = useMemo(
-    () => specs.find(s => s.source.id === rowSource)?.source,
-    [specs, rowSource],
+    () => sourceForRow(rowSource),
+    [sourceForRow, rowSource],
   );
 
   const renderRowDetails = useCallback(
     (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
-      const source = specs.find(
-        s => s.source.id === r[MULTI_SOURCE_ROW_FIELDS.SOURCE_ID],
-      )?.source;
+      const source = sourceForRow(r[MULTI_SOURCE_ROW_FIELDS.SOURCE_ID]);
       if (!source) {
         return <div className="p-3 text-muted">Loading...</div>;
       }
@@ -429,11 +542,14 @@ export default function MultiSourceRowTableWithSidebar({
         />
       );
     },
-    [specs],
+    [sourceForRow],
   );
 
-  const loadingDate =
-    merged.frontier != null && hasNextPage
+  const loadingDate = singleStream
+    ? singleStream.data?.window?.direction === 'ASC'
+      ? singleStream.data?.window?.endTime
+      : singleStream.data?.window?.startTime
+    : merged?.frontier != null && hasNextPage
       ? new Date(merged.frontier)
       : undefined;
 
@@ -451,18 +567,25 @@ export default function MultiSourceRowTableWithSidebar({
         />
       )}
       <Flex direction="column" h="100%" mih={0}>
-        <StreamStatusChips streams={streams} />
-        {allFailed ? (
+        {/* One source needs no legend: every row came from it. */}
+        {!isSingleSource && <StreamStatusChips streams={streams} />}
+        {denoiseResults && isSingleSource && (
+          <DenoisedPatternsSummary
+            noisyPatterns={denoise.noisyPatterns}
+            hasNoisyPatterns={denoise.hasNoisyPatterns}
+          />
+        )}
+        {allFailed && !isSingleSource ? (
           <ChartErrorState error={firstError ?? new Error('Search failed')} />
         ) : (
           <RawLogTable
             isLive={isLive}
             wrapLines={false}
             displayedColumns={displayedColumns}
-            columnNameMap={COLUMN_NAME_MAP}
+            columnNameMap={isSingleSource ? undefined : COLUMN_NAME_MAP}
             highlightedLineId={rowId ?? undefined}
-            rows={rows}
-            isLoading={isFetching}
+            rows={denoise.rows}
+            isLoading={isLoading}
             fetchNextPage={fetchNextPage}
             hasNextPage={hasNextPage}
             onRowDetailsClick={onRowDetailsClick}
@@ -472,10 +595,19 @@ export default function MultiSourceRowTableWithSidebar({
             dateRange={firstConfig?.dateRange}
             loadingDate={loadingDate}
             config={firstConfig}
+            source={singleStream?.spec.source}
             renderRowDetails={renderRowDetails}
             onExpandedRowsChange={onExpandedRowsChange}
             collapseAllRows={collapseAllRows}
-            enableSorting={false}
+            // Sorting rewrites ORDER BY, which the windowed pagination and the
+            // cross-source merge both key on — only safe with one source.
+            enableSorting={isSingleSource}
+            sortOrder={sortOrder}
+            onSortingChange={onSortingChange}
+            isError={isSingleSource ? singleStream?.isError : undefined}
+            error={
+              isSingleSource ? (singleStream?.error ?? undefined) : undefined
+            }
             getRowWhere={generateRowId}
             tableId={tableId}
           />
