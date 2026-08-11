@@ -1,10 +1,7 @@
 import {
-  chSql,
-  concatChSql,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
-  tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -25,6 +22,10 @@ import {
   type QueryableMetricKind,
   sanitizeMetricTables,
 } from './metricKinds';
+import {
+  type MetricNameSample,
+  sampleMetricNamesWithLookback,
+} from './metricNames';
 import { extractSourceConfig } from './schemas';
 
 // How far back to look when querying the rollup tables for value samples.
@@ -37,10 +38,6 @@ const DESCRIBE_TIMEOUT_MS = 10_000;
 const MAX_LC_VALUES = 20;
 const MAX_MAP_KEY_VALUES = 5;
 const MAX_MAP_KEYS_TO_SAMPLE = 10;
-
-// Max MetricName values returned per metric kind by the starter sample.
-// clickstack_list_metrics provides paginated discovery beyond this cap.
-const MAX_METRIC_NAMES_PER_KIND = 20;
 
 /**
  * Pick the representative metric table to use as the starting point for
@@ -59,177 +56,6 @@ function pickRepresentativeMetricTable(
     }
   }
   return undefined;
-}
-
-type MetricNameSample = {
-  name: string;
-  unit?: string;
-  description?: string;
-};
-
-/**
- * Sample distinct MetricName values for a single metric kind. Optionally
- * enriches each name with MetricUnit / MetricDescription when those
- * columns are present on the table (the OTel Collector default schema
- * includes them; custom schemas may not).
- */
-async function sampleMetricNamesForKind({
-  metadata,
-  clickhouseClient,
-  databaseName,
-  tableName,
-  connectionId,
-  dateRange,
-  timestampValueExpression,
-  signal,
-  cachedColumns,
-}: {
-  metadata: ReturnType<typeof getMetadata>;
-  clickhouseClient: ClickhouseClient;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-  dateRange: [Date, Date];
-  timestampValueExpression: string;
-  signal: AbortSignal;
-  cachedColumns?: { name: string }[];
-}): Promise<MetricNameSample[]> {
-  // Defensive column presence check for MetricUnit / MetricDescription.
-  const kindColumns =
-    cachedColumns ??
-    (await metadata.getColumns({ databaseName, tableName, connectionId }));
-  const columnNames = new Set(kindColumns.map(c => c.name));
-  const hasUnit = columnNames.has('MetricUnit');
-  const hasDescription = columnNames.has('MetricDescription');
-
-  // First fetch the distinct metric names; this is the only step that
-  // strictly needs to succeed for the kind to appear in the response.
-  // Pass timestampValueExpression so the no-rollup fallback path scopes
-  // its scan to dateRange instead of going unbounded against the raw
-  // metric table on cold cache.
-  const nameResults = await metadata.getAllKeyValues({
-    databaseName,
-    tableName,
-    keyExpressions: ['MetricName'],
-    maxValuesPerKey: MAX_METRIC_NAMES_PER_KIND,
-    connectionId,
-    dateRange,
-    timestampValueExpression,
-    signal,
-  });
-  const names = nameResults[0]?.value.map(v => v.toString()) ?? [];
-  if (names.length === 0) return [];
-
-  // Best-effort enrichment with unit + description. One small query
-  // returns one row per metric name with the most-recent unit / desc.
-  let enrichments: Record<string, { unit?: string; description?: string }> = {};
-  if ((hasUnit || hasDescription) && !signal.aborted) {
-    try {
-      enrichments = await fetchMetricNameEnrichments({
-        clickhouseClient,
-        databaseName,
-        tableName,
-        connectionId,
-        names,
-        dateRange,
-        hasUnit,
-        hasDescription,
-        signal,
-      });
-    } catch (e) {
-      logger.warn(
-        { databaseName, tableName, error: e },
-        'Failed to enrich metric names with unit/description',
-      );
-    }
-  }
-
-  return names.map(name => {
-    const enrichment = enrichments[name] ?? {};
-    const sample: MetricNameSample = { name };
-    if (enrichment.unit) sample.unit = enrichment.unit;
-    if (enrichment.description) sample.description = enrichment.description;
-    return sample;
-  });
-}
-
-/**
- * Fetch MetricUnit and MetricDescription for a batch of metric names.
- * Uses `anyLast` so the most-recent value wins when a metric has changed
- * unit/description over time.
- */
-async function fetchMetricNameEnrichments({
-  clickhouseClient,
-  databaseName,
-  tableName,
-  connectionId,
-  names,
-  dateRange,
-  hasUnit,
-  hasDescription,
-  signal,
-}: {
-  clickhouseClient: ClickhouseClient;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-  names: string[];
-  dateRange: [Date, Date];
-  hasUnit: boolean;
-  hasDescription: boolean;
-  signal: AbortSignal;
-}): Promise<Record<string, { unit?: string; description?: string }>> {
-  // Build the projection fragments via the parameterised chSql DSL so
-  // identifiers are quoted and the unit/description columns only appear
-  // when present on the source table.
-  const projections = [
-    chSql`MetricName`,
-    ...(hasUnit
-      ? [chSql`anyLast(${{ Identifier: 'MetricUnit' }}) AS MetricUnit`]
-      : []),
-    ...(hasDescription
-      ? [
-          chSql`anyLast(${{ Identifier: 'MetricDescription' }}) AS MetricDescription`,
-        ]
-      : []),
-  ];
-  const namePlaceholders = concatChSql(
-    ',',
-    names.map(name => chSql`${{ String: name }}`),
-  );
-  const sql = chSql`
-    SELECT ${concatChSql(', ', projections)}
-    FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE MetricName IN (${namePlaceholders})
-      AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})
-      AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})
-    GROUP BY MetricName
-  `;
-
-  type EnrichmentRow = {
-    MetricName: string;
-    MetricUnit?: string;
-    MetricDescription?: string;
-  };
-
-  const response = await clickhouseClient.query<'JSON'>({
-    query: sql.sql,
-    query_params: sql.params,
-    format: 'JSON',
-    connectionId,
-    abort_signal: signal,
-  });
-  const result = (await response.json()) as { data: EnrichmentRow[] };
-
-  const enrichments: Record<string, { unit?: string; description?: string }> =
-    {};
-  for (const row of result.data) {
-    enrichments[row.MetricName] = {
-      ...(row.MetricUnit ? { unit: row.MetricUnit } : {}),
-      ...(row.MetricDescription ? { description: row.MetricDescription } : {}),
-    };
-  }
-  return enrichments;
 }
 
 /**
@@ -535,13 +361,13 @@ async function describeSourceSchema(
         const kindTableName = source.metricTables[kind];
         if (!kindTableName) return;
         try {
-          const samples = await sampleMetricNamesForKind({
+          const samples = await sampleMetricNamesWithLookback({
             metadata,
             clickhouseClient,
             databaseName,
             tableName: kindTableName,
             connectionId,
-            dateRange,
+            now,
             timestampValueExpression,
             signal,
             // Reuse representative columns when the kind matches the
