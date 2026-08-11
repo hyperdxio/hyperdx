@@ -6,9 +6,8 @@ export const DEFAULT_SEARCH_ROW_LIMIT = 200;
 // Ceiling on how many sources one search can span. Each selected source runs
 // its own result stream plus histogram/count aggregates, so the fan-out cost
 // is N× a single search; 5 keeps the worst case bounded while covering the
-// common "a few log sources + traces" setups. Also the size of the fixed
-// hook-slot arrays in the multi-source components — raising it means adding
-// slots there too.
+// common "a few log sources + traces" setups. Also the hook-slot count in
+// useMultiSourceSlots — raising it means adding a slot there too.
 export const MAX_SEARCH_SOURCES = 5;
 export const DEFAULT_QUERY_TIMEOUT = 60; // max_execution_time, seconds
 export const DEFAULT_FILTER_KEYS_FETCH_LIMIT = 100;

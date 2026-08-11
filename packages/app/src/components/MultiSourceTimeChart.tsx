@@ -23,6 +23,7 @@ import ChartContainer from '@/components/charts/ChartContainer';
 import ChartErrorState from '@/components/charts/ChartErrorState';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMultiSourceSlots } from '@/hooks/useMultiSourceSearch';
 import type { NumberFormat } from '@/types';
 
 import { getMultiSourceColor } from './MultiSourceBadge';
@@ -47,6 +48,13 @@ const STUB_CONFIG: BuilderChartConfigWithDateRange = {
   dateRange: [new Date(0), new Date(0)],
 };
 
+type HistogramSlotState = {
+  data: ReturnType<typeof useQueriedChartConfig>['data'];
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+};
+
 function useHistogramSlot(
   spec: MultiSourceChartSpec | undefined,
   {
@@ -60,37 +68,47 @@ function useHistogramSlot(
     enableParallelQueries?: boolean;
     parallelizeWhenPossible?: boolean;
   },
-) {
+): HistogramSlotState {
   const queriedConfig = useMemo(
     () => convertToTimeChartConfig(spec?.config ?? STUB_CONFIG),
     [spec?.config],
   );
 
-  return useQueriedChartConfig(queriedConfig, {
-    // Key shape mirrors DBTimeChart/SearchTotalCountChart so TanStack can
-    // de-dupe the histogram and total-count consumers of the same source.
-    queryKey: [
-      queryKeyPrefix,
-      queriedConfig,
-      'chunked',
-      {
-        disableQueryChunking: false,
-        enableParallelQueries,
-        parallelizeWhenPossible,
-      },
-    ],
-    placeholderData: keepPreviousData,
-    enableQueryChunking: true,
-    enableParallelQueries: enableParallelQueries && parallelizeWhenPossible,
-    enabled: enabled && spec != null,
-  });
+  const { data, isLoading, isError, error } = useQueriedChartConfig(
+    queriedConfig,
+    {
+      // Key shape mirrors DBTimeChart/SearchTotalCountChart so TanStack can
+      // de-dupe the histogram and total-count consumers of the same source.
+      queryKey: [
+        queryKeyPrefix,
+        queriedConfig,
+        'chunked',
+        {
+          disableQueryChunking: false,
+          enableParallelQueries,
+          parallelizeWhenPossible,
+        },
+      ],
+      placeholderData: keepPreviousData,
+      enableQueryChunking: true,
+      enableParallelQueries: enableParallelQueries && parallelizeWhenPossible,
+      enabled: enabled && spec != null,
+    },
+  );
+
+  // Stable identity per content change so the slots array (and everything
+  // memoized on it) doesn't churn on unrelated renders.
+  return useMemo(
+    () => ({ data, isLoading, isError, error: error ?? null }),
+    [data, isLoading, isError, error],
+  );
 }
 
 /**
- * Runs one count() histogram query per selected source (fixed hook slots, see
- * MAX_SEARCH_SOURCES) and merges the responses into a single response shape
- * with a synthetic source-name group column — so the standard time-chart
- * transform naturally yields one series per source.
+ * Runs one count() histogram query per selected source (one hook slot per
+ * source, see useMultiSourceSlots) and merges the responses into a single
+ * response shape with a synthetic source-name group column — so the standard
+ * time-chart transform naturally yields one series per source.
  */
 function useMultiSourceHistogram(
   specs: MultiSourceChartSpec[],
@@ -105,20 +123,12 @@ function useMultiSourceHistogram(
   },
 ) {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
-  const slotOpts = {
+  const slots = useMultiSourceSlots(specs, useHistogramSlot, {
     enabled: enabled && !isLoadingMe,
     queryKeyPrefix,
     enableParallelQueries,
     parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
-  };
-
-  const slot0 = useHistogramSlot(specs[0], slotOpts);
-  const slot1 = useHistogramSlot(specs[1], slotOpts);
-  const slot2 = useHistogramSlot(specs[2], slotOpts);
-  const slot3 = useHistogramSlot(specs[3], slotOpts);
-  const slot4 = useHistogramSlot(specs[4], slotOpts);
-
-  const slots = [slot0, slot1, slot2, slot3, slot4].slice(0, specs.length);
+  });
 
   const isLoading = slots.some(s => s.isLoading);
   const allFailed = slots.length > 0 && slots.every(s => s.isError);
@@ -129,17 +139,10 @@ function useMultiSourceHistogram(
 
   const mergedResponse: ResponseJSON<Record<string, any>> | undefined =
     useMemo(() => {
-      const slotData = [
-        slot0.data,
-        slot1.data,
-        slot2.data,
-        slot3.data,
-        slot4.data,
-      ];
       let meta: ColumnMetaType[] | undefined;
       const data: Record<string, any>[] = [];
       for (let i = 0; i < specs.length; i++) {
-        const response = slotData[i];
+        const response = slots[i]?.data;
         if (response?.meta == null || response.meta.length === 0) continue;
         if (meta == null) {
           meta = [
@@ -153,7 +156,7 @@ function useMultiSourceHistogram(
         }
       }
       return meta ? { data, meta, rows: data.length } : undefined;
-    }, [slot0.data, slot1.data, slot2.data, slot3.data, slot4.data, specs]);
+    }, [slots, specs]);
 
   return { mergedResponse, isLoading, allFailed, anyError, error, isComplete };
 }

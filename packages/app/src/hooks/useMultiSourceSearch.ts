@@ -1,8 +1,42 @@
 import { useMemo } from 'react';
+import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { MultiSourceExtraColumn } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
+import { MAX_SEARCH_SOURCES } from '@/defaults';
 import { useColumns } from '@/hooks/useMetadata';
+
+/**
+ * Run one instance of a hook per selected source of a multi-source search.
+ *
+ * The rules of hooks require a constant hook count per component, but multi
+ * mode needs one query pipeline per selected source — and `useQueries` can't
+ * cover these pipelines (the row streams are `useInfiniteQuery`-based, which
+ * has no plural form, and the chart pipeline composes other hooks). So the
+ * hook count is pinned at MAX_SEARCH_SOURCES here, in one place: unused
+ * slots receive `undefined` and every slot hook is expected to self-disable
+ * for it.
+ *
+ * `useSlot` must be a stable, named hook (the rules-of-hooks lint understands
+ * `use*`-named parameters) and should return a memoized value, so the array
+ * this returns is referentially stable and safe to use in dependency lists.
+ */
+export function useMultiSourceSlots<Item, Opts, Result>(
+  items: readonly Item[],
+  useSlot: (item: Item | undefined, opts: Opts) => Result,
+  opts: Opts,
+): Result[] {
+  const s0 = useSlot(items[0], opts);
+  const s1 = useSlot(items[1], opts);
+  const s2 = useSlot(items[2], opts);
+  const s3 = useSlot(items[3], opts);
+  const s4 = useSlot(items[4], opts);
+  const count = Math.min(items.length, MAX_SEARCH_SOURCES);
+  return useMemo(
+    () => [s0, s1, s2, s3, s4].slice(0, count),
+    [s0, s1, s2, s3, s4, count],
+  );
+}
 
 const EMPTY_SOURCE_PARAMS = {
   databaseName: '',
@@ -25,24 +59,29 @@ export type MultiSourceColumnOption = {
   availableCount: number;
 };
 
+/** Slot hook: DESCRIBE columns for one source. Stable — `.data` is cached. */
+function useSourceColumnsSlot(
+  source: TSource | undefined,
+): ColumnMeta[] | undefined {
+  return useColumns(columnsParamsFor(source)).data;
+}
+
 /**
  * Top-level columns (DESCRIBE) for each selected source of a multi-source
  * search, plus the deduped union with per-column availability counts for the
- * add-column picker. Fixed hook slots (MAX_SEARCH_SOURCES = 5); useColumns
- * self-disables for empty slots.
+ * add-column picker. useColumns self-disables for unused slots.
  */
 export function useMultiSourceColumns(sources: TSource[]): {
   columnsBySourceId: Map<string, Set<string>>;
   unionColumns: MultiSourceColumnOption[];
 } {
-  const q0 = useColumns(columnsParamsFor(sources[0]));
-  const q1 = useColumns(columnsParamsFor(sources[1]));
-  const q2 = useColumns(columnsParamsFor(sources[2]));
-  const q3 = useColumns(columnsParamsFor(sources[3]));
-  const q4 = useColumns(columnsParamsFor(sources[4]));
+  const slotData = useMultiSourceSlots(
+    sources,
+    useSourceColumnsSlot,
+    undefined,
+  );
 
   return useMemo(() => {
-    const slotData = [q0.data, q1.data, q2.data, q3.data, q4.data];
     const columnsBySourceId = new Map<string, Set<string>>();
     const availability = new Map<string, number>();
 
@@ -65,7 +104,7 @@ export function useMultiSourceColumns(sources: TSource[]): {
       );
 
     return { columnsBySourceId, unionColumns };
-  }, [q0.data, q1.data, q2.data, q3.data, q4.data, sources]);
+  }, [slotData, sources]);
 }
 
 /** Quote a column name as a ClickHouse identifier when it needs it. */

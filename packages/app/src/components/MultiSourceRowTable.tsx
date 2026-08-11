@@ -18,6 +18,7 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
+import { useMultiSourceSlots } from '@/hooks/useMultiSourceSearch';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import {
@@ -73,10 +74,9 @@ type SourceStream = {
 /**
  * One source's independent query pipeline: the same
  * defaults → additional-key SELECT merge → windowed offset pagination →
- * row-WHERE machinery as the single-source DBSqlRowTable, packaged per slot.
- *
- * Always called (fixed hook count — see MAX_SEARCH_SOURCES); unused slots get
- * a stub config and stay disabled.
+ * row-WHERE machinery as the single-source DBSqlRowTable, packaged as a
+ * useMultiSourceSlots slot hook. Unused slots get a stub config and stay
+ * disabled.
  */
 function useSourceStream(
   spec: MultiSourceStreamSpec | undefined,
@@ -232,28 +232,20 @@ export default function MultiSourceRowTableWithSidebar({
   keepOpenSelector?: string;
   queryKeyPrefix?: string;
 }) {
-  const streamOpts = {
+  const slots = useMultiSourceSlots(specs, useSourceStream, {
     enabled,
     isLive,
     enableSmallFirstWindow,
     queryKeyPrefix,
-  };
-
-  // Fixed hook slots (MAX_SEARCH_SOURCES = 5): hook count stays constant no
-  // matter how many sources are selected, so no rules-of-hooks gymnastics.
-  const slot0 = useSourceStream(specs[0], streamOpts);
-  const slot1 = useSourceStream(specs[1], streamOpts);
-  const slot2 = useSourceStream(specs[2], streamOpts);
-  const slot3 = useSourceStream(specs[3], streamOpts);
-  const slot4 = useSourceStream(specs[4], streamOpts);
+  });
 
   const streams = useMemo(
     () =>
-      [slot0, slot1, slot2, slot3, slot4].filter(
+      slots.filter(
         (s): s is SourceStream & { spec: MultiSourceStreamSpec } =>
           s.spec != null,
       ),
-    [slot0, slot1, slot2, slot3, slot4],
+    [slots],
   );
 
   const snapshots: StreamSnapshot[] = useMemo(
