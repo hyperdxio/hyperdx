@@ -39,8 +39,10 @@ jobs:
   evals:
     name: Run MCP evals (advisory)
     runs-on: ubuntu-24.04
-    # Generous budget — M1 is slow by design (heavy image build + agent run).
-    timeout-minutes: 90
+    # Budget covers the worst case: cold image build (~20m) + a snapshot-MISS
+    # suite that regenerates all 6 scenarios (~40m seed + ~30m agent/grade).
+    # Steady state (snapshot cache HIT) is far faster (~20m build + ~30m runner).
+    timeout-minutes: 120
     permissions:
       contents: read
       pull-requests: write

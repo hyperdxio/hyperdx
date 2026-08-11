@@ -197,10 +197,12 @@ for scenario in "${SCENARIOS[@]}"; do
 done
 
 # ── Final report + verdict ─────────────────────────────────────────────────
+# Empty progress note → the comment renders as the FINAL PASS/FAIL verdict
+# (no ⏳ RUNNING badge, no Progress line), unlike the per-scenario updates above.
 echo "::group::[report] Aggregate suite verdict"
 "${CLI[@]}" report "$BATCH"
 mkdir -p "$(dirname "$OUT_COMMENT")"
-render_and_post "complete — $TOTAL/$TOTAL scenarios"
+render_and_post ""
 echo "::endgroup::"
 
 echo "Wrote verdict comment to $OUT_COMMENT"
