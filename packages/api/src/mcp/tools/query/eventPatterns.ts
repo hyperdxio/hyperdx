@@ -72,6 +72,7 @@ export function registerEventPatterns({
     'clickstack_event_patterns',
     {
       title: 'Event Pattern Mining',
+      annotations: { readOnlyHint: true },
       description:
         'Discover the most common log messages and event patterns. ' +
         'Samples random events, clusters them using the Drain algorithm, and returns ' +

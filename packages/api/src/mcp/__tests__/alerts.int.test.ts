@@ -9,7 +9,7 @@ import {
   getServer,
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
-import Alert, { AlertState } from '@/models/alert';
+import Alert, { AlertSource, AlertState } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
@@ -552,6 +552,72 @@ describe('MCP Alert Tools', () => {
         expect(output.name).toBe('Updated Name');
         expect(output.threshold).toBe(200);
         expect(output.interval).toBe('15m');
+      });
+
+      it('should clear source-specific fields when both source field groups are provided', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const dashboard = await createTestDashboardWithTile();
+        const webhook = await createTestWebhook();
+        const alert = await createTestAlert({
+          groupBy: 'service.name',
+          source: AlertSource.SAVED_SEARCH,
+        });
+
+        const tileResult = await callTool(client, 'clickstack_save_alert', {
+          id: alert._id.toString(),
+          source: 'tile',
+          dashboardId: dashboard._id.toString(),
+          tileId: 'tile-1',
+          savedSearchId: savedSearch._id.toString(),
+          groupBy: 'http.route',
+          threshold: 200,
+          thresholdType: 'above',
+          interval: '15m',
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        });
+        expect(tileResult.isError).toBeFalsy();
+
+        let updatedAlert = await Alert.findById(alert._id);
+        expect(updatedAlert?.source).toBe(AlertSource.TILE);
+        expect(updatedAlert?.dashboard?.toString()).toBe(
+          dashboard._id.toString(),
+        );
+        expect(updatedAlert?.tileId).toBe('tile-1');
+        expect(updatedAlert?.savedSearch).toBeNull();
+        expect(updatedAlert?.groupBy).toBeNull();
+
+        const savedSearchResult = await callTool(
+          client,
+          'clickstack_save_alert',
+          {
+            id: alert._id.toString(),
+            source: 'saved_search',
+            savedSearchId: savedSearch._id.toString(),
+            groupBy: 'http.route',
+            dashboardId: dashboard._id.toString(),
+            tileId: 'tile-1',
+            threshold: 300,
+            thresholdType: 'above',
+            interval: '30m',
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+          },
+        );
+        expect(savedSearchResult.isError).toBeFalsy();
+
+        updatedAlert = await Alert.findById(alert._id);
+        expect(updatedAlert?.source).toBe(AlertSource.SAVED_SEARCH);
+        expect(updatedAlert?.savedSearch?.toString()).toBe(
+          savedSearch._id.toString(),
+        );
+        expect(updatedAlert?.groupBy).toBe('http.route');
+        expect(updatedAlert?.dashboard).toBeNull();
+        expect(updatedAlert?.tileId).toBeNull();
       });
 
       it('should return not found for non-existent alert id', async () => {

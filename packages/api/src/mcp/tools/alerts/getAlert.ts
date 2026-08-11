@@ -15,7 +15,7 @@ import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
 function deriveAlertName(alert: {
   name?: string | null;
-  tileId?: string;
+  tileId?: string | null;
   savedSearch?: ISavedSearch | null;
   dashboard?: IDashboard | null;
 }): string | null {
@@ -54,6 +54,7 @@ export function registerGetAlert({
     'clickstack_get_alert',
     {
       title: 'Get Alert(s)',
+      annotations: { readOnlyHint: true },
       description:
         'Without an ID: list all alerts as a high-level summary ' +
         '(id, name, state, source, interval). Optionally filter by state ' +

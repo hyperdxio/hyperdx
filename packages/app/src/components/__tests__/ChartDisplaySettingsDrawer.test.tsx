@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
+import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 
 // FormatTime depends on useUserPreferences (jotai + localStorage); mock it
 // so the drawer renders in isolation.
@@ -192,7 +193,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).toBeInTheDocument();
     });
 
-    it('does not show the Series Limit input for raw SQL line charts', () => {
+    it('shows the Series Limit input for raw SQL line charts (client render cap)', () => {
       renderWithMantine(
         <ChartDisplaySettingsDrawer
           {...baseProps}
@@ -200,9 +201,12 @@ describe('ChartDisplaySettingsDrawer', () => {
         />,
       );
 
-      expect(
-        screen.queryByRole('textbox', { name: /series limit/i }),
-      ).not.toBeInTheDocument();
+      const input = screen.getByRole('textbox', { name: /series limit/i });
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute(
+        'placeholder',
+        `Default (${MAX_RENDERED_TIME_CHART_SERIES})`,
+      );
     });
 
     it('does not show the Series Limit input for table charts', () => {

@@ -3,6 +3,7 @@ import {
   AlertThresholdType,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import mongoose from 'mongoose';
 
 import {
   getLoggedInAgent,
@@ -11,12 +12,14 @@ import {
   makeRawSqlAlertTile,
   makeRawSqlNumberAlertTile,
   makeRawSqlTile,
+  makeSavedSearchAlertInput,
   makeTile,
   randomMongoId,
   RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
+import { SavedSearch } from '@/models/savedSearch';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -174,6 +177,107 @@ describe('alerts router', () => {
         }),
       )
       .expect(404);
+  });
+
+  it('can update an ungrouped saved-search alert returned with null groupBy', async () => {
+    const savedSearch = await SavedSearch.create({
+      name: 'Test Saved Search',
+      source: new mongoose.Types.ObjectId(),
+      team: team._id,
+    });
+    const created = await agent
+      .post('/alerts')
+      .send(
+        makeSavedSearchAlertInput({
+          savedSearchId: savedSearch._id.toString(),
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    expect(created.body.data.groupBy).toBeNull();
+
+    const updated = await agent
+      .put(`/alerts/${created.body.data._id}`)
+      .send({
+        ...makeSavedSearchAlertInput({
+          savedSearchId: savedSearch._id.toString(),
+          webhookId: webhook._id.toString(),
+        }),
+        groupBy: created.body.data.groupBy,
+        interval: '5m',
+      })
+      .expect(200);
+
+    expect(updated.body.data.interval).toBe('5m');
+    expect(updated.body.data.groupBy).toBeNull();
+  });
+
+  it('clears source-specific references when updating an alert source', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const tileId = dashboard.body.tiles[0].id;
+    const savedSearch = await SavedSearch.create({
+      name: 'Test Saved Search',
+      source: new mongoose.Types.ObjectId(),
+      team: team._id,
+    });
+    const staleAlert = await Alert.create({
+      team: team._id,
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.TILE,
+      savedSearch: new mongoose.Types.ObjectId(),
+      groupBy: 'service.name',
+      dashboard: dashboard.body.id,
+      tileId,
+    });
+
+    await agent
+      .put(`/alerts/${staleAlert._id.toString()}`)
+      .send({
+        channel: staleAlert.channel,
+        interval: staleAlert.interval,
+        threshold: staleAlert.threshold,
+        thresholdType: staleAlert.thresholdType,
+        source: AlertSource.SAVED_SEARCH,
+        savedSearchId: savedSearch._id.toString(),
+      })
+      .expect(200);
+
+    let updatedAlert = await Alert.findById(staleAlert._id);
+    expect(updatedAlert?.savedSearch?.toString()).toBe(
+      savedSearch._id.toString(),
+    );
+    expect(updatedAlert?.groupBy).toBeNull();
+    expect(updatedAlert?.dashboard).toBeNull();
+    expect(updatedAlert?.tileId).toBeNull();
+
+    await agent
+      .put(`/alerts/${staleAlert._id.toString()}`)
+      .send({
+        channel: staleAlert.channel,
+        interval: staleAlert.interval,
+        threshold: staleAlert.threshold,
+        thresholdType: staleAlert.thresholdType,
+        source: AlertSource.TILE,
+        dashboardId: dashboard.body.id,
+        tileId,
+      })
+      .expect(200);
+
+    updatedAlert = await Alert.findById(staleAlert._id);
+    expect(updatedAlert?.savedSearch).toBeNull();
+    expect(updatedAlert?.groupBy).toBeNull();
+    expect(updatedAlert?.dashboard?.toString()).toBe(dashboard.body.id);
+    expect(updatedAlert?.tileId).toBe(tileId);
   });
 
   it('round-trips note through create, update, and clear', async () => {
@@ -1025,6 +1129,232 @@ describe('alerts router', () => {
         .get(`/alerts/${alertId}/history`)
         .query({ startTime: 0, endTime: Date.now() })
         .expect(200);
+    });
+  });
+
+  describe('GET /alerts/:id/evaluations', () => {
+    const createTileAlert = async (): Promise<string> => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      return String(alert.body.data._id);
+    };
+
+    it('returns evaluation windows newest-first, including error windows', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      const at = (minsAgo: number) => new Date(now - minsAgo * 60_000);
+
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(10),
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: at(10), count: 0 }],
+      });
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(5),
+        state: AlertState.ERROR,
+        counts: 0,
+        lastValues: [],
+        errors: [
+          {
+            timestamp: at(4),
+            type: AlertErrorType.QUERY_TIMEOUT,
+            message: 'Alert query did not complete within the 300s timeout',
+          },
+        ],
+      });
+
+      const res = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ startTime: at(30).getTime(), endTime: now })
+        .expect(200);
+
+      expect(res.body.hasMore).toBe(false);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0].state).toBe(AlertState.ERROR);
+      expect(res.body.data[0].createdAt).toBe(at(5).toISOString());
+      expect(res.body.data[0].errors).toHaveLength(1);
+      expect(res.body.data[0].errors[0].type).toBe(
+        AlertErrorType.QUERY_TIMEOUT,
+      );
+      expect(res.body.data[1].state).toBe(AlertState.OK);
+    });
+
+    it('paginates with limit + the nextBefore cursor and reports hasMore', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      // Windows aligned to the alert interval cadence (5m apart)
+      const windows = [5, 10, 15].map(
+        minsAgo => new Date(now - minsAgo * 60_000),
+      );
+      for (const createdAt of windows) {
+        await AlertHistory.create({
+          alert: alertId,
+          createdAt,
+          state: AlertState.OK,
+          counts: 0,
+          lastValues: [{ startTime: createdAt, count: 0 }],
+        });
+      }
+
+      // Range chosen so the second page's bounded scan reaches startTime
+      // exactly (limit=2 → each page scans (2+1)×5m = 15m of history).
+      const startTime = now - 20 * 60_000;
+      const endTime = now;
+
+      const firstPage = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ limit: 2, startTime, endTime })
+        .expect(200);
+      expect(firstPage.body.data).toHaveLength(2);
+      expect(firstPage.body.hasMore).toBe(true);
+      expect(firstPage.body.nextBefore).toBe(windows[1].getTime());
+      expect(firstPage.body.data[0].createdAt).toBe(windows[0].toISOString());
+
+      const secondPage = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({
+          limit: 2,
+          startTime,
+          endTime,
+          before: firstPage.body.nextBefore,
+        })
+        .expect(200);
+      expect(secondPage.body.data).toHaveLength(1);
+      expect(secondPage.body.hasMore).toBe(false);
+      expect(secondPage.body.nextBefore).toBeUndefined();
+      expect(secondPage.body.data[0].createdAt).toBe(windows[2].toISOString());
+    });
+
+    it('returns the per-group breakdown for grouped windows', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      const windowStart = new Date(now - 5 * 60_000);
+      const bucket = new Date(now - 10 * 60_000);
+
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: windowStart,
+        state: AlertState.ALERT,
+        counts: 2,
+        lastValues: [{ startTime: bucket, count: 12 }],
+        group: 'ServiceName:api',
+        fired: true,
+      });
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: windowStart,
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: bucket, count: 1 }],
+        group: 'ServiceName:web',
+      });
+
+      const res = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ startTime: now - 30 * 60_000, endTime: now })
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(1);
+      const window = res.body.data[0];
+      expect(window.state).toBe(AlertState.ALERT);
+      expect(window.groupsTotal).toBe(2);
+      expect(window.groups).toHaveLength(2);
+      // Firing group first
+      expect(window.groups[0]).toMatchObject({
+        group: 'ServiceName:api',
+        state: AlertState.ALERT,
+        counts: 2,
+        fired: true,
+      });
+      expect(window.groups[0].lastValue.count).toBe(12);
+      expect(window.groups[1]).toMatchObject({
+        group: 'ServiceName:web',
+        state: AlertState.OK,
+      });
+    });
+
+    it('scopes results to the requested time range', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      const at = (minsAgo: number) => new Date(now - minsAgo * 60_000);
+
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(5),
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: at(5), count: 0 }],
+      });
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(45),
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: at(45), count: 0 }],
+      });
+
+      const res = await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ startTime: at(30).getTime(), endTime: now })
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].createdAt).toBe(at(5).toISOString());
+      expect(res.body.hasMore).toBe(false);
+    });
+
+    it('accepts a very wide range (span is clamped, not rejected)', async () => {
+      const alertId = await createTileAlert();
+      await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ startTime: 1, endTime: Date.now() })
+        .expect(200);
+    });
+
+    it('rejects an out-of-range limit', async () => {
+      const alertId = await createTileAlert();
+      await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ limit: 10_000 })
+        .expect(400);
+    });
+
+    it('rejects startTime >= endTime', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      await agent
+        .get(`/alerts/${alertId}/evaluations`)
+        .query({ startTime: now, endTime: now - 60_000 })
+        .expect(400);
+    });
+
+    it('returns 404 for an unknown alert id', async () => {
+      await agent.get(`/alerts/${randomMongoId()}/evaluations`).expect(404);
+    });
+
+    it("returns 404 for another team's alert", async () => {
+      const otherTeamAlert = await Alert.create({
+        team: randomMongoId(),
+        threshold: 1,
+        interval: '5m',
+        channel: { type: null },
+      });
+      await agent.get(`/alerts/${otherTeamAlert._id}/evaluations`).expect(404);
     });
   });
 

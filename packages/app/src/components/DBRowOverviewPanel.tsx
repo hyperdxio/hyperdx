@@ -27,6 +27,7 @@ export function RowOverviewPanel({
   source,
   rowId,
   aliasWith,
+  dateRange,
   hideHeader = false,
   flush = false,
   'data-testid': dataTestId,
@@ -34,6 +35,7 @@ export function RowOverviewPanel({
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  dateRange?: [Date, Date];
   hideHeader?: boolean;
   // When true, drop the horizontal padding so content aligns flush with
   // surrounding chrome (e.g. the tab bar in the trace span detail panel).
@@ -41,7 +43,7 @@ export function RowOverviewPanel({
   'data-testid'?: string;
 }) {
   const contentPx = flush ? 0 : 'md';
-  const { data } = useRowData({ source, rowId, aliasWith });
+  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
     useContext(RowSidePanelContext);
 

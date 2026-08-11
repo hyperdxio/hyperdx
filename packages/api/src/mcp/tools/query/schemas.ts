@@ -88,7 +88,8 @@ const mcpMetricTypeSchema = z
       '  sum – cumulative or delta counters (request counts, bytes processed). Use aggFn:"increase" for counter increase, or sum/avg on the computed rate.\n' +
       '  histogram – bucketed distributions (request duration). Use aggFn:"quantile" with level for percentiles, or aggFn:"count" for total bucket count.\n' +
       '  exponential histogram – exponential-bucket distributions. Use aggFn:"quantile" with level for percentiles, or aggFn:"count" for total bucket count.\n' +
-      'NOTE: summary is not supported by the query renderer.',
+      'NOTE: summary is not supported by the query renderer — to look at summary ' +
+      "metrics, use clickstack_sql against the table in the source's metricTables.summary.",
   );
 
 /**

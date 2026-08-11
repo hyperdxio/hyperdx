@@ -451,8 +451,10 @@ export const SelectSQLStatementSchema = z.object({
   limit: LimitSchema.optional(),
   // Nullish (not just optional): the chart editor clears the value to `null`
   // so the cleared state survives JSON round-tripping (e.g. through the URL
-  // query state). `null` and `undefined` both mean "disabled" downstream.
-  seriesLimit: z.number().int().positive().nullish(),
+  // query state). See SharedChartSettingsSchema.seriesLimit for full semantics
+  // (0 = unlimited, null/undefined = default cap). On builder group-by time
+  // charts a positive value additionally drives the __hdx_series_limit CTE.
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -597,6 +599,13 @@ export const isRangeThresholdType = (type: string): boolean =>
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
+  /**
+   * Only used on AlertHistory records (never on the alert itself): marks an
+   * evaluation window whose evaluation or notification failed. ERROR history
+   * rows are excluded from alert scheduling/backfill computations so the
+   * failed window is still retried.
+   */
+  ERROR = 'ERROR',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
   PENDING = 'PENDING',
@@ -604,6 +613,8 @@ export enum AlertState {
 
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
+  /** The alert query did not complete within the evaluation timeout. */
+  QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
@@ -799,14 +810,39 @@ export const AlertSchema = z.union([
 
 export type Alert = z.infer<typeof AlertSchema>;
 
+// Diagnostics for the evaluation that wrote a history record. Evaluation-
+// level: identical on every row one evaluation writes (incl. per-group rows).
+export const AlertHistoryAnalyticsSchema = z.object({
+  /** ClickHouse query duration for the evaluation (ms). On query-failure ERROR records, the time until the query failed. */
+  queryDurationMs: z.number().optional(),
+  /** Total wall time delivering webhook notifications in the evaluation, including retries (ms). */
+  webhookDurationMs: z.number().optional(),
+  /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
+  backfilledBuckets: z.number().optional(),
+});
+
+export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;
+
 export const AlertHistorySchema = z.object({
   counts: z.number(),
   createdAt: z.string(),
   lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
   state: z.nativeEnum(AlertState),
+  /** Errors recorded for this evaluation window (query/webhook failures). */
+  errors: z.array(AlertErrorSchema).optional(),
+  /** Diagnostics for the evaluation that wrote this record. */
+  analytics: AlertHistoryAnalyticsSchema.optional(),
 });
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
+
+/**
+ * Max per-group entries returned per evaluation window on the alert detail
+ * page. Groups are sorted firing-first before the cap, so firing groups are
+ * always visible. Shared between the API (enforces the cap) and the app
+ * (explains it in the UI).
+ */
+export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 
 // A single alert state transition within a time range, used to draw
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
@@ -1237,6 +1273,20 @@ const SharedChartSettingsSchema = z.object({
   // types ignore the field. Off by default, so existing tiles are unchanged.
   // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
   alternateRowBackground: z.boolean().optional(),
+  // Per-tile cap on the number of series a time chart renders. Shared level so
+  // it applies to BOTH builder and raw SQL time charts (raw SQL cannot inject
+  // the __hdx_series_limit CTE, so there the cap is enforced client-side in
+  // `formatResponseForTimeChart`). Semantics:
+  //   - null / undefined: use the default client render cap
+  //     (MAX_RENDERED_TIME_CHART_SERIES) — high-cardinality tiles stay
+  //     protected without opting in.
+  //   - a positive integer N: keep the top N series (by peak value).
+  //   - 0: unlimited — render every series (deliberate opt-out; a
+  //     high-cardinality group-by can then exhaust browser memory).
+  // On builder pie/bar charts this instead becomes a plain SQL LIMIT, and on
+  // builder group-by time charts a positive value also drives the
+  // __hdx_series_limit CTE (see SelectSQLStatementSchema.seriesLimit).
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:
@@ -2103,6 +2153,7 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  groupBy: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),
   note: alertNoteSchema,
@@ -2169,6 +2220,50 @@ export const AlertHistoryRangeApiResponseSchema = z.object({
 
 export type AlertHistoryRangeApiResponse = z.infer<
   typeof AlertHistoryRangeApiResponseSchema
+>;
+
+// Per-group result of one evaluation window for a group-by alert.
+export const AlertEvaluationGroupSchema = z.object({
+  group: z.string(),
+  state: z.nativeEnum(AlertState),
+  counts: z.number(),
+  /** The group's most recent bucket value in this window, if any. */
+  lastValue: z.object({ startTime: z.string(), count: z.number() }).optional(),
+  /** True when a notification was actually sent for this group. */
+  fired: z.boolean().optional(),
+});
+
+export type AlertEvaluationGroup = z.infer<typeof AlertEvaluationGroupSchema>;
+
+// One evaluation window on the alert detail page. For group-by alerts,
+// carries the per-group breakdown (firing-first, capped server-side).
+export const AlertEvaluationSchema = AlertHistorySchema.extend({
+  groups: z.array(AlertEvaluationGroupSchema).optional(),
+  /** Total number of groups evaluated in this window (before the cap). */
+  groupsTotal: z.number().optional(),
+});
+
+export type AlertEvaluation = z.infer<typeof AlertEvaluationSchema>;
+
+// Paginated evaluation history for the alert detail page. Each entry is one
+// evaluation window (newest first), including any errors recorded for it.
+export const AlertEvaluationsApiResponseSchema = z.object({
+  data: z.array(AlertEvaluationSchema),
+  /**
+   * True when older evaluation windows may exist within the requested time
+   * range beyond the returned page.
+   */
+  hasMore: z.boolean(),
+  /**
+   * Cursor (epoch ms) for the next-older page: pass as `before` on the next
+   * request. Present when hasMore is true. Cursor-based (not offset-based)
+   * so pages advance even across gaps with no evaluations.
+   */
+  nextBefore: z.number().optional(),
+});
+
+export type AlertEvaluationsApiResponse = z.infer<
+  typeof AlertEvaluationsApiResponseSchema
 >;
 
 // Webhooks
@@ -2299,3 +2394,61 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// IaC (Terraform) export
+//
+// Shared so `GET /iac/import-manifest` and the generators in
+// packages/common-utils/src/iac.ts cannot drift apart. Every listing is
+// id + name only — the endpoint deliberately projects nothing heavier.
+const IacManifestEntrySchema = z.object({
+  // Constrained, not a bare string: `id` is the only manifest value that
+  // reaches generated HCL inside a quoted string literal, and the client parse
+  // is what the export treats as its trust boundary. See assertResourceId in
+  // ./iac.ts, which enforces the same shape at the emit sink.
+  id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+  name: z.string().optional(),
+});
+
+export const IacImportManifestSchema = z.object({
+  dashboards: z.array(
+    IacManifestEntrySchema.extend({
+      // Set when a tile would not survive the import round trip, so the
+      // dashboard must not be offered. Computed server-side: the manifest
+      // deliberately does not ship tile configs. See isUnexportableTile.
+      unexportableTiles: z.boolean().optional(),
+    }),
+  ),
+  alerts: z.array(
+    IacManifestEntrySchema.extend({
+      // Only saved-search alerts are modelled by the Terraform provider.
+      source: z.string().optional(),
+      savedSearchId: z.string().optional(),
+    }),
+  ),
+  savedSearches: z.array(IacManifestEntrySchema),
+  sources: z.array(
+    IacManifestEntrySchema.extend({
+      // The provider models only the ClickHouse-backed kinds, so the client
+      // needs `kind` to filter PromQL sources out. See isImportableSource.
+      kind: z.string().optional(),
+    }),
+  ),
+  connections: z.array(
+    IacManifestEntrySchema.extend({
+      // Tri-state, mirroring the Connection model: undefined = unknown
+      // provenance, true = platform-provisioned, false = self-managed.
+      // Only an explicit `false` makes a connection safe to import.
+      platformProvisioned: z.boolean().optional(),
+    }),
+  ),
+  webhooks: z.array(IacManifestEntrySchema),
+  // Manifest keys whose listing hit IAC_MANIFEST_LIMIT, so the export for
+  // those types is partial. Per-type rather than one global boolean: warning
+  // that the file is incomplete because of a type the user did not tick is a
+  // false alarm. Defaulted so a response predating the field still parses —
+  // app and API ship in one image, but a multi-replica rolling deploy can
+  // briefly serve a new bundle against an old API.
+  truncatedTypes: z.array(z.string()).default([]),
+});
+
+export type IacImportManifest = z.infer<typeof IacImportManifestSchema>;

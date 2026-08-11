@@ -142,6 +142,7 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
     'clickstack_event_deltas',
     {
       title: 'Compare Events: Target vs Baseline',
+      annotations: { readOnlyHint: true },
       description:
         'Rank the properties of two row groups (logs or trace spans) by ' +
         'how much their value distributions differ. Same algorithm as the ' +
