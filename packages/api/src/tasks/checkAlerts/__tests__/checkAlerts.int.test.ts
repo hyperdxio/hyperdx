@@ -2849,12 +2849,26 @@ describe('checkAlerts', () => {
           teamWebhooksById,
         );
 
-        // Alert should remain in its default OK state and no history/webhooks should be emitted
+        // Alert should remain in its default OK state and no normal
+        // history/webhooks should be emitted. The failure is recorded as an
+        // ERROR-state history row for the window.
         const updated = await Alert.findById(details.alert.id);
         expect(updated!.state).toBe('OK');
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
         ).toBe(0);
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.INVALID_ALERT,
+        );
         expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
 
         // The invalid alert configuration should be recorded on the Alert
@@ -2966,19 +2980,41 @@ describe('checkAlerts', () => {
         const updated = await Alert.findById(details.alert.id);
         // State must be untouched — still ALERT
         expect(updated!.state).toBe(AlertState.ALERT);
-        // No AlertHistory created
+        // No normal AlertHistory created
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
         ).toBe(0);
         // No webhook fired
         expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
-        // Error recorded
+        // Error recorded on the alert (latest-only snapshot)
         expect(updated!.executionErrors).toBeDefined();
         expect(updated!.executionErrors!.length).toBe(1);
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.QUERY_ERROR,
         );
         expect(updated!.executionErrors![0].message).toContain(
+          'clickhouse kaput',
+        );
+        // ...and persisted as an ERROR history row for the evaluation window
+        // (5m interval at 22:12 → window start 22:10)
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+        expect(errorHistories[0].counts).toBe(0);
+        expect(errorHistories[0].lastValues).toHaveLength(0);
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.QUERY_ERROR,
+        );
+        expect(errorHistories[0].errors![0].message).toContain(
           'clickhouse kaput',
         );
       });
@@ -3031,11 +3067,567 @@ describe('checkAlerts', () => {
         // Default state is OK — must stay OK (not flipped to ALERT or anything else)
         expect(updated!.state).toBe(AlertState.OK);
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
         ).toBe(0);
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.QUERY_ERROR,
         );
+      });
+
+      it('records a QUERY_TIMEOUT with an actionable message when the query times out', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // The exact message the ClickHouse client rejects with when
+        // request_timeout elapses.
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('Timeout error.'));
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.executionErrors).toHaveLength(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.QUERY_TIMEOUT,
+        );
+        expect(updated!.executionErrors![0].message).toMatch(
+          /did not complete within the \d+s evaluation timeout/,
+        );
+        expect(updated!.executionErrors![0].message).toContain(
+          'the alert will not fire until the query completes in time',
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.QUERY_TIMEOUT,
+        );
+        // The ERROR row records the query's time-to-failure
+        expect(errorHistories[0].analytics?.queryDurationMs).toEqual(
+          expect.any(Number),
+        );
+      });
+
+      it('dedupes error history rows per evaluation window and separates windows', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        const querySpy = jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('boom 1'))
+          .mockRejectedValueOnce(new Error('boom 2'))
+          .mockRejectedValueOnce(new Error('boom 3'));
+
+        // Two failing ticks within the same 5m window (22:10) — the retry
+        // must not be skipped (the ERROR row is excluded from the due-ness
+        // gate) and must not accumulate a second row (upsert per window).
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        await processAlertAtTime(
+          new Date('2023-11-16T22:13:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        expect(querySpy).toHaveBeenCalledTimes(2);
+        let errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+        // The row carries the latest attempt's error
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].message).toContain('boom 2');
+
+        // A failing tick in the NEXT window gets its own row
+        await processAlertAtTime(
+          new Date('2023-11-16T22:16:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        }).sort({ createdAt: 1 });
+        expect(errorHistories).toHaveLength(2);
+        expect(errorHistories[1].createdAt.toISOString()).toBe(
+          '2023-11-16T22:15:00.000Z',
+        );
+
+        // No normal history was ever written
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
+        ).toBe(0);
+      });
+
+      it('still evaluates and fires for a window whose earlier attempt failed', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        // Data inside the window evaluated at 22:10 (range [22:05, 22:10))
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // First tick fails — records an ERROR row, no state/history change
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect((await Alert.findById(details.alert.id))!.state).toBe(
+          AlertState.OK,
+        );
+
+        // Next tick (same window): the real query runs and the alert fires.
+        // If the ERROR row counted as "window evaluated", this tick would be
+        // skipped and the alert would never fire.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:13:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.ALERT);
+        // Errors on the alert are cleared by the successful execution
+        expect(updated!.executionErrors ?? []).toHaveLength(0);
+
+        // The normal history was written for the retried window, and the
+        // failed attempt's ERROR row was removed — otherwise the window
+        // would render as ERROR forever (the evaluations view ranks ERROR
+        // above OK/ALERT) even though the retry succeeded.
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        expect(normalHistories[0].state).toBe(AlertState.ALERT);
+        expect(normalHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
+        ).toBe(0);
+        // Evaluation analytics: single-window evaluation → no backfill;
+        // query duration recorded; notification sent → delivery time recorded
+        expect(normalHistories[0].analytics).toBeDefined();
+        expect(normalHistories[0].analytics!.backfilledBuckets).toBe(0);
+        expect(normalHistories[0].analytics!.queryDurationMs).toEqual(
+          expect.any(Number),
+        );
+        expect(normalHistories[0].analytics!.webhookDurationMs).toEqual(
+          expect.any(Number),
+        );
+      });
+
+      it('keeps ERROR rows from older windows when a later window succeeds', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        // Non-breaching data in the 22:15 window (range [22:10, 22:15))
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:11:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Tick in the 22:10 window fails — ERROR row at 22:10
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The next window (22:15) evaluates cleanly. With no previous
+        // history the clean tick only looks back one window ([22:10, 22:15))
+        // — the failed tick's data range ([22:05, 22:10)) was never
+        // re-evaluated, so the 22:10 ERROR row is a truthful record of an
+        // unrecovered failure and must survive.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:17:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        expect(normalHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:15:00.000Z',
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+      });
+
+      it('clears the stale ERROR row when a failed window recovers via backfill on a later tick', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Tick 1 (window 22:05) evaluates cleanly — anchors the backfill.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:07:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // A webhook-failure-style ERROR row recorded alongside tick 1's
+        // normal rows (same createdAt). Its window WAS evaluated — it is
+        // never retried, so the cleanup below must not delete it.
+        await AlertHistory.create({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:05:00.000Z'),
+          state: AlertState.ERROR,
+          counts: 0,
+          lastValues: [],
+          errors: [
+            {
+              type: AlertErrorType.WEBHOOK_ERROR,
+              message: 'webhook boom',
+              timestamp: new Date('2023-11-16T22:07:00.000Z'),
+            },
+          ],
+        });
+
+        // Tick 2 (window 22:10) fails — ERROR row at 22:10, window not
+        // marked evaluated.
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
+        ).toBe(2);
+
+        // Tick 3 (window 22:15) evaluates cleanly. Its anchor is tick 1's
+        // 22:05 row, so the range [22:05, 22:15) folds the failed 22:10
+        // window in as a backfilled bucket — stamped with createdAt 22:15,
+        // NOT 22:10. The stale 22:10 ERROR row must still be cleared, or
+        // the recovered window renders as ERROR until the TTL expires it.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:17:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        }).sort({ createdAt: 1 });
+        expect(normalHistories.map(h => h.createdAt.toISOString())).toEqual([
+          '2023-11-16T22:05:00.000Z',
+          '2023-11-16T22:15:00.000Z',
+        ]);
+        expect(normalHistories[1].analytics!.backfilledBuckets).toBe(1);
+
+        // The backfilled window's ERROR row is gone; the webhook-failure
+        // row at the (already-evaluated) anchor window survives.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:05:00.000Z',
+        );
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+      });
+
+      it('records backfilled buckets when an evaluation catches up missed windows', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // First evaluation: steady state, covers a single bucket
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        const first = await AlertHistory.findOne({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:10:00.000Z'),
+        });
+        expect(first!.analytics!.backfilledBuckets).toBe(0);
+
+        // Next evaluation runs 15 minutes late (missed the 22:15 and 22:20
+        // ticks): the 22:25 window backfills the two missed buckets.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:27:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        const second = await AlertHistory.findOne({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:25:00.000Z'),
+        });
+        expect(second).toBeDefined();
+        expect(second!.analytics!.backfilledBuckets).toBe(2);
+        expect(second!.analytics!.queryDurationMs).toEqual(expect.any(Number));
+        // No notification fired in this evaluation → no delivery time
+        expect(second!.analytics!.webhookDurationMs).toBeUndefined();
       });
 
       it.each([
@@ -3141,10 +3733,31 @@ describe('checkAlerts', () => {
 
           const updated = await Alert.findById(details.alert.id);
           expect(updated!.state).toBe(AlertState.ALERT);
-          // Query succeeded, so AlertHistory should have been written
+          // Query succeeded, so normal AlertHistory should have been written
           expect(
-            await AlertHistory.countDocuments({ alert: details.alert.id }),
+            await AlertHistory.countDocuments({
+              alert: details.alert.id,
+              state: { $ne: AlertState.ERROR },
+            }),
           ).toBe(1);
+          // The webhook failure is also persisted as an ERROR history row
+          const errorHistories = await AlertHistory.find({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          });
+          expect(errorHistories).toHaveLength(1);
+          expect(errorHistories[0].errors).toHaveLength(1);
+          expect(errorHistories[0].errors![0].type).toBe(
+            AlertErrorType.WEBHOOK_ERROR,
+          );
+          expect(errorHistories[0].errors![0].message).toBe(
+            expectedErrorMessage,
+          );
+          // ...carrying the evaluation's analytics, including the time spent
+          // attempting the webhook delivery
+          expect(errorHistories[0].analytics?.webhookDurationMs).toEqual(
+            expect.any(Number),
+          );
           expect(updated!.executionErrors).toBeDefined();
           expect(updated!.executionErrors!.length).toBe(1);
           expect(updated!.executionErrors![0].type).toBe(
@@ -3525,9 +4138,24 @@ describe('checkAlerts', () => {
         expect(updated!.state).toBe(AlertState.ALERT);
         const histories = await AlertHistory.find({
           alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
         });
         expect(histories.length).toBe(2);
         expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
+
+        // Both groups' webhook failures land on a single ERROR history row
+        // for the evaluation window.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors).toHaveLength(2);
+        expect(
+          errorHistories[0].errors!.every(
+            e => e.type === AlertErrorType.WEBHOOK_ERROR,
+          ),
+        ).toBe(true);
 
         // Each group attempted to send a webhook and each one failed. withRetry
         // retries up to 3 times per group (2 groups × 3 attempts = 6 total calls).
@@ -3614,9 +4242,19 @@ describe('checkAlerts', () => {
         const updated = await Alert.findById(details.alert.id);
 
         // Query succeeded, state should flip to ALERT, history written
+        // (plus an ERROR row recording the webhook failure)
         expect(updated!.state).toBe(AlertState.ALERT);
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
+        ).toBe(1);
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
         ).toBe(1);
 
         // A WEBHOOK_ERROR should be recorded. The message is hardcoded for
