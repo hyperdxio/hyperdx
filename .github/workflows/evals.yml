@@ -30,6 +30,13 @@ on:
         description: 'Cells run concurrently within each scenario'
         type: string
         default: '1'
+      pr_number:
+        description:
+          'PR number to post the progressive verdict comment on (manual runs
+          only; the workflow lacks PR context otherwise). Leave empty to skip
+          commenting.'
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -175,14 +182,19 @@ jobs:
           HDX_EVAL_COMMIT_SHA:
             ${{ github.event.pull_request.head.sha || github.sha }}
           # Progressive sticky PR comment: the runner upserts one comment after
-          # each scenario. Only wired on same-repo PRs (forks can't get a
-          # write token via the default GITHUB_TOKEN). The final comment is also
-          # posted by the sticky mshick step below as a belt-and-suspenders.
+          # each scenario. Wired on same-repo PRs (forks can't get a write token
+          # via the default GITHUB_TOKEN), OR on a manual run that names a PR via
+          # the pr_number input (dispatch is always trusted/same-repo). The final
+          # comment is also posted by the sticky mshick step below on PR events.
           HDX_EVAL_GH_TOKEN:
-            ${{ github.event.pull_request.head.repo.fork == false &&
-            github.event_name == 'pull_request' && github.token || '' }}
+            ${{ ((github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.fork == false) ||
+            (github.event_name == 'workflow_dispatch' &&
+            github.event.inputs.pr_number != '')) && github.token || '' }}
           HDX_EVAL_GH_REPO: ${{ github.repository }}
-          HDX_EVAL_GH_PR: ${{ github.event.pull_request.number }}
+          HDX_EVAL_GH_PR:
+            ${{ github.event.pull_request.number ||
+            github.event.inputs.pr_number }}
         run: |
           docker compose -f docker-compose.evals.yml run --rm \
             -e ANTHROPIC_API_KEY \
