@@ -484,6 +484,29 @@ export function getDurationMsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
+/**
+ * Number format for a duration heatmap whose value expression is in
+ * milliseconds (e.g. getDurationMsExpression): the 0.001 factor converts ms
+ * back to seconds for display. Shared so the trace search RED/Heatmap tile and
+ * the significant-fields heatmap stay in lockstep on the unit.
+ */
+export const DURATION_HEATMAP_NUMBER_FORMAT = {
+  output: 'duration',
+  factor: 0.001,
+} satisfies NumberFormat;
+
+/**
+ * The single definition of an "error" span/log as a SQL predicate over a
+ * status-code or severity-text expression. Shared by the service dashboard,
+ * the LLM expressions, and trace search so the definition lives in one place.
+ * Matches both the short OTel status ('Error'/'ERROR') and the legacy
+ * collector form ('STATUS_CODE_ERROR'); severity-text values never take the
+ * latter, so it's a no-op there.
+ */
+export function errorPredicateSql(statusOrSeverityExpression: string): string {
+  return `lower(${statusOrSeverityExpression}) IN ('error', 'status_code_error')`;
+}
+
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
