@@ -12,6 +12,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 import { useClickhouseClient } from '@/clickhouse';
 import {
+  appendChunk,
   getGranularityAlignedTimeWindows,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
@@ -1522,6 +1523,44 @@ describe('useChartConfig', () => {
       expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
 
       expect(result2.current.data?.data).toBeDefined();
+    });
+  });
+
+  describe('appendChunk', () => {
+    const empty = { data: [], meta: [], rows: 0, isComplete: false };
+
+    it('reuses the chunk array on the first/only chunk (no copy)', () => {
+      const chunkData = [{ a: 1 }, { a: 2 }];
+      const chunk = {
+        data: chunkData,
+        meta: [{ name: 'a', type: 'UInt64' }],
+        rows: 2,
+      };
+      const result = appendChunk(empty, { chunk, isComplete: true });
+      // Same array reference — the large-array spread copy is skipped.
+      expect(result.data).toBe(chunkData);
+      expect(result.rows).toBe(2);
+      expect(result.isComplete).toBe(true);
+      expect(result.meta).toBe(chunk.meta);
+    });
+
+    it('prepends the newer chunk ahead of accumulated rows on later chunks', () => {
+      const older = {
+        data: [{ a: 3 }],
+        meta: [{ name: 'a', type: 'UInt64' }],
+        rows: 1,
+        isComplete: false,
+      };
+      const chunk = {
+        data: [{ a: 1 }, { a: 2 }],
+        meta: [{ name: 'a', type: 'UInt64' }],
+        rows: 2,
+      };
+      const result = appendChunk(older, { chunk, isComplete: true });
+      // Newer chunk first, then accumulated (oldest-first ordering preserved).
+      expect(result.data).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+      expect(result.data).not.toBe(chunk.data); // fresh array when merging
+      expect(result.rows).toBe(3);
     });
   });
 });

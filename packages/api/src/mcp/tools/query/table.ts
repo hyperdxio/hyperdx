@@ -204,6 +204,7 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
     'clickstack_table',
     {
       title: 'Aggregation Table',
+      annotations: { readOnlyHint: true },
       description:
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
@@ -228,7 +229,8 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
         '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
         'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
-        'summary metrics are not supported by the query renderer.',
+        'summary metrics are not supported by the query renderer — query them with ' +
+        "clickstack_sql against the table in the source's metricTables.summary.",
       inputSchema: tableSchema,
     },
     async input => {

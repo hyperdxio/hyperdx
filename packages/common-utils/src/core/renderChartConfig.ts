@@ -15,6 +15,7 @@ import {
   convertGranularityToSeconds,
   extractSettingsClauseFromEnd,
   getFirstTimestampValueExpression,
+  hasPositiveSeriesLimit,
   joinQuerySettings,
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
@@ -1315,7 +1316,9 @@ async function renderSeriesLimitCte(
 ): Promise<{ cte: ChSql; predicate: ChSql } | undefined> {
   const { seriesLimit } = chartConfig;
   if (
-    seriesLimit == null ||
+    // 0 = unlimited and null/undefined = unset both skip the CTE (a bare
+    // seriesLimit==null check would let 0 through and emit `LIMIT 0`).
+    !hasPositiveSeriesLimit(seriesLimit) ||
     !isUsingGroupBy(chartConfig) ||
     !isUsingGranularity(chartConfig) ||
     chartConfig.selectGroupBy === false ||

@@ -51,9 +51,10 @@ const timeChartSeriesLimitDescription =
   'Maximum number of series to fetch (the "Series Limit" display setting). ' +
   'Keeps the top-N groups by aggregated value over the queried range and ' +
   'drops the rest. Requires `groupBy`; ignored on a chart without one. ' +
-  'Omit to fetch every series.';
+  'Three-state: omit to apply the default render cap, 0 for unlimited, or a ' +
+  'positive N to keep the top N.';
 
-const seriesLimitSchema = z.number().int().positive().optional();
+const seriesLimitSchema = z.number().int().nonnegative().optional();
 
 const numberTileColorDescription =
   'Static color for the displayed number, as a palette token such as ' +
@@ -188,7 +189,8 @@ const mcpTileSelectItemSchema = z
       .describe(
         'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, histogram, or exponential histogram. ' +
           'Required (with metricName) when the tile sourceId is a metric source. ' +
-          'summary is not supported by the renderer.',
+          'summary is not supported by the renderer — chart summary metrics with a raw ' +
+          'SQL tile (configType:"sql") against the table in the source\'s metricTables.summary.',
       ),
     metricName: z
       .string()
@@ -661,12 +663,12 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
     limit: z
       .number()
       .int()
-      .positive()
+      .nonnegative()
       .optional()
       .describe(
         'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
           'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
-          'keeps the first N in that order. Omit to fetch all groups.',
+          'keeps the first N in that order. Omit or set 0 to fetch all groups.',
       ),
   }),
 });
@@ -703,12 +705,12 @@ const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
     limit: z
       .number()
       .int()
-      .positive()
+      .nonnegative()
       .optional()
       .describe(
         'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
           'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
-          'keeps the first N in that order. Omit to fetch all groups.',
+          'keeps the first N in that order. Omit or set 0 to fetch all groups.',
       ),
   }),
 });

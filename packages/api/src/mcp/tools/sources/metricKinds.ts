@@ -40,6 +40,21 @@ const _assertKindsMatchEnum: readonly QueryableMetricKind[] = [
 void _assertKindsMatchEnum;
 
 /**
+ * Metric kinds exposed by the discovery tools (clickstack_list_metrics,
+ * clickstack_describe_metric, and clickstack_describe_source's metric-name
+ * sampling). Superset of QUERYABLE_METRIC_KINDS: adds `summary`, whose
+ * metrics are discoverable but cannot be charted — the query renderer has
+ * no summary translation, so agents are directed to clickstack_sql for
+ * those.
+ */
+export const DISCOVERABLE_METRIC_KINDS = [
+  ...QUERYABLE_METRIC_KINDS,
+  'summary',
+] as const;
+
+export type DiscoverableMetricKind = (typeof DISCOVERABLE_METRIC_KINDS)[number];
+
+/**
  * Allowed kind keys on the `metricTables` map when serialising a metric
  * source into an MCP response. Includes the non-queryable `summary` kind
  * because the model schema declares its table even though the query renderer

@@ -51,6 +51,10 @@ import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import {
+  getRowLookupWindow,
+  resolveRowTimestampAnchor,
+} from '@/utils/rowTimestamps';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -76,6 +80,7 @@ import {
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
+import { ViewTraceCalloutButton } from './ViewTraceCalloutButton';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -301,6 +306,23 @@ export const DBRowSidePanelInner = ({
   const activeRowId = skipRowQuery ? undefined : resolvedRowId;
   const activeAliasWith = skipRowQuery ? undefined : resolvedAliasWith;
 
+  // A cross-source frame's row id is synthesized from ids alone ("View Trace"
+  // builds `TraceId = … AND SpanId = …`), so on its own the lookup has no
+  // timestamp predicate and scans every part. When the pushing panel stamped
+  // the origin row's timestamp onto the frame, bound the lookup to a window
+  // around it. `useRowData` retries unbounded if that window misses.
+  const frameFocusTimestamp = activeSourceFrame?.focusTimestamp;
+  const frameDateRange = useMemo<[Date, Date] | undefined>(
+    () =>
+      // Nav entries carry a full row id (timestamp included), so their lookups
+      // are already bounded and must not be narrowed by the frame's window —
+      // surrounding context can walk arbitrarily far from the frame's anchor.
+      leafNav != null ? undefined : getRowLookupWindow(frameFocusTimestamp),
+    [leafNav, frameFocusTimestamp],
+  );
+
+  const activeDateRange = skipRowQuery ? undefined : frameDateRange;
+
   const {
     data: rowData,
     isLoading: isRowLoading,
@@ -311,6 +333,7 @@ export const DBRowSidePanelInner = ({
     source,
     rowId: activeRowId,
     aliasWith: activeAliasWith,
+    dateRange: activeDateRange,
   });
 
   const hasActiveStacks = activeSourceFrame != null || leafNav != null;
@@ -417,6 +440,17 @@ export const DBRowSidePanelInner = ({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
+
+  // Owns the View Trace nudge's auto-open latch. Kept here (above the loading
+  // gate that unmounts the row content on every navigation) so the one-time
+  // callout doesn't reset and re-open as the user pages between rows. Resets
+  // when the panel closes and this component unmounts.
+  const [viewTraceCalloutAutoOpened, setViewTraceCalloutAutoOpened] =
+    useState(false);
+  const handleViewTraceCalloutAutoOpen = useCallback(
+    () => setViewTraceCalloutAutoOpened(true),
+    [],
+  );
 
   // Capture the root event body once for the root breadcrumb label.
   const [initialMainContent, setInitialMainContent] = useState<
@@ -530,6 +564,22 @@ export const DBRowSidePanelInner = ({
     traceSourceData?.kind === SourceKind.Trace
       ? traceSourceData.spanIdExpression
       : undefined;
+
+  // The current row's own timestamp, read from the source's
+  // `timestampValueExpression` rather than the displayed expression (which
+  // may not be in the ordering key). Undefined when the source exposes no
+  // better-than-day precision, so a composite `"EventDate, EventTime"` can't
+  // anchor a window on `EventDate`'s midnight.
+  const rowMeta = rowData?.meta;
+  const rowFocusTimestamp = useMemo(
+    () =>
+      resolveRowTimestampAnchor({
+        timestampValueExpression: source.timestampValueExpression,
+        row: normalizedRow,
+        meta: rowMeta,
+      })?.toISOString(),
+    [source.timestampValueExpression, normalizedRow, rowMeta],
+  );
 
   const traceSpanRowId = useMemo(() => {
     const clauses: string[] = [];
@@ -893,11 +943,11 @@ export const DBRowSidePanelInner = ({
             </>
           )}
           {showLogTraceActions && (
-            <Button
-              data-testid="side-panel-view-trace"
-              variant="subtle"
-              size="compact-xs"
-              onClick={() => {
+            <ViewTraceCalloutButton
+              disabled={!traceSourceData || !traceSpanRowId}
+              autoOpened={viewTraceCalloutAutoOpened}
+              onAutoOpen={handleViewTraceCalloutAutoOpen}
+              onView={() => {
                 if (traceSourceData && traceSpanRowId) {
                   handleSourceStackPush({
                     sourceId: traceSourceData.id,
@@ -905,13 +955,11 @@ export const DBRowSidePanelInner = ({
                     label: mainContent || 'Log',
                     sourceKind: traceSourceData.kind as SourceKind,
                     aliasWith: [],
+                    focusTimestamp: rowFocusTimestamp,
                   });
                 }
               }}
-              disabled={!traceSourceData || !traceSpanRowId}
-            >
-              View Trace →
-            </Button>
+            />
           )}
         </Group>
         <DBRowSidePanelHeader
@@ -998,6 +1046,7 @@ export const DBRowSidePanelInner = ({
             source={source}
             rowId={activeRowId}
             aliasWith={activeAliasWith}
+            dateRange={activeDateRange}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -1062,6 +1111,7 @@ export const DBRowSidePanelInner = ({
             source={source}
             rowId={activeRowId}
             aliasWith={activeAliasWith}
+            dateRange={activeDateRange}
           />
         </ErrorBoundary>
       )}
