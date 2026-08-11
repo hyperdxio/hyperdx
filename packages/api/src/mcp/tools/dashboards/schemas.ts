@@ -189,7 +189,8 @@ const mcpTileSelectItemSchema = z
       .describe(
         'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, histogram, or exponential histogram. ' +
           'Required (with metricName) when the tile sourceId is a metric source. ' +
-          'summary is not supported by the renderer.',
+          'summary is not supported by the renderer — chart summary metrics with a raw ' +
+          'SQL tile (configType:"sql") against the table in the source\'s metricTables.summary.',
       ),
     metricName: z
       .string()

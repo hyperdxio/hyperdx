@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  deriveVariableName,
+  getFilterVariableName,
+  hasFilterEffect,
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
+  validateVariableName,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -8,8 +16,10 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Box,
   Button,
   Center,
+  Divider,
   Group,
   Input,
   Modal,
@@ -31,6 +41,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { CheckBoxControlled } from '@/components/InputControlled';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -46,7 +57,7 @@ import { getMetricTableName } from './utils';
 
 import styles from '@styles/DashboardFiltersModal.module.scss';
 
-const MODAL_SIZE = 'md';
+const MODAL_SIZE = 'lg';
 
 interface CustomInputWrapperProps {
   children: React.ReactNode;
@@ -88,37 +99,118 @@ interface DashboardFilterEditFormProps {
   filter: DashboardFilter;
   isNew: boolean;
   source: TSource | undefined;
+  /** Filters that already exist on the dashboard, used to keep variable names unique. */
+  filters: DashboardFilter[];
+  /** Whether the broadcast / variable controls are available. */
+  showVariableOptions: boolean;
   onSave: (definition: DashboardFilter) => void;
   onClose: () => void;
   onCancel: () => void;
 }
 
+/** Normalize a stored filter into form values. */
+const toFormValues = (filter: DashboardFilter): DashboardFilter => ({
+  ...filter,
+  where: filter.where ?? '',
+  whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
+  appliesToSourceIds: filter.appliesToSourceIds ?? [],
+  isBroadcastEnabled: isFilterBroadcastEnabled(filter),
+  isVariableEnabled: isFilterVariableEnabled(filter),
+  variableName: filter.variableName ?? '',
+});
+
 const DashboardFilterEditForm = ({
   filter,
   isNew,
   source: presetSource,
+  filters,
+  showVariableOptions,
   onSave,
   onClose,
   onCancel,
 }: DashboardFilterEditFormProps) => {
-  const { handleSubmit, register, formState, control, reset } =
-    useForm<DashboardFilter>({
-      defaultValues: {
-        ...filter,
-        where: filter.where ?? '',
-        whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
-        appliesToSourceIds: filter.appliesToSourceIds ?? [],
-      },
-    });
+  const {
+    handleSubmit,
+    register,
+    formState,
+    control,
+    reset,
+    setValue,
+    trigger,
+  } = useForm<DashboardFilter>({
+    defaultValues: toFormValues(filter),
+  });
+
+  // Gates the auto-fill of Variable Name from Name below. Seeded true for a filter
+  // that already has a stored name, because renaming an existing filter must not
+  // silently break the tiles referencing its old token.
+  const [hasEditedVariableName, setHasEditedVariableName] = useState(
+    !isNew && !!filter.variableName,
+  );
 
   useEffect(() => {
-    reset({
-      ...filter,
-      where: filter.where ?? '',
-      whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
-      appliesToSourceIds: filter.appliesToSourceIds ?? [],
+    reset(toFormValues(filter));
+    setHasEditedVariableName(!isNew && !!filter.variableName);
+  }, [filter, isNew, reset]);
+
+  const otherFilters = useMemo(
+    () => filters.filter(f => f.id !== filter.id),
+    [filters, filter.id],
+  );
+
+  const [formFilterName, formIsBroadCastEnabled, formIsVariableEnabled] =
+    useWatch({
+      control,
+      name: ['name', 'isBroadcastEnabled', 'isVariableEnabled'],
     });
-  }, [filter, reset]);
+
+  const derivedVariableName = deriveVariableName(formFilterName ?? '');
+
+  useEffect(() => {
+    if (!showVariableOptions || hasEditedVariableName) return;
+    setValue('variableName', derivedVariableName);
+  }, [
+    derivedVariableName,
+    hasEditedVariableName,
+    showVariableOptions,
+    setValue,
+  ]);
+
+  const validateVariableNameField = (value: string | undefined) => {
+    if (!showVariableOptions || !formIsVariableEnabled) return true;
+    return validateVariableName({ value, otherFilters }) ?? true;
+  };
+
+  /**
+   * Registered on the variable checkbox — the lower of the pair — so the
+   * message lands under both controls rather than between them.
+   *
+   * Skipped when the controls are hidden: the form cannot express the invalid
+   * state there (broadcast defaults on, and neither box is reachable), so all
+   * an error could do is block a save the user has no way to fix.
+   */
+  const validateFilterModes = () => {
+    if (!showVariableOptions) return true;
+    return (
+      hasFilterEffect({
+        isBroadcastEnabled: formIsBroadCastEnabled,
+        isVariableEnabled: formIsVariableEnabled,
+      }) ||
+      'A filter must broadcast its value, be available as a variable, or both'
+    );
+  };
+
+  // The rule spans two checkboxes but its error lives on one, so react-hook-form
+  // won't re-run it when the *other* box changes. Re-trigger on both.
+  useEffect(() => {
+    if (!showVariableOptions) return;
+    void trigger('isVariableEnabled');
+  }, [
+    formIsBroadCastEnabled,
+    formIsVariableEnabled,
+    showVariableOptions,
+    trigger,
+  ]);
 
   const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({
@@ -160,6 +252,9 @@ const DashboardFilterEditForm = ({
             const appliesTo = values.appliesToSourceIds?.filter(
               id => !!id?.length,
             );
+            const isVariableEnabled = values.isVariableEnabled === true;
+            const isBroadcastEnabled = values.isBroadcastEnabled !== false;
+            const trimmedVariableName = values.variableName?.trim() ?? '';
             onSave({
               ...values,
               where: trimmedWhere || undefined,
@@ -167,11 +262,23 @@ const DashboardFilterEditForm = ({
                 ? (values.whereLanguage ?? 'sql')
                 : undefined,
               appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
+              isBroadcastEnabled,
+              isVariableEnabled,
+              // Dropped when the variable is disabled, so the set of variable
+              // names is exactly the set of enabled filters.
+              variableName: isVariableEnabled
+                ? trimmedVariableName ||
+                  deriveVariableName(values.name) ||
+                  undefined
+                : undefined,
             });
           })}
         >
           <Stack>
-            <CustomInputWrapper label="Name" error={formState.errors.name}>
+            <CustomInputWrapper
+              label="Display name"
+              error={formState.errors.name}
+            >
               <TextInput
                 placeholder="Name"
                 data-testid="filter-name-input"
@@ -206,26 +313,6 @@ const DashboardFilterEditForm = ({
                 onClose={() => setIsSourceSchemaPreviewOpen(false)}
               />
             </CustomInputWrapper>
-            {!presetSource && (
-              <CustomInputWrapper
-                label="Applies to sources"
-                tooltipText="Leave empty to apply to all tiles. Selecting one or more sources restricts the filter to only tiles using those sources."
-              >
-                <SourceMultiSelectControlled
-                  control={control}
-                  name="appliesToSourceIds"
-                  data-testid="applies-to-source-selector"
-                  comboboxProps={{ withinPortal: true }}
-                  placeholder="All sources"
-                  allowedSourceKinds={[
-                    SourceKind.Log,
-                    SourceKind.Trace,
-                    SourceKind.Session,
-                    SourceKind.Metric,
-                  ]}
-                />
-              </CustomInputWrapper>
-            )}
             {sourceIsMetric && (
               <CustomInputWrapper
                 label="Metric type"
@@ -286,6 +373,79 @@ const DashboardFilterEditForm = ({
               />
             </CustomInputWrapper>
 
+            {showVariableOptions && (
+              <>
+                <Divider />
+                <CheckBoxControlled
+                  control={control}
+                  name="isBroadcastEnabled"
+                  size="xs"
+                  label="Broadcast filter condition"
+                  description="Apply the selected value as a filter condition on each tile."
+                  data-testid="filter-broadcast-checkbox"
+                />
+              </>
+            )}
+            {/**
+             * Not available for filters on preset dashboards, always shown when showVariableOptions is disabled,
+             * and shown only when the broadcast condition is enabled if showVariableOptions is enabled.
+             **/}
+            {!presetSource &&
+              (!showVariableOptions || formIsBroadCastEnabled) && (
+                <Box ml={showVariableOptions ? 'xl' : undefined}>
+                  <CustomInputWrapper
+                    label="Applies to sources"
+                    tooltipText="Leave empty to apply to all tiles. Selecting one or more sources restricts the filter to only tiles using those sources."
+                  >
+                    <SourceMultiSelectControlled
+                      control={control}
+                      name="appliesToSourceIds"
+                      data-testid="applies-to-source-selector"
+                      comboboxProps={{ withinPortal: true }}
+                      placeholder="All sources"
+                      allowedSourceKinds={[
+                        SourceKind.Log,
+                        SourceKind.Trace,
+                        SourceKind.Session,
+                        SourceKind.Metric,
+                      ]}
+                    />
+                  </CustomInputWrapper>
+                </Box>
+              )}
+            {showVariableOptions && (
+              <>
+                <Divider />
+                <CheckBoxControlled
+                  control={control}
+                  name="isVariableEnabled"
+                  size="xs"
+                  label="Available as variable"
+                  description="Expose the selected value a $variable."
+                  data-testid="filter-variable-enabled-checkbox"
+                  rules={{ validate: validateFilterModes }}
+                />
+                {formIsVariableEnabled && (
+                  <Box ml={showVariableOptions ? 'xl' : undefined}>
+                    <CustomInputWrapper
+                      label="Variable name"
+                      tooltipText="The name by which the variable is referenced"
+                      error={formState.errors.variableName}
+                    >
+                      <TextInput
+                        placeholder={derivedVariableName || 'variable_name'}
+                        data-testid="filter-variable-name-input"
+                        {...register('variableName', {
+                          onChange: () => setHasEditedVariableName(true),
+                          validate: validateVariableNameField,
+                        })}
+                      />
+                    </CustomInputWrapper>
+                  </Box>
+                )}
+              </>
+            )}
+
             <Group justify="space-between" my="xs">
               <Button variant="secondary" onClick={onCancel}>
                 Cancel
@@ -342,6 +502,8 @@ interface DashboardFiltersListProps {
   filters: DashboardFilter[];
   isLoading?: boolean;
   hideAppliesTo?: boolean;
+  /** Whether the broadcast / variable controls are available. */
+  showVariableOptions: boolean;
   onEdit: (filter: DashboardFilter) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
@@ -352,6 +514,7 @@ const DashboardFiltersList = ({
   filters,
   isLoading,
   hideAppliesTo,
+  showVariableOptions,
   onEdit,
   onRemove,
   onClose,
@@ -363,7 +526,7 @@ const DashboardFiltersList = ({
     <Modal
       opened
       onClose={onClose}
-      title="Filters"
+      title={showVariableOptions ? 'Filters and Variables' : 'Filters'}
       size={MODAL_SIZE}
       className={styles.modal}
     >
@@ -384,6 +547,10 @@ const DashboardFiltersList = ({
           const appliedDisplay = appliedSourceNames
             ? appliedSourceNames.join(', ')
             : 'All sources';
+          const variableName =
+            showVariableOptions && isFilterVariableEnabled(filter)
+              ? getFilterVariableName(filter)
+              : undefined;
           return (
             <Paper
               key={filter.id}
@@ -394,7 +561,12 @@ const DashboardFiltersList = ({
               data-testid={`dashboard-filter-item-${filter.name}`}
             >
               <Group justify="space-between" className={styles.filterHeader}>
-                <Text size="xs">{filter.name}</Text>
+                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Text size="xs" truncate="end">
+                    {filter.name}
+                    {!!variableName && ` ($${variableName})`}
+                  </Text>
+                </Group>
                 <Group>
                   <UnstyledButton
                     onClick={() => onEdit(filter)}
@@ -423,7 +595,7 @@ const DashboardFiltersList = ({
                   {queriedSourceName}
                 </Text>
               </Group>
-              {!hideAppliesTo && (
+              {!hideAppliesTo && isFilterBroadcastEnabled(filter) && (
                 <Group
                   gap="xs"
                   wrap="nowrap"
@@ -477,6 +649,8 @@ interface DashboardFiltersEditModalProps {
   filters: DashboardFilter[];
   isLoading?: boolean;
   source?: TSource;
+  /** Whether to offer the broadcast / variable controls. */
+  showVariableOptions: boolean;
   onClose: () => void;
   onSaveFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (id: string) => void;
@@ -489,6 +663,7 @@ const DashboardFiltersModal = ({
   filters,
   isLoading,
   source,
+  showVariableOptions,
   onClose,
   onSaveFilter,
   onRemoveFilter,
@@ -517,6 +692,11 @@ const DashboardFiltersModal = ({
       source: source?.id ?? '',
       where: '',
       whereLanguage: getStoredLanguage() ?? 'sql',
+      isBroadcastEnabled: true,
+      // New filters are variable-enabled wherever the controls are available, so
+      // the checkbox is controlled from the first render. Callers that hide the
+      // controls get false, since their UI offers no way to turn it back off.
+      isVariableEnabled: showVariableOptions,
     });
   };
 
@@ -545,6 +725,8 @@ const DashboardFiltersModal = ({
         onClose={onClose}
         isNew={selectedFilter.id === NEW_FILTER_ID}
         source={source}
+        filters={filters}
+        showVariableOptions={showVariableOptions}
       />
     );
   } else {
@@ -557,6 +739,7 @@ const DashboardFiltersModal = ({
         onAddNew={handleAddNewFilter}
         isLoading={isLoading}
         hideAppliesTo={!!source}
+        showVariableOptions={showVariableOptions}
       />
     );
   }

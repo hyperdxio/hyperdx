@@ -64,7 +64,9 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
       description:
         'Execute raw ClickHouse SQL. ' +
         'ADVANCED: only use this when you need capabilities the builder tools cannot express — ' +
-        'JOINs, sub-queries, CTEs, or querying tables not registered as sources.\n\n' +
+        'JOINs, sub-queries, CTEs, querying tables not registered as sources, or looking at ' +
+        'summary-type metrics (the metricTables.summary table on a metric source, which the ' +
+        'builder tools cannot query).\n\n' +
         'Requires connectionId (not sourceId) — call clickstack_list_sources to find connections. ' +
         'Call clickstack_describe_source to discover column names before writing SQL.\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
