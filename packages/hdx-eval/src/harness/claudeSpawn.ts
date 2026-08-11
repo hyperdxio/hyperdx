@@ -66,6 +66,66 @@ export function pluginCliArgs(def?: PluginDefinition): string[] {
       : [];
 }
 
+/**
+ * Build the environment handed to the `claude` subprocess.
+ *
+ * SECURITY: the agent runs with `--dangerously-skip-permissions` and executes
+ * model-driven tool calls, so it must NOT inherit the runner's full env. In CI
+ * the runner holds secrets the agent has no business seeing — notably
+ * `HDX_EVAL_GH_TOKEN` (a `pull-requests: write` GitHub token) and the various
+ * `HDX_EVAL_*` config values. Spreading `process.env` would leak all of them
+ * into a process that can emit them in captured output or use the token to
+ * alter the repo. Instead we start from nothing and copy only an ALLOWLIST of
+ * benign system vars the CLI/Node need, then inject exactly the one secret the
+ * agent legitimately requires: its own `ANTHROPIC_API_KEY`.
+ *
+ * The stdio MCP (e.g. the ClickHouse MCP) receives its own credentials
+ * explicitly via the mcp-config `env` block (see mcpConfig.ts), so it does not
+ * depend on inheritance here.
+ */
+export function buildAgentEnv(
+  apiKey: string,
+  parentEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  // Benign, non-secret system vars the Claude CLI + Node runtime rely on.
+  // Everything not listed here (all HDX_EVAL_*, GH tokens, cloud creds, etc.)
+  // is intentionally dropped.
+  const ALLOWED_KEYS = [
+    'PATH',
+    'HOME',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'LANG',
+    'LC_ALL',
+    'LC_CTYPE',
+    'TERM',
+    'TMPDIR',
+    'TZ',
+    'NODE_OPTIONS',
+    // Standard proxy/TLS knobs so the CLI can reach the Anthropic API through
+    // a corporate proxy or custom CA when the environment requires it.
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'NO_PROXY',
+    'http_proxy',
+    'https_proxy',
+    'no_proxy',
+    'NODE_EXTRA_CA_CERTS',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
+  ];
+
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ALLOWED_KEYS) {
+    const value = parentEnv[key];
+    if (value !== undefined) env[key] = value;
+  }
+  // The one secret the agent actually needs.
+  env.ANTHROPIC_API_KEY = apiKey;
+  return env;
+}
+
 export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   const tempdir = mkdtempSync(join(tmpdir(), 'hdx-eval-'));
   const mcpConfigPath = join(tempdir, 'mcp-config.json');
@@ -126,7 +186,10 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   // its children. The SIGKILL escalation uses process.kill(-pid) to reap
   // any orphaned MCP server processes that survived SIGTERM.
   const proc = spawn('claude', argv, {
-    env: { ...process.env, ANTHROPIC_API_KEY: opts.apiKey },
+    // Allowlisted env only — never spread process.env, which would leak the
+    // runner's HDX_EVAL_GH_TOKEN and other secrets into the agent. See
+    // buildAgentEnv.
+    env: buildAgentEnv(opts.apiKey),
     cwd: tempdir,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
