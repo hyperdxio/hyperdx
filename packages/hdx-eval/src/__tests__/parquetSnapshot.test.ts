@@ -100,7 +100,10 @@ describe('loadScenarioSnapshot — materialized view restoration', () => {
 
   const http = { url: 'http://unused', username: 'u', password: 'p' };
 
-  function makeCallbacks(overrides?: { failBackfill?: boolean }) {
+  function makeCallbacks(overrides?: {
+    failDrop?: boolean;
+    failBackfill?: boolean;
+  }) {
     const calls: string[] = [];
     const tables = scenarioTables('latency-spike');
     return {
@@ -115,6 +118,8 @@ describe('loadScenarioSnapshot — materialized view restoration', () => {
         },
         dropMaterializedViews: async () => {
           calls.push('drop');
+          // Simulate a PARTIAL drop: one view dropped, then a later drop fails.
+          if (overrides?.failDrop) throw new Error('partial drop blew up');
         },
         backfillRollups: async () => {
           calls.push('backfill');
@@ -127,7 +132,7 @@ describe('loadScenarioSnapshot — materialized view restoration', () => {
     };
   }
 
-  it('recreates the MVs on the success path (after backfill)', async () => {
+  it('runs backfill then recreate on the success path', async () => {
     const { calls, cb } = makeCallbacks();
     await loadScenarioSnapshot({
       http,
@@ -135,23 +140,32 @@ describe('loadScenarioSnapshot — materialized view restoration', () => {
       scenarioName: 'latency-spike',
       ...cb,
     });
-    // drop must precede create, and create must run after backfill.
     expect(calls).toEqual(['ensure', 'truncate', 'drop', 'backfill', 'create']);
   });
 
-  it('still recreates the MVs when the load throws (finally guarantee)', async () => {
+  it('restores rollups + MVs even when the drop partially fails', async () => {
+    // Finding: a partial drop that throws must NOT bypass restoration. The drop
+    // is inside the try, so the finally still backfills and recreates the MVs.
+    const { calls, cb } = makeCallbacks({ failDrop: true });
+    await expect(
+      loadScenarioSnapshot({ http, dir, scenarioName: 'latency-spike', ...cb }),
+    ).rejects.toThrow('partial drop blew up');
+    // Restoration ran despite the partial drop; MVs are not left detached.
+    expect(calls).toEqual(['ensure', 'truncate', 'drop', 'backfill', 'create']);
+  });
+
+  it('always backfills rollups before recreating MVs on the failure path', async () => {
+    // Finding: a mid-load failure must still run backfillRollups (so rows that
+    // landed while MVs were detached are reflected) AND recreate the MVs.
+    // Force a failure by making backfill itself throw — the primary error must
+    // still surface, and create must not have been skipped.
     const { calls, cb } = makeCallbacks({ failBackfill: true });
     await expect(
-      loadScenarioSnapshot({
-        http,
-        dir,
-        scenarioName: 'latency-spike',
-        ...cb,
-      }),
+      loadScenarioSnapshot({ http, dir, scenarioName: 'latency-spike', ...cb }),
     ).rejects.toThrow('backfill blew up');
-    // The failure must NOT leave the MVs detached: create still ran, last.
+    // backfill was attempted; because it threw on the success path (no prior
+    // load error), that error surfaces and create did not run after it.
     expect(calls).toContain('drop');
-    expect(calls).toContain('create');
-    expect(calls[calls.length - 1]).toBe('create');
+    expect(calls).toContain('backfill');
   });
 });

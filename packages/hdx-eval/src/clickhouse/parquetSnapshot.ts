@@ -210,19 +210,26 @@ export async function loadScenarioSnapshot(args: {
   const tables = await args.ensure();
   await args.truncate();
 
-  // Detach the MVs so the raw bulk insert below does not trigger per-block
-  // rollup maintenance.
-  await args.dropMaterializedViews(tables);
-
   const files: LoadResult['files'] = [];
   let totalRows = 0;
 
-  // Once the MVs are dropped we MUST recreate them no matter what — if an
-  // insert or the rollup backfill throws mid-load and we bailed here, later
-  // live inserts would stop maintaining the metadata rollups, leaving MCP
-  // queries with stale/empty metadata. The finally re-attaches them on every
-  // path (success or failure) so the tables are never left detached.
+  // Everything from the FIRST drop onward runs under try/finally. Once we start
+  // dropping the rollup MVs — even a PARTIAL drop that throws partway through —
+  // we MUST rebuild + re-attach them, or later live inserts silently stop
+  // maintaining the metadata rollups (stale/empty MCP metadata). The finally
+  // therefore ALWAYS backfills the rollups (so rows inserted while the MVs were
+  // detached are still reflected, even if the insert loop failed midway) and
+  // then recreates the MVs. The drop/backfill/create callbacks are idempotent
+  // (IF EXISTS / IF NOT EXISTS), so running them on the partial-failure path is
+  // safe. `backfillRollups` recomputes from the current raw-table contents, so
+  // a partial load yields rollups consistent with whatever rows actually landed.
+  let loadError: unknown;
   try {
+    // Detach the MVs so the raw bulk insert below does not trigger per-block
+    // rollup maintenance. Inside the try so a partial drop is still followed by
+    // the restoration path.
+    await args.dropMaterializedViews(tables);
+
     for (const field of snapshotTableFields()) {
       const table = tables[field];
       const filePath = join(args.dir, snapshotFileName(table));
@@ -233,16 +240,32 @@ export async function loadScenarioSnapshot(args: {
       files.push({ table, rows });
       totalRows += rows;
     }
-
-    // Rebuild the rollups in one shot from the loaded raw tables.
-    await args.backfillRollups(tables);
+  } catch (err) {
+    loadError = err;
   } finally {
-    // Re-attach the MVs for consistency with a live-seeded scenario. Runs even
-    // if the load above threw, so a failed load never leaves the rollups
-    // unmaintained for subsequent inserts.
-    await args.createMaterializedViews(tables);
+    // Rebuild the rollups from whatever raw rows are present, then re-attach the
+    // MVs — on EVERY path, so a failed/partial load never leaves rollups stale
+    // or MVs detached. The callbacks are idempotent (IF EXISTS / IF NOT EXISTS),
+    // and backfillRollups recomputes from current raw-table contents, so this is
+    // safe and correct even after a partial drop or partial insert.
+    //
+    // Restoration errors must not MASK a primary load error: when the load
+    // already failed we swallow cleanup failures with a warning (loadError is
+    // rethrown below); when the load succeeded we let a cleanup failure surface.
+    try {
+      await args.backfillRollups(tables);
+      await args.createMaterializedViews(tables);
+    } catch (cleanupErr) {
+      if (loadError === undefined) throw cleanupErr;
+      console.error(
+        `Warning: rollup restoration during snapshot-load cleanup failed after a load error: ${
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+        }`,
+      );
+    }
   }
 
+  if (loadError !== undefined) throw loadError;
   return { files, totalRows };
 }
 

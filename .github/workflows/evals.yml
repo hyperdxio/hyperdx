@@ -11,6 +11,22 @@ name: MCP Evals
 on:
   pull_request:
     branches: [main]
+    # Only run this expensive, secret-bearing suite when something that can
+    # actually change MCP behavior — or the eval that measures it — changes.
+    # This both saves CI time/Anthropic spend and shrinks the attack surface
+    # for the secret-exfil concern (fewer PRs execute the harness with the key).
+    # workflow_dispatch below is unaffected and can always run the full suite.
+    paths:
+      # The MCP server itself (tools, prompts, server wiring).
+      - 'packages/api/src/mcp/**'
+      # Query parsing / ClickHouse translation the MCP tools depend on.
+      - 'packages/common-utils/src/**'
+      # The eval harness (scenarios, generators, grading, CLI, runner).
+      - 'packages/hdx-eval/**'
+      # CI + container plumbing that defines how the suite is built and run.
+      - '.github/workflows/evals.yml'
+      - 'docker/hdx-eval-runner/**'
+      - 'docker-compose.evals.yml'
   workflow_dispatch:
     inputs:
       scenarios:
