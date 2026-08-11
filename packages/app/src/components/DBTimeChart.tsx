@@ -20,6 +20,7 @@ import {
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
+  ChartPaletteToken,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
@@ -309,6 +310,12 @@ type DBTimeChartComponentProps = {
   sourceId?: string;
   /** Names of series that should not be shown in the chart */
   hiddenSeries?: string[];
+  /**
+   * Pin specific series (by display name) to a palette token instead of the
+   * positional palette, so their color stays stable across sessions and can
+   * avoid hues reserved for other meanings (e.g. keeping latency off error red).
+   */
+  seriesColors?: Record<string, ChartPaletteToken>;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
@@ -324,6 +331,16 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * Anchor the first/last x-axis labels inward so they are not clipped on
+   * narrow charts (e.g. side-by-side RED metric tiles). Forwarded to the chart.
+   */
+  compactXAxisLabels?: boolean;
+  /**
+   * Cap the y-axis upper bound (e.g. 1 for a 0-100% rate) while still
+   * auto-scaling below it. Forwarded to the chart.
+   */
+  yAxisMaxDomain?: number;
 };
 
 function DBTimeChartComponent({
@@ -342,6 +359,7 @@ function DBTimeChartComponent({
   showLegend = true,
   sourceId,
   hiddenSeries,
+  seriesColors,
   title,
   toolbarPrefix,
   toolbarSuffix,
@@ -349,6 +367,8 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  compactXAxisLabels,
+  yAxisMaxDomain,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -577,6 +597,7 @@ function DBTimeChartComponent({
         generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
         source,
         hiddenSeries,
+        seriesColors,
         previousPeriodOffsetSeconds,
         // "Load all" (from the warning / pinned tooltip) overrides everything;
         // otherwise the per-tile Series Limit drives the cap (null = default,
@@ -618,6 +639,7 @@ function DBTimeChartComponent({
     config.seriesLimit,
     previousPeriodData,
     hiddenSeries,
+    seriesColors,
     previousPeriodOffsetSeconds,
     showAllSeries,
   ]);
@@ -1037,6 +1059,8 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            compactXAxisLabels={compactXAxisLabels}
+            yAxisMaxDomain={yAxisMaxDomain}
           />
         </>
       )}

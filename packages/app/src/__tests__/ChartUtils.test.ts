@@ -19,7 +19,7 @@ import {
   MAX_RENDERED_TIME_CHART_SERIES,
   resolveRenderedSeriesCap,
 } from '@/defaults';
-import { COLORS } from '@/utils';
+import { COLORS, getColorFromCSSToken } from '@/utils';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
 // `getChartColorError()` so a regression that breaks the helpers can't
@@ -150,6 +150,80 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
       ]);
+    });
+
+    it('pins a series to a palette token via seriesColors, overriding the positional palette', () => {
+      const res = {
+        data: [
+          { p99: 100, __hdx_time_bucket: '2025-11-26T11:12:00Z' },
+          { p99: 200, __hdx_time_bucket: '2025-11-26T11:13:00Z' },
+        ],
+        meta: [
+          { name: 'p99', type: 'Float64' },
+          { name: '__hdx_time_bucket', type: 'DateTime' },
+        ],
+      };
+
+      const pinned = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        seriesColors: { p99: 'chart-purple' },
+      });
+      // The pinned token wins over the default first palette hue and stays
+      // fixed regardless of where the series sorts.
+      expect(pinned.lineData[0].color).toBe(
+        getColorFromCSSToken('chart-purple'),
+      );
+      expect(pinned.lineData[0].color).not.toBe(COLORS[0]);
+
+      // Without the pin, the same single series takes the positional palette.
+      const unpinned = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+      expect(unpinned.lineData[0].color).toBe(COLORS[0]);
+    });
+
+    it('does not let a pinned series consume a positional palette slot', () => {
+      // seriesHi has the higher peak, so it sorts (and colors) first. If a
+      // pinned series wrongly advanced the positional index, the one unpinned
+      // series would land on COLORS[1] instead of COLORS[0].
+      const res = {
+        data: [
+          {
+            seriesHi: 500,
+            seriesLo: 100,
+            __hdx_time_bucket: '2025-11-26T11:12:00Z',
+          },
+          {
+            seriesHi: 600,
+            seriesLo: 200,
+            __hdx_time_bucket: '2025-11-26T11:13:00Z',
+          },
+        ],
+        meta: [
+          { name: 'seriesHi', type: 'Float64' },
+          { name: 'seriesLo', type: 'Float64' },
+          { name: '__hdx_time_bucket', type: 'DateTime' },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+        seriesColors: { seriesHi: 'chart-purple' },
+      });
+
+      const pinned = actual.lineData.find(l => l.dataKey === 'seriesHi');
+      const plain = actual.lineData.find(l => l.dataKey === 'seriesLo');
+      expect(pinned?.color).toBe(getColorFromCSSToken('chart-purple'));
+      expect(plain?.color).toBe(COLORS[0]);
     });
 
     it('should format a response with multiple value columns and a group by', () => {

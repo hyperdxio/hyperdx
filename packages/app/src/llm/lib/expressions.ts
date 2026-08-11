@@ -1,5 +1,7 @@
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
+import { errorPredicateSql } from '@/source';
+
 import { generateCostSqlExpression } from './cost';
 import { buildLLMSpanSqlPredicate } from './detect';
 
@@ -362,7 +364,7 @@ export function getLLMExpressions(source: TTraceSource, jsonColumns: string[]) {
     ...attributeExpressions,
     ...fieldExpressions,
     ...auxExpressions,
-    isError: `lower(${fieldExpressions.severityText}) = 'error'`,
+    isError: errorPredicateSql(fieldExpressions.severityText),
     hasTokens: `${attributeExpressions.totalTokens} > 0`,
   };
 }
@@ -392,7 +394,7 @@ export function getLLMLogExpressions(
     service: source.serviceNameExpression || 'ServiceName',
     severityText,
     /** Error log events (mirrors the serviceDashboard convention). */
-    isError: `lower(${severityText}) = 'error'`,
+    isError: errorPredicateSql(severityText),
     /**
      * Log events that belong to LLM activity: explicit LLM markers or any
      * session id (covers tool_result / lifecycle events that carry a
