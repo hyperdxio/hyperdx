@@ -21,6 +21,7 @@ import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
+import { SpansReverseLinksSubpanel } from './SpansReverseLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -50,7 +51,7 @@ export function RowOverviewPanel({
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =
       source.kind === SourceKind.Trace || source.kind === SourceKind.Log
-        ? (source.highlightedRowAttributeExpressions ?? [])
+        ? source.highlightedRowAttributeExpressions ?? []
         : [];
 
     return data
@@ -195,6 +196,29 @@ export function RowOverviewPanel({
     return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
   }, [firstRow?.__hdx_span_links]);
 
+  const hasReverseSpanLinks = useMemo(() => {
+    if (!firstRow?.SpanId || !Array.isArray(data?.data)) {
+      return false;
+    }
+    const currentSpanId = String(firstRow.SpanId);
+    for (const row of data.data) {
+      if (!row || typeof row !== 'object') continue;
+      const sl = row.__hdx_span_links;
+      if (!Array.isArray(sl)) continue;
+      for (const link of sl) {
+        if (
+          link &&
+          typeof link === 'object' &&
+          'SpanId' in link &&
+          link.SpanId === currentSpanId
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [data?.data, firstRow?.SpanId]);
+
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -226,6 +250,7 @@ export function RowOverviewPanel({
           'exception',
           'spanEvents',
           'spanLinks',
+          'reverseSpanLinks',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -336,6 +361,24 @@ export function RowOverviewPanel({
               <Box px="md">
                 <SpanLinksSubpanel
                   spanLinks={firstRow?.__hdx_span_links}
+                  onOpenTrace={onOpenLinkedTrace}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+        {hasReverseSpanLinks && (
+          <Accordion.Item value="reverseSpanLinks">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Referenced By
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <SpansReverseLinksSubpanel
+                  rows={data?.data}
+                  currentSpanId={firstRow?.SpanId as string | undefined}
                   onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>
