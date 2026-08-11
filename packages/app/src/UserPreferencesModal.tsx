@@ -2,9 +2,11 @@ import * as React from 'react';
 import {
   Autocomplete,
   Badge,
+  Button,
   Divider,
   Group,
   Modal,
+  NumberInput,
   Select,
   Stack,
   Switch,
@@ -15,6 +17,8 @@ import { IconFlask } from '@tabler/icons-react';
 
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
+import api from './api';
+import { DEFAULT_TRACE_SPAN_LIMIT } from './defaults';
 import { isValidThemeName, themes } from './theme';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
 
@@ -53,6 +57,54 @@ const SettingContainer = ({
     </Group>
   );
 };
+
+function TraceSpanLimitSetting() {
+  const { userPreferences, setUserPreference } = useUserPreferences();
+  const { data: me } = api.useMe();
+  const teamLimit = me?.team?.traceSpanLimit ?? DEFAULT_TRACE_SPAN_LIMIT;
+
+  return (
+    <>
+      <Divider label="Performance" labelPosition="left" mt="sm" />
+      <SettingContainer
+        label="Trace span limit"
+        description={
+          <>
+            Maximum spans fetched per trace in the waterfall view. Capped by the
+            team limit ({teamLimit.toLocaleString()}).
+          </>
+        }
+      >
+        <Group gap="xs">
+          <NumberInput
+            value={userPreferences.traceSpanLimit ?? ''}
+            onChange={value =>
+              setUserPreference({
+                traceSpanLimit:
+                  value === '' || value === 0 ? undefined : Number(value),
+              })
+            }
+            placeholder={`${teamLimit.toLocaleString()} (team default)`}
+            min={1000}
+            max={teamLimit}
+            step={1000}
+            size="sm"
+            style={{ flex: 1 }}
+          />
+          {userPreferences.traceSpanLimit != null && (
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={() => setUserPreference({ traceSpanLimit: undefined })}
+            >
+              Reset
+            </Button>
+          )}
+        </Group>
+      </SettingContainer>
+    </>
+  );
+}
 
 export const UserPreferencesModal = ({
   opened,
@@ -202,6 +254,8 @@ export const UserPreferencesModal = ({
             />
           </SettingContainer>
         )}
+
+        <TraceSpanLimitSetting />
       </Stack>
     </Modal>
   );
