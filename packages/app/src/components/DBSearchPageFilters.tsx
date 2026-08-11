@@ -1670,8 +1670,7 @@ const DBSearchPageFiltersComponent = ({
           </Flex>
           {whereParseError && (
             <Alert
-              variant="light"
-              color="orange"
+              variant="warning"
               radius="sm"
               p="xs"
               title="Query is incomplete"
@@ -1685,8 +1684,7 @@ const DBSearchPageFiltersComponent = ({
           )}
           {!whereParseError && whereUnrepresentableReason && (
             <Alert
-              variant="light"
-              color="orange"
+              variant="warning"
               radius="sm"
               p="xs"
               title="Filters shown partially"
