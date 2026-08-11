@@ -964,7 +964,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
 
 == METRIC SOURCES ==
 
-Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary metrics are not supported by the renderer.
+Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary metrics are not supported by the renderer; to chart them, use a raw SQL tile (configType: "sql") against the table named in the source's metricTables.summary.
 
 Per-kind aggregation guidance:
   gauge      Use aggFn:"last_value" | "avg" | "min" | "max". Set isDelta:true for Prometheus-style delta over each bucket.

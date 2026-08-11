@@ -418,9 +418,15 @@ tables score identically, so both arms are graded by the same rule. Tool
 names, tool outputs, and the prompt never count. Adoption is intentionally
 **excluded** from the combined score: measuring tool usage must not inflate
 outcome quality. `metric-saturation` (metrics load-bearing) should show
-≈100% adoption; the interesting readout is `deploy-regression` (metrics
-merely corroborating), where adoption measures whether the agent reaches for
-metrics it doesn't strictly need.
+≈100% adoption on its four core checks; the interesting readout is
+`deploy-regression` (metrics merely corroborating), where adoption measures
+whether the agent reaches for metrics it doesn't strictly need.
+
+`metric-saturation` includes two opportunistic checks (`discovered_summary_metric`,
+`queried_summary_via_sql`) on the `db.client.operation.duration` Summary distractor,
+which is discoverable via MCP but only queryable through raw `clickstack_sql`.
+They measure whether the agent follows that discovery → SQL path; since a strong
+run may justifiably skip the distractor after finding the JVM leak, sub-100% scores are expected.
 
 ### Baseline + Challengers
 

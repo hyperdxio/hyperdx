@@ -25,7 +25,11 @@
  *   - Sum    jvm.gc.collections               : cumulative; Old-Gen accelerates.
  *   - Histogram            http.server.request.duration : latency shifts up.
  *   - ExponentialHistogram jvm.gc.pause                 : heavy tail (mechanism).
- *   - Summary db.client.operation.duration (inventory-service) : stable decoy.
+ *   - Summary db.client.operation.duration (inventory-service, healthy
+ *     client of the SAME product_catalog Postgres) : flat quantiles that
+ *     EXONERATE the database against the planted misleading client-side
+ *     timeout logs. Load-bearing for calibration — summaries are not
+ *     supported by the chart tools, so reading it requires raw SQL.
  *
  * Histograms use DELTA temporality (each scrape point = that window's
  * distribution) so the in-window shift is directly readable.
@@ -41,8 +45,11 @@
  * Distractors: a coincidental 1.43.1 deploy 75 min ago (the leak started
  * ~90 min ago — ruling it out requires comparing onsets at scrape
  * granularity), the correlated-but-symptomatic thread-count gauge, flat CPU,
- * the healthy JVM twin, and a stable neighbor Summary that cannot be
- * re-aggregated into the incident window.
+ * the healthy JVM twin, and — the strongest pull — misleading 'Feature-store
+ * query timed out' WARN logs on the subject during GC stalls that blame the
+ * shared product_catalog Postgres. The reporter's prompt repeats the database
+ * suspicion; the only exonerating evidence is the flat inventory-service
+ * db.client Summary on the same database.
  *
  * The prompt is blinded: the user reports slow/missing storefront
  * recommendations and upstream 503s at frontend-proxy. The agent must
@@ -63,9 +70,14 @@
  *   5. Reads the cumulative restart/GC counters as a rate to confirm the
  *      restart cadence.
  *   6. Rules out the deploy (leak onset predates it), CPU (flat), thread
- *      growth (symptom of GC stalls, not cause), the healthy search-service
- *      JVM twin, and the neighbor db.client Summary (stable, unrelated,
- *      non-re-aggregatable).
+ *      growth (symptom of GC stalls, not cause), and the healthy
+ *      search-service JVM twin.
+ *   7. Exonerates the database: the subject's timeout logs (and the
+ *      reporter) blame the shared product_catalog Postgres, but
+ *      inventory-service's db.client.operation.duration Summary (same DB)
+ *      keeps flat quantiles all window — the timeouts are client-side
+ *      artifacts of the stalled JVM. Summaries are not chartable, so this
+ *      step requires raw SQL against the summary table.
  */
 import { makeLog } from '@/generators/logs';
 import {
@@ -588,7 +600,7 @@ function generateMetrics(rng: Rng, nowMs: number): MetricBatch {
       }),
     );
 
-    // ── inventory-service: Summary decoy + flat CPU + non-JVM memory ─────
+    // ── inventory-service: exonerating Summary + flat CPU + non-JVM memory ─
     const p50 = rng.range(7, 9);
     const p95 = rng.range(38, 44);
     const p99 = rng.range(85, 95);
@@ -611,7 +623,12 @@ function generateMetrics(rng: Rng, nowMs: number): MetricBatch {
           'service.name': NEIGHBOR_SERVICE,
           'k8s.namespace.name': 'production',
         },
-        attributes: { 'db.system': 'postgresql' },
+        attributes: {
+          'db.system': 'postgresql',
+          // Same database the subject's misleading timeout logs blame —
+          // the discoverable linkage for the exoneration step.
+          'db.name': 'product_catalog',
+        },
       }),
     );
     gauge.push(
@@ -692,12 +709,53 @@ function proxyUpstream503Log(rng: Rng, t: number): LogRow {
   });
 }
 
+/**
+ * Planted misleading DB-timeout WARN line on the subject during GC-stall
+ * pressure windows. A stalled JVM cannot service its own deadline timers, so
+ * its client-side feature-store reads against the shared product_catalog
+ * Postgres "time out" — the log trail blames the database even though it is
+ * healthy. The exoneration is inventory-service's db.client.operation.duration
+ * Summary (same database, flat quantiles all window), which is only readable
+ * via raw SQL because summaries are not supported by the chart tools.
+ */
+function featureStoreTimeoutLog(rng: Rng, t: number): LogRow {
+  const deadlineMs = rng.pick([250, 300, 500] as const);
+  const query = rng.pick([
+    'SELECT features FROM candidate_features WHERE sku = ANY($1)',
+    'SELECT embedding FROM product_embeddings WHERE product_id = ANY($1)',
+    'SELECT snapshot FROM catalog_snapshot WHERE category_id = $1',
+  ] as const);
+  const pod = `${SUBJECT_SERVICE}-pod-${rng.intRange(0, POD_COUNT)}`;
+  const body =
+    `Feature-store query timed out after ${deadlineMs}ms ` +
+    `(db=product_catalog host=postgres-primary:5432): ${query}; ` +
+    'deadline exceeded, returning fallback ranking';
+  return makeLog({
+    timestampMs: t,
+    serviceName: SUBJECT_SERVICE,
+    severityText: 'WARN',
+    body,
+    resourceAttributes: {
+      'service.name': SUBJECT_SERVICE,
+      'k8s.namespace.name': 'production',
+      'k8s.pod.name': pod,
+    },
+    logAttributes: {
+      'event.name': 'db.query.timeout',
+      'db.system': 'postgresql',
+      'db.name': 'product_catalog',
+      'server.address': 'postgres-primary',
+      _severity_raw: 'warning',
+    },
+  });
+}
+
 export const metricSaturationScenario: Scenario = {
   name: 'metric-saturation',
   maxTurns: 25,
   agentPrompt: groundTruth.agentPrompt,
   description:
-    'recommendation-service JVM heap leak behind a blinded prompt (storefront symptom at frontend-proxy): per-pod/per-pool memory-gauge sawtooth -> GC-pause (exp-histogram) tail -> latency-histogram shift -> staggered pod-restart (cumulative sum) cadence. Root cause is metrics-only; traces/logs show just mild latency + generic 503s. Exercises all five metric types plus discovery/group-by (healthy JVM twin on search-service, pool-split heap gauge, 3 out-of-phase pods). Distractors: coincidental deploy 15 min after leak onset, correlated-but-symptomatic thread-count gauge, flat CPU, healthy JVM twin, stable neighbor Summary.',
+    'recommendation-service JVM heap leak behind a blinded prompt (storefront symptom at frontend-proxy): per-pod/per-pool memory-gauge sawtooth -> GC-pause (exp-histogram) tail -> latency-histogram shift -> staggered pod-restart (cumulative sum) cadence. Root cause is metrics-only; traces/logs show just mild latency + generic 503s. Exercises all five metric types plus discovery/group-by (healthy JVM twin on search-service, pool-split heap gauge, 3 out-of-phase pods). Distractors: coincidental deploy 15 min after leak onset, correlated-but-symptomatic thread-count gauge, flat CPU, healthy JVM twin, and misleading client-side DB-timeout WARN logs blaming the shared product_catalog Postgres — exonerated only by the flat inventory-service db.client Summary on the same database (raw SQL required; summaries are not chartable).',
   buildSystemPrompt: ctx =>
     buildInvestigationSystemPrompt(
       'metric-saturation',
@@ -937,6 +995,23 @@ export const metricSaturationScenario: Scenario = {
       for (let k = 0; k < n; k++) {
         logs.push(
           proxyUpstream503Log(rng, t + rng.intRange(0, SCRAPE_INTERVAL_MS)),
+        );
+      }
+    }
+
+    // ── Planted misleading DB-timeout lines on the subject (fixed volume) ─
+    // Client-side artifacts of GC stalls: they cluster with heap pressure
+    // and blame the shared product_catalog Postgres. The database is healthy
+    // — inventory-service's db.client Summary on the same DB stays flat — so
+    // these lines are the trap the summary metric exists to disarm.
+    for (let i = 0; i < scrapeCount; i++) {
+      const t = windowStart + i * SCRAPE_INTERVAL_MS;
+      const pressure = heapPressure(nowMs, t);
+      if (pressure < 0.05 || rng.next() >= pressure * 0.9) continue;
+      const n = rng.intRange(1, 4);
+      for (let k = 0; k < n; k++) {
+        logs.push(
+          featureStoreTimeoutLog(rng, t + rng.intRange(0, SCRAPE_INTERVAL_MS)),
         );
       }
     }
