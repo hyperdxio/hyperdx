@@ -46,6 +46,21 @@ jobs:
   evals:
     name: Run MCP evals (advisory)
     runs-on: ubuntu-24.04
+    # SECURITY — trust gate for the API secret.
+    # This job builds and runs PR-authored code (run-evals.sh + the eval
+    # source) with secrets.ANTHROPIC_API_KEY in scope. Without a gate, any PR
+    # (this repo pushes agent/* branches directly, so same-repo PRs DO receive
+    # secrets) could modify that code to exfiltrate the key. Binding the job to
+    # a protected Environment makes GitHub WITHHOLD the secret until a
+    # maintainer approves the run, closing the exfiltration path (and also
+    # gating the non-trivial Anthropic spend).
+    #
+    # REQUIRED REPO CONFIG: create an Environment named `evals-secrets`
+    # (Settings → Environments) with "Required reviewers" = maintainers, and
+    # move ANTHROPIC_API_KEY to that environment's secrets. Until the
+    # environment exists GitHub auto-approves, so this line is safe to merge
+    # ahead of the settings change (it just isn't enforcing yet).
+    environment: evals-secrets
     # Budget covers the worst case: cold image build (~20m) + a snapshot-MISS
     # suite that regenerates all 6 scenarios (~40m seed + ~30m agent/grade).
     # Steady state (snapshot cache HIT) is far faster (~20m build + ~30m runner).
