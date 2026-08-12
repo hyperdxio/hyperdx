@@ -9,6 +9,7 @@ import {
 import {
   expandVariableToken,
   findBalancedParens,
+  hasVariableMacro,
   scanTemplateTokens,
   VARIABLE_MACRO_NAMES,
   VariableContext,
@@ -317,6 +318,23 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
  */
 export function hasMacro(sql: string, name: MacroName): boolean {
   return findMacros(sql, name).length > 0;
+}
+
+/**
+ * Whether a dashboard tile's SQL leaves dashboard filters unapplied: neither
+ * `$__filters` nor a variable macro (`$__filter`/`$__conditionalAll`) appears,
+ * so nothing in the template consumes the dashboard's filter state.
+ */
+export function isMissingFiltersMacro(sqlTemplate: string): boolean {
+  try {
+    return !hasMacro(sqlTemplate, 'filters') && !hasVariableMacro(sqlTemplate);
+  } catch (e) {
+    if (e instanceof MalformedMacroArgsError) {
+      return false;
+    }
+    console.log('unexpected error in isMissingFiltersMacro', e);
+    return false;
+  }
 }
 
 /**

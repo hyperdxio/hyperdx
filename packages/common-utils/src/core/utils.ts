@@ -12,6 +12,7 @@ import {
   getSourceDependentMacrosUsed,
   getSourceTableMacroArgCounts,
   hasMacro,
+  isMissingFiltersMacro,
   MacroName,
   replaceMacros,
 } from '@/macros';
@@ -37,7 +38,6 @@ import {
 } from '@/types';
 import {
   getVariableReferences,
-  hasVariableMacro,
   VARIABLE_FORMATS,
   VariableFormat,
   VariableReference,
@@ -1619,10 +1619,7 @@ export function validateRawSqlChartConfig(
           'SQL should include the $__sourceTable macro so this tile queries its configured source.',
         );
       }
-      if (
-        !hasMacro(chartConfig.sqlTemplate, 'filters') &&
-        !hasVariableMacro(chartConfig.sqlTemplate)
-      ) {
+      if (isMissingFiltersMacro(chartConfig.sqlTemplate)) {
         warnings.push(
           'SQL should include the $__filters macro so dashboard filters apply to this tile.',
         );

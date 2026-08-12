@@ -2,6 +2,7 @@ import { MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
   hasMacro,
+  isMissingFiltersMacro,
   replaceMacros,
 } from '@/macros';
 import type { MetricTable } from '@/types';
@@ -29,6 +30,33 @@ describe('hasMacro', () => {
 
   it('detects macros that take arguments', () => {
     expect(hasMacro('WHERE $__timeFilter(ts)', 'timeFilter')).toBe(true);
+  });
+});
+
+describe('isMissingFiltersMacro', () => {
+  it('is true when nothing consumes the dashboard filters', () => {
+    expect(isMissingFiltersMacro('SELECT * WHERE $__timeFilter(ts)')).toBe(
+      true,
+    );
+  });
+
+  it('is false when $__filters is used', () => {
+    expect(isMissingFiltersMacro('SELECT * WHERE $__filters')).toBe(false);
+  });
+
+  it('is false when a variable macro applies filtering instead', () => {
+    expect(
+      isMissingFiltersMacro('SELECT * WHERE $__filter(ServiceName, service)'),
+    ).toBe(false);
+    expect(
+      isMissingFiltersMacro(
+        'SELECT * WHERE $__conditionalAll(ServiceName IN ${service}, service)',
+      ),
+    ).toBe(false);
+  });
+
+  it('reads a half-typed macro as applied rather than throwing', () => {
+    expect(isMissingFiltersMacro('SELECT * WHERE $__filters(')).toBe(false);
   });
 });
 
