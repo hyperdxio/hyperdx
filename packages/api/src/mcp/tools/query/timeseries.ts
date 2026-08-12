@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
+import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import {
   annotateIncreaseTopNHint,
   appendHint,
@@ -83,6 +84,8 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
         'Plot metrics over time as a line or stacked bar chart. ' +
         'Use this when you need to visualize trends, compare time-series, ' +
         'or monitor metric changes over a time window.\n\n' +
+        PREFER_BUILDER_OVER_SQL_NUDGE +
+        '\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first. ' +
         'Each select item defines one plotted series.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
