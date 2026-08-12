@@ -26,12 +26,14 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMultiSourceSlots } from '@/hooks/useMultiSourceSearch';
 import type { NumberFormat } from '@/types';
 
+import { DBTimeChart, type SeriesGroupFilter } from './DBTimeChart';
 import { getMultiSourceColor } from './MultiSourceBadge';
+import SearchTotalCountChart from './SearchTotalCountChart';
 
 /** Synthetic group column tagged onto each source's histogram rows. */
 const SOURCE_GROUP_COLUMN = '__hdx_source';
 
-export type MultiSourceChartSpec = {
+export type SearchHistogramSpec = {
   source: TSource;
   /** Per-source count() histogram config (canonical WHERE, no groupBy). */
   config: BuilderChartConfigWithDateRange;
@@ -58,7 +60,7 @@ type HistogramSlotState = {
 };
 
 function useHistogramSlot(
-  spec: MultiSourceChartSpec | undefined,
+  spec: SearchHistogramSpec | undefined,
   {
     enabled,
     queryKeyPrefix,
@@ -113,7 +115,7 @@ function useHistogramSlot(
  * time-chart transform naturally yields one series per source.
  */
 function useMultiSourceHistogram(
-  specs: MultiSourceChartSpec[],
+  specs: SearchHistogramSpec[],
   {
     enabled = true,
     queryKeyPrefix,
@@ -171,7 +173,7 @@ const EMPTY_NUMBER_FORMATS = new Map<string, NumberFormat>();
  * counterpart to DBTimeChart — drag-to-zoom and the legend work; per-series
  * drill-down/pinned tooltips are single-source features and are omitted.
  */
-export function MultiSourceTimeChart({
+function MergedSourcesTimeChart({
   specs,
   enabled = true,
   queryKeyPrefix,
@@ -179,7 +181,7 @@ export function MultiSourceTimeChart({
   onTimeRangeSelect,
   showLegend = true,
 }: {
-  specs: MultiSourceChartSpec[];
+  specs: SearchHistogramSpec[];
   enabled?: boolean;
   queryKeyPrefix: string;
   enableParallelQueries?: boolean;
@@ -275,13 +277,13 @@ export function MultiSourceTimeChart({
  * Summed "N Results" across every selected source, sharing the histogram's
  * per-source queries (identical query keys) so it adds no ClickHouse load.
  */
-export function MultiSourceTotalCountChart({
+function MergedSourcesTotalCount({
   specs,
   enabled = true,
   queryKeyPrefix,
   enableParallelQueries,
 }: {
-  specs: MultiSourceChartSpec[];
+  specs: SearchHistogramSpec[];
   enabled?: boolean;
   queryKeyPrefix: string;
   enableParallelQueries?: boolean;
@@ -321,5 +323,99 @@ export function MultiSourceTotalCountChart({
         '0 Results'
       )}
     </Text>
+  );
+}
+
+/**
+ * The search page's histogram, for any number of selected sources.
+ *
+ * One source keeps the full-featured DBTimeChart — series drill-down, focus,
+ * the pinned tooltip, MV optimization — grouped by severity/status, which is
+ * what a single source's chart has always shown. Several sources can't share
+ * a severity vocabulary, so they stack one count() series per source instead,
+ * and the merged chart trades the per-series drill-down for that.
+ */
+export function SearchHistogram({
+  specs,
+  enabled = true,
+  queryKeyPrefix,
+  enableParallelQueries,
+  onTimeRangeSelect,
+  onFocusSeries,
+  showLegend,
+}: {
+  /** One spec per selected source; N=1 is the single-source histogram. */
+  specs: SearchHistogramSpec[];
+  enabled?: boolean;
+  queryKeyPrefix: string;
+  enableParallelQueries?: boolean;
+  onTimeRangeSelect?: (start: Date, end: Date) => void;
+  /** Focus a severity/status series into the search (single source only). */
+  onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  showLegend?: boolean;
+}) {
+  if (specs.length === 1) {
+    return (
+      <DBTimeChart
+        sourceId={specs[0].source.id}
+        showLegend={showLegend ?? false}
+        config={specs[0].config}
+        enabled={enabled}
+        showDisplaySwitcher={false}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator={false}
+        queryKeyPrefix={queryKeyPrefix}
+        onTimeRangeSelect={onTimeRangeSelect}
+        onFocusSeries={onFocusSeries}
+        enableParallelQueries={enableParallelQueries}
+      />
+    );
+  }
+
+  return (
+    <MergedSourcesTimeChart
+      specs={specs}
+      enabled={enabled}
+      queryKeyPrefix={queryKeyPrefix}
+      enableParallelQueries={enableParallelQueries}
+      onTimeRangeSelect={onTimeRangeSelect}
+      showLegend={showLegend ?? true}
+    />
+  );
+}
+
+/**
+ * "N Results" for any number of sources: the single-source count query, or the
+ * sum across sources. Shares the histogram's per-source queries either way, so
+ * it adds no ClickHouse load.
+ */
+export function SearchTotalCount({
+  specs,
+  enabled = true,
+  queryKeyPrefix,
+  enableParallelQueries,
+}: {
+  specs: SearchHistogramSpec[];
+  enabled?: boolean;
+  queryKeyPrefix: string;
+  enableParallelQueries?: boolean;
+}) {
+  if (specs.length === 1) {
+    return (
+      <SearchTotalCountChart
+        config={specs[0].config}
+        queryKeyPrefix={queryKeyPrefix}
+        enableParallelQueries={enableParallelQueries}
+      />
+    );
+  }
+
+  return (
+    <MergedSourcesTotalCount
+      specs={specs}
+      enabled={enabled}
+      queryKeyPrefix={queryKeyPrefix}
+      enableParallelQueries={enableParallelQueries}
+    />
   );
 }

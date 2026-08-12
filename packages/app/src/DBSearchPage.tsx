@@ -93,7 +93,7 @@ import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
-import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
+import { type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -101,17 +101,17 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 import { InputControlled } from '@/components/InputControlled';
 import MultiSourceColumnPicker from '@/components/MultiSourceColumnPicker';
 import MultiSourceSearchFilters from '@/components/MultiSourceSearchFilters';
-import {
-  MultiSourceTimeChart,
-  MultiSourceTotalCountChart,
-} from '@/components/MultiSourceTimeChart';
 import OnboardingModal from '@/components/OnboardingModal';
+import {
+  SearchHistogram,
+  type SearchHistogramSpec,
+  SearchTotalCount,
+} from '@/components/SearchHistogram';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchResultsTable from '@/components/SearchResultsTable';
-import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { SourceMultiSelectControlled } from '@/components/SourceMultiSelect';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -349,12 +349,12 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
 function SearchResultsCountGroup({
   isFilterSidebarCollapsed,
   onExpandFilters,
-  histogramTimeChartConfig,
+  histogramSpecs,
   enableParallelQueries,
 }: {
   isFilterSidebarCollapsed: boolean;
   onExpandFilters: () => void;
-  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  histogramSpecs: SearchHistogramSpec[];
   enableParallelQueries?: boolean;
 }) {
   return (
@@ -362,8 +362,8 @@ function SearchResultsCountGroup({
       {isFilterSidebarCollapsed && (
         <ExpandFiltersButton onExpand={onExpandFilters} />
       )}
-      <SearchTotalCountChart
-        config={histogramTimeChartConfig}
+      <SearchTotalCount
+        specs={histogramSpecs}
         queryKeyPrefix={QUERY_KEY_PREFIX}
         enableParallelQueries={enableParallelQueries}
       />
@@ -2195,6 +2195,20 @@ export function DBSearchPage() {
     searchedConfig.select,
   ]);
 
+  // The chart/count query plan for however many sources are selected: one
+  // source keeps its severity-grouped histogram, several get one count()
+  // series each (stacked by source).
+  const histogramSpecs = useMemo(() => {
+    if (isMultiSource) return multiHistogramSpecs;
+    if (searchedSource == null || histogramTimeChartConfig == null) return [];
+    return [{ source: searchedSource, config: histogramTimeChartConfig }];
+  }, [
+    isMultiSource,
+    multiHistogramSpecs,
+    searchedSource,
+    histogramTimeChartConfig,
+  ]);
+
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
       e.preventDefault();
@@ -2884,7 +2898,7 @@ export function DBSearchPage() {
                           onExpandFilters={() =>
                             setIsFilterSidebarCollapsed(false)
                           }
-                          histogramTimeChartConfig={histogramTimeChartConfig}
+                          histogramSpecs={histogramSpecs}
                         />
                         <SearchNumRows
                           config={{
@@ -2904,14 +2918,9 @@ export function DBSearchPage() {
                         className={searchPageStyles.timeChartContainer}
                         mih="0"
                       >
-                        <DBTimeChart
-                          sourceId={searchedConfig.source ?? undefined}
-                          showLegend={false}
-                          config={histogramTimeChartConfig}
+                        <SearchHistogram
+                          specs={histogramSpecs}
                           enabled={isReady}
-                          showDisplaySwitcher={false}
-                          showMVOptimizationIndicator={false}
-                          showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                           onFocusSeries={handleFocusSeries}
@@ -2989,8 +2998,8 @@ export function DBSearchPage() {
                                 }
                               />
                             )}
-                            <MultiSourceTotalCountChart
-                              specs={multiHistogramSpecs}
+                            <SearchTotalCount
+                              specs={histogramSpecs}
                               enabled={isReady}
                               queryKeyPrefix={QUERY_KEY_PREFIX}
                               enableParallelQueries
@@ -3007,8 +3016,8 @@ export function DBSearchPage() {
                         className={searchPageStyles.timeChartContainer}
                         mih="0"
                       >
-                        <MultiSourceTimeChart
-                          specs={multiHistogramSpecs}
+                        <SearchHistogram
+                          specs={histogramSpecs}
                           enabled={isReady}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           enableParallelQueries
@@ -3057,7 +3066,7 @@ export function DBSearchPage() {
                             onExpandFilters={() =>
                               setIsFilterSidebarCollapsed(false)
                             }
-                            histogramTimeChartConfig={histogramTimeChartConfig}
+                            histogramSpecs={histogramSpecs}
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
@@ -3086,14 +3095,9 @@ export function DBSearchPage() {
                           className={searchPageStyles.timeChartContainer}
                           mih="0"
                         >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
+                          <SearchHistogram
+                            specs={histogramSpecs}
                             enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             onFocusSeries={handleFocusSeries}
