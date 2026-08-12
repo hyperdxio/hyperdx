@@ -52,6 +52,13 @@ function useUpdateUserLabs() {
     // Shared with the /me query key so concurrent toggles coordinate their
     // refetch rather than racing each other.
     mutationKey: ME_QUERY_KEY,
+    // Serializes toggles: react-query runs same-scope mutations one at a time,
+    // in call order. Without this, two quick toggles race on the network and an
+    // older full-replacement payload can land last, dropping the newer lab from
+    // Mongo — the UI would then revert it on the next /me refetch. Each queued
+    // payload is built after the previous onMutate has written the cache, so
+    // serialized sends are cumulative rather than conflicting.
+    scope: { id: 'user-labs' },
     mutationFn: (labs: UserLabs) =>
       hdxServer('me/labs', {
         method: 'PATCH',

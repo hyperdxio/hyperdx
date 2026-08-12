@@ -153,10 +153,15 @@ passes the id regex and is inherited from `Object.prototype`, where it's truthy.
 
 **Multi-tab / multi-device:** a toggle is visible immediately in the tab you
 clicked it in (the mutation is optimistic), in other tabs on next focus, and on
-other devices on next load. Two tabs toggling *different* labs from the same
-snapshot can lose one — full replace is last-write-wins. The cost is "flip it
-again"; if that ever stops being acceptable, merge server-side in `setUserLabs`.
-In local mode there is nothing to sync: the choice stays in that browser.
+other devices on next load. In local mode there is nothing to sync: the choice
+stays in that browser.
+
+Because a full replacement is only safe if the newest one lands last, the
+mutation carries `scope: { id: 'user-labs' }`, which makes react-query send
+toggles one at a time in call order. Flipping two switches quickly is therefore
+safe within a tab. Across two tabs or two devices it is still last-write-wins —
+they are separate clients with separate queues, so the loser has to flip again.
+If that ever stops being acceptable, merge server-side in `setUserLabs`.
 
 ## Related
 

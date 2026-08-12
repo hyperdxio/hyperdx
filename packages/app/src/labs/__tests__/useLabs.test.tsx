@@ -4,8 +4,19 @@ import { notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { hdxServer } from '@/api';
 import { useIsLabEnabled, useLabs } from '@/labs/useLabs';
+
+/**
+ * The mocked `hdxServer`, typed as what it actually is rather than as ky's
+ * `ResponsePromise`. Reaching for the real signature would mean asserting a
+ * bare `{ json }` stub into a generic `json<T>()` interface, and the honest
+ * narrow type here avoids that cast entirely. The hook only ever calls
+ * `.json()` on the result.
+ */
+type HdxServerMock = jest.Mock<
+  { json: () => Promise<unknown> },
+  [string, { method?: string; json?: unknown }?]
+>;
 
 // A never-resolving /me keeps the query pending, which is how the OFF -> ON
 // window is exercised.
@@ -65,14 +76,13 @@ jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },
 }));
 
-const mockHdxServer = jest.mocked(hdxServer);
+const { hdxServer: mockHdxServer } = jest.requireMock<{
+  hdxServer: HdxServerMock;
+}>('@/api');
 const mockShow = jest.mocked(notifications.show);
 
 function resolvePatch(body: unknown = { labs: {} }) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  mockHdxServer.mockReturnValue({
-    json: () => Promise.resolve(body),
-  } as unknown as ReturnType<typeof hdxServer>);
+  mockHdxServer.mockReturnValue({ json: () => Promise.resolve(body) });
 }
 
 /** Returns a `resolve`/`reject` pair so a test can hold the PATCH in flight. */
@@ -84,10 +94,7 @@ function deferPatch() {
       reject: () => rej(new Error('nope')),
     };
   });
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  mockHdxServer.mockReturnValue({
-    json: () => promise,
-  } as unknown as ReturnType<typeof hdxServer>);
+  mockHdxServer.mockReturnValue({ json: () => promise });
 
   return settle!;
 }
@@ -224,6 +231,46 @@ describe('useLabs', () => {
     await act(async () => {
       settle.resolve();
     });
+  });
+
+  it('serializes overlapping toggles so an older payload cannot land last', async () => {
+    // Without a mutation scope both requests fly concurrently, and if the first
+    // one's response lands last the server keeps its payload — dropping the
+    // second lab, which the next /me refetch then reverts in the UI.
+    meFixture = { labs: {} };
+    const first = deferPatch();
+
+    const { result } = renderLabs();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setLabEnabled('lab-a', true));
+    await waitFor(() => expect(result.current.enabled['lab-a']).toBe(true));
+
+    act(() => result.current.setLabEnabled('lab-b', true));
+    await waitFor(() => expect(result.current.enabled['lab-b']).toBe(true));
+
+    // The second toggle is queued behind the first, not racing it.
+    expect(mockHdxServer).toHaveBeenCalledTimes(1);
+    expect(lastPatchBody()).toEqual({ labs: { 'lab-a': true } });
+
+    // Let the first finish; the queued one then sends the cumulative set. The
+    // fixture stands in for the persisted document once both writes have landed
+    // in order, so the refetch that onSettled triggers is what proves the second
+    // toggle survives rather than reverting.
+    meFixture = { labs: { 'lab-a': true, 'lab-b': true } };
+    resolvePatch();
+    await act(async () => {
+      first.resolve();
+    });
+
+    await waitFor(() => expect(mockHdxServer).toHaveBeenCalledTimes(2));
+    expect(lastPatchBody()).toEqual({ labs: { 'lab-a': true, 'lab-b': true } });
+    await waitFor(() =>
+      expect(result.current.enabled).toEqual({
+        'lab-a': true,
+        'lab-b': true,
+      }),
+    );
   });
 
   it('rolls back and notifies when the request fails', async () => {
