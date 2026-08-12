@@ -20,11 +20,9 @@ import { IconExternalLink } from '@tabler/icons-react';
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
-import {
-  AlertEvaluationsTable,
-  AlertStateBadge,
-} from '@/components/alerts/AlertEvaluationsTable';
+import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
