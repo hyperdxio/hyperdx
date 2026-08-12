@@ -8,6 +8,7 @@ import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -51,22 +52,23 @@ import {
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useColumns,
-  useGetValuesDistribution,
   useJsonColumns,
+  useMergedValuesDistribution,
   useTableMetadata,
 } from '@/hooks/useMetadata';
+import { useMultiSourceColumns } from '@/hooks/useMultiSourceSearch';
 import useResizable from '@/hooks/useResizable';
 import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
   FilterStateHook,
   IS_ROOT_SPAN_COLUMN_NAME,
-  usePinnedFilters,
+  usePinnedFiltersForSources,
 } from '@/searchFilters';
 import { useSource } from '@/source';
 import { useLocalStorage } from '@/utils';
 
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
-import { useFetchFacets } from './DBSearchPageFilters/hooks';
+import { useFetchFacetsForSources } from './DBSearchPageFilters/hooks';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
 import {
   PinShareIndicator,
@@ -81,6 +83,17 @@ import {
 
 import resizeStyles from '@styles/ResizablePanel.module.scss';
 import classes from '@styles/SearchPage.module.scss';
+
+// Placeholder used when no source is selected yet; nothing queries with it.
+const EMPTY_FILTER_CHART_CONFIG = {
+  connection: '',
+  from: { databaseName: '', tableName: '' },
+  timestampValueExpression: '',
+  select: '',
+  where: '',
+  whereLanguage: 'sql' as const,
+  dateRange: [new Date(0), new Date(0)] as [Date, Date],
+};
 
 /* The initial number of values per filter to render */
 const INITIAL_MAX_VALUES_DISPLAYED = 10;
@@ -402,7 +415,8 @@ export type FilterGroupProps = {
   isDefaultExpanded?: boolean;
   showFilterCounts?: boolean;
   'data-testid'?: string;
-  chartConfig: BuilderChartConfigWithDateRange;
+  /** One config per selected source; value counts are summed across them. */
+  chartConfigs: BuilderChartConfigWithDateRange[];
   isLive?: boolean;
   onRangeChange?: (range: { min: number; max: number }) => void;
   distributionKey?: string;
@@ -428,7 +442,7 @@ const FilterGroupBody = ({
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
-  chartConfig,
+  chartConfigs,
   isLive,
   distributionKey,
   showDistributions,
@@ -449,7 +463,7 @@ const FilterGroupBody = ({
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
-  chartConfig: BuilderChartConfigWithDateRange;
+  chartConfigs: BuilderChartConfigWithDateRange[];
   isLive?: boolean;
   distributionKey?: string;
   showDistributions: boolean;
@@ -463,16 +477,19 @@ const FilterGroupBody = ({
   const [recentlyMoved, setRecentlyMoved] = useState<Set<string | boolean>>(
     new Set(),
   );
-  // For live searches, don't refresh percentages when date range changes
+  // For live searches, don't refresh percentages when date range changes.
+  // Every source's config carries the same searched range, so the first one
+  // speaks for all of them.
+  const primaryDateRange = chartConfigs[0]?.dateRange;
   const [dateRange, setDateRange] = useState<[Date, Date]>(
-    chartConfig.dateRange,
+    primaryDateRange ?? EMPTY_FILTER_CHART_CONFIG.dateRange,
   );
 
   useEffect(() => {
-    if (!isLive) {
-      setDateRange(chartConfig.dateRange);
+    if (!isLive && primaryDateRange != null) {
+      setDateRange(primaryDateRange);
     }
-  }, [chartConfig.dateRange, isLive]);
+  }, [primaryDateRange, isLive]);
 
   const handleSetSearch = useCallback(
     (value: string) => {
@@ -484,24 +501,22 @@ const FilterGroupBody = ({
     [hasLoadedMore, name, onLoadMore],
   );
 
+  const distributionConfigs = useMemo(
+    () => chartConfigs.map(config => ({ ...config, dateRange })),
+    [chartConfigs, dateRange],
+  );
   const {
     data: distributionData,
     isFetching: isFetchingDistribution,
     error: distributionError,
-  } = useGetValuesDistribution(
+  } = useMergedValuesDistribution(
     {
-      chartConfig: { ...chartConfig, dateRange },
+      chartConfigs: distributionConfigs,
       key: distributionKey || name,
       limit: 100, // The 100 most common values are enough to find any values that are present in at least 1% of rows
     },
-    {
-      enabled: showDistributions,
-    },
+    { enabled: showDistributions },
   );
-
-  useEffect(() => {
-    onFetchingDistributionChange(isFetchingDistribution);
-  }, [isFetchingDistribution, onFetchingDistributionChange]);
 
   useEffect(() => {
     if (distributionError) {
@@ -514,6 +529,10 @@ const FilterGroupBody = ({
       onDistributionError();
     }
   }, [distributionError, onDistributionError]);
+
+  useEffect(() => {
+    onFetchingDistributionChange(isFetchingDistribution);
+  }, [isFetchingDistribution, onFetchingDistributionChange]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
@@ -900,7 +919,7 @@ export const FilterGroup = ({
   isDefaultExpanded,
   showFilterCounts,
   'data-testid': dataTestId,
-  chartConfig,
+  chartConfigs,
   isLive,
   distributionKey,
   onRangeChange,
@@ -1040,7 +1059,7 @@ export const FilterGroup = ({
                   onLoadMore={onLoadMore}
                   loadMoreLoading={loadMoreLoading}
                   hasLoadedMore={hasLoadedMore}
-                  chartConfig={chartConfig}
+                  chartConfigs={chartConfigs}
                   isLive={isLive}
                   distributionKey={distributionKey}
                   showDistributions={showDistributions}
@@ -1061,10 +1080,9 @@ const DBSearchPageFiltersComponent = ({
   clearFilter,
   setFilterValue: _setFilterValue,
   isLive,
-  chartConfig,
+  sources,
   analysisMode,
   setAnalysisMode,
-  sourceId,
   showDelta,
   denoiseResults,
   setDenoiseResults,
@@ -1076,8 +1094,11 @@ const DBSearchPageFiltersComponent = ({
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
-  chartConfig: BuilderChartConfigWithDateRange;
-  sourceId?: string;
+  /**
+   * One entry per selected source. Facets, values, and pins merge across all
+   * of them; a single source behaves exactly as before.
+   */
+  sources: { source: TSource; config: BuilderChartConfigWithDateRange }[];
   showDelta: boolean;
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
@@ -1096,6 +1117,23 @@ const DBSearchPageFiltersComponent = ({
     },
     [_setFilterValue],
   );
+  // The first selected source is the "primary": it anchors the things that
+  // are inherently about one table (schema preview, the analysis-mode tabs).
+  // Everything users read or click in the list itself merges across sources.
+  const primarySource = sources[0]?.source;
+  const sourceId = primarySource?.id;
+  const chartConfig = sources[0]?.config ?? EMPTY_FILTER_CHART_CONFIG;
+  const sourceIds = useMemo(() => sources.map(s => s.source.id), [sources]);
+  const chartConfigs = useMemo(() => sources.map(s => s.config), [sources]);
+  const facetSpecs = useMemo(
+    () =>
+      sources.map(({ source, config }) => ({
+        sourceId: source.id,
+        chartConfig: config,
+      })),
+    [sources],
+  );
+
   const {
     toggleFilterPin,
     toggleFieldPin,
@@ -1111,7 +1149,7 @@ const DBSearchPageFiltersComponent = ({
     resetSharedFilters,
     hasPersonalPins,
     hasSharedPins,
-  } = usePinnedFilters(sourceId ?? null);
+  } = usePinnedFiltersForSources(sourceIds);
   const { data: pinnedFiltersApiData } = usePinnedFiltersApi(sourceId ?? null);
   const [isSharedFiltersVisible, setSharedFiltersVisible] = useLocalStorage(
     'hdx-shared-filters-visible',
@@ -1144,6 +1182,11 @@ const DBSearchPageFiltersComponent = ({
     chartConfig.dateRange,
   );
 
+  // Filter keys can come from any selected source's schema, so escaping is
+  // resolved against the union of their columns.
+  const { columnsBySourceId } = useMultiSourceColumns(
+    useMemo(() => sources.map(s => s.source), [sources]),
+  );
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -1164,10 +1207,13 @@ const DBSearchPageFiltersComponent = ({
   // Conditionally backtick-quote facet keys that contain special characters and
   // match known column names, so they can be used in the ClickHouse query to get
   // key values.
-  const knownColumns = useMemo(
-    () => (columns ? new Set(columns.map(c => c.name)) : new Set<string>()),
-    [columns],
-  );
+  const knownColumns = useMemo(() => {
+    const names = new Set<string>(columns?.map(c => c.name) ?? []);
+    for (const sourceColumns of columnsBySourceId.values()) {
+      for (const name of sourceColumns) names.add(name);
+    }
+    return names;
+  }, [columns, columnsBySourceId]);
 
   const [showMoreFields, setShowMoreFields] = useState(false);
   const {
@@ -1178,9 +1224,8 @@ const DBSearchPageFiltersComponent = ({
     loadMoreFacetsForKey,
     loadMoreLoadingKeys,
     extraFacetKeys,
-  } = useFetchFacets({
-    chartConfig,
-    sourceId: sourceId ?? null,
+  } = useFetchFacetsForSources({
+    specs: facetSpecs,
     dateRange,
     mode: showAllValues ? 'all' : 'exact',
     filterState,
@@ -1516,7 +1561,7 @@ const DBSearchPageFiltersComponent = ({
                   );
                 })
               }
-              chartConfig={chartConfig}
+              chartConfigs={chartConfigs}
               isLive={isLive}
             />
           ))}
@@ -1571,7 +1616,7 @@ const DBSearchPageFiltersComponent = ({
                           entry.range != null)))
                   );
                 })()}
-                chartConfig={chartConfig}
+                chartConfigs={chartConfigs}
                 isLive={isLive}
                 onRangeChange={range => setFilterRange(facet.key, range)}
               />
@@ -1598,7 +1643,7 @@ const DBSearchPageFiltersComponent = ({
       loadMoreLoadingKeys,
       showFilterCounts,
       isFacetsLoading,
-      chartConfig,
+      chartConfigs,
       isLive,
       setFilterRange,
       tableMetadata,

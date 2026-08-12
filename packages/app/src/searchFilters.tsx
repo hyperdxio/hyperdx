@@ -11,6 +11,7 @@ import {
   cleanClickHouseExpression,
   toQuotedClickHouseKeyExpression,
 } from './components/DBSearchPageFilters/utils';
+import { useMultiSourceSlots } from './hooks/useSourceSlots';
 import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
 import { useLocalStorage } from './utils';
 
@@ -657,4 +658,103 @@ export function usePinnedFilters(sourceId: string | null) {
     hasPersonalPins,
     hasSharedPins,
   };
+}
+
+/**
+ * Pinned filters across every selected source.
+ *
+ * Pins are stored per source (personal pins in localStorage, shared pins in
+ * Mongo), so a search spanning several sources reads the union of their pins
+ * and writes to all of them: pinning `ServiceName` while searching logs and
+ * traces keeps it pinned in both, and unpinning clears it from both. With one
+ * source this is exactly `usePinnedFilters` for that source.
+ */
+export function usePinnedFiltersForSources(sourceIds: string[]) {
+  const slots = useMultiSourceSlots(sourceIds, usePinnedFiltersSlot, undefined);
+  const active = useMemo(
+    () => slots.slice(0, sourceIds.length),
+    [slots, sourceIds.length],
+  );
+
+  return useMemo(() => {
+    // Reads: a pin on any selected source shows in the sidebar.
+    const anyOf =
+      <A extends unknown[]>(
+        pick: (s: PinnedFiltersHook) => (...a: A) => boolean,
+      ) =>
+      (...args: A) =>
+        active.some(slot => pick(slot)(...args));
+    // Writes: fan out so a pin applies to the whole selection. Toggling is
+    // resolved against the merged view first, so a mixed state (pinned on one
+    // source, not another) resolves to "pin everywhere" rather than flipping
+    // each source independently.
+    const fanOut =
+      <A extends unknown[]>(
+        pick: (s: PinnedFiltersHook) => (...a: A) => void,
+        isSet: (s: PinnedFiltersHook, ...a: A) => boolean,
+      ) =>
+      (...args: A) => {
+        const shouldPin = !active.some(slot => isSet(slot, ...args));
+        for (const slot of active) {
+          if (isSet(slot, ...args) !== shouldPin) {
+            pick(slot)(...args);
+          }
+        }
+      };
+
+    return {
+      pinnedFilters: active.reduce<PinnedFilters>(
+        (acc, slot) => mergePinnedFilterValues(acc, slot.pinnedFilters),
+        {},
+      ),
+      getPinnedFields: () => [
+        ...new Set(active.flatMap(slot => slot.getPinnedFields())),
+      ],
+      isFilterPinned: anyOf(s => s.isFilterPinned),
+      isFieldPinned: anyOf(s => s.isFieldPinned),
+      isSharedFilterPinned: anyOf(s => s.isSharedFilterPinned),
+      isSharedFieldPinned: anyOf(s => s.isSharedFieldPinned),
+      toggleFilterPin: fanOut(
+        s => s.toggleFilterPin,
+        (s, property: string, value: string | boolean) =>
+          s.isFilterPinned(property, value),
+      ),
+      toggleFieldPin: fanOut(
+        s => s.toggleFieldPin,
+        (s, key: string) => s.isFieldPinned(key),
+      ),
+      toggleSharedFilterPin: fanOut(
+        s => s.toggleSharedFilterPin,
+        (s, property: string, value: string | boolean) =>
+          s.isSharedFilterPinned(property, value),
+      ),
+      toggleSharedFieldPin: fanOut(
+        s => s.toggleSharedFieldPin,
+        (s, key: string) => s.isSharedFieldPinned(key),
+      ),
+      resetPersonalPins: () => active.forEach(s => s.resetPersonalPins()),
+      resetSharedFilters: () => active.forEach(s => s.resetSharedFilters()),
+      hasPersonalPins: active.some(s => s.hasPersonalPins),
+      hasSharedPins: active.some(s => s.hasSharedPins),
+    };
+  }, [active]);
+}
+
+type PinnedFiltersHook = ReturnType<typeof usePinnedFilters>;
+
+/** Slot hook: one source's pins. Unused slots pass null and stay inert. */
+function usePinnedFiltersSlot(sourceId: string | undefined) {
+  return usePinnedFilters(sourceId ?? null);
+}
+
+/** Union two pinned-filter maps, deduping values per key. */
+function mergePinnedFilterValues(
+  a: PinnedFilters,
+  b: PinnedFilters,
+): PinnedFilters {
+  const out: PinnedFilters = { ...a };
+  for (const [key, values] of Object.entries(b)) {
+    out[key] = [...new Set([...(out[key] ?? []), ...values])];
+  }
+  return out;
 }

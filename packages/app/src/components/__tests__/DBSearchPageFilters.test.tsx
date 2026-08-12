@@ -1,4 +1,3 @@
-import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -13,7 +12,7 @@ import {
   groupFacetsByBaseName,
   parseMapFieldName,
 } from '@/components/DBSearchPageFilters/utils';
-import { useGetValuesDistribution } from '@/hooks/useMetadata';
+import { useMergedValuesDistribution } from '@/hooks/useMetadata';
 
 describe('cleanClickHouseExpression', () => {
   it('should remove toString wrapper', () => {
@@ -50,9 +49,9 @@ describe('cleanClickHouseExpression', () => {
 });
 
 jest.mock('@/hooks/useMetadata', () => ({
-  useGetValuesDistribution: jest
+  useMergedValuesDistribution: jest
     .fn()
-    .mockReturnValue({ data: undefined, isFetching: false, error: undefined }),
+    .mockReturnValue({ data: undefined, isFetching: false, error: null }),
 }));
 
 describe('cleanedFacetName', () => {
@@ -396,18 +395,20 @@ describe('FilterGroup', () => {
     loadMoreLoading: false,
     hasLoadedMore: false,
     isDefaultExpanded: true,
-    chartConfig: {
-      from: {
-        databaseName: 'test_db',
-        tableName: 'test_table',
+    chartConfigs: [
+      {
+        from: {
+          databaseName: 'test_db',
+          tableName: 'test_table',
+        },
+        select: '',
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: '',
+        connection: 'test_connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
       },
-      select: '',
-      where: '',
-      whereLanguage: 'sql',
-      timestampValueExpression: '',
-      connection: 'test_connection',
-      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
-    },
+    ],
   };
 
   it('should sort options alphabetically by default', () => {
@@ -441,7 +442,7 @@ describe('FilterGroup', () => {
   });
 
   it('should show selected items first, then sort by counts, if percentages when they are enabled', () => {
-    jest.mocked(useGetValuesDistribution).mockReturnValue({
+    jest.mocked(useMergedValuesDistribution).mockReturnValue({
       data: new Map([
         ['apple', 30],
         ['banana', 20],
@@ -449,7 +450,7 @@ describe('FilterGroup', () => {
       ]),
       isFetching: false,
       error: null,
-    } as UseQueryResult<Map<string, number>>);
+    });
 
     renderWithMantine(
       <FilterGroup
@@ -470,14 +471,14 @@ describe('FilterGroup', () => {
   });
 
   it('should show percentages, if enabled', async () => {
-    jest.mocked(useGetValuesDistribution).mockReturnValue({
+    jest.mocked(useMergedValuesDistribution).mockReturnValue({
       data: new Map([
         ['apple', 99.2],
         ['zebra', 0.6],
       ]),
       isFetching: false,
       error: null,
-    } as UseQueryResult<Map<string, number>>);
+    });
 
     renderWithMantine(
       <FilterGroup
@@ -681,15 +682,17 @@ describe('NestedFilterGroup', () => {
     onLoadMore: jest.fn(),
     loadMoreLoading: {} as Record<string, boolean>,
     hasLoadedMore: {} as Record<string, boolean>,
-    chartConfig: {
-      from: { databaseName: 'test_db', tableName: 'test_table' },
-      select: '',
-      where: '',
-      whereLanguage: 'sql',
-      timestampValueExpression: '',
-      connection: 'test_connection',
-      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
-    },
+    chartConfigs: [
+      {
+        from: { databaseName: 'test_db', tableName: 'test_table' },
+        select: '',
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: '',
+        connection: 'test_connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+      },
+    ],
   };
 
   it('should not render child FilterGroups when collapsed', () => {
