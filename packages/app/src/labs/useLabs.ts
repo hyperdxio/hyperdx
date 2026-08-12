@@ -1,10 +1,12 @@
 import * as React from 'react';
+import { useAtom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 import type { MeApiResponse, UserLabs } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import api, { hdxServer, ME_QUERY_KEY } from '@/api';
-import { IS_LABS_ENABLED } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import { LABS } from '@/labs/registry';
 
 export type LabsState = {
@@ -15,17 +17,28 @@ export type LabsState = {
    */
   enabled: Record<string, boolean>;
   /**
-   * True until the server's answer is known. Every lab reads OFF while this is
+   * True until the stored answer is known. Every lab reads OFF while this is
    * true, so anything where an OFF -> ON flip is user-visible (a redirect, a
    * default tab, a one-shot effect, a mount-time fetch) should branch on it
-   * rather than on `enabled` alone. Always false in local mode, where labs are
-   * unavailable rather than pending.
+   * rather than on `enabled` alone. Always false in local mode, which reads
+   * synchronously from localStorage.
    */
   isLoading: boolean;
   /** True while a toggle is in flight. */
   isSaving: boolean;
   setLabEnabled: (labId: string, enabled: boolean) => void;
 };
+
+/**
+ * Local-mode store. Local mode has no API server and no user identity —
+ * `useMe()` resolves to null there — so there is no account to hang an opt-in
+ * on, and the choice lives in localStorage instead. Same jotai + localStorage
+ * shape as the other per-browser preferences in this app.
+ *
+ * This is the only reason `useLabs` branches on IS_LOCAL_MODE, and it is
+ * deliberately confined to this file.
+ */
+const localLabsAtom = atomWithStorage<UserLabs>('hdx-labs', {});
 
 /**
  * Persists the caller's full lab set. Optimistic, because this backs a Switch:
@@ -86,8 +99,10 @@ function useUpdateUserLabs() {
 export function useLabs(): LabsState {
   const { data: me, isPending } = api.useMe();
   const { mutate: updateLabs, isPending: isSaving } = useUpdateUserLabs();
+  const [localLabs, setLocalLabs] = useAtom(localLabsAtom);
 
-  const stored = me?.labs;
+  // The one branch: an account when there is one, this browser when there isn't.
+  const stored = IS_LOCAL_MODE ? localLabs : me?.labs;
 
   const enabled = React.useMemo(() => {
     // Derived from the registry, not from what's stored: an id the registry no
@@ -114,25 +129,29 @@ export function useLabs(): LabsState {
           next[lab.id] = true;
         }
       }
+
+      if (IS_LOCAL_MODE) {
+        setLocalLabs(next);
+        return;
+      }
       updateLabs(next);
     },
-    [stored, updateLabs],
+    [stored, updateLabs, setLocalLabs],
   );
 
   return {
     enabled,
-    // In local mode useMe() resolves to null immediately, so there is no
-    // pending state to advertise — labs are unavailable, not loading.
-    isLoading: IS_LABS_ENABLED && isPending,
-    isSaving,
+    // localStorage is read synchronously, so local mode is never pending.
+    isLoading: !IS_LOCAL_MODE && isPending,
+    isSaving: IS_LOCAL_MODE ? false : isSaving,
     setLabEnabled,
   };
 }
 
 /**
- * Whether the current user has opted into a lab. Returns `false` while `/me` is
- * still loading and always `false` in local mode; if that transition is
- * user-visible, use {@link useLabs} and branch on `isLoading`.
+ * Whether the current user has opted into a lab. Returns `false` while the
+ * stored set is still loading; if that transition is user-visible, use
+ * {@link useLabs} and branch on `isLoading`.
  *
  * An id with no registry entry always reads `false`, which is what makes
  * deleting an entry safe — but it also means a typo fails silently, so grep for

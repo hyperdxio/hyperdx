@@ -62,32 +62,38 @@ not just what's new: "span links aren't drawn yet" beats "improved trace view".
 
 ## Gating rules
 
-`useIsLabEnabled(id)` returns `false` when the user hasn't opted in, while `/me`
-is still loading, and always in local mode. Two consequences worth knowing:
+`useIsLabEnabled(id)` returns `false` when the user hasn't opted in and while the
+stored set is still loading. Two consequences worth knowing:
 
-**The loading window is real.** `/me` isn't resolved on first paint —
-`AuthLoadingBlocker` is only mounted on the landing page, so it does not gate the
-app. A lab therefore reads OFF and then flips ON a moment later. For the common
-shape (an extra tab, an extra button, an alternate renderer) that's fine. If the
-flip is user-visible — a redirect, a default tab, a one-shot effect, a
-mount-time fetch — use `useLabs()` and branch on `isLoading` first:
+**The loading window is real** (outside local mode). `/me` isn't resolved on
+first paint — `AuthLoadingBlocker` is only mounted on the landing page, so it
+does not gate the app. A lab therefore reads OFF and then flips ON a moment
+later. For the common shape (an extra tab, an extra button, an alternate
+renderer) that's fine. If the flip is user-visible — a redirect, a default tab, a
+one-shot effect, a mount-time fetch — use `useLabs()` and branch on `isLoading`
+first:
 
 ```ts
 const { enabled, isLoading } = useLabs();
 if (isLoading) return <Skeleton />;
 ```
 
-**Local mode has no labs.** It has no API server and no user identity at all, so
-there is nothing to persist an opt-in against; `IS_LABS_ENABLED` is false there
-and the menu entry is hidden. If your feature *also* structurally cannot work
-without a backend, say so at the call site the way `IS_IAC_EXPORT_ENABLED` does:
+**Labs are available everywhere, including local mode**, so there is no
+deployment flag to flip and no environment where the menu entry is missing. Local
+mode has no API server and no user identity, so opt-ins there live in
+localStorage under `hdx-labs` instead of on the user document. That branch is
+confined to `useLabs.ts`; nothing else needs to know which store is in play.
+
+What local mode does *not* change: whether your feature can actually run. If it
+needs a backend, gate on that too, the way `IS_IAC_EXPORT_ENABLED` does:
 
 ```ts
 const isEnabled = useIsLabEnabled('remote-mtviews') && !IS_LOCAL_MODE;
 ```
 
-That's redundant at runtime, but it documents that the feature is impossible
-there rather than merely un-opted-into. Drop it when that isn't true.
+Now that a lab can be switched on in local mode, this is load-bearing rather
+than decorative — without it, a local-mode user can opt into something that
+cannot work. Add it whenever the feature depends on the API server.
 
 ## Graduating and retiring
 
@@ -120,10 +126,13 @@ single-file-ness is the actual anti-rot mechanism.
 | Registry (ids + UI copy) | `packages/app/src/labs/registry.ts` |
 | Hook — the only seam | `packages/app/src/labs/useLabs.ts` |
 | Modal (nav user menu) | `packages/app/src/labs/LabsModal.tsx` |
-| Deployment gate | `IS_LABS_ENABLED` in `packages/app/src/config.ts` |
 | Storage | `labs` on the `User` document, `packages/api/src/models/user.ts` |
 | Read / write | `GET /me` and `PATCH /me/labs`, `packages/api/src/routers/api/me.ts` |
+| Local-mode storage | `hdx-labs` in localStorage, via the atom in `useLabs.ts` |
 | Shape contract | `UserLabsSchema` in `packages/common-utils/src/types.ts` |
+
+There is no deployment flag. Labs is always present; individual labs are what
+get toggled.
 
 State is an **enabled-set**: a key present with `true` is on, an absent key is
 off. Writes are **full replace** — the client always holds the whole registry, so
@@ -147,6 +156,7 @@ clicked it in (the mutation is optimistic), in other tabs on next focus, and on
 other devices on next load. Two tabs toggling *different* labs from the same
 snapshot can lose one — full replace is last-write-wins. The cost is "flip it
 again"; if that ever stops being acceptable, merge server-side in `setUserLabs`.
+In local mode there is nothing to sync: the choice stays in that browser.
 
 ## Related
 

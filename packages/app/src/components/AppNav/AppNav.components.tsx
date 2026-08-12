@@ -29,7 +29,7 @@ import {
   IconUserCog,
 } from '@tabler/icons-react';
 
-import { IS_LABS_ENABLED, IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 
 import { ChangelogModal } from './ChangelogModal';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -164,15 +164,13 @@ export const AppNavUserMenu = ({
         >
           User Preferences
         </Menu.Item>
-        {IS_LABS_ENABLED && (
-          <Menu.Item
-            data-testid="hyperdx-labs-menu-item"
-            leftSection={<IconFlask size={16} />}
-            onClick={onClickLabs}
-          >
-            HyperDX Labs
-          </Menu.Item>
-        )}
+        <Menu.Item
+          data-testid="hyperdx-labs-menu-item"
+          leftSection={<IconFlask size={16} />}
+          onClick={onClickLabs}
+        >
+          HyperDX Labs
+        </Menu.Item>
         {logoutUrl && (
           <>
             <Menu.Divider />

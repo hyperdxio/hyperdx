@@ -38,6 +38,10 @@ jest.mock('@/api', () => {
   };
 });
 
+// Explicit rather than relying on the env default: which store useLabs reads
+// now hinges on this, and local mode is covered in useLabs.localMode.test.tsx.
+jest.mock('@/config', () => ({ IS_LOCAL_MODE: false }));
+
 jest.mock('@/labs/registry', () => ({
   LABS: [
     {
