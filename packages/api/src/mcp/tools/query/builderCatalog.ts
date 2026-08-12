@@ -18,7 +18,9 @@ export const BUILDER_TOOLS_LIST = [
 
 /** When raw SQL is actually warranted. */
 export const SQL_FALLBACK_CRITERIA =
-  'JOINs, sub-queries, CTEs, window functions, or tables not registered as sources';
+  'JOINs, sub-queries, CTEs, window functions, tables not registered as sources, or ' +
+  'summary-type metrics (the metricTables.summary table on a metric source, which the ' +
+  'builder tools cannot query)';
 
 /**
  * Reciprocal nudge dropped into each builder tool's description. Keep it

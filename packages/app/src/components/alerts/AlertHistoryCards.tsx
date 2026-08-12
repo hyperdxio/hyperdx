@@ -97,6 +97,7 @@ function AlertHistoryCard({
 const ALERT_ERROR_TYPE_LABELS: Record<AlertErrorType, string> = {
   [AlertErrorType.INVALID_ALERT]: 'Invalid Configuration',
   [AlertErrorType.QUERY_ERROR]: 'Query Error',
+  [AlertErrorType.QUERY_TIMEOUT]: 'Query Timeout',
   [AlertErrorType.WEBHOOK_ERROR]: 'Webhook Error',
   [AlertErrorType.UNKNOWN]: 'Unknown Error',
 };

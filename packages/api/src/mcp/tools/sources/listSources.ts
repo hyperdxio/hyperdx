@@ -26,7 +26,9 @@ export function registerListSources({
         'This two-step approach avoids fetching expensive schema details for sources you do not need.\n\n' +
         'NOTE: For most queries, use source IDs with clickstack_timeseries, clickstack_table, ' +
         'clickstack_search, or clickstack_event_patterns. ' +
-        'Connection IDs are only needed for clickstack_sql (raw ClickHouse SQL).',
+        'Connection IDs are only needed for clickstack_sql (raw ClickHouse SQL).\n\n' +
+        'Metric sources may list a "summary" table in metricTables. Summary metrics are ' +
+        'not supported by the builder tools — use clickstack_sql to look at them.',
       inputSchema: z.object({}),
     },
     async () => {

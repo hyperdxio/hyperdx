@@ -102,7 +102,8 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
         'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
         'TOP-N CAP: aggFn:"increase" + groupBy is capped at 20 groups by the renderer ' +
         '(top by max bucket sum). Narrow with where/groupBy to see other groups.\n' +
-        'summary metrics are not supported by the query renderer.',
+        'summary metrics are not supported by the query renderer — query them with ' +
+        "clickstack_sql against the table in the source's metricTables.summary.",
       inputSchema: timeseriesSchema,
     },
     async input => {
