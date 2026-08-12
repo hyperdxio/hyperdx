@@ -18,6 +18,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
+import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
@@ -35,6 +36,11 @@ type AlertPreviewChartProps = {
   threshold: number;
   thresholdMax?: number;
   select?: string | null;
+  /** Override the interval-derived date range (e.g. alert detail page). */
+  dateRange?: [Date, Date];
+  /** Firing/recovery markers to draw on the chart. */
+  annotations?: ChartAnnotation[];
+  height?: number;
 };
 
 export const AlertPreviewChart = ({
@@ -48,6 +54,9 @@ export const AlertPreviewChart = ({
   thresholdMax,
   thresholdType,
   select,
+  dateRange,
+  annotations,
+  height = 200,
 }: AlertPreviewChartProps) => {
   const resolvedSelect =
     (select && select.trim().length > 0
@@ -86,11 +95,20 @@ export const AlertPreviewChart = ({
       groupBy,
       select: ALERT_COUNT_DEFAULT_SELECT,
       displayType: DisplayType.Line,
-      dateRange: intervalToDateRange(interval),
+      dateRange: dateRange ?? intervalToDateRange(interval),
       granularity: intervalToGranularity(interval),
     }) as ChartConfigWithDateRange;
     return { ...chartConfig, with: aliasWith };
-  }, [source, where, whereLanguage, filters, groupBy, interval, aliasWith]);
+  }, [
+    source,
+    where,
+    whereLanguage,
+    filters,
+    groupBy,
+    interval,
+    aliasWith,
+    dateRange,
+  ]);
 
   const referenceLines = useMemo(
     () =>
@@ -103,13 +121,14 @@ export const AlertPreviewChart = ({
   );
 
   return (
-    <Paper w="100%" h={200}>
+    <Paper w="100%" h={height}>
       <DBTimeChart
         sourceId={source.id}
         showDisplaySwitcher={false}
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
         referenceLines={referenceLines}
+        annotations={annotations}
         config={config}
       />
     </Paper>

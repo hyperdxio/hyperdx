@@ -17,7 +17,10 @@ import Alert, {
   type IAlert,
   type IAlertError,
 } from '@/models/alert';
-import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
+import AlertHistory, {
+  IAlertHistory,
+  IAlertHistoryAnalytics,
+} from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { type ISavedSearch, SavedSearch } from '@/models/savedSearch';
@@ -375,6 +378,7 @@ export default class DefaultAlertProvider implements AlertProvider {
     alertId: string,
     histories: IAlertHistory[],
     errors: IAlertError[],
+    evaluatedDateRange?: [Date, Date],
   ) {
     // Save history records first (in parallel), then update alert state
     // Use Promise.allSettled to handle partial failures gracefully
@@ -418,12 +422,92 @@ export default class DefaultAlertProvider implements AlertProvider {
       { _id: new mongoose.Types.ObjectId(alertId) },
       { $set: { state: finalState, executionErrors: errors } },
     );
+
+    // All histories in one execution share the same createdAt (the current
+    // evaluation window start) and the same evaluation-level analytics.
+    const evaluationWindowStart = histories[0]?.createdAt;
+
+    // Failed earlier ticks may have left ERROR rows for windows this
+    // evaluation just covered (recordAlertErrors upserts one per failed
+    // window, and ERROR rows don't mark a window as evaluated, so those
+    // windows are retried — a same-window retry re-evaluates at the same
+    // createdAt, while later ticks fold them in as backfilled buckets
+    // stamped with the current window start). The query has now succeeded
+    // over the whole evaluated range, so remove the stale ERROR rows for
+    // every window it covered — otherwise a recovered window renders as
+    // ERROR until the TTL expires it (the evaluations view ranks ERROR
+    // above OK/ALERT). The range start is exclusive: an ERROR row at
+    // exactly the previous anchor belongs to an already-evaluated window
+    // (e.g. a webhook failure recorded alongside its normal rows) that is
+    // never retried, so it is a truthful record that must survive.
+    if (evaluationWindowStart != null && successfulHistories.length > 0) {
+      await AlertHistory.deleteMany({
+        alert: new mongoose.Types.ObjectId(alertId),
+        state: AlertState.ERROR,
+        createdAt: evaluatedDateRange
+          ? { $gt: evaluatedDateRange[0], $lte: evaluationWindowStart }
+          : evaluationWindowStart,
+      });
+    }
+
+    // Notification (e.g. webhook) failures happened during this evaluation:
+    // record them as an ERROR history row alongside the normal rows so the
+    // failure is visible in the alert's evaluation history.
+    if (errors.length > 0 && evaluationWindowStart != null) {
+      await this.upsertErrorHistory(
+        alertId,
+        evaluationWindowStart,
+        errors,
+        histories[0]?.analytics,
+      );
+    }
   }
 
-  async recordAlertErrors(alertId: string, errors: IAlertError[]) {
+  async recordAlertErrors(
+    alertId: string,
+    errors: IAlertError[],
+    evaluationWindowStart?: Date,
+    analytics?: IAlertHistoryAnalytics,
+  ) {
     await Alert.updateOne(
       { _id: new mongoose.Types.ObjectId(alertId) },
       { $set: { executionErrors: errors } },
+    );
+
+    if (evaluationWindowStart != null) {
+      await this.upsertErrorHistory(
+        alertId,
+        evaluationWindowStart,
+        errors,
+        analytics,
+      );
+    }
+  }
+
+  /**
+   * Upsert the ERROR-state history row for the given evaluation window.
+   * Keyed on {alert, createdAt, state} so retries within the same window
+   * update a single row instead of accumulating one row per tick — a
+   * permanently failing 1d alert produces one error row per day, not one per
+   * minute. Rows expire with the collection's existing TTL index.
+   */
+  private async upsertErrorHistory(
+    alertId: string,
+    evaluationWindowStart: Date,
+    errors: IAlertError[],
+    analytics?: IAlertHistoryAnalytics,
+  ) {
+    await AlertHistory.updateOne(
+      {
+        alert: new mongoose.Types.ObjectId(alertId),
+        createdAt: evaluationWindowStart,
+        state: AlertState.ERROR,
+      },
+      {
+        $set: { errors, ...(analytics != null && { analytics }) },
+        $setOnInsert: { counts: 0, lastValues: [] },
+      },
+      { upsert: true },
     );
   }
 

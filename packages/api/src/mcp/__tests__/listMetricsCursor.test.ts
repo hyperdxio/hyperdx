@@ -41,6 +41,16 @@ describe('listMetrics cursor', () => {
       expect(decodeCursor(encodeCursor(payload))).toEqual(payload);
     });
 
+    it('round-trips a summary cursor', () => {
+      // Summary is discoverable (listed) even though it is not queryable
+      // by the builder tools.
+      const payload = {
+        kind: 'summary' as const,
+        lastName: 'http_request_duration_seconds',
+      };
+      expect(decodeCursor(encodeCursor(payload))).toEqual(payload);
+    });
+
     it('round-trips metric names with dots, dashes, and unicode', () => {
       const payload = {
         kind: 'gauge' as const,
@@ -74,12 +84,7 @@ describe('listMetrics cursor', () => {
       expect(decodeCursor(malformed)).toBeNull();
     });
 
-    it('returns null when kind is not a queryable metric kind', () => {
-      const summaryCursor = Buffer.from(
-        JSON.stringify({ kind: 'summary', lastName: 'x' }),
-      ).toString('base64');
-      expect(decodeCursor(summaryCursor)).toBeNull();
-
+    it('returns null when kind is not a discoverable metric kind', () => {
       const bogusCursor = Buffer.from(
         JSON.stringify({ kind: 'bogus', lastName: 'x' }),
       ).toString('base64');

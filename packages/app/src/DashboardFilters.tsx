@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react';
-import { FilterState } from '@hyperdx/common-utils/dist/filters';
+import {
+  FilterState,
+  getFilterVariableName,
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
+} from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
@@ -17,10 +22,41 @@ interface DashboardFilterSelectProps {
   isError?: boolean;
 }
 
-const getAppliesToTooltip = (filter: DashboardFilter) => {
-  const count = filter.appliesToSourceIds?.length ?? 0;
-  if (count === 0) return 'Applies to all sources';
-  return `Applies to ${count} source${count === 1 ? '' : 's'}`;
+/**
+ * Describe what a filter does with the value you pick: broadcast it as a
+ * condition, expose it as a variable, both, or neither.
+ */
+export const getFilterEffect = (
+  filter: DashboardFilter,
+): { hasEffect: boolean; tooltip: string } => {
+  const parts: string[] = [];
+
+  if (isFilterBroadcastEnabled(filter)) {
+    const count = filter.appliesToSourceIds?.length ?? 0;
+    parts.push(
+      count === 0
+        ? 'Filters all sources'
+        : `Filters ${count} source${count === 1 ? '' : 's'}`,
+    );
+  }
+
+  const variableName = isFilterVariableEnabled(filter)
+    ? getFilterVariableName(filter)
+    : undefined;
+  if (variableName) {
+    parts.push(
+      `${parts.length > 0 ? 'a' : 'A'}vailable as variable ($${variableName})`,
+    );
+  }
+
+  if (parts.length === 0) {
+    return {
+      hasEffect: false,
+      tooltip:
+        'This filter neither broadcasts nor acts as a variable - it has no effect',
+    };
+  }
+  return { hasEffect: true, tooltip: parts.join(', ') };
 };
 
 const DashboardFilterSelect = ({
@@ -32,7 +68,7 @@ const DashboardFilterSelect = ({
   isError,
 }: DashboardFilterSelectProps) => {
   const valuesOrEmptyMemo = useMemo(() => values ?? [], [values]);
-  const tooltipText = getAppliesToTooltip(filter);
+  const effect = getFilterEffect(filter);
 
   return (
     <Stack gap={2}>
@@ -40,12 +76,20 @@ const DashboardFilterSelect = ({
         <Text size="xs" c="dimmed">
           {filter.name}
         </Text>
-        <Tooltip label={tooltipText} withinPortal>
-          <IconHelp
-            size={12}
-            color="var(--color-text-muted)"
-            data-testid={`dashboard-filter-help-${filter.name}`}
-          />
+        <Tooltip label={effect.tooltip} withinPortal>
+          {effect.hasEffect ? (
+            <IconHelp
+              size={12}
+              color="var(--color-text-muted)"
+              data-testid={`dashboard-filter-help-${filter.name}`}
+            />
+          ) : (
+            <IconAlertTriangle
+              size={12}
+              color="var(--color-text-warning)"
+              data-testid={`dashboard-filter-no-effect-${filter.name}`}
+            />
+          )}
         </Tooltip>
         {isError && (
           <Tooltip
