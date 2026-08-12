@@ -82,11 +82,12 @@ export type VariableMacroName = (typeof VARIABLE_MACRO_NAMES)[number];
 const isVariableMacroName = (name: string): name is VariableMacroName =>
   (VARIABLE_MACRO_NAMES as readonly string[]).includes(name);
 
-// Pattern used for recognizing $var references.
+// Pattern used for recognizing $var references. (eslint ignored because DASHBOARD_VARIABLE_NAME_PATTERN is a shared constant, not user input)
 // eslint-disable-next-line security/detect-non-literal-regexp
 const BARE_NAME_REGEX = new RegExp(`^${DASHBOARD_VARIABLE_NAME_PATTERN}`);
 
 // Pattern used for recognizing ${var} and ${var:format} references, and for extracting the name and format.
+// (eslint ignored because DASHBOARD_VARIABLE_NAME_PATTERN is a shared constant, not user input)
 // eslint-disable-next-line security/detect-non-literal-regexp
 const BRACED_REFERENCE_REGEX = new RegExp(
   `^(${DASHBOARD_VARIABLE_NAME_PATTERN})(?::([a-zA-Z][a-zA-Z0-9_]*))?$`,
