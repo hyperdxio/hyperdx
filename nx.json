@@ -1,7 +1,4 @@
 {
-  // Disable Nx CLI telemetry and its first-run "Share usage data?" prompt
-  // (introduced in Nx 23). Without this key set, every fresh clone/worktree
-  // gets an interactive prompt on the first `yarn dev`.
   "analytics": false,
   "affected": {
     "defaultBase": "main"
