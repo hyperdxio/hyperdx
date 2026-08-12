@@ -273,14 +273,14 @@ async function loadAlert(
 }
 
 export default class DefaultAlertProvider implements AlertProvider {
- async init() {
-  // The check-alerts worker only reads from MongoDB and never needs to
-  // ensure indexes exist (the API service owns that). Disabling autoIndex
-  // prevents background createIndexes calls from racing the short-lived
-  // connection close (which sends endSessions), surfaced as
-  // MongoExpiredSessionError on mongodb.createIndexes spans.
-  await Promise.all([connectDB({ autoIndex: false })]);
-}
+  async init() {
+    // The check-alerts worker only reads from MongoDB and never needs to
+    // ensure indexes exist (the API service owns that). Disabling autoIndex
+    // prevents background createIndexes calls from racing the short-lived
+    // connection close (which sends endSessions), surfaced as
+    // MongoExpiredSessionError on mongodb.createIndexes spans.
+    await Promise.all([connectDB({ autoIndex: false })]);
+  }
 
   async asyncDispose() {
     await Promise.all([mongooseConnection.close()]);
