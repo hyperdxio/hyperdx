@@ -560,7 +560,9 @@ describe('sources router', () => {
       const traceSource: Omit<Extract<TSource, { kind: 'trace' }>, 'id'> = {
         kind: SourceKind.Trace,
         name: 'Test Trace Source',
-        connection: new Types.ObjectId().toString(),
+        // The suite provisions a real Connection for this id; POST now 400s on
+        // one that doesn't exist for the team.
+        connection: MOCK_SOURCE.connection,
         from: { databaseName: 'test_db', tableName: 'otel_traces' },
         timestampValueExpression: 'Timestamp',
         defaultTableSelectExpression: 'Timestamp, SpanName',
