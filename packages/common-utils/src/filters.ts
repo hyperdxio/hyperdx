@@ -2,7 +2,12 @@ import * as SQLParser from 'node-sql-parser';
 
 import { replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
-import { DashboardFilter, Filter } from '@/types';
+import {
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DASHBOARD_VARIABLE_NAME_REGEX,
+  DashboardFilter,
+  Filter,
+} from '@/types';
 
 export type FilterState = {
   [key: string]: {
@@ -719,4 +724,98 @@ export function validateDashboardFilterQueries(
     }
   }
   return issues;
+}
+
+/** Derive the default `variableName` for a filter from its display name. */
+export function deriveVariableName(filterName: string): string {
+  const sanitized = filterName
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]+/g, '');
+
+  // Add a `v` prefix if the sanitized name starts with a number or underscore,
+  // to ensure it is a valid variable name.
+  return /^[0-9_]/.test(sanitized) ? `v${sanitized}` : sanitized;
+}
+
+/**
+ * Whether a filter's selected value is applied as a condition on matching tiles.
+ *
+ * Missing means enabled: filters that predate the field must keep broadcasting.
+ * Compared against `false` rather than defaulted with `??` because filters are
+ * stored in an untyped Mongo array, so `null` is reachable.
+ */
+export function isFilterBroadcastEnabled(filter: {
+  isBroadcastEnabled?: boolean;
+}): boolean {
+  return filter.isBroadcastEnabled !== false;
+}
+
+/** Whether a filter's selected value is exposed to tiles as a variable. */
+export function isFilterVariableEnabled(filter: {
+  isVariableEnabled?: boolean;
+}): boolean {
+  return filter.isVariableEnabled === true;
+}
+
+/**
+ * Whether a filter does anything at all with the value it collects — broadcast
+ * it as a condition, expose it as `$variableName`, or both.
+ */
+export function hasFilterEffect(filter: {
+  isBroadcastEnabled?: boolean;
+  isVariableEnabled?: boolean;
+}): boolean {
+  return isFilterBroadcastEnabled(filter) || isFilterVariableEnabled(filter);
+}
+
+/**
+ * The token a filter is referenced by, falling back to the value derived
+ * from its display name.
+ */
+export function getFilterVariableName(filter: {
+  name: string;
+  variableName?: string;
+}): string | undefined {
+  return (
+    filter.variableName?.trim() || deriveVariableName(filter.name) || undefined
+  );
+}
+
+/**
+ * Validate a variable name against the token grammar and against the names
+ * already taken by other variable-enabled filters on the same dashboard.
+ * Returns an error message, or undefined when the name is usable. Only
+ * variable-*enabled* siblings are considered.
+ */
+export function validateVariableName({
+  value,
+  otherFilters,
+}: {
+  value: string | undefined;
+  otherFilters: {
+    name: string;
+    variableName?: string;
+    isVariableEnabled?: boolean;
+  }[];
+}): string | undefined {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) {
+    return 'Variable name is required';
+  }
+  if (trimmed.length > DASHBOARD_VARIABLE_NAME_MAX_LENGTH) {
+    return `Variable name must be ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters or fewer`;
+  }
+  if (!DASHBOARD_VARIABLE_NAME_REGEX.test(trimmed)) {
+    return 'Variable names must start with a letter and may contain only letters, numbers, and underscores';
+  }
+  const clash = otherFilters.find(
+    other =>
+      isFilterVariableEnabled(other) &&
+      getFilterVariableName(other) === trimmed,
+  );
+  if (clash) {
+    return `This variable name is used by another filter on this dashboard (${clash.name})`;
+  }
+  return undefined;
 }

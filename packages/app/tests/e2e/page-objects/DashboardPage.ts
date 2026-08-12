@@ -81,9 +81,13 @@ export class DashboardPage {
   private readonly editFiltersButton: Locator;
   private readonly filtersListModal: Locator;
   private readonly emptyFiltersListModal: Locator;
-  private readonly addFiltersButton: Locator;
+  readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
-  private readonly filtersSourceSelector: Locator;
+  readonly filtersSourceSelector: Locator;
+  readonly appliesToSourceSelector: Locator;
+  readonly broadcastFilterCheckbox: Locator;
+  readonly variableEnabledCheckbox: Locator;
+  readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
   private readonly aliasInput: Locator;
@@ -137,6 +141,16 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+    this.appliesToSourceSelector = page.getByTestId(
+      'applies-to-source-selector',
+    );
+    this.broadcastFilterCheckbox = page.getByTestId(
+      'filter-broadcast-checkbox',
+    );
+    this.variableEnabledCheckbox = page.getByTestId(
+      'filter-variable-enabled-checkbox',
+    );
+    this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
 
     // Tile editor selectors
@@ -144,7 +158,9 @@ export class DashboardPage {
     this.aliasInput = page.getByTestId('series-alias-input');
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.markdownTextarea = page.locator('textarea[name="markdown"]');
-    this.confirmModal = page.getByTestId('confirm-modal');
+    this.confirmModal = page
+      .getByRole('dialog')
+      .filter({ has: page.getByTestId('confirm-confirm-button') });
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
@@ -680,9 +696,54 @@ export class DashboardPage {
     await this.removeDefaultQueryAndFiltersMenuItem.click();
   }
 
-  async deleteDashboard() {
+  /**
+   * Open the "Delete Dashboard" confirm dialog via the dashboard overflow menu
+   * without confirming. The caller can then assert the modal is visible and
+   * choose to cancel (`cancelDeleteDashboardDialog`) or confirm
+   * (`confirmDeleteDashboard`).
+   */
+  async openDeleteDashboardDialog() {
     await this.dashboardMenuButton.click();
     await this.deleteDashboardMenuItem.click();
+  }
+
+  /**
+   * Click the cancel button inside the delete-dashboard confirm modal.
+   */
+  async cancelDeleteDashboardDialog() {
+    await this.confirmCancelButton.click();
+  }
+
+  /**
+   * Click the confirm button inside the delete-dashboard confirm modal.
+   */
+  async confirmDeleteDashboard() {
+    await this.confirmConfirmButton.click();
+  }
+
+  /**
+   * Open the delete-dashboard dialog and immediately confirm it.
+   * Convenience wrapper for tests that only need the happy path.
+   */
+  async deleteDashboard() {
+    await this.openDeleteDashboardDialog();
+    await this.confirmDeleteDashboard();
+  }
+
+  /**
+   * The shared confirm modal. Exposed so specs can assert it is
+   * visible/hidden during the delete-dashboard flow.
+   */
+  get deleteConfirmModal(): Locator {
+    return this.confirmModal;
+  }
+
+  /**
+   * The dashboard page shell container. Used to verify the dashboard is
+   * still present after cancelling a deletion.
+   */
+  get dashboardPageContainer(): Locator {
+    return this.page.getByTestId('dashboard-page');
   }
 
   /**
@@ -762,6 +823,11 @@ export class DashboardPage {
     expression: string,
     metricType?: string,
     appliesToSourceNames?: string[],
+    variableOptions?: {
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+      variableName?: string;
+    },
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
@@ -781,12 +847,21 @@ export class DashboardPage {
         .click();
     }
 
+    // Applied before the applies-to selector below, because unchecking broadcast
+    // hides that control.
+    if (variableOptions?.isBroadcastEnabled === false) {
+      await this.broadcastFilterCheckbox.uncheck();
+    }
+    if (variableOptions?.isVariableEnabled === false) {
+      await this.variableEnabledCheckbox.uncheck();
+    } else if (variableOptions?.variableName !== undefined) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
-      const appliesToSelector = this.page.getByTestId(
-        'applies-to-source-selector',
-      );
       for (const appliesName of appliesToSourceNames) {
-        await appliesToSelector.click();
+        await this.appliesToSourceSelector.click();
         await this.page
           .getByRole('option', { name: appliesName, exact: true })
           .click();
@@ -805,6 +880,11 @@ export class DashboardPage {
     expression: string,
     metricType?: string,
     appliesToSourceNames?: string[],
+    variableOptions?: {
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+      variableName?: string;
+    },
   ) {
     await this.addFiltersButton.click();
 
@@ -814,6 +894,7 @@ export class DashboardPage {
       expression,
       metricType,
       appliesToSourceNames,
+      variableOptions,
     );
   }
 
@@ -839,6 +920,21 @@ export class DashboardPage {
     await editButton.click();
 
     await this.fillFilterForm(name, sourceName, expression, metricType);
+  }
+
+  /**
+   * Toggle "Broadcast filter condition" on an already-saved filter and save.
+   * Assumes the filters list modal is open.
+   */
+  async setFilterBroadcastEnabled(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.broadcastFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /** The warning icon shown when a filter neither broadcasts nor is a variable. */
+  getFilterNoEffectIcon(name: string) {
+    return this.page.getByTestId(`dashboard-filter-no-effect-${name}`);
   }
 
   getFilterItemByName(name: string) {

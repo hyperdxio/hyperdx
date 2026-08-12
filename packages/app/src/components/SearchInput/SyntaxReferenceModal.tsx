@@ -120,6 +120,13 @@ const LUCENE_SECTIONS: Section[] = [
       { expr: '*-auth', desc: 'Suffix match against implicit column' },
       { expr: '*checkout*', desc: 'Substring match against implicit column' },
       { expr: 'Duration:[100 TO 500]', desc: 'Numeric range (inclusive)' },
+      { expr: 'Duration:{100 TO 500}', desc: 'Numeric range (exclusive)' },
+      { expr: 'Duration:[100 TO *]', desc: 'Open-ended range (>= 100)' },
+      { expr: 'Duration:[* TO 500]', desc: 'Open-ended range (<= 500)' },
+      {
+        expr: 'Timestamp:[2024-01-01 TO 2024-06-01]',
+        desc: 'Date / string range (inclusive)',
+      },
       { expr: 'Duration:>1000000', desc: 'Greater-than comparison' },
     ],
   },

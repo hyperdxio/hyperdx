@@ -62,6 +62,13 @@ function buildMapContains(mapField: string) {
   return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
 }
 
+/** Render a column as a SQL operand, escaping it as an identifier unless it is an already-rendered Map subscript */
+function renderColumnOperand(column: string | undefined, mapKey?: string) {
+  return SqlString.raw(
+    mapKey != null ? (column ?? '') : SqlString.escapeId(column),
+  );
+}
+
 /** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */
 function normalizeChExpression(expr: string): string {
   return expr.replace(/\s+/g, '').replace(/`/g, '');
@@ -427,6 +434,7 @@ export abstract class SQLSerializer implements Serializer {
     propertyType?: JSDataType;
     isArray?: boolean;
     found: boolean;
+    mapKey?: string;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
     kvItemsExpression?: KvIndexInfo & { mapKey: string };
@@ -466,6 +474,7 @@ export abstract class SQLSerializer implements Serializer {
       found,
       propertyType,
       isArray,
+      mapKey,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
       kvItemsExpression,
@@ -516,9 +525,9 @@ export abstract class SQLSerializer implements Serializer {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        `(? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
         [
-          column,
+          renderColumnOperand(column, mapKey),
           normTerm === 'true'
             ? 1
             : normTerm === 'false'
@@ -1403,6 +1412,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       found,
       propertyType,
       isArray,
+      mapKey,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
     } = await this.getColumnForField(field, context);
@@ -1430,9 +1440,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     if (propertyType === JSDataType.Bool) {
       const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        `(? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
         [
-          column,
+          renderColumnOperand(column, mapKey),
           normTerm === 'true'
             ? 1
             : normTerm === 'false'
@@ -1442,8 +1452,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       );
     } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
-        [column, term],
+        `(? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
+        [renderColumnOperand(column, mapKey), term],
       );
     } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
@@ -1922,6 +1932,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       propertyType: type ?? undefined,
       isArray,
       found: expression.found,
+      mapKey: expression.mapKey,
       mapKeyIndexExpression: expression.mapKeyIndexExpression,
       arrayMapKeyExpression: isArray
         ? expression.arrayMapKeyExpression

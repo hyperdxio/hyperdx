@@ -173,10 +173,12 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import {
+  buildDashboardReplaySearchUrl,
   buildEventsSearchUrl,
   buildTableRowSearchUrl,
   DEFAULT_CHART_CONFIG,
@@ -726,6 +728,14 @@ const Tile = forwardRef(
       );
     }, [filters, queriedConfig, source]);
 
+    const replaySearchUrl = useMemo(() => {
+      return buildDashboardReplaySearchUrl({
+        source,
+        config: queriedConfig,
+        dateRange,
+      });
+    }, [dateRange, queriedConfig, source]);
+
     const hoverToolbar = useMemo(() => {
       if (readOnly) return null;
 
@@ -746,6 +756,25 @@ const Tile = forwardRef(
           key="hover-toolbar"
           my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
+          {replaySearchUrl && (
+            <Tooltip label="Replay search" position="top" withArrow>
+              <ActionIcon
+                component={Link}
+                href={replaySearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                prefetch={false}
+                data-testid={`tile-replay-search-button-${chart.id}`}
+                aria-label="Replay search (opens in new tab)"
+                variant="subtle"
+                size="sm"
+                mr={4}
+              >
+                <IconSearch size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+
           {displayTypeSupportsAlerts &&
             (alert ? (
               // Existing alert: bell with a colored status dot indicator.
@@ -902,6 +931,7 @@ const Tile = forwardRef(
       alertIndicatorColor,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.id,
       chart.containerId,
@@ -931,6 +961,17 @@ const Tile = forwardRef(
         onMoveToGroup && moveTargets && moveTargets.length > 0;
       return (
         <>
+          {replaySearchUrl && (
+            <Menu.Item
+              component={Link}
+              href={replaySearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              leftSection={<IconSearch size={14} />}
+            >
+              Replay search
+            </Menu.Item>
+          )}
           {showAlerts && (
             <>
               <Menu.Item
@@ -1036,6 +1077,7 @@ const Tile = forwardRef(
       alert,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.containerId,
       chart.tabId,
@@ -1765,7 +1807,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   // Track if we've initialized query for this dashboard
-  const initializedDashboard = useRef<string>(undefined);
+  const initializedDashboardRef = useRef<string>(undefined);
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
@@ -1777,6 +1819,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     ignoredFilterExpressions,
     getFilterQueriesForSource,
   } = useDashboardFilters(filters);
+
+  const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
+    useIsVariablesEnabled();
+  const showFilterVariableOptions =
+    !isVariablesFlagLoading && isVariablesEnabled;
 
   const dashboardReady =
     !!dashboard?.id &&
@@ -1898,10 +1945,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   useEffect(() => {
     if (!dashboard?.id || !router.isReady) return;
     if (!isLocalDashboard && isFetchingDashboard) return;
-    if (initializedDashboard.current === dashboard.id) return;
+    if (initializedDashboardRef.current === dashboard.id) return;
     const isSwitchingDashboards =
-      initializedDashboard.current != null &&
-      initializedDashboard.current !== dashboard.id;
+      initializedDashboardRef.current != null &&
+      initializedDashboardRef.current !== dashboard.id;
 
     const hasWhereInUrl = 'where' in router.query;
     const hasFiltersInUrl = 'filters' in router.query;
@@ -1935,7 +1982,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       }
     }
 
-    initializedDashboard.current = dashboard.id;
+    initializedDashboardRef.current = dashboard.id;
   }, [
     dashboard?.id,
     dashboard?.savedQuery,
@@ -2574,6 +2621,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const deleteDashboard = useDeleteDashboard();
+  const handleDeleteDashboard = useCallback(async () => {
+    if (!dashboard?.id) return;
+
+    const confirmed = await confirm(
+      'Are you sure you want to delete this dashboard? This action cannot be undone.',
+      'Delete Dashboard',
+      { variant: 'danger' },
+    );
+    if (!confirmed) return;
+
+    deleteDashboard.mutate(dashboard.id, {
+      onSuccess: () => {
+        router.push('/dashboards/list');
+      },
+    });
+  }, [confirm, dashboard?.id, deleteDashboard, router]);
 
   const handleUpdateTags = useCallback(
     (newTags: string[]) => {
@@ -2870,13 +2933,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Menu.Item
             leftSection={<IconTrash size={16} />}
             color="red"
-            onClick={() =>
-              deleteDashboard.mutate(dashboard?.id ?? '', {
-                onSuccess: () => {
-                  router.push('/dashboards/list');
-                },
-              })
-            }
+            onClick={handleDeleteDashboard}
           >
             Delete Dashboard
           </Menu.Item>
@@ -2955,7 +3012,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <IconRefresh size={18} />
         </ActionIcon>
       </Tooltip>
-      <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+      <Tooltip
+        withArrow
+        label={
+          isVariablesEnabled ? 'Edit Filters and Variables' : 'Edit Filters'
+        }
+        fz="xs"
+        color="gray"
+      >
         <ActionIcon
           variant="secondary"
           onClick={() => setShowFiltersModal(true)}
@@ -3244,6 +3308,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
+          showVariableOptions={showFilterVariableOptions}
         />
       )}
     </>

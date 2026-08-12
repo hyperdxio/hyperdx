@@ -139,6 +139,7 @@ export function registerEmergingSignals({
     'clickstack_emerging_signals',
     {
       title: 'Emerging & Disappeared Signals',
+      annotations: { readOnlyHint: true },
       description:
         'Detect what is NEW or GONE between an earlier baseline window and a ' +
         'current window — log/event patterns that emerged, ramped up, or ' +

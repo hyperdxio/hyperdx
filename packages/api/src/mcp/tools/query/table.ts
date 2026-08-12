@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
+import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import {
   annotateIncreaseTopNHint,
   buildTile,
@@ -204,10 +205,13 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
     'clickstack_table',
     {
       title: 'Aggregation Table',
+      annotations: { readOnlyHint: true },
       description:
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
+        PREFER_BUILDER_OVER_SQL_NUDGE +
+        '\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
         'Each select item can also have its own "where" for per-metric cohort ' +
@@ -228,7 +232,8 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
         '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
         'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
-        'summary metrics are not supported by the query renderer.',
+        'summary metrics are not supported by the query renderer — query them with ' +
+        "clickstack_sql against the table in the source's metricTables.summary.",
       inputSchema: tableSchema,
     },
     async input => {

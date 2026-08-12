@@ -70,7 +70,6 @@ export function AnnotationHitLayer({
 
           const width = Math.max(right - left, MIN_HIT_WIDTH_PX);
           const x = left - (width - (right - left)) / 2;
-          const centre = (left + right) / 2;
 
           return (
             <rect
@@ -85,9 +84,16 @@ export function AnnotationHitLayer({
               fill="transparent"
               pointerEvents="all"
               style={{ cursor: 'default' }}
-              onMouseEnter={() =>
-                onHover({ annotation, point: { x: centre, y: plot.y } })
-              }
+              onMouseEnter={event => {
+                // Measured here rather than passed down from the chart
+                // container: reading the DOM in an event handler is fine,
+                // whereas reading a ref during render is not.
+                const band = event.currentTarget.getBoundingClientRect();
+                onHover({
+                  annotation,
+                  point: { x: band.left + band.width / 2, y: band.bottom },
+                });
+              }}
               onMouseLeave={() => onHover(null)}
             />
           );

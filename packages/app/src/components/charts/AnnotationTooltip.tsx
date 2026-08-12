@@ -1,4 +1,3 @@
-import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Group, Stack, Text } from '@mantine/core';
 
@@ -6,7 +5,6 @@ import type { HoveredAnnotation } from './AnnotationHitLayer';
 import {
   ChartTooltipContainer,
   ChartTooltipHeader,
-  toViewportPoint,
   useChartTooltipZIndex,
 } from './ChartTooltip';
 
@@ -23,31 +21,23 @@ const TOOLTIP_OFFSET_PX = 6;
  *
  * Portaled to the body and positioned fixed, matching the series tooltip: a
  * dashboard tile clips its overflow, so an absolutely-positioned tooltip gets
- * cut off at the tile edge.
+ * cut off at the tile edge. `hovered.point` is already in viewport pixels,
+ * measured from the hit band when the pointer entered it.
  */
-export function AnnotationTooltip({
-  hovered,
-  containerRef,
-}: {
-  hovered: HoveredAnnotation;
-  containerRef: MutableRefObject<HTMLDivElement | null>;
-}) {
+export function AnnotationTooltip({ hovered }: { hovered: HoveredAnnotation }) {
   const zIndex = useChartTooltipZIndex();
   const members = hovered.annotation.members ?? [hovered.annotation];
 
-  // eslint-disable-next-line react-hooks/refs
-  const containerRect = containerRef.current?.getBoundingClientRect();
-  if (containerRect == null || typeof document === 'undefined') {
+  if (typeof document === 'undefined') {
     return null;
   }
-  const anchor = toViewportPoint(containerRect, hovered.point);
 
   return createPortal(
     <div
       style={{
         position: 'fixed',
-        left: anchor.x,
-        top: anchor.y + TOOLTIP_OFFSET_PX,
+        left: hovered.point.x,
+        top: hovered.point.y + TOOLTIP_OFFSET_PX,
         transform: 'translateX(-50%)',
         pointerEvents: 'none',
         zIndex,

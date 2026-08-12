@@ -27,7 +27,7 @@ jest.mock('@mantine/notifications', () => ({
 
 // Untyped handle on the mocked hook. Going through the module object keeps the
 // mock's argument and return types loose, so the fixtures below don't need
-// `as any` casts to stand in for a full react-query result.
+// wide casts to stand in for a full react-query result.
 const chartConfigModule: { useQueriedChartConfig: jest.Mock } =
   jest.requireMock('@/hooks/useChartConfig');
 const mockedUseQueriedChartConfig = chartConfigModule.useQueriedChartConfig;

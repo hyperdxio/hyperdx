@@ -7,6 +7,7 @@ import {
 import express from 'express';
 import { z } from 'zod';
 
+import { validateConnectionId } from '@/controllers/connection';
 import {
   createSource,
   deleteSource,
@@ -14,7 +15,6 @@ import {
   getSources,
   updateSource,
 } from '@/controllers/sources';
-import Connection from '@/models/connection';
 import { SourceDocument } from '@/models/source';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import logger from '@/utils/logger';
@@ -89,46 +89,6 @@ function mapRequestGranularitiesToInternalFormat(
     }
   }
   next();
-}
-
-type ConnectionValidation =
-  | { ok: true }
-  | { ok: false; status: 400 | 403; message: string };
-
-// Validates that `connection` is a valid ObjectId referencing a connection
-// owned by the given team. SourceSchemaNoId only requires `connection` to be a
-// non-empty string, but the Mongoose model declares it as an ObjectId ref — a
-// non-ObjectId value would surface as a 500 CastError instead of a 400. The
-// team-scoped existence check also ensures a source can never reference another
-// team's ClickHouse credentials. Kept separate from the middleware so it's
-// readable and unit-testable on its own.
-export async function validateConnectionId(
-  connection: unknown,
-  teamId: Express.User['team'] | undefined,
-): Promise<ConnectionValidation> {
-  const parsed = objectIdSchema.safeParse(connection);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      status: 400,
-      message: 'connection must be a valid connection id',
-    };
-  }
-  if (teamId == null) {
-    return { ok: false, status: 403, message: 'Forbidden' };
-  }
-  const connectionExists = await Connection.exists({
-    _id: parsed.data,
-    team: teamId,
-  });
-  if (connectionExists == null) {
-    return {
-      ok: false,
-      status: 400,
-      message: 'connection must be an existing connection id',
-    };
-  }
-  return { ok: true };
 }
 
 // Runs after body validation so req.body is the parsed shape.

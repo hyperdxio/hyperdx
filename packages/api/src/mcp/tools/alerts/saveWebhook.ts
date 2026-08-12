@@ -86,6 +86,7 @@ export function registerSaveWebhook({
     'clickstack_save_webhook',
     {
       title: 'Create or Update Webhook',
+      annotations: { destructiveHint: true },
       description:
         'Create a new webhook (omit id) or update an existing one (provide ' +
         'id). Use the returned id as the webhookId when creating alerts with ' +
