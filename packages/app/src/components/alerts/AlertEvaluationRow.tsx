@@ -21,7 +21,7 @@ import { formatDurationMs } from '@/utils';
 import styles from '@styles/AlertsPage.module.scss';
 
 /** Mirrors the header column count in AlertEvaluationsTable. */
-export const TABLE_COLUMNS = 8;
+const TABLE_COLUMNS = 8;
 
 function latestValue(history: AlertEvaluation): number | undefined {
   const lastValues = history.lastValues;
