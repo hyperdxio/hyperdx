@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
+  AlertInterval,
   AlertSource,
   isRangeThresholdType,
 } from '@hyperdx/common-utils/dist/types';
@@ -43,11 +44,30 @@ import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
 
-const DEFAULT_TIME_RANGE_LABEL = 'Past 12h';
-const defaultTimeRange = parseTimeQuery(DEFAULT_TIME_RANGE_LABEL, false) as [
-  Date,
-  Date,
-];
+/**
+ * Default chart range for the alert's evaluation interval. The chart buckets
+ * at the interval, so a fixed short default renders only a bucket or two for
+ * long-interval alerts (granularity >= duration). Each default shows at
+ * least ~24 evaluation windows; evaluations retention is 31d, so the 1d
+ * interval caps at 30d.
+ */
+function getDefaultTimeRangeLabel(interval: AlertInterval): string {
+  switch (interval) {
+    case '30m':
+      return 'Past 1d';
+    case '1h':
+      return 'Past 2d';
+    case '6h':
+      return 'Past 7d';
+    case '12h':
+      return 'Past 14d';
+    case '1d':
+      return 'Past 30d';
+    default:
+      // 1m / 5m / 15m
+      return 'Past 12h';
+  }
+}
 
 // Number of evaluation windows in the timeline strip — wider than the
 // alerts-page strip so failure/firing patterns over time are visible.
@@ -103,11 +123,19 @@ function AlertProperties({ alert }: { alert: AlertsPageItem }) {
 function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   const alertUrl = getAlertSourceUrl(alert);
 
+  // Interval-dependent, but fixed for the page lifetime: the body only
+  // mounts once the alert has loaded, and useNewTimeQuery reads the initial
+  // values once (a from/to in the URL still takes precedence).
+  const defaultTimeRangeLabel = getDefaultTimeRangeLabel(alert.interval);
+  const defaultTimeRange = React.useMemo(
+    () => parseTimeQuery(defaultTimeRangeLabel, false) as [Date, Date],
+    [defaultTimeRangeLabel],
+  );
   const [displayedTimeInputValue, setDisplayedTimeInputValue] = React.useState(
-    DEFAULT_TIME_RANGE_LABEL,
+    defaultTimeRangeLabel,
   );
   const { searchedTimeRange, onSearch } = useNewTimeQuery({
-    initialDisplayValue: DEFAULT_TIME_RANGE_LABEL,
+    initialDisplayValue: defaultTimeRangeLabel,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
   });
