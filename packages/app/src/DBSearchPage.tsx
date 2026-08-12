@@ -100,7 +100,6 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import MultiSourceColumnPicker from '@/components/MultiSourceColumnPicker';
-import MultiSourceSearchFilters from '@/components/MultiSourceSearchFilters';
 import OnboardingModal from '@/components/OnboardingModal';
 import {
   SearchHistogram,
@@ -2290,6 +2289,22 @@ export function DBSearchPage() {
         };
   }, [chartConfig, searchedTimeRange, aliasWith]);
 
+  // The sidebar reads facets, values, and pins across everything selected;
+  // with one source that is exactly the single-source sidebar.
+  const filterSidebarSources = useMemo(() => {
+    if (isMultiSource) {
+      // Facet queries want each source's search shape (its own FROM,
+      // connection, and WHERE), not the aggregated histogram config.
+      return searchStreamSpecs.map(({ source, config }) => ({
+        source,
+        config: { ...config, orderBy: undefined },
+      }));
+    }
+    return searchedSource != null
+      ? [{ source: searchedSource, config: filtersChartConfig }]
+      : [];
+  }, [isMultiSource, searchStreamSpecs, searchedSource, filtersChartConfig]);
+
   const openNewSourceModal = useCallback(() => {
     setNewSourceModalOpened(true);
   }, []);
@@ -2848,21 +2863,7 @@ export function DBSearchPage() {
                 height: '100%',
               }}
             >
-              {!isFilterSidebarCollapsed &&
-                isMultiSource &&
-                !isMultiSourceSqlBlocked && (
-                  <ErrorBoundary message="Unable to render search filters">
-                    <MultiSourceSearchFilters
-                      specs={multiHistogramSpecs}
-                      dateRange={searchedTimeRange}
-                      isLive={isLive ?? true}
-                      knownColumns={knownColumns}
-                      searchFilters={searchFilters}
-                      onCollapse={() => setIsFilterSidebarCollapsed(true)}
-                    />
-                  </ErrorBoundary>
-                )}
-              {!isFilterSidebarCollapsed && !isMultiSource && (
+              {!isFilterSidebarCollapsed && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
                     denoiseResults={denoiseResults}
@@ -2870,8 +2871,7 @@ export function DBSearchPage() {
                     isLive={isLive}
                     analysisMode={analysisMode}
                     setAnalysisMode={setAnalysisMode}
-                    chartConfig={filtersChartConfig}
-                    sourceId={inputSourceObj?.id}
+                    sources={filterSidebarSources}
                     showDelta={
                       !!(searchedSource?.kind === SourceKind.Trace
                         ? searchedSource.durationExpression

@@ -39,7 +39,8 @@ type NestedFilterGroupProps = {
   hasLoadedMore: Record<string, boolean>;
   isDefaultExpanded?: boolean;
   'data-testid'?: string;
-  chartConfig: any; // Using any to avoid importing ChartConfigWithDateRange
+  /** One config per selected source; counts are summed across them. */
+  chartConfigs: any[]; // `any` avoids importing ChartConfigWithDateRange
   isLive?: boolean;
 };
 
@@ -70,7 +71,7 @@ export const NestedFilterGroup = ({
   hasLoadedMore,
   isDefaultExpanded,
   'data-testid': dataTestId,
-  chartConfig,
+  chartConfigs,
   isLive,
 }: NestedFilterGroupProps) => {
   const selectedValues: FilterState = useMemo(
@@ -253,7 +254,7 @@ export const NestedFilterGroup = ({
                             hasLoadedMore={hasLoadedMore[child.key] || false}
                             showFilterCounts={showFilterCounts}
                             isDefaultExpanded={childHasSelections}
-                            chartConfig={chartConfig}
+                            chartConfigs={chartConfigs}
                             isLive={isLive}
                           />
                         </div>

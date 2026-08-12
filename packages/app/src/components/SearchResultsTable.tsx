@@ -20,9 +20,9 @@ import { SortingState } from '@tanstack/react-table';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
-import { useMultiSourceSlots } from '@/hooks/useMultiSourceSearch';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import { useMultiSourceSlots } from '@/hooks/useSourceSlots';
 import {
   mergeStreams,
   MULTI_SOURCE_ROW_FIELDS,

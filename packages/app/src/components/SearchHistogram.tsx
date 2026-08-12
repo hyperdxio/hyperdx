@@ -23,7 +23,7 @@ import ChartContainer from '@/components/charts/ChartContainer';
 import ChartErrorState from '@/components/charts/ChartErrorState';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMultiSourceSlots } from '@/hooks/useMultiSourceSearch';
+import { useMultiSourceSlots } from '@/hooks/useSourceSlots';
 import type { NumberFormat } from '@/types';
 
 import { DBTimeChart, type SeriesGroupFilter } from './DBTimeChart';
