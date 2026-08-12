@@ -1,4 +1,8 @@
-import { summarizeRows } from '@/mcp/tools/dashboards/queryTiles';
+import {
+  summarizeRows,
+  TileDeadlineError,
+  withDeadline,
+} from '@/mcp/tools/dashboards/queryTiles';
 
 describe('summarizeRows', () => {
   it('reads a top-level array result as rows', () => {
@@ -34,5 +38,33 @@ describe('summarizeRows', () => {
   it('returns {} for unparseable text', () => {
     expect(summarizeRows('not json')).toEqual({});
     expect(summarizeRows('')).toEqual({});
+  });
+
+  it('returns {} for JSON primitives (null / number)', () => {
+    // Valid JSON, but not an object with a `result` key.
+    expect(summarizeRows('null')).toEqual({});
+    expect(summarizeRows('123')).toEqual({});
+  });
+});
+
+describe('withDeadline', () => {
+  it('resolves work that finishes before the deadline', async () => {
+    await expect(withDeadline(Promise.resolve('done'), 1000)).resolves.toBe(
+      'done',
+    );
+  });
+
+  it('rejects with TileDeadlineError when work exceeds the deadline', async () => {
+    const slow = new Promise<string>(resolve =>
+      setTimeout(() => resolve('too late'), 50),
+    );
+    await expect(withDeadline(slow, 5)).rejects.toBeInstanceOf(
+      TileDeadlineError,
+    );
+  });
+
+  it('propagates a rejection from the underlying work', async () => {
+    const boom = Promise.reject(new Error('boom'));
+    await expect(withDeadline(boom, 1000)).rejects.toThrow('boom');
   });
 });

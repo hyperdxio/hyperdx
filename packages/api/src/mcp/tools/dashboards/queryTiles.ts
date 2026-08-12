@@ -31,10 +31,63 @@ const TILE_QUERY_CONCURRENCY = 2;
  */
 const MAX_TILES_PER_CALL = 50;
 
+/**
+ * Hard cap on the length of an explicit `tileIds` array. The execution cap
+ * above bounds how many tiles we *run*, but without this an authenticated
+ * caller could still submit a giant id array whose traversal, dedupe set, and
+ * echoed `unknownTileIds` all scale with the unbounded input. Rejecting at the
+ * schema keeps the whole request proportional to a real dashboard.
+ */
+const MAX_TILE_IDS_INPUT = 500;
+
+/**
+ * Whole-call wall-clock budget. With a 50-tile cap at concurrency 2 and a
+ * per-tile ClickHouse timeout, a fully-slow batch could otherwise block for
+ * many minutes — long enough that the MCP transport times out and discards the
+ * carefully-preserved partial results. When a tile exceeds this budget its
+ * task resolves as a timed-out `error` entry instead of hanging the batch.
+ */
+const TILE_QUERY_TIMEOUT_MS = 30_000;
+
 /** A tile whose displayType is markdown (or that has no queryable config). */
 function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
   if (!isConfigTile(tile)) return true;
   return tile.config.displayType === 'markdown';
+}
+
+/**
+ * Marker error so the per-tile catch can render a clear timeout message.
+ *
+ * @internal Exported for testing only.
+ */
+export class TileDeadlineError extends Error {
+  constructor(ms: number) {
+    super(`Tile query exceeded the ${ms}ms batch deadline`);
+    this.name = 'TileDeadlineError';
+  }
+}
+
+/**
+ * Race a tile query against a wall-clock deadline. Rejecting with
+ * TileDeadlineError lets the existing per-tile catch fold the timeout into a
+ * `status:'error'` entry, so a single slow tile can't hold the whole batch
+ * open past the point the MCP transport gives up.
+ *
+ * @internal Exported for testing only.
+ */
+export async function withDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TileDeadlineError(ms)), ms);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer!);
+  }
 }
 
 /**
@@ -106,17 +159,23 @@ export function registerQueryTiles({
         '(default: every non-markdown tile). Markdown tiles are skipped. ' +
         'A tile that fails is reported inline with its error; the overall call ' +
         'still succeeds so one broken tile does not hide the rest. ' +
+        'Markdown tiles are excluded by default; a markdown tile passed ' +
+        'explicitly in tileIds is returned with status "skipped". ' +
+        'Unrecognized tile IDs are returned as unknownTileIds rather than ' +
+        'failing the call. ' +
         'At most 50 tiles run per call; any beyond that are returned as ' +
-        'unrunTileIds to page through in a follow-up call. ' +
+        'unrunTileIds — call again with those as tileIds to run the remainder. ' +
         'Drill into a specific failing tile with clickstack_query_tile.',
       inputSchema: z.object({
         dashboardId: objectIdSchema.describe('Dashboard ID.'),
         tileIds: z
           .array(z.string())
+          .max(MAX_TILE_IDS_INPUT)
           .optional()
           .describe(
             'Tile IDs to run. Default: every non-markdown tile on the ' +
-              'dashboard. Obtain IDs from clickstack_get_dashboard.',
+              'dashboard. Obtain IDs from clickstack_get_dashboard. ' +
+              `At most ${MAX_TILE_IDS_INPUT} IDs per call.`,
           ),
         startTime: z
           .string()
@@ -202,15 +261,14 @@ export function registerQueryTiles({
 
             // runConfigTile already catches ClickHouse query errors and returns
             // them as isError results. The try/catch guards against an
-            // unexpected throw (e.g. a source lookup failing) so a single
-            // misbehaving tile becomes an error entry instead of rejecting the
-            // whole batch and hiding every other tile's result.
+            // unexpected throw (e.g. a source lookup failing) or a deadline
+            // timeout so a single misbehaving tile becomes an error entry
+            // instead of rejecting the whole batch and hiding every other
+            // tile's result.
             try {
-              const result = await runConfigTile(
-                teamId.toString(),
-                tile,
-                startDate,
-                endDate,
+              const result = await withDeadline(
+                runConfigTile(teamId.toString(), tile, startDate, endDate),
+                TILE_QUERY_TIMEOUT_MS,
               );
 
               if ('isError' in result && result.isError) {

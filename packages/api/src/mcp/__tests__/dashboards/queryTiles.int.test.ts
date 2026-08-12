@@ -380,4 +380,60 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
     expect(parsed.tiles).toHaveLength(1);
     expect(parsed.tiles[0].tileId).toBe(id);
   });
+
+  it('caps the batch at 50 tiles and returns the overflow as unrunTileIds', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    // 51 non-markdown tiles -> one over the MAX_TILES_PER_CALL cap of 50.
+    const tiles = Array.from({ length: 51 }, (_, i) => ({
+      name: `Count ${i}`,
+      config: {
+        displayType: 'number',
+        sourceId,
+        select: [{ aggFn: 'count' }],
+      },
+    }));
+    const dashboard = await saveDashboard(tiles);
+    const allIds = dashboard.tiles.map((t: any) => t.id);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+      dashboardId: dashboard.id,
+      ...wideRange(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(getFirstText(result));
+    // Exactly 50 run; the 51st is reported as unrun, in order, not dropped.
+    expect(parsed.summary.total).toBe(50);
+    expect(parsed.tiles).toHaveLength(50);
+    expect(parsed.unrunTileIds).toEqual([allIds[50]]);
+    // The run set and the unrun set partition the full selection with no gaps.
+    const ranIds = parsed.tiles.map((t: any) => t.tileId);
+    expect([...ranIds, ...parsed.unrunTileIds].sort()).toEqual(
+      [...allIds].sort(),
+    );
+  });
+
+  it('rejects a tileIds array over the input cap', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const dashboard = await saveDashboard([
+      {
+        name: 'Count',
+        config: {
+          displayType: 'number',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+        },
+      },
+    ]);
+
+    // 501 ids exceeds the MAX_TILE_IDS_INPUT schema cap of 500.
+    const tooMany = Array.from({ length: 501 }, (_, i) => `id-${i}`);
+    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+      dashboardId: dashboard.id,
+      tileIds: tooMany,
+      ...wideRange(),
+    });
+
+    expect(result.isError).toBe(true);
+  });
 });
