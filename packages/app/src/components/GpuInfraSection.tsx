@@ -126,7 +126,7 @@ export function GpuInfraSection({
               { label: '1d', value: '1d' },
             ]}
             value={range}
-            onChange={value => setRange(value as any)}
+            onChange={value => setRange(value as '30m' | '1h' | '1d')}
           />
         </Group>
         <Group align="center">
@@ -138,7 +138,7 @@ export function GpuInfraSection({
               { label: 'LG', value: 'lg' },
             ]}
             value={size}
-            onChange={value => setSize(value as any)}
+            onChange={value => setSize(value as 'sm' | 'md' | 'lg')}
           />
         </Group>
       </Group>

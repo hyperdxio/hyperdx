@@ -1,3 +1,5 @@
+import type { TMetricSource } from '@hyperdx/common-utils/dist/types';
+
 import {
   getActiveInfraCorrelations,
   getGpuCorrelationWhere,
@@ -85,7 +87,7 @@ describe('INFRA_CORRELATIONS built-ins', () => {
 describe('getGpuCorrelationWhere', () => {
   const metricSource = {
     resourceAttributesExpression: 'ResourceAttributes',
-  } as any;
+  } as unknown as TMetricSource;
 
   it('returns where clause using k8s.node.name when present', () => {
     const result = getGpuCorrelationWhere(metricSource, {
