@@ -39,6 +39,24 @@ export type FormulaAst =
   // position in the chart's `select` list (e.g. 1).
   | { type: 'seriesRef'; ref: string; index: number };
 
+// ─── Bounds ──────────────────────────────────────────────────────────────────
+
+/**
+ * Maximum accepted expression length, in characters. Generous for a
+ * human-typed formula while keeping parser recursion (one level per nesting
+ * depth, and depth <= length) far below any engine's stack limit, so
+ * validation always returns structured results instead of overflowing.
+ * Mirrored by `MetricFormulaSchema.expression`'s max length in `types.ts`.
+ */
+export const MAX_FORMULA_EXPRESSION_LENGTH = 1024;
+
+/**
+ * Maximum nesting depth (parentheses + unary minus chains). Deterministic
+ * recursion bound regardless of engine stack size; far beyond any real
+ * formula.
+ */
+export const MAX_FORMULA_DEPTH = 64;
+
 // ─── Structured validation errors ────────────────────────────────────────────
 
 /**
@@ -48,6 +66,11 @@ export type FormulaAst =
  */
 export type FormulaValidationError =
   | { code: 'empty-expression'; message: string }
+  | {
+      code: 'expression-too-long';
+      message: string;
+      maxLength: number;
+    }
   | { code: 'invalid-token'; message: string; position: number; token: string }
   | { code: 'syntax-error'; message: string; position: number }
   | {
@@ -197,11 +220,31 @@ class SyntaxError_ extends Error {
 
 class Parser {
   private pos = 0;
+  // Current nesting depth (parentheses + unary minus chains). Binary
+  // operator chains are parsed iteratively so they don't contribute. Keeps
+  // recursion bounded deterministically (see MAX_FORMULA_DEPTH); the length
+  // pre-check in parseFormula already makes overflow unreachable, this makes
+  // the limit engine-independent and the error message precise.
+  private depth = 0;
 
   constructor(
     private readonly tokens: Token[],
     private readonly expressionLength: number,
   ) {}
+
+  private enterNested(position: number): void {
+    this.depth++;
+    if (this.depth > MAX_FORMULA_DEPTH) {
+      throw new SyntaxError_(
+        `Expression is nested too deeply (max ${MAX_FORMULA_DEPTH} levels)`,
+        position,
+      );
+    }
+  }
+
+  private exitNested(): void {
+    this.depth--;
+  }
 
   parse(): FormulaAst {
     const ast = this.parseExpression();
@@ -254,7 +297,10 @@ class Parser {
     const tok = this.peek();
     if (tok?.type === 'operator' && tok.op === '-') {
       this.pos++;
-      return { type: 'unary', op: '-', operand: this.parseFactor() };
+      this.enterNested(tok.position);
+      const operand = this.parseFactor();
+      this.exitNested();
+      return { type: 'unary', op: '-', operand };
     }
     return this.parsePrimary();
   }
@@ -278,7 +324,9 @@ class Parser {
           index: seriesRefToIndex(tok.ref),
         };
       case 'lparen': {
+        this.enterNested(tok.position);
         const inner = this.parseExpression();
+        this.exitNested();
         const closing = this.next();
         if (closing?.type !== 'rparen') {
           throw new SyntaxError_(
@@ -342,6 +390,21 @@ export const parseFormula = (expression: string): FormulaParseResult => {
     return {
       ok: false,
       errors: [{ code: 'empty-expression', message: 'Expression is empty' }],
+    };
+  }
+  // Checked before tokenizing so an oversized (possibly hostile) expression
+  // can never drive the recursive parser toward a stack overflow — the
+  // validation API always returns structured results rather than throwing.
+  if (expression.length > MAX_FORMULA_EXPRESSION_LENGTH) {
+    return {
+      ok: false,
+      errors: [
+        {
+          code: 'expression-too-long',
+          message: `Expression is too long (${expression.length} characters, max ${MAX_FORMULA_EXPRESSION_LENGTH})`,
+          maxLength: MAX_FORMULA_EXPRESSION_LENGTH,
+        },
+      ],
     };
   }
   const tokenized = tokenize(expression);

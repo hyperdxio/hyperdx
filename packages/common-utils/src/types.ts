@@ -429,7 +429,11 @@ export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
  * rendering — expressions are never passed through as raw SQL.
  */
 export const MetricFormulaSchema = z.object({
-  expression: z.string(),
+  // Length-capped at the validation boundary so persisted configs can never
+  // carry an expression large enough to matter for the recursive parser
+  // (mirrors MAX_FORMULA_EXPRESSION_LENGTH in `core/formula.ts`, which
+  // guards the parser itself for arbitrary caller input).
+  expression: z.string().max(1024),
   // Legend / column name for the formula series. Falls back to the raw
   // expression when unset (mirrors DerivedColumnSchema.alias semantics).
   alias: z.string().optional(),

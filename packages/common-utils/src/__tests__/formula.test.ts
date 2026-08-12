@@ -1,6 +1,8 @@
 import {
   FormulaAst,
   indexToSeriesRef,
+  MAX_FORMULA_DEPTH,
+  MAX_FORMULA_EXPRESSION_LENGTH,
   parseFormula,
   seriesRefToIndex,
   validateFormula,
@@ -308,6 +310,88 @@ describe('parseFormula', () => {
     expect(errors).toMatchObject([
       { code: 'invalid-token', position: 4, token: '.' },
     ]);
+  });
+
+  // ─── Length / depth bounds ─────────────────────────────────────────────────
+  // Oversized or deeply nested expressions must come back as structured
+  // errors, never escape the result-based API as a stack-overflow RangeError.
+
+  it('rejects an oversized expression with a structured error', () => {
+    const terms = Array.from(
+      { length: MAX_FORMULA_EXPRESSION_LENGTH },
+      () => 'A',
+    ).join(' + ');
+    const { errors } = expectErrors(parseFormula(terms));
+    expect(errors).toEqual([
+      {
+        code: 'expression-too-long',
+        message: expect.stringContaining(`${MAX_FORMULA_EXPRESSION_LENGTH}`),
+        maxLength: MAX_FORMULA_EXPRESSION_LENGTH,
+      },
+    ]);
+  });
+
+  it('accepts an expression at exactly the maximum length', () => {
+    // "A+A+A..." — every char meaningful, length exactly at the cap (odd
+    // cap lands on a ref; pad with a leading unary minus when even).
+    const base = 'A' + '+A'.repeat((MAX_FORMULA_EXPRESSION_LENGTH - 1) / 2);
+    const expression =
+      base.length === MAX_FORMULA_EXPRESSION_LENGTH ? base : `-${base}`;
+    expect(expression).toHaveLength(MAX_FORMULA_EXPRESSION_LENGTH);
+    expectOk(parseFormula(expression));
+  });
+
+  it('rejects nesting beyond MAX_FORMULA_DEPTH parentheses with a structured error', () => {
+    const depth = MAX_FORMULA_DEPTH + 1;
+    const expression = '('.repeat(depth) + 'A' + ')'.repeat(depth);
+    const { errors } = expectErrors(parseFormula(expression));
+    expect(errors).toEqual([
+      {
+        code: 'syntax-error',
+        message: expect.stringContaining('nested too deeply'),
+        position: MAX_FORMULA_DEPTH,
+      },
+    ]);
+  });
+
+  it('accepts nesting at exactly MAX_FORMULA_DEPTH', () => {
+    const expression =
+      '('.repeat(MAX_FORMULA_DEPTH) + 'A' + ')'.repeat(MAX_FORMULA_DEPTH);
+    expectOk(parseFormula(expression));
+  });
+
+  it('bounds unary minus chains with the same depth limit', () => {
+    expectOk(parseFormula('-'.repeat(MAX_FORMULA_DEPTH) + 'A'));
+    const { errors } = expectErrors(
+      parseFormula('-'.repeat(MAX_FORMULA_DEPTH + 1) + 'A'),
+    );
+    expect(errors).toMatchObject([
+      {
+        code: 'syntax-error',
+        message: expect.stringContaining('nested too deeply'),
+      },
+    ]);
+  });
+
+  it('depth is per-branch, not cumulative across sibling groups', () => {
+    const group = '(-(A))';
+    const expression = Array.from({ length: 30 }, () => group).join(' + ');
+    expect(expression.length).toBeLessThanOrEqual(
+      MAX_FORMULA_EXPRESSION_LENGTH,
+    );
+    expectOk(parseFormula(expression));
+  });
+
+  it('never throws on adversarial input within the length cap', () => {
+    // Worst-case recursive inputs at the maximum length: all open parens,
+    // all minuses. Must return structured errors, not RangeError.
+    for (const expression of [
+      '('.repeat(MAX_FORMULA_EXPRESSION_LENGTH),
+      '-'.repeat(MAX_FORMULA_EXPRESSION_LENGTH),
+    ]) {
+      const { errors } = expectErrors(parseFormula(expression));
+      expect(errors).toMatchObject([{ code: 'syntax-error' }]);
+    }
   });
 });
 

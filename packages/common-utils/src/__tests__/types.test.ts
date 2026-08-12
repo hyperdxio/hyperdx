@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { MAX_FORMULA_EXPRESSION_LENGTH } from '@/core/formula';
 import {
   BackgroundChartSchema,
   ColorConditionSchema,
@@ -559,6 +560,22 @@ describe('MetricFormulaSchema', () => {
     expect(MetricFormulaSchema.safeParse({ expression: 1 }).success).toBe(
       false,
     );
+  });
+
+  // The schema length cap and the parser's MAX_FORMULA_EXPRESSION_LENGTH
+  // must agree — types.ts is a leaf module (imports only zod), so the bound
+  // is duplicated as a literal there and pinned here.
+  it('caps expression length at MAX_FORMULA_EXPRESSION_LENGTH', () => {
+    expect(
+      MetricFormulaSchema.safeParse({
+        expression: 'A'.repeat(MAX_FORMULA_EXPRESSION_LENGTH),
+      }).success,
+    ).toBe(true);
+    expect(
+      MetricFormulaSchema.safeParse({
+        expression: 'A'.repeat(MAX_FORMULA_EXPRESSION_LENGTH + 1),
+      }).success,
+    ).toBe(false);
   });
 });
 
