@@ -2,11 +2,7 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import {
-  AlertInterval,
-  AlertSource,
-  isRangeThresholdType,
-} from '@hyperdx/common-utils/dist/types';
+import { AlertInterval, AlertSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Breadcrumbs,
@@ -23,6 +19,7 @@ import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
 import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
@@ -30,8 +27,6 @@ import { TimePicker } from '@/components/TimePicker';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
-import { getWebhookChannelIcon } from './utils/webhookIcons';
 import {
   AlertNote,
   getAlertDisplayName,
@@ -74,47 +69,9 @@ function getDefaultTimeRangeLabel(interval: AlertInterval): string {
 const TIMELINE_ITEMS = 60;
 
 function AlertProperties({ alert }: { alert: AlertsPageItem }) {
-  const thresholdLabel =
-    TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
-    alert.thresholdType;
-
   return (
     <Stack gap={2}>
-      <div className="fs-8 d-flex gap-2 align-items-center">
-        <span>
-          If value {thresholdLabel}{' '}
-          <span className="fw-bold">{alert.threshold}</span>
-          {isRangeThresholdType(alert.thresholdType) && (
-            <>
-              {' '}
-              and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
-            </>
-          )}
-        </span>
-        <span>&middot;</span>
-        <span>Evaluates every {alert.interval}</span>
-        {alert.numConsecutiveWindows != null &&
-          alert.numConsecutiveWindows > 1 && (
-            <>
-              <span>&middot;</span>
-              <span>
-                Fires after {alert.numConsecutiveWindows} consecutive windows
-              </span>
-            </>
-          )}
-        <span>&middot;</span>
-        <Group gap={5}>
-          Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
-        </Group>
-        {alert.createdBy && (
-          <>
-            <span>&middot;</span>
-            <span>
-              Created by {alert.createdBy.name || alert.createdBy.email}
-            </span>
-          </>
-        )}
-      </div>
+      <AlertPropertiesSummary alert={alert} showSchedule />
       {alert.note && <AlertNote note={alert.note} />}
     </Stack>
   );

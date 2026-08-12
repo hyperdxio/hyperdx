@@ -132,10 +132,12 @@ export class AlertsPage {
   }
 
   /**
-   * Get the "Details" link for a given alert card (navigates to /alerts/:id).
+   * Get the alert-name link for a given alert card. With alert details
+   * enabled it navigates to /alerts/:id; the source tile / saved search is
+   * a separate secondary link (alert-source-link-*).
    */
   getDetailsLinkForAlertCard(alertCard: Locator) {
-    return alertCard.locator('[data-testid^="alert-details-link-"]');
+    return alertCard.locator('[data-testid^="alert-link-"]');
   }
 
   /**
