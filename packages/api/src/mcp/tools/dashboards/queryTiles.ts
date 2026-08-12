@@ -41,13 +41,16 @@ const MAX_TILES_PER_CALL = 50;
 const MAX_TILE_IDS_INPUT = 500;
 
 /**
- * Whole-call wall-clock budget. With a 50-tile cap at concurrency 2 and a
- * per-tile ClickHouse timeout, a fully-slow batch could otherwise block for
- * many minutes — long enough that the MCP transport times out and discards the
- * carefully-preserved partial results. When a tile exceeds this budget its
- * task resolves as a timed-out `error` entry instead of hanging the batch.
+ * Whole-call wall-clock budget, shared across the entire batch (NOT per tile).
+ * A single deadline is fixed when the run starts; every tile races against the
+ * time *remaining* until it. Without this, 50 tiles at concurrency 2 each with
+ * their own multi-second timeout could serialize into many minutes — long
+ * enough that the MCP transport gives up and discards the carefully-preserved
+ * partial results. Tiles that don't finish (or never start) before the budget
+ * is spent resolve as timed-out `error` entries, so the call as a whole returns
+ * within roughly this bound with whatever completed.
  */
-const TILE_QUERY_TIMEOUT_MS = 30_000;
+const BATCH_DEADLINE_MS = 60_000;
 
 /** A tile whose displayType is markdown (or that has no queryable config). */
 function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
@@ -61,27 +64,37 @@ function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
  * @internal Exported for testing only.
  */
 export class TileDeadlineError extends Error {
-  constructor(ms: number) {
-    super(`Tile query exceeded the ${ms}ms batch deadline`);
+  constructor() {
+    super('Tile query exceeded the batch wall-clock deadline');
     this.name = 'TileDeadlineError';
   }
 }
 
 /**
- * Race a tile query against a wall-clock deadline. Rejecting with
- * TileDeadlineError lets the existing per-tile catch fold the timeout into a
- * `status:'error'` entry, so a single slow tile can't hold the whole batch
- * open past the point the MCP transport gives up.
+ * Race a promise against a SHARED absolute deadline (epoch millis). Every tile
+ * in a batch passes the same `deadlineAt`, so the guarantee is whole-call, not
+ * per-tile: once wall-clock time reaches `deadlineAt`, any tile still in flight
+ * (or not yet started) rejects with TileDeadlineError, which the per-tile catch
+ * folds into a `status:'error'` entry. This bounds the entire call regardless
+ * of tile count or concurrency.
  *
  * @internal Exported for testing only.
  */
 export async function withDeadline<T>(
   work: Promise<T>,
-  ms: number,
+  deadlineAt: number,
 ): Promise<T> {
+  const remaining = deadlineAt - Date.now();
+  // Budget already spent — don't even start waiting.
+  if (remaining <= 0) {
+    // Ensure the underlying work's rejection (if any) is observed so it
+    // doesn't surface as an unhandled rejection after we've bailed.
+    void Promise.resolve(work).catch(() => {});
+    throw new TileDeadlineError();
+  }
   let timer: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new TileDeadlineError(ms)), ms);
+    timer = setTimeout(() => reject(new TileDeadlineError()), remaining);
   });
   try {
     return await Promise.race([work, deadline]);
@@ -208,13 +221,16 @@ export function registerQueryTiles({
       const externalDashboard = convertToExternalDashboard(dashboard);
       const allTiles = externalDashboard.tiles;
 
-      // Resolve the target tiles. When explicit IDs are given, dedupe them
-      // (a repeated id must not run — or be counted — twice) and keep track of
-      // any that don't exist so the caller learns about typos without failing
-      // the whole batch.
+      // Resolve the target tiles. An explicit `tileIds` array is honored
+      // whenever the field is present — including an empty array, which
+      // deliberately selects nothing rather than falling through to "run
+      // everything". Only an omitted field defaults to all non-markdown tiles.
+      // Explicit IDs are deduped (a repeated id must not run — or be counted —
+      // twice); unknown IDs are tracked so the caller learns about typos
+      // without failing the whole batch.
       let selectedTiles: ExternalDashboardTileWithId[];
       const unknownTileIds: string[] = [];
-      if (tileIds && tileIds.length > 0) {
+      if (tileIds !== undefined) {
         const byId = new Map(allTiles.map(t => [t.id, t]));
         selectedTiles = [];
         const seen = new Set<string>();
@@ -240,6 +256,12 @@ export function registerQueryTiles({
       const unrunTileIds = selectedTiles
         .slice(MAX_TILES_PER_CALL)
         .map(t => t.id);
+
+      // One shared deadline for the whole batch (see BATCH_DEADLINE_MS). Every
+      // tile races against this same absolute instant, so the call returns
+      // within roughly this bound no matter how many tiles run or how slow each
+      // is — tiles still in flight when it elapses become timed-out errors.
+      const deadlineAt = Date.now() + BATCH_DEADLINE_MS;
 
       const queue = new PQueue({ concurrency: TILE_QUERY_CONCURRENCY });
       const queued = await Promise.all(
@@ -268,7 +290,7 @@ export function registerQueryTiles({
             try {
               const result = await withDeadline(
                 runConfigTile(teamId.toString(), tile, startDate, endDate),
-                TILE_QUERY_TIMEOUT_MS,
+                deadlineAt,
               );
 
               if ('isError' in result && result.isError) {

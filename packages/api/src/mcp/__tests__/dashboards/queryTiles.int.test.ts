@@ -413,6 +413,41 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
     );
   });
 
+  it('selects nothing when tileIds is an empty array (not "run everything")', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const dashboard = await saveDashboard([
+      {
+        name: 'Count A',
+        config: {
+          displayType: 'number',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+        },
+      },
+      {
+        name: 'Count B',
+        config: {
+          displayType: 'number',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+        },
+      },
+    ]);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+      dashboardId: dashboard.id,
+      tileIds: [],
+      ...wideRange(),
+    });
+
+    // An explicit empty selection runs zero tiles rather than defaulting to
+    // every non-markdown tile.
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(getFirstText(result));
+    expect(parsed.summary.total).toBe(0);
+    expect(parsed.tiles).toHaveLength(0);
+  });
+
   it('rejects a tileIds array over the input cap', async () => {
     const sourceId = ctx.traceSource._id.toString();
     const dashboard = await saveDashboard([

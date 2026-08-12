@@ -1,0 +1,154 @@
+// Unit test for the clickstack_query_tiles handler's per-tile failure
+// isolation. Mocks the heavy collaborators (Mongo model, dashboard
+// conversion, ClickHouse-backed runConfigTile) so we can drive the batch loop
+// deterministically without any live services, then assert that a hanging /
+// throwing tile becomes a status:'error' entry while the rest of the batch
+// still resolves and the overall call stays non-error.
+
+const mockRunConfigTile = jest.fn();
+const mockFindOne = jest.fn();
+const mockConvertToExternalDashboard = jest.fn();
+
+jest.mock('@/mcp/tools/query/helpers', () => {
+  const actual = jest.requireActual('@/mcp/tools/query/helpers');
+  return {
+    ...actual,
+    runConfigTile: (...args: unknown[]) => mockRunConfigTile(...args),
+  };
+});
+
+jest.mock('@/models/dashboard', () => ({
+  __esModule: true,
+  default: { findOne: (...args: unknown[]) => mockFindOne(...args) },
+}));
+
+jest.mock('@/routers/external-api/v2/utils/dashboards', () => {
+  const actual = jest.requireActual(
+    '@/routers/external-api/v2/utils/dashboards',
+  );
+  return {
+    ...actual,
+    convertToExternalDashboard: (...args: unknown[]) =>
+      mockConvertToExternalDashboard(...args),
+  };
+});
+
+import {
+  registerQueryTiles,
+  TileDeadlineError,
+} from '@/mcp/tools/dashboards/queryTiles';
+import type { McpContext, RegisterToolFn, ToolResult } from '@/mcp/tools/types';
+
+type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+
+/**
+ * Register the tool against a minimal fake registrar that just captures the
+ * handler, so we can invoke it directly without an MCP server/transport.
+ */
+function buildHandler(): Handler {
+  let captured: Handler | undefined;
+  const registerTool: RegisterToolFn = (_name, _config, handler) => {
+    // The generic handler narrows to this tool's arg shape; capture as the
+    // looser test Handler type.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    captured = handler as unknown as Handler;
+  };
+  const context: McpContext = { teamId: 'team-1', userId: 'user-1' };
+  registerQueryTiles({
+    // `server` is never touched by the handler under test.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    server: {} as never,
+    context,
+    registerTool,
+  });
+  if (!captured) throw new Error('handler was not registered');
+  return captured;
+}
+
+function textOf(result: ToolResult): string {
+  const item = result.content[0];
+  if (!item || item.type !== 'text') {
+    throw new Error('expected text content');
+  }
+  return item.text;
+}
+
+const okResult = {
+  content: [{ type: 'text' as const, text: JSON.stringify({ result: [] }) }],
+};
+
+const tile = (id: string, name: string) => ({
+  id,
+  name,
+  config: { displayType: 'number', sourceId: 'src-1', select: [] },
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockFindOne.mockResolvedValue({ _id: 'dash-1' });
+});
+
+describe('clickstack_query_tiles handler — per-tile failure isolation', () => {
+  it('folds a thrown runConfigTile into a status:error entry while other tiles resolve', async () => {
+    mockConvertToExternalDashboard.mockReturnValue({
+      id: 'dash-1',
+      tiles: [tile('t1', 'Good'), tile('t2', 'Boom')],
+    });
+    mockRunConfigTile.mockImplementation((_team, t: { id: string }) => {
+      if (t.id === 't2') {
+        return Promise.reject(new Error('source lookup exploded'));
+      }
+      return Promise.resolve(okResult);
+    });
+
+    const handler = buildHandler();
+    const result = await handler({
+      dashboardId: '000000000000000000000000',
+      startTime: new Date(Date.now() - 60_000).toISOString(),
+      endTime: new Date().toISOString(),
+    });
+
+    // One tile threw, but the batch as a whole is not an error.
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.summary).toMatchObject({ total: 2, ok: 1, error: 1 });
+
+    const good = parsed.tiles.find((t: { name: string }) => t.name === 'Good');
+    const boom = parsed.tiles.find((t: { name: string }) => t.name === 'Boom');
+    expect(good.status).toBe('ok');
+    expect(boom.status).toBe('error');
+    expect(boom.error).toContain('source lookup exploded');
+  });
+
+  it('folds a batch-deadline timeout into a status:error entry with the deadline message', async () => {
+    // A tile that overran the shared wall-clock budget surfaces to the batch
+    // loop as a rejected TileDeadlineError (see withDeadline). Assert the
+    // handler renders it as a timed-out error while the fast tile still
+    // resolves and the overall call stays non-error — without relying on
+    // real-time waiting.
+    mockConvertToExternalDashboard.mockReturnValue({
+      id: 'dash-1',
+      tiles: [tile('t1', 'Fast'), tile('t2', 'Slow')],
+    });
+    mockRunConfigTile.mockImplementation((_team, t: { id: string }) => {
+      if (t.id === 't2') {
+        return Promise.reject(new TileDeadlineError());
+      }
+      return Promise.resolve(okResult);
+    });
+
+    const handler = buildHandler();
+    const result = await handler({
+      dashboardId: '000000000000000000000000',
+      startTime: new Date(Date.now() - 60_000).toISOString(),
+      endTime: new Date().toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.summary).toMatchObject({ total: 2, ok: 1, error: 1 });
+    const slow = parsed.tiles.find((t: { name: string }) => t.name === 'Slow');
+    expect(slow.status).toBe('error');
+    expect(slow.error).toContain('deadline');
+  });
+});
