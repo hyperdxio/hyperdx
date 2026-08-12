@@ -2,7 +2,7 @@ import React from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
-
+import { fromPartial } from '@total-typescript/shoehorn';
 // Controlled, in-memory replacement for nuqs' useQueryState so each side-panel
 // URL param can be seeded and its setter inspected independently. Values are
 // the already-parsed shapes the component consumes (arrays / strings), not URL
@@ -30,7 +30,7 @@ jest.mock('nuqs', () => {
       );
       const fallback =
         parser && 'defaultValue' in parser ? parser.defaultValue : null;
-      const value = hasValue ? mockQueryStore[key] : (fallback ?? null);
+      const value = hasValue ? mockQueryStore[key] : fallback ?? null;
       if (!mockSetters[key]) mockSetters[key] = jest.fn();
       return [value, mockSetters[key]];
     },
@@ -158,13 +158,13 @@ import useSidePanelStack from '@/hooks/useSidePanelStack';
 import { getRowLookupWindow } from '@/utils/rowTimestamps';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-const ROOT_SOURCE = {
+const ROOT_SOURCE = fromPartial<TSource>({
   id: 'log-src',
   kind: 'log',
   traceSourceId: 'trace-src',
   timestampValueExpression: 'Timestamp',
   resourceAttributesExpression: 'ResourceAttributes',
-} as TSource;
+}) as TSource;
 
 const TRACE_ID = '7316d5a2ab0dc2efa72258f64a98a405';
 const SPAN_ID = 'e3748131832d6176';

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { fromPartial } from '@total-typescript/shoehorn';
 import { MantineProvider } from '@mantine/core';
 import { render, waitFor } from '@testing-library/react';
 
@@ -122,8 +123,7 @@ function autofilledTables() {
     .map(([path, value]) => [path, value]);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-const SAVED_SOURCE: TSource = {
+const SAVED_SOURCE = fromPartial<TSource>({
   id: 'metric-source-1',
   kind: SourceKind.Metric,
   name: 'Metrics',
@@ -134,7 +134,7 @@ const SAVED_SOURCE: TSource = {
     gauge: 'otel_metrics_gauge',
     sum: 'otel_metrics_sum',
   },
-} as any;
+}) as TSource;
 
 describe('MetricTableModelForm metric table autofill', () => {
   beforeEach(() => {
@@ -238,11 +238,11 @@ describe('MetricTableModelForm metric table autofill', () => {
   // tables to preserve, so it autofills like a new source.
   it('autofills for an existing source switched to the metrics kind', async () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    savedSource = {
+    savedSource = fromPartial<TSource>({
       ...SAVED_SOURCE,
       kind: SourceKind.Log,
       metricTables: undefined,
-    } as any;
+    }) as TSource;
 
     renderHarness(
       <Harness databaseName="otel_v2" sourceId="metric-source-1" />,
