@@ -33,8 +33,10 @@ import { IS_LOCAL_MODE } from '@/config';
 import { useSource } from '@/source';
 
 import { DBTimeChart } from './DBTimeChart';
+import { GpuInfraSection } from './GpuInfraSection';
 import {
   getActiveInfraCorrelations,
+  getGpuCorrelationWhere,
   InfraChartSpec,
 } from './infraCorrelations';
 import { KubeTimeline } from './KubeComponents';
@@ -179,6 +181,14 @@ export default ({
 
   const timestamp = new Date(rowData?.__hdx_timestamp).getTime();
 
+  const gpuWhere = useMemo(
+    () =>
+      metricSource
+        ? getGpuCorrelationWhere(metricSource, resourceAttributes)
+        : undefined,
+    [metricSource, resourceAttributes],
+  );
+
   return (
     <Stack my="md" gap={40}>
       {!metricSource && !isLoadingMetricSource && (
@@ -277,6 +287,13 @@ export default ({
           </div>
         );
       })}
+      {metricSource && gpuWhere && (
+        <GpuInfraSection
+          metricSource={metricSource}
+          where={gpuWhere}
+          timestamp={timestamp}
+        />
+      )}
     </Stack>
   );
 };

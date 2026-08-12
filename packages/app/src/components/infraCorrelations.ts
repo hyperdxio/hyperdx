@@ -1,3 +1,5 @@
+import type { TMetricSource } from '@hyperdx/common-utils/dist/types';
+
 import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
@@ -91,4 +93,28 @@ export function getActiveInfraCorrelations(
   return INFRA_CORRELATIONS.filter(
     correlation => resourceAttributes[correlation.detectAttribute] != null,
   );
+}
+
+// Resource attributes used to correlate GPU metrics to the selected log/span.
+// GPU metrics carry host/pod identity as resource attributes on the metric
+// (per OTel hardware semconv), so we correlate via the same node/host
+// attributes. Preference order: k8s.node.name > host.name.
+const GPU_CORRELATE_ATTRIBUTES = ['k8s.node.name', 'host.name'] as const;
+
+/**
+ * Builds the Lucene WHERE clause to correlate GPU metrics to the selected
+ * log/span's host. Returns undefined if no correlatable attribute is found.
+ */
+export function getGpuCorrelationWhere(
+  metricSource: TMetricSource,
+  resourceAttributes: Record<string, unknown> | null | undefined,
+): string | undefined {
+  if (!resourceAttributes) return undefined;
+  for (const attr of GPU_CORRELATE_ATTRIBUTES) {
+    const value = resourceAttributes[attr];
+    if (value != null && value !== '') {
+      return `${metricSource.resourceAttributesExpression}.${attr}:"${value}"`;
+    }
+  }
+  return undefined;
 }

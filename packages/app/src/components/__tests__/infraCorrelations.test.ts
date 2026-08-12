@@ -1,5 +1,6 @@
 import {
   getActiveInfraCorrelations,
+  getGpuCorrelationWhere,
   INFRA_CORRELATIONS,
 } from '@/components/infraCorrelations';
 
@@ -78,5 +79,55 @@ describe('INFRA_CORRELATIONS built-ins', () => {
         ['disk-usage-card', 'filesystem.available'],
       ]);
     }
+  });
+});
+
+describe('getGpuCorrelationWhere', () => {
+  const metricSource = {
+    resourceAttributesExpression: 'ResourceAttributes',
+  } as any;
+
+  it('returns where clause using k8s.node.name when present', () => {
+    const result = getGpuCorrelationWhere(metricSource, {
+      'k8s.node.name': 'gpu-node-1',
+      'host.name': 'host-1',
+    });
+    expect(result).toBe('ResourceAttributes.k8s.node.name:"gpu-node-1"');
+  });
+
+  it('falls back to host.name when k8s.node.name is absent', () => {
+    const result = getGpuCorrelationWhere(metricSource, {
+      'host.name': 'gpu-host-1',
+    });
+    expect(result).toBe('ResourceAttributes.host.name:"gpu-host-1"');
+  });
+
+  it('returns undefined when no correlatable attribute is present', () => {
+    const result = getGpuCorrelationWhere(metricSource, {
+      'service.name': 'api',
+      'k8s.pod.uid': 'pod-123',
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined for null resource attributes', () => {
+    expect(getGpuCorrelationWhere(metricSource, null)).toBeUndefined();
+    expect(getGpuCorrelationWhere(metricSource, undefined)).toBeUndefined();
+  });
+
+  it('skips empty string attribute values', () => {
+    const result = getGpuCorrelationWhere(metricSource, {
+      'k8s.node.name': '',
+      'host.name': 'fallback-host',
+    });
+    expect(result).toBe('ResourceAttributes.host.name:"fallback-host"');
+  });
+
+  it('returns undefined when all correlatable attributes are empty', () => {
+    const result = getGpuCorrelationWhere(metricSource, {
+      'k8s.node.name': '',
+      'host.name': '',
+    });
+    expect(result).toBeUndefined();
   });
 });
