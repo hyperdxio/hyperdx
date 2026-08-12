@@ -60,6 +60,8 @@ function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
 
 /**
  * Marker error so the per-tile catch can render a clear timeout message.
+ * Raised both when a started query overruns the deadline and when a queued
+ * tile's deadline has already passed before it could start.
  *
  * @internal Exported for testing only.
  */
@@ -71,25 +73,25 @@ export class TileDeadlineError extends Error {
 }
 
 /**
- * Race a promise against a SHARED absolute deadline (epoch millis). Every tile
- * in a batch passes the same `deadlineAt`, so the guarantee is whole-call, not
- * per-tile: once wall-clock time reaches `deadlineAt`, any tile still in flight
- * (or not yet started) rejects with TileDeadlineError, which the per-tile catch
- * folds into a `status:'error'` entry. This bounds the entire call regardless
- * of tile count or concurrency.
+ * Run `startWork` under a SHARED absolute deadline (epoch millis) — every tile
+ * in a batch passes the same `deadlineAt`, making the budget whole-call.
+ *
+ * `startWork` is a thunk, not an already-started promise, so the deadline is
+ * checked BEFORE the query is issued: once the budget is spent, tiles PQueue
+ * schedules during the drain fail fast without touching ClickHouse. A tile that
+ * did start races the timer and is abandoned when the deadline elapses; since
+ * that query can't be cancelled from here, at most `concurrency` of them
+ * outlive the call.
  *
  * @internal Exported for testing only.
  */
 export async function withDeadline<T>(
-  work: Promise<T>,
+  startWork: () => Promise<T>,
   deadlineAt: number,
 ): Promise<T> {
   const remaining = deadlineAt - Date.now();
-  // Budget already spent — don't even start waiting.
+  // Budget already spent — fail fast without starting the work at all.
   if (remaining <= 0) {
-    // Ensure the underlying work's rejection (if any) is observed so it
-    // doesn't surface as an unhandled rejection after we've bailed.
-    void Promise.resolve(work).catch(() => {});
     throw new TileDeadlineError();
   }
   let timer: ReturnType<typeof setTimeout>;
@@ -97,7 +99,7 @@ export async function withDeadline<T>(
     timer = setTimeout(() => reject(new TileDeadlineError()), remaining);
   });
   try {
-    return await Promise.race([work, deadline]);
+    return await Promise.race([startWork(), deadline]);
   } finally {
     clearTimeout(timer!);
   }
@@ -168,14 +170,12 @@ export function registerQueryTiles({
         'compact per-tile success/failure summary. This is the efficient way to ' +
         'validate an entire dashboard after clickstack_save_dashboard — prefer it ' +
         'over calling clickstack_query_tile once per tile. ' +
-        'Accepts a dashboard ID and an optional list of tile IDs ' +
-        '(default: every non-markdown tile). Markdown tiles are skipped. ' +
-        'A tile that fails is reported inline with its error; the overall call ' +
-        'still succeeds so one broken tile does not hide the rest. ' +
+        'Accepts a dashboard ID and an optional list of tile IDs. ' +
         'Markdown tiles are excluded by default; a markdown tile passed ' +
         'explicitly in tileIds is returned with status "skipped". ' +
-        'Unrecognized tile IDs are returned as unknownTileIds rather than ' +
-        'failing the call. ' +
+        'A tile that fails is reported inline with its error and the overall ' +
+        'call still succeeds, so one broken tile does not hide the rest, and ' +
+        'unrecognized tile IDs come back as unknownTileIds rather than failing. ' +
         'At most 50 tiles run per call; any beyond that are returned as ' +
         'unrunTileIds — call again with those as tileIds to run the remainder. ' +
         'Drill into a specific failing tile with clickstack_query_tile.',
@@ -249,18 +249,13 @@ export function registerQueryTiles({
         selectedTiles = allTiles.filter(t => !isMarkdownTile(t));
       }
 
-      // Soft-cap the number of tiles run per call so one request can't fan out
-      // into an unbounded run of ClickHouse queries. Anything past the cap is
-      // reported back as unrun rather than silently dropped.
+      // Apply the execution cap; the overflow is surfaced as unrunTileIds.
       const targetTiles = selectedTiles.slice(0, MAX_TILES_PER_CALL);
       const unrunTileIds = selectedTiles
         .slice(MAX_TILES_PER_CALL)
         .map(t => t.id);
 
-      // One shared deadline for the whole batch (see BATCH_DEADLINE_MS). Every
-      // tile races against this same absolute instant, so the call returns
-      // within roughly this bound no matter how many tiles run or how slow each
-      // is — tiles still in flight when it elapses become timed-out errors.
+      // Fix one shared deadline for the whole batch that every tile races.
       const deadlineAt = Date.now() + BATCH_DEADLINE_MS;
 
       const queue = new PQueue({ concurrency: TILE_QUERY_CONCURRENCY });
@@ -281,15 +276,16 @@ export function registerQueryTiles({
               return { ...base, status: 'skipped' };
             }
 
-            // runConfigTile already catches ClickHouse query errors and returns
-            // them as isError results. The try/catch guards against an
-            // unexpected throw (e.g. a source lookup failing) or a deadline
-            // timeout so a single misbehaving tile becomes an error entry
-            // instead of rejecting the whole batch and hiding every other
-            // tile's result.
+            // Run the query under the shared deadline. It's passed as a thunk
+            // so withDeadline can skip issuing it entirely once the budget is
+            // spent (see withDeadline). runConfigTile turns ClickHouse errors
+            // into isError results; the try/catch covers an unexpected throw or
+            // a deadline timeout, folding either into a status:'error' entry so
+            // one misbehaving tile never rejects the whole batch.
             try {
               const result = await withDeadline(
-                runConfigTile(teamId.toString(), tile, startDate, endDate),
+                () =>
+                  runConfigTile(teamId.toString(), tile, startDate, endDate),
                 deadlineAt,
               );
 

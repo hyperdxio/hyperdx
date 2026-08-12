@@ -151,4 +151,55 @@ describe('clickstack_query_tiles handler — per-tile failure isolation', () => 
     expect(slow.status).toBe('error');
     expect(slow.error).toContain('deadline');
   });
+
+  it('does not issue a query for tiles scheduled after the deadline has passed', async () => {
+    // Concurrency is 2, so t1/t2 start immediately and t3 waits for a slot.
+    // Drive Date.now so the budget is spent by the time t3 would start: its
+    // task must short-circuit to a deadline error WITHOUT calling
+    // runConfigTile, proving the post-deadline drain issues no ClickHouse
+    // queries.
+    mockConvertToExternalDashboard.mockReturnValue({
+      id: 'dash-1',
+      tiles: [tile('t1', 'A'), tile('t2', 'B'), tile('t3', 'C')],
+    });
+
+    // A controllable clock. Start at a fixed base; jump far past the 60s
+    // batch budget once the first two tiles have been dispatched.
+    const base = 1_000_000_000_000;
+    let now = base;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+    try {
+      mockRunConfigTile.mockImplementation((_team, t: { id: string }) => {
+        // t1/t2 resolve fine; resolving t1 advances the clock past the
+        // deadline so the queued t3 sees an expired budget.
+        if (t.id === 't1') {
+          now = base + 10 * 60_000; // 10 min later — well past the budget
+        }
+        return Promise.resolve(okResult);
+      });
+
+      const handler = buildHandler();
+      const result = await handler({
+        dashboardId: '000000000000000000000000',
+        startTime: new Date(base - 60_000).toISOString(),
+        endTime: new Date(base).toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = JSON.parse(textOf(result));
+      // t3 must be an error, and runConfigTile must never have been called
+      // for it (only t1 and t2 issued queries).
+      const c = parsed.tiles.find((t: { name: string }) => t.name === 'C');
+      expect(c.status).toBe('error');
+      expect(c.error).toContain('deadline');
+      const queriedIds = mockRunConfigTile.mock.calls.map((call: unknown[]) => {
+        const t = call[1];
+        return t && typeof t === 'object' && 'id' in t ? t.id : undefined;
+      });
+      expect(queriedIds).not.toContain('t3');
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
 });
