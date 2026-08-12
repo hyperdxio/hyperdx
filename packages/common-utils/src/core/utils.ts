@@ -7,10 +7,12 @@ import { z } from 'zod';
 export { default as objectHash } from 'object-hash';
 
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
   getSourceTableMacroArgCounts,
   hasMacro,
+  MacroName,
   replaceMacros,
 } from '@/macros';
 import { QUERY_PARAMS, RawSqlQueryParam } from '@/rawSqlParams';
@@ -33,6 +35,13 @@ import {
   TileTemplateSchema,
   TSource,
 } from '@/types';
+import {
+  getVariableReferences,
+  hasVariableMacro,
+  VARIABLE_FORMATS,
+  VariableFormat,
+  VariableReference,
+} from '@/variables';
 
 import { SkipIndexMetadata, TableMetadata } from './metadata';
 
@@ -1385,43 +1394,37 @@ export function displayTypeSupportsPromQLAlerts(
   return displayType ? false : false;
 }
 
+/** Expand the chart's macros, returning failures instead of throwing. */
+function resolveRawSqlMacros(
+  chartConfig: RawSqlChartConfig,
+): { sql: string; error?: undefined } | { sql?: undefined; error: Error } {
+  try {
+    return { sql: replaceMacros(chartConfig) };
+  } catch (e) {
+    return { error: e instanceof Error ? e : new Error(String(e)) };
+  }
+}
+
 /**
- * Resolves the chart's macros and reports which raw-SQL time-range/interval
- * query params are present in the resolved SQL. Shared by
- * `validateRawSqlForAlert` and `validateRawSqlChartConfig`, which each build
- * their own error/warning messages from this on top.
- *
- * Returns `null` if the config isn't raw SQL or macro resolution fails
- * (`replaceMacros` throws frequently while a user is still typing).
+ * Reports which time-range/interval query params are present in the given SQL.
  */
-function getRawSqlTimeRangeStatus(chartConfig: RawSqlChartConfig): {
+function getRawSqlTimeRangeStatus(
+  chartConfig: RawSqlChartConfig,
+  sql: string,
+): {
   isTimeSeries: boolean;
   hasInterval: boolean;
   hasTimeFilter: boolean;
-} | null {
-  try {
-    if (!isRawSqlSavedChartConfig(chartConfig)) {
-      return null;
-    }
-
-    const sql = replaceMacros(chartConfig);
-
-    return {
-      isTimeSeries: isTimeSeriesDisplayType(chartConfig.displayType),
-      hasInterval:
-        sql.includes(
-          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
-        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name),
-      hasTimeFilter:
-        sql.includes(
-          QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name,
-        ) &&
-        sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name),
-    };
-  } catch {
-    // replaceMacros will often fail as users type in the SQL template
-    return null;
-  }
+} {
+  return {
+    isTimeSeries: isTimeSeriesDisplayType(chartConfig.displayType),
+    hasInterval:
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name) ||
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name),
+    hasTimeFilter:
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name),
+  };
 }
 
 export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
@@ -1441,8 +1444,9 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
     );
   }
 
-  const status = getRawSqlTimeRangeStatus(chartConfig);
-  if (status) {
+  const { sql } = resolveRawSqlMacros(chartConfig);
+  if (sql != null) {
+    const status = getRawSqlTimeRangeStatus(chartConfig, sql);
     // Interval params are only required for time-series display types (Line, StackedBar).
     // Number charts don't use interval bucketing.
     if (status.isTimeSeries && !status.hasInterval) {
@@ -1456,6 +1460,105 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
         `SQL used for alerts should include start and end date parameters or macros.`,
       );
     }
+  }
+
+  return { errors, warnings };
+}
+
+/** `$a, $b` — deduplicated, in source order, for use in a message. */
+function formatReferenceList(references: VariableReference[]): string {
+  return [...new Set(references.map(reference => reference.raw))].join(', ');
+}
+
+const isKnownFormat = (format: string): format is VariableFormat =>
+  (VARIABLE_FORMATS as readonly string[]).includes(format);
+
+/**
+ * Checks on the dashboard variables a raw SQL template references.
+ *
+ * `chartConfig.variables` is tri-state and each state means something
+ * different here: `undefined` is "no variable context" (the chart explorer, or
+ * a dashboard with the feature flag off) where nothing is substituted at all;
+ * `[]` is a dashboard whose filters expose no variables.
+ *
+ * Only *value* references (`$name`, `${name}`, `${name:format}`) are inspected.
+ * The macro forms either expand correctly or throw, and those messages reach
+ * the user through `resolveRawSqlMacros` — except when there is no context at
+ * all, in which case they silently pass through and are reported here.
+ */
+function validateVariableReferences(chartConfig: RawSqlChartConfig): {
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const references = getVariableReferences(chartConfig.sqlTemplate);
+  if (references.length === 0) return { errors, warnings };
+
+  const macroReferences = references.filter(r => r.kind === 'macro');
+  const valueReferences = references.filter(r => r.kind !== 'macro');
+  const { variables } = chartConfig;
+
+  // Variables are not available on chart explorer (and maybe other contexts)
+  if (variables == null) {
+    // Macros are always an error, we assume no query will intentionally include them without variable context.
+    if (macroReferences.length > 0) {
+      errors.push(
+        `SQL uses ${formatReferenceList(macroReferences)}, but no variables are available here.`,
+      );
+    }
+
+    // $var and ${var} references only trigger a warning since they may be a literal the user means to keep.
+    if (valueReferences.length > 0) {
+      warnings.push(
+        `SQL references ${formatReferenceList(valueReferences)}, but no variables are available here.`,
+      );
+    }
+    return { errors, warnings };
+  }
+
+  const knownVariableNames = new Set(variables.map(variable => variable.name));
+  const available =
+    variables.length > 0
+      ? variables.map(variable => variable.name).join(', ')
+      : '(none)';
+
+  const unknown = valueReferences.filter(r => !knownVariableNames.has(r.name));
+  if (unknown.length > 0) {
+    warnings.push(
+      `SQL references unknown variable ${formatReferenceList(unknown)}. Available variables: ${available}.`,
+    );
+  }
+
+  // An unrecognized format throws during expansion, so it is already reported.
+  const resolved = valueReferences.filter(
+    r =>
+      knownVariableNames.has(r.name) &&
+      (r.format == null || isKnownFormat(r.format)),
+  );
+
+  const quoted = resolved.filter(
+    r => (r.format ?? 'sqlstring') === 'sqlstring' && r.inStringLiteral,
+  );
+  if (quoted.length > 0) {
+    const [{ name }] = quoted;
+    errors.push(
+      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, ${name}) or \${${name}:csv} instead?`,
+    );
+  }
+
+  const unguarded = resolved.filter(
+    r =>
+      (r.format ?? 'sqlstring') === 'sqlstring' &&
+      !r.inStringLiteral &&
+      r.guardedBy !== r.name,
+  );
+  if (unguarded.length > 0) {
+    const [{ name }] = unguarded;
+    warnings.push(
+      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, ${name}) or $__conditionalAll(<condition>, ${name}) so the query stays valid when no values are selected.`,
+    );
   }
 
   return { errors, warnings };
@@ -1476,9 +1579,23 @@ export function validateRawSqlChartConfig(
     return { errors, warnings };
   }
 
+  // An empty editor has nothing wrong with it yet.
+  if (!chartConfig.sqlTemplate.trim()) {
+    return { errors, warnings };
+  }
+
+  // Track macros this function has already described with an error, to avoid repetition.
+  const reportedMacros = new Set<MacroName>();
+  const pushError = (message: string, macro?: MacroName) => {
+    errors.push(message);
+    if (macro != null) reportedMacros.add(macro);
+  };
+
   try {
-    const status = getRawSqlTimeRangeStatus(chartConfig);
-    if (status) {
+    const resolved = resolveRawSqlMacros(chartConfig);
+
+    if (resolved.sql != null) {
+      const status = getRawSqlTimeRangeStatus(chartConfig, resolved.sql);
       if (status.isTimeSeries && !status.hasInterval) {
         errors.push(
           'SQL must include an interval parameter or macro (e.g. $__interval_s) for this display type.',
@@ -1492,13 +1609,20 @@ export function validateRawSqlChartConfig(
       }
     }
 
+    const variableIssues = validateVariableReferences(chartConfig);
+    errors.push(...variableIssues.errors);
+    warnings.push(...variableIssues.warnings);
+
     if (isDashboardTile) {
       if (!hasMacro(chartConfig.sqlTemplate, 'sourceTable')) {
         warnings.push(
           'SQL should include the $__sourceTable macro so this tile queries its configured source.',
         );
       }
-      if (!hasMacro(chartConfig.sqlTemplate, 'filters')) {
+      if (
+        !hasMacro(chartConfig.sqlTemplate, 'filters') &&
+        !hasVariableMacro(chartConfig.sqlTemplate)
+      ) {
         warnings.push(
           'SQL should include the $__filters macro so dashboard filters apply to this tile.',
         );
@@ -1513,6 +1637,7 @@ export function validateRawSqlChartConfig(
         errors.push(
           `SQL uses ${usedMacros.map(m => `$__${m}`).join(' and ')} but no source is selected — select a source so ${usedMacros.length > 1 ? 'these macros' : 'this macro'} can resolve correctly.`,
         );
+        usedMacros.forEach(macro => reportedMacros.add(macro));
       }
     } else {
       // A metric type argument is required for a metrics source and
@@ -1521,21 +1646,48 @@ export function validateRawSqlChartConfig(
       const isMetricsSource = !!chartConfig.metricTables;
 
       if (argCounts.some(count => count > 0) && !isMetricsSource) {
-        errors.push(
+        pushError(
           'SQL uses $__sourceTable(<metricType>) but the selected source is not a metrics source — use a bare $__sourceTable instead.',
+          'sourceTable',
         );
       }
 
       if (argCounts.some(count => count === 0) && isMetricsSource) {
-        errors.push(
+        pushError(
           'SQL uses a bare $__sourceTable but the selected source is a metrics source — specify a metric type, e.g. $__sourceTable(gauge).',
+          'sourceTable',
         );
       }
     }
-  } catch {
+
+    // Report anything else macro expansion refused to do
+    const { error } = resolved;
+    if (error != null) {
+      // An unterminated argument list is what a half-typed macro looks like, so it stays silent.
+      const isStillTyping = error instanceof MalformedMacroArgsError;
+      const isAlreadyReported =
+        error instanceof MacroExpansionError && reportedMacros.has(error.macro);
+
+      // Everything else — an unknown variable, a bad argument count, an
+      // unrecognized `${v:format}`, an unconfigured metric type — is invisible
+      // to the user until the query fails, so it is reported verbatim.
+      if (!isStillTyping && !isAlreadyReported) {
+        errors.push(error.message);
+      }
+    }
+  } catch (e) {
     // hasMacro/getSourceDependentMacrosUsed throw on malformed macro args
     // (e.g. an unmatched paren) while the user is still typing; fall back to
     // whatever errors/warnings were already accumulated rather than crash.
+    // That is the expected path here — the editor revalidates on every
+    // keystroke, so logging it would put a stack trace in the console on each
+    // debounce tick and drown out the case below.
+    if (e instanceof MalformedMacroArgsError) {
+      return { errors, warnings };
+    }
+
+    // Anything else is a bug in the checks above, so surface it for investigation:
+    console.error('Unexpected error validating raw SQL chart config', e);
   }
 
   return { errors, warnings };

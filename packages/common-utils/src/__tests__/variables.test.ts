@@ -1,3 +1,4 @@
+import { MalformedMacroArgsError } from '@/macroErrors';
 import type { ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
@@ -312,7 +313,7 @@ describe('substituteVariables', () => {
     it('throws when the argument list is never closed', () => {
       expect(() =>
         substituteVariables('$__filter(ServiceName, service', [SERVICE]),
-      ).toThrow('Failed to parse macro arguments');
+      ).toThrow(MalformedMacroArgsError);
     });
   });
 

@@ -1,3 +1,4 @@
+import { MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
   hasMacro,
@@ -172,7 +173,7 @@ describe('replaceMacros', () => {
 
   it('should throw on missing close bracket', () => {
     expect(() => replaceMacros({ sqlTemplate: '$__timeFilter(col' })).toThrow(
-      'Failed to parse macro arguments',
+      MalformedMacroArgsError,
     );
   });
 

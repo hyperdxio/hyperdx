@@ -1,16 +1,12 @@
 import { atom, useAtom } from 'jotai';
-import {
-  QUERY_PARAM_EXAMPLES,
-  QUERY_PARAMS_BY_DISPLAY_TYPE,
-} from '@hyperdx/common-utils/dist/rawSqlParams';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { QUERY_PARAM_EXAMPLES } from '@hyperdx/common-utils/dist/rawSqlParams';
+import { ChartVariable, DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
   Code,
   Collapse,
   Group,
-  List,
   Paper,
   Stack,
   Text,
@@ -25,46 +21,19 @@ import {
 } from '@tabler/icons-react';
 
 import { DISPLAY_TYPE_INSTRUCTIONS } from './constants';
+import { RawSqlVariableInstructions } from './RawSqlVariableInstructions';
 
 const helpOpenedAtom = atom(true);
 
-function ParamSnippet({
-  value,
-  description,
-}: {
-  value: string;
-  description: string;
-}) {
-  const clipboard = useClipboard({ timeout: 1500 });
-
-  return (
-    <Group gap={4} display="inline-flex">
-      <Code fz="xs">{value}</Code>
-      <Tooltip label={clipboard.copied ? 'Copied!' : 'Copy'} withArrow>
-        <ActionIcon
-          variant="subtle"
-          size="xs"
-          color={clipboard.copied ? 'green' : 'gray'}
-          onClick={() => clipboard.copy(value)}
-        >
-          {clipboard.copied ? <IconCheck size={10} /> : <IconCopy size={10} />}
-        </ActionIcon>
-      </Tooltip>
-      <Text span size="xs">
-        &mdash; {description}
-      </Text>
-    </Group>
-  );
-}
-
 export function RawSqlChartInstructions({
   displayType,
+  variables,
 }: {
   displayType: DisplayType;
+  variables?: ChartVariable[];
 }) {
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
-  const availableParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
   const exampleClipboard = useClipboard({ timeout: 1500 });
 
   return (
@@ -96,41 +65,22 @@ export function RawSqlChartInstructions({
             {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 
             <Text size="xs" fw="bold">
-              The following parameters and macros can be used in this chart:
+              Query parameters and macros
             </Text>
-            <List size="xs" withPadding spacing={3}>
-              {availableParams.map(({ name, type, description }) => (
-                <List.Item key={name}>
-                  <ParamSnippet
-                    value={`{${name}:${type}}`}
-                    description={description}
-                  />
-                </List.Item>
-              ))}
-              <List.Item>
-                <ParamSnippet
-                  value={`$__sourceTable([metricType])`}
-                  description="Resolves to selected source table (Source must be selected)"
-                />
-              </List.Item>
-              <List.Item>
-                <ParamSnippet
-                  value={`$__filters`}
-                  description="Applies the selected dashboard filter conditions to the chart (Source must be selected)"
-                />
-              </List.Item>
-              <List.Item>
-                <Text size="xs">
-                  Other available macros are described in the{' '}
-                  <Anchor
-                    href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
-                    target="_blank"
-                  >
-                    ClickStack documentation.
-                  </Anchor>
-                </Text>
-              </List.Item>
-            </List>
+            <Text size="xs">
+              This chart may use query parameters or macros to reference
+              dashboard context. Use editor autocomplete to see available
+              options, or see the{' '}
+              <Anchor
+                href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
+                target="_blank"
+              >
+                ClickStack documentation
+              </Anchor>{' '}
+              for an exhaustive list.
+            </Text>
+
+            <RawSqlVariableInstructions variables={variables} />
 
             <Text size="xs" fw="bold">
               Example:
