@@ -170,6 +170,7 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
@@ -1771,7 +1772,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   // Track if we've initialized query for this dashboard
-  const initializedDashboard = useRef<string>(undefined);
+  const initializedDashboardRef = useRef<string>(undefined);
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
@@ -1783,6 +1784,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     ignoredFilterExpressions,
     getFilterQueriesForSource,
   } = useDashboardFilters(filters);
+
+  const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
+    useIsVariablesEnabled();
+  const showFilterVariableOptions =
+    !isVariablesFlagLoading && isVariablesEnabled;
 
   const dashboardReady =
     !!dashboard?.id &&
@@ -1904,10 +1910,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   useEffect(() => {
     if (!dashboard?.id || !router.isReady) return;
     if (!isLocalDashboard && isFetchingDashboard) return;
-    if (initializedDashboard.current === dashboard.id) return;
+    if (initializedDashboardRef.current === dashboard.id) return;
     const isSwitchingDashboards =
-      initializedDashboard.current != null &&
-      initializedDashboard.current !== dashboard.id;
+      initializedDashboardRef.current != null &&
+      initializedDashboardRef.current !== dashboard.id;
 
     const hasWhereInUrl = 'where' in router.query;
     const hasFiltersInUrl = 'filters' in router.query;
@@ -1941,7 +1947,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       }
     }
 
-    initializedDashboard.current = dashboard.id;
+    initializedDashboardRef.current = dashboard.id;
   }, [
     dashboard?.id,
     dashboard?.savedQuery,
@@ -2958,7 +2964,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <IconRefresh size={18} />
         </ActionIcon>
       </Tooltip>
-      <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+      <Tooltip
+        withArrow
+        label={
+          isVariablesEnabled ? 'Edit Filters and Variables' : 'Edit Filters'
+        }
+        fz="xs"
+        color="gray"
+      >
         <ActionIcon
           variant="secondary"
           onClick={() => setShowFiltersModal(true)}
@@ -3247,6 +3260,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
+          showVariableOptions={showFilterVariableOptions}
         />
       )}
     </>

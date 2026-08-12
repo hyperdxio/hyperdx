@@ -118,6 +118,7 @@
         "type": "string",
         "enum": [
           "QUERY_ERROR",
+          "QUERY_TIMEOUT",
           "WEBHOOK_ERROR",
           "INVALID_ALERT",
           "UNKNOWN"
