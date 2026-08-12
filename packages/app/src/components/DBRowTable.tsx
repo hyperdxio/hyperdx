@@ -103,6 +103,7 @@ import {
   useLocalStorage,
   usePrevious,
 } from '@/utils';
+import { MULTI_SOURCE_ROW_FIELDS } from '@/utils/multiSourceMerge';
 
 import ChartErrorState, {
   ChartErrorStateVariant,
@@ -124,6 +125,7 @@ import {
   useExpandableRows,
 } from './ExpandableRowTable';
 import LogLevel from './LogLevel';
+import { SourceBadge } from './MultiSourceBadge';
 
 import styles from '@styles/LogTable.module.scss';
 
@@ -167,6 +169,7 @@ function getResolvedColumnSize(
   const jsType = opts.columnTypeMap.get(column)?._type;
   if (jsType === JSDataType.Date) return 170;
   if (column === opts.logLevelColumn) return 115;
+  if (column === MULTI_SOURCE_ROW_FIELDS.SOURCE_NAME) return 140;
   return 160;
 }
 
@@ -614,6 +617,30 @@ export const RawLogTable = memo(
               }
 
               const strValue = typeof value === 'string' ? value : `${value}`;
+
+              // Multi-source search tags each merged row with its origin
+              // source; render it as a colored badge (color assigned by the
+              // merge layer, consistent with the histogram series).
+              if (column === MULTI_SOURCE_ROW_FIELDS.SOURCE_NAME) {
+                return (
+                  <SourceBadge
+                    name={strValue}
+                    color={
+                      info.row.original[MULTI_SOURCE_ROW_FIELDS.SOURCE_COLOR]
+                    }
+                  />
+                );
+              }
+
+              // Multi-source rows project NULL where a source lacks the
+              // field (e.g. Duration or a picked column for log rows); show a
+              // quiet dash instead of the literal "null".
+              if (
+                value == null &&
+                info.row.original[MULTI_SOURCE_ROW_FIELDS.SOURCE_ID] != null
+              ) {
+                return <span className="text-muted">—</span>;
+              }
 
               if (column === logLevelColumn) {
                 return <LogLevel level={strValue} />;
@@ -1476,6 +1503,15 @@ export function useConfigWithAdditionalSelect(
   }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
 }
 
+/**
+ * The user's SELECT columns, keyed by result-set name, with the row-identity
+ * columns the query appends (primary/partition/block keys) trimmed off.
+ *
+ * Positional rather than name-based because ClickHouse may rewrite column
+ * names, and the SELECT length can differ from the returned column count
+ * (e.g. `SELECT *`). Exported for SearchResultsTable, which resolves the same
+ * columns when rendering a single source's own SELECT.
+ */
 function selectColumnMapWithoutAdditionalKeys(
   selectMeta: ColumnMetaType[] | undefined,
   additionalKeysLength: number | undefined,
@@ -1502,6 +1538,144 @@ function selectColumnMapWithoutAdditionalKeys(
 }
 
 export type DBRowTableVariant = 'default' | 'muted';
+
+/**
+ * Drop rows matching "noisy" event patterns (patterns covering more than
+ * DENOISE_NOISE_THRESHOLD of a sample) from an already-fetched row set.
+ *
+ * Extracted so the search results table and DBSqlRowTable share one
+ * implementation. Denoising is inherently single-source: it mines patterns
+ * from one table's body column against that source's severity expression.
+ */
+function useDenoisedRows({
+  config,
+  sourceId,
+  processedRows,
+  patternColumn,
+  denoiseResults,
+  isLive,
+}: {
+  config: BuilderChartConfigWithDateRange;
+  sourceId?: string;
+  processedRows: Record<string, any>[];
+  /** Result column the patterns are mined from (the last SELECT column). */
+  patternColumn: string | undefined;
+  denoiseResults: boolean;
+  isLive?: boolean;
+}) {
+  const { data: source } = useSource({ id: sourceId });
+  const groupedPatterns = useGroupedPatterns({
+    config,
+    samples: DENOISE_SAMPLE_SIZE,
+    bodyValueExpression: patternColumn ?? '',
+    severityTextExpression:
+      (source?.kind === SourceKind.Log
+        ? source.severityTextExpression
+        : undefined) ?? '',
+    totalCount: undefined,
+    enabled: denoiseResults,
+  });
+  const noisyPatterns = useQuery({
+    queryKey: ['noisy-patterns', config],
+    queryFn: async () => {
+      return Object.values(groupedPatterns.data).filter(
+        p =>
+          p.count / (groupedPatterns.sampledRowCount ?? 1) >
+          DENOISE_NOISE_THRESHOLD,
+      );
+    },
+    enabled:
+      denoiseResults &&
+      groupedPatterns.data != null &&
+      Object.values(groupedPatterns.data).length > 0 &&
+      groupedPatterns.miner != null,
+  });
+  const noisyPatternIds = useMemo(() => {
+    return noisyPatterns.data?.map(p => p.id) ?? [];
+  }, [noisyPatterns.data]);
+
+  const denoisedRows = useQuery({
+    queryKey: [
+      'denoised-rows',
+      config,
+      denoiseResults,
+      // Only include processed rows if denoising is enabled
+      // This helps prevent the queryKey from getting extremely large
+      // and causing memory issues, when it's not used.
+      ...(denoiseResults ? [processedRows] : []),
+      noisyPatternIds,
+      patternColumn,
+    ],
+    queryFn: async () => {
+      if (!denoiseResults) {
+        return [];
+      }
+      // No noisy patterns, so no need to denoise
+      if (noisyPatternIds.length === 0) {
+        return processedRows;
+      }
+
+      const matchedLogs = await groupedPatterns.miner?.matchLogs(
+        processedRows.map(row => row[patternColumn ?? '']),
+      );
+      return processedRows.filter((row, i) => {
+        const match = matchedLogs?.[i];
+        return !noisyPatternIds.includes(`${match}`);
+      });
+    },
+    placeholderData: (previousData, previousQuery) => {
+      // If it's the same search, but new data, return the previous data while we load
+      if (
+        previousQuery?.queryKey?.[0] === 'denoised-rows' &&
+        previousQuery?.queryKey?.[1] === config
+      ) {
+        return previousData;
+      }
+      return undefined;
+    },
+    gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
+    enabled:
+      denoiseResults &&
+      noisyPatterns.isSuccess &&
+      processedRows.length > 0 &&
+      groupedPatterns.miner != null,
+  });
+
+  return {
+    rows: denoiseResults ? (denoisedRows.data ?? []) : processedRows,
+    noisyPatterns: noisyPatterns.data,
+    hasNoisyPatterns: noisyPatternIds.length > 0,
+    isFetching:
+      denoisedRows.isFetching ||
+      noisyPatterns.isFetching ||
+      groupedPatterns.isLoading,
+  };
+}
+
+/** The "Removed Noisy Event Patterns" summary shown above denoised results. */
+function DenoisedPatternsSummary({
+  noisyPatterns,
+  hasNoisyPatterns,
+}: {
+  noisyPatterns: { id: string; pattern: string }[] | undefined;
+  hasNoisyPatterns: boolean;
+}) {
+  return (
+    <Box mb="xxs" px="sm">
+      <Text fw="bold" fz="xs" mb="xxs">
+        Removed Noisy Event Patterns
+      </Text>
+      <Box mah={100} style={{ overflow: 'auto' }}>
+        {noisyPatterns?.map(p => (
+          <Text fz="xs" key={p.id}>
+            {p.pattern}
+          </Text>
+        ))}
+        {!hasNoisyPatterns && <Text fz="xs">No noisy patterns found</Text>}
+      </Box>
+    </Box>
+  );
+}
 
 function DBSqlRowTableComponent({
   config,
@@ -1736,88 +1910,17 @@ function DBSqlRowTableComponent({
 
   const { data: source } = useSource({ id: sourceId });
   const patternColumn = columns[columns.length - 1];
-  const groupedPatterns = useGroupedPatterns({
+  const denoise = useDenoisedRows({
     config,
-    samples: DENOISE_SAMPLE_SIZE,
-    bodyValueExpression: patternColumn ?? '',
-    severityTextExpression:
-      (source?.kind === SourceKind.Log
-        ? source.severityTextExpression
-        : undefined) ?? '',
-    totalCount: undefined,
-    enabled: denoiseResults,
-  });
-  const noisyPatterns = useQuery({
-    queryKey: ['noisy-patterns', config],
-    queryFn: async () => {
-      return Object.values(groupedPatterns.data).filter(
-        p =>
-          p.count / (groupedPatterns.sampledRowCount ?? 1) >
-          DENOISE_NOISE_THRESHOLD,
-      );
-    },
-    enabled:
-      denoiseResults &&
-      groupedPatterns.data != null &&
-      Object.values(groupedPatterns.data).length > 0 &&
-      groupedPatterns.miner != null,
-  });
-  const noisyPatternIds = useMemo(() => {
-    return noisyPatterns.data?.map(p => p.id) ?? [];
-  }, [noisyPatterns.data]);
-
-  const denoisedRows = useQuery({
-    queryKey: [
-      'denoised-rows',
-      config,
-      denoiseResults,
-      // Only include processed rows if denoising is enabled
-      // This helps prevent the queryKey from getting extremely large
-      // and causing memory issues, when it's not used.
-      ...(denoiseResults ? [processedRows] : []),
-      noisyPatternIds,
-      patternColumn,
-    ],
-    queryFn: async () => {
-      if (!denoiseResults) {
-        return [];
-      }
-      // No noisy patterns, so no need to denoise
-      if (noisyPatternIds.length === 0) {
-        return processedRows;
-      }
-
-      const matchedLogs = await groupedPatterns.miner?.matchLogs(
-        processedRows.map(row => row[patternColumn]),
-      );
-      return processedRows.filter((row, i) => {
-        const match = matchedLogs?.[i];
-        return !noisyPatternIds.includes(`${match}`);
-      });
-    },
-    placeholderData: (previousData, previousQuery) => {
-      // If it's the same search, but new data, return the previous data while we load
-      if (
-        previousQuery?.queryKey?.[0] === 'denoised-rows' &&
-        previousQuery?.queryKey?.[1] === config
-      ) {
-        return previousData;
-      }
-      return undefined;
-    },
-    gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
-    enabled:
-      denoiseResults &&
-      noisyPatterns.isSuccess &&
-      processedRows.length > 0 &&
-      groupedPatterns.miner != null,
+    sourceId,
+    processedRows,
+    patternColumn,
+    denoiseResults,
+    isLive,
   });
 
   const isLoading = denoiseResults
-    ? isFetching ||
-      denoisedRows.isFetching ||
-      noisyPatterns.isFetching ||
-      groupedPatterns.isLoading
+    ? isFetching || denoise.isFetching
     : isFetching;
 
   const loadingDate =
@@ -1828,28 +1931,17 @@ function DBSqlRowTableComponent({
   return (
     <>
       {denoiseResults && (
-        <Box mb="xxs" px="sm">
-          <Text fw="bold" fz="xs" mb="xxs">
-            Removed Noisy Event Patterns
-          </Text>
-          <Box mah={100} style={{ overflow: 'auto' }}>
-            {noisyPatterns.data?.map(p => (
-              <Text fz="xs" key={p.id}>
-                {p.pattern}
-              </Text>
-            ))}
-            {noisyPatternIds.length === 0 && (
-              <Text fz="xs">No noisy patterns found</Text>
-            )}
-          </Box>
-        </Box>
+        <DenoisedPatternsSummary
+          noisyPatterns={denoise.noisyPatterns}
+          hasNoisyPatterns={denoise.hasNoisyPatterns}
+        />
       )}
       <RawLogTable
         isLive={isLive}
         wrapLines={false}
         displayedColumns={columns}
         highlightedLineId={highlightedLineId}
-        rows={denoiseResults ? (denoisedRows?.data ?? []) : processedRows}
+        rows={denoise.rows}
         renderRowDetails={renderRowDetails}
         isLoading={isLoading}
         fetchNextPage={fetchNextPage}
