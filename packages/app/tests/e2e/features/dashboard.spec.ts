@@ -1,4 +1,5 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { Locator } from '@playwright/test';
 
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
@@ -1470,27 +1471,27 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  /** Add a variable-enabled `Service` filter exposed as `$svc`. */
+  const addServiceVariable = async () => {
+    await dashboardPage.openEditFiltersModal();
+    await dashboardPage.addFilterToDashboard(
+      'Service',
+      DEFAULT_LOGS_SOURCE_NAME,
+      'ServiceName',
+      undefined,
+      undefined,
+      { variableName: 'svc' },
+    );
+    await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+    await dashboardPage.closeFiltersModal();
+  };
+
   test.describe('Dashboard Variables in Raw SQL Tiles', () => {
     // Both `$__filter(<expr>, <name>)` and a bare `$name` reference, so one
     // query exercises the macro and the plain-reference form together.
     const VARIABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) AND ServiceName IN ($svc) GROUP BY ServiceName LIMIT 200`;
 
     const VARIABLE_LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) GROUP BY ts ORDER BY ts ASC`;
-
-    /** Add a variable-enabled `Service` filter exposed as `$svc`. */
-    const addServiceVariable = async () => {
-      await dashboardPage.openEditFiltersModal();
-      await dashboardPage.addFilterToDashboard(
-        'Service',
-        DEFAULT_LOGS_SOURCE_NAME,
-        'ServiceName',
-        undefined,
-        undefined,
-        { variableName: 'svc' },
-      );
-      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
-      await dashboardPage.closeFiltersModal();
-    };
 
     test(
       'substitutes selected variable values in the tile editor previews',
@@ -1821,6 +1822,245 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, svc) AND $__timeFilter(Timestamp)`,
             banner => expect(banner).toBe(''),
           );
+        });
+      },
+    );
+  });
+
+  test.describe('Dashboard Variables in Chart Builder Tiles', () => {
+    /**
+     * Wait for a table tile's own query to land. Without this, a missing
+     * service reads as "the query excluded it" when the tile simply hasn't
+     * rendered yet — and a tile's first query can take a while when the whole
+     * spec is running in parallel.
+     */
+    const expectTileRows = async (tile: Locator) => {
+      await expect(tile.locator('table tbody tr').first()).toBeVisible({
+        timeout: 30000,
+      });
+    };
+
+    test(
+      'substitutes selected variable values in a builder tile',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Builder Variable Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a variable-enabled filter', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a builder table tile whose WHERE references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.setSqlWhere('ServiceName IN ($svc)');
+          await dashboardPage.chartEditor.runQuery(false);
+        });
+
+        await test.step('Generated SQL expands the reference', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("ServiceName IN ('accounting')");
+            expect(sql).not.toContain('$svc');
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('The preview table only shows the selected service', async () => {
+          const preview = dashboardPage.page.getByRole('dialog').first();
+          await expect(
+            preview.getByTitle('accounting', { exact: true }),
+          ).toBeVisible({ timeout: 15000 });
+          await expect(preview.getByTitle('ad', { exact: true })).toHaveCount(
+            0,
+          );
+        });
+
+        await test.step('The saved tile applies the same substitution', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expectTileRows(tile);
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toBeVisible();
+          await expect(tile.getByTitle('ad', { exact: true })).toHaveCount(0);
+        });
+
+        await test.step('Changing the selection re-renders the tile', async () => {
+          await dashboardPage.toggleFilterValue('Service', 'accounting');
+          await dashboardPage.toggleFilterValue('Service', 'ad');
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.getByTitle('ad', { exact: true })).toBeVisible({
+            timeout: 15000,
+          });
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toHaveCount(0);
+        });
+      },
+    );
+
+    test(
+      'expands the variable macros in a series agg condition',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Builder Macro Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step("Add a builder table tile using $__filter in its series' agg condition", async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.setSqlWhere(
+            '$__filter(ServiceName, svc)',
+            'series',
+          );
+          await dashboardPage.chartEditor.runQuery(false);
+        });
+
+        await test.step('The macro expands to the selected values', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("IN ('accounting')");
+            expect(sql).not.toContain('$__filter');
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Clearing the selection keeps every row, rather than none', async () => {
+          // With nothing selected the macro renders a no-op predicate, so the
+          // tile falls back to showing every service.
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expectTileRows(tile);
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toBeVisible();
+          await expect(tile.getByTitle('ad', { exact: true })).toHaveCount(0);
+
+          await dashboardPage.toggleFilterValue('Service', 'accounting');
+          await expect(tile.getByTitle('ad', { exact: true })).toBeVisible({
+            timeout: 15000,
+          });
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toBeVisible();
+        });
+      },
+    );
+
+    test(
+      'autocompletes variables in the builder inputs, with their expansion',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Open a builder tile on a dashboard with a selected variable', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+        });
+
+        await test.step('The Lucene WHERE offers the bare reference, and no macros', async () => {
+          // WHERE starts in Lucene mode, where only the bare form is valid —
+          // both macros expand to SQL predicates.
+          await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$s');
+          const dropdown = dashboardPage.page.getByText('Dashboard variables');
+          await expect(dropdown).toBeVisible({ timeout: 10000 });
+          await expect(
+            dashboardPage.page.getByText('$svc', { exact: true }),
+          ).toBeVisible();
+          await expect(
+            dashboardPage.page.getByText(/Expands to: \("accounting"\)/),
+          ).toBeVisible();
+
+          await dashboardPage.chartEditor.typeLuceneWhere('$__');
+          await expect(
+            dashboardPage.page.getByText('$__filter', { exact: true }),
+          ).toHaveCount(0);
+        });
+
+        await test.step('The Lucene summary explains the selected values', async () => {
+          // "Searching for:" describes the query that will run, so it names
+          // the selection rather than the reference it was written with.
+          await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$svc');
+          await expect(
+            dashboardPage.page.getByText(/ServiceName.*accounting/i),
+          ).toBeVisible({ timeout: 10000 });
+
+          // Leave the input empty for the SQL steps below.
+          await dashboardPage.chartEditor.typeLuceneWhere('');
+        });
+
+        await test.step('A reference is offered, with what it expands to now', async () => {
+          const { labels, info } =
+            await dashboardPage.chartEditor.readWhereCompletions('$svc');
+          expect(labels).toEqual(
+            expect.arrayContaining(['$svc', '${svc}', '${svc:csv}']),
+          );
+          // The help describes the form and previews the current selection.
+          expect(info).toContain('The selected values of svc');
+          expect(info).toContain("Expands to: 'accounting'");
+        });
+
+        await test.step('The variable macros are offered, but no others', async () => {
+          const { labels } =
+            await dashboardPage.chartEditor.readWhereCompletions('$__');
+          expect(labels).toEqual(
+            expect.arrayContaining([
+              '$__filter',
+              '$__conditionalAll',
+              '$__filter(svc)',
+            ]),
+          );
+          // A builder input only expands the variable macros; the raw SQL ones
+          // would reach ClickHouse verbatim.
+          expect(labels).not.toContain('$__timeFilter');
+          expect(labels).not.toContain('$__sourceTable');
+        });
+
+        await test.step("A series' agg condition offers the same completions", async () => {
+          const { labels, info } =
+            await dashboardPage.chartEditor.readWhereCompletions(
+              '$svc',
+              'series',
+            );
+          expect(labels).toContain('$svc');
+          expect(info).toContain("Expands to: 'accounting'");
         });
       },
     );

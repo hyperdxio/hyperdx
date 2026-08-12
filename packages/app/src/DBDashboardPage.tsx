@@ -144,6 +144,7 @@ import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
+import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
 import {
@@ -551,7 +552,7 @@ const Tile = forwardRef(
     // changes to `tileVariables`.
     const serializedTileVariables = useMemo(
       () =>
-        !!variables && isRawSqlSavedChartConfig(chart.config)
+        !!variables && !isPromqlSavedChartConfig(chart.config)
           ? JSON.stringify(filterReferencedVariables(chart.config, variables))
           : undefined,
       [chart.config, variables],
@@ -646,6 +647,7 @@ const Tile = forwardRef(
               : undefined,
             sampleWeightExpression: getSampleWeightExpression(source),
             filters,
+            variables: tileVariables,
             metricTables: isMetricSource ? source.metricTables : undefined,
           });
         }
@@ -1605,23 +1607,28 @@ const EditTileModal = ({
           {/* Isolate chart cross-syncing to this edit modal: the preview chart
               must not drive shadow tooltips on the dashboard tiles behind it. */}
           <IsolatedChartSyncProvider>
-            <EditTimeChartForm
-              dashboardId={dashboardId}
-              chartConfig={chart.config}
-              variables={variables}
-              dateRange={dateRange}
-              isSaving={isSaving}
-              onSave={config => {
-                onSave({
-                  ...chart,
-                  config: config,
-                });
-              }}
-              onClose={handleClose}
-              onDirtyChange={setHasUnsavedChanges}
-              isDashboardForm
-              autoRun
-            />
+            {/* Offers the dashboard's variables as completions in every
+                expression input the editor renders. */}
+            <SqlVariablesProvider variables={variables}>
+              <EditTimeChartForm
+                data-testid="tile-editor-form"
+                dashboardId={dashboardId}
+                chartConfig={chart.config}
+                variables={variables}
+                dateRange={dateRange}
+                isSaving={isSaving}
+                onSave={config => {
+                  onSave({
+                    ...chart,
+                    config: config,
+                  });
+                }}
+                onClose={handleClose}
+                onDirtyChange={setHasUnsavedChanges}
+                isDashboardForm
+                autoRun
+              />
+            </SqlVariablesProvider>
           </IsolatedChartSyncProvider>
         </ZIndexContext.Provider>
       )}

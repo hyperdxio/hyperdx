@@ -147,7 +147,7 @@ export function computeDbTimeChartConfig(
 
 /**
  * Returns the dashboard variables a chart preview should use.
- * - Builder and PromQL configs don't yet support variables, so they resolve to an empty set
+ * - PromQL configs don't yet support variables, so they resolve to an empty set
  * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
  * - Otherwise, variables are filtered to only those referenced by the chart config.
  */

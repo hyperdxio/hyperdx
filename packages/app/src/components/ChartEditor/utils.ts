@@ -6,11 +6,7 @@ import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
-import {
-  MACRO_SUGGESTIONS,
-  MacroSuggestion,
-  VARIABLE_MACRO_SUGGESTIONS,
-} from '@hyperdx/common-utils/dist/macros';
+import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
 import {
   BuilderSavedChartConfig,
@@ -30,75 +26,15 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  substituteVariables,
-  VARIABLE_FORMATS,
-  VariableFormat,
-} from '@hyperdx/common-utils/dist/variables';
 
 import { getStoredLanguage } from '@/components/SearchInput';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
+import {
+  buildVariableCompletions,
+  toMacroCompletion,
+} from '@/components/SQLEditor/variableCompletions';
 
 import { ChartEditorFormState } from './types';
-
-/** What each `${name:format}` renders, for the completion's help text. */
-const VARIABLE_FORMAT_DESCRIPTIONS: Record<VariableFormat, string> = {
-  sqlstring: "Quoted and comma-separated, escaped for SQL. e.g. 'a', 'b', 'c'",
-  csv: 'Comma-separated and unquoted. Not SQL-escaped. e.g. a,b,c',
-  regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
-  lucene: 'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c")',
-};
-
-/** What `snippet` expands to against the variable's current selection. */
-function describeVariableExpansion(
-  snippet: string,
-  variable: ChartVariable,
-): string | undefined {
-  let expansion: string;
-  try {
-    expansion = substituteVariables(snippet, [variable]);
-  } catch {
-    return undefined;
-  }
-  return `Expands to: ${expansion === '' ? '(empty string)' : expansion}`;
-}
-
-/**
- * Completion help built as markup rather than a string, so `footnote` sits on
- * its own line.
- *
- * CodeMirror turns a string `info` into a single text node, where a `\n` is
- * subject to the inherited `white-space` and generally collapses to a space.
- * A `Node` is rendered as given, so the break is structural.
- */
-function completionInfo(description: string, footnote: string) {
-  return () => {
-    const dom = document.createElement('div');
-
-    const main = document.createElement('div');
-    main.textContent = description;
-    dom.appendChild(main);
-
-    const sub = document.createElement('div');
-    sub.className = 'cm-completionInfo-footnote';
-    sub.textContent = footnote;
-    dom.appendChild(sub);
-
-    return dom;
-  };
-}
-
-const toMacroCompletion = ({
-  name,
-  minArgs,
-  description,
-}: MacroSuggestion): SQLCompletion => ({
-  label: `$__${name}`,
-  apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
-  detail: 'macro',
-  info: description,
-  type: 'function',
-});
 
 /**
  * Autocomplete entries offered on top of columns/keywords in the raw SQL
@@ -124,80 +60,10 @@ export function buildRawSqlCompletions({
     }),
   );
 
-  const macroCompletions = MACRO_SUGGESTIONS.map(toMacroCompletion);
-
-  if (!variables?.length) {
-    return [...paramCompletions, ...macroCompletions];
-  }
-
-  const variableMacroCompletions =
-    VARIABLE_MACRO_SUGGESTIONS.map(toMacroCompletion);
-
-  const variableCompletions = variables.flatMap((variable): SQLCompletion[] => {
-    const { name } = variable;
-
-    /** A static description and an expansion preview given the current variable selections */
-    const help = (snippet: string | undefined, description: string) => {
-      const expansion =
-        snippet == null
-          ? undefined
-          : describeVariableExpansion(snippet, variable);
-      return expansion ? completionInfo(description, expansion) : description;
-    };
-
-    return [
-      ...(variable.expression
-        ? [
-            {
-              label: `$__filter(${name})`,
-              apply: `$__filter(${name})`,
-              detail: 'variable filter',
-              info: help(
-                `$__filter(${name})`,
-                `Filters by the ${name} variable using its defined expression. Matches every row when no values are selected for the variable.`,
-              ),
-              type: 'function',
-            },
-          ]
-        : []),
-      {
-        label: `$${name}`,
-        apply: `$${name}`,
-        detail: 'variable',
-        info: help(
-          `$${name}`,
-          `The selected values of ${name}, in the default sqlstring format. Has no valid empty state — prefer $__filter(<expression>, ${name}).`,
-        ),
-        type: 'variable',
-      },
-      {
-        label: `\${${name}}`,
-        apply: `\${${name}}`,
-        detail: 'variable',
-        info: help(
-          `\${${name}}`,
-          `The same as $${name}, but delimited — use it when the reference runs into following word characters, as in \${${name}}_total.`,
-        ),
-        type: 'variable',
-      },
-      ...VARIABLE_FORMATS.map((format): SQLCompletion => {
-        const reference = `\${${name}:${format}}`;
-        return {
-          label: reference,
-          apply: reference,
-          detail: 'variable',
-          info: help(reference, VARIABLE_FORMAT_DESCRIPTIONS[format]),
-          type: 'variable',
-        };
-      }),
-    ];
-  });
-
   return [
     ...paramCompletions,
-    ...macroCompletions,
-    ...variableMacroCompletions,
-    ...variableCompletions,
+    ...MACRO_SUGGESTIONS.map(toMacroCompletion),
+    ...buildVariableCompletions(variables),
   ];
 }
 

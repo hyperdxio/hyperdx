@@ -80,6 +80,120 @@ export class ChartEditorComponent {
   }
 
   /**
+   * The chart editor's root, in either place it renders: the dashboard's tile
+   * editor modal or the chart explorer page. Inputs that also exist outside it
+   * — most notably the dashboard's own search WHERE input, sitting behind the
+   * modal where the overlay swallows every click — must stay out of reach.
+   */
+  private editorForm(): Locator {
+    return this.page.locator(
+      '[data-testid="tile-editor-form"], [data-testid="chart-explorer-form"]',
+    );
+  }
+
+  /**
+   * The editor renders one WHERE input per series (the series' agg condition)
+   * followed by the chart-level WHERE, and they share a placeholder and testid.
+   * `'series'` takes the first, `'chart'` the last — so `'series'` only
+   * addresses the first series, which is all the tests need so far.
+   */
+  private whereInput(locator: Locator, scope: 'chart' | 'series'): Locator {
+    return scope === 'series' ? locator.first() : locator.last();
+  }
+
+  /**
+   * Select SQL or Lucene on a WHERE input. Both inputs default to Lucene.
+   */
+  async setWhereLanguage(
+    language: 'SQL' | 'Lucene',
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    // A completion popup left open by a prior editor can overlay the switch.
+    await dismissSqlAutocomplete(this.page);
+    const select = this.whereInput(
+      this.editorForm().getByTestId('where-language-switch'),
+      scope,
+    ).getByLabel('Query language');
+    await select.click();
+    await this.page
+      .getByRole('option', { name: language, exact: true })
+      .click();
+  }
+
+  /** Focus a WHERE input and replace its contents with `expression`. */
+  private async fillWhereEditor(expression: string, scope: 'chart' | 'series') {
+    const editor = this.whereInput(
+      // Matching on the placeholder only finds still-empty editors, so filling
+      // both inputs works in either order: whichever is still empty stays at
+      // the end (or start) of the match list.
+      this.editorForm().locator(
+        `div.cm-editor:has-text("SQL WHERE clause (ex. column = 'foo')")`,
+      ),
+      scope,
+    ).locator('.cm-content');
+    await editor.click();
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Delete');
+    await this.page.keyboard.type(expression);
+  }
+
+  /**
+   * Type a SQL WHERE clause into a WHERE input, replacing any existing
+   * contents. Switches the input to SQL first.
+   */
+  async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
+    await this.setWhereLanguage('SQL', scope);
+    await this.fillWhereEditor(expression, scope);
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * Type into a WHERE input while it is in Lucene mode, where it renders as a
+   * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
+   */
+  async typeLuceneWhere(text: string, scope: 'chart' | 'series' = 'chart') {
+    const input = this.whereInput(
+      this.editorForm().getByPlaceholder(/Search your events w\/ Lucene/i),
+      scope,
+    );
+    await input.click();
+    await input.fill(text);
+  }
+
+  /**
+   * Type `prefix` into a SQL WHERE input to open its autocomplete popup, and
+   * report what it offers plus the help panel of the highlighted suggestion.
+   *
+   * Empties the input and closes the popup before returning: the tooltip sits
+   * over the editor and would intercept the next interaction.
+   */
+  async readWhereCompletions(
+    prefix: string,
+    scope: 'chart' | 'series' = 'chart',
+  ): Promise<{ labels: string[]; info: string }> {
+    await this.setWhereLanguage('SQL', scope);
+    await this.fillWhereEditor(prefix, scope);
+
+    const popup = this.page.locator('.cm-tooltip-autocomplete');
+    await popup.waitFor({ state: 'visible', timeout: 10000 });
+    const labels = await this.sqlCompletionOptions().allInnerTexts();
+
+    const infoPanel = this.page.locator('.cm-completionInfo');
+    const info =
+      (await infoPanel.count()) > 0
+        ? (await infoPanel.innerText()).replace(/\s+/g, ' ').trim()
+        : '';
+
+    // The editor still has focus, so clear it from the keyboard rather than
+    // re-locating it: a non-empty editor no longer shows its placeholder.
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Backspace');
+    await popup.waitFor({ state: 'hidden', timeout: 10000 });
+
+    return { labels, info };
+  }
+
+  /**
    * Set a custom ORDER BY expression in the chart editor's ORDER BY input.
    * Available on the Table, Pie, and Bar display types. Clears any existing
    * value first, then types the new expression and dismisses the autocomplete

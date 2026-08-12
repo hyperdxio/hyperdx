@@ -1419,7 +1419,12 @@ export const WithClauseSchema = z.object({
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z.object({ with: z.array(WithClauseSchema) }).partial(),
+  z
+    .object({
+      with: z.array(WithClauseSchema),
+      variables: z.array(ChartVariableSchema),
+    })
+    .partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;

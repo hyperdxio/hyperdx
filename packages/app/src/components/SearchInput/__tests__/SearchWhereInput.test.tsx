@@ -7,6 +7,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 
 function renderWithMantine(ui: React.ReactElement) {
   return render(
@@ -197,6 +198,89 @@ describe('SearchWhereInput', () => {
       expect(
         screen.getByPlaceholderText('Custom Lucene placeholder'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Dashboard variables in Lucene Mode', () => {
+    const variables = [
+      { name: 'svc', values: ['api'], expression: 'ServiceName' },
+    ];
+
+    const renderWithVariables = (
+      inScope: {
+        name: string;
+        values: string[];
+        expression?: string;
+      }[] = variables,
+    ) => {
+      renderWithMantine(
+        <SqlVariablesProvider variables={inScope}>
+          <TestWrapper defaultLanguage="lucene" />
+        </SqlVariablesProvider>,
+      );
+      return screen.getByPlaceholderText(/Search your events w\/ Lucene/i);
+    };
+
+    /** The "Searching for:" summary shown above the suggestions. */
+    const searchingFor = () =>
+      screen.getByText('Searching for:').nextElementSibling?.textContent ?? '';
+
+    it('suggests a bare reference, with what it expands to now', async () => {
+      const user = userEvent.setup();
+      const input = renderWithVariables();
+
+      await user.type(input, 'ServiceName:$s');
+
+      expect(await screen.findByText('$svc')).toBeInTheDocument();
+      expect(
+        screen.getByText(/The selected values of svc\. Expands to: \("api"\)/),
+      ).toBeInTheDocument();
+    });
+
+    it('completes in place, keeping the field the reference is scoped to', async () => {
+      const user = userEvent.setup();
+      const input = renderWithVariables();
+
+      await user.type(input, 'ServiceName:$s');
+      await user.click(await screen.findByText('$svc'));
+
+      await waitFor(() => expect(input).toHaveValue('ServiceName:$svc'));
+    });
+
+    it('does not offer the variable macros', async () => {
+      // They expand to SQL predicates, so they are unsupported in Lucene.
+      const user = userEvent.setup();
+      const input = renderWithVariables();
+
+      await user.type(input, '$__');
+
+      await waitFor(() =>
+        expect(screen.queryByText('$__filter')).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText('$svc')).not.toBeInTheDocument();
+    });
+
+    it('explains the query with the selected values, not the reference', async () => {
+      const user = userEvent.setup();
+      const input = renderWithVariables();
+
+      await user.type(input, 'ServiceName:$svc');
+
+      await waitFor(() =>
+        expect(searchingFor()).toBe('(ServiceName contains api)'),
+      );
+    });
+
+    it('keeps the reference in the explanation while nothing is selected', async () => {
+      const user = userEvent.setup();
+      const input = renderWithVariables([{ name: 'svc', values: [] }]);
+
+      await user.type(input, 'ServiceName:$svc');
+
+      // An empty selection expands to `("")`, which reads as `is <blank>`
+      // even though it filters nothing.
+      await waitFor(() => expect(searchingFor()).toContain('$svc'));
+      expect(searchingFor()).not.toContain('""');
     });
   });
 });

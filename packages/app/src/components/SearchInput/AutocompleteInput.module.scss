@@ -93,6 +93,13 @@
   margin-right: 0.25rem;
 }
 
+// What a suggestion means and, for a variable, what it expands to right now.
+.suggestionDescription {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.125rem;
+}
+
 .belowSuggestions {
   border-top: 1px solid var(--color-border);
   padding: 0.5rem 0.75rem 0.25rem;

@@ -1,11 +1,12 @@
 import { MalformedMacroArgsError } from '@/macroErrors';
-import type { ChartVariable } from '@/types';
+import type { BuilderChartConfig, ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
   formatVariableValues,
   getReferencedVariableNames,
   getVariableReferences,
   hasVariableMacro,
+  substituteChartConfigVariables,
   substituteVariables,
 } from '@/variables';
 
@@ -17,6 +18,18 @@ const variable = (
 
 const SERVICE = variable('service', ['api', 'web'], 'ServiceName');
 const EMPTY_SERVICE = variable('service', [], 'ServiceName');
+
+const builderConfig = (
+  overrides: Partial<BuilderChartConfig> = {},
+): BuilderChartConfig => ({
+  select: 'count()',
+  from: { databaseName: 'default', tableName: 'logs' },
+  where: '',
+  whereLanguage: 'sql',
+  timestampValueExpression: 'Timestamp',
+  connection: 'local',
+  ...overrides,
+});
 
 describe('formatVariableValues', () => {
   describe('sqlstring', () => {
@@ -72,8 +85,10 @@ describe('formatVariableValues', () => {
   });
 
   describe('lucene', () => {
-    it('renders a match-all wildcard when nothing is selected', () => {
-      expect(formatVariableValues([], 'lucene')).toBe('*');
+    it('renders an empty term when nothing is selected', () => {
+      // Parenthesized so it stays a no-op in a field-scoped position; see the
+      // queryParser test that pins `ServiceName:("")` to `1=1`.
+      expect(formatVariableValues([], 'lucene')).toBe('("")');
     });
 
     it('renders a single quoted term', () => {
@@ -671,19 +686,182 @@ describe('filterReferencedVariables', () => {
     ).toEqual([]);
   });
 
-  it('returns an empty array for a builder config even when its fields mention a variable', () => {
+  it('keeps the variables a builder config references, across every expression field', () => {
     expect(
       filterReferencedVariables(
-        {
-          select: 'count()',
-          from: { databaseName: 'default', tableName: 'logs' },
-          where: 'ServiceName = $service',
-          whereLanguage: 'sql',
-          timestampValueExpression: 'Timestamp',
-          connection: 'local',
-        },
+        builderConfig({
+          select: [
+            { aggFn: 'count', valueExpression: '', aggCondition: '$service' },
+          ],
+          where: '',
+          having: 'count() > 0',
+          groupBy: [{ valueExpression: '$__filter(RegionName, region)' }],
+          orderBy: [{ valueExpression: '$env', ordering: 'DESC' }],
+        }),
+        variables,
+      ),
+    ).toEqual(variables);
+  });
+
+  it('returns an empty array when a builder config references none of them', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({ where: 'ServiceName = $nope' }),
         variables,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('substituteChartConfigVariables', () => {
+  it('returns the config untouched when there is no variable context', () => {
+    const config = builderConfig({ where: 'ServiceName = $service' });
+    expect(substituteChartConfigVariables(config)).toBe(config);
+  });
+
+  it('expands references in where and having, and consumes the variables', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName IN ($service)',
+          having: 'anyLast(Env) = $env',
+          variables: [SERVICE, variable('env', ['prod'])],
+        }),
+      ),
+    ).toMatchObject({
+      where: "ServiceName IN ('api', 'web')",
+      having: "anyLast(Env) = 'prod'",
+      variables: undefined,
+    });
+  });
+
+  it('expands a lucene where clause using the lucene format', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName:$service',
+          whereLanguage: 'lucene',
+          variables: [SERVICE],
+        }),
+      ).where,
+    ).toBe('ServiceName:("api" OR "web")');
+  });
+
+  it('renders an empty lucene selection as a term that drops out', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName:$service',
+          whereLanguage: 'lucene',
+          variables: [EMPTY_SERVICE],
+        }),
+      ).where,
+    ).toBe('ServiceName:("")');
+  });
+
+  it('leaves the variable macros alone in a lucene expression', () => {
+    // They expand to SQL, which a Lucene parser cannot read, so they are not
+    // supported there — and an unknown variable must not throw either.
+    const template =
+      '$__filter(ServiceName, service) $__conditionalAll(a, foo)';
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: template,
+          whereLanguage: 'lucene',
+          variables: [SERVICE],
+        }),
+      ).where,
+    ).toBe(template);
+  });
+
+  it('still expands the macros in a lucene chart’s SQL-language fields', () => {
+    // whereLanguage only governs `where`; `having` is SQL regardless.
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '',
+          whereLanguage: 'lucene',
+          having: '$__filter(ServiceName, service)',
+          variables: [SERVICE],
+        }),
+      ).having,
+    ).toBe("(ServiceName IN ('api', 'web'))");
+  });
+
+  it('expands select value expressions and agg conditions', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          select: [
+            {
+              aggFn: 'count',
+              valueExpression: '',
+              // aggCondition defaults to lucene, like the renderer
+              aggCondition: 'ServiceName:$service',
+            },
+            {
+              valueExpression: 'countIf(ServiceName IN ($service))',
+            },
+          ],
+          variables: [SERVICE],
+        }),
+      ).select,
+    ).toEqual([
+      {
+        aggFn: 'count',
+        valueExpression: '',
+        aggCondition: 'ServiceName:("api" OR "web")',
+      },
+      { valueExpression: "countIf(ServiceName IN ('api', 'web'))" },
+    ]);
+  });
+
+  it('expands group by and order by, in both their string and list forms', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          groupBy: '$__conditionalAll(ServiceName, service)',
+          orderBy: [{ valueExpression: '$service', ordering: 'ASC' }],
+          variables: [SERVICE],
+        }),
+      ),
+    ).toMatchObject({
+      groupBy: '(ServiceName)',
+      orderBy: [{ valueExpression: "'api', 'web'", ordering: 'ASC' }],
+    });
+  });
+
+  it('leaves the non-variable macros alone', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '$__timeFilter(Timestamp) AND ServiceName IN ($service)',
+          variables: [SERVICE],
+        }),
+      ).where,
+    ).toBe("$__timeFilter(Timestamp) AND ServiceName IN ('api', 'web')");
+  });
+
+  it('never re-scans an expansion, so a selected value cannot inject a reference', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName IN ($service)',
+          variables: [variable('service', ['$env']), variable('env', ['prod'])],
+        }),
+      ).where,
+    ).toBe("ServiceName IN ('$env')");
+  });
+
+  it('renders an empty selection so the query stays valid', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '$__filter(ServiceName, service)',
+          variables: [EMPTY_SERVICE],
+        }),
+      ).where,
+    ).toBe("(1=1 /** no values selected for variable 'service' */)");
   });
 });

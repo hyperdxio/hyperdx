@@ -10,6 +10,10 @@ import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 
 import {
+  useLuceneVariableEnglishExpander,
+  useLuceneVariableSuggestions,
+} from '@/components/SQLEditor/variableCompletions';
+import {
   ILanguageFormatter,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
@@ -71,6 +75,10 @@ export default function SearchInputV2({
   const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
+  // Bare `$name` references only, no macros
+  const variableOptions = useLuceneVariableSuggestions();
+  const expandVariablesForEnglish = useLuceneVariableEnglishExpander();
+
   const {
     options: autoCompleteOptions,
     isLoadingValues,
@@ -90,14 +98,14 @@ export default function SearchInputV2({
   useEffect(() => {
     if (tableConnection) {
       genEnglishExplanation({
-        query: value,
+        query: expandVariablesForEnglish(value != null ? `${value}` : ''),
         tableConnection,
         metadata,
       }).then(q => {
         setParsedEnglishQuery(q);
       });
     }
-  }, [value, tableConnection, metadata]);
+  }, [value, expandVariablesForEnglish, tableConnection, metadata]);
 
   useHotkeys(
     ['/', 's'],
@@ -121,6 +129,7 @@ export default function SearchInputV2({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={autoCompleteOptions}
+      variableOptions={variableOptions}
       isLoadingValues={isLoadingValues}
       tokenInfo={tokenInfo}
       size={size}

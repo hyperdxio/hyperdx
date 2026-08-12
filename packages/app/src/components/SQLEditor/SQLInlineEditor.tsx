@@ -42,6 +42,7 @@ import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from './utils';
+import { useVariableCompletions } from './variableCompletions';
 
 import styles from './SQLInlineEditor.module.scss';
 
@@ -153,6 +154,9 @@ export default function SQLInlineEditor({
     };
   }, [queryHistory, onSelectSearchHistory]);
 
+  // Dashboard variables in scope, offered alongside the column identifiers.
+  const variableCompletions = useVariableCompletions();
+
   const [isFocused, setIsFocused] = useState(false);
 
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -177,6 +181,7 @@ export default function SQLInlineEditor({
         identifiers,
         keywords: KEYWORDS_FOR_WHERE_OR_ORDER_BY,
         includeRegularFunctions: !disableKeywordAutocomplete,
+        additionalCompletions: variableCompletions,
       });
 
       const queryHistoryList = autocompletion({
@@ -194,6 +199,7 @@ export default function SQLInlineEditor({
     [
       filteredFields,
       additionalSuggestions,
+      variableCompletions,
       disableKeywordAutocomplete,
       createHistoryList,
       hasNonEmptyValue,

@@ -3400,6 +3400,73 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('dashboard variables', () => {
+    const configWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'ServiceName IN ($service)',
+          aggConditionLanguage: 'sql',
+        },
+      ],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      having: 'count() > 0',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and variable macros in a builder config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(configWithVariables, mockMetadata, undefined),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('api', 'web'))");
+      expect(sql).toContain("countIf(ServiceName IN ('api', 'web'))");
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('leaves references untouched when the config carries no variables', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...configWithVariables, where: '$service', variables: undefined },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain('$service');
+    });
+
+    it('does not re-expand a selected value that looks like a reference', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...configWithVariables,
+            // A metric config renders through CTEs built after substitution,
+            // so an expansion must never be scanned a second time.
+            variables: [
+              { name: 'service', values: ['$service'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('$service'))");
+    });
+  });
+
   // HDX-4371: a source with `timestampValueExpression = "EventDate, EventTime"`
   // should bucket on `EventTime` (the DateTime token), not on `EventDate`
   // (the partition-key Date). The WHERE clause keeps using both columns so
