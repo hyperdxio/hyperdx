@@ -2126,6 +2126,53 @@ async function serialize(
   return '';
 }
 
+/**
+ * The field names a Lucene query filters on, e.g. `["ServiceName"]` for
+ * `ServiceName:cart AND error`.
+ *
+ * Bare terms are excluded: they match against whichever column a source
+ * designates as its implicit/body column, so they are always resolvable.
+ * Returns null when the query can't be parsed, so callers can't mistake
+ * "unparseable" for "references nothing".
+ */
+export function extractFieldsFromLucene(query: string): string[] | null {
+  if (!query.trim()) return [];
+
+  let ast: lucene.AST;
+  try {
+    ast = parse(query);
+  } catch {
+    return null;
+  }
+
+  const fields = new Set<string>();
+  const visit = (node: lucene.AST | lucene.Node | undefined) => {
+    if (node == null) return;
+
+    if (isNodeTerm(node) || isNodeRangedTerm(node)) {
+      const raw = node.field;
+      if (raw != null && raw !== IMPLICIT_FIELD) {
+        // A leading `-` negates the term rather than naming the column.
+        fields.add(raw[0] === '-' ? raw.slice(1) : raw);
+      }
+      return;
+    }
+
+    if (isBinaryAST(node)) {
+      visit(node.left);
+      visit(node.right);
+      return;
+    }
+
+    if (isLeftOnlyAST(node)) {
+      visit(node.left);
+    }
+  };
+  visit(ast);
+
+  return [...fields];
+}
+
 // TODO: can just inline this within getSearchQuery
 export async function genWhereSQL(
   ast: lucene.AST,

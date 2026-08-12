@@ -89,40 +89,65 @@ export function useMultiSourceColumns(sources: TSource[]): {
 }
 
 /**
- * Root column a filter references, for per-source resolvability checks.
- * sql_ast filters carry the escaped SQL key in `left` (e.g. `ServiceName`,
- * a backticked identifier, or `LogAttributes['level']` whose root is
- * `LogAttributes`). Other filter types (raw sql/lucene conditions) can't be
- * attributed to a single column and return null — callers should apply them
- * to every source and rely on per-source error isolation.
+ * The table column a reference is rooted at: `ServiceName` for `ServiceName`,
+ * `LogAttributes` for `LogAttributes['level']` or `LogAttributes.level`, and
+ * the unquoted name for a backticked identifier. Returns null for anything
+ * that isn't rooted at a plain column (a bare function call, say), so callers
+ * treat it as "can't attribute" rather than "missing".
  */
-export function filterRootColumn(filter: Filter): string | null {
-  if (filter.type !== 'sql_ast') return null;
-  const left = filter.left.trim();
-  const backticked = left.match(/^`([^`]+)`/);
+export function rootColumnOf(reference: string): string | null {
+  const ref = reference.trim();
+  const backticked = ref.match(/^`([^`]+)`/);
   if (backticked) return backticked[1];
-  const plain = left.match(/^[A-Za-z_][A-Za-z0-9_]*/);
+  const plain = ref.match(/^[A-Za-z_][A-Za-z0-9_]*/);
   return plain ? plain[0] : null;
 }
 
 /**
- * For one source: which of the active filters reference a column its table
- * doesn't have. A non-empty result means the source can't answer the
- * filtered search and should be excluded (with a visible reason).
+ * Root column a filter references, for per-source resolvability checks.
+ * sql_ast filters carry the escaped SQL key in `left`. Other filter types
+ * (raw sql/lucene conditions) can't be attributed to a single column and
+ * return null — callers should apply them to every source and rely on
+ * per-source error isolation.
  */
-export function unresolvedFilterColumns(
-  filters: Filter[],
+export function filterRootColumn(filter: Filter): string | null {
+  if (filter.type !== 'sql_ast') return null;
+  return rootColumnOf(filter.left);
+}
+
+/**
+ * For one source: which of the given column references its table doesn't
+ * have. A non-empty result means the source can't answer the search and
+ * should be excluded, with the reason shown to the user.
+ *
+ * Unknown columns (null root) and an unknown column list are both treated as
+ * "no reason to exclude" — better to run the query and surface a real error
+ * than to drop a source on a guess.
+ */
+export function unresolvedColumns(
+  references: (string | null)[],
   sourceColumns: Set<string> | undefined,
 ): string[] {
   if (sourceColumns == null) return [];
   const missing = new Set<string>();
-  for (const filter of filters) {
-    const root = filterRootColumn(filter);
+  for (const reference of references) {
+    const root = reference == null ? null : rootColumnOf(reference);
     if (root != null && !sourceColumns.has(root)) {
       missing.add(root);
     }
   }
   return [...missing];
+}
+
+/**
+ * For one source: which columns the active filters reference that its table
+ * doesn't have.
+ */
+export function unresolvedFilterColumns(
+  filters: Filter[],
+  sourceColumns: Set<string> | undefined,
+): string[] {
+  return unresolvedColumns(filters.map(filterRootColumn), sourceColumns);
 }
 
 /** Quote a column name as a ClickHouse identifier when it needs it. */

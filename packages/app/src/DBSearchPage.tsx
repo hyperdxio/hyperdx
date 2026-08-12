@@ -29,6 +29,7 @@ import HyperDX from '@hyperdx/browser';
 import {
   ClickHouseQueryError,
   ColumnMeta,
+  extractColumnReferencesFromKey,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -41,6 +42,7 @@ import {
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { extractFieldsFromLucene } from '@hyperdx/common-utils/dist/queryParser';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -123,6 +125,7 @@ import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   resolveExtraColumnsForSource,
+  unresolvedColumns,
   unresolvedFilterColumns,
   useMultiSourceColumns,
 } from '@/hooks/useMultiSourceSearch';
@@ -1371,13 +1374,8 @@ export function DBSearchPage() {
   const isMultiSource = searchedMultiSources.length > 1;
   // Delta/pattern analyses are per-source; multi mode pins the results view.
   const effectiveAnalysisMode = isMultiSource ? 'results' : analysisMode;
-  // Raw SQL WHERE names concrete columns of a concrete table — reinterpreting
-  // it per source risks silently-wrong results, so multi mode requires Lucene.
-  const isMultiSourceSqlBlocked =
-    isMultiSource &&
-    (searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene') ===
-      'sql' &&
-    !!searchedConfig.where;
+  const searchedWhereLanguage =
+    searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene';
 
   // A hand-authored URL may carry only ?sources=; backfill the primary so the
   // single-source machinery (form, chart config) has one.
@@ -1695,18 +1693,36 @@ export function DBSearchPage() {
     () => (isMultiSource ? (searchedConfig.filters ?? []) : []),
     [isMultiSource, searchedConfig.filters],
   );
+  // Columns the search itself names, so a source that lacks one can be
+  // excluded with a reason instead of erroring (SQL) or silently matching
+  // nothing (Lucene resolves an unknown field to `1 = 0`). A query we can't
+  // parse yields null, which excludes nobody.
+  const queryColumnRefs = useMemo(() => {
+    const where = searchedConfig.where ?? '';
+    if (!isMultiSource || !where.trim()) return [];
+    return searchedWhereLanguage === 'sql'
+      ? extractColumnReferencesFromKey(where)
+      : (extractFieldsFromLucene(where) ?? []);
+  }, [isMultiSource, searchedConfig.where, searchedWhereLanguage]);
+
   const multiDisabledReasons = useMemo(() => {
     const reasons = new Map<string, string>();
-    if (!isMultiSource || multiSourceFilters.length === 0) return reasons;
+    if (!isMultiSource) return reasons;
+    if (multiSourceFilters.length === 0 && queryColumnRefs.length === 0) {
+      return reasons;
+    }
     for (const source of searchedMultiSources) {
-      const missing = unresolvedFilterColumns(
+      const sourceColumns = columnsBySourceId.get(source.id);
+      const missingInQuery = unresolvedColumns(queryColumnRefs, sourceColumns);
+      const missingInFilters = unresolvedFilterColumns(
         multiSourceFilters,
-        columnsBySourceId.get(source.id),
+        sourceColumns,
       );
+      const missing = [...new Set([...missingInQuery, ...missingInFilters])];
       if (missing.length > 0) {
         reasons.set(
           source.id,
-          `${source.name} is excluded: the active filter uses ${missing.join(
+          `${source.name} is excluded: this search uses ${missing.join(
             ', ',
           )}, which it doesn't have`,
         );
@@ -1716,6 +1732,7 @@ export function DBSearchPage() {
   }, [
     isMultiSource,
     multiSourceFilters,
+    queryColumnRefs,
     searchedMultiSources,
     columnsBySourceId,
   ]);
@@ -1741,7 +1758,6 @@ export function DBSearchPage() {
       if (dbSqlRowTableConfig == null || searchedSource == null) return [];
       return [{ source: searchedSource, config: dbSqlRowTableConfig }];
     }
-    if (isMultiSourceSqlBlocked) return [];
     // Extra columns and filters both need each source's DESCRIBE (to resolve
     // column-vs-NULL and filter resolvability); hold the row queries until
     // they've loaded so we don't fire throwaway or erroring queries.
@@ -1761,7 +1777,7 @@ export function DBSearchPage() {
           source,
           {
             where,
-            whereLanguage: 'lucene',
+            whereLanguage: searchedWhereLanguage,
             filters: multiSourceFilters,
             orderBy: multiSourceDefaultOrderBy(source),
           },
@@ -1778,11 +1794,11 @@ export function DBSearchPage() {
     }));
   }, [
     isMultiSource,
-    isMultiSourceSqlBlocked,
     searchedMultiSources,
     searchedSource,
     dbSqlRowTableConfig,
     searchedConfig.where,
+    searchedWhereLanguage,
     multiExtraColumnNames,
     multiSourceFilters,
     multiDisabledReasons,
@@ -1791,7 +1807,7 @@ export function DBSearchPage() {
   ]);
 
   const multiHistogramSpecs = useMemo(() => {
-    if (!isMultiSource || isMultiSourceSqlBlocked) return [];
+    if (!isMultiSource) return [];
     if (
       multiSourceFilters.length > 0 &&
       columnsBySourceId.size < searchedMultiSources.length
@@ -1805,7 +1821,7 @@ export function DBSearchPage() {
       config: {
         ...buildMultiSourceSearchConfig(source, {
           where,
-          whereLanguage: 'lucene',
+          whereLanguage: searchedWhereLanguage,
           filters: multiSourceFilters,
         }),
         select: ALERT_COUNT_DEFAULT_SELECT,
@@ -1821,9 +1837,9 @@ export function DBSearchPage() {
     }));
   }, [
     isMultiSource,
-    isMultiSourceSqlBlocked,
     searchedMultiSources,
     searchedConfig.where,
+    searchedWhereLanguage,
     multiSourceFilters,
     multiDisabledReasons,
     columnsBySourceId,
@@ -2971,84 +2987,71 @@ export function DBSearchPage() {
                 )}
               {effectiveAnalysisMode === 'results' && isMultiSource && (
                 <Flex direction="column" mih="0" miw={0}>
-                  {isMultiSourceSqlBlocked ? (
-                    <Paper m="md" p="md" maw={640}>
-                      <Text size="sm" fw="bold" mb="xs">
-                        SQL search isn't supported across multiple sources
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        A SQL WHERE clause references the columns of one
-                        specific table. Switch the search language to Lucene to
-                        search across sources, or go back to a single source.
-                      </Text>
-                    </Paper>
-                  ) : (
-                    <>
-                      <Box className={searchPageStyles.searchStatsContainer}>
-                        <Group
-                          justify="space-between"
-                          align="center"
-                          style={{ width: '100%' }}
-                        >
-                          <Group gap={4} align="center">
-                            {isFilterSidebarCollapsed && (
-                              <ExpandFiltersButton
-                                onExpand={() =>
-                                  setIsFilterSidebarCollapsed(false)
-                                }
-                              />
-                            )}
-                            <SearchTotalCount
-                              specs={histogramSpecs}
-                              enabled={isReady}
-                              queryKeyPrefix={QUERY_KEY_PREFIX}
-                              enableParallelQueries
-                            />
-                          </Group>
-                          {shouldShowLiveModeHint && (
-                            <ResumeLiveTailButton
-                              handleResumeLiveTail={handleResumeLiveTail}
+                  <>
+                    <Box className={searchPageStyles.searchStatsContainer}>
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        style={{ width: '100%' }}
+                      >
+                        <Group gap={4} align="center">
+                          {isFilterSidebarCollapsed && (
+                            <ExpandFiltersButton
+                              onExpand={() =>
+                                setIsFilterSidebarCollapsed(false)
+                              }
                             />
                           )}
+                          <SearchTotalCount
+                            specs={histogramSpecs}
+                            enabled={isReady}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            enableParallelQueries
+                          />
                         </Group>
-                      </Box>
-                      <Box
-                        className={searchPageStyles.timeChartContainer}
-                        mih="0"
-                      >
-                        <SearchHistogram
-                          specs={histogramSpecs}
-                          enabled={isReady}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          enableParallelQueries
-                          onTimeRangeSelect={handleTimeRangeSelect}
-                        />
-                      </Box>
-                      <Box
-                        flex="1"
-                        mih="0"
-                        px="sm"
-                        data-testid="search-results-panel"
-                      >
-                        <SearchResultsTable
-                          sources={searchStreamSpecs}
-                          isLive={isLive ?? true}
-                          enabled={isReady}
-                          extraColumnNames={multiExtraColumnNames}
-                          onScroll={onTableScroll}
-                          onSidebarOpen={onSidebarOpen}
-                          onExpandedRowsChange={onExpandedRowsChange}
-                          collapseAllRows={collapseAllRows}
-                          enableSmallFirstWindow
-                          tableId={columnSizeTableId}
-                          context={multiRowTableContext}
-                          keepOpenSelector={
-                            SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
-                          }
-                        />
-                      </Box>
-                    </>
-                  )}
+                        {shouldShowLiveModeHint && (
+                          <ResumeLiveTailButton
+                            handleResumeLiveTail={handleResumeLiveTail}
+                          />
+                        )}
+                      </Group>
+                    </Box>
+                    <Box
+                      className={searchPageStyles.timeChartContainer}
+                      mih="0"
+                    >
+                      <SearchHistogram
+                        specs={histogramSpecs}
+                        enabled={isReady}
+                        queryKeyPrefix={QUERY_KEY_PREFIX}
+                        enableParallelQueries
+                        onTimeRangeSelect={handleTimeRangeSelect}
+                      />
+                    </Box>
+                    <Box
+                      flex="1"
+                      mih="0"
+                      px="sm"
+                      data-testid="search-results-panel"
+                    >
+                      <SearchResultsTable
+                        sources={searchStreamSpecs}
+                        isLive={isLive ?? true}
+                        enabled={isReady}
+                        extraColumnNames={multiExtraColumnNames}
+                        onScroll={onTableScroll}
+                        onSidebarOpen={onSidebarOpen}
+                        onExpandedRowsChange={onExpandedRowsChange}
+                        collapseAllRows={collapseAllRows}
+                        enableSmallFirstWindow
+                        tableId={columnSizeTableId}
+                        context={multiRowTableContext}
+                        keepOpenSelector={
+                          SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
+                        }
+                      />
+                    </Box>
+                  </>
                 </Flex>
               )}
               {effectiveAnalysisMode === 'results' && !isMultiSource && (

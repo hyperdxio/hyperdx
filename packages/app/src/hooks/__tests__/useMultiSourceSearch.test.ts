@@ -3,6 +3,8 @@ import { Filter } from '@hyperdx/common-utils/dist/types';
 import {
   filterRootColumn,
   resolveExtraColumnsForSource,
+  rootColumnOf,
+  unresolvedColumns,
   unresolvedFilterColumns,
 } from '@/hooks/useMultiSourceSearch';
 
@@ -82,6 +84,59 @@ describe('resolveExtraColumnsForSource', () => {
       { name: 'ServiceName', expression: 'ServiceName' },
       { name: 'StatusCode', expression: null },
       { name: 'weird col', expression: '`weird col`' },
+    ]);
+  });
+});
+
+describe('rootColumnOf', () => {
+  it('returns a plain column unchanged', () => {
+    expect(rootColumnOf('ServiceName')).toBe('ServiceName');
+  });
+
+  it('returns the root of a map subscript or JSON path', () => {
+    expect(rootColumnOf("LogAttributes['level']")).toBe('LogAttributes');
+    expect(rootColumnOf('LogAttributes.level')).toBe('LogAttributes');
+  });
+
+  it('unquotes a backticked identifier', () => {
+    expect(rootColumnOf('`weird-col`')).toBe('weird-col');
+  });
+
+  it('returns null for something not rooted at a column', () => {
+    expect(rootColumnOf("'a literal'")).toBeNull();
+    expect(rootColumnOf('123')).toBeNull();
+  });
+});
+
+describe('unresolvedColumns', () => {
+  const columns = new Set(['ServiceName', 'Body', 'LogAttributes']);
+
+  it('reports references the source lacks', () => {
+    expect(unresolvedColumns(['ServiceName', 'StatusCode'], columns)).toEqual([
+      'StatusCode',
+    ]);
+  });
+
+  it('resolves map and JSON references through their root column', () => {
+    expect(
+      unresolvedColumns(
+        ["LogAttributes['level']", 'SpanAttributes.http'],
+        columns,
+      ),
+    ).toEqual(['SpanAttributes']);
+  });
+
+  it('ignores references it cannot attribute to a column', () => {
+    expect(unresolvedColumns([null, "'literal'"], columns)).toEqual([]);
+  });
+
+  it('excludes nobody while the column list is still unknown', () => {
+    expect(unresolvedColumns(['StatusCode'], undefined)).toEqual([]);
+  });
+
+  it('dedupes a column referenced more than once', () => {
+    expect(unresolvedColumns(['StatusCode', 'StatusCode'], columns)).toEqual([
+      'StatusCode',
     ]);
   });
 });

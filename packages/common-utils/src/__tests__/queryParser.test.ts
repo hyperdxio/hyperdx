@@ -3,6 +3,7 @@ import { ClickhouseClient } from '@/clickhouse/node';
 import { getMetadata } from '@/core/metadata';
 import {
   CustomSchemaSQLSerializerV2,
+  extractFieldsFromLucene,
   genEnglishExplanation,
   parseKvItemsCastExpression,
   parseKvItemsExpression,
@@ -3190,5 +3191,62 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
   it('MATERIALIZED items column emits has() even when server version is unknown', async () => {
     const sql = await buildSql(undefined, 'MATERIALIZED');
     expect(sql).toContain(HAS_FORM);
+  });
+});
+
+describe('extractFieldsFromLucene', () => {
+  it('returns no fields for an empty query', () => {
+    expect(extractFieldsFromLucene('')).toEqual([]);
+    expect(extractFieldsFromLucene('   ')).toEqual([]);
+  });
+
+  it("ignores bare terms, which match a source's implicit column", () => {
+    expect(extractFieldsFromLucene('error')).toEqual([]);
+    expect(extractFieldsFromLucene('"connection refused"')).toEqual([]);
+  });
+
+  it('collects a single field', () => {
+    expect(extractFieldsFromLucene('ServiceName:cart')).toEqual([
+      'ServiceName',
+    ]);
+  });
+
+  it('collects fields across boolean operators and groups', () => {
+    expect(
+      extractFieldsFromLucene(
+        'ServiceName:cart AND (StatusCode:Error OR SeverityText:warn)',
+      ).sort(),
+    ).toEqual(['ServiceName', 'SeverityText', 'StatusCode']);
+  });
+
+  it('collects the field of a negated term without the leading dash', () => {
+    expect(extractFieldsFromLucene('-ServiceName:cart')).toEqual([
+      'ServiceName',
+    ]);
+  });
+
+  it('collects nested and ranged fields', () => {
+    expect(extractFieldsFromLucene('LogAttributes.level:error')).toEqual([
+      'LogAttributes.level',
+    ]);
+    expect(extractFieldsFromLucene('Duration:[100 TO 200]')).toEqual([
+      'Duration',
+    ]);
+  });
+
+  it('dedupes a field used more than once', () => {
+    expect(
+      extractFieldsFromLucene('ServiceName:cart OR ServiceName:checkout'),
+    ).toEqual(['ServiceName']);
+  });
+
+  it('returns null when the query cannot be parsed', () => {
+    expect(extractFieldsFromLucene('ServiceName:(')).toBeNull();
+  });
+
+  it('mixes bare terms with fielded terms', () => {
+    expect(extractFieldsFromLucene('timeout ServiceName:cart')).toEqual([
+      'ServiceName',
+    ]);
   });
 });
