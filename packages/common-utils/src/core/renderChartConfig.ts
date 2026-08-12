@@ -142,13 +142,13 @@ export const setChartSelectsAlias = (
 };
 
 // Internal aliases used to compose a multi-series metric query. Every
-// per-series branch projects its value (and group-by dimensions) under these
-// fixed names so the UNION ALL wrapper can match columns by position and the
-// outer pivot can reference them without reverse-engineering ClickHouse's
-// derived column names.
+// per-series branch projects its VALUE under this fixed name (and is tagged
+// with its series index) so the outer pivot can reference them. Group-by and
+// time-bucket columns deliberately keep their natural single-series names —
+// consumers look rows up by ClickHouse's derived column names, which can't
+// be reproduced node-side (see renderMultiSeriesMetricChartConfig).
 const MULTI_SERIES_VALUE_ALIAS = '__hdx_value';
 const MULTI_SERIES_IDX_ALIAS = '__hdx_series_idx';
-const multiSeriesGroupAlias = (index: number) => `__hdx_group_${index}`;
 
 // Histogram translations bake the group-by dimensions into a single Array
 // column named GROUP_ALIAS instead of projecting them as individual columns
@@ -2270,19 +2270,31 @@ export async function renderRawSqlChartConfig(
  *   SELECT
  *     anyOrNullIf(__hdx_value, __hdx_series_idx = 0) AS "avg(metric.alpha)",
  *     anyOrNullIf(__hdx_value, __hdx_series_idx = 1) AS "avg(metric.beta)",
- *     __hdx_group_0 AS "ServiceName", ...,
- *     __hdx_time_bucket
+ *     * EXCEPT (__hdx_value, __hdx_series_idx)
  *   FROM (
- *     SELECT ..., 0 AS __hdx_series_idx FROM (<per-series query 0>)
+ *     SELECT *, 0 AS __hdx_series_idx FROM (<per-series query 0>)
  *     UNION ALL
- *     SELECT ..., 1 AS __hdx_series_idx FROM (<per-series query 1>)
+ *     SELECT *, 1 AS __hdx_series_idx FROM (<per-series query 1>)
  *   )
- *   GROUP BY __hdx_group_0, ..., __hdx_time_bucket
+ *   GROUP BY ALL
  *   ORDER BY __hdx_time_bucket
+ *
+ * Only the per-series VALUE column gets an internal alias (__hdx_value);
+ * group-by columns keep whatever name the single-series query produces —
+ * the user's alias, a plain column name, or ClickHouse's derived name for
+ * an expression (e.g. arrayElement(ResourceAttributes, 'k8s.pod.name') for
+ * ResourceAttributes['k8s.pod.name']). Consumers such as the Kubernetes
+ * dashboard and external-API clients look rows up by those derived names,
+ * so they must survive the merge byte-for-byte. Since the names of
+ * un-aliased expression group-bys can't be reproduced node-side, the
+ * wrappers use SELECT * (position-matched by UNION ALL, which takes column
+ * names from its first branch) and the outer pivot uses * EXCEPT +
+ * GROUP BY ALL instead of naming them.
  *
  * Contract (pinned by the queryChartConfig integration tests):
  * - meta lists all value columns first, in select order (the positional
  *   contract of useChartNumberFormats);
+ * - group-by and time-bucket columns keep their single-series names;
  * - a series with no data at a joined row reads NULL (a gap), never 0;
  * - two series resolving to the same alias are suffixed "__{splitIndex}";
  * - seriesReturnType 'ratio' (exactly two series) replaces the operand
@@ -2326,67 +2338,32 @@ async function renderMultiSeriesMetricChartConfig(
   const includeGroupBy =
     isUsingGroupBy(chartConfig) && chartConfig.selectGroupBy !== false;
 
-  // Normalize the group-by into one column per dimension with an injected
-  // internal alias, so the wrapper can reference the branch output columns
-  // by a known name. The user-facing output name is the user's alias when
-  // set, otherwise the expression text.
-  type GroupByItem = Exclude<
-    NonNullable<BuilderChartConfigWithOptDateRange['groupBy']>,
-    string
-  >[number];
-  const groupColumns: Array<{
-    item: GroupByItem;
-    outputName: string;
-  }> = [];
-  if (includeGroupBy) {
-    if (typeof chartConfig.groupBy === 'string') {
-      splitAndTrimWithBracket(chartConfig.groupBy).forEach((expr, j) => {
-        groupColumns.push({
-          item: {
-            valueExpression: expr,
-            aggCondition: '',
-            alias: multiSeriesGroupAlias(j),
-          },
-          outputName: expr,
-        });
-      });
-    } else {
-      chartConfig.groupBy.forEach((g, j) => {
-        groupColumns.push({
-          item: { ...g, alias: multiSeriesGroupAlias(j) },
-          outputName:
-            g.alias != null && g.alias.trim() !== ''
-              ? g.alias
-              : g.valueExpression,
-        });
-      });
-    }
-  }
+  // How many individual group-by columns a gauge/sum branch projects. Needed
+  // only so histogram branches can pad the same number of NULL columns —
+  // their names are never referenced.
+  const scalarGroupCount = !includeGroupBy
+    ? 0
+    : typeof chartConfig.groupBy === 'string'
+      ? splitAndTrimWithBracket(chartConfig.groupBy).length
+      : chartConfig.groupBy.length;
 
   const branchIsHistogram = select.map(isHistogramClassSelect);
   const hasScalarGroups =
     includeGroupBy &&
-    groupColumns.length > 0 &&
+    scalarGroupCount > 0 &&
     branchIsHistogram.some(isHistogram => !isHistogram);
   const hasHistogramGroup =
     includeGroupBy && branchIsHistogram.some(isHistogram => isHistogram);
 
-  // Render each per-series branch exactly as the single-series path would,
-  // but with internal aliases on the value and (for gauge/sum) the group-by
-  // columns. Trailing SETTINGS are stripped and hoisted to the outer query.
+  // Render each per-series branch exactly as the single-series path would —
+  // only the value column gets an internal alias. Trailing SETTINGS are
+  // stripped and hoisted to the outer query (ClickHouse rejects SETTINGS on
+  // a non-final UNION branch).
   const branches = await Promise.all(
-    select.map(async s => {
-      const isHistogram = isHistogramClassSelect(s);
+    select.map(async (s, splitIdx) => {
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
         select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
-        // Histogram translations render the group-by inside their own
-        // Array-typed GROUP_ALIAS column; leave it untouched there.
-        groupBy: includeGroupBy
-          ? isHistogram
-            ? chartConfig.groupBy
-            : groupColumns.map(g => g.item)
-          : chartConfig.groupBy,
       };
       const rendered = await renderChartConfig(
         branchConfig,
@@ -2394,35 +2371,58 @@ async function renderMultiSeriesMetricChartConfig(
         querySettings,
       );
       const [sql, settingsClause] = extractSettingsClauseFromEnd(rendered.sql);
-      return { sql, params: rendered.params, settingsClause, isHistogram };
+      return {
+        sql,
+        params: rendered.params,
+        settingsClause,
+        isHistogram: isHistogramClassSelect(s),
+        splitIdx,
+      };
     }),
   );
 
-  // Wrap every branch in a projection with an identical column list (UNION
-  // ALL matches columns by position): value, scalar group columns, histogram
-  // group array, time bucket, series index. Branches missing a column pad it
-  // with NULL / [] so mixed branch classes stay type-compatible while their
-  // rows keep distinct grouping keys.
-  const branchSelects = branches.map((branch, splitIdx) => {
-    const columns: string[] = [`\`${MULTI_SERIES_VALUE_ALIAS}\``];
-    if (hasScalarGroups) {
-      groupColumns.forEach((_, j) => {
-        columns.push(
-          branch.isHistogram
-            ? `NULL AS \`${multiSeriesGroupAlias(j)}\``
-            : `\`${multiSeriesGroupAlias(j)}\``,
-        );
-      });
+  // Wrap every branch so the UNION ALL column lists line up by position:
+  //   [value, <scalar group columns>, time bucket?, series index, group?]
+  //
+  // A gauge/sum branch naturally projects [value, groups..., bucket?]
+  // (renderSelect order), so SELECT * preserves that prefix — and, crucially,
+  // the original group column names. A histogram branch projects
+  // [bucket?, group, value] under fixed aliases, so it is re-projected
+  // explicitly, padding each scalar group slot with NULL (the pad names are
+  // irrelevant: UNION ALL takes names from its first branch). Scalar
+  // branches are ordered first so their names win; when every branch is a
+  // histogram there are no scalar group columns to preserve.
+  const orderedBranches = [
+    ...branches.filter(branch => !branch.isHistogram),
+    ...branches.filter(branch => branch.isHistogram),
+  ];
+  const branchSelects = orderedBranches.map(branch => {
+    const idxColumn = `${branch.splitIdx} AS \`${MULTI_SERIES_IDX_ALIAS}\``;
+    const columns: string[] = [];
+    if (branch.isHistogram) {
+      columns.push(`\`${MULTI_SERIES_VALUE_ALIAS}\``);
+      if (hasScalarGroups) {
+        for (let j = 0; j < scalarGroupCount; j++) {
+          columns.push(`NULL AS \`__hdx_group_pad_${j}\``);
+        }
+      }
+      if (hasGranularity) {
+        columns.push(`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``);
+      }
+      columns.push(idxColumn);
+      if (hasHistogramGroup) {
+        columns.push(`\`${GROUP_ALIAS}\``);
+      }
+    } else {
+      columns.push('*');
+      columns.push(idxColumn);
+      if (hasHistogramGroup) {
+        // Empty-array pad ([] is Array(Nothing), the supertype-compatible
+        // empty array) so scalar rows never share a grouping key with
+        // histogram rows.
+        columns.push(`[] AS \`${GROUP_ALIAS}\``);
+      }
     }
-    if (hasHistogramGroup) {
-      columns.push(
-        branch.isHistogram ? `\`${GROUP_ALIAS}\`` : `[] AS \`${GROUP_ALIAS}\``,
-      );
-    }
-    if (hasGranularity) {
-      columns.push(`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``);
-    }
-    columns.push(`${splitIdx} AS \`${MULTI_SERIES_IDX_ALIAS}\``);
     return chSql`SELECT ${{ UNSAFE_RAW_SQL: columns.join(', ') }} FROM (${{
       sql: branch.sql,
       params: branch.params,
@@ -2468,36 +2468,28 @@ async function renderMultiSeriesMetricChartConfig(
       projection.push(`${valueExprFor(splitIdx)} AS "${outputName}"`);
     });
   }
-  if (hasScalarGroups) {
-    groupColumns.forEach((g, j) => {
-      projection.push(`\`${multiSeriesGroupAlias(j)}\` AS "${g.outputName}"`);
-    });
-  }
-  if (hasHistogramGroup) {
-    projection.push(`\`${GROUP_ALIAS}\``);
-  }
-  if (hasGranularity) {
-    projection.push(`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``);
-  }
 
-  // Join key: group dimensions plus the time bucket. With neither (a number
-  // chart), the implicit global aggregation merges everything into one row.
-  const groupByKeys = [
-    ...(hasScalarGroups
-      ? groupColumns.map((_, j) => `\`${multiSeriesGroupAlias(j)}\``)
-      : []),
-    ...(hasHistogramGroup ? [`\`${GROUP_ALIAS}\``] : []),
-    ...(hasGranularity ? [`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``] : []),
-  ];
+  // Pass the group and bucket columns through under their original names
+  // (which are not knowable node-side for expression group-bys), and group
+  // by exactly those columns. GROUP BY ALL expands to every non-aggregate
+  // SELECT expression, i.e. the * EXCEPT list; the pivot/ratio expressions
+  // contain aggregate functions and are excluded. With no passthrough
+  // columns at all (a number chart) the implicit global aggregation merges
+  // everything into one row.
+  const hasPassthroughColumns =
+    hasScalarGroups || hasHistogramGroup || hasGranularity;
+  if (hasPassthroughColumns) {
+    projection.push(
+      `* EXCEPT (\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\`)`,
+    );
+  }
 
   const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
 
   return concatChSql(' ', [
     chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
     chSql`FROM (${unionSql})`,
-    groupByKeys.length > 0
-      ? chSql`GROUP BY ${{ UNSAFE_RAW_SQL: groupByKeys.join(', ') }}`
-      : chSql``,
+    hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
     hasGranularity
       ? chSql`ORDER BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
       : chSql``,

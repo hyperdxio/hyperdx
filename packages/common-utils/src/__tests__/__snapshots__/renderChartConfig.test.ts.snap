@@ -734,7 +734,7 @@ exports[`renderChartConfig k8s semantic convention migrations should handle metr
 `;
 
 exports[`renderChartConfig multi-series metric charts (composed query) composes grouped multi-series gauges into one UNION ALL + pivot query 1`] = `
-"SELECT anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 0) AS "avg(metric.alpha)", anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 1) AS "avg(metric.beta)", \`__hdx_group_0\` AS "ServiceName", \`__hdx_time_bucket\` FROM (SELECT \`__hdx_value\`, \`__hdx_group_0\`, \`__hdx_time_bucket\`, 0 AS \`__hdx_series_idx\` FROM (WITH Source AS (
+"SELECT anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 0) AS "avg(metric.alpha)", anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 1) AS "avg(metric.beta)", * EXCEPT (\`__hdx_value\`, \`__hdx_series_idx\`) FROM (SELECT *, 0 AS \`__hdx_series_idx\` FROM (WITH Source AS (
             SELECT
               *,
               cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
@@ -763,7 +763,7 @@ exports[`renderChartConfig multi-series metric charts (composed query) composes 
             ORDER BY AttributesHash, __hdx_time_bucket2
           ) SELECT avg(
       toFloat64OrDefault(toString(LastValue))
-    ) AS "__hdx_value",ServiceName AS "__hdx_group_0",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY ServiceName AS "__hdx_group_0",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`) UNION ALL SELECT \`__hdx_value\`, \`__hdx_group_0\`, \`__hdx_time_bucket\`, 1 AS \`__hdx_series_idx\` FROM (WITH Source AS (
+    ) AS "__hdx_value",ServiceName,toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY ServiceName,toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`) UNION ALL SELECT *, 1 AS \`__hdx_series_idx\` FROM (WITH Source AS (
             SELECT
               *,
               cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
@@ -792,11 +792,11 @@ exports[`renderChartConfig multi-series metric charts (composed query) composes 
             ORDER BY AttributesHash, __hdx_time_bucket2
           ) SELECT avg(
       toFloat64OrDefault(toString(LastValue))
-    ) AS "__hdx_value",ServiceName AS "__hdx_group_0",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY ServiceName AS "__hdx_group_0",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`)) GROUP BY \`__hdx_group_0\`, \`__hdx_time_bucket\` ORDER BY \`__hdx_time_bucket\` SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) AS "__hdx_value",ServiceName,toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY ServiceName,toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`)) GROUP BY ALL ORDER BY \`__hdx_time_bucket\` SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig multi-series metric charts (composed query) pads group columns across gauge and histogram branch classes 1`] = `
-"SELECT anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 0) AS "avg(metric.alpha)", anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 1) AS "quantile(metric.latency)", \`__hdx_group_0\` AS "ServiceName", \`group\`, \`__hdx_time_bucket\` FROM (SELECT \`__hdx_value\`, \`__hdx_group_0\`, [] AS \`group\`, \`__hdx_time_bucket\`, 0 AS \`__hdx_series_idx\` FROM (WITH Source AS (
+"SELECT anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 0) AS "avg(metric.alpha)", anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 1) AS "quantile(metric.latency)", * EXCEPT (\`__hdx_value\`, \`__hdx_series_idx\`) FROM (SELECT *, 0 AS \`__hdx_series_idx\`, [] AS \`group\` FROM (WITH Source AS (
             SELECT
               *,
               cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
@@ -825,7 +825,7 @@ exports[`renderChartConfig multi-series metric charts (composed query) pads grou
             ORDER BY AttributesHash, __hdx_time_bucket2
           ) SELECT avg(
       toFloat64OrDefault(toString(LastValue))
-    ) AS "__hdx_value",ServiceName AS "__hdx_group_0",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY ServiceName AS "__hdx_group_0",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`) UNION ALL SELECT \`__hdx_value\`, NULL AS \`__hdx_group_0\`, \`group\`, \`__hdx_time_bucket\`, 1 AS \`__hdx_series_idx\` FROM (WITH source AS (
+    ) AS "__hdx_value",ServiceName,toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY ServiceName,toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`) UNION ALL SELECT \`__hdx_value\`, NULL AS \`__hdx_group_pad_0\`, \`__hdx_time_bucket\`, 1 AS \`__hdx_series_idx\`, \`group\` FROM (WITH source AS (
           SELECT
             MetricName,
             ExplicitBounds,
@@ -913,11 +913,11 @@ group,
             END AS "__hdx_value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, group, "__hdx_value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1739491200000)))) GROUP BY \`__hdx_group_0\`, \`group\`, \`__hdx_time_bucket\` ORDER BY \`__hdx_time_bucket\` SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT \`__hdx_time_bucket\`, group, "__hdx_value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1739491200000)))) GROUP BY ALL ORDER BY \`__hdx_time_bucket\` SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig multi-series metric charts (composed query) renders a metric ratio as a SQL-side division 1`] = `
-"SELECT coalesce(anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 0), 0) / nullif(anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 1), 0) AS "avg(metric.alpha)/avg(metric.beta)", \`__hdx_time_bucket\` FROM (SELECT \`__hdx_value\`, \`__hdx_time_bucket\`, 0 AS \`__hdx_series_idx\` FROM (WITH Source AS (
+"SELECT coalesce(anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 0), 0) / nullif(anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = 1), 0) AS "avg(metric.alpha)/avg(metric.beta)", * EXCEPT (\`__hdx_value\`, \`__hdx_series_idx\`) FROM (SELECT *, 0 AS \`__hdx_series_idx\` FROM (WITH Source AS (
             SELECT
               *,
               cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
@@ -946,7 +946,7 @@ exports[`renderChartConfig multi-series metric charts (composed query) renders a
             ORDER BY AttributesHash, __hdx_time_bucket2
           ) SELECT avg(
       toFloat64OrDefault(toString(LastValue))
-    ) AS "__hdx_value",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`) UNION ALL SELECT \`__hdx_value\`, \`__hdx_time_bucket\`, 1 AS \`__hdx_series_idx\` FROM (WITH Source AS (
+    ) AS "__hdx_value",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`) UNION ALL SELECT *, 1 AS \`__hdx_series_idx\` FROM (WITH Source AS (
             SELECT
               *,
               cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
@@ -975,7 +975,7 @@ exports[`renderChartConfig multi-series metric charts (composed query) renders a
             ORDER BY AttributesHash, __hdx_time_bucket2
           ) SELECT avg(
       toFloat64OrDefault(toString(LastValue))
-    ) AS "__hdx_value",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`)) GROUP BY \`__hdx_time_bucket\` ORDER BY \`__hdx_time_bucket\` SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+    ) AS "__hdx_value",toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\`)) GROUP BY ALL ORDER BY \`__hdx_time_bucket\` SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig sample-weighted aggregations should handle complex sampleWeightExpression like SpanAttributes map access 1`] = `"SELECT sum(greatest(toUInt64OrZero(toString(SpanAttributes['SampleRate'])), 1)) FROM default.otel_traces WHERE (Timestamp >= fromUnixTimestamp64Milli(1739318400000) AND Timestamp <= fromUnixTimestamp64Milli(1739491200000)) SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"`;

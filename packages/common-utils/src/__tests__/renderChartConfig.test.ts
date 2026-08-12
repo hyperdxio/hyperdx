@@ -3652,11 +3652,16 @@ describe('renderChartConfig', () => {
       expect(sql).toContain(
         'anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1) AS "avg(metric.beta)"',
       );
-      // The group-by dimension keeps its user-facing name.
-      expect(sql).toContain('`__hdx_group_0` AS "ServiceName"');
+      // The group-by column passes through UNRENAMED (consumers look rows up
+      // by the single-series column name, which for expressions is
+      // ClickHouse's derived name and can't be reproduced node-side): the
+      // wrappers keep the branch projection via SELECT * and the outer pivot
+      // passes it through via * EXCEPT + GROUP BY ALL.
+      expect(sql).toContain('SELECT *, 0 AS `__hdx_series_idx`');
       expect(sql).toContain(
-        'GROUP BY `__hdx_group_0`, `__hdx_time_bucket` ORDER BY `__hdx_time_bucket`',
+        '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
       );
+      expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
     });
 
     it('renders a metric ratio as a SQL-side division', async () => {
@@ -3720,12 +3725,15 @@ describe('renderChartConfig', () => {
 
       // The gauge branch pads the histogram's Array group column with [] and
       // the histogram branch pads the scalar group column with NULL, so the
-      // UNION column lists line up while grouped rows keep distinct keys.
+      // UNION column lists line up positionally while grouped rows keep
+      // distinct keys. The scalar branch comes first so its (natural) group
+      // column names win the union.
       expect(sql).toContain('[] AS `group`');
-      expect(sql).toContain('NULL AS `__hdx_group_0`');
-      expect(sql).toContain(
-        'GROUP BY `__hdx_group_0`, `group`, `__hdx_time_bucket`',
+      expect(sql).toContain('NULL AS `__hdx_group_pad_0`');
+      expect(sql.indexOf('SELECT *, 0 AS `__hdx_series_idx`')).toBeLessThan(
+        sql.indexOf('NULL AS `__hdx_group_pad_0`'),
       );
+      expect(sql).toContain('GROUP BY ALL');
     });
 
     it('suffixes colliding aliases with the split index', async () => {
