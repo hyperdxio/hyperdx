@@ -6,6 +6,7 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DashboardFilterSchema,
   DerivedColumnSchema,
+  MetricFormulaSchema,
   SavedChartConfigSchema,
 } from '@/types';
 
@@ -533,5 +534,66 @@ describe('DashboardFilterSchema variable fields', () => {
       variableName: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH),
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('MetricFormulaSchema', () => {
+  it('parses an expression-only formula', () => {
+    const result = MetricFormulaSchema.safeParse({
+      expression: 'A / (A + B + C) * 100',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('parses a formula with alias and numberFormat', () => {
+    const result = MetricFormulaSchema.safeParse({
+      expression: 'A / B',
+      alias: 'Success rate',
+      numberFormat: { output: 'percent', mantissa: 1 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('requires an expression', () => {
+    expect(MetricFormulaSchema.safeParse({ alias: 'x' }).success).toBe(false);
+    expect(MetricFormulaSchema.safeParse({ expression: 1 }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('formulas on saved chart configs', () => {
+  // `formulas` / `showOperandSeries` live on _ChartConfigSchema (builder
+  // configs only — formulas reference `select` entries by position, which
+  // raw SQL / PromQL configs do not have).
+
+  it('retains formulas and showOperandSeries on a builder saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      source: 'test-source',
+      timestampValueExpression: 'Timestamp',
+      select: [
+        { aggFn: 'sum', valueExpression: 'Value', metricName: 'success' },
+        { aggFn: 'sum', valueExpression: 'Value', metricName: 'error' },
+      ],
+      where: '',
+      formulas: [{ expression: 'A / (A + B) * 100', alias: 'Success rate' }],
+      showOperandSeries: false,
+    });
+
+    expect(parsed).toMatchObject({
+      formulas: [{ expression: 'A / (A + B) * 100', alias: 'Success rate' }],
+      showOperandSeries: false,
+    });
+  });
+
+  it('parses a builder saved config without formulas (back-compat)', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      source: 'test-source',
+      timestampValueExpression: 'Timestamp',
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+    });
+
+    expect(parsed).not.toHaveProperty('formulas');
   });
 });

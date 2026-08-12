@@ -415,6 +415,28 @@ export const DerivedColumnSchema = z.intersection(
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
+
+/**
+ * A derived series computed from other series in the chart's `select` list
+ * via a letter-ref arithmetic expression (metric charts only for v1).
+ *
+ * `expression` references select entries by position using single uppercase
+ * letters — `A` is `select[0]`, `B` is `select[1]`, ... (Grafana/Datadog
+ * convention; stable against alias edits). Example: `A / (A + B + C) * 100`.
+ *
+ * The grammar is arithmetic only (`+ - * /`, parentheses, numeric constants)
+ * and is parsed to a validated AST by `core/formula.ts` before any query
+ * rendering — expressions are never passed through as raw SQL.
+ */
+export const MetricFormulaSchema = z.object({
+  expression: z.string(),
+  // Legend / column name for the formula series. Falls back to the raw
+  // expression when unset (mirrors DerivedColumnSchema.alias semantics).
+  alias: z.string().optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+export type MetricFormula = z.infer<typeof MetricFormulaSchema>;
+
 export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -1319,6 +1341,19 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Only meaningful for grouped ratios (seriesReturnType === 'ratio' + a Group
   // By). Defaults to per-group when unset. See RatioModeSchema.
   ratioMode: RatioModeSchema.optional(),
+  // Derived series computed from the `select` entries via letter-ref
+  // arithmetic expressions (`A` = select[0], ...). Metric sources only for
+  // v1; enforced by the editor and query renderer rather than this
+  // (deliberately permissive) schema, mirroring how `seriesReturnType:
+  // 'ratio'` is gated. Formulas are additive — the ratio toggle is untouched
+  // and the two are mutually exclusive in the editor. See
+  // MetricFormulaSchema and `core/formula.ts` for the grammar/validation.
+  formulas: z.array(MetricFormulaSchema).optional(),
+  // Whether the raw operand series referenced by `formulas` are emitted
+  // alongside the formula column(s) (true / unset) or only the formula
+  // column(s) are returned (false). Only meaningful when `formulas` is
+  // non-empty; ignored otherwise.
+  showOperandSeries: z.boolean().optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
