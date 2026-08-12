@@ -4,6 +4,8 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
+  validateDashboardFilterModes,
+  validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
@@ -1412,6 +1414,11 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // (otherwise a tile that references a real preserved container
       // would be rejected against an empty `data.containers ?? []`).
       validateDashboardContainersStructure(data.containers ?? [], ctx);
+
+      // Mirrors the dashboard filter form's validations. Backwards compatible
+      // with pre-`isBroadcastEnabled` payloads.
+      validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+      validateDashboardFilterModes(data.filters ?? [], ctx);
     });
 }
 

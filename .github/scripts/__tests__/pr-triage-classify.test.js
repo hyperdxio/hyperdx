@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const {
   isTestFile, isTrivialFile, isCriticalFile,
   isSecurityCriticalFile, isCoreCriticalFile, isInfraCriticalFile,
+  isQueryEngineCriticalFile,
   isInternalToolingFile, isReleaseArtifactFile,
   computeSignals, determineTier, buildTierComment,
 } = require('../pr-triage-classify');
@@ -201,9 +202,34 @@ describe('critical-path bands', () => {
     }
   });
 
-  it('isCriticalFile still matches either list (path-level check)', () => {
+  it('classifies the SQL rendering + execution pipeline as query-engine-critical', () => {
+    for (const f of [
+      'packages/common-utils/src/core/renderChartConfig.ts',
+      'packages/common-utils/src/core/builderToRawSql.ts',
+      'packages/common-utils/src/clickhouse/index.ts',
+    ]) {
+      assert.ok(isQueryEngineCriticalFile(f), `expected query-engine-critical: ${f}`);
+      assert.ok(!isSecurityCriticalFile(f), `expected not security-critical: ${f}`);
+      assert.ok(!isCoreCriticalFile(f), `expected not core-critical: ${f}`);
+      assert.ok(!isInfraCriticalFile(f), `expected not infra-critical: ${f}`);
+    }
+  });
+
+  it('does not sweep the rest of common-utils into the query-engine band', () => {
+    for (const f of [
+      'packages/common-utils/src/core/metadata.ts',
+      'packages/common-utils/src/core/utils.ts',
+      'packages/common-utils/src/queryParser.ts',
+      'packages/common-utils/src/types.ts',
+    ]) {
+      assert.ok(!isQueryEngineCriticalFile(f), `expected not query-engine-critical: ${f}`);
+    }
+  });
+
+  it('isCriticalFile still matches any band (path-level check)', () => {
     assert.ok(isCriticalFile('packages/api/src/middleware/auth.ts'));
     assert.ok(isCriticalFile('docker/hyperdx/Dockerfile'));
+    assert.ok(isCriticalFile('packages/common-utils/src/core/renderChartConfig.ts'));
     assert.ok(!isCriticalFile('packages/app/src/App.tsx'));
   });
 });
@@ -533,6 +559,55 @@ describe('determineTier', () => {
       ]), 4);
     });
 
+    it('substantial query-engine rewrite escalates (PR #2859 pattern)', () => {
+      // Multi-series metric merge moved into ClickHouse: 664 prod lines across
+      // the rendering + execution pipeline. Tests and snapshots don't count.
+      assert.equal(classify('alice', 'feat/metrics-ch-side-merge', [
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 313, 36),
+        makeFile('packages/common-utils/src/clickhouse/index.ts', 19, 289),
+        makeFile('packages/common-utils/src/core/builderToRawSql.ts', 5, 2),
+        makeFile('packages/common-utils/src/__tests__/renderChartConfig.test.ts', 174, 0),
+        makeFile('packages/common-utils/src/__tests__/__snapshots__/renderChartConfig.test.ts.snap', 245, 0),
+        makeFile('packages/app/src/components/DBEditTimeChartForm/ChartEditorControls.tsx', 6, 6),
+        makeFile('packages/cli/src/shared/tileQuery.ts', 2, 2),
+        makeFile('.changeset/metrics-ch-side-merge.md', 6, 0),
+      ]), 4);
+    });
+
+    it('does NOT escalate a routine chart fix touching the query engine (PR #2759 pattern)', () => {
+      // Series-limit ranking fix: 68 lines in renderChartConfig, well under the
+      // 150-line bar. Half of all rendering-touching PRs look like this.
+      assert.equal(classify('alice', 'fix/ratio-series-limit', [
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 48, 20),
+      ]), 2);
+    });
+
+    it('escalates once query-engine churn reaches the bar', () => {
+      assert.equal(classify('alice', 'refactor/render-pipeline', [
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 120, 30),  // exactly 150
+      ]), 4);
+      assert.equal(classify('alice', 'refactor/render-pipeline', [
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 120, 29),  // 149 — just under
+      ]), 2);
+    });
+
+    it('aggregates query-engine churn across files', () => {
+      // No single file clears the bar, but the pipeline change as a whole does
+      assert.equal(classify('alice', 'refactor/query-exec', [
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 60, 20),
+        makeFile('packages/common-utils/src/clickhouse/index.ts', 50, 15),
+        makeFile('packages/common-utils/src/core/builderToRawSql.ts', 5, 0),
+      ]), 4);
+    });
+
+    it('query-engine test files never count toward the bar', () => {
+      assert.equal(classify('alice', 'test/render-coverage', [
+        makeFile('packages/common-utils/src/__tests__/renderChartConfig.test.ts', 400, 100),
+        makeFile('packages/common-utils/src/core/__tests__/builderToRawSql.test.ts', 200, 0),
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 10, 5),
+      ]), 2);
+    });
+
     it('docs under a critical path never escalate', () => {
       assert.equal(classify('alice', 'docs/collector-readme', [
         makeFile('packages/otel-collector/README.md', 60, 20),
@@ -678,9 +753,11 @@ describe('determineTier', () => {
     });
 
     it('cross-layer change below the line floor drops to Tier 2 (PR #2707 pattern)', () => {
+      // renderChartConfig is query-engine-critical, but 8 lines is far under
+      // the 150-line bar — a small cross-layer fix still tiers on size.
       assert.equal(classify('alice', 'fix/histogram-grouping', [
         makeFile('packages/app/src/Chart.tsx', 10, 4),
-        makeFile('packages/common-utils/src/renderChartConfig.ts', 6, 2),
+        makeFile('packages/common-utils/src/core/renderChartConfig.ts', 6, 2),
       ]), 2);  // 22 prod lines
     });
 
@@ -739,6 +816,9 @@ describe('buildTierComment', () => {
       infraCriticalFiles: [],
       infraCriticalLines: 0,
       infraCriticalEscalates: false,
+      queryEngineCriticalFiles: [],
+      queryEngineCriticalLines: 0,
+      queryEngineCriticalEscalates: false,
       internalToolingFiles: [],
       isBotAuthor: false,
       allFilesTrivial: false,
@@ -807,6 +887,33 @@ describe('buildTierComment', () => {
     }));
     assert.ok(body.includes('delivery pipeline lightly'));
     assert.ok(!body.includes('substantially modified'));
+  });
+
+  it('explains a substantial query-engine change as the Tier 4 trigger', () => {
+    const queryEngineCriticalFiles = [
+      makeFile('packages/common-utils/src/core/renderChartConfig.ts', 313, 36),
+      makeFile('packages/common-utils/src/clickhouse/index.ts', 19, 289),
+    ];
+    const body = buildTierComment(4, makeSignals({
+      criticalFiles: queryEngineCriticalFiles,
+      queryEngineCriticalFiles,
+      queryEngineCriticalLines: 657,
+      queryEngineCriticalEscalates: true,
+    }));
+    assert.ok(body.includes('Query rendering engine substantially modified'));
+    assert.ok(body.includes('657 lines'));
+    assert.ok(body.includes('renderChartConfig.ts'));
+    assert.ok(!body.includes('Critical-path files'), 'no always-critical files were touched');
+  });
+
+  it('notes a light query-engine touch as context rather than a trigger', () => {
+    const body = buildTierComment(2, makeSignals({
+      queryEngineCriticalFiles: [makeFile('packages/common-utils/src/core/renderChartConfig.ts', 6, 2)],
+      queryEngineCriticalLines: 8,
+      queryEngineCriticalEscalates: false,
+    }));
+    assert.ok(body.includes('query rendering engine lightly'));
+    assert.ok(!body.includes('Query rendering engine substantially modified'));
   });
 
   it('explains an automated release PR', () => {

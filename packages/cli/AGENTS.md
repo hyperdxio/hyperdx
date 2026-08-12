@@ -4,7 +4,8 @@
 
 A terminal CLI for searching, tailing, and inspecting logs and traces from
 HyperDX. It provides both an interactive TUI (built with Ink — React for
-terminals) and a non-interactive streaming mode for piping.
+terminals) and non-interactive commands (`query`, `chart`, `sources`, …) for
+scripting and piping.
 
 The CLI connects to the HyperDX API server and queries ClickHouse directly
 through the API's `/clickhouse-proxy` endpoint, using the same query generation
@@ -13,32 +14,36 @@ logic (`@hyperdx/common-utils`) as the web frontend.
 ## CLI Commands
 
 ```
-hdx tui -s <url>                    # Interactive TUI (main command)
-hdx stream -s <url> --source "Logs" # Non-interactive streaming to stdout
-hdx sources -s <url>                # List available sources
+hdx tui -a <url>                    # Interactive TUI (main command)
+hdx sources -a <url>                # List available sources (with schemas)
 hdx connections                     # List ClickHouse connections (id, name, host)
 hdx dashboards                      # List dashboards with tile summaries
 hdx chart -d <dashboard> [-t tile]  # Render dashboard tiles as ANSI charts
 hdx chart -s <source> [--agg ...]   # Ad-hoc chart over a source (builder mode)
 hdx chart --sql <query> -s <source> # Ad-hoc chart from raw SQL
-hdx auth login -s <url>             # Sign in (interactive or -e/-p flags)
+hdx query --connection-id <id> --sql <query>  # Raw SQL to stdout (NDJSON default)
+hdx query --patterns ...            # Drain log-pattern mining over a query result
+hdx auth login -a <url>             # Sign in (interactive or -e/-p flags)
 hdx auth status                     # Show auth status (reads saved session)
 hdx auth logout                     # Clear saved session
 hdx team list                       # List teams the user belongs to (multi-team)
 hdx team current                    # Show the active team
 hdx team use <name|id>              # Switch the active team (kubectx-style)
+hdx upload-sourcemaps               # Upload JS source maps
 ```
 
-The `-s, --server <url>` flag is required for commands that talk to the API. If
-omitted, the CLI falls back to the server URL saved in the session file from a
-previous `hdx auth login`.
+The `-a, --app-url <url>` flag points commands at a HyperDX app URL. If omitted,
+the CLI falls back to the app URL saved in the session file from a previous
+`hdx auth login`. (Note: `hdx chart` uses `-s` for `--source`.)
 
 ## Architecture
 
 ```
 src/
 ├── cli.tsx              # Entry point — Commander CLI with commands:
-│                        #   tui, stream, sources, auth (login/logout/status)
+│                        #   tui, sources, connections, dashboards, chart,
+│                        #   query, auth (login/logout/status), team,
+│                        #   upload-sourcemaps
 │                        #   Also contains the standalone LoginPrompt component
 ├── App.tsx              # App shell — state machine:
 │                        #   loading → login → pick-source → EventViewer
@@ -133,53 +138,51 @@ Port of the web frontend's `DBRowOverviewPanel`. Three sections:
 
 ### DashboardPage + Tile charting (`components/DashboardPage.tsx`, `components/Tile/`)
 
-Dashboard tiles are queried and rendered with the **same SQL pipeline as the
-web dashboard**:
+Dashboard tiles are queried and rendered with the **same SQL pipeline as the web
+dashboard**:
 
 1. `shared/tileConfig.ts` resolves a tile's `SavedChartConfig` against its
    source (port of the web Tile's `queriedConfig` effect in
    `DBDashboardPage.tsx`) and applies the per-displayType config transform
    (`convertToTimeChartConfig` / `convertToNumberChartConfig` /
    `convertToTableChartConfig` / `convertToCategoricalChartConfig`).
-2. `shared/tileQuery.ts` executes it via
-   `clickhouseClient.queryChartConfig()` from common-utils — internally
-   `setChartSelectsAlias → splitChartConfigs → renderChartConfig`, identical
-   to the web's `useQueriedChartConfig` core (minus chunking / MV
-   optimization / PromQL).
+2. `shared/tileQuery.ts` executes it via `clickhouseClient.queryChartConfig()`
+   from common-utils — internally
+   `setChartSelectsAlias → splitChartConfigs → renderChartConfig`, identical to
+   the web's `useQueriedChartConfig` core (minus chunking / MV optimization /
+   PromQL).
 3. `shared/chartData.ts` shapes the response (ports of
    `formatResponseForTimeChart`, `formatResponseForCategoricalChart`, etc.).
-4. `termchart/` renders pure ANSI strings, consumed by both the Ink
-   `TileChart` component and the non-interactive `hdx chart` command. It is
-   a self-contained module (only dependency: chalk) — number formatting is
-   injected via callbacks, and it must never import from the rest of the
-   CLI.
+4. `termchart/` renders pure ANSI strings, consumed by both the Ink `TileChart`
+   component and the non-interactive `hdx chart` command. It is a self-contained
+   module (only dependency: chalk) — number formatting is injected via
+   callbacks, and it must never import from the rest of the CLI.
 
-Supported display types: line, stacked_bar, number, table, bar, pie,
-markdown. Heatmap / search / event patterns / PromQL show a placeholder.
-The web's previous-period comparison overlay is not rendered; tiles with
-`compareToPreviousPeriod` set show a dim callout instead.
-Time-series charts stretch to the full terminal width via peak-preserving
-resampling (`resampleSeries`): bucket values are placed exactly at their
-nearest column (upscale) or each column keeps its bucket range's
-max-magnitude value (downscale) — plain linear interpolation would sample
-*between* buckets and attenuate narrow spikes. Stacked bars map columns to
-buckets nearest-neighbor (upscale) or by max-total bucket (downscale).
-Auto granularity is capped at 80 buckets like the web (`maxTimeBuckets`).
-Y-axes use "nice" tick domains (`niceTicks`, steps of 1/2/2.5/5×10ⁿ,
-zero-pinned, max rounded up) with sparse tick-row labels — mirroring the
-web's recharts `domain={[0, 'auto']}` axis rather than labeling every row
-with raw range fractions.
+Supported display types: line, stacked*bar, number, table, bar, pie, markdown.
+Heatmap / search / event patterns / PromQL show a placeholder. The web's
+previous-period comparison overlay is not rendered; tiles with
+`compareToPreviousPeriod` set show a dim callout instead. Time-series charts
+stretch to the full terminal width via peak-preserving resampling
+(`resampleSeries`): bucket values are placed exactly at their nearest column
+(upscale) or each column keeps its bucket range's max-magnitude value
+(downscale) — plain linear interpolation would sample \_between* buckets and
+attenuate narrow spikes. Stacked bars map columns to buckets nearest-neighbor
+(upscale) or by max-total bucket (downscale). Auto granularity is capped at 80
+buckets like the web (`maxTimeBuckets`). Y-axes use "nice" tick domains
+(`niceTicks`, steps of 1/2/2.5/5×10ⁿ, zero-pinned, max rounded up) with sparse
+tick-row labels — mirroring the web's recharts `domain={[0, 'auto']}` axis
+rather than labeling every row with raw range fractions.
 
-The `hdx chart` command (designed for agent-driven troubleshooting) reuses
-this same pipeline in three modes: dashboard tiles (`-d`), ad-hoc builder
-charts (`-s <source>` + `--agg/--value/--where/--group-by/--series`, built
-by `shared/adhocChart.ts`), and ad-hoc raw SQL (`--sql` with
-`$__timeFilter` / `$__timeInterval` macros). ANSI colors are stripped
-automatically when stdout is not a TTY (`--color auto|always|never`), and
-`--json` emits raw rows + column metadata.
+The `hdx chart` command (designed for agent-driven troubleshooting) reuses this
+same pipeline in three modes: dashboard tiles (`-d`), ad-hoc builder charts
+(`-s <source>` + `--agg/--value/--where/--group-by/--series`, built by
+`shared/adhocChart.ts`), and ad-hoc raw SQL (`--sql` with `$__timeFilter` /
+`$__timeInterval` macros). ANSI colors are stripped automatically when stdout is
+not a TTY (`--color auto|always|never`), and `--json` emits raw rows + column
+metadata.
 
-Do NOT change resolution/shaping rules without checking the web components
-first (see the alignment table below).
+Do NOT change resolution/shaping rules without checking the web components first
+(see the alignment table below).
 
 ### ColumnValues (`components/ColumnValues.tsx`)
 
@@ -196,17 +199,17 @@ This package mirrors several web frontend components. **Always check the
 corresponding web component before making changes** to ensure behavior stays
 consistent:
 
-| CLI Component          | Web Component                     | Notes                              |
-| ---------------------- | --------------------------------- | ---------------------------------- |
-| `TraceWaterfall`       | `DBTraceWaterfallChart`           | Tree builder is a direct port      |
-| `RowOverview`          | `DBRowOverviewPanel`              | Same sections and field list       |
-| Trace tab logic        | `DBTracePanel`                    | Source resolution (trace/log)      |
-| Detail panel           | `DBRowSidePanel`                  | Tab structure, highlight hint      |
-| Event query            | `DBTraceWaterfallChart`           | `getConfig()` → `buildTrace*Sql`   |
-| `shared/tileConfig`    | `DBDashboardPage` + `ChartUtils`  | Tile config resolution/transforms  |
-| `shared/tileRender`    | `DBDashboardPage`                 | `renderChartContent` dispatch      |
-| `shared/chartData`     | `ChartUtils`                      | Response shaping ports             |
-| `shared/formatNumber`  | `utils.ts` + `source.ts`          | formatNumber + format resolution   |
+| CLI Component         | Web Component                    | Notes                             |
+| --------------------- | -------------------------------- | --------------------------------- |
+| `TraceWaterfall`      | `DBTraceWaterfallChart`          | Tree builder is a direct port     |
+| `RowOverview`         | `DBRowOverviewPanel`             | Same sections and field list      |
+| Trace tab logic       | `DBTracePanel`                   | Source resolution (trace/log)     |
+| Detail panel          | `DBRowSidePanel`                 | Tab structure, highlight hint     |
+| Event query           | `DBTraceWaterfallChart`          | `getConfig()` → `buildTrace*Sql`  |
+| `shared/tileConfig`   | `DBDashboardPage` + `ChartUtils` | Tile config resolution/transforms |
+| `shared/tileRender`   | `DBDashboardPage`                | `renderChartContent` dispatch     |
+| `shared/chartData`    | `ChartUtils`                     | Response shaping ports            |
+| `shared/formatNumber` | `utils.ts` + `source.ts`         | formatNumber + format resolution  |
 
 Key expression mappings from the web frontend's `getConfig()`:
 
@@ -253,7 +256,7 @@ screen).
 ```bash
 # Run in dev mode (tsx, no compile step)
 cd packages/cli
-yarn dev tui -s http://localhost:8000
+yarn dev tui -a http://localhost:8080
 
 # Type check
 npx tsc --noEmit

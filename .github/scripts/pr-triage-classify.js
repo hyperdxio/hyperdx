@@ -1,12 +1,15 @@
 'use strict';
 
 // ── File classification patterns ─────────────────────────────────────────────
-// Critical paths come in three bands, ordered by how much the size of the diff
+// Critical paths come in four bands, ordered by how much the size of the diff
 // should be allowed to soften them.
 //
-//   security — Tier 4 at any size, no escape hatch
-//   core     — Tier 4 unless the PR merely grazes it (see the graze bounds)
-//   infra    — Tier 4 only once substantially modified (INFRA_CRITICAL_MIN_LINES)
+//   security     — Tier 4 at any size, no escape hatch
+//   core         — Tier 4 unless the PR merely grazes it (see the graze bounds)
+//   infra        — Tier 4 only once substantially modified (INFRA_CRITICAL_MIN_LINES)
+//   query-engine — Tier 4 only once substantially modified
+//                  (QUERY_ENGINE_CRITICAL_MIN_LINES, higher than infra's bar —
+//                  it is a hot path that routine chart fixes touch constantly)
 //
 // Without the bands, a three-line Dockerfile tweak carried the same "domain
 // expert sign-off" weight as an auth change.
@@ -41,6 +44,18 @@ const INFRA_CRITICAL_PATTERNS = [
   /^docker\/otel-collector\//,
   /^docker\/hyperdx\//,
   /^\.github\/workflows\/(main|release)\.yml$/,
+];
+
+// The SQL rendering + execution pipeline in common-utils. Every chart, search,
+// and alert query flows through renderChartConfig, so a substantial change here
+// can silently alter query semantics product-wide (e.g. #2859 moving
+// multi-series metric merge computation into ClickHouse). It is also one of the
+// hottest files in the repo — routine chart fixes graze it weekly — so it gets
+// its own band with a bar high enough that only engine-level rewrites escalate.
+const QUERY_ENGINE_CRITICAL_PATTERNS = [
+  /^packages\/common-utils\/src\/core\/renderChartConfig\./,
+  /^packages\/common-utils\/src\/core\/builderToRawSql\./,
+  /^packages\/common-utils\/src\/clickhouse\//,
 ];
 
 // Docs and images carry no functional risk, so they never escalate a PR — not
@@ -99,6 +114,14 @@ const TIER4_ESCALATION_LINES = 1000;   // Tier 3 → 4 for very large diffs
 // Measured as total churn across every infra-critical file, not per file, so a
 // change spread thinly across several of them still escalates.
 const INFRA_CRITICAL_MIN_LINES = 30;
+
+// Query-engine paths use the same total-churn mechanism but a higher bar.
+// Calibrated against 20 recent merged PRs touching these files: at infra's
+// 30-line bar half of them escalated, including routine Tier 2 chart fixes
+// (#2759, #2613, #2422); at 150 only substantial engine changes cleared it
+// (#2246 Increase aggFn, #2634 builder→raw SQL, #2859 metric merge in CH) —
+// exactly the changes that warrant a domain expert.
+const QUERY_ENGINE_CRITICAL_MIN_LINES = 150;
 
 // A PR only "grazes" a core-critical path when the touch AND the PR as a whole
 // are tiny. Both bounds matter: across 600 merged PRs, a <=10-line core-critical
@@ -165,7 +188,7 @@ const TIER_INFO = {
   4: {
     emoji: '🔴',
     headline: 'Tier 4 — Critical',
-    detail: 'Touches authentication, tenancy data models, the public API or shipped database config — or substantially changes background tasks, the OTel pipeline, image build, or release CI.',
+    detail: 'Touches authentication, tenancy data models, the public API or shipped database config — or substantially changes the query rendering engine, background tasks, the OTel pipeline, image build, or release CI.',
     process: 'Deep review from a domain expert. Synchronous walkthrough may be required.',
     sla: 'Schedule synchronous review within 2 business days.',
   },
@@ -179,10 +202,12 @@ const isDocFile      = f => DOC_PATTERN.test(f);
 const isSecurityCriticalFile = f => SECURITY_CRITICAL_PATTERNS.some(p => p.test(f));
 const isCoreCriticalFile     = f => CORE_CRITICAL_PATTERNS.some(p => p.test(f));
 const isInfraCriticalFile    = f => INFRA_CRITICAL_PATTERNS.some(p => p.test(f));
-// Path-level check only — whether a core- or infra-critical file actually
-// escalates the PR depends on diff size, resolved in computeSignals.
+const isQueryEngineCriticalFile = f => QUERY_ENGINE_CRITICAL_PATTERNS.some(p => p.test(f));
+// Path-level check only — whether a core-, infra- or query-engine-critical file
+// actually escalates the PR depends on diff size, resolved in computeSignals.
 const isCriticalFile = f =>
-  isSecurityCriticalFile(f) || isCoreCriticalFile(f) || isInfraCriticalFile(f);
+  isSecurityCriticalFile(f) || isCoreCriticalFile(f) || isInfraCriticalFile(f) ||
+  isQueryEngineCriticalFile(f);
 
 const isInternalToolingFile = f => INTERNAL_TOOLING_PATTERNS.some(p => p.test(f));
 const isReleaseArtifactFile = f => RELEASE_ARTIFACT_PATTERNS.some(p => p.test(f));
@@ -223,9 +248,16 @@ function computeSignals(pr, filesRes) {
     !isSecurityCriticalFile(f.filename) &&
     !isCoreCriticalFile(f.filename)
   );
+  const queryEngineCriticalFiles = criticalCandidates.filter(f =>
+    isQueryEngineCriticalFile(f.filename) &&
+    !isSecurityCriticalFile(f.filename) &&
+    !isCoreCriticalFile(f.filename) &&
+    !isInfraCriticalFile(f.filename)
+  );
 
   const coreCriticalLines  = churn(coreCriticalFiles);
   const infraCriticalLines = churn(infraCriticalFiles);
+  const queryEngineCriticalLines = churn(queryEngineCriticalFiles);
 
   // Everything a reviewer actually has to read. Unlike prodLines this keeps
   // workflows, Actions scripts and internal-tooling packages in: they are
@@ -247,11 +279,14 @@ function computeSignals(pr, filesRes) {
     reviewableLines <= GRAZE_MAX_PROD_LINES;
 
   const infraCriticalEscalates = infraCriticalLines >= INFRA_CRITICAL_MIN_LINES;
+  const queryEngineCriticalEscalates =
+    queryEngineCriticalLines >= QUERY_ENGINE_CRITICAL_MIN_LINES;
 
   const criticalFiles = [
     ...securityCriticalFiles,
     ...(grazesCoreCritical ? [] : coreCriticalFiles),
     ...(infraCriticalEscalates ? infraCriticalFiles : []),
+    ...(queryEngineCriticalEscalates ? queryEngineCriticalFiles : []),
   ];
 
   const isBotAuthor     = BOT_AUTHORS.includes(author);
@@ -287,8 +322,10 @@ function computeSignals(pr, filesRes) {
     author, branchName,
     prodFiles, prodLines, testLines,
     criticalFiles, securityCriticalFiles, coreCriticalFiles, infraCriticalFiles,
-    coreCriticalLines, infraCriticalLines, reviewableLines,
-    grazesCoreCritical, infraCriticalEscalates,
+    queryEngineCriticalFiles,
+    coreCriticalLines, infraCriticalLines, queryEngineCriticalLines,
+    reviewableLines,
+    grazesCoreCritical, infraCriticalEscalates, queryEngineCriticalEscalates,
     internalToolingFiles,
     isBotAuthor, allFilesTrivial, isReleaseArtifactPR,
     touchesApiModels, touchesFrontend, touchesBackend, touchesSharedUtils,
@@ -339,8 +376,10 @@ function buildTierComment(tier, signals) {
     isCrossLayer,
     // Defaulted so older callers (and hand-built fixtures) keep working.
     securityCriticalFiles = [], coreCriticalFiles = [], infraCriticalFiles = [],
-    coreCriticalLines = 0, infraCriticalLines = 0,
+    queryEngineCriticalFiles = [],
+    coreCriticalLines = 0, infraCriticalLines = 0, queryEngineCriticalLines = 0,
     grazesCoreCritical = false, infraCriticalEscalates = false,
+    queryEngineCriticalEscalates = false,
     internalToolingFiles = [], isReleaseArtifactPR = false, spansLayers = false,
   } = signals;
 
@@ -391,6 +430,9 @@ function buildTierComment(tier, signals) {
   if (infraCriticalEscalates && infraCriticalFiles.length > 0) {
     triggers.push(`**Background tasks or delivery pipeline substantially modified** — ${infraCriticalLines} lines (bar: ${INFRA_CRITICAL_MIN_LINES}):\n${fileList(infraCriticalFiles)}`);
   }
+  if (queryEngineCriticalEscalates && queryEngineCriticalFiles.length > 0) {
+    triggers.push(`**Query rendering engine substantially modified** — ${queryEngineCriticalLines} lines (bar: ${QUERY_ENGINE_CRITICAL_MIN_LINES}). Every chart, search, and alert query flows through this code:\n${fileList(queryEngineCriticalFiles)}`);
+  }
   if (tier === 4 && prodLines > TIER4_ESCALATION_LINES && criticalFiles.length === 0) {
     triggers.push(`**Large diff**: ${prodLines} production lines changed (threshold: ${TIER4_ESCALATION_LINES})`);
   }
@@ -429,6 +471,9 @@ function buildTierComment(tier, signals) {
   if (infraCriticalFiles.length > 0 && !infraCriticalEscalates) {
     contextSignals.push(`touches background tasks or the delivery pipeline lightly (${infraCriticalLines} lines, under the ${INFRA_CRITICAL_MIN_LINES}-line bar for Tier 4)`);
   }
+  if (queryEngineCriticalFiles.length > 0 && !queryEngineCriticalEscalates) {
+    contextSignals.push(`touches the query rendering engine lightly (${queryEngineCriticalLines} lines, under the ${QUERY_ENGINE_CRITICAL_MIN_LINES}-line bar for Tier 4)`);
+  }
   if (spansLayers && !isCrossLayer) {
     contextSignals.push(`spans packages but only ${prodLines} prod lines — under the ${CROSS_LAYER_MIN_LINES}-line cross-layer bar`);
   }
@@ -445,9 +490,11 @@ module.exports = {
   // Thresholds (exported for tests and documentation)
   TIER2_MAX_LINES, INFRA_CRITICAL_MIN_LINES, CROSS_LAYER_MIN_LINES,
   TIER4_ESCALATION_LINES, CORE_CRITICAL_GRAZE_LINES, GRAZE_MAX_PROD_LINES,
+  QUERY_ENGINE_CRITICAL_MIN_LINES,
   // Pure functions
   isTestFile, isTrivialFile, isDocFile, isCriticalFile,
   isSecurityCriticalFile, isCoreCriticalFile, isInfraCriticalFile,
+  isQueryEngineCriticalFile,
   isInternalToolingFile, isReleaseArtifactFile,
   computeSignals, determineTier, buildTierComment,
 };
