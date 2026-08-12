@@ -137,6 +137,7 @@ with:
 | `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
 | `clickstack_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |
 | `clickstack_query_tile`          | Execute the query for a specific dashboard tile to validate results                          |
+| `clickstack_query_tiles`         | Batch-validate many dashboard tiles in one call, returning a per-tile success/failure summary |
 | `clickstack_get_saved_search`    | List all saved searches or get full detail for a specific saved search                       |
 | `clickstack_save_saved_search`   | Create or update a saved search (reusable query against a data source)                       |
 | `clickstack_get_alert`           | List alerts (summary) or get full detail with evaluation history; filter by state             |

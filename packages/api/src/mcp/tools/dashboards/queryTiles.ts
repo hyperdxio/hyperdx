@@ -22,6 +22,15 @@ import { getRawSqlTileMacroWarnings } from './validation';
  */
 const TILE_QUERY_CONCURRENCY = 2;
 
+/**
+ * Soft cap on how many tiles a single call will run. A pathological dashboard
+ * (or a very long explicit `tileIds` list) would otherwise turn one MCP call
+ * into an unbounded run of ClickHouse queries. Tiles past the cap are returned
+ * as `unrunTileIds` so nothing is silently dropped — the caller can page
+ * through the remainder in a follow-up call.
+ */
+const MAX_TILES_PER_CALL = 50;
+
 /** A tile whose displayType is markdown (or that has no queryable config). */
 function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
   if (!isConfigTile(tile)) return true;
@@ -34,8 +43,10 @@ function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
  * of rows or an object carrying a `data: [...]` array (see formatQueryResult in
  * query/helpers.ts). Anything we can't confidently read as rows is reported as
  * `hasData: undefined` rather than guessed.
+ *
+ * @internal Exported for testing only.
  */
-function summarizeRows(text: string): {
+export function summarizeRows(text: string): {
   hasData?: boolean;
   rowCount?: number;
 } {
@@ -95,6 +106,8 @@ export function registerQueryTiles({
         '(default: every non-markdown tile). Markdown tiles are skipped. ' +
         'A tile that fails is reported inline with its error; the overall call ' +
         'still succeeds so one broken tile does not hide the rest. ' +
+        'At most 50 tiles run per call; any beyond that are returned as ' +
+        'unrunTileIds to page through in a follow-up call. ' +
         'Drill into a specific failing tile with clickstack_query_tile.',
       inputSchema: z.object({
         dashboardId: objectIdSchema.describe('Dashboard ID.'),
@@ -136,26 +149,38 @@ export function registerQueryTiles({
       const externalDashboard = convertToExternalDashboard(dashboard);
       const allTiles = externalDashboard.tiles;
 
-      // Resolve the target tiles. When explicit IDs are given, keep track of
+      // Resolve the target tiles. When explicit IDs are given, dedupe them
+      // (a repeated id must not run — or be counted — twice) and keep track of
       // any that don't exist so the caller learns about typos without failing
       // the whole batch.
-      let targetTiles: ExternalDashboardTileWithId[];
+      let selectedTiles: ExternalDashboardTileWithId[];
       const unknownTileIds: string[] = [];
       if (tileIds && tileIds.length > 0) {
         const byId = new Map(allTiles.map(t => [t.id, t]));
-        targetTiles = [];
+        selectedTiles = [];
+        const seen = new Set<string>();
         for (const id of tileIds) {
+          if (seen.has(id)) continue;
+          seen.add(id);
           const tile = byId.get(id);
           if (tile) {
-            targetTiles.push(tile);
+            selectedTiles.push(tile);
           } else {
             unknownTileIds.push(id);
           }
         }
       } else {
         // Default: every non-markdown tile.
-        targetTiles = allTiles.filter(t => !isMarkdownTile(t));
+        selectedTiles = allTiles.filter(t => !isMarkdownTile(t));
       }
+
+      // Soft-cap the number of tiles run per call so one request can't fan out
+      // into an unbounded run of ClickHouse queries. Anything past the cap is
+      // reported back as unrun rather than silently dropped.
+      const targetTiles = selectedTiles.slice(0, MAX_TILES_PER_CALL);
+      const unrunTileIds = selectedTiles
+        .slice(MAX_TILES_PER_CALL)
+        .map(t => t.id);
 
       const queue = new PQueue({ concurrency: TILE_QUERY_CONCURRENCY });
       const queued = await Promise.all(
@@ -244,6 +269,7 @@ export function registerQueryTiles({
                 summary,
                 tiles: tileSummaries,
                 ...(unknownTileIds.length > 0 ? { unknownTileIds } : {}),
+                ...(unrunTileIds.length > 0 ? { unrunTileIds } : {}),
               },
               null,
               2,

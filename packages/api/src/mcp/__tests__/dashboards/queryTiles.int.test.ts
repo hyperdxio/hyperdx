@@ -279,4 +279,105 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
     expect(tile.hasData).toBe(true);
     expect(tile.rowCount).toBeGreaterThan(0);
   });
+
+  it('reports hasData=false and rowCount=0 for a tile with no rows in range', async () => {
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+      timestampValueExpression: 'Timestamp',
+      connection: ctx.connection._id,
+      name: 'Empty Batch Logs',
+      bodyExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    });
+    const dashboard = await saveDashboard([
+      {
+        name: 'By service',
+        config: {
+          displayType: 'table',
+          sourceId: logSource._id.toString(),
+          select: [{ aggFn: 'count' }],
+          groupBy: 'ServiceName',
+        },
+      },
+    ]);
+
+    // Query a window far in the past where no logs exist.
+    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+      dashboardId: dashboard.id,
+      startTime: new Date('2000-01-01T00:00:00Z').toISOString(),
+      endTime: new Date('2000-01-02T00:00:00Z').toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(getFirstText(result));
+    const tile = parsed.tiles[0];
+    expect(tile.status).toBe('ok');
+    expect(tile.hasData).toBe(false);
+    expect(tile.rowCount).toBe(0);
+  });
+
+  it('skips a markdown tile passed explicitly in tileIds', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const dashboard = await saveDashboard([
+      {
+        name: 'Count',
+        config: {
+          displayType: 'number',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+        },
+      },
+      {
+        name: 'Notes',
+        config: { displayType: 'markdown', markdown: '# hello' },
+      },
+    ]);
+
+    const markdownTileId = dashboard.tiles.find(
+      (t: any) => t.config?.displayType === 'markdown',
+    ).id;
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+      dashboardId: dashboard.id,
+      tileIds: [markdownTileId],
+      ...wideRange(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(getFirstText(result));
+    expect(parsed.summary.total).toBe(1);
+    expect(parsed.summary.skipped).toBe(1);
+    expect(parsed.tiles).toHaveLength(1);
+    expect(parsed.tiles[0].tileId).toBe(markdownTileId);
+    expect(parsed.tiles[0].status).toBe('skipped');
+  });
+
+  it('deduplicates repeated tile IDs so a tile runs (and counts) once', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const dashboard = await saveDashboard([
+      {
+        name: 'Count',
+        config: {
+          displayType: 'number',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+        },
+      },
+    ]);
+
+    const id = dashboard.tiles[0].id;
+    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+      dashboardId: dashboard.id,
+      tileIds: [id, id, id],
+      ...wideRange(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(getFirstText(result));
+    expect(parsed.summary.total).toBe(1);
+    expect(parsed.tiles).toHaveLength(1);
+    expect(parsed.tiles[0].tileId).toBe(id);
+  });
 });
