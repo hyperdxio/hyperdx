@@ -8,6 +8,7 @@ import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { Card, Group, SegmentedControl, SimpleGrid } from '@mantine/core';
 
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
+import { NOW } from '@/config';
 import {
   GPU_METRIC_NAMES,
   useGpuMetricsAvailability,
@@ -78,8 +79,7 @@ export function GpuInfraSection({
     }[range];
     return [
       sub(new Date(timestamp), duration),
-      // eslint-disable-next-line no-restricted-syntax
-      min([add(new Date(timestamp), duration), new Date()]),
+      min([add(new Date(timestamp), duration), new Date(NOW)]),
     ];
   }, [timestamp, range]);
 
