@@ -33,34 +33,30 @@ jest.mock('@/routers/external-api/v2/utils/dashboards', () => {
   };
 });
 
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import {
   registerQueryTiles,
   TileDeadlineError,
 } from '@/mcp/tools/dashboards/queryTiles';
 import type { McpContext, RegisterToolFn, ToolResult } from '@/mcp/tools/types';
 
-type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+type Handler = Parameters<RegisterToolFn>[2];
 
 /**
- * Register the tool against a minimal fake registrar that just captures the
- * handler, so we can invoke it directly without an MCP server/transport.
+ * Register the tool against a minimal registrar that just captures the handler,
+ * so we can invoke it directly without wiring up an MCP transport. A real (but
+ * unconnected) McpServer satisfies the registrar type; the handler under test
+ * never touches it.
  */
 function buildHandler(): Handler {
   let captured: Handler | undefined;
   const registerTool: RegisterToolFn = (_name, _config, handler) => {
-    // The generic handler narrows to this tool's arg shape; capture as the
-    // looser test Handler type.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    captured = handler as unknown as Handler;
+    captured = handler;
   };
   const context: McpContext = { teamId: 'team-1', userId: 'user-1' };
-  registerQueryTiles({
-    // `server` is never touched by the handler under test.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    server: {} as never,
-    context,
-    registerTool,
-  });
+  const server = new McpServer({ name: 'test', version: '0.0.0' });
+  registerQueryTiles({ server, context, registerTool });
   if (!captured) throw new Error('handler was not registered');
   return captured;
 }
