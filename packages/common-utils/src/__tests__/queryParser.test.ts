@@ -3215,7 +3215,7 @@ describe('extractFieldsFromLucene', () => {
     expect(
       extractFieldsFromLucene(
         'ServiceName:cart AND (StatusCode:Error OR SeverityText:warn)',
-      ).sort(),
+      )?.sort(),
     ).toEqual(['ServiceName', 'SeverityText', 'StatusCode']);
   });
 
