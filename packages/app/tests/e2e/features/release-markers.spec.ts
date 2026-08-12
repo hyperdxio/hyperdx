@@ -144,6 +144,31 @@ test.describe('Release markers', { tag: ['@full-stack', '@dashboard'] }, () => {
     await expect(page).not.toHaveURL(/releaseMarkers=true/);
   });
 
+  // Colour alone can't identify a service once the legend overflows its 4-item
+  // cap and the matching entry hides behind "+N more". Hover has to name the
+  // service outright.
+  test('names the service on hover', async ({ page }) => {
+    await seedReleases();
+
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.addTileWithSource(
+      'Release marker hover',
+      DEFAULT_LOGS_SOURCE_NAME,
+    );
+    await dashboardPage.setGlobalFilter(`ServiceName:"${RELEASE_SERVICE}"`);
+    await dashboardPage.toggleReleaseAnnotations();
+
+    await expect(dashboardPage.getAnnotationMarkers()).toHaveCount(2);
+
+    const targets = dashboardPage.getAnnotationHitTargets();
+    await expect(targets).toHaveCount(2);
+    await targets.first().hover();
+
+    // Service name and version together, so no colour lookup is needed.
+    await expect(page.getByText(RELEASE_SERVICE).last()).toBeVisible();
+    await expect(page.getByText(OLD_VERSION).last()).toBeVisible();
+  });
+
   // A marker only aids correlation if the reader can tie it to something on
   // the chart. An aggregate line over several services can't do that, so
   // rather than draw a wall of markers naming services with no visible line,

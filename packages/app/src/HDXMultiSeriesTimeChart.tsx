@@ -17,6 +17,7 @@ import {
   BarChart,
   BarProps,
   CartesianGrid,
+  Customized,
   Legend,
   ReferenceArea,
   ReferenceLine,
@@ -34,8 +35,14 @@ import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
 import {
+  AnnotationHitLayer,
+  type HoveredAnnotation,
+} from './components/charts/AnnotationHitLayer';
+import { AnnotationTooltip } from './components/charts/AnnotationTooltip';
+import {
   ChartAnnotation,
   getAnnotationElements,
+  layoutAnnotations,
   resolveAnnotationSeries,
 } from './components/charts/chartAnnotations';
 import { ChartOverlayControls } from './components/charts/ChartOverlayControls';
@@ -1016,7 +1023,9 @@ export const MemoChart = memo(function MemoChart({
     return map;
   }, [lineData]);
 
-  const xAxisDomain: AxisDomain = useMemo(() => {
+  // Typed as the tuple it actually is (assignable to AxisDomain) so the
+  // annotation helpers can take it without an unsafe cast.
+  const xAxisDomain: [number, number] = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
     let endTime = toStartOfInterval(dateRange[1], granularity);
     const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
@@ -1052,13 +1061,27 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [annotations, lineData]);
 
+  // Same geometry the hit layer positions against, so the hover bands can't
+  // drift from the lines they belong to.
+  const laidOutAnnotations = useMemo(() => {
+    if (!coloredAnnotations?.length) {
+      return null;
+    }
+    return layoutAnnotations(coloredAnnotations, {
+      domain: xAxisDomain,
+      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+    });
+  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+
+  const [hoveredAnnotation, setHoveredAnnotation] =
+    useState<HoveredAnnotation | null>(null);
+
   const annotationElements = useMemo(() => {
     if (!coloredAnnotations?.length) {
       return null;
     }
-    // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
     return getAnnotationElements(coloredAnnotations, {
-      domain: xAxisDomain as [number, number],
+      domain: xAxisDomain,
       // Drawable width, so markers too close together share one label. Zero on
       // the first paint (before ResponsiveContainer measures), which the
       // renderer treats as "label everything".
@@ -1071,6 +1094,12 @@ export const MemoChart = memo(function MemoChart({
       ref={containerRef}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
+      {hoveredAnnotation != null && (
+        <AnnotationTooltip
+          hovered={hoveredAnnotation}
+          containerRef={containerRef}
+        />
+      )}
       <ChartOverlayControls
         onClearSelection={
           onClearSeriesSelection != null &&
@@ -1323,6 +1352,16 @@ export const MemoChart = memo(function MemoChart({
           )}
           {referenceLines}
           {annotationElements}
+          {laidOutAnnotations != null && (
+            <Customized
+              component={
+                <AnnotationHitLayer
+                  annotations={laidOutAnnotations}
+                  onHover={setHoveredAnnotation}
+                />
+              }
+            />
+          )}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"
