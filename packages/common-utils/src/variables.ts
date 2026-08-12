@@ -64,9 +64,15 @@ export function formatVariableValues(
 
 export type TemplateToken =
   | { kind: 'text'; text: string }
-  | { kind: 'macro'; name: string; args: string[] }
-  | { kind: 'braced'; name: string; format?: string; raw: string }
-  | { kind: 'bare'; name: string; raw: string };
+  | { kind: 'macro'; name: string; args: string[]; inStringLiteral: boolean }
+  | {
+      kind: 'braced';
+      name: string;
+      format?: string;
+      raw: string;
+      inStringLiteral: boolean;
+    }
+  | { kind: 'bare'; name: string; raw: string; inStringLiteral: boolean };
 
 /** Macros whose expansion depends on a variable's selected values. */
 export const VARIABLE_MACRO_NAMES = ['filter', 'conditionalAll'] as const;
@@ -85,6 +91,30 @@ const BARE_NAME_REGEX = new RegExp(`^${DASHBOARD_VARIABLE_NAME_PATTERN}`);
 const BRACED_REFERENCE_REGEX = new RegExp(
   `^(${DASHBOARD_VARIABLE_NAME_PATTERN})(?::([a-zA-Z][a-zA-Z0-9_]*))?$`,
 );
+
+/**
+ * ClickHouse's line comment introducers, per the `lineCommentTypes` of the
+ * tokenizer this repo already formats and highlights with (`sql-formatter`'s
+ * clickhouse dialect).
+ */
+const LINE_COMMENT_STARTS = ['--', '#'] as const;
+
+/**
+ * Index just past the SQL comment starting at `start`, or `start` when no
+ * comment starts there. Callers must check they are outside a string first,
+ * since `'a -- b'` is a string, not a comment.
+ */
+export function findCommentEnd(input: string, start: number): number {
+  if (LINE_COMMENT_STARTS.some(marker => input.startsWith(marker, start))) {
+    const newline = input.indexOf('\n', start);
+    return newline < 0 ? input.length : newline;
+  }
+  if (input.startsWith('/*', start)) {
+    const close = input.indexOf('*/', start + 2);
+    return close < 0 ? input.length : close + 2;
+  }
+  return start;
+}
 
 const isWordChar = (char: string | undefined) =>
   char !== undefined && /[A-Za-z0-9_]/.test(char);
@@ -153,13 +183,40 @@ export function scanTemplateTokens(
     }
   };
 
+  // Quote state at the current position, so tokens can record whether they sit
+  // inside a string literal.
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
   let i = 0;
   while (i < input.length) {
+    // Consume any comments starting at this position
+    if (!inSingleQuote && !inDoubleQuote) {
+      const commentEnd = findCommentEnd(input, i);
+      if (commentEnd > i) {
+        text += input.slice(i, commentEnd);
+        i = commentEnd;
+        continue;
+      }
+    }
+
     if (input.charAt(i) !== '$') {
-      text += input.charAt(i);
+      const c = input.charAt(i);
+      if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
+        inDoubleQuote = !inDoubleQuote;
+      } else if (
+        c === "'" &&
+        !inDoubleQuote &&
+        !isQuoteEscapedByBackslash(input, i)
+      ) {
+        inSingleQuote = !inSingleQuote;
+      }
+      text += c;
       i++;
       continue;
     }
+
+    const inStringLiteral = inSingleQuote || inDoubleQuote;
 
     // Attempt to match a known macro, with or without an argument list
     if (input.startsWith('$__', i)) {
@@ -180,7 +237,7 @@ export function scanTemplateTokens(
       const argsStart = nameStart + name.length;
       if (input.charAt(argsStart) !== '(') {
         flushText();
-        tokens.push({ kind: 'macro', name, args: [] });
+        tokens.push({ kind: 'macro', name, args: [], inStringLiteral });
         i = argsStart;
         continue;
       }
@@ -200,6 +257,7 @@ export function scanTemplateTokens(
         kind: 'macro',
         name,
         args: splitAndTrimWithBracket(input.slice(argsStart + 1, closeIndex)),
+        inStringLiteral,
       });
       i = closeIndex + 1;
       continue;
@@ -219,6 +277,7 @@ export function scanTemplateTokens(
           name: match[1],
           format: match[2],
           raw: input.slice(i, closeIndex + 1),
+          inStringLiteral,
         });
         i = closeIndex + 1;
         continue;
@@ -235,6 +294,7 @@ export function scanTemplateTokens(
         kind: 'bare',
         name: bareMatch[0],
         raw: `$${bareMatch[0]}`,
+        inStringLiteral,
       });
       i += 1 + bareMatch[0].length;
       continue;
@@ -268,7 +328,7 @@ function parseVariableNameArg(arg: string): string {
 /** Require that a variable with the given name exists in the context. Throws an error if not found. */
 function requireVariable(
   ctx: VariableContext,
-  macroName: string,
+  macroName: VariableMacroName,
   variableName: string,
 ): ChartVariable {
   const variable = ctx.variables.find(v => v.name === variableName);
@@ -393,28 +453,67 @@ export function substituteVariables(
   return substituteWithContext(input, { variables, defaultFormat });
 }
 
-/**
- * Returns the names of every variable the template could reference.
- * Never throws: it runs over saved SQL that may be mid-edit or malformed.
- */
-export function getReferencedVariableNames(input: string): string[] {
-  const names: string[] = [];
-  const seen = new Set<string>();
+/** One occurrence of a variable reference in a template. */
+export type VariableReference = {
+  name: string;
+  /** `macro` covers `$__filter`/`$__conditionalAll`; the rest are value references. */
+  kind: 'macro' | 'bare' | 'braced';
+  /** The requested format, only ever set for `${name:format}`. */
+  format?: string;
+  /** Whether the reference sits inside a single- or double-quoted string. */
+  inStringLiteral: boolean;
+  /**
+   * The variable whose selection gates whether this reference is emitted at
+   * all, set when the reference sits in a variable macro's expression argument.
+   */
+  guardedBy?: string;
+  /** The reference as written, for use in user-facing messages. */
+  raw: string;
+};
 
-  const add = (name: string) => {
-    if (!DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(name) || seen.has(name))
-      return;
-    seen.add(name);
-    names.push(name);
+/**
+ * Every variable reference in a template, in source order, including repeats.
+ * Never throws: it runs over saved SQL that may be mid-edit or malformed.
+ *
+ * Names that aren't token-safe are dropped — a macro argument like
+ * `$__filter(x, ${svc})` can't name a variable, and expansion reports it.
+ */
+export function getVariableReferences(input: string): VariableReference[] {
+  const references: VariableReference[] = [];
+
+  /** Returns the referenced name, or undefined when the argument isn't one. */
+  const addMacroRef = (
+    macroName: VariableMacroName,
+    arg: string,
+    inStringLiteral: boolean,
+    guardedBy: string | undefined,
+  ): string | undefined => {
+    const name = parseVariableNameArg(arg);
+    if (!DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(name)) return undefined;
+    references.push({
+      name,
+      kind: 'macro',
+      inStringLiteral,
+      guardedBy,
+      raw: `$__${macroName}`,
+    });
+    return name;
   };
 
-  const visit = (text: string) => {
+  const visit = (text: string, guardedBy?: string) => {
     for (const token of scanTemplateTokens(text, VARIABLE_MACRO_NAMES, {
       onMalformed: 'skip',
     })) {
       if (token.kind === 'text') continue;
       if (token.kind !== 'macro') {
-        add(token.name);
+        references.push({
+          name: token.name,
+          kind: token.kind,
+          format: token.kind === 'braced' ? token.format : undefined,
+          inStringLiteral: token.inStringLiteral,
+          guardedBy,
+          raw: token.raw,
+        });
         continue;
       }
 
@@ -424,18 +523,31 @@ export function getReferencedVariableNames(input: string): string[] {
           // $__filter(name) | $__filter(expression, name)
           const [first, second] = token.args;
           if (second != null) {
-            add(parseVariableNameArg(second));
-            visit(first);
+            const name = addMacroRef(
+              'filter',
+              second,
+              token.inStringLiteral,
+              guardedBy,
+            );
+            visit(first, name ?? guardedBy);
           } else if (first != null) {
-            add(parseVariableNameArg(first));
+            addMacroRef('filter', first, token.inStringLiteral, guardedBy);
           }
           break;
         }
         case 'conditionalAll': {
           // $__conditionalAll(expression, name)
           const [expression, name] = token.args;
-          if (name != null) add(parseVariableNameArg(name));
-          if (expression != null) visit(expression);
+          const guard =
+            name != null
+              ? addMacroRef(
+                  'conditionalAll',
+                  name,
+                  token.inStringLiteral,
+                  guardedBy,
+                )
+              : undefined;
+          if (expression != null) visit(expression, guard ?? guardedBy);
           break;
         }
         default:
@@ -445,7 +557,25 @@ export function getReferencedVariableNames(input: string): string[] {
   };
 
   visit(input);
-  return names;
+  return references;
+}
+
+/**
+ * Returns the names of every variable the template could reference.
+ * Never throws: it runs over saved SQL that may be mid-edit or malformed.
+ */
+export function getReferencedVariableNames(input: string): string[] {
+  const names = new Set<string>(
+    getVariableReferences(input).map(ref => ref.name),
+  );
+  return Array.from(names);
+}
+
+/** Whether the template uses `$__filter` or `$__conditionalAll` at all. */
+export function hasVariableMacro(input: string): boolean {
+  return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
+    onMalformed: 'skip',
+  }).some(token => token.kind === 'macro');
 }
 
 /** Returns the subset of `variables` that `config` actually references. */

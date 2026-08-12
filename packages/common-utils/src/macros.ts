@@ -11,10 +11,11 @@ import {
   scanTemplateTokens,
   VARIABLE_MACRO_NAMES,
   VariableContext,
+  VariableMacroName,
 } from './variables';
 
 function expectArgs(
-  macroName: string,
+  macroName: MacroName,
   args: string[],
   minArgs: number,
   maxArgs: number,
@@ -49,7 +50,7 @@ type Macro = {
   replace: (args: string[]) => string;
 };
 
-const MACROS: Macro[] = [
+const MACROS = [
   {
     name: 'fromTime',
     minArgs: 0,
@@ -154,7 +155,18 @@ const MACROS: Macro[] = [
     maxArgs: 0,
     replace: () => intervalS(),
   },
-];
+] as const satisfies readonly Macro[];
+
+/**
+ * Every `$__<name>` a raw SQL template can use: the static macros above, the
+ * two built in `replaceMacros` from the chart's source, and the variable macros
+ * that only exist when a variable context is present.
+ */
+export type MacroName =
+  | (typeof MACROS)[number]['name']
+  | 'filters'
+  | 'sourceTable'
+  | VariableMacroName;
 
 /** Macro metadata for autocomplete suggestions */
 export const MACRO_SUGGESTIONS = [
@@ -234,7 +246,7 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
 /**
  * True if the SQL contains at least one occurrence of the `$__<name>` macro.
  */
-export function hasMacro(sql: string, name: string): boolean {
+export function hasMacro(sql: string, name: MacroName): boolean {
   return findMacros(sql, name).length > 0;
 }
 
@@ -257,7 +269,7 @@ export function getSourceTableMacroArgCounts(sqlTemplate: string): number[] {
   return findMacros(sqlTemplate, 'sourceTable').map(match => match.args.length);
 }
 
-function findMacros(input: string, name: string): MacroMatch[] {
+function findMacros(input: string, name: MacroName): MacroMatch[] {
   // eslint-disable-next-line security/detect-non-literal-regexp
   const pattern = new RegExp(`\\$__${name}\\b`, 'g');
   const matches: MacroMatch[] = [];

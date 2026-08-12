@@ -3,6 +3,8 @@ import {
   filterReferencedVariables,
   formatVariableValues,
   getReferencedVariableNames,
+  getVariableReferences,
+  hasVariableMacro,
   substituteVariables,
 } from '@/variables';
 
@@ -331,6 +333,237 @@ describe('substituteVariables', () => {
 
   it('does not treat $__filters as the $__filter macro', () => {
     expect(substituteVariables('$__filters', [SERVICE])).toBe('$__filters');
+  });
+});
+
+describe('getVariableReferences', () => {
+  it('returns an empty list for a template with no references', () => {
+    expect(getVariableReferences('SELECT 1 FROM t')).toEqual([]);
+  });
+
+  it('reports every occurrence, in source order, with its written form', () => {
+    expect(getVariableReferences('$zulu ${alpha:csv} $zulu')).toEqual([
+      { name: 'zulu', kind: 'bare', inStringLiteral: false, raw: '$zulu' },
+      {
+        name: 'alpha',
+        kind: 'braced',
+        format: 'csv',
+        inStringLiteral: false,
+        raw: '${alpha:csv}',
+      },
+      { name: 'zulu', kind: 'bare', inStringLiteral: false, raw: '$zulu' },
+    ]);
+  });
+
+  it('reports the macro forms under the name they filter by', () => {
+    expect(
+      getVariableReferences(
+        '$__filter(ServiceName, service) $__conditionalAll(x = 1, region)',
+      ),
+    ).toEqual([
+      {
+        name: 'service',
+        kind: 'macro',
+        inStringLiteral: false,
+        raw: '$__filter',
+      },
+      {
+        name: 'region',
+        kind: 'macro',
+        inStringLiteral: false,
+        raw: '$__conditionalAll',
+      },
+    ]);
+  });
+
+  it('drops a macro name argument that is not a valid variable name', () => {
+    expect(getVariableReferences('$__filter(ServiceName, ${service})')).toEqual(
+      [],
+    );
+  });
+
+  it('flags a reference inside a single-quoted string', () => {
+    expect(getVariableReferences("WHERE name = '$service'")).toEqual([
+      { name: 'service', kind: 'bare', inStringLiteral: true, raw: '$service' },
+    ]);
+  });
+
+  it('flags a reference inside a LIKE pattern', () => {
+    expect(getVariableReferences("WHERE name LIKE '%$service%'")).toEqual([
+      { name: 'service', kind: 'bare', inStringLiteral: true, raw: '$service' },
+    ]);
+  });
+
+  it('does not flag a reference after a closed string literal', () => {
+    expect(getVariableReferences("WHERE a = 'x' AND b = $service")).toEqual([
+      {
+        name: 'service',
+        kind: 'bare',
+        inStringLiteral: false,
+        raw: '$service',
+      },
+    ]);
+  });
+
+  describe('comments', () => {
+    const bareRef = (inStringLiteral: boolean) => [
+      { name: 'service', kind: 'bare', inStringLiteral, raw: '$service' },
+    ];
+
+    it.each([
+      ['a hash line comment', "# don't\nWHERE a IN ($service)"],
+      ['a line comment', "-- don't\nWHERE a IN ($service)"],
+      ['a block comment', "/* don't */ WHERE a IN ($service)"],
+      ['a trailing line comment', "WHERE a IN ($service) -- don't"],
+    ])('does not let an apostrophe in %s open a string', (_label, input) => {
+      expect(getVariableReferences(input)).toEqual(bareRef(false));
+    });
+
+    it('still flags a genuinely quoted reference after such a comment', () => {
+      expect(getVariableReferences("-- don't\nWHERE a = '$service'")).toEqual(
+        bareRef(true),
+      );
+    });
+
+    it.each([
+      ['--', "SELECT 'a -- b', $service"],
+      ['#', "SELECT 'a # b', $service"],
+    ])(
+      'does not treat %s inside a string literal as a comment',
+      (_l, input) => {
+        expect(getVariableReferences(input)).toEqual(bareRef(false));
+      },
+    );
+
+    it('treats an unterminated block comment as running to the end', () => {
+      expect(getVariableReferences("SELECT 1 /* don't $service")).toEqual([]);
+    });
+
+    it('leaves a reference inside a comment unsubstituted', () => {
+      expect(substituteVariables('-- see $service\nSELECT 1', [SERVICE])).toBe(
+        '-- see $service\nSELECT 1',
+      );
+      expect(substituteVariables('/* $service */ SELECT 1', [SERVICE])).toBe(
+        '/* $service */ SELECT 1',
+      );
+    });
+
+    it('substitutes normally after a comment ends', () => {
+      expect(
+        substituteVariables('-- see $service\nWHERE a IN ($service)', [
+          SERVICE,
+        ]),
+      ).toBe("-- see $service\nWHERE a IN ('api', 'web')");
+    });
+  });
+
+  it('recovers its quote state when a macro argument list has a stray quote', () => {
+    // The scanner jumps over a balanced argument list, so a stray quote inside
+    // one must not be skipped: findBalancedParens fails, and the text is
+    // rescanned character by character instead.
+    expect(getVariableReferences("$__filter(a', b) $service")).toEqual([
+      { name: 'service', kind: 'bare', inStringLiteral: true, raw: '$service' },
+    ]);
+  });
+
+  it('ignores a quote that is escaped with a backslash', () => {
+    expect(
+      getVariableReferences("WHERE a = 'it\\'s' AND b = $service"),
+    ).toEqual([
+      {
+        name: 'service',
+        kind: 'bare',
+        inStringLiteral: false,
+        raw: '$service',
+      },
+    ]);
+  });
+
+  it('tracks quotes inside a macro expression argument independently', () => {
+    expect(
+      getVariableReferences("$__filter(concat(col, '$env'), service)"),
+    ).toEqual([
+      {
+        name: 'service',
+        kind: 'macro',
+        inStringLiteral: false,
+        raw: '$__filter',
+      },
+      {
+        name: 'env',
+        kind: 'bare',
+        inStringLiteral: true,
+        guardedBy: 'service',
+        raw: '$env',
+      },
+    ]);
+  });
+
+  it('marks a reference in a macro expression as guarded by that macro', () => {
+    expect(
+      getVariableReferences('$__conditionalAll(ServiceName IN ($svc), svc)'),
+    ).toEqual([
+      {
+        name: 'svc',
+        kind: 'macro',
+        inStringLiteral: false,
+        raw: '$__conditionalAll',
+      },
+      {
+        name: 'svc',
+        kind: 'bare',
+        inStringLiteral: false,
+        guardedBy: 'svc',
+        raw: '$svc',
+      },
+    ]);
+  });
+
+  it('leaves a reference outside any macro unguarded', () => {
+    expect(
+      getVariableReferences('WHERE a IN ($svc) AND $__filter(b, other)'),
+    ).toEqual([
+      { name: 'svc', kind: 'bare', inStringLiteral: false, raw: '$svc' },
+      {
+        name: 'other',
+        kind: 'macro',
+        inStringLiteral: false,
+        raw: '$__filter',
+      },
+    ]);
+  });
+
+  it('does not throw on a malformed macro and still finds later references', () => {
+    expect(
+      getVariableReferences('$__filter(ServiceName, service $region'),
+    ).toEqual([
+      { name: 'region', kind: 'bare', inStringLiteral: false, raw: '$region' },
+    ]);
+  });
+});
+
+describe('hasVariableMacro', () => {
+  it('is true for either variable macro', () => {
+    expect(hasVariableMacro('WHERE $__filter(ServiceName, service)')).toBe(
+      true,
+    );
+    expect(hasVariableMacro('WHERE $__conditionalAll(x = 1, region)')).toBe(
+      true,
+    );
+  });
+
+  it('is false for the plural broadcast macro', () => {
+    expect(hasVariableMacro('WHERE $__filters')).toBe(false);
+  });
+
+  it('is false for a bare reference', () => {
+    expect(hasVariableMacro('WHERE ServiceName IN ($service)')).toBe(false);
+  });
+
+  it('does not throw on a malformed macro', () => {
+    expect(hasVariableMacro('WHERE $__filter(ServiceName, service')).toBe(
+      false,
+    );
   });
 });
 
