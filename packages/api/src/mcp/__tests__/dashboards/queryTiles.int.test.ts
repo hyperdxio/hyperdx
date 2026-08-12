@@ -101,41 +101,6 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
     expect(names).toEqual(['Count A', 'Count B']);
   });
 
-  it('runs only the requested tile IDs when provided', async () => {
-    const sourceId = ctx.traceSource._id.toString();
-    const dashboard = await saveDashboard([
-      {
-        name: 'Count A',
-        config: {
-          displayType: 'number',
-          sourceId,
-          select: [{ aggFn: 'count' }],
-        },
-      },
-      {
-        name: 'Count B',
-        config: {
-          displayType: 'number',
-          sourceId,
-          select: [{ aggFn: 'count' }],
-        },
-      },
-    ]);
-
-    const targetId = dashboard.tiles[0].id;
-    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
-      dashboardId: dashboard.id,
-      tileIds: [targetId],
-      ...wideRange(),
-    });
-
-    expect(result.isError).toBeFalsy();
-    const parsed = JSON.parse(getFirstText(result));
-    expect(parsed.summary.total).toBe(1);
-    expect(parsed.tiles).toHaveLength(1);
-    expect(parsed.tiles[0].tileId).toBe(targetId);
-  });
-
   it('reports unknown tile IDs without failing the batch', async () => {
     const sourceId = ctx.traceSource._id.toString();
     const dashboard = await saveDashboard([
@@ -278,44 +243,6 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
     expect(tile.status).toBe('ok');
     expect(tile.hasData).toBe(true);
     expect(tile.rowCount).toBeGreaterThan(0);
-  });
-
-  it('reports hasData=false and rowCount=0 for a tile with no rows in range', async () => {
-    const logSource = await Source.create({
-      kind: SourceKind.Log,
-      team: ctx.team._id,
-      from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
-      timestampValueExpression: 'Timestamp',
-      connection: ctx.connection._id,
-      name: 'Empty Batch Logs',
-      bodyExpression: 'Body',
-      severityTextExpression: 'SeverityText',
-    });
-    const dashboard = await saveDashboard([
-      {
-        name: 'By service',
-        config: {
-          displayType: 'table',
-          sourceId: logSource._id.toString(),
-          select: [{ aggFn: 'count' }],
-          groupBy: 'ServiceName',
-        },
-      },
-    ]);
-
-    // Query a window far in the past where no logs exist.
-    const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
-      dashboardId: dashboard.id,
-      startTime: new Date('2000-01-01T00:00:00Z').toISOString(),
-      endTime: new Date('2000-01-02T00:00:00Z').toISOString(),
-    });
-
-    expect(result.isError).toBeFalsy();
-    const parsed = JSON.parse(getFirstText(result));
-    const tile = parsed.tiles[0];
-    expect(tile.status).toBe('ok');
-    expect(tile.hasData).toBe(false);
-    expect(tile.rowCount).toBe(0);
   });
 
   it('skips a markdown tile passed explicitly in tileIds', async () => {

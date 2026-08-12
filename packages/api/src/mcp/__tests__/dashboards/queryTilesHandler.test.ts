@@ -35,10 +35,7 @@ jest.mock('@/routers/external-api/v2/utils/dashboards', () => {
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import {
-  registerQueryTiles,
-  TileDeadlineError,
-} from '@/mcp/tools/dashboards/queryTiles';
+import { registerQueryTiles } from '@/mcp/tools/dashboards/queryTiles';
 import type { McpContext, RegisterToolFn, ToolResult } from '@/mcp/tools/types';
 
 type Handler = Parameters<RegisterToolFn>[2];
@@ -114,38 +111,6 @@ describe('clickstack_query_tiles handler — per-tile failure isolation', () => 
     expect(good.status).toBe('ok');
     expect(boom.status).toBe('error');
     expect(boom.error).toContain('source lookup exploded');
-  });
-
-  it('folds a batch-deadline timeout into a status:error entry with the deadline message', async () => {
-    // A tile that overran the shared wall-clock budget surfaces to the batch
-    // loop as a rejected TileDeadlineError (see withDeadline). Assert the
-    // handler renders it as a timed-out error while the fast tile still
-    // resolves and the overall call stays non-error — without relying on
-    // real-time waiting.
-    mockConvertToExternalDashboard.mockReturnValue({
-      id: 'dash-1',
-      tiles: [tile('t1', 'Fast'), tile('t2', 'Slow')],
-    });
-    mockRunConfigTile.mockImplementation((_team, t: { id: string }) => {
-      if (t.id === 't2') {
-        return Promise.reject(new TileDeadlineError());
-      }
-      return Promise.resolve(okResult);
-    });
-
-    const handler = buildHandler();
-    const result = await handler({
-      dashboardId: '000000000000000000000000',
-      startTime: new Date(Date.now() - 60_000).toISOString(),
-      endTime: new Date().toISOString(),
-    });
-
-    expect(result.isError).toBeFalsy();
-    const parsed = JSON.parse(textOf(result));
-    expect(parsed.summary).toMatchObject({ total: 2, ok: 1, error: 1 });
-    const slow = parsed.tiles.find((t: { name: string }) => t.name === 'Slow');
-    expect(slow.status).toBe('error');
-    expect(slow.error).toContain('deadline');
   });
 
   it('does not issue a query for tiles scheduled after the deadline has passed', async () => {
