@@ -17,6 +17,7 @@ import {
   BarChart,
   BarProps,
   CartesianGrid,
+  Customized,
   Legend,
   ReferenceArea,
   ReferenceLine,
@@ -34,8 +35,14 @@ import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
 import {
+  AnnotationHitLayer,
+  type HoveredAnnotation,
+} from './components/charts/AnnotationHitLayer';
+import { AnnotationTooltip } from './components/charts/AnnotationTooltip';
+import {
   ChartAnnotation,
   getAnnotationElements,
+  layoutAnnotations,
   resolveAnnotationSeries,
 } from './components/charts/chartAnnotations';
 import { ChartOverlayControls } from './components/charts/ChartOverlayControls';
@@ -1435,6 +1442,21 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [annotations, lineData]);
 
+  // Same geometry the hit layer positions against, so the hover bands can't
+  // drift from the lines they belong to.
+  const laidOutAnnotations = useMemo(() => {
+    if (!coloredAnnotations?.length) {
+      return null;
+    }
+    return layoutAnnotations(coloredAnnotations, {
+      domain: xAxisDomain,
+      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+    });
+  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+
+  const [hoveredAnnotation, setHoveredAnnotation] =
+    useState<HoveredAnnotation | null>(null);
+
   const annotationElements = useMemo(() => {
     if (!coloredAnnotations?.length) {
       return null;
@@ -1469,6 +1491,9 @@ export const MemoChart = memo(function MemoChart({
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       {nearestSeriesStyle}
+      {hoveredAnnotation != null && (
+        <AnnotationTooltip hovered={hoveredAnnotation} />
+      )}
       <ChartOverlayControls
         onClearSelection={
           onClearSeriesSelection != null &&
@@ -1573,6 +1598,16 @@ export const MemoChart = memo(function MemoChart({
           )}
           {referenceLines}
           {annotationElements}
+          {laidOutAnnotations != null && (
+            <Customized
+              component={
+                <AnnotationHitLayer
+                  annotations={laidOutAnnotations}
+                  onHover={setHoveredAnnotation}
+                />
+              }
+            />
+          )}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"
