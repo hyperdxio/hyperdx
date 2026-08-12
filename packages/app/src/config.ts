@@ -81,3 +81,12 @@ const IS_IAC_HELPERS_ENABLED = true;
 // Terraform provider to talk to. Single definition — the alerts, dashboard,
 // search, and team-settings surfaces all read this one constant.
 export const IS_IAC_EXPORT_ENABLED = IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE;
+
+// HyperDX Labs: per-user opt-in toggles for in-development features, persisted
+// on the User document. Local mode has no API server and no user identity at
+// all (`useMe()` returns null there), so there is nothing to persist an opt-in
+// against — the local-mode analogue of a lab is a constant in this very file,
+// like IS_MTVIEWS_ENABLED above. Same shape as IS_IAC_EXPORT_ENABLED: one
+// exported gate, so no caller can forget the local-mode check. Every branch on
+// this lives in src/labs/useLabs.ts. See agent_docs/labs.md.
+export const IS_LABS_ENABLED = !IS_LOCAL_MODE;

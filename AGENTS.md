@@ -65,6 +65,9 @@ directory:
   actively coding)
 - `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
   context) and the shared helpers (read when adding or changing a feature)
+- `agent_docs/labs.md` - HyperDX Labs: putting an unfinished feature behind a
+  per-user opt-in instead of a branch or a redeploy, and how to graduate or
+  retire it (read before adding a feature flag of any kind)
 
 **Package-specific guides** (read when working on that package):
 

@@ -20,6 +20,7 @@ Instead of stuffing all instructions into `AGENTS.md` (which goes into every con
 - **`data_viz_colors.md`** - Chart, heatmap, and semantic status colors. Read before adding or changing any color in a chart, sparkline, heatmap, legend, or status pill.
 - **`themes.md`** - How the brand theme system (HyperDX vs ClickStack) and color mode (light/dark/system) work. Read before changing anything in `packages/app/src/theme/`, adding semantic CSS variables, or touching brand-conditional UI.
 - **`evals.md`** - MCP eval framework: dual-slot setup, running A/B comparisons between branches, interpreting results. Read before running evals or benchmarking MCP changes.
+- **`labs.md`** - HyperDX Labs: how to put a half-finished feature behind a per-user opt-in, and how to graduate or retire it. Read before adding a feature flag of any kind.
 
 ## Usage Pattern
 

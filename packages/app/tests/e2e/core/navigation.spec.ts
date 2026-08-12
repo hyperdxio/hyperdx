@@ -1,3 +1,4 @@
+import { LabsModalComponent } from '../components/LabsModalComponent';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Navigation', { tag: ['@core'] }, () => {
@@ -107,6 +108,26 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     });
 
     //todo: Add tests that verify user pref behavior
+  });
+
+  test('should open HyperDX Labs from the user menu', async ({ page }) => {
+    const labsModal = new LabsModalComponent(page);
+
+    await test.step('Wait for page to load', async () => {
+      await expect(
+        page.locator('[data-testid="nav-link-search"]'),
+      ).toBeVisible();
+    });
+
+    await test.step('Open the Labs modal from the user menu', async () => {
+      await labsModal.open();
+    });
+
+    await test.step('Verify the empty registry renders its empty state', async () => {
+      // No labs ship with the mechanism, so this is the expected content.
+      // Replace with a toggle assertion when the first lab lands.
+      await labsModal.expectEmptyState();
+    });
   });
 
   test('should open help menu', async ({ page }) => {

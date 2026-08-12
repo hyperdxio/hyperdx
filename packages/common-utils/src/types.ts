@@ -2403,6 +2403,77 @@ export type InstallationApiResponse = z.infer<
   typeof InstallationApiResponseSchema
 >;
 
+// Labs (per-user opt-in experiments)
+//
+// The lab *registry* — the ids and their UI copy — deliberately lives in
+// packages/app/src/labs/registry.ts, not here. Adding a lab has to be a
+// one-file change or the mechanism won't get used, and the server gains
+// nothing from knowing the id list: the value space is `boolean` and the blast
+// radius is the requester's own document. So what follows is a *shape*
+// contract, not an allow-list. It bounds what a user can store without
+// enumerating ids.
+//
+// The trade-off, stated plainly: the server cannot tell a typo'd lab id from a
+// real one. That's caught client-side instead, by the registry unit test that
+// parses every id against LabIdSchema. See agent_docs/labs.md.
+export const LAB_ID_MAX_LENGTH = 64;
+export const LABS_MAX_KEYS = 64;
+
+/**
+ * Strict kebab-case. This is a storage-safety rule, not cosmetics: it excludes
+ * `$` and `.` (Mongo operator and dotted-path characters) and `_` (so
+ * `__proto__` and friends are unrepresentable as keys).
+ *
+ * Split into a plain character class plus a dash-placement check rather than the
+ * idiomatic `^[a-z0-9]+(?:-[a-z0-9]+)*$`. That one-liner is in fact linear —
+ * the `-` separator is disjoint from `[a-z0-9]`, so there is no ambiguity to
+ * backtrack over — but it has the `(x+)*` shape that ReDoS linters flag, and on
+ * a validator guarding Mongo keys it is better to not have the argument than to
+ * suppress it.
+ */
+export const LabIdSchema = z
+  .string()
+  .min(1)
+  .max(LAB_ID_MAX_LENGTH)
+  .regex(
+    /^[a-z0-9-]+$/,
+    'Lab ids may only contain lowercase letters, numbers and dashes',
+  )
+  .refine(
+    id => !id.startsWith('-') && !id.endsWith('-') && !id.includes('--'),
+    { message: 'Lab ids must be kebab-case' },
+  );
+
+/**
+ * An enabled-set: a key present with `true` is on, an absent key is off.
+ * `false` is accepted on the write path so an older client is never rejected,
+ * but the current client only ever persists `true` entries.
+ */
+export const UserLabsSchema = z
+  .record(LabIdSchema, z.boolean())
+  .refine(labs => Object.keys(labs).length <= LABS_MAX_KEYS, {
+    message: `A user may store at most ${LABS_MAX_KEYS} lab entries`,
+  });
+
+export type UserLabs = z.infer<typeof UserLabsSchema>;
+
+/**
+ * Full replace, not a patch: the client always holds the whole registry, so it
+ * can always compute the complete desired set — and that is what makes ids
+ * from retired labs self-pruning. See agent_docs/labs.md.
+ */
+export const UpdateUserLabsRequestSchema = z.object({ labs: UserLabsSchema });
+
+export type UpdateUserLabsRequest = z.infer<typeof UpdateUserLabsRequestSchema>;
+
+export const UpdateUserLabsApiResponseSchema = z.object({
+  labs: UserLabsSchema,
+});
+
+export type UpdateUserLabsApiResponse = z.infer<
+  typeof UpdateUserLabsApiResponseSchema
+>;
+
 // Me
 export const MeApiResponseSchema = z.object({
   accessKey: z.string(),
@@ -2418,6 +2489,13 @@ export const MeApiResponseSchema = z.object({
   }).merge(TeamClickHouseSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
+  /**
+   * Enabled-set of lab opt-ins. Optional because a rolling deploy can serve
+   * this from an older API pod that doesn't know about labs yet — the client
+   * already reads it as `me?.labs?.[id] === true`, so this is honest typing
+   * rather than a lie the hook would have to defend against.
+   */
+  labs: UserLabsSchema.optional(),
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;

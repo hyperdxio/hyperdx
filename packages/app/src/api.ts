@@ -76,6 +76,12 @@ export const hdxServer = (
   });
 };
 
+/**
+ * Query key for `useMe`. Exported so code that writes into the `/me` cache
+ * (src/labs/useLabs.ts) can't drift from the key `useMe` reads.
+ */
+export const ME_QUERY_KEY = ['me'] as const;
+
 const api = {
   useCreateAlert() {
     return useMutation<{ data: Alert }, Error, Alert>({
@@ -291,7 +297,7 @@ const api = {
   },
   useMe() {
     return useQuery<MeApiResponse | null>({
-      queryKey: [`me`],
+      queryKey: ME_QUERY_KEY,
       queryFn: () => {
         if (IS_LOCAL_MODE) {
           return null;

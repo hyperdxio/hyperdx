@@ -34,6 +34,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import InstallInstructionModal from '@/InstallInstructionsModal';
+import { LabsModal } from '@/labs/LabsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
@@ -268,6 +269,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     UserPreferencesOpen,
     { close: closeUserPreferences, open: openUserPreferences },
   ] = useDisclosure(false);
+
+  const [labsOpen, { close: closeLabs, open: openLabs }] = useDisclosure(false);
 
   const {
     userPreferences: { isUTC },
@@ -518,6 +521,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             userName={meData?.name}
             teamName={meData?.team?.name}
             onClickUserPreferences={openUserPreferences}
+            onClickLabs={openLabs}
             logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
           {meData?.usageStatsEnabled && (
@@ -539,6 +543,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         opened={UserPreferencesOpen}
         onClose={closeUserPreferences}
       />
+      <LabsModal opened={labsOpen} onClose={closeLabs} />
     </AppNavContext.Provider>
   );
 }

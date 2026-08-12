@@ -20,6 +20,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
+  IconFlask,
   IconHelp,
   IconKeyboard,
   IconLogout,
@@ -28,7 +29,7 @@ import {
   IconUserCog,
 } from '@tabler/icons-react';
 
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_LABS_ENABLED, IS_LOCAL_MODE } from '@/config';
 
 import { ChangelogModal } from './ChangelogModal';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -68,6 +69,7 @@ type AppNavUserMenuProps = {
   teamName?: string;
   logoutUrl?: string | null;
   onClickUserPreferences?: () => void;
+  onClickLabs?: () => void;
 };
 
 const getUserInitials = (userName: string) => {
@@ -85,6 +87,7 @@ export const AppNavUserMenu = ({
   teamName,
   logoutUrl,
   onClickUserPreferences,
+  onClickLabs,
 }: AppNavUserMenuProps) => {
   const { isCollapsed } = React.useContext(AppNavContext);
   const resolvedUserName = userName.trim() || 'User';
@@ -161,6 +164,15 @@ export const AppNavUserMenu = ({
         >
           User Preferences
         </Menu.Item>
+        {IS_LABS_ENABLED && (
+          <Menu.Item
+            data-testid="hyperdx-labs-menu-item"
+            leftSection={<IconFlask size={16} />}
+            onClick={onClickLabs}
+          >
+            HyperDX Labs
+          </Menu.Item>
+        )}
         {logoutUrl && (
           <>
             <Menu.Divider />
