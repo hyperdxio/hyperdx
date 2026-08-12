@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   BackgroundChartSchema,
   ColorConditionSchema,
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DashboardFilterSchema,
   DerivedColumnSchema,
   SavedChartConfigSchema,
 } from '@/types';
@@ -455,5 +457,81 @@ describe('alternateRowBackground on saved chart configs', () => {
     });
 
     expect(parsed).toMatchObject({ alternateRowBackground: true });
+  });
+});
+
+describe('DashboardFilterSchema variable fields', () => {
+  const baseFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION' as const,
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'source-1',
+  };
+
+  it('parses a filter with none of the variable fields set', () => {
+    const parsed = DashboardFilterSchema.parse(baseFilter);
+    expect(parsed.isBroadcastEnabled).toBeUndefined();
+    expect(parsed.isVariableEnabled).toBeUndefined();
+    expect(parsed.variableName).toBeUndefined();
+  });
+
+  it('parses a fully configured variable filter', () => {
+    const parsed = DashboardFilterSchema.parse({
+      ...baseFilter,
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'Service_Name_1',
+    });
+    expect(parsed).toMatchObject({
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'Service_Name_1',
+    });
+  });
+
+  // The requiredness of `variableName` is a form-level concern: readers fall back
+  // to a name derived from the filter's display name, so a filter written by any
+  // other path stays resolvable rather than being rejected.
+  it('accepts isVariableEnabled without a variableName', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      isVariableEnabled: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    'has space',
+    'dollar$',
+    'dot.notation',
+    "quote'",
+    'br[ackets]',
+    'with-dash',
+    '1leading',
+    '_leading',
+    '',
+  ])('rejects variableName %p', variableName => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      variableName,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a variableName longer than the maximum', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      variableName: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a variableName at exactly the maximum length', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      variableName: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH),
+    });
+    expect(result.success).toBe(true);
   });
 });

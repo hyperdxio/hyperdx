@@ -456,6 +456,7 @@ function ServicesDashboardPage() {
         onRemoveFilter={handleRemoveFilter}
         source={source}
         isLoading={isFetchingFilters || isFiltersMutationPending}
+        showVariableOptions={false}
       />
     </Box>
   );
