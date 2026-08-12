@@ -17,6 +17,7 @@ import {
   useMapColumns,
   useMetadataWithSettings,
 } from '@/hooks/useMetadata';
+import { useMultiSourceSlots } from '@/hooks/useSourceSlots';
 import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
@@ -370,5 +371,149 @@ export function useFetchFacets({
     areExtraFacetsLoading,
     loadMoreLoadingKeys,
     extraFacetKeys,
+  };
+}
+
+export type SourceFacetSpec = {
+  sourceId: string;
+  chartConfig: BuilderChartConfigWithDateRange;
+};
+
+/** Slot hook: the full facet pipeline for one selected source. */
+function useSourceFacetsSlot(
+  spec: SourceFacetSpec | undefined,
+  opts: {
+    dateRange: [Date, Date];
+    mode: 'all' | 'exact';
+    filterState?: FilterState;
+    showMoreFields?: boolean;
+  },
+) {
+  const query = useFetchFacets({
+    chartConfig: spec?.chartConfig ?? STUB_FACET_CONFIG,
+    sourceId: spec?.sourceId ?? null,
+    dateRange: opts.dateRange,
+    mode: opts.mode,
+    filterState: opts.filterState,
+    showMoreFields: opts.showMoreFields,
+    enabled: spec != null,
+  });
+  return query;
+}
+
+const STUB_FACET_CONFIG: BuilderChartConfigWithDateRange = {
+  connection: '',
+  from: { databaseName: '', tableName: '' },
+  timestampValueExpression: '',
+  select: '',
+  where: '',
+  whereLanguage: 'sql',
+  dateRange: [new Date(0), new Date(0)],
+};
+
+/**
+ * Facets across every selected source: fields and values merged by field
+ * path, values unioned in first-seen order. "Load more" fans out to each
+ * source and unions what comes back, so a high-cardinality field expands
+ * across the whole search rather than one table.
+ *
+ * With a single source this is `useFetchFacets` for that source, unchanged.
+ */
+export function useFetchFacetsForSources({
+  specs,
+  dateRange,
+  mode,
+  filterState,
+  showMoreFields,
+}: {
+  specs: SourceFacetSpec[];
+  dateRange: [Date, Date];
+  mode: 'all' | 'exact';
+  filterState?: FilterState;
+  showMoreFields?: boolean;
+}) {
+  const slots = useMultiSourceSlots(specs, useSourceFacetsSlot, {
+    dateRange,
+    mode,
+    filterState,
+    showMoreFields,
+  });
+
+  const merged = useMemo(() => {
+    const byKey = new Map<
+      string,
+      { values: (string | boolean)[]; seen: Set<unknown> }
+    >();
+    let sawAny = false;
+    for (const slot of slots) {
+      const facets = slot.data.keyValues;
+      if (facets == null) continue;
+      sawAny = true;
+      for (const facet of facets) {
+        let entry = byKey.get(facet.key);
+        if (entry == null) {
+          entry = { values: [], seen: new Set() };
+          byKey.set(facet.key, entry);
+        }
+        for (const value of facet.value) {
+          if (!entry.seen.has(value)) {
+            entry.seen.add(value);
+            entry.values.push(value);
+          }
+        }
+      }
+    }
+    const keyValues = sawAny
+      ? [...byKey.entries()].map(([key, entry]) => ({
+          key,
+          value: entry.values,
+        }))
+      : undefined;
+
+    const keys = slots.flatMap(slot => slot.data.keys ?? []);
+    const seenPaths = new Set<string>();
+    const mergedKeys = keys.filter(field => {
+      const id = `${field.path.join('.')}|${field.type}`;
+      if (seenPaths.has(id)) return false;
+      seenPaths.add(id);
+      return true;
+    });
+
+    return { keys: mergedKeys.length > 0 ? mergedKeys : undefined, keyValues };
+  }, [slots]);
+
+  const loadMoreFacetsForKey = useCallback(
+    async (key: string) => {
+      await Promise.all(slots.map(slot => slot.loadMoreFacetsForKey(key)));
+    },
+    [slots],
+  );
+
+  const loadMoreLoadingKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const slot of slots) {
+      for (const key of slot.loadMoreLoadingKeys) keys.add(key);
+    }
+    return keys;
+  }, [slots]);
+
+  const extraFacetKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const slot of slots) {
+      for (const key of slot.extraFacetKeys) keys.add(key);
+    }
+    return keys;
+  }, [slots]);
+
+  return {
+    data: merged,
+    isLoading: slots.some(s => s.isLoading),
+    isFetching: slots.some(s => s.isFetching),
+    // A single failing source shouldn't blank the sidebar; surface the first.
+    error: slots.find(s => s.error != null)?.error,
+    loadMoreFacetsForKey,
+    loadMoreLoadingKeys,
+    extraFacetKeys,
+    areExtraFacetsLoading: slots.some(s => s.areExtraFacetsLoading),
   };
 }

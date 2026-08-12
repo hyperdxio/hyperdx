@@ -32,6 +32,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  ALERT_COUNT_DEFAULT_SELECT,
   buildMultiSourceSearchConfig,
   buildSearchChartConfig,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
@@ -92,7 +93,7 @@ import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
-import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
+import { type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -100,12 +101,16 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 import { InputControlled } from '@/components/InputControlled';
 import MultiSourceColumnPicker from '@/components/MultiSourceColumnPicker';
 import OnboardingModal from '@/components/OnboardingModal';
+import {
+  SearchHistogram,
+  type SearchHistogramSpec,
+  SearchTotalCount,
+} from '@/components/SearchHistogram';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchResultsTable from '@/components/SearchResultsTable';
-import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { SourceMultiSelectControlled } from '@/components/SourceMultiSelect';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -343,12 +348,12 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
 function SearchResultsCountGroup({
   isFilterSidebarCollapsed,
   onExpandFilters,
-  histogramTimeChartConfig,
+  histogramSpecs,
   enableParallelQueries,
 }: {
   isFilterSidebarCollapsed: boolean;
   onExpandFilters: () => void;
-  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  histogramSpecs: SearchHistogramSpec[];
   enableParallelQueries?: boolean;
 }) {
   return (
@@ -356,8 +361,8 @@ function SearchResultsCountGroup({
       {isFilterSidebarCollapsed && (
         <ExpandFiltersButton onExpand={onExpandFilters} />
       )}
-      <SearchTotalCountChart
-        config={histogramTimeChartConfig}
+      <SearchTotalCount
+        specs={histogramSpecs}
         queryKeyPrefix={QUERY_KEY_PREFIX}
         enableParallelQueries={enableParallelQueries}
       />
@@ -1785,6 +1790,45 @@ export function DBSearchPage() {
     searchedTimeRange,
   ]);
 
+  const multiHistogramSpecs = useMemo(() => {
+    if (!isMultiSource || isMultiSourceSqlBlocked) return [];
+    if (
+      multiSourceFilters.length > 0 &&
+      columnsBySourceId.size < searchedMultiSources.length
+    ) {
+      return [];
+    }
+    const where = searchedConfig.where ?? '';
+    return searchedMultiSources.map(source => ({
+      source,
+      disabledReason: multiDisabledReasons.get(source.id),
+      config: {
+        ...buildMultiSourceSearchConfig(source, {
+          where,
+          whereLanguage: 'lucene',
+          filters: multiSourceFilters,
+        }),
+        select: ALERT_COUNT_DEFAULT_SELECT,
+        orderBy: undefined,
+        granularity: 'auto' as const,
+        dateRange: searchedTimeRange,
+        displayType: DisplayType.StackedBar,
+        // Match the single-source histogram: reflect the user's exact range
+        // so chart and table counts agree (see histogramTimeChartConfig).
+        alignDateRangeToGranularity: false,
+        dateRangeEndInclusive: true,
+      },
+    }));
+  }, [
+    isMultiSource,
+    isMultiSourceSqlBlocked,
+    searchedMultiSources,
+    searchedConfig.where,
+    multiSourceFilters,
+    multiDisabledReasons,
+    columnsBySourceId,
+    searchedTimeRange,
+  ]);
   // --- End multi-source search ---------------------------------------------
 
   // query error handling
@@ -2150,6 +2194,20 @@ export function DBSearchPage() {
     searchedConfig.select,
   ]);
 
+  // The chart/count query plan for however many sources are selected: one
+  // source keeps its severity-grouped histogram, several get one count()
+  // series each (stacked by source).
+  const histogramSpecs = useMemo(() => {
+    if (isMultiSource) return multiHistogramSpecs;
+    if (searchedSource == null || histogramTimeChartConfig == null) return [];
+    return [{ source: searchedSource, config: histogramTimeChartConfig }];
+  }, [
+    isMultiSource,
+    multiHistogramSpecs,
+    searchedSource,
+    histogramTimeChartConfig,
+  ]);
+
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
       e.preventDefault();
@@ -2230,6 +2288,22 @@ export function DBSearchPage() {
           ...overrides,
         };
   }, [chartConfig, searchedTimeRange, aliasWith]);
+
+  // The sidebar reads facets, values, and pins across everything selected;
+  // with one source that is exactly the single-source sidebar.
+  const filterSidebarSources = useMemo(() => {
+    if (isMultiSource) {
+      // Facet queries want each source's search shape (its own FROM,
+      // connection, and WHERE), not the aggregated histogram config.
+      return searchStreamSpecs.map(({ source, config }) => ({
+        source,
+        config: { ...config, orderBy: undefined },
+      }));
+    }
+    return searchedSource != null
+      ? [{ source: searchedSource, config: filtersChartConfig }]
+      : [];
+  }, [isMultiSource, searchStreamSpecs, searchedSource, filtersChartConfig]);
 
   const openNewSourceModal = useCallback(() => {
     setNewSourceModalOpened(true);
@@ -2789,7 +2863,7 @@ export function DBSearchPage() {
                 height: '100%',
               }}
             >
-              {!isFilterSidebarCollapsed && !isMultiSource && (
+              {!isFilterSidebarCollapsed && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
                     denoiseResults={denoiseResults}
@@ -2797,8 +2871,7 @@ export function DBSearchPage() {
                     isLive={isLive}
                     analysisMode={analysisMode}
                     setAnalysisMode={setAnalysisMode}
-                    chartConfig={filtersChartConfig}
-                    sourceId={inputSourceObj?.id}
+                    sources={filterSidebarSources}
                     showDelta={
                       !!(searchedSource?.kind === SourceKind.Trace
                         ? searchedSource.durationExpression
@@ -2825,7 +2898,7 @@ export function DBSearchPage() {
                           onExpandFilters={() =>
                             setIsFilterSidebarCollapsed(false)
                           }
-                          histogramTimeChartConfig={histogramTimeChartConfig}
+                          histogramSpecs={histogramSpecs}
                         />
                         <SearchNumRows
                           config={{
@@ -2845,14 +2918,9 @@ export function DBSearchPage() {
                         className={searchPageStyles.timeChartContainer}
                         mih="0"
                       >
-                        <DBTimeChart
-                          sourceId={searchedConfig.source ?? undefined}
-                          showLegend={false}
-                          config={histogramTimeChartConfig}
+                        <SearchHistogram
+                          specs={histogramSpecs}
                           enabled={isReady}
-                          showDisplaySwitcher={false}
-                          showMVOptimizationIndicator={false}
-                          showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                           onFocusSeries={handleFocusSeries}
@@ -2916,9 +2984,46 @@ export function DBSearchPage() {
                     </Paper>
                   ) : (
                     <>
-                      {/* The histogram, total count, and filters sidebar come
-                          with the next change; searching several sources
-                          returns the merged results table on its own. */}
+                      <Box className={searchPageStyles.searchStatsContainer}>
+                        <Group
+                          justify="space-between"
+                          align="center"
+                          style={{ width: '100%' }}
+                        >
+                          <Group gap={4} align="center">
+                            {isFilterSidebarCollapsed && (
+                              <ExpandFiltersButton
+                                onExpand={() =>
+                                  setIsFilterSidebarCollapsed(false)
+                                }
+                              />
+                            )}
+                            <SearchTotalCount
+                              specs={histogramSpecs}
+                              enabled={isReady}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              enableParallelQueries
+                            />
+                          </Group>
+                          {shouldShowLiveModeHint && (
+                            <ResumeLiveTailButton
+                              handleResumeLiveTail={handleResumeLiveTail}
+                            />
+                          )}
+                        </Group>
+                      </Box>
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
+                        <SearchHistogram
+                          specs={histogramSpecs}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          enableParallelQueries
+                          onTimeRangeSelect={handleTimeRangeSelect}
+                        />
+                      </Box>
                       <Box
                         flex="1"
                         mih="0"
@@ -2961,7 +3066,7 @@ export function DBSearchPage() {
                             onExpandFilters={() =>
                               setIsFilterSidebarCollapsed(false)
                             }
-                            histogramTimeChartConfig={histogramTimeChartConfig}
+                            histogramSpecs={histogramSpecs}
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
@@ -2990,14 +3095,9 @@ export function DBSearchPage() {
                           className={searchPageStyles.timeChartContainer}
                           mih="0"
                         >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
+                          <SearchHistogram
+                            specs={histogramSpecs}
                             enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             onFocusSeries={handleFocusSeries}
