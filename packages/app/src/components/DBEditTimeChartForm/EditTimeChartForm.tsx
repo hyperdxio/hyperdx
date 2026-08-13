@@ -873,6 +873,7 @@ export default function EditTimeChartForm({
             isDashboardForm={isDashboardForm}
             alert={alert}
             dashboardId={dashboardId}
+            variables={variables}
           />
         ) : (
           <ChartEditorControls

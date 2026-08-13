@@ -3,6 +3,7 @@ import {
   isQuoteEscapedByBackslash,
   splitAndTrimWithBracket,
 } from './core/utils';
+import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
 import {
   ChartConfigWithOptDateRange,
   ChartVariable,
@@ -246,7 +247,7 @@ export function scanTemplateTokens(
       const closeIndex = findBalancedParens(input, argsStart);
       if (closeIndex < 0) {
         if (onMalformed === 'throw') {
-          throw new Error('Failed to parse macro arguments');
+          throw new MalformedMacroArgsError();
         }
         text += input.slice(i, argsStart);
         i = argsStart;
@@ -334,7 +335,8 @@ function requireVariable(
 ): ChartVariable {
   const variable = ctx.variables.find(v => v.name === variableName);
   if (!variable) {
-    throw new Error(
+    throw new MacroExpansionError(
+      macroName,
       `Macro '$__${macroName}' references unknown variable '${variableName}'. ` +
         `Available variables: ${
           ctx.variables.length > 0
@@ -348,7 +350,8 @@ function requireVariable(
 
 function expandFilterMacro(args: string[], ctx: VariableContext): string {
   if (args.length < 1 || args.length > 2) {
-    throw new Error(
+    throw new MacroExpansionError(
+      'filter',
       `Macro 'filter' expects 1-2 argument(s), but got ${args.length}`,
     );
   }
@@ -363,7 +366,8 @@ function expandFilterMacro(args: string[], ctx: VariableContext): string {
     expression = substituteWithContext(args[0], ctx);
   } else {
     if (!variable.expression) {
-      throw new Error(
+      throw new MacroExpansionError(
+        'filter',
         `Macro '$__filter(${variableName})' requires the variable's filter expression, ` +
           `which is not available — pass it explicitly, e.g. $__filter(<expression>, ${variableName}).`,
       );
@@ -383,7 +387,8 @@ function expandConditionalAllMacro(
   ctx: VariableContext,
 ): string {
   if (args.length !== 2) {
-    throw new Error(
+    throw new MacroExpansionError(
+      'conditionalAll',
       `Macro 'conditionalAll' expects 2 argument(s), but got ${args.length}`,
     );
   }

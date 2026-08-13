@@ -43,6 +43,7 @@ import {
   dashboardHasUnexportableTiles,
   isImportableDashboard,
 } from '@hyperdx/common-utils/dist/iac';
+import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
@@ -698,20 +699,21 @@ const Tile = forwardRef(
         return null;
 
       const isMissingSourceForFiltering = !queriedConfig.source;
-      const isMissingFiltersMacro =
-        !queriedConfig.sqlTemplate.includes('$__filters');
+      const missingFiltersMacro = isMissingFiltersMacro(
+        queriedConfig.sqlTemplate,
+      );
       const isMetricsSourceWithLuceneFilter =
         source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
       if (
         !isMissingSourceForFiltering &&
-        !isMissingFiltersMacro &&
+        !missingFiltersMacro &&
         !isMetricsSourceWithLuceneFilter
       )
         return null;
 
-      const message = isMissingFiltersMacro
-        ? 'Filters are not applied because the SQL does not include the required $__filters macro'
+      const message = missingFiltersMacro
+        ? 'Filters may not be applied correctly because the SQL does not include the recommended $__filters macro'
         : isMetricsSourceWithLuceneFilter
           ? 'Lucene filters are not applied because they are not supported for metrics sources.'
           : 'Filters are not applied because no Source is set for this chart';
