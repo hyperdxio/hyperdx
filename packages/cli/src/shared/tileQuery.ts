@@ -96,8 +96,8 @@ export async function fetchTileData({
   });
 
   // Same call the web frontend's useQueriedChartConfig makes —
-  // internally: setChartSelectsAlias → splitChartConfigs →
-  // renderChartConfig → query → join metric result sets.
+  // internally: setChartSelectsAlias → renderChartConfig → query (one
+  // composed statement, even for multi-series metric charts).
   const data = await clickhouseClient.queryChartConfig({
     config: queriedConfig,
     metadata,

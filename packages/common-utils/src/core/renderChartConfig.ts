@@ -22,11 +22,7 @@ import {
   pickBucketTimestampColumn,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import {
-  isBuilderChartConfig,
-  isPromqlChartConfig,
-  isRawSqlChartConfig,
-} from '@/guards';
+import { isPromqlChartConfig, isRawSqlChartConfig } from '@/guards';
 import { replaceMacros } from '@/macros';
 import {
   buildTextIndexInfoLookup,
@@ -42,7 +38,6 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfig,
   ChartConfigSchema,
-  ChartConfigWithOptDateRange,
   ChSqlSchema,
   CteChartConfig,
   DateRange,
@@ -146,36 +141,50 @@ export const setChartSelectsAlias = (
   return config;
 };
 
-export const splitChartConfigs = (
-  config: ChartConfigWithOptDateRange,
-): ChartConfigWithOptDateRangeEx[] => {
-  // only split metric queries for now
-  if (
-    isBuilderChartConfig(config) &&
-    isMetricChartConfig(config) &&
-    Array.isArray(config.select)
-  ) {
-    const _configs: BuilderChartConfigWithOptDateRange[] = [];
-    // split the query into multiple queries
-    for (const select of config.select) {
-      _configs.push({
-        ...config,
-        select: [select],
-      });
+// Internal aliases used to compose a multi-series metric query. Every
+// per-series branch projects its VALUE under this fixed name (and is tagged
+// with its series index) so the outer pivot can reference them. Group-by and
+// time-bucket columns deliberately keep their natural single-series names —
+// consumers look rows up by ClickHouse's derived column names, which can't
+// be reproduced node-side (see renderMultiSeriesMetricChartConfig).
+const MULTI_SERIES_VALUE_ALIAS = '__hdx_value';
+const MULTI_SERIES_IDX_ALIAS = '__hdx_series_idx';
+
+// Histogram translations bake the group-by dimensions into a single Array
+// column named GROUP_ALIAS instead of projecting them as individual columns
+// (see translateHistogram), so grouped histogram rows never share a merge key
+// with grouped gauge/sum rows.
+const isHistogramClassSelect = (select: {
+  metricType?: MetricsDataType;
+}): boolean =>
+  select.metricType === MetricsDataType.Histogram ||
+  select.metricType === MetricsDataType.ExponentialHistogram;
+
+/**
+ * Merge per-branch trailing SETTINGS clauses into one deduped item list for
+ * the composed query. ClickHouse rejects SETTINGS on a UNION ALL branch that
+ * is followed by further branches, so the clauses are stripped from each
+ * branch and hoisted here. Known settings (translate-injected internals plus
+ * source querySettings) are simple `key = value` pairs without commas.
+ */
+function mergeSettingsClauses(clauses: (string | undefined)[]): string {
+  const items: string[] = [];
+  const seen = new Set<string>();
+  for (const clause of clauses) {
+    if (!clause) {
+      continue;
     }
-    return _configs;
+    const body = clause.replace(/^settings\s*/i, '');
+    for (const rawItem of body.split(',')) {
+      const item = rawItem.trim();
+      if (item !== '' && !seen.has(item)) {
+        seen.add(item);
+        items.push(item);
+      }
+    }
   }
-
-  if (
-    isRawSqlChartConfig(config) ||
-    isPromqlChartConfig(config) ||
-    isBuilderChartConfig(config)
-  ) {
-    return [config];
-  }
-
-  throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
-};
+  return items.join(', ');
+}
 
 const INVERSE_OPERATOR_MAP = {
   '=': '!=',
@@ -1975,9 +1984,14 @@ async function translateMetricChartConfig(
 
     if (shouldApplyIncreaseGroupLimit) {
       // Render the user's groupBy against the Bucketed CTE so column
-      // references resolve to the CTE's projection.
+      // references resolve to the CTE's projection. Aliases are stripped:
+      // these expressions go inside tuple(...) in the ranking CTE and the
+      // outer IN predicate, where an `AS "alias"` suffix is a syntax error
+      // (mirrors the strip in renderSeriesLimitCte).
       const groupByForRank = await renderSelectList(
-        chartConfig.groupBy!,
+        typeof chartConfig.groupBy === 'string'
+          ? chartConfig.groupBy
+          : chartConfig.groupBy!.map(col => ({ ...col, alias: undefined })),
         {
           ...chartConfig,
           from: { databaseName: '', tableName: 'Bucketed' },
@@ -2244,6 +2258,245 @@ export async function renderRawSqlChartConfig(
   };
 }
 
+/**
+ * Render a multi-series metric chart as ONE composed ClickHouse query.
+ *
+ * A metric chart config with N select items used to fan out into N separate
+ * queries whose result sets were merged node-side (mergeResultSets). This
+ * renders the same N per-series queries (each metric type keeps its own CTE
+ * scaffolding and physical table) but composes them via UNION ALL and pivots
+ * the tagged rows back into one row per (group values, time bucket):
+ *
+ *   SELECT
+ *     anyOrNullIf(__hdx_value, __hdx_series_idx = 0) AS "avg(metric.alpha)",
+ *     anyOrNullIf(__hdx_value, __hdx_series_idx = 1) AS "avg(metric.beta)",
+ *     * EXCEPT (__hdx_value, __hdx_series_idx)
+ *   FROM (
+ *     SELECT *, 0 AS __hdx_series_idx FROM (<per-series query 0>)
+ *     UNION ALL
+ *     SELECT *, 1 AS __hdx_series_idx FROM (<per-series query 1>)
+ *   )
+ *   GROUP BY ALL
+ *   ORDER BY __hdx_time_bucket
+ *
+ * Only the per-series VALUE column gets an internal alias (__hdx_value);
+ * group-by columns keep whatever name the single-series query produces —
+ * the user's alias, a plain column name, or ClickHouse's derived name for
+ * an expression (e.g. arrayElement(ResourceAttributes, 'k8s.pod.name') for
+ * ResourceAttributes['k8s.pod.name']). Consumers such as the Kubernetes
+ * dashboard and external-API clients look rows up by those derived names,
+ * so they must survive the merge byte-for-byte. Since the names of
+ * un-aliased expression group-bys can't be reproduced node-side, the
+ * wrappers use SELECT * (position-matched by UNION ALL, which takes column
+ * names from its first branch) and the outer pivot uses * EXCEPT +
+ * GROUP BY ALL instead of naming them.
+ *
+ * Contract (pinned by the queryChartConfig integration tests):
+ * - meta lists all value columns first, in select order (the positional
+ *   contract of useChartNumberFormats);
+ * - group-by and time-bucket columns keep their single-series names;
+ * - a series with no data at a joined row reads NULL (a gap), never 0;
+ * - two series resolving to the same alias are suffixed "__{splitIndex}";
+ * - seriesReturnType 'ratio' (exactly two series) replaces the operand
+ *   columns with a single "<num>/<denom>" column: a missing numerator counts
+ *   as 0, a missing or zero denominator yields NULL (a gap), and ratioMode
+ *   'share_of_total' divides by the per-bucket denominator total;
+ * - gauge/sum series project group-by dimensions as individual columns while
+ *   histogram series keep their single Array GROUP_ALIAS column, so grouped
+ *   histogram rows never join with grouped gauge/sum rows (each branch class
+ *   pads the other's group columns with NULL / []).
+ */
+async function renderMultiSeriesMetricChartConfig(
+  rawChartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+  querySettings: QuerySettings | undefined,
+): Promise<ChSql> {
+  // Callers usually apply setChartSelectsAlias before rendering; apply it
+  // again (idempotently) so direct renderChartConfig callers get the same
+  // user-facing value-column names.
+  const chartConfig = setChartSelectsAlias(rawChartConfig);
+  const select = chartConfig.select;
+  if (typeof select === 'string') {
+    throw new Error('multi-series metric charts require an array select');
+  }
+
+  // User-facing output column names in select order. Two series can resolve
+  // to the same alias (e.g. the same aggregation filtered vs unfiltered);
+  // suffix collisions with the split index so the operands stay distinct.
+  const outputNames: string[] = [];
+  {
+    const seen = new Set<string>();
+    select.forEach((s, splitIdx) => {
+      const base = s.alias ?? '';
+      const name = seen.has(base) ? `${base}__${splitIdx}` : base;
+      seen.add(name);
+      outputNames.push(name);
+    });
+  }
+
+  const hasGranularity = isUsingGranularity(chartConfig);
+  const includeGroupBy =
+    isUsingGroupBy(chartConfig) && chartConfig.selectGroupBy !== false;
+
+  // How many individual group-by columns a gauge/sum branch projects. Needed
+  // only so histogram branches can pad the same number of NULL columns —
+  // their names are never referenced.
+  const scalarGroupCount = !includeGroupBy
+    ? 0
+    : typeof chartConfig.groupBy === 'string'
+      ? splitAndTrimWithBracket(chartConfig.groupBy).length
+      : chartConfig.groupBy.length;
+
+  const branchIsHistogram = select.map(isHistogramClassSelect);
+  const hasScalarGroups =
+    includeGroupBy &&
+    scalarGroupCount > 0 &&
+    branchIsHistogram.some(isHistogram => !isHistogram);
+  const hasHistogramGroup =
+    includeGroupBy && branchIsHistogram.some(isHistogram => isHistogram);
+
+  // Render each per-series branch exactly as the single-series path would —
+  // only the value column gets an internal alias. Trailing SETTINGS are
+  // stripped and hoisted to the outer query (ClickHouse rejects SETTINGS on
+  // a non-final UNION branch).
+  const branches = await Promise.all(
+    select.map(async (s, splitIdx) => {
+      const branchConfig: ChartConfigWithOptDateRangeEx = {
+        ...chartConfig,
+        select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
+      };
+      const rendered = await renderChartConfig(
+        branchConfig,
+        metadata,
+        querySettings,
+      );
+      const [sql, settingsClause] = extractSettingsClauseFromEnd(rendered.sql);
+      return {
+        sql,
+        params: rendered.params,
+        settingsClause,
+        isHistogram: isHistogramClassSelect(s),
+        splitIdx,
+      };
+    }),
+  );
+
+  // Wrap every branch so the UNION ALL column lists line up by position:
+  //   [value, <scalar group columns>, time bucket?, series index, group?]
+  //
+  // A gauge/sum branch naturally projects [value, groups..., bucket?]
+  // (renderSelect order), so SELECT * preserves that prefix — and, crucially,
+  // the original group column names. A histogram branch projects
+  // [bucket?, group, value] under fixed aliases, so it is re-projected
+  // explicitly, padding each scalar group slot with NULL (the pad names are
+  // irrelevant: UNION ALL takes names from its first branch). Scalar
+  // branches are ordered first so their names win; when every branch is a
+  // histogram there are no scalar group columns to preserve.
+  const orderedBranches = [
+    ...branches.filter(branch => !branch.isHistogram),
+    ...branches.filter(branch => branch.isHistogram),
+  ];
+  const branchSelects = orderedBranches.map(branch => {
+    const idxColumn = `${branch.splitIdx} AS \`${MULTI_SERIES_IDX_ALIAS}\``;
+    const columns: string[] = [];
+    if (branch.isHistogram) {
+      columns.push(`\`${MULTI_SERIES_VALUE_ALIAS}\``);
+      if (hasScalarGroups) {
+        for (let j = 0; j < scalarGroupCount; j++) {
+          columns.push(`NULL AS \`__hdx_group_pad_${j}\``);
+        }
+      }
+      if (hasGranularity) {
+        columns.push(`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``);
+      }
+      columns.push(idxColumn);
+      if (hasHistogramGroup) {
+        columns.push(`\`${GROUP_ALIAS}\``);
+      }
+    } else {
+      columns.push('*');
+      columns.push(idxColumn);
+      if (hasHistogramGroup) {
+        // Empty-array pad ([] is Array(Nothing), the supertype-compatible
+        // empty array) so scalar rows never share a grouping key with
+        // histogram rows.
+        columns.push(`[] AS \`${GROUP_ALIAS}\``);
+      }
+    }
+    return chSql`SELECT ${{ UNSAFE_RAW_SQL: columns.join(', ') }} FROM (${{
+      sql: branch.sql,
+      params: branch.params,
+    }})`;
+  });
+  const unionSql = concatChSql(' UNION ALL ', branchSelects);
+
+  // Pivot the tagged rows back into one column per series. anyOrNullIf
+  // returns NULL (a rendered gap) when a series has no row at this
+  // (group, bucket) key — a plain anyIf would default to 0.
+  const valueExprFor = (splitIdx: number) =>
+    `anyOrNullIf(\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\` = ${splitIdx})`;
+
+  const isRatio =
+    chartConfig.seriesReturnType === 'ratio' && select.length === 2;
+
+  const projection: string[] = [];
+  if (isRatio) {
+    // A group absent from the (filtered) numerator contributes zero, not
+    // "no data" — so a zero-error group reads 0%, not N/A. A missing or zero
+    // denominator makes the quotient NULL, which renders as a gap.
+    const numerator = `coalesce(${valueExprFor(0)}, 0)`;
+    // per_group: each row divides by its own denominator. share_of_total:
+    // each row divides by the denominator total across ALL groups in the
+    // same time bucket, so the grouped lines decompose the blended rate and
+    // sum to the ungrouped value.
+    const denominator =
+      chartConfig.ratioMode === 'share_of_total'
+        ? `sum(${valueExprFor(1)}) OVER (${
+            hasGranularity
+              ? `PARTITION BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
+              : ''
+          })`
+        : valueExprFor(1);
+    // Strip the collision-disambiguation suffix from the label so a
+    // same-alias ratio reads "avg(x)/avg(x)", not "avg(x)/avg(x)__1".
+    const ratioName = `${outputNames[0]}/${outputNames[1].replace(/__\d+$/, '')}`;
+    projection.push(
+      `${numerator} / nullif(${denominator}, 0) AS "${ratioName}"`,
+    );
+  } else {
+    outputNames.forEach((outputName, splitIdx) => {
+      projection.push(`${valueExprFor(splitIdx)} AS "${outputName}"`);
+    });
+  }
+
+  // Pass the group and bucket columns through under their original names
+  // (which are not knowable node-side for expression group-bys), and group
+  // by exactly those columns. GROUP BY ALL expands to every non-aggregate
+  // SELECT expression, i.e. the * EXCEPT list; the pivot/ratio expressions
+  // contain aggregate functions and are excluded. With no passthrough
+  // columns at all (a number chart) the implicit global aggregation merges
+  // everything into one row.
+  const hasPassthroughColumns =
+    hasScalarGroups || hasHistogramGroup || hasGranularity;
+  if (hasPassthroughColumns) {
+    projection.push(
+      `* EXCEPT (\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\`)`,
+    );
+  }
+
+  const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
+
+  return concatChSql(' ', [
+    chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
+    chSql`FROM (${unionSql})`,
+    hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
+    hasGranularity
+      ? chSql`ORDER BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
+      : chSql``,
+    settings !== '' ? chSql`SETTINGS ${{ UNSAFE_RAW_SQL: settings }}` : chSql``,
+  ]);
+}
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -2256,6 +2509,22 @@ export async function renderChartConfig(
   }
   if (isRawSqlChartConfig(rawChartConfig)) {
     return renderRawSqlChartConfig(rawChartConfig, metadata);
+  }
+
+  // A metric chart with multiple series composes one query per series into a
+  // single UNION ALL + pivot statement (each metric type needs its own CTE
+  // scaffolding, and different types read different physical tables). The
+  // per-series branches recurse through this function with a single select.
+  if (
+    isMetricChartConfig(rawChartConfig) &&
+    Array.isArray(rawChartConfig.select) &&
+    rawChartConfig.select.length > 1
+  ) {
+    return renderMultiSeriesMetricChartConfig(
+      rawChartConfig,
+      metadata,
+      querySettings,
+    );
   }
 
   // metric types require more rewriting since we know more about the schema
