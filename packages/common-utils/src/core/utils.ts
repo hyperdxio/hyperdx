@@ -72,7 +72,14 @@ export function splitAndTrimCSV(input: string): string[] {
     .filter(column => column.length > 0);
 }
 
-function isQuoteEscapedByBackslash(input: string, index: number): boolean {
+/** Escape a value for embedding in a single-quoted ClickHouse string literal. */
+export const escapeSqlString = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/'/g, "''");
+
+export function isQuoteEscapedByBackslash(
+  input: string,
+  index: number,
+): boolean {
   let backslashes = 0;
   for (let i = index - 1; i >= 0 && input[i] === '\\'; i--) {
     backslashes++;
