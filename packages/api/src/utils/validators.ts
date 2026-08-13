@@ -1,5 +1,10 @@
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
-import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
+import {
+  isValidSlackUrl,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  passwordValidators,
+} from '@hyperdx/common-utils/dist/validation';
 import { Address4, Address6 } from 'ip-address';
 import { z } from 'zod';
 
@@ -161,15 +166,26 @@ export function validateWebhookUrl(
 
 export const passwordSchema = z
   .string()
-  .min(12, 'Password must have at least 12 characters')
-  .max(72, 'Password must be at most 72 characters')
+  .min(
+    PASSWORD_MIN_LENGTH,
+    `Password must have at least ${PASSWORD_MIN_LENGTH} characters`,
+  )
+  .max(
+    PASSWORD_MAX_LENGTH,
+    `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+  )
   .refine(
-    pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
+    pass =>
+      passwordValidators.hasLowerCase(pass) &&
+      passwordValidators.hasUpperCase(pass),
     'Password must include both lower and upper case characters',
   )
-  .refine(pass => /\d/.test(pass), 'Password must include at least one number')
   .refine(
-    pass => /[!@#$%^&*(),.?":{}|<>;\-+=]/.test(pass),
+    pass => passwordValidators.hasNumber(pass),
+    'Password must include at least one number',
+  )
+  .refine(
+    pass => passwordValidators.hasSpecialChar(pass),
     'Password must include at least one special character',
   );
 
