@@ -1,4 +1,3 @@
-import { atom, useAtom } from 'jotai';
 import { QUERY_PARAM_EXAMPLES } from '@hyperdx/common-utils/dist/rawSqlParams';
 import { ChartVariable, DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
@@ -20,10 +19,12 @@ import {
   IconCopy,
 } from '@tabler/icons-react';
 
+import { useLocalStorage } from '@/utils';
+
 import { DISPLAY_TYPE_INSTRUCTIONS } from './constants';
 import { RawSqlVariableInstructions } from './RawSqlVariableInstructions';
 
-const helpOpenedAtom = atom(true);
+const HELP_OPENED_KEY = 'hdx-raw-sql-chart-instructions-opened';
 
 export function RawSqlChartInstructions({
   displayType,
@@ -32,7 +33,10 @@ export function RawSqlChartInstructions({
   displayType: DisplayType;
   variables?: ChartVariable[];
 }) {
-  const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
+  const [helpOpened, setHelpOpened] = useLocalStorage<boolean>(
+    HELP_OPENED_KEY,
+    true,
+  );
   const toggleHelp = () => setHelpOpened(v => !v);
   const exampleClipboard = useClipboard({ timeout: 1500 });
 
