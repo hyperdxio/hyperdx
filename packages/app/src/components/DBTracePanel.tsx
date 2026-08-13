@@ -34,10 +34,7 @@ import {
   IconLayoutSidebarRight,
   IconX,
 } from '@tabler/icons-react';
-import {
-  DBTraceWaterfallChartContainer,
-  useFilteredEventsAroundFocus,
-} from '@/components/DBTraceWaterfallChart';
+import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -385,21 +382,13 @@ export default function DBTracePanel({
     return traceSourceData;
   }, [selectedSpan, logSourceData, traceSourceData]);
 
-  // Fetch the full set of spans for this trace so the span detail panel can
-  // determine which spans reference the currently selected span ("Referenced
-  // By" / reverse span links). This reuses the same hook the waterfall chart
-  // uses for its trace-side rows, so we're not issuing a materially different
-  // query. Only enabled once we have a real trace source + traceId; the
-  // `tableSource` fallback below only exists to satisfy the hook's non-null
-  // parameter type while disabled and is never actually queried.
-  const isTraceReady = traceSourceData?.kind === SourceKind.Trace && !!traceId;
-  const { rows: allTraceRows } = useFilteredEventsAroundFocus({
-    tableSource: traceSourceData ?? logSourceData ?? ({} as any),
-    focusDate,
-    dateRange,
-    traceId: traceId ?? '',
-    enabled: isTraceReady,
-  });
+  // Populated via onTraceRowsChange from DBTraceWaterfallChartContainer,
+  // which already fetches this trace's full span list for the waterfall.
+  // Reusing it here (instead of issuing a second, duplicate query) is what
+  // lets the span detail panel compute "Referenced By" reverse span links.
+  const [allTraceRows, setAllTraceRows] = useState<
+    Record<string, unknown>[] | undefined
+  >(undefined);
 
   return (
     <div
@@ -480,6 +469,7 @@ export default function DBTracePanel({
               focusDate={focusDate}
               highlightedRowWhere={selectedSpan?.id}
               onClick={selectSpan}
+              onTraceRowsChange={setAllTraceRows}
               initialRowHighlightHint={initialRowHighlightHint}
               emptyState={emptyState}
               controlsExtra={

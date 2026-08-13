@@ -30,7 +30,7 @@ export function getReverseSpanLinks(
       SpanId: String(row.SpanId ?? ''),
       TraceState: '',
       Attributes: {
-        'span.name': String(row.SpanName ?? ''),
+        'span.name': String(row.Body ?? ''),
         'service.name': String(row.ServiceName ?? ''),
         'span.kind': String(row.SpanKind ?? ''),
       },

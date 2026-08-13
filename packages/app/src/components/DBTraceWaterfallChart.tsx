@@ -185,6 +185,12 @@ function getConfig(
       source.kind === SourceKind.Trace
         ? source.spanEventsValueExpression ?? ''
         : '',
+    SpanKind:
+      source.kind === SourceKind.Trace ? source.spanKindExpression ?? '' : '',
+    SpanLinks:
+      source.kind === SourceKind.Trace
+        ? source.spanLinksValueExpression ?? ''
+        : '',
   };
 
   // Aliases for trace attributes must be added here to ensure
@@ -212,6 +218,10 @@ function getConfig(
     },
     ...(alias.ServiceName
       ? [
+          {
+            valueExpression: alias.TraceId,
+            alias: 'TraceId',
+          },
           {
             valueExpression: alias.ServiceName,
             alias: 'ServiceName',
@@ -274,6 +284,25 @@ function getConfig(
               {
                 valueExpression: alias.SpanEvents,
                 alias: 'SpanEvents',
+              },
+            ]
+          : []),
+        ...(alias.SpanKind
+          ? [
+              {
+                valueExpression: alias.SpanKind,
+                alias: 'SpanKind',
+              },
+            ]
+          : []),
+        ...(alias.SpanLinks
+          ? [
+              {
+                // matches ROW_DATA_ALIASES.SPAN_LINKS ('__hdx_span_links')
+                // used by useRowData, so getReverseSpanLinks can read the
+                // same field name regardless of which hook produced the row.
+                valueExpression: alias.SpanLinks,
+                alias: '__hdx_span_links',
               },
             ]
           : []),
@@ -568,6 +597,7 @@ export function DBTraceWaterfallChartContainer({
   initialRowHighlightHint,
   emptyState,
   controlsExtra,
+  onTraceRowsChange,
 }: {
   traceTableSource: TTraceSource;
   logTableSource: TLogSource | null;
@@ -588,6 +618,7 @@ export function DBTraceWaterfallChartContainer({
   emptyState?: ReactNode;
   /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
   controlsExtra?: ReactNode;
+  onTraceRowsChange?: (rows: Record<string, unknown>[] | undefined) => void;
 }) {
   const formatTime = useFormatTime();
 
@@ -671,6 +702,10 @@ export function DBTraceWaterfallChartContainer({
     hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
   });
+  useEffect(() => {
+    onTraceRowsChange?.(traceRowsData);
+  }, [traceRowsData, onTraceRowsChange]);
+
   const {
     rows: logRowsData,
     isFetching: logIsFetching,
