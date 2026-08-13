@@ -718,6 +718,56 @@ test.describe(
         SEEDED_ERROR_ALERT.errorMessage,
       );
     });
+
+    test('shows an errored evaluation in the history strip with details on click', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      // The seeded ERROR evaluation window renders as a clickable segment
+      const errorSegment = alertsPage.getErrorHistorySegments(seededCard);
+      await expect(errorSegment).toHaveCount(1);
+
+      await errorSegment.click();
+      await expect(alertsPage.evaluationErrorModal).toBeVisible();
+      await expect(alertsPage.evaluationErrorModal).toContainText(
+        'Query Timeout',
+      );
+      await expect(
+        alertsPage.evaluationErrorModal.locator('pre'),
+      ).toContainText(SEEDED_ERROR_ALERT.historyErrorMessage);
+    });
+
+    test('navigates to the alert detail page and shows the evaluation history', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      await alertsPage.getDetailsLinkForAlertCard(seededCard).click();
+
+      // Generous timeout: in dev mode the first hit compiles the new route,
+      // which can take tens of seconds before the navigation completes.
+      await alertsPage.page.waitForURL(/\/alerts\/[a-f0-9]{24}/, {
+        timeout: 30000,
+      });
+      await expect(alertsPage.detailPageContainer).toBeVisible({
+        timeout: 15000,
+      });
+
+      // The event stream lists the errored evaluation with its type label
+      await expect(alertsPage.evaluationsTable).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(alertsPage.evaluationsTable).toContainText('Query Timeout');
+      // ...and the OK window seeded alongside it
+      await expect(
+        alertsPage.evaluationsTable.locator(
+          '[data-testid="alert-evaluation-row"]',
+        ),
+      ).toHaveCount(2);
+    });
   },
 );
 

@@ -148,6 +148,11 @@ with:
 | `clickstack_save_webhook`        | Create (omit id) or update (provide id) a webhook notification destination (slack, generic, or incidentio) |
 | `clickstack_delete_webhook`      | Permanently delete a webhook by ID (blocked while alerts still reference it)                   |
 
+> **Maintainers:** when adding/removing/renaming a query tool, update this table
+> and — for builder (non-SQL) tools — the hand-curated `BUILDER_TOOLS_LIST` in
+> `packages/api/src/mcp/tools/query/builderCatalog.ts`. It isn't auto-derived, so
+> it drifts silently.
+
 ### Metric Sources
 
 `clickstack_timeseries`, `clickstack_table`, and the dashboard builder tile

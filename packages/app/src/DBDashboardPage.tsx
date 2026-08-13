@@ -43,10 +43,12 @@ import {
   dashboardHasUnexportableTiles,
   isImportableDashboard,
 } from '@hyperdx/common-utils/dist/iac';
+import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
+  ChartVariable,
   DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   DisplayType,
@@ -60,6 +62,7 @@ import {
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   ActionIcon,
   Alert,
@@ -386,6 +389,7 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      variables,
       showAlertAnnotations,
       isLive,
       readOnly,
@@ -414,6 +418,7 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      variables?: ChartVariable[];
       // When true, draw alert firing/recovery annotations on this tile's chart.
       showAlertAnnotations?: boolean;
       isLive?: boolean;
@@ -530,6 +535,25 @@ const Tile = forwardRef(
       displayTypeRequiresSource(chart.config.displayType) &&
       !chart.config.source;
 
+    // `variables` is a new reference every time the dashboard's filter change. To ensure
+    // `tileVariables` is stable unless the tile's *referenced variables* actually change,
+    // we serialize the referenced subset and use changes in the serialized value to drive
+    // changes to `tileVariables`.
+    const serializedTileVariables = useMemo(
+      () =>
+        !!variables && isRawSqlSavedChartConfig(chart.config)
+          ? JSON.stringify(filterReferencedVariables(chart.config, variables))
+          : undefined,
+      [chart.config, variables],
+    );
+    const tileVariables = useMemo<ChartVariable[] | undefined>(
+      () =>
+        serializedTileVariables
+          ? JSON.parse(serializedTileVariables)
+          : undefined,
+      [serializedTileVariables],
+    );
+
     useEffect(() => {
       if (isPromqlSavedChartConfig(chart.config)) {
         if (source != null) {
@@ -552,6 +576,7 @@ const Tile = forwardRef(
             dateRange,
             granularity,
             filters,
+            variables: tileVariables,
           });
         } else if (source != null) {
           setQueriedConfig({
@@ -570,6 +595,7 @@ const Tile = forwardRef(
             dateRange,
             granularity,
             filters,
+            variables: tileVariables,
           });
         }
 
@@ -614,7 +640,7 @@ const Tile = forwardRef(
           });
         }
       }
-    }, [source, chart, dateRange, granularity, filters]);
+    }, [source, chart, dateRange, granularity, filters, tileVariables]);
 
     const [hovered, setHovered] = useState(false);
 
@@ -673,20 +699,21 @@ const Tile = forwardRef(
         return null;
 
       const isMissingSourceForFiltering = !queriedConfig.source;
-      const isMissingFiltersMacro =
-        !queriedConfig.sqlTemplate.includes('$__filters');
+      const missingFiltersMacro = isMissingFiltersMacro(
+        queriedConfig.sqlTemplate,
+      );
       const isMetricsSourceWithLuceneFilter =
         source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
       if (
         !isMissingSourceForFiltering &&
-        !isMissingFiltersMacro &&
+        !missingFiltersMacro &&
         !isMetricsSourceWithLuceneFilter
       )
         return null;
 
-      const message = isMissingFiltersMacro
-        ? 'Filters are not applied because the SQL does not include the required $__filters macro'
+      const message = missingFiltersMacro
+        ? 'Filters may not be applied correctly because the SQL does not include the recommended $__filters macro'
         : isMetricsSourceWithLuceneFilter
           ? 'Lucene filters are not applied because they are not supported for metrics sources.'
           : 'Filters are not applied because no Source is set for this chart';
@@ -1472,6 +1499,7 @@ const EditTileModal = ({
   onSave,
   isSaving,
   dateRange,
+  variables,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1479,6 +1507,7 @@ const EditTileModal = ({
   dateRange: [Date, Date];
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
+  variables?: ChartVariable[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1533,6 +1562,7 @@ const EditTileModal = ({
             <EditTimeChartForm
               dashboardId={dashboardId}
               chartConfig={chart.config}
+              variables={variables}
               dateRange={dateRange}
               isSaving={isSaving}
               onSave={config => {
@@ -1783,6 +1813,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setFilterQueries,
     ignoredFilterExpressions,
     getFilterQueriesForSource,
+    variables,
   } = useDashboardFilters(filters);
 
   const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
@@ -2234,6 +2265,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             },
             ...getFilterQueriesForSource(tileSourceId),
           ]}
+          variables={showFilterVariableOptions ? variables : undefined}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
           isHighlighted={highlightedTileId === chart.id}
@@ -2334,6 +2366,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       onTimeRangeSelect,
       showAlertAnnotations,
       getFilterQueriesForSource,
+      showFilterVariableOptions,
+      variables,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
@@ -3012,6 +3046,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (!isSaving) setEditedTile(undefined);
           }}
           dateRange={searchedTimeRange}
+          variables={showFilterVariableOptions ? variables : undefined}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {

@@ -18,7 +18,7 @@ import {
 import type { DashboardFilter, Filter } from '@/types';
 import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
-  DASHBOARD_VARIABLE_NAME_REGEX,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
 } from '@/types';
 
 describe('filters', () => {
@@ -884,7 +884,9 @@ describe('filters', () => {
       for (const name of names) {
         const derived = deriveVariableName(name);
         expect(derived).not.toBe('');
-        expect(DASHBOARD_VARIABLE_NAME_REGEX.test(derived)).toBe(true);
+        expect(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(derived)).toBe(
+          true,
+        );
       }
     });
   });

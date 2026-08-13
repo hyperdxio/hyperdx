@@ -12,9 +12,13 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isRawSqlChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
+  ChartVariable,
   DisplayType,
   SavedChartConfig,
   SourceKind,
@@ -88,6 +92,7 @@ import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
+  resolvePreviewVariables,
   TABS_WITH_GENERATED_SQL,
   zSavedChartConfig,
 } from './utils';
@@ -95,6 +100,8 @@ import {
 type EditTimeChartFormProps = {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
+  /** Variables and their selected values, from the parent dashboard (if one exists). */
+  variables?: ChartVariable[];
   displayedTimeInputValue?: string;
   dateRange: [Date, Date];
   isSaving?: boolean;
@@ -133,6 +140,7 @@ function applyHeatmapDefaults(
 export default function EditTimeChartForm({
   dashboardId,
   chartConfig,
+  variables,
   displayedTimeInputValue,
   dateRange,
   isSaving,
@@ -364,9 +372,24 @@ export default function EditTimeChartForm({
     [],
   );
 
+  // Attach variables so that variable references can be validated and expanded in the preview
+  const previewConfig = useMemo(() => {
+    if (queriedConfig == null || !isRawSqlChartConfig(queriedConfig)) {
+      return queriedConfig;
+    }
+    return {
+      ...queriedConfig,
+      variables: resolvePreviewVariables({
+        config: queriedConfig,
+        variables,
+        hasAlert: alert != null,
+      }),
+    };
+  }, [queriedConfig, variables, alert]);
+
   const dbTimeChartConfig = useMemo(
-    () => computeDbTimeChartConfig(queriedConfig, alert),
-    [queriedConfig, alert],
+    () => computeDbTimeChartConfig(previewConfig, alert),
+    [previewConfig, alert],
   );
 
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
@@ -595,7 +618,7 @@ export default function EditTimeChartForm({
   const chartConfigForExplanations = useMemo(
     () =>
       buildChartConfigForExplanations({
-        queriedConfig,
+        queriedConfig: previewConfig,
         queriedSourceId: queriedSource?.id,
         tableSource,
         chartConfig,
@@ -604,7 +627,7 @@ export default function EditTimeChartForm({
         dbTimeChartConfig,
       }),
     [
-      queriedConfig,
+      previewConfig,
       queriedSource?.id,
       tableSource,
       chartConfig,
@@ -850,6 +873,7 @@ export default function EditTimeChartForm({
             isDashboardForm={isDashboardForm}
             alert={alert}
             dashboardId={dashboardId}
+            variables={variables}
           />
         ) : (
           <ChartEditorControls
@@ -903,7 +927,7 @@ export default function EditTimeChartForm({
         />
       </ErrorBoundary>
       <ChartPreviewPanel
-        queriedConfig={queriedConfig}
+        queriedConfig={previewConfig}
         tableSource={tableSource}
         dateRange={dateRange}
         activeTab={activeTab}
