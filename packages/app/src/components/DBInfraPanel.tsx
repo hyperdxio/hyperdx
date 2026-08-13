@@ -30,16 +30,87 @@ import { useDisclosure } from '@mantine/hooks';
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
+import {
+  GpuMetricsAvailability,
+  resolveChartAvailability,
+  useGpuMetricsAvailability,
+} from '@/hooks/useGpuMetricsAvailability';
 import { useSource } from '@/source';
 
 import { DBTimeChart } from './DBTimeChart';
-import { GpuInfraSection } from './GpuInfraSection';
 import {
   getActiveInfraCorrelations,
-  getGpuCorrelationWhere,
   InfraChartSpec,
+  InfraCorrelation,
 } from './infraCorrelations';
 import { KubeTimeline } from './KubeComponents';
+
+function buildChartConfig(
+  chart: InfraChartSpec,
+  fieldPrefix: string,
+  where: string,
+  metricSource: TMetricSource,
+  dateRange: [Date, Date],
+  granularity: Granularity,
+  mode: 'primary' | 'fallback',
+) {
+  const metricType = chart.metricType ?? 'Gauge';
+
+  if (mode === 'fallback' && chart.fallback) {
+    const [numField, denField] = chart.fallback.fields;
+    const fallbackType = chart.fallback.metricType;
+    const seriesWhere = chart.where ? `(${where}) AND (${chart.where})` : where;
+    return convertV1ChartConfigToV2(
+      {
+        dateRange,
+        granularity,
+        seriesReturnType: 'ratio',
+        series: [
+          {
+            type: 'time',
+            where: seriesWhere,
+            groupBy: chart.groupBy ? [...chart.groupBy] : [],
+            aggFn: 'avg',
+            field: `${fieldPrefix}${numField} - ${fallbackType}`,
+            table: 'metrics',
+            numberFormat: chart.fallback.numberFormat,
+          },
+          {
+            type: 'time',
+            where: seriesWhere,
+            groupBy: chart.groupBy ? [...chart.groupBy] : [],
+            aggFn: 'avg',
+            field: `${fieldPrefix}${denField} - ${fallbackType}`,
+            table: 'metrics',
+            numberFormat: chart.fallback.numberFormat,
+          },
+        ],
+      },
+      { metric: metricSource },
+    );
+  }
+
+  const seriesWhere = chart.where ? `(${where}) AND (${chart.where})` : where;
+  return convertV1ChartConfigToV2(
+    {
+      dateRange,
+      granularity,
+      seriesReturnType: 'column',
+      series: [
+        {
+          type: 'time',
+          where: seriesWhere,
+          groupBy: chart.groupBy ? [...chart.groupBy] : [],
+          aggFn: 'avg',
+          field: `${fieldPrefix}${chart.field} - ${metricType}`,
+          table: 'metrics',
+          numberFormat: chart.numberFormat,
+        },
+      ],
+    },
+    { metric: metricSource },
+  );
+}
 
 const InfraSubpanelGroup = ({
   charts,
@@ -48,13 +119,15 @@ const InfraSubpanelGroup = ({
   timestamp,
   title,
   where,
+  availability,
 }: {
   charts: readonly InfraChartSpec[];
   fieldPrefix: string;
   metricSource: TMetricSource;
-  timestamp: any;
+  timestamp: number;
   title: string;
   where: string;
+  availability?: GpuMetricsAvailability;
 }) => {
   const [range, setRange] = useState<'30m' | '1h' | '1d'>('30m');
   const [size, setSize] = useState<'sm' | 'md' | 'lg'>('sm');
@@ -87,6 +160,26 @@ const InfraSubpanelGroup = ({
     return convertDateRangeToGranularityString(dateRange);
   }, [dateRange]);
 
+  // When availability is provided, resolve each chart to primary/fallback/none.
+  const resolvedCharts = useMemo(() => {
+    if (!availability) {
+      return charts.map(chart => ({ chart, mode: 'primary' as const }));
+    }
+    return charts.reduce<
+      { chart: InfraChartSpec; mode: 'primary' | 'fallback' }[]
+    >((acc, chart) => {
+      const mode = resolveChartAvailability(fieldPrefix, chart, availability);
+      if (mode !== 'none') {
+        acc.push({ chart, mode });
+      }
+      return acc;
+    }, []);
+  }, [charts, availability, fieldPrefix]);
+
+  if (resolvedCharts.length === 0) {
+    return null;
+  }
+
   return (
     <div data-testid={`infra-subpanel-${fieldPrefix}`}>
       <Group justify="space-between" align="center">
@@ -100,7 +193,7 @@ const InfraSubpanelGroup = ({
               { label: '1d', value: '1d' },
             ]}
             value={range}
-            onChange={value => setRange(value as any)}
+            onChange={value => setRange(value as '30m' | '1h' | '1d')}
           />
         </Group>
         <Group align="center">
@@ -112,36 +205,24 @@ const InfraSubpanelGroup = ({
               { label: 'LG', value: 'lg' },
             ]}
             value={size}
-            onChange={value => setSize(value as any)}
+            onChange={value => setSize(value as 'sm' | 'md' | 'lg')}
           />
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        {charts.map(chart => (
+        {resolvedCharts.map(({ chart, mode }) => (
           <Card key={chart.cardTestId} data-testid={chart.cardTestId}>
             <Card.Section py={8} px={8} h={height}>
               <DBTimeChart
                 title={chart.title}
-                config={convertV1ChartConfigToV2(
-                  {
-                    dateRange,
-                    granularity,
-                    seriesReturnType: 'column',
-                    series: [
-                      {
-                        type: 'time',
-                        where,
-                        groupBy: [],
-                        aggFn: 'avg',
-                        field: `${fieldPrefix}${chart.field} - Gauge`,
-                        table: 'metrics',
-                        numberFormat: chart.numberFormat,
-                      },
-                    ],
-                  },
-                  {
-                    metric: metricSource,
-                  },
+                config={buildChartConfig(
+                  chart,
+                  fieldPrefix,
+                  where,
+                  metricSource,
+                  dateRange,
+                  granularity,
+                  mode,
                 )}
                 showDisplaySwitcher={false}
                 logReferenceTimestamp={timestamp / 1000}
@@ -151,6 +232,54 @@ const InfraSubpanelGroup = ({
         ))}
       </SimpleGrid>
     </div>
+  );
+};
+
+/**
+ * Wrapper that fetches GPU metric availability and only renders the group
+ * when at least one chart has data. Returns null while loading or when empty.
+ */
+const AvailabilityGatedGroup = ({
+  correlation,
+  metricSource,
+  timestamp,
+  where,
+}: {
+  correlation: InfraCorrelation;
+  metricSource: TMetricSource;
+  timestamp: number;
+  where: string;
+}) => {
+  // Wide window for the existence check — we only need a boolean "are there
+  // any GPU metrics for this host?" answer, not precise time-aligned data.
+  const dateRange = useMemo<[Date, Date]>(
+    () => [
+      sub(new Date(timestamp), { days: 1 }),
+      add(new Date(timestamp), { days: 1 }),
+    ],
+    [timestamp],
+  );
+
+  const availability = useGpuMetricsAvailability({
+    metricSource,
+    correlationWhere: where,
+    dateRange,
+  });
+
+  if (availability.isLoading || !availability.hasAny) {
+    return null;
+  }
+
+  return (
+    <InfraSubpanelGroup
+      title={correlation.title}
+      where={where}
+      fieldPrefix={correlation.fieldPrefix}
+      charts={correlation.charts}
+      timestamp={timestamp}
+      metricSource={metricSource}
+      availability={availability}
+    />
   );
 };
 
@@ -180,14 +309,6 @@ export default ({
   );
 
   const timestamp = new Date(rowData?.__hdx_timestamp).getTime();
-
-  const gpuWhere = useMemo(
-    () =>
-      metricSource
-        ? getGpuCorrelationWhere(metricSource, resourceAttributes)
-        : undefined,
-    [metricSource, resourceAttributes],
-  );
 
   return (
     <Stack my="md" gap={40}>
@@ -226,35 +347,39 @@ export default ({
       )}
       {activeCorrelations.map(correlation => {
         const value = resourceAttributes?.[correlation.correlateAttribute];
-        // Truthiness guard, mirroring the previous Pod/Node render blocks
-        // (which gated on the attribute value with `&&`); the tab gate uses
-        // != null. detect and correlate are the same attribute for the
-        // built-in k8s descriptors, so this stays byte-identical. A future
-        // descriptor that splits the two decides here how an empty correlate
-        // value should render.
         if (!value) {
           return null;
         }
         const showTimeline =
           correlation.timeline != null && source.kind === SourceKind.Log;
-        // Skip rendering an empty container when neither the metric group nor
-        // the timeline has anything to show (e.g. no metric source configured
-        // on a non-Log source).
         if (!metricSource && !showTimeline) {
           return null;
         }
+
+        const correlationWhere = metricSource
+          ? `${metricSource.resourceAttributesExpression}.${correlation.correlateAttribute}:"${value}"`
+          : '';
+
         return (
           <div key={correlation.title}>
-            {metricSource && (
-              <InfraSubpanelGroup
-                title={correlation.title}
-                where={`${metricSource.resourceAttributesExpression}.${correlation.correlateAttribute}:"${value}"`}
-                fieldPrefix={correlation.fieldPrefix}
-                charts={correlation.charts}
-                timestamp={timestamp}
-                metricSource={metricSource}
-              />
-            )}
+            {metricSource &&
+              (correlation.requiresMetricAvailability ? (
+                <AvailabilityGatedGroup
+                  correlation={correlation}
+                  metricSource={metricSource}
+                  timestamp={timestamp}
+                  where={correlationWhere}
+                />
+              ) : (
+                <InfraSubpanelGroup
+                  title={correlation.title}
+                  where={correlationWhere}
+                  fieldPrefix={correlation.fieldPrefix}
+                  charts={correlation.charts}
+                  timestamp={timestamp}
+                  metricSource={metricSource}
+                />
+              ))}
             {correlation.timeline && source.kind === SourceKind.Log && (
               <Card p="md" mt="xl">
                 <Card.Section p="md" py="xs">
@@ -287,13 +412,6 @@ export default ({
           </div>
         );
       })}
-      {metricSource && gpuWhere && (
-        <GpuInfraSection
-          metricSource={metricSource}
-          where={gpuWhere}
-          timestamp={timestamp}
-        />
-      )}
     </Stack>
   );
 };

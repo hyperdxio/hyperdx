@@ -1,10 +1,9 @@
-import type { TMetricSource } from '@hyperdx/common-utils/dist/types';
-
 import {
   getActiveInfraCorrelations,
-  getGpuCorrelationWhere,
   INFRA_CORRELATIONS,
 } from '@/components/infraCorrelations';
+import type { GpuMetricsAvailability } from '@/hooks/useGpuMetricsAvailability';
+import { resolveChartAvailability } from '@/hooks/useGpuMetricsAvailability';
 
 describe('getActiveInfraCorrelations', () => {
   it('returns the Pod group when only k8s.pod.uid is present', () => {
@@ -12,17 +11,17 @@ describe('getActiveInfraCorrelations', () => {
     expect(active.map(c => c.title)).toEqual(['Pod']);
   });
 
-  it('returns the Node group when only k8s.node.name is present', () => {
+  it('returns the Node and GPU groups when only k8s.node.name is present', () => {
     const active = getActiveInfraCorrelations({ 'k8s.node.name': 'node-1' });
-    expect(active.map(c => c.title)).toEqual(['Node']);
+    expect(active.map(c => c.title)).toEqual(['Node', 'GPU']);
   });
 
-  it('returns both groups in render order when both attributes are present', () => {
+  it('returns Pod, Node, and GPU when both attributes are present', () => {
     const active = getActiveInfraCorrelations({
       'k8s.pod.uid': 'pod-abc',
       'k8s.node.name': 'node-1',
     });
-    expect(active.map(c => c.title)).toEqual(['Pod', 'Node']);
+    expect(active.map(c => c.title)).toEqual(['Pod', 'Node', 'GPU']);
   });
 
   it('returns no groups when no detect attribute is present', () => {
@@ -43,7 +42,6 @@ describe('getActiveInfraCorrelations', () => {
     expect(getActiveInfraCorrelations(null)).toEqual([]);
   });
 
-  // The gate uses != null, not truthiness, matching the prior hardcoded gate.
   it('treats a detect attribute explicitly set to null as absent', () => {
     expect(getActiveInfraCorrelations({ 'k8s.pod.uid': null })).toEqual([]);
   });
@@ -65,16 +63,27 @@ describe('INFRA_CORRELATIONS built-ins', () => {
         correlateAttribute: 'k8s.node.name',
         fieldPrefix: 'k8s.node.',
       },
+      {
+        title: 'GPU',
+        detectAttribute: 'k8s.node.name',
+        correlateAttribute: 'k8s.node.name',
+        fieldPrefix: 'hw.gpu.',
+        requiresMetricAvailability: true,
+      },
     ]);
   });
 
   it('keeps the Pod Timeline only on the Pod group', () => {
     const node = INFRA_CORRELATIONS.find(c => c.title === 'Node');
     expect(node?.timeline).toBeUndefined();
+    const gpu = INFRA_CORRELATIONS.find(c => c.title === 'GPU');
+    expect(gpu?.timeline).toBeUndefined();
   });
 
-  it('keeps the three k8s metric fields and card test ids on every group', () => {
-    for (const correlation of INFRA_CORRELATIONS) {
+  it('keeps the three k8s metric fields on Pod and Node groups', () => {
+    for (const correlation of INFRA_CORRELATIONS.filter(
+      c => c.title === 'Pod' || c.title === 'Node',
+    )) {
       expect(correlation.charts.map(c => [c.cardTestId, c.field])).toEqual([
         ['cpu-usage-card', 'cpu.utilization'],
         ['memory-usage-card', 'memory.usage'],
@@ -84,52 +93,132 @@ describe('INFRA_CORRELATIONS built-ins', () => {
   });
 });
 
-describe('getGpuCorrelationWhere', () => {
-  const metricSource = {
-    resourceAttributesExpression: 'ResourceAttributes',
-  } as unknown as TMetricSource;
+describe('GPU chart specs', () => {
+  const gpuCorrelation = INFRA_CORRELATIONS.find(c => c.title === 'GPU')!;
 
-  it('returns where clause using k8s.node.name when present', () => {
-    const result = getGpuCorrelationWhere(metricSource, {
-      'k8s.node.name': 'gpu-node-1',
-      'host.name': 'host-1',
-    });
-    expect(result).toBe('ResourceAttributes.k8s.node.name:"gpu-node-1"');
+  it('defines utilization and memory utilization charts', () => {
+    expect(gpuCorrelation.charts.map(c => c.cardTestId)).toEqual([
+      'gpu-utilization-card',
+      'gpu-memory-utilization-card',
+    ]);
   });
 
-  it('falls back to host.name when k8s.node.name is absent', () => {
-    const result = getGpuCorrelationWhere(metricSource, {
-      'host.name': 'gpu-host-1',
-    });
-    expect(result).toBe('ResourceAttributes.host.name:"gpu-host-1"');
+  it('uses correct where clause for utilization (no _exists_ syntax)', () => {
+    const utilizationChart = gpuCorrelation.charts.find(
+      c => c.cardTestId === 'gpu-utilization-card',
+    );
+    expect(utilizationChart?.where).toBe(
+      'hw.gpu.task:"general" OR NOT hw.gpu.task:*',
+    );
   });
 
-  it('returns undefined when no correlatable attribute is present', () => {
-    const result = getGpuCorrelationWhere(metricSource, {
-      'service.name': 'api',
-      'k8s.pod.uid': 'pod-123',
+  it('provides a fallback for memory utilization from sum table', () => {
+    const memChart = gpuCorrelation.charts.find(
+      c => c.cardTestId === 'gpu-memory-utilization-card',
+    );
+    expect(memChart?.fallback).toEqual({
+      fields: ['memory.usage', 'memory.limit'],
+      metricType: 'Sum',
+      numberFormat: expect.objectContaining({ output: 'percent' }),
     });
-    expect(result).toBeUndefined();
   });
 
-  it('returns undefined for null resource attributes', () => {
-    expect(getGpuCorrelationWhere(metricSource, null)).toBeUndefined();
-    expect(getGpuCorrelationWhere(metricSource, undefined)).toBeUndefined();
+  it('includes hw.id/hw.name/hw.model in groupBy expression', () => {
+    for (const chart of gpuCorrelation.charts) {
+      expect(chart.groupBy).toHaveLength(1);
+      const expr = chart.groupBy![0];
+      expect(expr).toContain("Attributes['hw.id']");
+      expect(expr).toContain("Attributes['hw.name']");
+      expect(expr).toContain("Attributes['hw.model']");
+    }
+  });
+});
+
+describe('resolveChartAvailability', () => {
+  const fieldPrefix = 'hw.gpu.';
+
+  const makeAvailability = (
+    gauge: string[] = [],
+    sum: string[] = [],
+  ): GpuMetricsAvailability => ({
+    gaugeMetrics: new Set(gauge),
+    sumMetrics: new Set(sum),
+    hasAny: gauge.length > 0 || sum.length > 0,
+    isLoading: false,
   });
 
-  it('skips empty string attribute values', () => {
-    const result = getGpuCorrelationWhere(metricSource, {
-      'k8s.node.name': '',
-      'host.name': 'fallback-host',
-    });
-    expect(result).toBe('ResourceAttributes.host.name:"fallback-host"');
+  it('returns primary when gauge metric exists', () => {
+    const chart = { field: 'utilization' };
+    const availability = makeAvailability(['hw.gpu.utilization']);
+    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
+      'primary',
+    );
   });
 
-  it('returns undefined when all correlatable attributes are empty', () => {
-    const result = getGpuCorrelationWhere(metricSource, {
-      'k8s.node.name': '',
-      'host.name': '',
-    });
-    expect(result).toBeUndefined();
+  it('returns none when neither primary nor fallback exists', () => {
+    const chart = { field: 'utilization' };
+    const availability = makeAvailability();
+    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
+      'none',
+    );
+  });
+
+  it('returns fallback when primary is absent but fallback fields exist in sum', () => {
+    const chart = {
+      field: 'memory.utilization',
+      fallback: {
+        fields: ['memory.usage', 'memory.limit'] as [string, string],
+        metricType: 'Sum' as const,
+        numberFormat: { output: 'percent' as const },
+      },
+    };
+    const availability = makeAvailability(
+      [],
+      ['hw.gpu.memory.usage', 'hw.gpu.memory.limit'],
+    );
+    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
+      'fallback',
+    );
+  });
+
+  it('prefers primary over fallback even if both exist', () => {
+    const chart = {
+      field: 'memory.utilization',
+      fallback: {
+        fields: ['memory.usage', 'memory.limit'] as [string, string],
+        metricType: 'Sum' as const,
+        numberFormat: { output: 'percent' as const },
+      },
+    };
+    const availability = makeAvailability(
+      ['hw.gpu.memory.utilization'],
+      ['hw.gpu.memory.usage', 'hw.gpu.memory.limit'],
+    );
+    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
+      'primary',
+    );
+  });
+
+  it('returns none when only one fallback field exists', () => {
+    const chart = {
+      field: 'memory.utilization',
+      fallback: {
+        fields: ['memory.usage', 'memory.limit'] as [string, string],
+        metricType: 'Sum' as const,
+        numberFormat: { output: 'percent' as const },
+      },
+    };
+    const availability = makeAvailability([], ['hw.gpu.memory.usage']);
+    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
+      'none',
+    );
+  });
+
+  it('handles Sum primary metric type', () => {
+    const chart = { field: 'some.counter', metricType: 'Sum' as const };
+    const availability = makeAvailability([], ['hw.gpu.some.counter']);
+    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
+      'primary',
+    );
   });
 });

@@ -6,78 +6,134 @@ import {
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
 
-export const GPU_METRIC_NAMES = {
-  utilization: 'hw.gpu.utilization',
-  memoryUtilization: 'hw.gpu.memory.utilization',
-} as const;
-
-export type GpuMetricsAvailability = {
-  hasUtilization: boolean;
-  hasMemoryUtilization: boolean;
-  hasAny: boolean;
-  isLoading: boolean;
-};
-
 /**
  * Checks whether GPU metrics exist in the given metric source, scoped to a
- * correlated resource (by host/node). Queries distinct MetricName values from
- * the gauge table filtered by the resource correlation WHERE clause.
+ * correlated resource. Queries distinct MetricName values from both the gauge
+ * and sum tables, pushing a `MetricName:hw.gpu.*` filter into the query so
+ * the DB only scans matching rows regardless of how many other metrics exist.
  *
  * Results are cached (staleTime 5 min by useGetKeyValues) so reopening the
  * panel does not re-query.
  */
 export function useGpuMetricsAvailability({
   metricSource,
-  where,
+  correlationWhere,
   dateRange,
   enabled = true,
 }: {
   metricSource: TMetricSource | undefined;
-  where: string;
+  correlationWhere: string;
   dateRange: [Date, Date];
   enabled?: boolean;
 }): GpuMetricsAvailability {
   const gaugeTable = metricSource?.metricTables?.[MetricsDataType.Gauge];
+  const sumTable = metricSource?.metricTables?.[MetricsDataType.Sum];
 
-  const chartConfig = useMemo(() => {
+  // Push prefix filter into the WHERE so we only scan hw.gpu.* rows.
+  const gpuWhere = correlationWhere
+    ? `(${correlationWhere}) AND MetricName:hw.gpu.*`
+    : 'MetricName:hw.gpu.*';
+
+  const gaugeConfig = useMemo(() => {
     if (!metricSource || !gaugeTable) return undefined;
     return {
+      // Empty select: the query only needs MetricName values, not aggregates.
       select: [] as [],
       from: {
         databaseName: metricSource.from.databaseName,
         tableName: gaugeTable,
       },
-      where,
+      where: gpuWhere,
       whereLanguage: 'lucene' as const,
       groupBy: '',
       timestampValueExpression: metricSource.timestampValueExpression ?? '',
       connection: metricSource.connection,
       dateRange,
     };
-  }, [metricSource, gaugeTable, where, dateRange]);
+  }, [metricSource, gaugeTable, gpuWhere, dateRange]);
 
-  const { data, isLoading } = useGetKeyValues(
-    {
-      chartConfig,
-      keys: ['MetricName'],
-      limit: 50,
-      disableRowLimit: true,
-    },
-    {
-      enabled: enabled && !!chartConfig,
-    },
+  const sumConfig = useMemo(() => {
+    if (!metricSource || !sumTable) return undefined;
+    return {
+      select: [] as [],
+      from: {
+        databaseName: metricSource.from.databaseName,
+        tableName: sumTable,
+      },
+      where: gpuWhere,
+      whereLanguage: 'lucene' as const,
+      groupBy: '',
+      timestampValueExpression: metricSource.timestampValueExpression ?? '',
+      connection: metricSource.connection,
+      dateRange,
+    };
+  }, [metricSource, sumTable, gpuWhere, dateRange]);
+
+  const { data: gaugeData, isLoading: isGaugeLoading } = useGetKeyValues(
+    { chartConfig: gaugeConfig, keys: ['MetricName'], disableRowLimit: true },
+    { enabled: enabled && !!gaugeConfig },
+  );
+
+  const { data: sumData, isLoading: isSumLoading } = useGetKeyValues(
+    { chartConfig: sumConfig, keys: ['MetricName'], disableRowLimit: true },
+    { enabled: enabled && !!sumConfig },
   );
 
   return useMemo(() => {
-    const metricNames: string[] = data?.[0]?.value ?? [];
-    const gpuNames = metricNames.filter(name => name.startsWith('hw.gpu.'));
+    const gaugeNames: string[] = gaugeData?.[0]?.value ?? [];
+    const sumNames: string[] = sumData?.[0]?.value ?? [];
+
     return {
-      hasUtilization: gpuNames.includes(GPU_METRIC_NAMES.utilization),
-      hasMemoryUtilization: gpuNames.includes(
-        GPU_METRIC_NAMES.memoryUtilization,
-      ),
-      hasAny: gpuNames.length > 0,
-      isLoading,
+      gaugeMetrics: new Set(gaugeNames),
+      sumMetrics: new Set(sumNames),
+      hasAny: gaugeNames.length > 0 || sumNames.length > 0,
+      isLoading: isGaugeLoading || isSumLoading,
     };
-  }, [data, isLoading]);
+  }, [gaugeData, sumData, isGaugeLoading, isSumLoading]);
+}
+
+export type GpuMetricsAvailability = {
+  gaugeMetrics: Set<string>;
+  sumMetrics: Set<string>;
+  hasAny: boolean;
+  isLoading: boolean;
+};
+
+/**
+ * Determines whether a specific chart's primary metric is available,
+ * or whether its fallback metrics are available.
+ */
+export function resolveChartAvailability(
+  fieldPrefix: string,
+  chart: {
+    field: string;
+    metricType?: string;
+    fallback?: { fields: readonly [string, string]; metricType: string };
+  },
+  availability: GpuMetricsAvailability,
+): 'primary' | 'fallback' | 'none' {
+  const primaryMetric = `${fieldPrefix}${chart.field}`;
+  const primaryType = chart.metricType ?? 'Gauge';
+  const metricsSet =
+    primaryType === 'Sum' ? availability.sumMetrics : availability.gaugeMetrics;
+
+  if (metricsSet.has(primaryMetric)) {
+    return 'primary';
+  }
+
+  if (chart.fallback) {
+    const fallbackSet =
+      chart.fallback.metricType === 'Sum'
+        ? availability.sumMetrics
+        : availability.gaugeMetrics;
+    const [num, den] = chart.fallback.fields;
+    if (
+      fallbackSet.has(`${fieldPrefix}${num}`) &&
+      fallbackSet.has(`${fieldPrefix}${den}`)
+    ) {
+      return 'fallback';
+    }
+  }
+
+  return 'none';
 }
