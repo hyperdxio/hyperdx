@@ -6691,12 +6691,10 @@ describe('checkAlerts', () => {
     });
 
     // ── Multi-series metric tiles ──
-    // Multi-series metric charts are composed into a single ClickHouse query
-    // (HDX-5077) that pivots every series into its own value column. The alert
-    // task compares the threshold against the LAST select item's value, and a
-    // series with no row at a bucket pivots to an explicit NULL — which the
-    // null guard in processAlert skips instead of the old node-side merge's
-    // behavior of silently falling back to an earlier series' value.
+    // A multi-series metric chart is one ClickHouse query with a value column
+    // per series. The alert compares the threshold against the LAST series'
+    // value, and a series with no row at a bucket yields NULL, which
+    // processAlert skips.
 
     const gaugePoint = (
       metricName: string,
@@ -6906,10 +6904,9 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // The last series pivots to NULL for the bucket, so the row is skipped:
-      // no alert fires from the first series' 100 (the old node-side merge
-      // fell back to it because the missing series' key was simply absent),
-      // and the run records a single default OK history with no values.
+      // The last series is NULL for the bucket, so the row is skipped: no
+      // alert fires from the first series' 100, and the run records a single
+      // default OK history with no values.
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
       const histories = await AlertHistory.find({ alert: details.alert.id });
@@ -6927,9 +6924,7 @@ describe('checkAlerts', () => {
       const eventMs = now.getTime() - ms('7m');
 
       await bulkInsertMetricsGauge([
-        // Numerator present, denominator zero: 5 / nullif(0, 0) is NULL in
-        // the composed query. The old node-side merge computed NaN and pushed
-        // a NaN count into history.
+        // Numerator present, denominator zero: the ratio is NULL.
         gaugePoint('test.errors', 5, eventMs),
         gaugePoint('test.requests', 0, eventMs),
       ]);

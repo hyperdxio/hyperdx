@@ -1366,11 +1366,9 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // A NULL value is intentional composed-query semantics for
-        // multi-series metric tiles (HDX-5077): a series with no row at this
-        // (group, bucket) pivots to NULL, and a ratio with a missing or zero
-        // denominator divides to NULL. Skip the row — evaluating it (e.g. as
-        // 0, or as another series' value) would fabricate a state from a gap.
+        // NULL means no data: a metric series with no row at this bucket, or
+        // a ratio with a missing/zero denominator. Skip the row instead of
+        // fabricating a state from a gap.
         if (value == null) {
           continue;
         }
