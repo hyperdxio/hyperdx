@@ -17,6 +17,8 @@ import {
 import { DisplayType, SourceKind } from '@/types';
 
 const ID = '655b1b7d9143aa1b1b73f4f4';
+// Import ids are team-scoped: `<team_id>/<resource_id>`.
+const TEAM_ID = '7a1c0de5b2f34c9d8e0a1b2c';
 
 function emptyManifest(
   overrides: Partial<IacImportManifest> = {},
@@ -279,17 +281,22 @@ describe('buildImportBlock', () => {
   // The block form, not the CLI `terraform import` one-liner: the CLI form
   // refuses to run unless the address is already declared in configuration,
   // and this feature generates none.
-  it('emits an import block with the plain-id form (never <teamId>/<id>)', () => {
+  // `<team_id>/<resource_id>`: on ClickHouse Cloud one service backs several
+  // teams, so a bare resource id is ambiguous. Accepted since provider 3.22.0.
+  it('emits an import block with the team-scoped id form', () => {
     expect(
-      buildImportBlock({ type: 'dashboard', id: ID, name: 'HyperDX Usage' }),
+      buildImportBlock(
+        { type: 'dashboard', id: ID, name: 'HyperDX Usage' },
+        TEAM_ID,
+      ),
     ).toBe(
-      `# HyperDX Usage\nimport {\n  to = clickhouse_clickstack_dashboard.dashboard_${ID}\n  id = "${ID}"\n}`,
+      `# HyperDX Usage\nimport {\n  to = clickhouse_clickstack_dashboard.dashboard_${ID}\n  id = "${TEAM_ID}/${ID}"\n}`,
     );
   });
 
   it('omits the comment line when the resource has no name', () => {
-    expect(buildImportBlock({ type: 'alert', id: ID })).toBe(
-      `import {\n  to = clickhouse_clickstack_alert.alert_${ID}\n  id = "${ID}"\n}`,
+    expect(buildImportBlock({ type: 'alert', id: ID }, TEAM_ID)).toBe(
+      `import {\n  to = clickhouse_clickstack_alert.alert_${ID}\n  id = "${TEAM_ID}/${ID}"\n}`,
     );
   });
 
@@ -298,7 +305,7 @@ describe('buildImportBlock', () => {
   it.each(Object.keys(TERRAFORM_RESOURCE_TYPES) as IacResourceType[])(
     'maps %s to its provider resource name',
     type => {
-      expect(buildImportBlock({ type, id: ID })).toContain(
+      expect(buildImportBlock({ type, id: ID }, TEAM_ID)).toContain(
         `to = ${TERRAFORM_RESOURCE_TYPES[type]}.${type}_${ID}`,
       );
     },
@@ -327,19 +334,22 @@ describe('name sanitisation', () => {
     '`id`',
     'tab\tseparated',
   ])('keeps a hostile name on one comment line: %s', hostile => {
-    const block = buildImportBlock({ type: 'alert', id: ID, name: hostile });
+    const block = buildImportBlock(
+      { type: 'alert', id: ID, name: hostile },
+      TEAM_ID,
+    );
     const [comment, ...rest] = block.split('\n');
 
     expect(comment.startsWith('# ')).toBe(true);
     // Everything after the comment is the untouched import block.
     expect(rest.join('\n')).toBe(
-      `import {\n  to = clickhouse_clickstack_alert.alert_${ID}\n  id = "${ID}"\n}`,
+      `import {\n  to = clickhouse_clickstack_alert.alert_${ID}\n  id = "${TEAM_ID}/${ID}"\n}`,
     );
   });
 
   it('drops a name that is only whitespace', () => {
     expect(
-      buildImportBlock({ type: 'alert', id: ID, name: ' \n\t ' }),
+      buildImportBlock({ type: 'alert', id: ID, name: ' \n\t ' }, TEAM_ID),
     ).not.toContain('#');
   });
 });
@@ -356,15 +366,25 @@ describe('resource id validation', () => {
     'ZZZb1b7d9143aa1b1b73f4f4',
     '',
   ])('refuses to emit an import block for id %p', badId => {
-    expect(() => buildImportBlock({ type: 'alert', id: badId })).toThrow(
-      /non-ObjectId id/,
-    );
+    expect(() =>
+      buildImportBlock({ type: 'alert', id: badId }, TEAM_ID),
+    ).toThrow(/non-ObjectId resource id/);
+  });
+
+  // The team id is now the other half of the same sink.
+  it('refuses to emit an import block for a bad team id', () => {
+    expect(
+      () =>
+        buildImportBlock({ type: 'alert', id: ID }, 'a"; provider "null" {} #'),
+      // Labelled, so the thrown error says which half of the id was wrong.
+    ).toThrow(/non-ObjectId team id/);
   });
 
   it('refuses to emit a connection local for a bad id', () => {
     expect(() =>
       buildImportFile({
         endpoint: 'https://hyperdx.example.com/api',
+        teamId: TEAM_ID,
         resources: [],
         connectionLocals: [{ id: 'not-an-objectid', name: 'Sneaky' }],
       }),
@@ -373,7 +393,7 @@ describe('resource id validation', () => {
 
   it('accepts ObjectId hex in either case', () => {
     expect(() =>
-      buildImportBlock({ type: 'alert', id: ID.toUpperCase() }),
+      buildImportBlock({ type: 'alert', id: ID.toUpperCase() }, TEAM_ID),
     ).not.toThrow();
   });
 });
@@ -383,13 +403,14 @@ describe('buildImportFile', () => {
     const otherId = 'a55b1b7d9143aa1b1b73f4f4';
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [
         { type: 'dashboard', id: ID, name: 'Usage' },
         { type: 'saved_search', id: otherId, name: 'Errors' },
       ],
     });
     expect(file).toContain('source  = "ClickHouse/clickhouse"');
-    expect(file).toContain('version = ">= 3.22.0"');
+    expect(file).toContain('version = ">= 3.25.0"');
     // `import {}` and -generate-config-out both need Terraform 1.5+; without
     // the constraint an older CLI fails with a syntax error instead.
     expect(file).toContain('required_version = ">= 1.5.0"');
@@ -403,7 +424,7 @@ describe('buildImportFile', () => {
     expect(file).toContain(
       `to = clickhouse_clickstack_dashboard.dashboard_${ID}`,
     );
-    expect(file).toContain(`id = "${ID}"`);
+    expect(file).toContain(`id = "${TEAM_ID}/${ID}"`);
     expect(file).toContain(
       `to = clickhouse_clickstack_saved_search.saved_search_${otherId}`,
     );
@@ -417,6 +438,7 @@ describe('buildImportFile', () => {
   it('emits a unique address per resource when names and id suffixes collide', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [
         { type: 'alert', id: `${'a'.repeat(19)}11111`, name: 'Alert' },
         { type: 'alert', id: `${'b'.repeat(19)}11111`, name: 'Alert' },
@@ -433,6 +455,7 @@ describe('buildImportFile', () => {
   it('warns that re-exporting is not additive', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
     });
 
@@ -445,6 +468,7 @@ describe('buildImportFile', () => {
   it('marks the file partial when a listing was capped', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
       truncatedTypes: ['dashboards', 'alerts'],
     });
@@ -457,15 +481,31 @@ describe('buildImportFile', () => {
   it('omits the partial-export marker when nothing was capped', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
     });
 
     expect(file).not.toContain('PARTIAL EXPORT');
   });
 
+  // The team prefix has two consequences a user only discovers at apply time:
+  // the `team` attribute it writes forces replacement if dropped, and a
+  // provider configured against the Cloud API rejects team scoping outright.
+  it('warns about the team attribute and the Cloud-configured provider', () => {
+    const file = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
+    });
+
+    expect(file).toContain('RequiresReplace');
+    expect(file).toContain('clickstack_service_id');
+  });
+
   it('explains that addresses survive a rename, and warns about whole-body writes', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [{ type: 'dashboard', id: ID, name: 'Usage' }],
     });
     expect(file).toContain('survive a rename');
@@ -476,11 +516,14 @@ describe('buildImportFile', () => {
   it('emits connections of unknown provenance as a locals block', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources: [],
       connectionLocals: [{ id: ID, name: 'Local ClickHouse' }],
     });
     expect(file).toContain('locals {');
     expect(file).toContain('# Local ClickHouse');
+    // Bare id, not the team-scoped import form: a local is a value other
+    // resources reference, not an address Terraform imports through.
     expect(file).toContain(`connection_${ID}_id = "${ID}"`);
     expect(file).not.toContain('clickhouse_clickstack_connection');
   });
@@ -498,6 +541,7 @@ describe('buildImportFile', () => {
     );
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
       resources,
       connectionLocals,
     });
