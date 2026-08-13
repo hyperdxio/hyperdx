@@ -92,12 +92,21 @@ export async function renderBuilderConfigAsSqlTemplate(
   // UNION ALL + pivot statement (see renderMultiSeriesMetricChartConfig).
   // That composed shape hasn't been wired into the raw-SQL template macros
   // yet ($__sourceTable(metricType) per branch), so only single-series metric
-  // charts can be converted to a raw-SQL query for now.
+  // charts can be converted to a raw-SQL query for now. Formula charts
+  // (HDX-5079) render through the same composed shape regardless of series
+  // count, so they can't be converted either.
   const isMetric = config.metricTables != null;
-  if (isMetric && Array.isArray(config.select) && config.select.length > 1) {
+  if (
+    isMetric &&
+    Array.isArray(config.select) &&
+    (config.select.length > 1 || (config.formulas?.length ?? 0) > 0)
+  ) {
     return {
       isError: true,
-      error: 'Multi-series metric charts cannot be auto-converted to SQL.',
+      error:
+        (config.formulas?.length ?? 0) > 0
+          ? 'Metric charts with formulas cannot be auto-converted to SQL.'
+          : 'Multi-series metric charts cannot be auto-converted to SQL.',
     };
   }
 
