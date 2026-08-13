@@ -445,6 +445,11 @@ export async function runConfigTile(
           whereLanguage:
             (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
           bodyExpression: selectStr || undefined,
+          // Forward the batch deadline's abort signal so an event-patterns
+          // tile that overruns is cancelled server-side alongside the generic
+          // chart-config path, rather than escaping cancellation and letting
+          // later tiles exceed the concurrency limit.
+          abortSignal: options?.abortSignal,
         },
       );
     }
