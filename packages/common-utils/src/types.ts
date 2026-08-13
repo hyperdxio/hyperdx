@@ -1367,6 +1367,17 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   groupByColumnsOnLeft: z.boolean().optional(),
 });
 
+/** A dashboard variable as seen by a tile's query. */
+export const ChartVariableSchema = z.object({
+  name: z.string(),
+  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  expression: z.string().optional(),
+  /** Empty means nothing is selected. */
+  values: z.array(z.string()),
+});
+
+export type ChartVariable = z.infer<typeof ChartVariableSchema>;
+
 // This is a ChartConfig type without the `with` CTE clause included.
 // It needs to be a separate, named schema to avoid use of z.lazy(...),
 // use of which allows for type mistakes to make it past linting.
@@ -1424,6 +1435,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -1639,7 +1651,10 @@ export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
-export const DASHBOARD_VARIABLE_NAME_REGEX = /^[a-zA-Z][A-Za-z0-9_]*$/;
+export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
+export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
+  `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
+);
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
 
 export const DashboardFilterSchema = z.object({
@@ -1675,7 +1690,7 @@ export const DashboardFilterSchema = z.object({
   variableName: z
     .string()
     .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
-    .regex(DASHBOARD_VARIABLE_NAME_REGEX)
+    .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
     .optional(),
 });
 
@@ -1917,6 +1932,13 @@ export const LogSourceSchema = BaseSourceSchema.extend({
     .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
+  /**
+   * Expression identifying the running release of a service. Defaults to the
+   * OpenTelemetry `service.version` resource attribute when unset; teams whose
+   * version lives elsewhere - a container image tag under GitOps, a custom
+   * attribute - point it there instead of changing instrumentation.
+   */
+  serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
@@ -1974,6 +1996,8 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   serviceNameExpression: z.string().optional(),
+  /** See `serviceVersionExpression` on `LogSourceSchema`. */
+  serviceVersionExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),

@@ -1,4 +1,5 @@
 {
+  "analytics": false,
   "affected": {
     "defaultBase": "main"
   },
