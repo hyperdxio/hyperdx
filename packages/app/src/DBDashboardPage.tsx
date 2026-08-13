@@ -23,7 +23,10 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
@@ -1767,9 +1770,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       const tableName = getMetricTableName(source, metricType);
       if (!tableName) continue;
       tc.push({
-        databaseName: source.from.databaseName,
-        tableName: tableName,
-        connectionId: source.connection,
+        ...tcFromSource(source),
+        tableName,
       });
     }
 
@@ -2947,6 +2949,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     >
       <SearchWhereInput
         tableConnections={tableConnections}
+        dateRange={searchedTimeRange}
         control={control}
         name="where"
         onSubmit={onSubmit}

@@ -809,6 +809,23 @@ export class DashboardPage {
     await this.closeFiltersModalButton.click();
   }
 
+  /**
+   * Open the "Add filter" form inside the Edit Filters Modal, without filling
+   * it in. Use when a test needs to interact with the form's inputs; use
+   * `addFilterToDashboard` to fill and save one in a single step.
+   */
+  async openAddFilterForm() {
+    await this.addFiltersButton.click();
+  }
+
+  /** Pick the data source in the filter edit form. */
+  async selectFilterSource(sourceName: string) {
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
   async fillFilterForm(
     name: string,
     sourceName: string,
@@ -824,10 +841,7 @@ export class DashboardPage {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
 
-    await this.filtersSourceSelector.click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
+    await this.selectFilterSource(sourceName);
 
     const editor = getSqlEditor(this.page, 'expression');
     await editor.click();

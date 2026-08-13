@@ -321,6 +321,7 @@ export default function AutocompleteInput({
                         selectedAutocompleteIndex === i && styles.selected,
                       )}
                       role="button"
+                      data-testid="autocomplete-suggestion"
                       key={value}
                       onMouseOver={() => {
                         setSelectedAutocompleteIndex(i);
