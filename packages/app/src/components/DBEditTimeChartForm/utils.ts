@@ -14,6 +14,7 @@ import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
+  ChartVariable,
   DisplayType,
   Filter,
   SavedChartConfig,
@@ -22,6 +23,7 @@ import {
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
@@ -141,6 +143,28 @@ export function computeDbTimeChartConfig(
       ? extendDateRangeToInterval(queriedConfig.dateRange, alert.interval)
       : queriedConfig.dateRange,
   };
+}
+
+/**
+ * Returns the dashboard variables a chart preview should use.
+ * - Builder and PromQL configs don't yet support variables, so they resolve to an empty set
+ * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
+ * - Otherwise, variables are filtered to only those referenced by the chart config.
+ */
+export function resolvePreviewVariables({
+  config,
+  variables,
+  hasAlert,
+}: {
+  config: ChartConfigWithDateRange;
+  variables: ChartVariable[] | undefined;
+  hasAlert: boolean;
+}): ChartVariable[] | undefined {
+  if (!variables) return undefined;
+  const referenced = filterReferencedVariables(config, variables);
+  return hasAlert
+    ? referenced.map(variable => ({ ...variable, values: [] }))
+    : referenced;
 }
 
 export function buildSampleEventsConfig(

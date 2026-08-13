@@ -3,9 +3,15 @@ import { useQueryState } from 'nuqs';
 import {
   FilterState,
   filtersToQuery,
+  getFilterVariableName,
   isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
-import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartVariable,
+  DashboardFilter,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
 
 import { parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
@@ -59,6 +65,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     queriesForExistingFilters,
     ignoredExpressions,
     filtersByExpression,
+    variables,
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
@@ -98,8 +105,29 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       }
     }
 
+    const variables: ChartVariable[] = [];
+    const takenNames = new Set<string>();
+    for (const definition of filters) {
+      if (!isFilterVariableEnabled(definition)) continue;
+
+      // There shouldn't be any duplicate names, but if there are then the first one wins.
+      const name = getFilterVariableName(definition);
+      if (!name || takenNames.has(name)) continue;
+      takenNames.add(name);
+
+      const selection = valuesForExistingFilters[definition.expression];
+      variables.push({
+        name,
+        expression: definition.expression,
+        values: selection
+          ? Array.from(selection.included).map(String).sort() // Sorted for deterministic react-query keys
+          : [],
+      });
+    }
+
     return {
       valuesForExistingFilters,
+      variables,
       queriesForExistingFilters: filtersToQuery(
         broadcastValues,
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
@@ -163,6 +191,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * apply to no tiles at all.
      */
     getFilterQueriesForSource,
+    /** The dashboard's variable-enabled filters and their currently selected values. */
+    variables,
   };
 };
 
