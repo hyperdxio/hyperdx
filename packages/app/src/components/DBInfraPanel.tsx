@@ -52,44 +52,8 @@ function buildChartConfig(
   metricSource: TMetricSource,
   dateRange: [Date, Date],
   granularity: Granularity,
-  mode: 'primary' | 'fallback',
 ) {
   const metricType = chart.metricType ?? 'Gauge';
-
-  if (mode === 'fallback' && chart.fallback) {
-    const [numField, denField] = chart.fallback.fields;
-    const fallbackType = chart.fallback.metricType;
-    const seriesWhere = chart.where ? `(${where}) AND (${chart.where})` : where;
-    return convertV1ChartConfigToV2(
-      {
-        dateRange,
-        granularity,
-        seriesReturnType: 'ratio',
-        series: [
-          {
-            type: 'time',
-            where: seriesWhere,
-            groupBy: chart.groupBy ? [...chart.groupBy] : [],
-            aggFn: 'avg',
-            field: `${fieldPrefix}${numField} - ${fallbackType}`,
-            table: 'metrics',
-            numberFormat: chart.fallback.numberFormat,
-          },
-          {
-            type: 'time',
-            where: seriesWhere,
-            groupBy: chart.groupBy ? [...chart.groupBy] : [],
-            aggFn: 'avg',
-            field: `${fieldPrefix}${denField} - ${fallbackType}`,
-            table: 'metrics',
-            numberFormat: chart.fallback.numberFormat,
-          },
-        ],
-      },
-      { metric: metricSource },
-    );
-  }
-
   const seriesWhere = chart.where ? `(${where}) AND (${chart.where})` : where;
   return convertV1ChartConfigToV2(
     {
@@ -160,23 +124,17 @@ const InfraSubpanelGroup = ({
     return convertDateRangeToGranularityString(dateRange);
   }, [dateRange]);
 
-  // When availability is provided, resolve each chart to primary/fallback/none.
-  const resolvedCharts = useMemo(() => {
+  // When availability is provided, only render charts whose metric exists.
+  const visibleCharts = useMemo(() => {
     if (!availability) {
-      return charts.map(chart => ({ chart, mode: 'primary' as const }));
+      return charts;
     }
-    return charts.reduce<
-      { chart: InfraChartSpec; mode: 'primary' | 'fallback' }[]
-    >((acc, chart) => {
-      const mode = resolveChartAvailability(fieldPrefix, chart, availability);
-      if (mode !== 'none') {
-        acc.push({ chart, mode });
-      }
-      return acc;
-    }, []);
+    return charts.filter(chart =>
+      resolveChartAvailability(fieldPrefix, chart, availability),
+    );
   }, [charts, availability, fieldPrefix]);
 
-  if (resolvedCharts.length === 0) {
+  if (visibleCharts.length === 0) {
     return null;
   }
 
@@ -210,7 +168,7 @@ const InfraSubpanelGroup = ({
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        {resolvedCharts.map(({ chart, mode }) => (
+        {visibleCharts.map(chart => (
           <Card key={chart.cardTestId} data-testid={chart.cardTestId}>
             <Card.Section py={8} px={8} h={height}>
               <DBTimeChart
@@ -222,7 +180,6 @@ const InfraSubpanelGroup = ({
                   metricSource,
                   dateRange,
                   granularity,
-                  mode,
                 )}
                 showDisplaySwitcher={false}
                 logReferenceTimestamp={timestamp / 1000}
@@ -360,55 +317,65 @@ export default ({
           ? `${metricSource.resourceAttributesExpression}.${correlation.correlateAttribute}:"${value}"`
           : '';
 
+        const metricsGroup = metricSource ? (
+          correlation.requiresMetricAvailability ? (
+            <AvailabilityGatedGroup
+              correlation={correlation}
+              metricSource={metricSource}
+              timestamp={timestamp}
+              where={correlationWhere}
+            />
+          ) : (
+            <InfraSubpanelGroup
+              title={correlation.title}
+              where={correlationWhere}
+              fieldPrefix={correlation.fieldPrefix}
+              charts={correlation.charts}
+              timestamp={timestamp}
+              metricSource={metricSource}
+            />
+          )
+        ) : null;
+
+        const timeline =
+          correlation.timeline && source.kind === SourceKind.Log ? (
+            <Card p="md" mt="xl">
+              <Card.Section p="md" py="xs">
+                {correlation.title} Timeline
+              </Card.Section>
+              <Card.Section>
+                <ScrollArea
+                  viewportProps={{
+                    style: { maxHeight: 280 },
+                  }}
+                >
+                  <Box p="md" py="sm">
+                    <KubeTimeline
+                      logSource={source}
+                      q={`\`${correlation.timeline.queryAttribute}\`:"${resourceAttributes?.[correlation.timeline.queryAttribute]}"`}
+                      dateRange={[
+                        sub(new Date(timestamp), { days: 1 }),
+                        add(new Date(timestamp), { days: 1 }),
+                      ]}
+                      anchorEvent={{
+                        label: <div className="text-brand">This Event</div>,
+                        timestamp: new Date(timestamp).toISOString(),
+                      }}
+                    />
+                  </Box>
+                </ScrollArea>
+              </Card.Section>
+            </Card>
+          ) : null;
+
+        if (!metricsGroup && !timeline) {
+          return null;
+        }
+
         return (
           <div key={correlation.title}>
-            {metricSource &&
-              (correlation.requiresMetricAvailability ? (
-                <AvailabilityGatedGroup
-                  correlation={correlation}
-                  metricSource={metricSource}
-                  timestamp={timestamp}
-                  where={correlationWhere}
-                />
-              ) : (
-                <InfraSubpanelGroup
-                  title={correlation.title}
-                  where={correlationWhere}
-                  fieldPrefix={correlation.fieldPrefix}
-                  charts={correlation.charts}
-                  timestamp={timestamp}
-                  metricSource={metricSource}
-                />
-              ))}
-            {correlation.timeline && source.kind === SourceKind.Log && (
-              <Card p="md" mt="xl">
-                <Card.Section p="md" py="xs">
-                  {correlation.title} Timeline
-                </Card.Section>
-                <Card.Section>
-                  <ScrollArea
-                    viewportProps={{
-                      style: { maxHeight: 280 },
-                    }}
-                  >
-                    <Box p="md" py="sm">
-                      <KubeTimeline
-                        logSource={source}
-                        q={`\`${correlation.timeline.queryAttribute}\`:"${resourceAttributes?.[correlation.timeline.queryAttribute]}"`}
-                        dateRange={[
-                          sub(new Date(timestamp), { days: 1 }),
-                          add(new Date(timestamp), { days: 1 }),
-                        ]}
-                        anchorEvent={{
-                          label: <div className="text-brand">This Event</div>,
-                          timestamp: new Date(timestamp).toISOString(),
-                        }}
-                      />
-                    </Box>
-                  </ScrollArea>
-                </Card.Section>
-              </Card>
-            )}
+            {metricsGroup}
+            {timeline}
           </div>
         );
       })}

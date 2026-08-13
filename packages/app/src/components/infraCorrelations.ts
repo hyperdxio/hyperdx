@@ -21,16 +21,6 @@ export type InfraChartSpec = {
   readonly groupBy?: readonly string[];
   // Metric data type suffix; defaults to 'Gauge'.
   readonly metricType?: 'Gauge' | 'Sum';
-  // Fallback chart rendered when the primary field is unavailable but the
-  // fallback fields exist. The fields are rendered as a ratio (numerator /
-  // denominator) with the given metric type.
-  readonly fallback?: InfraChartFallback;
-};
-
-export type InfraChartFallback = {
-  readonly fields: readonly [string, string]; // [numerator, denominator]
-  readonly metricType: 'Gauge' | 'Sum';
-  readonly numberFormat: NumberFormat;
 };
 
 // A declarative infrastructure correlation group. `detectAttribute` decides
@@ -100,11 +90,6 @@ const GPU_CHART_SPECS: readonly InfraChartSpec[] = [
     field: 'memory.utilization',
     numberFormat: GPU_UTILIZATION_NUMBER_FORMAT,
     groupBy: [GPU_GROUP_BY_EXPR],
-    fallback: {
-      fields: ['memory.usage', 'memory.limit'],
-      metricType: 'Sum',
-      numberFormat: GPU_UTILIZATION_NUMBER_FORMAT,
-    },
   },
 ];
 

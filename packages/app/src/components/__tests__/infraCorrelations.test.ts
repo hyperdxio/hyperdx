@@ -112,15 +112,11 @@ describe('GPU chart specs', () => {
     );
   });
 
-  it('provides a fallback for memory utilization from sum table', () => {
+  it('does not define a fallback on memory utilization', () => {
     const memChart = gpuCorrelation.charts.find(
       c => c.cardTestId === 'gpu-memory-utilization-card',
     );
-    expect(memChart?.fallback).toEqual({
-      fields: ['memory.usage', 'memory.limit'],
-      metricType: 'Sum',
-      numberFormat: expect.objectContaining({ output: 'percent' }),
-    });
+    expect(memChart).not.toHaveProperty('fallback');
   });
 
   it('includes hw.id/hw.name/hw.model in groupBy expression', () => {
@@ -137,88 +133,51 @@ describe('GPU chart specs', () => {
 describe('resolveChartAvailability', () => {
   const fieldPrefix = 'hw.gpu.';
 
-  const makeAvailability = (
-    gauge: string[] = [],
-    sum: string[] = [],
-  ): GpuMetricsAvailability => ({
-    gaugeMetrics: new Set(gauge),
-    sumMetrics: new Set(sum),
-    hasAny: gauge.length > 0 || sum.length > 0,
+  const makeAvailability = (metrics: string[]): GpuMetricsAvailability => ({
+    availableMetrics: new Set(metrics),
+    hasAny: metrics.length > 0,
     isLoading: false,
   });
 
-  it('returns primary when gauge metric exists', () => {
+  it('returns true when the metric exists', () => {
     const chart = { field: 'utilization' };
     const availability = makeAvailability(['hw.gpu.utilization']);
     expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      'primary',
+      true,
     );
   });
 
-  it('returns none when neither primary nor fallback exists', () => {
+  it('returns false when the metric does not exist', () => {
     const chart = { field: 'utilization' };
-    const availability = makeAvailability();
+    const availability = makeAvailability([]);
     expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      'none',
+      false,
     );
   });
 
-  it('returns fallback when primary is absent but fallback fields exist in sum', () => {
-    const chart = {
-      field: 'memory.utilization',
-      fallback: {
-        fields: ['memory.usage', 'memory.limit'] as [string, string],
-        metricType: 'Sum' as const,
-        numberFormat: { output: 'percent' as const },
-      },
-    };
-    const availability = makeAvailability(
-      [],
-      ['hw.gpu.memory.usage', 'hw.gpu.memory.limit'],
-    );
+  it('returns true for memory.utilization when present', () => {
+    const chart = { field: 'memory.utilization' };
+    const availability = makeAvailability(['hw.gpu.memory.utilization']);
     expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      'fallback',
+      true,
     );
   });
 
-  it('prefers primary over fallback even if both exist', () => {
-    const chart = {
-      field: 'memory.utilization',
-      fallback: {
-        fields: ['memory.usage', 'memory.limit'] as [string, string],
-        metricType: 'Sum' as const,
-        numberFormat: { output: 'percent' as const },
-      },
-    };
-    const availability = makeAvailability(
-      ['hw.gpu.memory.utilization'],
-      ['hw.gpu.memory.usage', 'hw.gpu.memory.limit'],
-    );
-    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      'primary',
-    );
-  });
-
-  it('returns none when only one fallback field exists', () => {
-    const chart = {
-      field: 'memory.utilization',
-      fallback: {
-        fields: ['memory.usage', 'memory.limit'] as [string, string],
-        metricType: 'Sum' as const,
-        numberFormat: { output: 'percent' as const },
-      },
-    };
-    const availability = makeAvailability([], ['hw.gpu.memory.usage']);
-    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      'none',
-    );
-  });
-
-  it('handles Sum primary metric type', () => {
-    const chart = { field: 'some.counter', metricType: 'Sum' as const };
-    const availability = makeAvailability([], ['hw.gpu.some.counter']);
-    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      'primary',
-    );
+  it('handles partial availability (one present, one absent)', () => {
+    const availability = makeAvailability(['hw.gpu.utilization']);
+    expect(
+      resolveChartAvailability(
+        fieldPrefix,
+        { field: 'utilization' },
+        availability,
+      ),
+    ).toBe(true);
+    expect(
+      resolveChartAvailability(
+        fieldPrefix,
+        { field: 'memory.utilization' },
+        availability,
+      ),
+    ).toBe(false);
   });
 });
