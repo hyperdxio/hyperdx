@@ -22,6 +22,7 @@ export default function AutocompleteInput({
   size = 'sm',
   aboveSuggestions,
   belowSuggestions,
+  rightAdornment,
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
   zIndex = 999,
@@ -43,6 +44,8 @@ export default function AutocompleteInput({
   tokenInfo?: TokenInfo;
   aboveSuggestions?: React.ReactNode;
   belowSuggestions?: React.ReactNode;
+  /** Rendered at the right edge of the input, left of the language switch. */
+  rightAdornment?: React.ReactNode;
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
   zIndex?: number;
@@ -188,7 +191,7 @@ export default function AutocompleteInput({
     if (inputRef.current) {
       setInputWidth(inputRef.current.clientWidth);
     }
-  }, [language, onLanguageChange, inputRef]);
+  }, [language, onLanguageChange, rightAdornment, inputRef]);
 
   // Height including the 2px border from .textarea (1px top + 1px bottom)
   const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
@@ -316,12 +319,16 @@ export default function AutocompleteInput({
             }}
             rightSectionWidth={rightSectionWidth}
             rightSection={
-              language != null && onLanguageChange != null ? (
-                <div ref={ref}>
-                  <InputLanguageSwitch
-                    language={language}
-                    onLanguageChange={onLanguageChange}
-                  />
+              rightAdornment != null ||
+              (language != null && onLanguageChange != null) ? (
+                <div ref={ref} className={styles.rightSection}>
+                  {rightAdornment}
+                  {language != null && onLanguageChange != null && (
+                    <InputLanguageSwitch
+                      language={language}
+                      onLanguageChange={onLanguageChange}
+                    />
+                  )}
                 </div>
               ) : undefined
             }

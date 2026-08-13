@@ -8,6 +8,7 @@ import {
   hasVariableMacro,
   substituteChartConfigVariables,
   substituteVariables,
+  validateVariableReferencesInTemplate,
 } from '@/variables';
 
 const variable = (
@@ -863,5 +864,157 @@ describe('substituteChartConfigVariables', () => {
         }),
       ).where,
     ).toBe("(1=1 /** no values selected for variable 'service' */)");
+  });
+});
+
+describe('validateVariableReferencesInTemplate', () => {
+  const validate = validateVariableReferencesInTemplate;
+
+  it('says nothing about an expression with no references', () => {
+    expect(validate("ServiceName = 'api'", [SERVICE])).toEqual({
+      errors: [],
+      warnings: [],
+    });
+  });
+
+  it('warns about a reference to a variable that does not exist', () => {
+    const { errors, warnings } = validate('ServiceName IN ($srvice)', [
+      SERVICE,
+      variable('env', ['prod']),
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([
+      'SQL references unknown variable $srvice. Available variables: service, env.',
+    ]);
+  });
+
+  it('lists the available variables as (none) when a dashboard declares none', () => {
+    expect(validate('ServiceName IN ($service)', []).warnings).toEqual([
+      'SQL references unknown variable $service. Available variables: (none).',
+    ]);
+  });
+
+  it('names each unknown reference once, as written', () => {
+    expect(validate('$a = ${a} AND ${b:csv} = 1', [SERVICE]).warnings).toEqual([
+      'SQL references unknown variable $a, ${a}, ${b:csv}. Available variables: service.',
+    ]);
+  });
+
+  it('takes the sentence subject from the caller', () => {
+    expect(
+      validate('ServiceName IN ($srvice)', [SERVICE], {
+        subject: 'This expression',
+      }).warnings,
+    ).toEqual([
+      'This expression references unknown variable $srvice. Available variables: service.',
+    ]);
+  });
+
+  it('errors when a sqlstring reference is wrapped in quotes', () => {
+    const { errors } = validate("ServiceName = '$service'", [SERVICE]);
+
+    expect(errors).toEqual([
+      '$service is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, service) or ${service:csv} instead?',
+    ]);
+  });
+
+  it('warns that a bare reference renders as NULL before anything is selected', () => {
+    const { errors, warnings } = validate('ServiceName IN ($service)', [
+      SERVICE,
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([
+      '$service has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, service) or $__conditionalAll(<condition>, service) so the query stays valid when no values are selected.',
+    ]);
+  });
+
+  it('accepts a reference guarded by its own variable macro', () => {
+    expect(
+      validate('$__filter(ServiceName IN ($service), service)', [SERVICE]),
+    ).toEqual({ errors: [], warnings: [] });
+  });
+
+  it('accepts a format that has a valid empty state', () => {
+    expect(validate('match(ServiceName, ${service:regex})', [SERVICE])).toEqual(
+      { errors: [], warnings: [] },
+    );
+  });
+
+  describe('with no variable context at all', () => {
+    it('errors on a macro, which can only have been meant as one', () => {
+      expect(validate('$__filter(ServiceName, service)', undefined)).toEqual({
+        errors: ['SQL uses $__filter, but no variables are available here.'],
+        warnings: [],
+      });
+    });
+
+    it('only warns on a value reference, which may be literal text', () => {
+      expect(validate('ServiceName IN ($service)', undefined)).toEqual({
+        errors: [],
+        warnings: [
+          'SQL references $service, but no variables are available here.',
+        ],
+      });
+    });
+  });
+
+  describe('a Lucene expression', () => {
+    it('still warns about a reference to a variable that does not exist', () => {
+      expect(
+        validate('ServiceName:$srvice', [SERVICE], { language: 'lucene' })
+          .warnings,
+      ).toEqual([
+        'SQL references unknown variable $srvice. Available variables: service.',
+      ]);
+    });
+
+    it('accepts a bare reference: the lucene format has a valid empty state', () => {
+      expect(
+        validate('ServiceName:$service', [SERVICE], { language: 'lucene' }),
+      ).toEqual({ errors: [], warnings: [] });
+    });
+
+    it('accepts a quoted reference: the lucene format quotes each value', () => {
+      expect(
+        validate('ServiceName:"$service"', [SERVICE], { language: 'lucene' }),
+      ).toEqual({ errors: [], warnings: [] });
+    });
+
+    // The macros are never expanded here, so nothing downstream would say so.
+    it.each([
+      '$__filter(ServiceName, service)',
+      '$__conditionalAll(ServiceName = 1, service)',
+    ])('errors on the macro %s, which is left as literal text', template => {
+      expect(validate(template, [SERVICE], { language: 'lucene' })).toEqual({
+        errors: [
+          `${template.slice(0, template.indexOf('('))} has no meaning in a Lucene expression — ` +
+            'it is left as written and matched as literal text. Switch this input to SQL, ' +
+            'or reference the variable directly, as in <field>:$service.',
+        ],
+        warnings: [],
+      });
+    });
+
+    it('reports a macro naming an unknown variable the same way', () => {
+      expect(
+        validate('$__filter(ServiceName, srvice)', [SERVICE], {
+          language: 'lucene',
+        }).errors,
+      ).toEqual([
+        '$__filter has no meaning in a Lucene expression — it is left as written ' +
+          'and matched as literal text. Switch this input to SQL, or reference the ' +
+          'variable directly, as in <field>:$srvice.',
+      ]);
+    });
+
+    it('leaves the same macro alone in a SQL expression, where it expands', () => {
+      expect(
+        validate('$__filter(ServiceName, service)', [SERVICE], {
+          language: 'sql',
+        }),
+      ).toEqual({ errors: [], warnings: [] });
+    });
   });
 });

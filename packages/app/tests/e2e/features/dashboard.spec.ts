@@ -2064,6 +2064,115 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         });
       },
     );
+
+    test(
+      'flags questionable variable references on the input that holds them',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Open a builder tile on a dashboard with a variable', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+        });
+
+        /**
+         * Put `expression` in the WHERE input and assert what it says about the
+         * variables the expression references. Retried as a whole: CodeMirror
+         * occasionally drops a keystroke burst, and the check itself is
+         * debounced.
+         */
+        const expectWhereWarning = async (
+          expression: string,
+          assertWarning: (warning: string) => void,
+        ) => {
+          await expect(async () => {
+            await dashboardPage.chartEditor.setSqlWhere(expression);
+            assertWarning(
+              await dashboardPage.chartEditor.getWhereVariableWarning(),
+            );
+          }).toPass({ timeout: 20000 });
+        };
+
+        await test.step('An unknown variable is flagged, and the known ones named', async () => {
+          await expectWhereWarning('ServiceName IN ($srvice)', warning => {
+            expect(warning).toContain(
+              'references unknown variable $srvice. Available variables: svc.',
+            );
+          });
+          // In the DOM is not enough — the icon shares the input's row with the
+          // editor itself, so it has to survive the layout.
+          await expect(
+            dashboardPage.chartEditor.whereVariableWarning(),
+          ).toBeVisible();
+        });
+
+        await test.step('A bare reference is flagged for its empty state', async () => {
+          await expectWhereWarning('ServiceName IN ($svc)', warning => {
+            expect(warning).toContain('it renders as NULL');
+          });
+        });
+
+        await test.step('A quoted reference is flagged as already quoted', async () => {
+          await expectWhereWarning("ServiceName = '$svc'", warning => {
+            expect(warning).toContain('is wrapped in quotes');
+          });
+        });
+
+        await test.step('A correct $__filter usage is left alone', async () => {
+          await expectWhereWarning('$__filter(ServiceName, svc)', warning => {
+            expect(warning).toBe('');
+          });
+        });
+
+        await test.step('A Lucene reference is judged by the lucene format', async () => {
+          // Nothing wrong with either of these there: the format quotes each
+          // value itself and renders a term that drops out when unselected.
+          await dashboardPage.chartEditor.setWhereLanguage('Lucene');
+          await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$svc');
+          await expect(async () => {
+            expect(
+              await dashboardPage.chartEditor.getWhereVariableWarning(),
+            ).toBe('');
+          }).toPass({ timeout: 10000 });
+
+          await dashboardPage.chartEditor.typeLuceneWhere(
+            'ServiceName:$srvice',
+          );
+          await expect(async () => {
+            expect(
+              await dashboardPage.chartEditor.getWhereVariableWarning(),
+            ).toContain('references unknown variable $srvice');
+          }).toPass({ timeout: 10000 });
+          // The Lucene input has no error affordance of its own, so the icon
+          // floats over the right edge of the textarea — check it is not
+          // clipped or covered.
+          await expect(
+            dashboardPage.chartEditor.whereVariableWarning(),
+          ).toBeVisible();
+
+          // The same macro the SQL step above accepted. Switching the language
+          // keeps the text, and here it is never expanded — it would be
+          // searched for as literal text, so it has to be called out.
+          await dashboardPage.chartEditor.typeLuceneWhere(
+            '$__filter(ServiceName, svc)',
+          );
+          await expect(async () => {
+            expect(
+              await dashboardPage.chartEditor.getWhereVariableWarning(),
+            ).toContain('$__filter has no meaning in a Lucene expression');
+          }).toPass({ timeout: 10000 });
+        });
+      },
+    );
   });
 
   test(

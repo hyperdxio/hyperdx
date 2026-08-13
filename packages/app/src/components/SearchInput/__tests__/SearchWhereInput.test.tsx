@@ -36,16 +36,20 @@ const queryClient = new QueryClient({
 // Test wrapper component that provides form context and query client
 function TestWrapper({
   defaultLanguage = 'lucene',
+  defaultWhere = '',
+  supportsVariables,
   onSubmit,
   children,
 }: {
   defaultLanguage?: 'sql' | 'lucene';
+  defaultWhere?: string;
+  supportsVariables?: boolean;
   onSubmit?: jest.Mock;
   children?: (props: { control: any }) => React.ReactNode;
 }) {
   const form = useForm({
     defaultValues: {
-      where: '',
+      where: defaultWhere,
       whereLanguage: defaultLanguage,
     },
   });
@@ -61,6 +65,7 @@ function TestWrapper({
           name="where"
           onSubmit={onSubmit}
           enableHotkey
+          enableVariables={supportsVariables}
         />
       )}
     </QueryClientProvider>
@@ -215,7 +220,7 @@ describe('SearchWhereInput', () => {
     ) => {
       renderWithMantine(
         <SqlVariablesProvider variables={inScope}>
-          <TestWrapper defaultLanguage="lucene" />
+          <TestWrapper defaultLanguage="lucene" supportsVariables />
         </SqlVariablesProvider>,
       );
       return screen.getByPlaceholderText(/Search your events w\/ Lucene/i);
@@ -281,6 +286,160 @@ describe('SearchWhereInput', () => {
       // even though it filters nothing.
       await waitFor(() => expect(searchingFor()).toContain('$svc'));
       expect(searchingFor()).not.toContain('""');
+    });
+
+    it('offers nothing to a field the variables do not apply to', async () => {
+      // A field the renderer never substitutes must not advertise a reference
+      // form that would reach ClickHouse verbatim.
+      const user = userEvent.setup();
+      renderWithMantine(
+        <SqlVariablesProvider variables={variables}>
+          <TestWrapper defaultLanguage="lucene" />
+        </SqlVariablesProvider>,
+      );
+
+      await user.type(
+        screen.getByPlaceholderText(/Search your events w\/ Lucene/i),
+        'ServiceName:$s',
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.queryByText('Dashboard variables'),
+        ).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText('$svc')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Variable validation', () => {
+    const variables = [
+      { name: 'svc', values: ['api'], expression: 'ServiceName' },
+    ];
+
+    const renderWithVariables = (
+      props: React.ComponentProps<typeof TestWrapper>,
+    ) =>
+      renderWithMantine(
+        <SqlVariablesProvider variables={variables}>
+          <TestWrapper supportsVariables {...props} />
+        </SqlVariablesProvider>,
+      );
+
+    /** The messages the indicator shows, or null when there is no indicator. */
+    const issueMessages = () =>
+      screen.queryByTestId('variable-validation')?.getAttribute('aria-label') ??
+      null;
+
+    it('warns that a SQL expression references a variable that does not exist', async () => {
+      renderWithVariables({
+        defaultLanguage: 'sql',
+        defaultWhere: 'ServiceName IN ($srvice)',
+      });
+
+      await waitFor(() =>
+        expect(issueMessages()).toBe(
+          'This expression references unknown variable $srvice. Available variables: svc.',
+        ),
+      );
+    });
+
+    it('warns that a Lucene expression references a variable that does not exist', async () => {
+      renderWithVariables({
+        defaultLanguage: 'lucene',
+        defaultWhere: 'ServiceName:$srvice',
+      });
+
+      await waitFor(() =>
+        expect(issueMessages()).toBe(
+          'This expression references unknown variable $srvice. Available variables: svc.',
+        ),
+      );
+    });
+
+    it('errors when a SQL reference is wrapped in quotes', async () => {
+      renderWithVariables({
+        defaultLanguage: 'sql',
+        defaultWhere: "ServiceName = '$svc'",
+      });
+
+      await waitFor(() =>
+        expect(issueMessages()).toContain('is wrapped in quotes'),
+      );
+    });
+
+    it('leaves a quoted reference alone in Lucene, where each value is quoted anyway', async () => {
+      renderWithVariables({
+        defaultLanguage: 'lucene',
+        defaultWhere: 'ServiceName:"$svc"',
+      });
+
+      await waitFor(() => expect(issueMessages()).toBeNull());
+    });
+
+    it('says nothing without a variable context, where nothing is substituted', async () => {
+      // No provider: an expression on the search page or in a source form is
+      // never substituted, so a `$name` in it is just text.
+      renderWithMantine(
+        <TestWrapper
+          supportsVariables
+          defaultLanguage="sql"
+          defaultWhere="ServiceName IN ($srvice)"
+        />,
+      );
+
+      await waitFor(() => expect(issueMessages()).toBeNull());
+    });
+
+    it('says nothing about a field the variables do not apply to', async () => {
+      renderWithVariables({
+        defaultLanguage: 'sql',
+        defaultWhere: 'ServiceName IN ($srvice)',
+        supportsVariables: false,
+      });
+
+      await waitFor(() => expect(issueMessages()).toBeNull());
+    });
+
+    it.each([
+      // The dashboard variables feature is off, so nothing is substituted.
+      ['the feature is disabled', undefined],
+      // On, but no filter on this dashboard is exposed as a variable.
+      ['the dashboard declares none', []],
+    ])('says nothing when %s', async (_case, inScope) => {
+      renderWithMantine(
+        <SqlVariablesProvider variables={inScope}>
+          <TestWrapper
+            supportsVariables
+            defaultLanguage="sql"
+            defaultWhere="ServiceName IN ($srvice)"
+          />
+        </SqlVariablesProvider>,
+      );
+
+      await waitFor(() => expect(issueMessages()).toBeNull());
+    });
+
+    it('offers no completions when the dashboard declares none', async () => {
+      // The other half of the same prop: an empty scope has nothing to suggest
+      // either, so the two never disagree.
+      const user = userEvent.setup();
+      renderWithMantine(
+        <SqlVariablesProvider variables={[]}>
+          <TestWrapper supportsVariables defaultLanguage="lucene" />
+        </SqlVariablesProvider>,
+      );
+
+      await user.type(
+        screen.getByPlaceholderText(/Search your events w\/ Lucene/i),
+        'ServiceName:$s',
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.queryByText('Dashboard variables'),
+        ).not.toBeInTheDocument(),
+      );
     });
   });
 });

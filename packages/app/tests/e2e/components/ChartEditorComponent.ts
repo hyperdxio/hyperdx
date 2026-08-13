@@ -102,6 +102,38 @@ export class ChartEditorComponent {
   }
 
   /**
+   * A whole WHERE input — its language switch, the SQL or Lucene editor, and
+   * anything the input renders beside them. Located from the language switch,
+   * which is the one part present in both languages and whichever state the
+   * editor is in.
+   */
+  private whereRow(scope: 'chart' | 'series' = 'chart'): Locator {
+    return this.whereInput(
+      this.editorForm().getByTestId('where-language-switch'),
+      scope,
+    ).locator('xpath=..');
+  }
+
+  /** The warning icon a WHERE input shows about the variables it references. */
+  whereVariableWarning(scope: 'chart' | 'series' = 'chart'): Locator {
+    return this.whereRow(scope).getByTestId('variable-validation');
+  }
+
+  /**
+   * What a WHERE input says about the dashboard variables its expression
+   * references, or '' when it flags nothing.
+   */
+  async getWhereVariableWarning(
+    scope: 'chart' | 'series' = 'chart',
+  ): Promise<string> {
+    const messages = await this.whereVariableWarning(scope).evaluateAll(
+      elements =>
+        elements.map(element => element.getAttribute('aria-label') ?? ''),
+    );
+    return messages.join(' ');
+  }
+
+  /**
    * Select SQL or Lucene on a WHERE input. Both inputs default to Lucene.
    */
   async setWhereLanguage(
@@ -122,15 +154,10 @@ export class ChartEditorComponent {
 
   /** Focus a WHERE input and replace its contents with `expression`. */
   private async fillWhereEditor(expression: string, scope: 'chart' | 'series') {
-    const editor = this.whereInput(
-      // Matching on the placeholder only finds still-empty editors, so filling
-      // both inputs works in either order: whichever is still empty stays at
-      // the end (or start) of the match list.
-      this.editorForm().locator(
-        `div.cm-editor:has-text("SQL WHERE clause (ex. column = 'foo')")`,
-      ),
-      scope,
-    ).locator('.cm-content');
+    // Located through the row rather than the placeholder, which CodeMirror
+    // drops as soon as there is content — so this can refill an input it has
+    // already filled once.
+    const editor = this.whereRow(scope).locator('.cm-content');
     await editor.click();
     await this.page.keyboard.press('ControlOrMeta+A');
     await this.page.keyboard.press('Delete');

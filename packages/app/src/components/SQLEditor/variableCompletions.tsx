@@ -216,21 +216,44 @@ export function SqlVariablesProvider({
   );
 }
 
-/** Variable completions for a SQL input inside a `SqlVariablesProvider`. */
-export function useVariableCompletions(): SQLCompletion[] {
+export type VariableSupportOptions = { enabled?: boolean };
+
+/**
+ * The variables an input can use, or undefined when there are none to use.
+ *
+ * An empty scope is undefined here rather than `[]`: to an input there is no
+ * difference between a dashboard that declares no variables, one with the
+ * feature disabled, and somewhere that is not a dashboard at all — in each case
+ * nothing is substituted, so there is nothing to offer and nothing to check.
+ */
+export function useChartVariables({
+  enabled = true,
+}: VariableSupportOptions = {}): ChartVariable[] | undefined {
   const variables = use(SqlVariablesContext);
+  return enabled && variables?.length ? variables : undefined;
+}
+
+/** Variable completions for a SQL input inside a `SqlVariablesProvider`. */
+export function useVariableCompletions(
+  options?: VariableSupportOptions,
+): SQLCompletion[] {
+  const variables = useChartVariables(options);
   return useMemo(() => buildVariableCompletions(variables), [variables]);
 }
 
 /** Variable suggestions for a Lucene input inside a `SqlVariablesProvider`. */
-export function useLuceneVariableSuggestions(): LuceneVariableSuggestion[] {
-  const variables = use(SqlVariablesContext);
+export function useLuceneVariableSuggestions(
+  options?: VariableSupportOptions,
+): LuceneVariableSuggestion[] {
+  const variables = useChartVariables(options);
   return useMemo(() => buildLuceneVariableSuggestions(variables), [variables]);
 }
 
 /** Expands variables in a Lucene expression for an input's English summary */
-export function useLuceneVariableEnglishExpander(): (text: string) => string {
-  const variables = use(SqlVariablesContext);
+export function useLuceneVariableEnglishExpander(
+  options?: VariableSupportOptions,
+): (text: string) => string {
+  const variables = useChartVariables(options);
   return useCallback(
     (text: string) => expandLuceneVariablesForEnglishDisplay(text, variables),
     [variables],

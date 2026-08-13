@@ -4,6 +4,13 @@
   min-height: var(--autocomplete-base-height, 36px);
 }
 
+/* The measured right section: an optional adornment, then the language switch */
+.rightSection {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .textarea {
   flex-grow: 1;
   resize: none;

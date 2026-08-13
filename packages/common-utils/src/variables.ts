@@ -718,6 +718,125 @@ export function getVariableReferences(input: string): VariableReference[] {
   return references;
 }
 
+/** `$a, $b` — deduplicated, in source order, for use in a message. */
+function formatReferenceList(references: VariableReference[]): string {
+  return [...new Set(references.map(reference => reference.raw))].join(', ');
+}
+
+export type VariableReferenceIssues = { errors: string[]; warnings: string[] };
+
+/**
+ * Checks on the dashboard variables a single expression references.
+ *
+ * `variables` is tri-state and each state means something different here:
+ * `undefined` is "no variable context" (the chart explorer, or a dashboard with
+ * the feature flag off) where nothing is substituted at all; `[]` is a dashboard
+ * whose filters expose no variables.
+ *
+ * Only *value* references (`$name`, `${name}`, `${name:format}`) are inspected.
+ * The macro forms either expand correctly or throw, and those messages reach
+ * the user through expansion — except in the two cases where expansion never
+ * runs and they would pass through silently: no context at all, and a Lucene
+ * expression. Both are reported here.
+ */
+export function validateVariableReferencesInTemplate(
+  template: string,
+  variables: ChartVariable[] | undefined,
+  {
+    subject = 'SQL',
+    language = 'sql',
+  }: {
+    /** The sentence subject of each message, e.g. `SQL references ...`. */
+    subject?: string;
+    /** The language the renderer parses this template as. */
+    language?: SearchConditionLanguage;
+  } = {},
+): VariableReferenceIssues {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const references = getVariableReferences(template);
+  if (references.length === 0) return { errors, warnings };
+
+  const macroReferences = references.filter(r => r.kind === 'macro');
+  const valueReferences = references.filter(r => r.kind !== 'macro');
+
+  // Variables are not available on chart explorer (and maybe other contexts)
+  if (variables == null) {
+    // Macros are always an error, we assume no query will intentionally include them without variable context.
+    if (macroReferences.length > 0) {
+      errors.push(
+        `${subject} uses ${formatReferenceList(macroReferences)}, but no variables are available here.`,
+      );
+    }
+
+    // $var and ${var} references only trigger a warning since they may be a literal the user means to keep.
+    if (valueReferences.length > 0) {
+      warnings.push(
+        `${subject} references ${formatReferenceList(valueReferences)}, but no variables are available here.`,
+      );
+    }
+    return { errors, warnings };
+  }
+
+  const knownVariableNames = new Set(variables.map(variable => variable.name));
+  const available =
+    variables.length > 0
+      ? variables.map(variable => variable.name).join(', ')
+      : '(none)';
+
+  const unknown = valueReferences.filter(r => !knownVariableNames.has(r.name));
+  if (unknown.length > 0) {
+    warnings.push(
+      `${subject} references unknown variable ${formatReferenceList(unknown)}. Available variables: ${available}.`,
+    );
+  }
+
+  // Macros are not supported in lucene
+  if (language === 'lucene') {
+    if (macroReferences.length > 0) {
+      const [{ name }] = macroReferences;
+      errors.push(
+        `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
+      );
+    }
+    // The two checks below are specific to the `sqlstring` default format.
+    return { errors, warnings };
+  }
+
+  // An unrecognized format throws during expansion, so it is already reported.
+  const resolved = valueReferences.filter(
+    r =>
+      knownVariableNames.has(r.name) &&
+      (r.format == null || isVariableFormat(r.format)),
+  );
+
+  const quoted = resolved.filter(
+    r => (r.format ?? 'sqlstring') === 'sqlstring' && r.inStringLiteral,
+  );
+  if (quoted.length > 0) {
+    const [{ name }] = quoted;
+    errors.push(
+      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, ${name}) or \${${name}:csv} instead?`,
+    );
+  }
+
+  const unguarded = resolved.filter(
+    r =>
+      (r.format ?? 'sqlstring') === 'sqlstring' &&
+      !r.inStringLiteral &&
+      r.guardedBy !== r.name,
+  );
+  if (unguarded.length > 0) {
+    const [{ name }] = unguarded;
+    warnings.push(
+      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, ${name}) or $__conditionalAll(<condition>, ${name}) so the query stays valid when no values are selected.`,
+    );
+  }
+
+  return { errors, warnings };
+}
+
 /**
  * Returns the names of every variable the template could reference.
  * Never throws: it runs over saved SQL that may be mid-edit or malformed.
