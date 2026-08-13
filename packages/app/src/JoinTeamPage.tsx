@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
-import { Button, Paper, Text, TextInput } from '@mantine/core';
+import { Button, Notification, Paper, Text, TextInput } from '@mantine/core';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
+import { PasswordCheck } from './PasswordCheck';
 
 export default function JoinTeam() {
   const router = useRouter();
   const brandName = useBrandDisplayName();
   const { err, token } = router.query;
+  const [password, setPassword] = useState('');
 
   return (
     <div className="AuthPage">
@@ -29,6 +32,8 @@ export default function JoinTeam() {
                   name="password"
                   type="password"
                   label="Password"
+                  value={password}
+                  onChange={event => setPassword(event.currentTarget.value)}
                   styles={{
                     label: {
                       fontSize: '0.875rem',
@@ -37,6 +42,9 @@ export default function JoinTeam() {
                     },
                   }}
                 />
+                <Notification withCloseButton={false} mt="sm">
+                  <PasswordCheck password={password} />
+                </Notification>
                 {err != null && (
                   <Text c="red" mt="sm" data-test-id="auth-error-msg">
                     {err === 'invalid'
