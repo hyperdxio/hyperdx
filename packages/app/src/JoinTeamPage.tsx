@@ -28,7 +28,7 @@ export default function JoinTeam() {
     <div className="AuthPage">
       <NextSeo title={`Join Team - ${brandName}`} />
       <div className="d-flex align-items-center justify-content-center vh-100 p-2">
-        <div>
+        <div style={{ width: '26rem', maxWidth: '100%' }}>
           <div className="text-center mb-4">
             <h2 className="me-2 text-center">Join Team</h2>
           </div>
@@ -58,7 +58,12 @@ export default function JoinTeam() {
                   <PasswordCheck password={password} />
                 </Notification>
                 {errorMessage != null && (
-                  <Text c="red" mt="sm" data-test-id="auth-error-msg">
+                  <Text
+                    c="red"
+                    mt="sm"
+                    data-test-id="auth-error-msg"
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
                     {errorMessage}
                   </Text>
                 )}
