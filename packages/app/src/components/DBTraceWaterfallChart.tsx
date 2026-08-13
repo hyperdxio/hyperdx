@@ -1282,6 +1282,8 @@ export function DBTraceWaterfallChartContainer({
               </Text>
               <SearchWhereInput
                 tableConnection={tcFromSource(traceTableSource)}
+                sourceId={traceTableSource.id}
+                dateRange={dateRange}
                 name="traceWhere"
                 languageName="traceWhereLanguage"
                 control={control}
@@ -1319,6 +1321,8 @@ export function DBTraceWaterfallChartContainer({
                 </Text>
                 <SearchWhereInput
                   tableConnection={tcFromSource(logTableSource)}
+                  sourceId={logTableSource.id}
+                  dateRange={dateRange}
                   name="logWhere"
                   languageName="logWhereLanguage"
                   control={control}

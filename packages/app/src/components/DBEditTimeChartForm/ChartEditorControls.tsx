@@ -171,6 +171,7 @@ export function ChartEditorControls({
           control={control}
           setValue={setValue}
           tableSource={tableSource}
+          dateRange={dateRange}
           onSubmit={onSubmit}
           onOpenDisplaySettings={openHeatmapSettings}
         />
@@ -199,6 +200,8 @@ export function ChartEditorControls({
             )}
           <SearchWhereInput
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="where"
             onSubmit={onSubmit}
@@ -430,6 +433,8 @@ export function ChartEditorControls({
           />
           <SearchWhereInput
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="where"
             onSubmit={onSubmit}
