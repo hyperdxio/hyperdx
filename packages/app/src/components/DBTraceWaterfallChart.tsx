@@ -1276,7 +1276,7 @@ export function DBTraceWaterfallChartContainer({
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
           <Stack gap="xs" mt="xs">
-            <Box>
+            <Box data-testid="trace-spans-filter">
               <Text size="xxs" c="dimmed" mb={2}>
                 Spans filter
               </Text>
@@ -1315,7 +1315,7 @@ export function DBTraceWaterfallChartContainer({
               )}
             </Box>
             {logTableSource && (
-              <Box>
+              <Box data-testid="trace-logs-filter">
                 <Text size="xxs" c="dimmed" mb={2}>
                   Logs filter
                 </Text>
@@ -1467,6 +1467,7 @@ export function DBTraceWaterfallChartContainer({
               underline="always"
               onClick={() => setIsFilterExpanded(prev => !prev)}
               size="xs"
+              data-testid="trace-filters-toggle"
             >
               {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
               {isFilterActive && '(active)'}
