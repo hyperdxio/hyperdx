@@ -2,7 +2,10 @@
 import React from 'react';
 import { enableMapSet } from 'immer';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
@@ -115,6 +118,17 @@ const makeLogSource = (opts: { withMVs: boolean }) => ({
       }
     : {}),
 });
+
+type SourceQueryResult = ReturnType<typeof sourceModule.useSource>;
+type MetadataWithSettings = ReturnType<
+  typeof useMetadataModule.useMetadataWithSettings
+>;
+
+const mockSourceQuery = (data: SourceQueryResult['data']) =>
+  useSource.mockReturnValue({ data, isLoading: false } as SourceQueryResult);
+
+const mockMetadata = (metadata: Partial<MetadataWithSettings>) =>
+  useMetadataWithSettings.mockReturnValue(metadata as MetadataWithSettings);
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -947,7 +961,7 @@ describe('useFetchFacets', () => {
 
     it('discovers fields from the connection when there is no sourceId', () => {
       setupDefaultMocks({ withMVs: false });
-      useSource.mockReturnValue({ data: undefined, isLoading: false } as any);
+      mockSourceQuery(undefined);
       const { wrapper } = makeWrapper();
 
       renderHook(
@@ -993,18 +1007,22 @@ describe('useFetchFacets', () => {
       // Metric rows live in per-type tables (gauge/sum/...). Only the caller
       // knows which one — and which metric — is in play.
       setupDefaultMocks({ withMVs: false });
-      useSource.mockReturnValue({
-        data: {
-          id: 'source1',
-          kind: 'metric',
-          name: 'metrics',
-          connection: 'conn1',
-          from: { databaseName: 'db', tableName: '' },
-          timestampValueExpression: 'TimeUnix',
-          metricTables: { gauge: 'otel_metrics_gauge' },
+      mockSourceQuery({
+        id: 'source1',
+        kind: SourceKind.Metric,
+        name: 'metrics',
+        connection: 'conn1',
+        from: { databaseName: 'db', tableName: '' },
+        timestampValueExpression: 'TimeUnix',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
         },
-        isLoading: false,
-      } as any);
+        resourceAttributesExpression: 'ResourceAttributes',
+      });
       const { wrapper } = makeWrapper();
 
       const metricTc = { ...FALLBACK_TC, metricName: 'k8s.pod.cpu' };
@@ -1050,14 +1068,14 @@ describe('useFetchFacets', () => {
 
     it('loads more values from the connection when there is no source', async () => {
       setupDefaultMocks({ withMVs: false });
-      useSource.mockReturnValue({ data: undefined, isLoading: false } as any);
+      mockSourceQuery(undefined);
       const getAllKeyValues = jest
         .fn()
         .mockResolvedValue([{ key: 'ServiceName', value: ['api'] }]);
-      useMetadataWithSettings.mockReturnValue({
+      mockMetadata({
         getKeyValuesWithMVs: jest.fn(),
         getAllKeyValues,
-      } as any);
+      });
 
       const { wrapper } = makeWrapper();
       const { result } = renderHook(
@@ -1092,13 +1110,13 @@ describe('useFetchFacets', () => {
 
     it('clears extraFacets when the connection changes', async () => {
       setupDefaultMocks({ withMVs: false });
-      useSource.mockReturnValue({ data: undefined, isLoading: false } as any);
-      useMetadataWithSettings.mockReturnValue({
+      mockSourceQuery(undefined);
+      mockMetadata({
         getKeyValuesWithMVs: jest.fn(),
         getAllKeyValues: jest
           .fn()
           .mockResolvedValue([{ key: 'NewKey', value: ['n1'] }]),
-      } as any);
+      });
 
       const { wrapper } = makeWrapper();
       const { result, rerender } = renderHook(

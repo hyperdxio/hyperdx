@@ -282,7 +282,7 @@ describe('useAutoCompleteOptions', () => {
       { wrapper },
     );
 
-    expect((useAllFields as jest.Mock).mock.calls.at(-1)?.[0]).toEqual(
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
       mockTableConnection,
     );
   });
@@ -303,7 +303,7 @@ describe('useAutoCompleteOptions', () => {
       { wrapper },
     );
 
-    expect((useAllFields as jest.Mock).mock.calls.at(-1)?.[0]).toEqual(
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
       mockTableConnection,
     );
   });
