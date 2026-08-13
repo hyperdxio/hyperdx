@@ -1366,8 +1366,11 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
-        // this happens when the ratio is 0/0
+        // A NULL value is intentional composed-query semantics for
+        // multi-series metric tiles (HDX-5077): a series with no row at this
+        // (group, bucket) pivots to NULL, and a ratio with a missing or zero
+        // denominator divides to NULL. Skip the row — evaluating it (e.g. as
+        // 0, or as another series' value) would fabricate a state from a gap.
         if (value == null) {
           continue;
         }
