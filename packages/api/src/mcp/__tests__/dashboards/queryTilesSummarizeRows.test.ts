@@ -77,4 +77,30 @@ describe('withDeadline', () => {
     const boom = () => Promise.reject(new Error('boom'));
     await expect(withDeadline(boom, Date.now() + 1000)).rejects.toThrow('boom');
   });
+
+  it('aborts the signal handed to the work when the deadline fires', async () => {
+    // The signal must fire so the in-flight ClickHouse query is cancelled
+    // server-side rather than left running after the batch gives up on it.
+    let captured: AbortSignal | undefined;
+    const slow = (signal: AbortSignal) => {
+      captured = signal;
+      return new Promise<string>(resolve =>
+        setTimeout(() => resolve('too late'), 50),
+      );
+    };
+    await expect(withDeadline(slow, Date.now() + 5)).rejects.toBeInstanceOf(
+      TileDeadlineError,
+    );
+    expect(captured?.aborted).toBe(true);
+  });
+
+  it('aborts the signal once work resolves so no query outlives the call', async () => {
+    let captured: AbortSignal | undefined;
+    const work = (signal: AbortSignal) => {
+      captured = signal;
+      return Promise.resolve('done');
+    };
+    await expect(withDeadline(work, Date.now() + 1000)).resolves.toBe('done');
+    expect(captured?.aborted).toBe(true);
+  });
 });

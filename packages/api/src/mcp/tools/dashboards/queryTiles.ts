@@ -15,12 +15,13 @@ import { objectIdSchema } from '@/utils/zod';
 import { getRawSqlTileMacroWarnings } from './validation';
 
 /**
- * How many tiles to query against ClickHouse at once. Kept low so a batch
+ * How many tiles to query against ClickHouse at once. Kept lowish so a batch
  * validation of a large dashboard doesn't hammer the connection — each tile is
- * a full chart-config query. Two in flight overlaps network/IO latency without
- * a thundering herd.
+ * a full chart-config query.
+ *
+ * @internal Exported for testing only.
  */
-const TILE_QUERY_CONCURRENCY = 2;
+export const TILE_QUERY_CONCURRENCY = 6;
 
 /**
  * Soft cap on how many tiles a single call will run. A pathological dashboard
@@ -43,7 +44,7 @@ const MAX_TILE_IDS_INPUT = 500;
 /**
  * Whole-call wall-clock budget, shared across the entire batch (NOT per tile).
  * A single deadline is fixed when the run starts; every tile races against the
- * time *remaining* until it. Without this, 50 tiles at concurrency 2 each with
+ * time *remaining* until it. Without this, a large dashboard's tiles each with
  * their own multi-second timeout could serialize into many minutes — long
  * enough that the MCP transport gives up and discards the carefully-preserved
  * partial results. Tiles that don't finish (or never start) before the budget
@@ -78,15 +79,19 @@ export class TileDeadlineError extends Error {
  *
  * `startWork` is a thunk, not an already-started promise, so the deadline is
  * checked BEFORE the query is issued: once the budget is spent, tiles PQueue
- * schedules during the drain fail fast without touching ClickHouse. A tile that
- * did start races the timer and is abandoned when the deadline elapses; since
- * that query can't be cancelled from here, at most `concurrency` of them
- * outlive the call.
+ * schedules during the drain fail fast without touching ClickHouse.
+ *
+ * A tile that did start races the timer. When the deadline elapses we both
+ * reject AND abort the `AbortSignal` handed to `startWork`, so the in-flight
+ * ClickHouse query is cancelled server-side rather than left running headless
+ * until it finishes on its own. The signal is also aborted on any other exit
+ * (the work throwing, or resolving after we already lost the race is a no-op),
+ * so a query never outlives the call it belongs to.
  *
  * @internal Exported for testing only.
  */
 export async function withDeadline<T>(
-  startWork: () => Promise<T>,
+  startWork: (signal: AbortSignal) => Promise<T>,
   deadlineAt: number,
 ): Promise<T> {
   const remaining = deadlineAt - Date.now();
@@ -94,14 +99,22 @@ export async function withDeadline<T>(
   if (remaining <= 0) {
     throw new TileDeadlineError();
   }
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new TileDeadlineError()), remaining);
+    timer = setTimeout(() => {
+      // Cancel the query in ClickHouse, then surface the timeout.
+      controller.abort();
+      reject(new TileDeadlineError());
+    }, remaining);
   });
   try {
-    return await Promise.race([startWork(), deadline]);
+    return await Promise.race([startWork(controller.signal), deadline]);
   } finally {
     clearTimeout(timer!);
+    // Belt-and-suspenders: abort on any exit so a query started by a thunk
+    // that then rejected for another reason is never left running.
+    controller.abort();
   }
 }
 
@@ -278,14 +291,19 @@ export function registerQueryTiles({
 
             // Run the query under the shared deadline. It's passed as a thunk
             // so withDeadline can skip issuing it entirely once the budget is
-            // spent (see withDeadline). runConfigTile turns ClickHouse errors
-            // into isError results; the try/catch covers an unexpected throw or
-            // a deadline timeout, folding either into a status:'error' entry so
-            // one misbehaving tile never rejects the whole batch.
+            // spent (see withDeadline). withDeadline hands the thunk an
+            // AbortSignal it fires on timeout; threading it into runConfigTile
+            // cancels the in-flight ClickHouse query instead of leaving it to
+            // run headless. runConfigTile turns ClickHouse errors into isError
+            // results; the try/catch covers an unexpected throw or a deadline
+            // timeout, folding either into a status:'error' entry so one
+            // misbehaving tile never rejects the whole batch.
             try {
               const result = await withDeadline(
-                () =>
-                  runConfigTile(teamId.toString(), tile, startDate, endDate),
+                signal =>
+                  runConfigTile(teamId.toString(), tile, startDate, endDate, {
+                    abortSignal: signal,
+                  }),
                 deadlineAt,
               );
 

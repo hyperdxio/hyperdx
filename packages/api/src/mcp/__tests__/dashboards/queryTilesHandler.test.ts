@@ -35,7 +35,10 @@ jest.mock('@/routers/external-api/v2/utils/dashboards', () => {
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { registerQueryTiles } from '@/mcp/tools/dashboards/queryTiles';
+import {
+  registerQueryTiles,
+  TILE_QUERY_CONCURRENCY,
+} from '@/mcp/tools/dashboards/queryTiles';
 import type { McpContext, RegisterToolFn, ToolResult } from '@/mcp/tools/types';
 
 type Handler = Parameters<RegisterToolFn>[2];
@@ -114,27 +117,35 @@ describe('clickstack_query_tiles handler — per-tile failure isolation', () => 
   });
 
   it('does not issue a query for tiles scheduled after the deadline has passed', async () => {
-    // Concurrency is 2, so t1/t2 start immediately and t3 waits for a slot.
-    // Drive Date.now so the budget is spent by the time t3 would start: its
-    // task must short-circuit to a deadline error WITHOUT calling
-    // runConfigTile, proving the post-deadline drain issues no ClickHouse
-    // queries.
+    // Fill every concurrency slot with an initial batch of tiles, plus one
+    // extra ("Overflow") that must wait for a slot. Drive Date.now so the
+    // budget is spent by the time the overflow tile would start: its task must
+    // short-circuit to a deadline error WITHOUT calling runConfigTile, proving
+    // the post-deadline drain issues no ClickHouse queries. Deriving the tile
+    // count from TILE_QUERY_CONCURRENCY keeps this correct if the constant
+    // changes.
+    const initialTiles = Array.from(
+      { length: TILE_QUERY_CONCURRENCY },
+      (_, i) => tile(`t${i}`, `Slot ${i}`),
+    );
+    const overflowTile = tile('overflow', 'Overflow');
     mockConvertToExternalDashboard.mockReturnValue({
       id: 'dash-1',
-      tiles: [tile('t1', 'A'), tile('t2', 'B'), tile('t3', 'C')],
+      tiles: [...initialTiles, overflowTile],
     });
 
     // A controllable clock. Start at a fixed base; jump far past the 60s
-    // batch budget once the first two tiles have been dispatched.
+    // batch budget once the first slot's worth of tiles have been dispatched.
     const base = 1_000_000_000_000;
     let now = base;
     const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
 
     try {
       mockRunConfigTile.mockImplementation((_team, t: { id: string }) => {
-        // t1/t2 resolve fine; resolving t1 advances the clock past the
-        // deadline so the queued t3 sees an expired budget.
-        if (t.id === 't1') {
+        // The initial tiles resolve fine; resolving the first one advances the
+        // clock past the deadline so the queued overflow tile sees an expired
+        // budget.
+        if (t.id === 't0') {
           now = base + 10 * 60_000; // 10 min later — well past the budget
         }
         return Promise.resolve(okResult);
@@ -149,16 +160,18 @@ describe('clickstack_query_tiles handler — per-tile failure isolation', () => 
 
       expect(result.isError).toBeFalsy();
       const parsed = JSON.parse(textOf(result));
-      // t3 must be an error, and runConfigTile must never have been called
-      // for it (only t1 and t2 issued queries).
-      const c = parsed.tiles.find((t: { name: string }) => t.name === 'C');
-      expect(c.status).toBe('error');
-      expect(c.error).toContain('deadline');
+      // The overflow tile must be an error, and runConfigTile must never have
+      // been called for it (only the initial slot tiles issued queries).
+      const overflow = parsed.tiles.find(
+        (t: { name: string }) => t.name === 'Overflow',
+      );
+      expect(overflow.status).toBe('error');
+      expect(overflow.error).toContain('deadline');
       const queriedIds = mockRunConfigTile.mock.calls.map((call: unknown[]) => {
         const t = call[1];
         return t && typeof t === 'object' && 'id' in t ? t.id : undefined;
       });
-      expect(queriedIds).not.toContain('t3');
+      expect(queriedIds).not.toContain('overflow');
     } finally {
       nowSpy.mockRestore();
     }
