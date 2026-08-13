@@ -25,11 +25,19 @@ const SKIP_DIRS = new Set([
   'dist',
   'build',
   'coverage',
-  '.next',
   '.nx',
   '.turbo',
+  // .next* is skipped by prefix below
 ]);
 const EXTS = new Set(['.ts', '.tsx']);
+
+/**
+ * `.next` by prefix, not exact name: `NEXT_DIST_DIR` moves the build output
+ * (E2E runs use `.next-e2e`).
+ */
+function isSkippedDir(name) {
+  return SKIP_DIRS.has(name) || name.startsWith('.next');
+}
 
 /**
  * Workspace package directories, keyed by directory name. Derived from the
@@ -73,7 +81,7 @@ function countDir(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
+      if (isSkippedDir(entry.name)) continue;
       const sub = countDir(full);
       for (const name of Object.keys(counts)) counts[name] += sub[name];
     } else if (entry.isFile() && EXTS.has(path.extname(entry.name))) {
