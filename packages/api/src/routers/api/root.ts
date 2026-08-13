@@ -16,7 +16,7 @@ import User from '@/models/user'; // TODO -> do not import model directly
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
-import { passwordSchema, validatePassword } from '@/utils/validators';
+import { passwordSchema } from '@/utils/validators';
 
 const registrationSchema = z
   .object({
@@ -138,9 +138,15 @@ router.post('/team/setup/:token', async (req, res, next) => {
     const { password } = req.body;
     const { token } = req.params;
 
-    if (!validatePassword(password)) {
+    const passwordResult = passwordSchema.safeParse(password);
+    if (!passwordResult.success) {
+      const reason = passwordResult.error.issues
+        .map(issue => issue.message)
+        .join(' ');
       return res.redirect(
-        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&token=${token}`,
+        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&reason=${encodeURIComponent(
+          reason,
+        )}&token=${token}`,
       );
     }
 

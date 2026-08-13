@@ -3,6 +3,7 @@ import {
   isValidSlackUrl,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  PASSWORD_SPECIAL_CHARS,
   passwordValidators,
 } from '@hyperdx/common-utils/dist/validation';
 import { Address4, Address6 } from 'ip-address';
@@ -186,7 +187,7 @@ export const passwordSchema = z
   )
   .refine(
     pass => passwordValidators.hasSpecialChar(pass),
-    'Password must include at least one special character',
+    `Password must include at least one special character (${PASSWORD_SPECIAL_CHARS})`,
   );
 
 export const validatePassword = (password: string) => {

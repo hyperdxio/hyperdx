@@ -9,8 +9,20 @@ import { PasswordCheck } from './PasswordCheck';
 export default function JoinTeam() {
   const router = useRouter();
   const brandName = useBrandDisplayName();
-  const { err, token } = router.query;
+  const { err, reason, token } = router.query;
   const [password, setPassword] = useState('');
+
+  const errorMessage = (() => {
+    if (err == null) {
+      return null;
+    }
+    if (err === 'invalid') {
+      return typeof reason === 'string' && reason.length > 0
+        ? reason
+        : 'Password does not meet the requirements.';
+    }
+    return 'Unknown error occurred, please try again later.';
+  })();
 
   return (
     <div className="AuthPage">
@@ -45,11 +57,9 @@ export default function JoinTeam() {
                 <Notification withCloseButton={false} mt="sm">
                   <PasswordCheck password={password} />
                 </Notification>
-                {err != null && (
+                {errorMessage != null && (
                   <Text c="red" mt="sm" data-test-id="auth-error-msg">
-                    {err === 'invalid'
-                      ? 'Password is invalid'
-                      : 'Unknown error occurred, please try again later.'}
+                    {errorMessage}
                   </Text>
                 )}
                 <div className="text-center mt-4">

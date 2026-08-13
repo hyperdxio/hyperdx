@@ -26,6 +26,11 @@ export const PASSWORD_MAX_LENGTH = 72;
 // the requirements shown to users always match what the server enforces.
 export const PASSWORD_SPECIAL_CHAR_REGEX = /[!@#$%^&*(),.?":{}|<>;\-+=]/;
 
+// Human-readable list of the accepted special characters, kept in sync with
+// PASSWORD_SPECIAL_CHAR_REGEX. Used in validation error messages so users know
+// exactly which characters count (e.g. `~`, a backtick, or a space do not).
+export const PASSWORD_SPECIAL_CHARS = '!@#$%^&*(),.?":{}|<>;-+=';
+
 export const passwordValidators = {
   hasMinLength: (password: string) => password.length >= PASSWORD_MIN_LENGTH,
   hasMaxLength: (password: string) => password.length <= PASSWORD_MAX_LENGTH,
