@@ -1457,7 +1457,6 @@ export const processAlert = async (
       let groupPrevious = previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
-      const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
 
       // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
       if (hitAlertThisRun) {
@@ -1734,7 +1733,7 @@ export const getConsecutiveWindowHistories = async (
   return map;
 };
 
-export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
+export default class CheckAlertTask implements HdxTask {
   private provider!: AlertProvider;
   private task_queue: PQueue;
 

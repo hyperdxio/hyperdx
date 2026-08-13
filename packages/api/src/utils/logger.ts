@@ -129,13 +129,13 @@ export const expressLogger = pinoHttp({
     }
     return 'info';
   },
-  customSuccessMessage: (req: Request, res: Response) => {
+  customSuccessMessage: (req: Request, _res: Response) => {
     return `HTTP ${req.method} ${scrubUrlTokens(req.originalUrl)}`;
   },
-  customErrorMessage: (req: Request, res: Response, err) => {
+  customErrorMessage: (req: Request, _res: Response, _err) => {
     return `HTTP ${req.method} ${scrubUrlTokens(req.originalUrl)}`;
   },
-  customProps: (req: Request, res: Response) => {
+  customProps: (req: Request, _res: Response) => {
     const user = req.user;
     if (user) {
       return {

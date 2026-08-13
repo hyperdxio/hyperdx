@@ -100,8 +100,6 @@ const searchChartSeriesSchema = z.object({
   whereLanguage: whereLanguageSchema,
 });
 
-type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
-
 const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
   content: z.string().max(100000),
@@ -131,8 +129,6 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
   markdownChartSeriesSchema,
 ]);
 
-type ChartSeries = z.infer<typeof chartSeriesSchema>;
-
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
 export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
@@ -158,10 +154,6 @@ export const externalDashboardSavedFilterValueSchema = z.object({
   type: z.literal('sql').optional().default('sql'),
   condition: z.string().max(10000),
 });
-
-type ExternalDashboardSavedFilterValue = z.infer<
-  typeof externalDashboardSavedFilterValueSchema
->;
 
 // ================================
 // Dashboards (new format)
@@ -626,10 +618,6 @@ const externalDashboardTileSchemaWithOptionalId =
       id: z.string().max(36).optional(),
     }),
   );
-
-type ExternalDashboardTileWithOptionalId = z.infer<
-  typeof externalDashboardTileSchemaWithOptionalId
->;
 
 export const externalDashboardTileSchemaWithId =
   externalDashboardTileSchema.and(

@@ -445,7 +445,7 @@ export abstract class BaseClickhouseClient {
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
+    } catch {
       debugSql = query;
     }
 
@@ -554,12 +554,12 @@ export abstract class BaseClickhouseClient {
                 sql: props.query,
                 params: props.query_params ?? {},
               });
-            } catch (e) {
+            } catch {
               debugSql = props.query;
             }
             err = new ClickHouseQueryError(error.message, debugSql);
             err.cause = error;
-          } catch (_) {
+          } catch {
             // ignore
           }
 

@@ -334,6 +334,14 @@ export const deleteAlert = async (id: string, teamId: ObjectId) => {
   });
 };
 
+/**
+ * Generates the signed JWT consumed by {@link silenceAlertByToken} and the
+ * `GET /ext/silence-alert/:token` route. The verify-half is live; this
+ * generate-half is not yet wired into the alert-notification path (no caller
+ * builds silence links yet), so it is intentionally kept as public API.
+ *
+ * @public
+ */
 export const generateAlertSilenceToken = async (
   alertId: ObjectId | string,
   teamId: ObjectId | string,

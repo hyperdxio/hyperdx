@@ -1,7 +1,7 @@
 import { HdxTask, PingTaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
 
-export default class PingPongTask implements HdxTask<PingTaskArgs> {
+export default class PingPongTask implements HdxTask {
   constructor(private args: PingTaskArgs) {}
 
   async execute(): Promise<void> {
