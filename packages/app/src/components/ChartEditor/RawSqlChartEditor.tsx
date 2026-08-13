@@ -9,9 +9,10 @@ import {
   validateRawSqlChartConfig,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
-import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
-import { RawSqlChartConfig } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartVariable,
+  RawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
   isLogSource,
@@ -49,6 +50,7 @@ import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';
 import { ChartEditorFormState } from './types';
+import { buildRawSqlCompletions } from './utils';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
@@ -117,6 +119,7 @@ export default function RawSqlChartEditor({
   isDashboardForm,
   alert,
   dashboardId,
+  variables,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
@@ -125,6 +128,7 @@ export default function RawSqlChartEditor({
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
   dashboardId?: string;
+  variables?: ChartVariable[];
 }) {
   const { size, startResize } = useResizable(20, 'bottom');
 
@@ -148,8 +152,9 @@ export default function RawSqlChartEditor({
             ? sourceObject.metricTables
             : undefined,
         displayType,
+        variables,
       }) satisfies RawSqlChartConfig,
-    [sqlTemplate, connection, sourceObject, displayType],
+    [sqlTemplate, connection, sourceObject, displayType, variables],
   );
 
   const [debouncedRawSqlConfig] = useDebouncedValue(rawSqlConfig, 300);
@@ -196,28 +201,10 @@ export default function RawSqlChartEditor({
 
   const placeholderSQl = SQL_PLACEHOLDERS[displayType ?? DisplayType.Table];
 
-  const additionalCompletions: SQLCompletion[] = useMemo(() => {
-    const effectiveDisplayType = displayType ?? DisplayType.Table;
-    const params = QUERY_PARAMS_BY_DISPLAY_TYPE[effectiveDisplayType];
-
-    const paramCompletions: SQLCompletion[] = params.map(({ name, type }) => ({
-      label: `{${name}:${type}}`,
-      apply: `{${name}:${type}`, // Omit the closing } because the editor will have added it when the user types {
-      detail: 'param',
-      type: 'variable',
-    }));
-
-    const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
-      ({ name, minArgs }) => ({
-        label: `$__${name}`,
-        apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
-        detail: 'macro',
-        type: 'function',
-      }),
-    );
-
-    return [...paramCompletions, ...macroCompletions];
-  }, [displayType]);
+  const additionalCompletions: SQLCompletion[] = useMemo(
+    () => buildRawSqlCompletions({ displayType, variables }),
+    [displayType, variables],
+  );
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
@@ -332,7 +319,10 @@ export default function RawSqlChartEditor({
           </Group>
         </Group>
       </Group>
-      <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
+      <RawSqlChartInstructions
+        displayType={displayType ?? DisplayType.Table}
+        variables={variables}
+      />
       <Box style={{ position: 'relative' }}>
         <SQLEditorControlled
           control={control}
@@ -347,7 +337,11 @@ export default function RawSqlChartEditor({
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
       {(chartErrors.length > 0 || chartWarnings.length > 0) && (
-        <Alert variant={sqlValidationAlertVariant} py="xs">
+        <Alert
+          variant={sqlValidationAlertVariant}
+          py="xs"
+          data-testid="raw-sql-validation"
+        >
           <List size="xs" spacing={2}>
             {chartErrors.map(message => (
               <List.Item key={message}>Error: {message}</List.Item>

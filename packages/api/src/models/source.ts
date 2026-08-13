@@ -139,6 +139,7 @@ export const LogSource = Source.discriminator<ILogSource>(
   new Schema<ILogSource>({
     defaultTableSelectExpression: String,
     serviceNameExpression: String,
+    serviceVersionExpression: String,
     severityTextExpression: String,
     bodyExpression: String,
     eventAttributesExpression: String,
@@ -199,6 +200,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     statusCodeExpression: String,
     statusMessageExpression: String,
     serviceNameExpression: String,
+    serviceVersionExpression: String,
     resourceAttributesExpression: String,
     eventAttributesExpression: String,
     spanEventsValueExpression: String,

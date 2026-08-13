@@ -3,13 +3,34 @@ import { useQueryState } from 'nuqs';
 import {
   FilterState,
   filtersToQuery,
+  getFilterVariableName,
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
-import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartVariable,
+  DashboardFilter,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
 
 import { parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 const filterQueriesParser = parseAsJsonEncoded<Filter[]>();
+
+/**
+ * Whether a filter definition broadcasts its selected value onto a tile
+ * whose source is `sourceId`.
+ */
+const definitionAppliesToSource = (
+  definition: DashboardFilter,
+  sourceId: string | undefined,
+): boolean => {
+  if (!isFilterBroadcastEnabled(definition)) return false;
+  const appliesTo = definition.appliesToSourceIds;
+  if (!appliesTo || appliesTo.length === 0) return true;
+  return !!sourceId && appliesTo.includes(sourceId);
+};
 
 const useDashboardFilters = (filters: DashboardFilter[]) => {
   const [filterQueries, setFilterQueries] = useQueryState(
@@ -44,6 +65,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     queriesForExistingFilters,
     ignoredExpressions,
     filtersByExpression,
+    variables,
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
@@ -73,10 +95,41 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       }
     }
 
+    const broadcastValues: FilterState = {};
+    for (const [expression, state] of Object.entries(
+      valuesForExistingFilters,
+    )) {
+      const definitions = filtersByExpression.get(expression) ?? [];
+      if (definitions.some(isFilterBroadcastEnabled)) {
+        broadcastValues[expression] = state;
+      }
+    }
+
+    const variables: ChartVariable[] = [];
+    const takenNames = new Set<string>();
+    for (const definition of filters) {
+      if (!isFilterVariableEnabled(definition)) continue;
+
+      // There shouldn't be any duplicate names, but if there are then the first one wins.
+      const name = getFilterVariableName(definition);
+      if (!name || takenNames.has(name)) continue;
+      takenNames.add(name);
+
+      const selection = valuesForExistingFilters[definition.expression];
+      variables.push({
+        name,
+        expression: definition.expression,
+        values: selection
+          ? Array.from(selection.included).map(String).sort() // Sorted for deterministic react-query keys
+          : [],
+      });
+    }
+
     return {
       valuesForExistingFilters,
+      variables,
       queriesForExistingFilters: filtersToQuery(
-        valuesForExistingFilters,
+        broadcastValues,
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
         // All keys can be stringified, since filter select values are stringified as well.
         { stringifyKeys: true },
@@ -89,11 +142,11 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
   // Return only the filter queries that should be applied to a tile whose
   // source is `sourceId`. When multiple filter definitions share the same
   // expression, their scopes are unioned: the filter value applies if ANY
-  // sibling is unscoped or includes `sourceId`. A filter with no
-  // `appliesToSourceIds` (or an empty array) is treated as "applies to all".
-  // If `sourceId` is undefined (e.g. a RawSQL tile with no resolvable
-  // source), scoped filters are skipped and only unscoped filters are
-  // returned.
+  // sibling broadcasts to `sourceId`. A filter with no `appliesToSourceIds`
+  // (or an empty array) is treated as "applies to all"; a filter with
+  // broadcasting disabled applies to nothing. If `sourceId` is undefined
+  // (e.g. a RawSQL tile with no resolvable source), scoped filters are
+  // skipped and only unscoped filters are returned.
   const getFilterQueriesForSource = useCallback(
     (sourceId: string | undefined): Filter[] => {
       const scoped: FilterState = {};
@@ -101,11 +154,9 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
         valuesForExistingFilters,
       )) {
         const definitions = filtersByExpression.get(expression) ?? [];
-        const applies = definitions.some(def => {
-          const appliesTo = def.appliesToSourceIds;
-          if (!appliesTo || appliesTo.length === 0) return true;
-          return !!sourceId && appliesTo.includes(sourceId);
-        });
+        const applies = definitions.some(def =>
+          definitionAppliesToSource(def, sourceId),
+        );
         if (applies) {
           scoped[expression] = state;
         }
@@ -119,6 +170,10 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
 
   return {
     filterValues: valuesForExistingFilters,
+    /**
+     * Queries for the broadcasting filters, unscoped by source. Callers with a
+     * per-tile source should prefer `getFilterQueriesForSource`.
+     */
     filterQueries: queriesForExistingFilters,
     setFilterValue,
     setFilterQueries,
@@ -132,9 +187,12 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * Returns the subset of filter queries that should apply to a tile whose
      * source is `sourceId`. Filters with no `appliesToSourceIds` apply to all
      * tiles. Filters with `appliesToSourceIds` defined apply only to tiles
-     * whose source ID is in the list.
+     * whose source ID is in the list. Filters with broadcasting disabled
+     * apply to no tiles at all.
      */
     getFilterQueriesForSource,
+    /** The dashboard's variable-enabled filters and their currently selected values. */
+    variables,
   };
 };
 

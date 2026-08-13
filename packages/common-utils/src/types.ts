@@ -599,6 +599,13 @@ export const isRangeThresholdType = (type: string): boolean =>
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
+  /**
+   * Only used on AlertHistory records (never on the alert itself): marks an
+   * evaluation window whose evaluation or notification failed. ERROR history
+   * rows are excluded from alert scheduling/backfill computations so the
+   * failed window is still retried.
+   */
+  ERROR = 'ERROR',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
   PENDING = 'PENDING',
@@ -606,6 +613,8 @@ export enum AlertState {
 
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
+  /** The alert query did not complete within the evaluation timeout. */
+  QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
@@ -801,14 +810,39 @@ export const AlertSchema = z.union([
 
 export type Alert = z.infer<typeof AlertSchema>;
 
+// Diagnostics for the evaluation that wrote a history record. Evaluation-
+// level: identical on every row one evaluation writes (incl. per-group rows).
+export const AlertHistoryAnalyticsSchema = z.object({
+  /** ClickHouse query duration for the evaluation (ms). On query-failure ERROR records, the time until the query failed. */
+  queryDurationMs: z.number().optional(),
+  /** Total wall time delivering webhook notifications in the evaluation, including retries (ms). */
+  webhookDurationMs: z.number().optional(),
+  /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
+  backfilledBuckets: z.number().optional(),
+});
+
+export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;
+
 export const AlertHistorySchema = z.object({
   counts: z.number(),
   createdAt: z.string(),
   lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
   state: z.nativeEnum(AlertState),
+  /** Errors recorded for this evaluation window (query/webhook failures). */
+  errors: z.array(AlertErrorSchema).optional(),
+  /** Diagnostics for the evaluation that wrote this record. */
+  analytics: AlertHistoryAnalyticsSchema.optional(),
 });
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
+
+/**
+ * Max per-group entries returned per evaluation window on the alert detail
+ * page. Groups are sorted firing-first before the cap, so firing groups are
+ * always visible. Shared between the API (enforces the cap) and the app
+ * (explains it in the UI).
+ */
+export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 
 // A single alert state transition within a time range, used to draw
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
@@ -1294,6 +1328,17 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   groupByColumnsOnLeft: z.boolean().optional(),
 });
 
+/** A dashboard variable as seen by a tile's query. */
+export const ChartVariableSchema = z.object({
+  name: z.string(),
+  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  expression: z.string().optional(),
+  /** Empty means nothing is selected. */
+  values: z.array(z.string()),
+});
+
+export type ChartVariable = z.infer<typeof ChartVariableSchema>;
+
 // This is a ChartConfig type without the `with` CTE clause included.
 // It needs to be a separate, named schema to avoid use of z.lazy(...),
 // use of which allows for type mistakes to make it past linting.
@@ -1351,6 +1396,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -1565,6 +1611,13 @@ export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
+/** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
+export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
+export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
+  `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
+);
+export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+
 export const DashboardFilterSchema = z.object({
   id: z.string(),
   type: DashboardFilterType,
@@ -1577,6 +1630,29 @@ export const DashboardFilterSchema = z.object({
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
+  /**
+   * Whether the selected value is applied as a filter condition on matching
+   * tiles. Undefined / missing means ENABLED — every filter that predates this
+   * field broadcasts, and that must not change. Read it through
+   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+   */
+  isBroadcastEnabled: z.boolean().optional(),
+  /**
+   * Whether the selected value is exposed to tile queries as `$variableName`.
+   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+   * feature is off.
+   */
+  isVariableEnabled: z.boolean().optional(),
+  /**
+   * Token that tiles reference as `$variableName`. Defaults to the filter's display
+   * name with illegal characters replaced by dashes (`deriveVariableName`).
+   * Ignored when `isVariableEnabled` is not true.
+   */
+  variableName: z
+    .string()
+    .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+    .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+    .optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -1817,6 +1893,13 @@ export const LogSourceSchema = BaseSourceSchema.extend({
     .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
+  /**
+   * Expression identifying the running release of a service. Defaults to the
+   * OpenTelemetry `service.version` resource attribute when unset; teams whose
+   * version lives elsewhere - a container image tag under GitOps, a custom
+   * attribute - point it there instead of changing instrumentation.
+   */
+  serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
@@ -1874,6 +1957,8 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   serviceNameExpression: z.string().optional(),
+  /** See `serviceVersionExpression` on `LogSourceSchema`. */
+  serviceVersionExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
@@ -2119,6 +2204,7 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  groupBy: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),
   note: alertNoteSchema,
@@ -2185,6 +2271,50 @@ export const AlertHistoryRangeApiResponseSchema = z.object({
 
 export type AlertHistoryRangeApiResponse = z.infer<
   typeof AlertHistoryRangeApiResponseSchema
+>;
+
+// Per-group result of one evaluation window for a group-by alert.
+export const AlertEvaluationGroupSchema = z.object({
+  group: z.string(),
+  state: z.nativeEnum(AlertState),
+  counts: z.number(),
+  /** The group's most recent bucket value in this window, if any. */
+  lastValue: z.object({ startTime: z.string(), count: z.number() }).optional(),
+  /** True when a notification was actually sent for this group. */
+  fired: z.boolean().optional(),
+});
+
+export type AlertEvaluationGroup = z.infer<typeof AlertEvaluationGroupSchema>;
+
+// One evaluation window on the alert detail page. For group-by alerts,
+// carries the per-group breakdown (firing-first, capped server-side).
+export const AlertEvaluationSchema = AlertHistorySchema.extend({
+  groups: z.array(AlertEvaluationGroupSchema).optional(),
+  /** Total number of groups evaluated in this window (before the cap). */
+  groupsTotal: z.number().optional(),
+});
+
+export type AlertEvaluation = z.infer<typeof AlertEvaluationSchema>;
+
+// Paginated evaluation history for the alert detail page. Each entry is one
+// evaluation window (newest first), including any errors recorded for it.
+export const AlertEvaluationsApiResponseSchema = z.object({
+  data: z.array(AlertEvaluationSchema),
+  /**
+   * True when older evaluation windows may exist within the requested time
+   * range beyond the returned page.
+   */
+  hasMore: z.boolean(),
+  /**
+   * Cursor (epoch ms) for the next-older page: pass as `before` on the next
+   * request. Present when hasMore is true. Cursor-based (not offset-based)
+   * so pages advance even across gaps with no evaluations.
+   */
+  nextBefore: z.number().optional(),
+});
+
+export type AlertEvaluationsApiResponse = z.infer<
+  typeof AlertEvaluationsApiResponseSchema
 >;
 
 // Webhooks

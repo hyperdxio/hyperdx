@@ -280,19 +280,36 @@ describe('gradeBatch metric-adoption checks', () => {
               groupBy: ['k8s.pod.name', 'jvm.memory.pool.name'],
             },
           },
+          // Summary metrics are discoverable but not queryable by the
+          // builder tools — the intended path is discovery → clickstack_sql.
+          // One SQL call naming the summary metric satisfies BOTH summary
+          // checks (discovered_summary_metric needs the name anywhere;
+          // queried_summary_via_sql additionally needs SELECT /
+          // ValueAtQuantiles in the same call's args).
+          {
+            name: 'mcp__hyperdx__clickstack_sql',
+            isError: false,
+            input: {
+              connectionId: 'c1',
+              sql: "SELECT TimeUnix, ValueAtQuantiles.Value[indexOf(ValueAtQuantiles.Quantile, 0.99)] AS p99 FROM eval_metric_saturation_otel_metrics_summary WHERE MetricName = 'db.client.operation.duration' ORDER BY TimeUnix",
+            },
+          },
         ],
         finalAnswer: 'JVM heap leak on recommendation-service.',
       }),
     );
     const result = await gradeBatch(batchDir, { skipJudge: true });
     const grade: GradeRecord = result.graded[0];
-    // All four adoption checks hit (queried a target metric, the JVM memory
-    // metric, a GC metric, and grouped memory by pod/pool in one call).
+    // All six adoption checks hit (queried a target metric, the JVM memory
+    // metric, a GC metric, grouped memory by pod/pool in one call, and
+    // discovered + SQL-queried the summary distractor).
     expect(grade.adoption).toBeDefined();
     expect(grade.adoption!.hits.map(h => h.id).sort()).toEqual([
+      'discovered_summary_metric',
       'grouped_memory_by_pod_or_pool',
       'queried_gc_metric',
       'queried_jvm_memory_metric',
+      'queried_summary_via_sql',
       'queried_target_metric',
     ]);
     expect(grade.adoption!.score).toBeCloseTo(1, 5);

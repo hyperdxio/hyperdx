@@ -1,6 +1,8 @@
+import { MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
   hasMacro,
+  isMissingFiltersMacro,
   replaceMacros,
 } from '@/macros';
 import type { MetricTable } from '@/types';
@@ -28,6 +30,33 @@ describe('hasMacro', () => {
 
   it('detects macros that take arguments', () => {
     expect(hasMacro('WHERE $__timeFilter(ts)', 'timeFilter')).toBe(true);
+  });
+});
+
+describe('isMissingFiltersMacro', () => {
+  it('is true when nothing consumes the dashboard filters', () => {
+    expect(isMissingFiltersMacro('SELECT * WHERE $__timeFilter(ts)')).toBe(
+      true,
+    );
+  });
+
+  it('is false when $__filters is used', () => {
+    expect(isMissingFiltersMacro('SELECT * WHERE $__filters')).toBe(false);
+  });
+
+  it('is false when a variable macro applies filtering instead', () => {
+    expect(
+      isMissingFiltersMacro('SELECT * WHERE $__filter(ServiceName, service)'),
+    ).toBe(false);
+    expect(
+      isMissingFiltersMacro(
+        'SELECT * WHERE $__conditionalAll(ServiceName IN ${service}, service)',
+      ),
+    ).toBe(false);
+  });
+
+  it('reads a half-typed macro as applied rather than throwing', () => {
+    expect(isMissingFiltersMacro('SELECT * WHERE $__filters(')).toBe(false);
   });
 });
 
@@ -172,7 +201,7 @@ describe('replaceMacros', () => {
 
   it('should throw on missing close bracket', () => {
     expect(() => replaceMacros({ sqlTemplate: '$__timeFilter(col' })).toThrow(
-      'Failed to parse macro arguments',
+      MalformedMacroArgsError,
     );
   });
 
@@ -295,5 +324,150 @@ describe('replaceMacros', () => {
         metricTables: ALL_METRIC_TABLES,
       }),
     ).toThrow('expects 0-1 argument(s), but got 2');
+  });
+
+  it('should keep an unknown macro verbatim', () => {
+    expect(replaceMacros({ sqlTemplate: 'SELECT $__notAMacro(x)' })).toBe(
+      'SELECT $__notAMacro(x)',
+    );
+  });
+
+  it('should parse macro arguments containing quoted parens and commas', () => {
+    const result = replaceMacros({
+      sqlTemplate: "WHERE $__timeFilter(if(c = 'a),b', ts, ts2))",
+    });
+    expect(result).toBe(
+      "WHERE if(c = 'a),b', ts, ts2) >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND if(c = 'a),b', ts, ts2) <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))",
+    );
+  });
+
+  it('should not re-expand macros that appear in the filters SQL', () => {
+    expect(
+      replaceMacros(
+        { sqlTemplate: 'WHERE $__filters' },
+        "(msg IN ('$__fromTime', '$service'))",
+      ),
+    ).toBe("WHERE (msg IN ('$__fromTime', '$service'))");
+  });
+});
+
+describe('replaceMacros with variables', () => {
+  const variables = [
+    { name: 'service', expression: 'ServiceName', values: ['api', 'web'] },
+    { name: 'env', expression: 'Env', values: [] },
+  ];
+
+  describe('without a variables context', () => {
+    it('leaves variable references verbatim', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE svc = $service AND env = ${env:csv}',
+        }),
+      ).toBe('WHERE svc = $service AND env = ${env:csv}');
+    });
+
+    it('leaves the variable macros verbatim, arguments and all', () => {
+      const sqlTemplate =
+        "WHERE $__filter(ServiceName, service) AND $__conditionalAll(x = 'a)b', env)";
+      expect(replaceMacros({ sqlTemplate })).toBe(sqlTemplate);
+    });
+
+    it('still expands standard macros alongside untouched references', () => {
+      expect(
+        replaceMacros({ sqlTemplate: 'WHERE $__timeFilter(ts) AND $service' }),
+      ).toBe(
+        'WHERE ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND ts <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64})) AND $service',
+      );
+    });
+  });
+
+  describe('with a variables context', () => {
+    it('expands references, variable macros and standard macros in one pass', () => {
+      const result = replaceMacros(
+        {
+          sqlTemplate:
+            'SELECT $__timeInterval(ts) FROM $__sourceTable ' +
+            'WHERE $__timeFilter(ts) AND $__filters AND $__filter(service) ' +
+            'AND svc IN ($service) AND $__conditionalAll(Env != $service, service)',
+          from: { databaseName: 'otel', tableName: 'otel_logs' },
+          variables,
+        },
+        "(toString(Env) IN ('prod'))",
+      );
+
+      expect(result).toBe(
+        'SELECT toStartOfInterval(toDateTime(ts), INTERVAL {intervalSeconds:Int64} second) ' +
+          'FROM `otel`.`otel_logs` ' +
+          'WHERE ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) ' +
+          'AND ts <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64})) ' +
+          "AND (toString(Env) IN ('prod')) " +
+          "AND (toString(ServiceName) IN ('api', 'web')) " +
+          "AND svc IN ('api', 'web') " +
+          "AND (Env != 'api', 'web')",
+      );
+    });
+
+    it('distinguishes $__filters from $__filter(', () => {
+      expect(
+        replaceMacros(
+          {
+            sqlTemplate: 'WHERE $__filters AND $__filter(ServiceName, service)',
+            variables,
+          },
+          '(1=2)',
+        ),
+      ).toBe("WHERE (1=2) AND (ServiceName IN ('api', 'web'))");
+    });
+
+    it('expands an unselected variable to a no-op predicate', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__filter(env)',
+          variables,
+        }),
+      ).toBe("WHERE (1=1 /** no values selected for variable 'env' */)");
+    });
+
+    it('does not expand references that appear in the filters SQL', () => {
+      expect(
+        replaceMacros(
+          { sqlTemplate: 'WHERE $__filters', variables },
+          "(msg IN ('$service'))",
+        ),
+      ).toBe("WHERE (msg IN ('$service'))");
+    });
+
+    it('does not re-expand a selected value that looks like a macro', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE msg = $service',
+          variables: [{ name: 'service', values: ['$__fromTime'] }],
+        }),
+      ).toBe("WHERE msg = '$__fromTime'");
+    });
+
+    it('throws when a variable macro names an unknown variable', () => {
+      expect(() =>
+        replaceMacros({
+          sqlTemplate: 'WHERE $__filter(ServiceName, nope)',
+          variables,
+        }),
+      ).toThrow("references unknown variable 'nope'");
+    });
+
+    it('leaves an unknown bare reference verbatim', () => {
+      expect(
+        replaceMacros({ sqlTemplate: "SELECT '$100 $nope'", variables }),
+      ).toBe("SELECT '$100 $nope'");
+    });
+
+    it('treats an empty variables array as a provided context', () => {
+      expect(() =>
+        replaceMacros({
+          sqlTemplate: 'WHERE $__filter(ServiceName, service)',
+          variables: [],
+        }),
+      ).toThrow("references unknown variable 'service'");
+    });
   });
 });
