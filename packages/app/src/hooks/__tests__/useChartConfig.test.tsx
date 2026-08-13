@@ -415,6 +415,7 @@ describe('useChartConfig', () => {
         metadata: expect.any(Object),
         opts: {
           abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
         },
       });
       expect(result.current.data).toEqual({
@@ -425,6 +426,165 @@ describe('useChartConfig', () => {
       });
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isPending).toBe(false);
+    });
+
+    it('applies max_result_rows + max_rows_to_group_by (cap + 1 headroom) and flags overflow', async () => {
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: '1 minute',
+      });
+
+      // 2 rows returned against a cap of 1 → rows (2) > cap (1) => overflow.
+      const mockResponse = createMockQueryResponse([
+        {
+          'count()': '71',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-10-01T00:00:00Z',
+        },
+        {
+          'count()': '73',
+          SeverityText: 'warn',
+          __hdx_time_bucket: '2025-10-01T00:00:00Z',
+        },
+      ]);
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { maxResultRows: 1 }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // A builder config has no outer LIMIT of its own, so both the result-row
+      // cap and the group-by cardinality cap are sent, each with one row of
+      // headroom (cap + 1). The group-by mode is 'break' (a deterministic stop),
+      // NOT 'any' (which folds late keys and would corrupt an ordered top-N).
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledWith({
+        config,
+        metadata: expect.any(Object),
+        opts: {
+          abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {
+            max_result_rows: '2',
+            result_overflow_mode: 'break',
+            max_rows_to_group_by: '2',
+            group_by_overflow_mode: 'break',
+          },
+        },
+      });
+      expect(result.current.data?.didOverflow).toBe(true);
+    });
+
+    it('omits the group-by cardinality cap for raw SQL with an outer LIMIT (avoids corrupting its top-N)', async () => {
+      // Raw SQL whose own `ORDER BY … LIMIT N` would run AFTER a group-by cap,
+      // so applying the cardinality cap could silently fold away keys before the
+      // top-N is computed. Only the order-preserving result-row cap is applied.
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: undefined,
+        configType: 'sql',
+        sqlTemplate:
+          'SELECT k, count() c FROM t GROUP BY k ORDER BY c DESC LIMIT 50',
+      });
+
+      const mockResponse = createMockQueryResponse([
+        { 'count()': '71', SeverityText: 'info' },
+      ]);
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { maxResultRows: 1 }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledWith({
+        config,
+        metadata: expect.any(Object),
+        opts: {
+          abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {
+            readonly: '2',
+            max_result_rows: '2',
+            result_overflow_mode: 'break',
+            // NO max_rows_to_group_by / group_by_overflow_mode here.
+          },
+        },
+      });
+    });
+
+    it('applies the group-by cardinality cap for raw SQL with no outer LIMIT', async () => {
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: undefined,
+        configType: 'sql',
+        sqlTemplate: 'SELECT k, count() c FROM t GROUP BY k',
+      });
+
+      const mockResponse = createMockQueryResponse([
+        { 'count()': '71', SeverityText: 'info' },
+      ]);
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { maxResultRows: 1 }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledWith({
+        config,
+        metadata: expect.any(Object),
+        opts: {
+          abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {
+            readonly: '2',
+            max_result_rows: '2',
+            result_overflow_mode: 'break',
+            max_rows_to_group_by: '2',
+            group_by_overflow_mode: 'break',
+          },
+        },
+      });
+    });
+
+    it('does not cap or flag overflow when maxResultRows is not set', async () => {
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: '1 minute',
+      });
+
+      const mockResponse = createMockQueryResponse([
+        {
+          'count()': '71',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-10-01T00:00:00Z',
+        },
+      ]);
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      const { result } = renderHook(() => useQueriedChartConfig(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledWith({
+        config,
+        metadata: expect.any(Object),
+        opts: {
+          abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
+        },
+      });
+      expect(result.current.data?.didOverflow).toBeUndefined();
     });
 
     it('fetches data without chunking when no granularity is provided', async () => {
@@ -464,6 +624,7 @@ describe('useChartConfig', () => {
         metadata: expect.any(Object),
         opts: {
           abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
         },
       });
       expect(result.current.data).toEqual({
@@ -518,6 +679,7 @@ describe('useChartConfig', () => {
         metadata: expect.any(Object),
         opts: {
           abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
         },
       });
       expect(result.current.data).toEqual({
@@ -597,6 +759,7 @@ describe('useChartConfig', () => {
         metadata: expect.any(Object),
         opts: {
           abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
         },
       });
       expect(result.current.data).toEqual({
@@ -648,6 +811,7 @@ describe('useChartConfig', () => {
         metadata: expect.any(Object),
         opts: {
           abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
         },
       });
       expect(result.current.data).toEqual({
@@ -696,6 +860,7 @@ describe('useChartConfig', () => {
         metadata: expect.any(Object),
         opts: {
           abort_signal: expect.any(AbortSignal),
+          clickhouse_settings: {},
         },
       });
       expect(result.current.data).toEqual({
@@ -800,6 +965,101 @@ describe('useChartConfig', () => {
       });
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isPending).toBe(false);
+    });
+
+    it('flags overflow across chunks only when an individual chunk exceeds the cap', async () => {
+      // Chunked + capped: the cap is applied per chunk, so a single chunk that
+      // exceeds the cap is what signals a truncated result — even though other
+      // chunks are small. cap = 2 here.
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
+        granularity: '3 hour',
+      });
+
+      // Newest window: 3 rows > cap(2) => this chunk overflowed.
+      const overflowingChunk = createMockQueryResponse([
+        { 'count()': '1', __hdx_time_bucket: '2025-10-01T18:00:00Z' },
+        { 'count()': '2', __hdx_time_bucket: '2025-10-01T19:00:00Z' },
+        { 'count()': '3', __hdx_time_bucket: '2025-10-01T20:00:00Z' },
+      ]);
+      // Older windows: each <= cap.
+      const smallChunkA = createMockQueryResponse([
+        { 'count()': '4', __hdx_time_bucket: '2025-10-01T12:00:00Z' },
+      ]);
+      const smallChunkB = createMockQueryResponse([
+        { 'count()': '5', __hdx_time_bucket: '2025-10-01T01:00:00Z' },
+      ]);
+
+      mockClickhouseClient.queryChartConfig
+        .mockResolvedValueOnce(overflowingChunk)
+        .mockResolvedValueOnce(smallChunkA)
+        .mockResolvedValueOnce(smallChunkB);
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            enableQueryChunking: true,
+            maxResultRows: 2,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(result.current.data?.didOverflow).toBe(true);
+      expect(result.current.data?.isComplete).toBe(true);
+    });
+
+    it('does NOT flag overflow when the summed multi-chunk total exceeds the cap but no single chunk does', async () => {
+      // Regression guard: each chunk is individually within the cap, so nothing
+      // was truncated — the accumulated sum (which legitimately exceeds the cap)
+      // must NOT trip the banner. cap = 2, three chunks of <= 2 rows summing to 5.
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
+        granularity: '3 hour',
+      });
+
+      const chunk1 = createMockQueryResponse([
+        { 'count()': '1', __hdx_time_bucket: '2025-10-01T18:00:00Z' },
+        { 'count()': '2', __hdx_time_bucket: '2025-10-01T19:00:00Z' },
+      ]);
+      const chunk2 = createMockQueryResponse([
+        { 'count()': '3', __hdx_time_bucket: '2025-10-01T12:00:00Z' },
+        { 'count()': '4', __hdx_time_bucket: '2025-10-01T14:00:00Z' },
+      ]);
+      const chunk3 = createMockQueryResponse([
+        { 'count()': '5', __hdx_time_bucket: '2025-10-01T01:00:00Z' },
+      ]);
+
+      mockClickhouseClient.queryChartConfig
+        .mockResolvedValueOnce(chunk1)
+        .mockResolvedValueOnce(chunk2)
+        .mockResolvedValueOnce(chunk3);
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            enableQueryChunking: true,
+            maxResultRows: 2,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // Summed rows (5) exceed cap (2), but no chunk individually did, so this
+      // is a complete result — didOverflow must be false.
+      expect(result.current.data?.rows).toBe(5);
+      expect(result.current.data?.didOverflow).toBe(false);
+      expect(result.current.data?.isComplete).toBe(true);
     });
 
     it('pins the series-limit ranking to the newest window on each chunk', async () => {
@@ -1309,6 +1569,44 @@ describe('useChartConfig', () => {
       });
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isPending).toBe(false);
+    });
+
+    it('passes the row-cap clickhouse_settings on the parallel path', async () => {
+      const { config, mockResponse1, mockResponse2, mockResponse3 } =
+        setupParallelQueries();
+
+      mockClickhouseClient.queryChartConfig
+        .mockResolvedValueOnce(mockResponse1)
+        .mockResolvedValueOnce(mockResponse2)
+        .mockResolvedValueOnce(mockResponse3);
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            enableQueryChunking: true,
+            enableParallelQueries: true,
+            maxResultRows: 5000,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+        timeout: 1000,
+      });
+      await waitFor(() => expect(result.current.isFetching).toBe(false), {
+        timeout: 1000,
+      });
+
+      // Every parallel chunk query carries the cap settings (builder config has
+      // no outer LIMIT, so the cardinality cap applies too), each with cap + 1.
+      for (const call of mockClickhouseClient.queryChartConfig.mock.calls) {
+        expect(call[0].opts?.clickhouse_settings).toEqual({
+          max_result_rows: '5001',
+          result_overflow_mode: 'break',
+          max_rows_to_group_by: '5001',
+          group_by_overflow_mode: 'break',
+        });
+      }
     });
 
     it('streams parallel query results in order', async () => {

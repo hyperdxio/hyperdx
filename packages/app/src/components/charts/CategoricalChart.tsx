@@ -9,6 +9,7 @@ import {
   formatResponseForCategoricalChart,
 } from '@/ChartUtils';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import { resolveDidOverflow } from '@/defaults';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
@@ -26,6 +27,8 @@ export interface CategoricalChartProps {
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   errorVariant?: ChartErrorStateVariant;
+  /** Row cap for the query (see useQueriedChartConfig); overflow shows a banner. */
+  maxResultRows?: number;
 }
 
 /**
@@ -39,6 +42,7 @@ export function useCategoricalChart({
   showMVOptimizationIndicator = true,
   toolbarPrefix,
   toolbarSuffix,
+  maxResultRows,
 }: CategoricalChartProps) {
   const { data: source } = useSource({ id: config.source });
 
@@ -56,14 +60,21 @@ export function useCategoricalChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
-    },
-  );
+      maxResultRows,
+    });
+
+  // Whether the query exceeded the row cap. See resolveDidOverflow for the
+  // completion + freshness gating (shared with DBTimeChart).
+  const didOverflow = resolveDidOverflow({
+    isPlaceholderData,
+    isComplete: data?.isComplete,
+    didOverflow: data?.didOverflow,
+  });
 
   const toolbarItems = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
@@ -134,5 +145,10 @@ export function useCategoricalChart({
     error,
     chartData,
     responseFormatError,
+    didOverflow,
+    maxResultRows,
+    // Row + series (slice/bar) counts of the capped result, for the banner.
+    rows: data?.rows,
+    series: chartData.length,
   };
 }

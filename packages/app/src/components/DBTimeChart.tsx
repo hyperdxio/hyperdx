@@ -41,6 +41,7 @@ import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import {
   MAX_LOADABLE_TIME_CHART_SERIES,
+  resolveDidOverflow,
   resolveRenderedSeriesCap,
 } from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
@@ -56,6 +57,7 @@ import ChartErrorState, {
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
+import ResultOverflowBanner from './charts/ResultOverflowBanner';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 /** A single group column / value pair decoded from a chart series key. */
@@ -323,6 +325,8 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /** Row cap for the query (see useQueriedChartConfig); overflow shows a banner. */
+  maxResultRows?: number;
 };
 
 function DBTimeChartComponent({
@@ -348,6 +352,7 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  maxResultRows,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -486,7 +491,16 @@ function DBTimeChartComponent({
       enableQueryChunking: !disableQueryChunking,
       enableParallelQueries:
         enableParallelQueries && me?.team?.parallelizeWhenPossible,
+      maxResultRows,
     });
+
+  // Whether the query exceeded the row cap. See resolveDidOverflow for the
+  // completion + freshness gating (shared with CategoricalChart).
+  const didOverflow = resolveDidOverflow({
+    isPlaceholderData,
+    isComplete: data?.isComplete,
+    didOverflow: data?.didOverflow,
+  });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
     const previousPeriodDateRange =
@@ -522,6 +536,10 @@ function DBTimeChartComponent({
       queryKey: [queryKeyPrefix, previousPeriodChartConfig, 'chunked'],
       enabled: !!(enabled && config.compareToPreviousPeriod),
       enableQueryChunking: true,
+      // Cap the comparison series with the same bound as the primary query so
+      // the previous-period overlay can't bypass the guard. Banner still keys
+      // off the primary query only.
+      maxResultRows,
     });
 
   const isLoadingOrPlaceholder =
@@ -911,9 +929,10 @@ function DBTimeChartComponent({
           key="db-time-chart-hidden-series-indicator"
           hiddenSeriesCount={hiddenSeriesCount}
           renderedSeriesCount={renderedSeriesCount}
-          // Offered only while still capped AND when load-all would actually
-          // raise the cap (loadAllHandler is undefined otherwise), so the
-          // notice never advertises a no-op click.
+          rowCount={data?.rows}
+          // When capped, the series counts describe only the subset — don't let
+          // the indicator claim "all series were loaded".
+          resultWasCapped={didOverflow}
           onLoadAll={loadAllHandler}
         />,
       );
@@ -939,11 +958,26 @@ function DBTimeChartComponent({
     queriedConfig,
     hiddenSeriesCount,
     renderedSeriesCount,
+    data?.rows,
+    didOverflow,
     loadAllHandler,
   ]);
 
   return (
-    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+    <ChartContainer
+      title={title}
+      toolbarItems={toolbarItemsMemo}
+      belowHeader={
+        maxResultRows != null ? (
+          <ResultOverflowBanner
+            didOverflow={didOverflow}
+            cap={maxResultRows}
+            rows={data?.rows}
+            series={hiddenSeriesCount + renderedSeriesCount}
+          />
+        ) : undefined
+      }
+    >
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...

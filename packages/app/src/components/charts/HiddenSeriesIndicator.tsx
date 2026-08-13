@@ -4,18 +4,27 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 interface HiddenSeriesIndicatorProps {
   hiddenSeriesCount: number;
   renderedSeriesCount: number;
+  /** Total rows returned, shown alongside the series counts. Omit if unknown. */
+  rowCount?: number;
+  /**
+   * True when the query hit the row cap (see ResultOverflowBanner). Then the
+   * copy drops the "all series were loaded" claim, since the result is a subset.
+   */
+  resultWasCapped?: boolean;
   /** Render every series, bypassing the cap. Omit to keep the notice passive. */
   onLoadAll?: () => void;
 }
 
 /**
- * Warns that the chart returned more series than the client renders. The
- * transform caps series to protect memory; this surfaces the dropped ones and,
- * when `onLoadAll` is provided, lets the user render all of them anyway.
+ * Notice that the chart drew only the top-N series (by peak value) to stay
+ * readable; `onLoadAll` lets the user draw all of them. Contrast
+ * ResultOverflowBanner (row cap — data the query may not have fetched).
  */
 export default function HiddenSeriesIndicator({
   hiddenSeriesCount,
   renderedSeriesCount,
+  rowCount,
+  resultWasCapped,
   onLoadAll,
 }: HiddenSeriesIndicatorProps) {
   if (hiddenSeriesCount <= 0) {
@@ -23,16 +32,31 @@ export default function HiddenSeriesIndicator({
   }
 
   const total = renderedSeriesCount + hiddenSeriesCount;
+  const rowsDetail =
+    typeof rowCount === 'number'
+      ? ` (from ${rowCount.toLocaleString()} rows)`
+      : '';
+  // When capped, don't claim "all series were loaded" (the result is a subset).
+  const completenessClause = resultWasCapped
+    ? `Of the ${total.toLocaleString()} series in the loaded (capped) result, ` +
+      `only the ${renderedSeriesCount.toLocaleString()} largest (by peak value) ` +
+      `are drawn`
+    : `All ${total.toLocaleString()} series were loaded${rowsDetail}, but only ` +
+      `the ${renderedSeriesCount.toLocaleString()} largest (by peak value) are drawn`;
   const label =
-    `This query returned ${total.toLocaleString()} series. ` +
-    `${hiddenSeriesCount.toLocaleString()} low-value series were hidden to keep the page responsive; ` +
-    `showing the top ${renderedSeriesCount.toLocaleString()} by peak value. ` +
+    `Showing top ${renderedSeriesCount.toLocaleString()} of ` +
+    `${total.toLocaleString()} series. ${completenessClause} to keep the chart ` +
+    `readable — ${hiddenSeriesCount.toLocaleString()} smaller series are hidden. ` +
     (onLoadAll
-      ? `Click to load all ${total.toLocaleString()} (may be slow).`
-      : 'Add a stricter GROUP BY, a WHERE filter, or a series limit to reduce cardinality.');
+      ? `Click to draw all ${total.toLocaleString()} (may be slow).`
+      : 'Increase the series limit, or narrow the query with a stricter GROUP BY or WHERE filter, to see more.');
 
   const icon = (
-    <IconAlertTriangle size={16} color="var(--color-text-warning)" />
+    <IconAlertTriangle
+      size={16}
+      color="var(--color-text-warning)"
+      data-testid="hidden-series-indicator-icon"
+    />
   );
 
   return (

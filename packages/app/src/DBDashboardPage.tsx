@@ -146,6 +146,7 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import { resolveTileMaxResultRows } from '@/defaults';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
 import useDashboardContainers, {
   TabDeleteAction,
@@ -1126,6 +1127,11 @@ const Tile = forwardRef(
             }
           : undefined;
 
+        // Only raw SQL tiles get a row cap (see resolveTileMaxResultRows).
+        const tileMaxResultRows = resolveTileMaxResultRows(
+          effectiveQueriedConfig,
+        );
+
         // Markdown charts may not have queriedConfig, if config.source is not set
         const effectiveMarkdownConfig = effectiveQueriedConfig ?? chart.config;
 
@@ -1171,6 +1177,7 @@ const Tile = forwardRef(
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                     annotations={alertAnnotations}
+                    maxResultRows={tileMaxResultRows}
                     onTimeRangeSelect={
                       readOnly
                         ? undefined
@@ -1235,6 +1242,7 @@ const Tile = forwardRef(
                     toolbarSuffix={toolbarSuffixItems}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
+                    maxResultRows={tileMaxResultRows}
                   />
                 )}
                 {effectiveQueriedConfig?.displayType === DisplayType.Bar && (
@@ -1245,6 +1253,7 @@ const Tile = forwardRef(
                     toolbarSuffix={toolbarSuffixItems}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
+                    maxResultRows={tileMaxResultRows}
                   />
                 )}
                 {effectiveQueriedConfig?.displayType === DisplayType.Heatmap &&

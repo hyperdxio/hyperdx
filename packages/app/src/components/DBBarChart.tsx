@@ -20,6 +20,7 @@ import {
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
+import ResultOverflowBanner from './charts/ResultOverflowBanner';
 
 const MAX_BAR_LABEL_LENGTH = 14;
 const BAR_LABEL_AXIS_HEIGHT = 80; // increased height to accommodate rotated + truncated labels
@@ -68,10 +69,27 @@ export const DBBarChart = (props: CategoricalChartProps) => {
     error,
     chartData,
     responseFormatError,
+    didOverflow,
+    maxResultRows,
+    rows,
+    series,
   } = useCategoricalChart(props);
 
   return (
-    <ChartContainer title={props.title} toolbarItems={toolbarItems}>
+    <ChartContainer
+      title={props.title}
+      toolbarItems={toolbarItems}
+      belowHeader={
+        maxResultRows != null ? (
+          <ResultOverflowBanner
+            didOverflow={didOverflow}
+            cap={maxResultRows}
+            rows={rows}
+            series={series}
+          />
+        ) : undefined
+      }
+    >
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...

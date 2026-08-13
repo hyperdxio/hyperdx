@@ -37,6 +37,11 @@ import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
+import {
+  didResultOverflow,
+  hasOuterLimit,
+  resolveResultRowLimitSettings,
+} from '@/defaults';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
@@ -54,6 +59,12 @@ interface AdditionalUseQueriedChartConfigOptions {
    */
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * When positive, caps the rows the query may return (see
+   * resolveResultRowLimitSettings) and reports whether the cap was hit via
+   * `data.didOverflow`. Omit / 0 to leave uncapped.
+   */
+  maxResultRows?: number;
 }
 
 type TimeWindow = {
@@ -63,6 +74,11 @@ type TimeWindow = {
 
 type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
   isComplete: boolean;
+  /**
+   * True when the query exceeded the `maxResultRows` cap and the returned rows
+   * are a truncated slice of a larger result. Undefined when no cap was applied.
+   */
+  didOverflow?: boolean;
 };
 
 type TChunk = {
@@ -142,6 +158,7 @@ async function* fetchDataInChunks({
   enableParallelQueries = false,
   metadata,
   querySettings,
+  maxResultRows,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
@@ -150,6 +167,7 @@ async function* fetchDataInChunks({
   enableParallelQueries?: boolean;
   metadata: Metadata;
   querySettings: QuerySettings | undefined;
+  maxResultRows?: number;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -189,9 +207,21 @@ async function* fetchDataInChunks({
   }
 
   // Readonly = 2 means the query is readonly but can still specify query settings.
-  const clickHouseSettings = isRawSqlChartConfig(config)
+  const clickHouseSettings: Record<string, string> = isRawSqlChartConfig(config)
     ? { readonly: '2' }
     : {};
+
+  // Cap the rows any single (possibly chunked) query returns. The chosen
+  // settings depend on whether the raw SQL has its own outer LIMIT (which would
+  // be corrupted by the group-by cardinality cap) — see
+  // resolveResultRowLimitSettings. Builder configs have no sqlTemplate.
+  const rawSql = isRawSqlChartConfig(config) ? config.sqlTemplate : undefined;
+  const resultRowLimitSettings = resolveResultRowLimitSettings(maxResultRows, {
+    hasOuterLimit: hasOuterLimit(rawSql),
+  });
+  if (resultRowLimitSettings != null) {
+    Object.assign(clickHouseSettings, resultRowLimitSettings.settings);
+  }
 
   if (enableParallelQueries) {
     // fetch in parallel
@@ -242,6 +272,7 @@ async function* fetchDataInChunks({
       metadata,
       opts: {
         abort_signal: signal,
+        clickhouse_settings: clickHouseSettings,
       },
       querySettings,
     });
@@ -317,6 +348,7 @@ export function useQueriedChartConfig(
       config,
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
+      options?.maxResultRows ?? 0,
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
@@ -430,7 +462,14 @@ export function useQueriedChartConfig(
         enableParallelQueries: options?.enableParallelQueries,
         metadata,
         querySettings: source?.querySettings,
+        maxResultRows: options?.maxResultRows,
       });
+
+      // The cap applies per chunk, so `didOverflow` is the OR of the per-chunk
+      // `rows > cap` check (raw SQL never chunks, so its one chunk is the whole
+      // result).
+      const cap = options?.maxResultRows;
+      let anyChunkOverflowed = false;
 
       let accumulatedChunks: TQueryFnData = emptyValue;
       for await (const chunk of chunks) {
@@ -438,7 +477,13 @@ export function useQueriedChartConfig(
           break;
         }
 
+        if (didResultOverflow({ rows: chunk.chunk.rows, cap })) {
+          anyChunkOverflowed = true;
+        }
+
         accumulatedChunks = appendChunk(accumulatedChunks, chunk);
+        accumulatedChunks.didOverflow =
+          cap == null ? undefined : anyChunkOverflowed;
 
         // When refetching, the cache is not updated until all chunks are fetched.
         if (!isRefetch) {
