@@ -245,9 +245,9 @@ const fastifySQL = ({
           // FIXME: handle 'Value' type?
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const _n = node as ColumnRef;
-          // @ts-ignore
+          // @ts-expect-error node-sql-parser column types don't model the object form
           if (typeof _n.column !== 'string') {
-            // @ts-ignore
+            // @ts-expect-error node-sql-parser column types don't model the object form
             colExpr = `${_n.column?.expr.value}['${_n.array_index?.[0]?.index.value}']`;
           }
           break;
@@ -313,14 +313,13 @@ const fastifySQL = ({
           for (const key in _n) {
             // eslint-disable-next-line no-prototype-builtins
             if (_n.hasOwnProperty(key)) {
-              // @ts-ignore
               delete _n[key];
             }
           }
           _n.type = 'column_ref';
-          // @ts-ignore
+          // @ts-expect-error reshaping AST node in place; node-sql-parser types are too narrow
           _n.table = null;
-          // @ts-ignore
+          // @ts-expect-error reshaping AST node in place; node-sql-parser types are too narrow
           _n.column = { expr: { type: 'default', value: materializedField } };
         }
       }
@@ -1616,42 +1615,6 @@ async function renderWith(
   return undefined;
 }
 
-function intervalToSeconds(interval: SQLInterval): number {
-  // Parse interval string like "15 second" into number of seconds
-  const [amount, unit] = interval.split(' ');
-  const value = parseInt(amount, 10);
-  switch (unit) {
-    case 'second':
-      return value;
-    case 'minute':
-      return value * 60;
-    case 'hour':
-      return value * 60 * 60;
-    case 'day':
-      return value * 24 * 60 * 60;
-    default:
-      throw new Error(`Invalid interval unit ${unit} in interval ${interval}`);
-  }
-}
-
-function renderFill(
-  chartConfig: BuilderChartConfigWithOptDateRangeEx,
-): ChSql | undefined {
-  const { granularity, dateRange } = chartConfig;
-  if (dateRange && granularity && granularity !== 'auto') {
-    const [start, end] = dateRange;
-    const step = intervalToSeconds(granularity);
-
-    return concatChSql(' ', [
-      chSql`FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: start.getTime() }}), INTERVAL ${granularity}))
-      TO toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: end.getTime() }}), INTERVAL ${granularity}))
-      STEP ${{ Int32: step }}`,
-    ]);
-  }
-
-  return undefined;
-}
-
 function renderDeltaExpression(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   valueExpression: string,
@@ -2297,7 +2260,8 @@ export async function renderChartConfig(
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
-  //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
+  // TODO: WITH FILL (gap-filling for time buckets) was removed as dead code; it
+  // broke heatmaps and some charts. Reintroduce a fill renderer if we revisit this.
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
 

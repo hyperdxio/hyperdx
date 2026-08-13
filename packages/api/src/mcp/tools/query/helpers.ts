@@ -6,10 +6,7 @@ import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  isBuilderSavedChartConfig,
-  isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,

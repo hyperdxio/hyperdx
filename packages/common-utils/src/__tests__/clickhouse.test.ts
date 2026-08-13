@@ -1005,7 +1005,6 @@ describe('mergeResultSets', () => {
 describe('processClickhouseSettings - optimization settings', () => {
   let client: ClickhouseClient;
   let mockQueryMethod: jest.Mock;
-  let metadataCache: MetadataCache;
 
   const createClient = () => {
     const newClient = new ClickhouseClient({
@@ -1049,7 +1048,6 @@ describe('processClickhouseSettings - optimization settings', () => {
     const setup = createClient();
     client = setup.client;
     mockQueryMethod = setup.mockQueryMethod;
-    metadataCache = setup.cache;
   });
 
   afterEach(() => {

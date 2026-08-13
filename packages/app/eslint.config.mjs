@@ -146,8 +146,11 @@ export default [
       
       'react-hook-form/no-use-watch': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
-      '@typescript-eslint/ban-ts-comment': 'warn',
-      '@typescript-eslint/no-empty-function': 'warn',
+      '@typescript-eslint/ban-ts-comment': 'error',
+      // Empty no-op functions are common and intentional (test mocks, default
+      // callback props like onClose/onChange). Flagging them adds noise without
+      // catching real bugs, so this rule is disabled.
+      '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'warn',
       '@typescript-eslint/no-unsafe-type-assertion': 'warn',

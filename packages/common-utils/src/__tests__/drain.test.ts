@@ -5,13 +5,13 @@ import { TemplateMiner } from '@/drain/template-miner';
 describe('Drain', () => {
   it('test_add_shorter_than_depth_message', () => {
     const model = new Drain(4);
-    let [cluster, changeType] = model.addLogMessage('hello');
+    let [_cluster, changeType] = model.addLogMessage('hello');
     expect(changeType).toBe('cluster_created');
 
-    [cluster, changeType] = model.addLogMessage('hello');
+    [_cluster, changeType] = model.addLogMessage('hello');
     expect(changeType).toBe('none');
 
-    [cluster, changeType] = model.addLogMessage('otherword');
+    [_cluster, changeType] = model.addLogMessage('otherword');
     expect(changeType).toBe('cluster_created');
 
     expect(model.clusterCount).toBe(2);

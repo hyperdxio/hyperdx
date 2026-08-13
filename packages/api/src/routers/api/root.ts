@@ -5,10 +5,7 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
-import {
-  generateAlertSilenceToken,
-  silenceAlertByToken,
-} from '@/controllers/alerts';
+import { silenceAlertByToken } from '@/controllers/alerts';
 import { createTeam, isTeamExisting } from '@/controllers/team';
 import { handleAuthError, redirectToDashboard } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';

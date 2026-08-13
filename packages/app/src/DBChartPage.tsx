@@ -270,7 +270,7 @@ const DBChartExplorerPageDynamic = dynamic(async () => DBChartExplorerPage, {
   ssr: false,
 });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 DBChartExplorerPageDynamic.getLayout = withAppNav;
 
 export default DBChartExplorerPageDynamic;
