@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
+import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import {
   annotateIncreaseTopNHint,
   buildTile,
@@ -209,6 +210,8 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
+        PREFER_BUILDER_OVER_SQL_NUDGE +
+        '\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
         'Each select item can also have its own "where" for per-metric cohort ' +

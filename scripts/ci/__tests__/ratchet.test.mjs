@@ -64,6 +64,9 @@ test('skips node_modules and build output', () => {
       'src/a.ts': 'const x = y as any;',
       'node_modules/dep/index.ts': 'const a = b as any;',
       'dist/bundle.ts': 'const a = b as any;',
+      // `NEXT_DIST_DIR` renames this, so it is matched by prefix.
+      '.next/dev/types/validator.ts': 'const a = b as any;',
+      '.next-e2e/dev/types/validator.ts': 'const a = b as any;',
     },
   });
   assert.equal(collectCounts(root).app['as-any'], 1);

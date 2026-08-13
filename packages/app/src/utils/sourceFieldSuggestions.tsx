@@ -10,6 +10,7 @@ export type SourceFieldKind =
   | 'bodyExpression'
   | 'implicitColumnExpression'
   | 'serviceNameExpression'
+  | 'serviceVersionExpression'
   | 'severityTextExpression'
   | 'eventAttributesExpression'
   | 'resourceAttributesExpression'
@@ -95,6 +96,18 @@ const FIELD_RULES: Record<SourceFieldKind, FieldRule> = {
   },
   serviceNameExpression: {
     canonicalNames: ['ServiceName', 'service', 'service.name', 'service_name'],
+    typeMatches: isStringy,
+    recommendStrategy: 'name-only',
+  },
+  // Usually a map lookup rather than a column, so these only hit on schemas
+  // that materialize the version out. No match just leaves the placeholder.
+  serviceVersionExpression: {
+    canonicalNames: [
+      'ServiceVersion',
+      'service.version',
+      'service_version',
+      'version',
+    ],
     typeMatches: isStringy,
     recommendStrategy: 'name-only',
   },
