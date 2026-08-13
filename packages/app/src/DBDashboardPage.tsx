@@ -33,6 +33,7 @@ import {
   displayTypeSupportsPromQLAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
@@ -683,13 +684,20 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
+    // Only DBTimeChart draws annotations (see the render below) — a tile
+    // showing a table, number, pie, ... discards them. Both annotation queries
+    // stay idle for those rather than paying for a result nothing can show.
+    const tileCanDrawAnnotations = isTimeSeriesDisplayType(
+      chart.config.displayType,
+    );
+
     // Firing/recovery markers for this tile's alert, scoped to the *visible*
     // window — the fullscreen range while the fullscreen view is open, else the
     // dashboard range (off unless the dashboard toggle is on).
     const alertAnnotations = useAlertAnnotations(
       alert?.id,
       isFullscreen ? fullscreenDateRange : dateRange,
-      showAlertAnnotations,
+      showAlertAnnotations && tileCanDrawAnnotations,
     );
 
     // Release markers, over the same visible window. Scoped to this tile: the
@@ -698,7 +706,7 @@ const Tile = forwardRef(
     // releases. Tiles sharing a source and filters share one query.
     const releaseAnnotations = useReleaseAnnotations(
       isFullscreen ? fullscreenDateRange : dateRange,
-      showReleaseAnnotations,
+      showReleaseAnnotations && tileCanDrawAnnotations,
       {
         source,
         where: isBuilderSavedChartConfig(chart.config)
