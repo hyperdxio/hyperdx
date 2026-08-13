@@ -26,8 +26,13 @@ export {
 // the same artefact a human gets from the UI.
 
 const TERRAFORM_PROVIDER_SOURCE = 'ClickHouse/clickhouse';
-// First provider version shipping the ClickStack (HyperDX) resources.
-const TERRAFORM_PROVIDER_VERSION_CONSTRAINT = '>= 3.22.0';
+// The floor is about dashboards, not about the id form: below it, importing a
+// dashboard carries server-only ids into the config `-generate-config-out`
+// writes, and applying that config is what churns tile ids and takes the tile
+// alerts with them (provider #654, released in 3.24.1; 3.25.0 is the version
+// we pin). The `<team_id>/<resource_id>` id we emit has been accepted since
+// 3.22.0 and does not need this floor.
+const TERRAFORM_PROVIDER_VERSION_CONSTRAINT = '>= 3.25.0';
 // `import {}` blocks and `-generate-config-out` both landed in Terraform 1.5.
 // Without this, an older CLI fails with a syntax error instead of saying so.
 const TERRAFORM_VERSION_CONSTRAINT = '>= 1.5.0';
@@ -111,18 +116,26 @@ export const IAC_RESOURCE_ID_RE = /^[0-9a-fA-F]{24}$/;
  * ObjectId hex means the caller is wrong about what it is holding, and a
  * silently rewritten id would import the wrong resource.
  */
-function assertResourceId(id: string): string {
+function assertResourceId(id: string, label = 'id'): string {
   if (!IAC_RESOURCE_ID_RE.test(id)) {
-    throw new Error(`Refusing to emit Terraform for a non-ObjectId id: ${id}`);
+    throw new Error(
+      `Refusing to emit Terraform for a non-ObjectId ${label}: ${id}`,
+    );
   }
   return id;
 }
 
-export function buildImportBlock(ref: IacResourceRef): string {
+/**
+ * Import ids are `<team_id>/<resource_id>`. On ClickHouse Cloud one ClickStack
+ * service can back several teams, so a bare resource id does not say which
+ * team's resource to read. The team stays out of the Terraform address (see
+ * terraformResourceLabel) — it belongs to the lookup, not the identity.
+ */
+export function buildImportBlock(ref: IacResourceRef, teamId: string): string {
   const name = commentSafeName(ref.name);
   return `${name ? `# ${name}\n` : ''}import {
   to = ${TERRAFORM_RESOURCE_TYPES[ref.type]}.${terraformResourceLabel(ref)}
-  id = "${assertResourceId(ref.id)}"
+  id = "${assertResourceId(teamId, 'team id')}/${assertResourceId(ref.id, 'resource id')}"
 }`;
 }
 
@@ -190,12 +203,15 @@ ${lines.join('\n')}
 
 export function buildImportFile({
   endpoint,
+  teamId,
   resources,
   connectionLocals = [],
   truncatedTypes = [],
   skipNotices = [],
 }: {
   endpoint: string;
+  /** Prefixes every import id — see buildImportBlock. */
+  teamId: string;
   resources: IacResourceRef[];
   connectionLocals?: IacConnectionRef[];
   /**
@@ -216,7 +232,7 @@ export function buildImportFile({
     ...(connectionLocals.length
       ? [buildConnectionLocalsBlock(connectionLocals)]
       : []),
-    ...resources.map(buildImportBlock),
+    ...resources.map(r => buildImportBlock(r, teamId)),
   ];
   const partialWarning = truncatedTypes.length
     ? `#
@@ -255,6 +271,19 @@ ${partialWarning}${skipped}#
 # * Resource addresses below are derived from each resource's id, so they
 #   survive a rename in HyperDX. The name in the comment above each block is
 #   a label for humans only.
+# * Import ids are "<team_id>/<resource_id>", so each imported resource gets a
+#   "team" attribute. Keep it in generated.tf: the provider marks that
+#   attribute RequiresReplace, so removing or changing it plans a destroy and
+#   recreate rather than an update.
+# * Team-scoped ids need the provider configured with clickstack_endpoint, as
+#   the block below does. A provider configured against the Cloud API instead
+#   (clickstack_service_id) rejects any team-scoped call — on that path a
+#   service is a single ClickStack, so drop the "<team_id>/" prefix.
+# * The provider version constraint below is a floor, not decoration. If you
+#   delete the "terraform" block per step 1, check your own declaration
+#   requires >= 3.25.0 — older providers write server-only ids into the config
+#   generated for a dashboard, and applying that churns its tile ids and
+#   deletes the tile alerts attached to them.
 # * Re-exporting later does NOT produce an additive file. It re-emits every
 #   resource, including the ones already in state, so two of these files in one
 #   module means duplicate "to" addresses — which Terraform rejects for the
