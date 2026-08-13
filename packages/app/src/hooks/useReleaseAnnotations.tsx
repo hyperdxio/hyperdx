@@ -3,6 +3,7 @@ import {
   BuilderChartConfigWithDateRange,
   Filter,
   SearchConditionLanguage,
+  SelectList,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -48,8 +49,77 @@ export type ReleaseRow = {
 type ReleaseScope = {
   where?: string;
   whereLanguage?: SearchConditionLanguage;
+  /** The tile's series conditions, already folded by `aggConditionScopeFilter`. */
+  seriesCondition?: Filter;
   filters?: Filter[];
 };
+
+/** What the hook reads off the tile to build that scope. */
+type ReleaseTileScope = Omit<ReleaseScope, 'seriesCondition'> & {
+  /**
+   * The tile's series. A time chart keeps its filter in each series'
+   * `aggCondition` rather than in `where` — see `aggConditionScopeFilter`.
+   */
+  select?: SelectList;
+};
+
+/**
+ * The predicate describing which rows a tile's chart reads, taken from its
+ * series.
+ *
+ * A builder time chart does not use the statement-level `where` — the editor
+ * clears it and each series carries its own `aggCondition` instead, applied
+ * inside that series' aggregate. `renderChartConfig` additionally pre-filters
+ * the scan with the OR of those conditions, and only when *every* series has
+ * one: leave any series unfiltered and the tile reads every row anyway. That
+ * union is exactly "the rows this tile is about", so mirror the same rule here
+ * rather than letting the releases query span data the chart never saw.
+ *
+ * Series each choose their own condition language. Conditions in different
+ * languages can't be combined into one predicate, so those tiles go unscoped
+ * rather than scoped wrongly.
+ */
+export function aggConditionScopeFilter(
+  select: SelectList | undefined,
+): Filter | undefined {
+  // A raw select string carries no per-series conditions to read.
+  if (!Array.isArray(select) || select.length === 0) {
+    return undefined;
+  }
+
+  // Deduped: series sharing one filter (the usual multi-series tile) should
+  // collapse to that filter rather than OR it with itself.
+  const conditions = new Set<string>();
+  const languages = new Set<SearchConditionLanguage>();
+  for (const series of select) {
+    const condition = series.aggCondition?.trim();
+    if (!condition) {
+      return undefined;
+    }
+    conditions.add(condition);
+    // Undefined matches how the per-series aggregate renders it.
+    languages.add(series.aggConditionLanguage ?? 'lucene');
+  }
+
+  if (languages.size !== 1) {
+    return undefined;
+  }
+  const [language] = languages;
+  // `Filter` only speaks SQL and Lucene. PromQL series are a separate config
+  // type that never reaches here, but bail rather than mislabel one.
+  if (language !== undefined && language !== 'sql' && language !== 'lucene') {
+    return undefined;
+  }
+
+  const unique = [...conditions];
+  return {
+    type: language === 'sql' ? 'sql' : 'lucene',
+    condition:
+      unique.length === 1
+        ? unique[0]
+        : unique.map(condition => `(${condition})`).join(' OR '),
+  };
+}
 
 /**
  * Whether releases can be derived from this source.
@@ -113,9 +183,11 @@ export function buildReleaseChartConfig(
       ? source.serviceNameExpression
       : undefined;
 
-  // The tile's own `where` and the dashboard filters both go through `filters`,
-  // which carries a language per entry — the config's own `where` is reserved
-  // for the SQL version predicate below.
+  // The tile's own predicates and the dashboard filters all go through
+  // `filters`, which carries a language per entry — the config's own `where` is
+  // reserved for the SQL version predicate below. Entries are ANDed, matching
+  // how the tile's query combines its `where`, its series conditions and the
+  // dashboard filters.
   const scopeFilters: Filter[] = [
     ...(scope.where?.trim()
       ? [
@@ -125,6 +197,7 @@ export function buildReleaseChartConfig(
           } as Filter,
         ]
       : []),
+    ...(scope.seriesCondition ? [scope.seriesCondition] : []),
     ...(scope.filters ?? []).filter(
       filter => !('condition' in filter) || filter.condition?.trim(),
     ),
@@ -234,7 +307,8 @@ export function releaseRowsToAnnotations(
  * `service.version` resource attribute.
  *
  * Scoped to the tile: the query runs against the tile's own source with the
- * tile's own filters, so the markers describe the data the chart is showing. An
+ * tile's own predicates — its `where`, its per-series conditions and the
+ * dashboard filters — so the markers describe the data the chart is showing. An
  * unfiltered tile spanning every service therefore does show every service's
  * releases — that is consistent, not noise.
  *
@@ -245,7 +319,7 @@ export function releaseRowsToAnnotations(
 export function useReleaseAnnotations(
   dateRange: [Date, Date],
   enabled: boolean = false,
-  options?: ReleaseScope & {
+  options?: ReleaseTileScope & {
     source?: TSource;
     /** Overrides the source's own expression. Mainly a testing seam. */
     versionExpression?: string;
@@ -264,12 +338,16 @@ export function useReleaseAnnotations(
   const windowEndMs = Math.ceil(dateRange[1].getTime() / BUCKET_MS) * BUCKET_MS;
 
   // Callers rebuild the filter array every render, so key the memo on its
-  // content. Tiles sharing a source and filters then share one query.
+  // content. Tiles sharing a source and filters then share one query. Only the
+  // *folded* series condition goes in, not the raw series list — its display-only
+  // fields (number format, colors) would otherwise refire the query on a purely
+  // cosmetic tile edit.
   const scopeKey = JSON.stringify({
     where: options?.where,
     whereLanguage: options?.whereLanguage,
+    seriesCondition: aggConditionScopeFilter(options?.select),
     filters: options?.filters,
-  });
+  } satisfies ReleaseScope);
 
   const config = useMemo(() => {
     if (!isSupported || !source) {

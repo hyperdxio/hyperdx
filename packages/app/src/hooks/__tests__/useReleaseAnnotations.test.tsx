@@ -1,5 +1,7 @@
 import {
   BuilderChartConfigWithDateRange,
+  DerivedColumn,
+  SearchConditionLanguage,
   SourceKind,
   TLogSource,
   TMetricSource,
@@ -9,6 +11,7 @@ import {
 import { renderHook } from '@testing-library/react';
 
 import {
+  aggConditionScopeFilter,
   buildReleaseChartConfig,
   canDeriveReleases,
   DEFAULT_VERSION_EXPRESSION,
@@ -295,6 +298,44 @@ describe('buildReleaseChartConfig', () => {
       ]);
     });
 
+    it("carries the tile's folded series condition", () => {
+      const config = buildReleaseChartConfig(
+        logSource,
+        DEFAULT_VERSION_EXPRESSION,
+        range,
+        {
+          seriesCondition: { type: 'lucene', condition: 'ServiceName:"cart"' },
+        },
+      );
+
+      expect(config.filters).toEqual([
+        { type: 'lucene', condition: 'ServiceName:"cart"' },
+      ]);
+    });
+
+    // The tile ANDs its own where with its series conditions and the dashboard
+    // filters, so the releases query has to as well.
+    it('ANDs the where clause, the series condition and the dashboard filters', () => {
+      const config = buildReleaseChartConfig(
+        logSource,
+        DEFAULT_VERSION_EXPRESSION,
+        range,
+        {
+          where: 'Env:"prod"',
+          whereLanguage: 'lucene',
+          seriesCondition: { type: 'lucene', condition: 'ServiceName:"cart"' },
+          filters: [{ type: 'sql', condition: "Region = 'us-east-1'" }],
+        },
+      );
+
+      expect(config.filters).toEqual([
+        { type: 'lucene', condition: 'Env:"prod"' },
+        { type: 'lucene', condition: 'ServiceName:"cart"' },
+        { type: 'sql', condition: "Region = 'us-east-1'" },
+      ]);
+      expect(config.filtersLogicalOperator).toBeUndefined();
+    });
+
     // Lucene bare terms need the source's implicit column to render.
     it('carries the implicit column expression for Lucene filters', () => {
       const config = buildReleaseChartConfig(
@@ -305,6 +346,99 @@ describe('buildReleaseChartConfig', () => {
 
       expect(config.implicitColumnExpression).toBe('Body');
     });
+  });
+});
+
+describe('aggConditionScopeFilter', () => {
+  /** A series carrying just the fields the fold reads. */
+  const series = (
+    aggCondition: string,
+    aggConditionLanguage?: SearchConditionLanguage,
+  ): DerivedColumn => ({
+    aggFn: 'count',
+    valueExpression: '',
+    aggCondition,
+    aggConditionLanguage,
+  });
+
+  it("folds a single series' condition into a filter", () => {
+    expect(
+      aggConditionScopeFilter([series('ServiceName:"cart"', 'lucene')]),
+    ).toEqual({ type: 'lucene', condition: 'ServiceName:"cart"' });
+  });
+
+  it('keeps a SQL series condition in SQL', () => {
+    expect(
+      aggConditionScopeFilter([series("ServiceName = 'cart'", 'sql')]),
+    ).toEqual({ type: 'sql', condition: "ServiceName = 'cart'" });
+  });
+
+  // Matches how the per-series aggregate renders an unset language.
+  it('treats an unset language as Lucene', () => {
+    expect(aggConditionScopeFilter([series('ServiceName:"cart"')])).toEqual({
+      type: 'lucene',
+      condition: 'ServiceName:"cart"',
+    });
+  });
+
+  // renderChartConfig ORs the series conditions into the scan predicate, so the
+  // union is the set of rows the tile reads.
+  it('ORs several series conditions together', () => {
+    expect(
+      aggConditionScopeFilter([
+        series('SeverityText:"error"', 'lucene'),
+        series('SeverityText:"warn"', 'lucene'),
+      ]),
+    ).toEqual({
+      type: 'lucene',
+      condition: '(SeverityText:"error") OR (SeverityText:"warn")',
+    });
+  });
+
+  // The common multi-series tile: several aggregates over one filter, as in the
+  // shipped browser-rum template. Collapse rather than OR the filter with itself.
+  it('collapses series that share one condition', () => {
+    expect(
+      aggConditionScopeFilter([
+        series('SpanName:"documentLoad"', 'lucene'),
+        series('SpanName:"documentLoad"', 'lucene'),
+        series('SpanName:"documentLoad"', 'lucene'),
+      ]),
+    ).toEqual({ type: 'lucene', condition: 'SpanName:"documentLoad"' });
+  });
+
+  // With one series unfiltered the tile scans every row, so there is nothing to
+  // narrow the releases query by.
+  it('yields nothing when any series is unfiltered', () => {
+    expect(
+      aggConditionScopeFilter([
+        series('SeverityText:"error"', 'lucene'),
+        series('  ', 'lucene'),
+      ]),
+    ).toBeUndefined();
+    expect(aggConditionScopeFilter([series('', 'lucene')])).toBeUndefined();
+  });
+
+  // Conditions in different languages can't be combined into one predicate;
+  // going unscoped beats scoping wrongly.
+  it('yields nothing for series in mixed languages', () => {
+    expect(
+      aggConditionScopeFilter([
+        series('SeverityText:"error"', 'lucene'),
+        series("SeverityText = 'warn'", 'sql'),
+      ]),
+    ).toBeUndefined();
+  });
+
+  // `Filter` only speaks SQL and Lucene.
+  it('yields nothing for a PromQL series condition', () => {
+    expect(aggConditionScopeFilter([series('up', 'promql')])).toBeUndefined();
+  });
+
+  it('yields nothing for a raw select string or an empty series list', () => {
+    expect(aggConditionScopeFilter('count() AS value')).toBeUndefined();
+    expect(aggConditionScopeFilter([])).toBeUndefined();
+    expect(aggConditionScopeFilter(undefined)).toBeUndefined();
   });
 });
 
@@ -481,6 +615,59 @@ describe('useReleaseAnnotations', () => {
     expect(lastCall()[0].filters).toEqual([
       { type: 'lucene', condition: 'ServiceName:"checkout"' },
     ]);
+  });
+
+  // Regression: a time chart's filter lives in each series' `aggCondition`, not
+  // in the statement-level `where`, so reading only `where` left every time
+  // chart's markers unscoped.
+  it("scopes the query with the tile's per-series conditions", () => {
+    renderHook(() =>
+      useReleaseAnnotations(range, true, {
+        source: logSource,
+        where: '',
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: 'ServiceName:"checkout"',
+            aggConditionLanguage: 'lucene',
+          },
+        ],
+      }),
+    );
+
+    expect(lastCall()[0].filters).toEqual([
+      { type: 'lucene', condition: 'ServiceName:"checkout"' },
+    ]);
+  });
+
+  // Only the folded condition keys the memo, so restyling a series must not
+  // rebuild the config and refire the query.
+  it('reuses one config object when a cosmetic series field changes', () => {
+    type SeriesColor = DerivedColumn['color'];
+    const select = (color: SeriesColor): DerivedColumn[] => [
+      {
+        aggFn: 'count',
+        valueExpression: '',
+        aggCondition: 'ServiceName:"checkout"',
+        aggConditionLanguage: 'lucene',
+        color,
+      },
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ color }: { color: SeriesColor }) =>
+        useReleaseAnnotations(range, true, {
+          source: logSource,
+          select: select(color),
+        }),
+      { initialProps: { color: 'chart-blue' as SeriesColor } },
+    );
+    const first = lastCall()[0];
+    rerender({ color: 'chart-red' });
+
+    expect(lastCall()[0]).toBe(first);
+    expect(result.current).toBeUndefined();
   });
 
   it('widens the query range backwards to spot the already-running version', () => {

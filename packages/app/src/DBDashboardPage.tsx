@@ -704,17 +704,22 @@ const Tile = forwardRef(
     // query runs against the tile's own source with the tile's own predicates,
     // so a chart filtered to one service isn't annotated with another's
     // releases. Tiles sharing a source and filters share one query.
+    //
+    // A time chart's filter lives in each series' `aggCondition`, not in the
+    // statement-level `where` (the editor clears that one), so `select` has to
+    // come along for the scoping to mean anything — `where` is carried for the
+    // configs that do set it, e.g. an imported dashboard.
+    const builderConfig = isBuilderSavedChartConfig(chart.config)
+      ? chart.config
+      : undefined;
     const releaseAnnotations = useReleaseAnnotations(
       isFullscreen ? fullscreenDateRange : dateRange,
       showReleaseAnnotations && tileCanDrawAnnotations,
       {
         source,
-        where: isBuilderSavedChartConfig(chart.config)
-          ? chart.config.where
-          : undefined,
-        whereLanguage: isBuilderSavedChartConfig(chart.config)
-          ? chart.config.whereLanguage
-          : undefined,
+        where: builderConfig?.where,
+        whereLanguage: builderConfig?.whereLanguage,
+        select: builderConfig?.select,
         filters,
       },
     );
