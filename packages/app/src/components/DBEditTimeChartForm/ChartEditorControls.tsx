@@ -344,12 +344,12 @@ export function ChartEditorControls({
               )}
               {/* Grouped ratios divide per-group by default; this opts into
                   share-of-total (each group's contribution to the blended
-                  rate). Only metric sources fan out to per-series queries
-                  merged client-side (see mergeResultSets/ratioMode) — other
-                  sources compute the ratio within-group in the DB, where
-                  ratioMode has no effect — so restrict to metric sources. No
-                  effect on ungrouped ratios either, so also gate on a Group
-                  By. */}
+                  rate). Only metric sources render the ratio over composed
+                  per-series branches where ratioMode applies (see
+                  renderMultiSeriesMetricChartConfig) — other sources compute
+                  the ratio within-group via divide(), where ratioMode has no
+                  effect — so restrict to metric sources. No effect on
+                  ungrouped ratios either, so also gate on a Group By. */}
               {fields.length === 2 &&
                 seriesReturnType === 'ratio' &&
                 tableSource?.kind === SourceKind.Metric &&

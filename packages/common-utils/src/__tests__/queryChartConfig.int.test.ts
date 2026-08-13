@@ -896,11 +896,11 @@ describe('queryChartConfig Integration Tests', () => {
 
   // Regression baseline for the multi-series metric merge (HDX-5076).
   //
-  // A metric chart with N select items fans out into N ClickHouse queries and
-  // the result sets are merged back together (today node-side via
-  // mergeResultSets; HDX-5077 moves the merge into a single composed ClickHouse
-  // query). These tests pin the OBSERVABLE CONTRACT of that merge end-to-end
-  // through queryChartConfig, so the reimplementation must reproduce it:
+  // A metric chart with N select items renders one per-series query per item
+  // and merges them back into one result set. These tests were written
+  // against the original node-side merge (mergeResultSets) and pin its
+  // OBSERVABLE CONTRACT end-to-end through queryChartConfig; the composed
+  // single-query implementation (HDX-5077) must — and does — reproduce it:
   //
   //  - meta lists all value columns first, in select order (positional
   //    contract of useChartNumberFormats);
@@ -1343,6 +1343,68 @@ describe('queryChartConfig Integration Tests', () => {
       const svcC = rows.get(`${bucket(0)}|svc-c`);
       expectGap(col(svcC, 'avg(grp.one)'));
       expect(col(svcC, 'avg(grp.two)')).toBe(30);
+    });
+
+    // Consumers read group columns by the exact name a single-series query
+    // would produce — for an un-aliased map access that is ClickHouse's
+    // DERIVED name (arrayElement(...)), not the expression text. The
+    // Kubernetes dashboard (KubernetesDashboardPage.tsx) and external-API
+    // clients both do row lookups like
+    // row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"], so the
+    // merge must not rename these columns. Regression test for the k8s e2e
+    // failure where the composed query re-aliased group columns to their
+    // expression text and blanked the namespace/pod cells.
+    it('preserves ClickHouse-derived column names for expression group-bys', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+          groupBy: [
+            {
+              aggCondition: '',
+              valueExpression: "ResourceAttributes['service.name']",
+            },
+          ],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, ['avg(grp.one)', 'avg(grp.two)']);
+      const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+      expect(result.meta?.map(m => m.name)).toContain(DERIVED_NAME);
+
+      // Same fixture as the ServiceName-grouped test above (the resource
+      // attribute mirrors ServiceName), keyed by the derived column name.
+      const rows = rowsByBucketAndGroup(result.data, DERIVED_NAME);
+      expect([...rows.keys()].sort()).toEqual([
+        `${bucket(0)}|svc-a`,
+        `${bucket(0)}|svc-b`,
+        `${bucket(0)}|svc-c`,
+      ]);
+      const svcA = rows.get(`${bucket(0)}|svc-a`);
+      expect(col(svcA, 'avg(grp.one)')).toBe(1);
+      expect(col(svcA, 'avg(grp.two)')).toBe(10);
+      expect(col(rows.get(`${bucket(0)}|svc-b`), 'avg(grp.one)')).toBe(2);
+      expectGap(col(rows.get(`${bucket(0)}|svc-b`), 'avg(grp.two)'));
+    });
+
+    it('keeps a user alias on an expression group-by as the column name', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+          groupBy: [
+            {
+              aggCondition: '',
+              valueExpression: "ResourceAttributes['service.name']",
+              alias: 'service',
+            },
+          ],
+        }),
+      );
+
+      expect(result.meta?.map(m => m.name)).toContain('service');
+      const rows = rowsByBucketAndGroup(result.data, 'service');
+      expect(rows.size).toBe(3);
+      expect(col(rows.get(`${bucket(0)}|svc-b`), 'avg(grp.one)')).toBe(2);
+      expect(col(rows.get(`${bucket(0)}|svc-c`), 'avg(grp.two)')).toBe(30);
     });
 
     it('computes an ungrouped metric ratio with 0-for-missing-numerator and gap-for-missing-denominator', async () => {

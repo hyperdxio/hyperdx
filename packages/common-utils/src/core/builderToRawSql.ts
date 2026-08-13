@@ -88,8 +88,11 @@ export async function renderBuilderConfigAsSqlTemplate(
     };
   }
 
-  // Metric charts render one query per series (see splitChartConfigs), so only
-  // single-series metric charts can be converted to a single raw-SQL query.
+  // Multi-series metric charts compose per-series branch queries into a
+  // UNION ALL + pivot statement (see renderMultiSeriesMetricChartConfig).
+  // That composed shape hasn't been wired into the raw-SQL template macros
+  // yet ($__sourceTable(metricType) per branch), so only single-series metric
+  // charts can be converted to a raw-SQL query for now.
   const isMetric = config.metricTables != null;
   if (isMetric && Array.isArray(config.select) && config.select.length > 1) {
     return {
