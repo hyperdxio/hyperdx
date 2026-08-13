@@ -5,6 +5,21 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 
+const TEAM_ID = '7a1c0de5b2f34c9d8e0a1b2c';
+
+// Same getter trick as the config mock below: `mock` prefix so the hoisted
+// factory may close over it, and one test blanks it to stand in for a `me`
+// that has not resolved yet.
+let mockMeTeamId: string | undefined = TEAM_ID;
+jest.mock('@/api', () => ({
+  __esModule: true,
+  default: {
+    useMe: () => ({
+      data: mockMeTeamId ? { team: { id: mockMeTeamId } } : undefined,
+    }),
+  },
+}));
+
 // A getter, not a literal: the component reads the binding at render time, so
 // this lets one test flip the gate without re-requiring React.
 let iacExportEnabled = true;
@@ -44,6 +59,7 @@ describe('ResourceTerraformPopover', () => {
   beforeEach(() => {
     iacExportEnabled = true;
     basePath = '';
+    mockMeTeamId = TEAM_ID;
   });
 
   // The dropdown mounts through Mantine's `<Transition>`, which renders on a
@@ -56,6 +72,28 @@ describe('ResourceTerraformPopover', () => {
         /to = clickhouse_clickstack_dashboard\.dashboard_655b1b7d9143aa1b1b73f4f4/,
       ),
     ).toBeInTheDocument();
+  });
+
+  // The address stays id-only, but the import id is team-scoped: on ClickHouse
+  // Cloud one service can back several teams.
+  it('scopes the import id to the team', async () => {
+    openPopover();
+
+    expect(
+      await screen.findByText(new RegExp(`id = "${TEAM_ID}/${DASHBOARD.id}"`)),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no snippets until the team is known', async () => {
+    mockMeTeamId = undefined;
+
+    openPopover();
+
+    // Await the panel before asserting absence. The dropdown mounts a tick
+    // later, so a synchronous queryByText passes whether or not the guard
+    // works — the panel testid is the anchor that makes this test able to fail.
+    await screen.findByTestId('terraform-helper-panel');
+    expect(screen.queryByText(/^# Usage import \{/)).not.toBeInTheDocument();
   });
 
   // The CLI `terraform import` one-liner refuses to run unless the address is
@@ -92,8 +130,8 @@ describe('ResourceTerraformPopover', () => {
     ).not.toBeInTheDocument();
   });
 
-  // Gating lives in this component rather than at each of the four call
-  // sites, so this one assertion covers all of them — including local mode,
+  // Gating lives in this component rather than at each call site, so this
+  // one assertion covers all of them — including local mode,
   // which has no API server for the provider to talk to.
   it('renders nothing when the export is disabled', () => {
     iacExportEnabled = false;
