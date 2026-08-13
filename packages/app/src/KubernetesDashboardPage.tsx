@@ -1411,7 +1411,6 @@ function KubernetesDashboardPage() {
         mt="md"
         keepMounted={false}
         defaultValue="pods"
-        // @ts-ignore
         onChange={setActiveTab}
         value={activeTab}
       >
@@ -1758,7 +1757,7 @@ const KubernetesDashboardPageDynamic = dynamic(
   },
 );
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 KubernetesDashboardPageDynamic.getLayout = withAppNav;
 
 export default KubernetesDashboardPageDynamic;
