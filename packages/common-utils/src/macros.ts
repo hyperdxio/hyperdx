@@ -5,9 +5,17 @@ import {
   MetricsDataTypeSchema,
   RawSqlChartConfig,
 } from './types';
+import {
+  expandVariableToken,
+  findBalancedParens,
+  scanTemplateTokens,
+  VARIABLE_MACRO_NAMES,
+  VariableContext,
+  VariableMacroName,
+} from './variables';
 
 function expectArgs(
-  macroName: string,
+  macroName: MacroName,
   args: string[],
   minArgs: number,
   maxArgs: number,
@@ -42,7 +50,7 @@ type Macro = {
   replace: (args: string[]) => string;
 };
 
-const MACROS: Macro[] = [
+const MACROS = [
   {
     name: 'fromTime',
     minArgs: 0,
@@ -147,7 +155,18 @@ const MACROS: Macro[] = [
     maxArgs: 0,
     replace: () => intervalS(),
   },
-];
+] as const satisfies readonly Macro[];
+
+/**
+ * Every `$__<name>` a raw SQL template can use: the static macros above, the
+ * two built in `replaceMacros` from the chart's source, and the variable macros
+ * that only exist when a variable context is present.
+ */
+export type MacroName =
+  | (typeof MACROS)[number]['name']
+  | 'filters'
+  | 'sourceTable'
+  | VariableMacroName;
 
 /** Macro metadata for autocomplete suggestions */
 export const MACRO_SUGGESTIONS = [
@@ -212,21 +231,8 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
     return { args: [], length: 0 };
   }
 
-  // Find the matching close paren
-  let unmatchedParens = 0;
-  let closeParenIndex = -1;
-  for (let i = 0; i < argString.length; i++) {
-    const c = argString.charAt(i);
-    if (c === '(') {
-      unmatchedParens++;
-    } else if (c === ')') {
-      unmatchedParens--;
-      if (unmatchedParens === 0) {
-        closeParenIndex = i;
-        break;
-      }
-    }
-  }
+  // Quote-aware, so a `)` inside a string literal doesn't end the argument list.
+  const closeParenIndex = findBalancedParens(argString, 0);
 
   if (closeParenIndex < 0) {
     return { args: [], length: -1 };
@@ -240,7 +246,7 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
 /**
  * True if the SQL contains at least one occurrence of the `$__<name>` macro.
  */
-export function hasMacro(sql: string, name: string): boolean {
+export function hasMacro(sql: string, name: MacroName): boolean {
   return findMacros(sql, name).length > 0;
 }
 
@@ -263,7 +269,7 @@ export function getSourceTableMacroArgCounts(sqlTemplate: string): number[] {
   return findMacros(sqlTemplate, 'sourceTable').map(match => match.args.length);
 }
 
-function findMacros(input: string, name: string): MacroMatch[] {
+function findMacros(input: string, name: MacroName): MacroMatch[] {
   // eslint-disable-next-line security/detect-non-literal-regexp
   const pattern = new RegExp(`\\$__${name}\\b`, 'g');
   const matches: MacroMatch[] = [];
@@ -285,11 +291,27 @@ function findMacros(input: string, name: string): MacroMatch[] {
 
 const NO_FILTERS = '(1=1 /** no filters applied */)';
 
+/**
+ * Expand every macro and (when a variable context is present) every dashboard
+ * variable reference in a raw SQL template.
+ *
+ * The template is scanned once, left to right, and each token is expanded into
+ * an output buffer — an expansion is never re-scanned, so neither `$__filters`
+ * output nor a selected variable value can trigger further substitution.
+ *
+ * `chartConfig.variables` being undefined means variable references and
+ * the variable macros are left exactly as written; an empty array means the
+ * dashboard has no variables, and references to unknown names still pass
+ * through verbatim while macros naming them error.
+ */
 export function replaceMacros(
-  chartConfig: Pick<RawSqlChartConfig, 'sqlTemplate' | 'from' | 'metricTables'>,
+  chartConfig: Pick<
+    RawSqlChartConfig,
+    'sqlTemplate' | 'from' | 'metricTables' | 'variables'
+  >,
   filtersSQL?: string,
 ): string {
-  const { from, metricTables } = chartConfig;
+  const { from, metricTables, variables } = chartConfig;
 
   const allMacros: Macro[] = [
     ...MACROS,
@@ -352,18 +374,35 @@ export function replaceMacros(
     },
   ];
 
-  const sortedMacros = allMacros.sort(
-    (m1, m2) => m2.name.length - m1.name.length,
-  );
+  const macrosByName = new Map(allMacros.map(macro => [macro.name, macro]));
 
-  let sql = chartConfig.sqlTemplate;
-  for (const macro of sortedMacros) {
-    const matches = findMacros(sql, macro.name);
+  const variableContext: VariableContext | undefined = variables && {
+    variables,
+    defaultFormat: 'sqlstring',
+  };
 
-    for (const match of matches) {
-      sql = sql.replaceAll(match.full, macro.replace(match.args));
-    }
-  }
+  const macroNames = [
+    ...macrosByName.keys(),
+    // Without a variable context the variable macros aren't macros at all —
+    // leaving them unregistered emits them verbatim, arguments and all.
+    ...(variableContext ? VARIABLE_MACRO_NAMES : []),
+  ];
 
-  return sql;
+  return scanTemplateTokens(chartConfig.sqlTemplate, macroNames)
+    .map(token => {
+      if (token.kind === 'text') return token.text;
+
+      if (token.kind === 'macro') {
+        const macro = macrosByName.get(token.name);
+        return macro
+          ? macro.replace(token.args) // Non-variable-referencing macro
+          : expandVariableToken(token, variableContext!); // Variable-referencing macro
+      }
+
+      // Braced and bare variable references ($var, ${var}, or ${var:format})
+      return variableContext
+        ? expandVariableToken(token, variableContext)
+        : token.raw;
+    })
+    .join('');
 }

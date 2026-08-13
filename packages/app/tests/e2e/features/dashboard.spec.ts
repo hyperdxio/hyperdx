@@ -1470,6 +1470,159 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test.describe('Dashboard Variables in Raw SQL Tiles', () => {
+    // Both `$__filter(<expr>, <name>)` and a bare `$name` reference, so one
+    // query exercises the macro and the plain-reference form together.
+    const VARIABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) AND ServiceName IN ($svc) GROUP BY ServiceName LIMIT 200`;
+
+    const VARIABLE_LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) GROUP BY ts ORDER BY ts ASC`;
+
+    /** Add a variable-enabled `Service` filter exposed as `$svc`. */
+    const addServiceVariable = async () => {
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+        undefined,
+        undefined,
+        { variableName: 'svc' },
+      );
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+      await dashboardPage.closeFiltersModal();
+    };
+
+    test(
+      'substitutes selected variable values in the tile editor previews',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Variable Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a variable-enabled filter', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+        });
+
+        await test.step('Select a value for the variable', async () => {
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a raw SQL tile that references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.switchToSqlMode();
+          await dashboardPage.chartEditor.typeSqlQuery(VARIABLE_SQL);
+          await dashboardPage.chartEditor.runQuery(false);
+        });
+
+        await test.step('Generated SQL expands both reference forms', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            // $__filter(ServiceName, svc) -> (ServiceName IN ('accounting'))
+            expect(sql).toContain("(ServiceName IN ('accounting'))");
+            // ServiceName IN ($svc) -> ServiceName IN ('accounting')
+            expect(sql).toMatch(
+              /ServiceName IN \('accounting'\)[\s\S]*ServiceName IN \('accounting'\)/,
+            );
+            expect(sql).not.toContain('$svc');
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('The preview table only shows the selected service', async () => {
+          const preview = dashboardPage.page.getByRole('dialog').first();
+          await expect(
+            preview.getByTitle('accounting', { exact: true }),
+          ).toBeVisible({ timeout: 15000 });
+          await expect(preview.getByTitle('ad', { exact: true })).toHaveCount(
+            0,
+          );
+        });
+
+        await test.step('The saved tile applies the same substitution', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toBeVisible({ timeout: 15000 });
+          await expect(tile.getByTitle('ad', { exact: true })).toHaveCount(0);
+        });
+
+        await test.step('Changing the selection re-renders the tile', async () => {
+          await dashboardPage.toggleFilterValue('Service', 'accounting');
+          await dashboardPage.toggleFilterValue('Service', 'ad');
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.getByTitle('ad', { exact: true })).toBeVisible({
+            timeout: 15000,
+          });
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toHaveCount(0);
+        });
+      },
+    );
+
+    test(
+      'previews an alerting tile with every variable value emptied',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Variable Alert Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a raw SQL line tile that references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.switchToSqlMode();
+          await dashboardPage.chartEditor.typeSqlQuery(VARIABLE_LINE_SQL);
+          await dashboardPage.chartEditor.runQuery();
+        });
+
+        await test.step('Without an alert the preview uses the selected value', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("ServiceName IN ('accounting')");
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Adding an alert empties the variable in the preview', async () => {
+          // An alert runs on a schedule with no dashboard filter selection, so
+          // the preview must show what the alert will actually evaluate.
+          await dashboardPage.chartEditor.clickAddAlert();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).not.toContain('accounting');
+            expect(sql).toMatch(/1\s*=\s*1/);
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Removing the alert restores the selected value', async () => {
+          await dashboardPage.chartEditor.clickRemoveAlert();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("ServiceName IN ('accounting')");
+          }).toPass({ timeout: 15000 });
+        });
+      },
+    );
+  });
+
   test(
     'should deselect and hide the Custom aggregation function when switching to a metric source',
     { tag: '@full-stack' },
