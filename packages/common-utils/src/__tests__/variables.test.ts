@@ -3,6 +3,7 @@ import type { BuilderChartConfig, ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
   formatVariableValues,
+  getAlertVariableWarning,
   getReferencedVariableNames,
   getVariableReferences,
   hasVariableMacro,
@@ -711,6 +712,70 @@ describe('filterReferencedVariables', () => {
         variables,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('getAlertVariableWarning', () => {
+  const variables = [SERVICE, variable('env', ['prod'])];
+
+  const rawSqlConfig = (sqlTemplate: string) =>
+    ({ configType: 'sql', sqlTemplate, connection: 'local' }) as const;
+
+  it('says nothing when no variables are in scope', () => {
+    const config = rawSqlConfig('WHERE ServiceName = $service');
+    expect(getAlertVariableWarning(config, undefined)).toBeUndefined();
+    expect(getAlertVariableWarning(config, [])).toBeUndefined();
+  });
+
+  it('says nothing when the query references none of them', () => {
+    expect(
+      getAlertVariableWarning(rawSqlConfig('SELECT 1'), variables),
+    ).toBeUndefined();
+    expect(
+      getAlertVariableWarning(builderConfig({ where: '' }), variables),
+    ).toBeUndefined();
+  });
+
+  it('says nothing for a PromQL config, which cannot use variables', () => {
+    expect(
+      getAlertVariableWarning(
+        {
+          configType: 'promql',
+          promqlExpression: 'up{service="$service"}',
+          connection: 'local',
+        },
+        variables,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('names only the variables the raw SQL references', () => {
+    expect(
+      getAlertVariableWarning(
+        rawSqlConfig('WHERE ServiceName = $service AND $nope'),
+        variables,
+      ),
+    ).toBe(
+      'This tile references $service. Alerts run with every dashboard variable ' +
+        'in its empty state, not the values selected here.',
+    );
+  });
+
+  it('names every variable a builder config references, across its expressions', () => {
+    expect(
+      getAlertVariableWarning(
+        builderConfig({
+          select: [
+            { aggFn: 'count', valueExpression: '', aggCondition: '$env' },
+          ],
+          where: '$__filter(ServiceName, service)',
+        }),
+        variables,
+      ),
+    ).toBe(
+      'This tile references $service, $env. Alerts run with every dashboard ' +
+        'variable in its empty state, not the values selected here.',
+    );
   });
 });
 

@@ -24,6 +24,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
 import {
   Box,
   Divider,
@@ -33,7 +34,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { useDisclosure, usePrevious } from '@mantine/hooks';
+import { useDebouncedValue, useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconBracketsContain,
@@ -391,6 +392,23 @@ export default function EditTimeChartForm({
     () => computeDbTimeChartConfig(previewConfig, alert),
     [previewConfig, alert],
   );
+
+  // Casting because `useWatch` returns a deep partial type, but we know that the
+  // form state is complete due to default values set above.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const watchedForm = useWatch({ control }) as ChartEditorFormState;
+  const [debouncedForm] = useDebouncedValue(watchedForm, 300);
+  const additionalAlertWarnings = useMemo(() => {
+    if (alert == null) return [];
+    const config = convertFormStateToSavedChartConfig(
+      debouncedForm,
+      tableSource,
+    );
+    const variableWarning = config
+      ? getAlertVariableWarning(config, variables)
+      : undefined;
+    return variableWarning ? [variableWarning] : [];
+  }, [alert, debouncedForm, tableSource, variables]);
 
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
@@ -872,6 +890,7 @@ export default function EditTimeChartForm({
             onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
             alert={alert}
+            additionalWarnings={additionalAlertWarnings}
             dashboardId={dashboardId}
             variables={variables}
           />
@@ -897,6 +916,7 @@ export default function EditTimeChartForm({
             seriesReturnType={seriesReturnType}
             ratioMode={ratioMode}
             alert={alert}
+            additionalWarnings={additionalAlertWarnings}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}
             parentRef={parentRef}

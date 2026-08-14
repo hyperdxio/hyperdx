@@ -1613,6 +1613,14 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           }).toPass({ timeout: 15000 });
         });
 
+        await test.step('The alert says which variables it will empty', async () => {
+          await expect(async () => {
+            expect(await dashboardPage.chartEditor.getAlertWarning()).toContain(
+              'This tile references $svc.',
+            );
+          }).toPass({ timeout: 15000 });
+        });
+
         await test.step('Removing the alert restores the selected value', async () => {
           await dashboardPage.chartEditor.clickRemoveAlert();
           await expect(async () => {
@@ -1908,6 +1916,73 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await expect(
             tile.getByTitle('accounting', { exact: true }),
           ).toHaveCount(0);
+        });
+      },
+    );
+
+    test(
+      'empties every variable in an alerting builder tile, and says so',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a builder line tile whose WHERE references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+          await dashboardPage.chartEditor.setChartName(
+            `E2E Builder Alert Variable Tile ${Date.now()}`,
+          );
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setSqlWhere(
+            '$__filter(ServiceName, svc)',
+          );
+          await dashboardPage.chartEditor.runQuery();
+        });
+
+        await test.step('Without an alert the preview uses the selected value', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("IN ('accounting')");
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Adding an alert empties the variable in the preview', async () => {
+          // An alert runs on a schedule with no dashboard filter selection, so
+          // the preview must show what the alert will actually evaluate.
+          await dashboardPage.chartEditor.clickAddAlert();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).not.toContain('accounting');
+            expect(sql).toMatch(/1\s*=\s*1/);
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('The alert says which variables it will empty', async () => {
+          await expect(async () => {
+            expect(await dashboardPage.chartEditor.getAlertWarning()).toContain(
+              'This tile references $svc. Alerts run with every dashboard ' +
+                'variable in its empty state, not the values selected here.',
+            );
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Dropping the reference clears the warning', async () => {
+          await dashboardPage.chartEditor.setSqlWhere("ServiceName = 'ad'");
+          await expect(
+            dashboardPage.chartEditor.alertWarningBadge(),
+          ).toHaveCount(0, { timeout: 15000 });
         });
       },
     );
