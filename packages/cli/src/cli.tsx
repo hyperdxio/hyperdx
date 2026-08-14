@@ -5,6 +5,8 @@
 // so this can't be done with inline statements.
 import { _origError } from '@/utils/silenceLogs';
 
+import fs from 'node:fs';
+
 import React, { useState, useCallback } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
@@ -16,6 +18,7 @@ import {
   TemplateMinerConfig,
 } from '@hyperdx/common-utils/dist/drain';
 
+import { DashboardWithoutIdSchema } from '@hyperdx/common-utils/dist/types';
 import type { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 
 import App from '@/App';
@@ -953,9 +956,9 @@ Examples:
 
 // ---- Dashboards ----------------------------------------------------
 
-program
+const dashboardsCmd = program
   .command('dashboards')
-  .description('List dashboards with tile summaries')
+  .description('List dashboards with tile summaries, or create one from JSON')
   .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--json', 'Output as JSON (for programmatic consumption)')
   .addHelpText(
@@ -964,6 +967,8 @@ program
 About:
   Lists all dashboards for the authenticated team. Each dashboard
   contains tiles (charts/visualizations) that query ClickHouse sources.
+
+  Use 'hdx dashboards create --file <json>' to create a new dashboard.
 
   Use --json for structured output suitable for LLM / agent consumption.
 
@@ -987,6 +992,7 @@ Examples:
   $ hdx dashboards                     # Human-readable list with tiles
   $ hdx dashboards --json              # JSON for agents / scripts
   $ hdx dashboards --json | jq '.[0].tiles'  # List tiles of first dashboard
+  $ hdx dashboards create --file my-dashboard.json
 `,
   )
   .action(async opts => {
@@ -1067,6 +1073,304 @@ Examples:
 
       process.stdout.write('\n');
     }
+  });
+
+/**
+ * Random id for dashboard tiles, matching the web frontend's `makeId()`
+ * (packages/app/src/utils/tilePositioning.ts).
+ */
+const makeTileId = () =>
+  Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+dashboardsCmd
+  .command('create')
+  .description('Create a dashboard from a JSON definition file')
+  .requiredOption(
+    '-f, --file <path>',
+    'Path to a JSON file with the dashboard definition (use "-" for stdin)',
+  )
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output the created dashboard as JSON')
+  .addHelpText(
+    'after',
+    `
+About:
+  Creates a dashboard from a JSON definition. The file must match the
+  DashboardWithoutId schema from @hyperdx/common-utils — the same shape
+  'hdx dashboards --json' reports, minus the id:
+
+    {
+      "name": "My Dashboard",
+      "tags": ["team-a"],
+      "tiles": [
+        {
+          "x": 0, "y": 0, "w": 12, "h": 4,
+          "config": {
+            "name": "Requests",
+            "displayType": "line",
+            "source": "<source id>",
+            "select": [{ "aggFn": "count", "valueExpression": "", "alias": "Requests" }],
+            "where": "", "whereLanguage": "lucene",
+            "granularity": "auto"
+          }
+        }
+      ]
+    }
+
+  Tile "id" fields are optional — missing ids are generated automatically.
+  The definition is validated locally before being sent to the server.
+
+Examples:
+  $ hdx dashboards create --file my-dashboard.json
+  $ cat my-dashboard.json | hdx dashboards create --file -
+  $ hdx dashboards create --file my-dashboard.json --json | jq .id
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+
+    let raw: string;
+    try {
+      raw =
+        opts.file === '-'
+          ? fs.readFileSync(0, 'utf-8')
+          : fs.readFileSync(opts.file, 'utf-8');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Failed to read ${opts.file}: ${msg}\n`));
+      process.exit(1);
+    }
+
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(raw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Invalid JSON in ${opts.file}: ${msg}\n`));
+      process.exit(1);
+    }
+
+    // Fill in missing tile ids before validation (id is required by the
+    // schema but is meaningless to hand-author).
+    if (
+      typeof parsedJson === 'object' &&
+      parsedJson !== null &&
+      Array.isArray((parsedJson as { tiles?: unknown }).tiles)
+    ) {
+      for (const tile of (parsedJson as { tiles: Array<{ id?: unknown }> })
+        .tiles) {
+        if (typeof tile === 'object' && tile !== null && tile.id == null) {
+          tile.id = makeTileId();
+        }
+      }
+    }
+
+    const parsed = DashboardWithoutIdSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      _origError(chalk.red('Dashboard definition is invalid:\n'));
+      for (const issue of parsed.error.issues) {
+        _origError(
+          chalk.red(`  - ${issue.path.join('.') || '(root)'}: ${issue.message}`),
+        );
+      }
+      process.exit(1);
+    }
+
+    let created;
+    try {
+      created = await client.createDashboard(parsed.data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Failed to create dashboard: ${msg}\n`));
+      process.exit(1);
+    }
+
+    const id = created.id ?? created._id;
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(created, null, 2) + '\n');
+      return;
+    }
+    process.stdout.write(
+      `${chalk.green('Created dashboard')} ${chalk.bold.cyan(created.name)} ${chalk.dim(`[${id}]`)}\n${client.getAppUrl()}/dashboards/${id}\n`,
+    );
+  });
+
+// ---- Saved searches --------------------------------------------------
+
+const savedSearchesCmd = program
+  .command('saved-searches')
+  .description('List or create saved searches');
+
+savedSearchesCmd
+  .command('list', { isDefault: true })
+  .description('List saved searches')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .addHelpText(
+    'after',
+    `
+JSON output schema (--json):
+  Array of objects, each with:
+    id            - Saved search ID
+    name          - Saved search name
+    source        - Source ID the search runs against
+    select        - SELECT clause ('' = source default columns)
+    where         - Filter condition
+    whereLanguage - "lucene" | "sql"
+    tags          - Array of tag strings
+
+Examples:
+  $ hdx saved-searches
+  $ hdx saved-searches list --json | jq '.[].name'
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+    const searches = await client.getSavedSearches();
+
+    if (opts.json) {
+      const output = searches.map(s => ({
+        id: s.id ?? s._id,
+        name: s.name,
+        source: s.source,
+        select: s.select,
+        where: s.where,
+        whereLanguage: s.whereLanguage,
+        tags: s.tags ?? [],
+      }));
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      return;
+    }
+
+    if (searches.length === 0) {
+      process.stdout.write('No saved searches found.\n');
+      return;
+    }
+
+    // Resolve source names for display (non-fatal on failure)
+    let sourceNames: Record<string, string> = {};
+    try {
+      const sources = await client.getSources();
+      sourceNames = Object.fromEntries(
+        sources.flatMap(s => [
+          [s.id, s.name],
+          [s._id, s.name],
+        ]),
+      );
+    } catch {
+      // ignore
+    }
+
+    for (const s of searches) {
+      const tags =
+        (s.tags ?? []).length > 0
+          ? `  ${chalk.dim(`[${s.tags.join(', ')}]`)}`
+          : '';
+      const sourceLabel = sourceNames[s.source] ?? s.source;
+      process.stdout.write(
+        `${chalk.bold.cyan(s.name)}${tags}  ${chalk.dim(sourceLabel)}\n` +
+          `  ${chalk.dim(`${s.whereLanguage}:`)} ${s.where || chalk.dim('(no filter)')}\n`,
+      );
+    }
+  });
+
+savedSearchesCmd
+  .command('create')
+  .description('Create a saved search')
+  .requiredOption('--name <name>', 'Saved search name')
+  .requiredOption(
+    '--source <name-or-id>',
+    "Source name or ID (from 'hdx sources --json')",
+  )
+  .option('--where <condition>', 'Filter condition', '')
+  .option(
+    '--where-language <lang>',
+    'Filter language: lucene or sql',
+    'lucene',
+  )
+  .option(
+    '--select <clause>',
+    'SELECT clause (default: source default columns)',
+    '',
+  )
+  .option('--order-by <clause>', 'ORDER BY clause')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output the created saved search as JSON')
+  .addHelpText(
+    'after',
+    `
+Examples:
+  $ hdx saved-searches create --name "Error Logs" --source Logs \\
+      --where 'SeverityText:error'
+  $ hdx saved-searches create --name "Slow Spans" --source Traces \\
+      --where "Duration > 1e9" --where-language sql --tags perf,traces
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+
+    const whereLanguage = String(opts.whereLanguage);
+    if (whereLanguage !== 'lucene' && whereLanguage !== 'sql') {
+      _origError(
+        chalk.red(
+          `Invalid --where-language "${opts.whereLanguage}". Use lucene or sql.\n`,
+        ),
+      );
+      process.exit(1);
+    }
+
+    // Resolve the source by ID or (case-insensitive) name
+    const sources = await client.getSources();
+    const needle = String(opts.source).toLowerCase();
+    const source = sources.find(
+      s =>
+        s.id === opts.source ||
+        s._id === opts.source ||
+        s.name.toLowerCase() === needle,
+    );
+    if (!source) {
+      _origError(chalk.red(`Source "${opts.source}" not found.\n`));
+      _origError('Available sources:');
+      for (const s of sources) {
+        _origError(`  - ${s.name} [${s.id ?? s._id}]`);
+      }
+      process.exit(1);
+    }
+
+    const tags =
+      typeof opts.tags === 'string' && opts.tags.length > 0
+        ? opts.tags
+            .split(',')
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        : [];
+
+    let created;
+    try {
+      created = await client.createSavedSearch({
+        name: String(opts.name),
+        source: source.id ?? source._id,
+        select: String(opts.select ?? ''),
+        where: String(opts.where ?? ''),
+        whereLanguage,
+        orderBy: opts.orderBy ? String(opts.orderBy) : undefined,
+        tags,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Failed to create saved search: ${msg}\n`));
+      process.exit(1);
+    }
+
+    const id = created.id ?? created._id;
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(created, null, 2) + '\n');
+      return;
+    }
+    process.stdout.write(
+      `${chalk.green('Created saved search')} ${chalk.bold.cyan(created.name)} ${chalk.dim(`[${id}]`)}\n${client.getAppUrl()}/search/${id}\n`,
+    );
   });
 
 // ---- Chart ---------------------------------------------------------
