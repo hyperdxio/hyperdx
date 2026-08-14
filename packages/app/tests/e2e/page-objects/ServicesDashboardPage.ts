@@ -20,20 +20,32 @@ export class ServicesDashboardPage {
     await this.page.waitForLoadState('networkidle');
   }
 
+  /** The WHERE input's language switch (SQL / Lucene). */
+  get whereLanguageSwitch(): Locator {
+    return this.page.getByTestId('where-language-switch');
+  }
+
+  get searchInput(): Locator {
+    return this.page.getByTestId('services-search-input');
+  }
+
   /**
    * Switch to Lucene mode, type a query into the search input, and run the query.
    */
   async searchLucene(query: string) {
-    const languageSelect = this.page
-      .getByTestId('where-language-switch')
-      .getByRole('combobox', { name: 'Query language' });
-    await languageSelect.click();
+    await this.switchToLucene();
+    await this.searchInput.fill(query);
+    await this.page.getByRole('button', { name: 'Run' }).click();
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  async switchToLucene() {
+    await this.whereLanguageSwitch
+      .getByRole('combobox', { name: 'Query language' })
+      .click();
     await this.page
       .getByRole('option', { name: 'Lucene', exact: true })
       .click();
-    await this.page.getByTestId('services-search-input').fill(query);
-    await this.page.getByRole('button', { name: 'Run' }).click();
-    await this.page.waitForLoadState('networkidle');
   }
 
   /**

@@ -36,6 +36,7 @@ import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 import {
   ChartAnnotation,
   getAnnotationElements,
+  resolveAnnotationSeries,
 } from './components/charts/chartAnnotations';
 import { ChartOverlayControls } from './components/charts/ChartOverlayControls';
 import {
@@ -48,6 +49,7 @@ import {
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
+  getSeriesColorForGroup,
   LineData,
   MAX_TIME_CHART_SERIES,
   toStartOfInterval,
@@ -796,7 +798,7 @@ export const MemoChart = memo(function MemoChart({
   lineData: LineData[];
   referenceLines?: React.ReactNode;
   /**
-   * Event markers (alerts, deploys, …) drawn as dashed vertical lines with a
+   * Event markers (alerts, releases, …) drawn as dashed vertical lines with a
    * label above. Passed as data rather than pre-rendered elements so the chart
    * can clamp them to its own x-axis domain. Distinct from `referenceLines`
    * (threshold lines).
@@ -1395,7 +1397,9 @@ export const MemoChart = memo(function MemoChart({
     [buildActivePayloadFromState, setIsClickActive],
   );
 
-  const xAxisDomain: AxisDomain = useMemo(() => {
+  // Typed as the tuple it actually is (assignable to AxisDomain) so the
+  // annotation helpers can take it without an unsafe cast.
+  const xAxisDomain: [number, number] = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
     let endTime = toStartOfInterval(dateRange[1], granularity);
     const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
@@ -1420,15 +1424,29 @@ export const MemoChart = memo(function MemoChart({
   // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
   // an edge marker (e.g. an alert already firing at window open) stays visible
   // instead of being dropped. Labels float in the reserved top headroom.
-  const annotationElements = useMemo(() => {
+  // Tint each marker to match the series it describes and drop the ones that
+  // can't be tied to anything on this chart — see `resolveAnnotationSeries`.
+  const coloredAnnotations = useMemo(() => {
     if (!annotations?.length) {
+      return annotations;
+    }
+    return resolveAnnotationSeries(annotations, group =>
+      getSeriesColorForGroup(lineData, group),
+    );
+  }, [annotations, lineData]);
+
+  const annotationElements = useMemo(() => {
+    if (!coloredAnnotations?.length) {
       return null;
     }
-    // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
-    return getAnnotationElements(annotations, {
-      domain: xAxisDomain as [number, number],
+    return getAnnotationElements(coloredAnnotations, {
+      domain: xAxisDomain,
+      // Drawable width, so markers too close together share one label. Zero on
+      // the first paint (before ResponsiveContainer measures), which the
+      // renderer treats as "label everything".
+      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
     });
-  }, [annotations, xAxisDomain]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth]);
 
   return (
     <div

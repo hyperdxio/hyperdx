@@ -357,6 +357,8 @@ function ServicesDashboardPage() {
             />
             <SearchWhereInput
               tableConnection={tcFromSource(source)}
+              sourceId={sourceId}
+              dateRange={searchedTimeRange}
               control={control}
               name="where"
               onSubmit={onSubmit}
