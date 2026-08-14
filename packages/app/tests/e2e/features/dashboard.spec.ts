@@ -2797,6 +2797,137 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
+  test.describe(
+    'Metric formulas (HDX-5080)',
+    { tag: ['@full-stack', '@dashboard'] },
+    () => {
+      test.beforeEach(async () => {
+        await dashboardPage.createNewDashboard();
+      });
+
+      test('creates a metric tile with two series and a formula, saves, reloads, and renders it', async ({
+        page,
+      }) => {
+        test.setTimeout(60000);
+        const ts = Date.now();
+        const chartName = `E2E Metric Formula ${ts}`;
+
+        await test.step('Configure a metric Table chart with two gauge series', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          // Table display keeps the assertions robust: the formula surfaces
+          // as a named column header rather than a chart legend entry.
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_METRICS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+
+          await dashboardPage.chartEditor.selectMetricForSeries(
+            0,
+            'container.cpu.utilization',
+            'container.cpu.utilization:::::::gauge',
+          );
+          await dashboardPage.chartEditor.setSeriesAlias(0, 'ContainerCpu');
+
+          await dashboardPage.chartEditor.addSeries();
+          await dashboardPage.chartEditor.selectMetricForSeries(
+            1,
+            'k8s.pod.cpu.utilization',
+            'k8s.pod.cpu.utilization:::::::gauge',
+          );
+          await dashboardPage.chartEditor.setSeriesAlias(1, 'PodCpu');
+        });
+
+        await test.step('Series rows expose their formula reference letters', async () => {
+          const badges = page.getByTestId('series-ref-badge');
+          await expect(badges).toHaveCount(2);
+          await expect(badges.nth(0)).toHaveText('A');
+          await expect(badges.nth(1)).toHaveText('B');
+        });
+
+        await test.step('An invalid formula surfaces an inline validation error', async () => {
+          await dashboardPage.chartEditor.addFormula('A / C');
+          expect(await dashboardPage.chartEditor.getFormulaError(0)).toContain(
+            'Unknown series "C"',
+          );
+        });
+
+        await test.step('Fix the formula and run the query', async () => {
+          await page
+            .getByTestId('formula-expression-input')
+            .fill('A / (A + B) * 100');
+          await page.getByTestId('formula-alias-input').fill('CpuShare');
+          expect(await dashboardPage.chartEditor.getFormulaError(0)).toBeNull();
+          await dashboardPage.chartEditor.runQuery(false);
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headers).toContain('ContainerCpu');
+          expect(headers).toContain('PodCpu');
+          expect(headers).toContain('CpuShare');
+        });
+
+        await test.step('Hide the operand series so only the formula column renders', async () => {
+          await dashboardPage.chartEditor.toggleShowInputSeries();
+
+          await expect
+            .poll(
+              async () => dashboardPage.chartEditor.getPreviewTableHeaders(),
+              { timeout: 15000 },
+            )
+            .toEqual(['CpuShare']);
+        });
+
+        await test.step('Save the tile and verify the formula column renders on the dashboard', async () => {
+          await dashboardPage.saveTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+            timeout: 5000,
+          });
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+          const tileHeaders = await dashboardPage.getTileTableHeaders(0);
+          expect(tileHeaders).toEqual(['CpuShare']);
+        });
+
+        await test.step('Reload the page and verify the saved formula tile still renders', async () => {
+          await page.reload();
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+          const tileHeaders = await dashboardPage.getTileTableHeaders(0);
+          expect(tileHeaders).toEqual(['CpuShare']);
+
+          // The formula value is a percentage share, so the column must hold
+          // a finite number — a NaN/empty cell would mean the composed
+          // formula projection failed.
+          const cells = await dashboardPage.getTileTableCellTexts(0, 0);
+          expect(cells.length).toBeGreaterThan(0);
+          expect(Number.parseFloat(cells[0])).not.toBeNaN();
+        });
+
+        await test.step('Reopen the tile editor and verify the formula round-tripped', async () => {
+          await dashboardPage.editTile(0);
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+
+          await expect(
+            dashboardPage.page.getByTestId('formula-expression-input'),
+          ).toHaveValue('A / (A + B) * 100');
+          await expect(
+            dashboardPage.page.getByTestId('formula-alias-input'),
+          ).toHaveValue('CpuShare');
+          await expect(
+            dashboardPage.page.getByRole('switch', {
+              name: 'Show input series',
+            }),
+          ).not.toBeChecked();
+        });
+      });
+    },
+  );
+
   test(
     'should isolate the fullscreen tile time picker from the dashboard time range',
     { tag: ['@full-stack', '@dashboard'] },
