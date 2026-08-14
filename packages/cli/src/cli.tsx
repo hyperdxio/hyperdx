@@ -956,11 +956,250 @@ Examples:
 
 // ---- Dashboards ----------------------------------------------------
 
+/**
+ * Random id for dashboard tiles, matching the web frontend's `makeId()`
+ * (packages/app/src/utils/tilePositioning.ts).
+ */
+const makeTileId = () =>
+  Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+/** Quote a value for CSV output (RFC 4180 style). */
+function csvField(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
+/** Read a file path (or stdin for "-") and parse it as JSON. Exits on error. */
+function readJsonFileOrExit(path: string): unknown {
+  let raw: string;
+  try {
+    raw =
+      path === '-'
+        ? fs.readFileSync(0, 'utf-8')
+        : fs.readFileSync(path, 'utf-8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    _origError(chalk.red(`Failed to read ${path}: ${msg}\n`));
+    process.exit(1);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    _origError(chalk.red(`Invalid JSON in ${path}: ${msg}\n`));
+    process.exit(1);
+  }
+}
+
+/**
+ * Fill missing tile ids and validate a dashboard definition against the
+ * shared DashboardWithoutId schema. Exits with readable per-issue errors
+ * on validation failure.
+ */
+function validateDashboardOrExit(
+  parsedJson: unknown,
+): ReturnType<typeof DashboardWithoutIdSchema.parse> {
+  // Fill in missing tile ids before validation (id is required by the
+  // schema but is meaningless to hand-author).
+  if (
+    typeof parsedJson === 'object' &&
+    parsedJson !== null &&
+    Array.isArray((parsedJson as { tiles?: unknown }).tiles)
+  ) {
+    for (const tile of (parsedJson as { tiles: Array<{ id?: unknown }> })
+      .tiles) {
+      if (typeof tile === 'object' && tile !== null && tile.id == null) {
+        tile.id = makeTileId();
+      }
+    }
+  }
+
+  const parsed = DashboardWithoutIdSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    _origError(chalk.red('Dashboard definition is invalid:\n'));
+    for (const issue of parsed.error.issues) {
+      _origError(
+        chalk.red(`  - ${issue.path.join('.') || '(root)'}: ${issue.message}`),
+      );
+    }
+    process.exit(1);
+  }
+  return parsed.data;
+}
+
+/**
+ * If a dashboard with the same name already exists, print it and return
+ * true (used by --if-not-exists on create/import).
+ */
+async function skipIfDashboardExists(
+  client: ApiClient,
+  name: string,
+  asJson: boolean,
+): Promise<boolean> {
+  const existing = (await client.getDashboards()).find(d => d.name === name);
+  if (!existing) return false;
+  const id = existing.id ?? existing._id;
+  if (asJson) {
+    process.stdout.write(
+      JSON.stringify({ skipped: true, id, name: existing.name }, null, 2) +
+        '\n',
+    );
+  } else {
+    process.stdout.write(
+      `${chalk.yellow('Skipped')} — dashboard ${chalk.bold.cyan(name)} already exists ${chalk.dim(`[${id}]`)}\n${client.getAppUrl()}/dashboards/${id}\n`,
+    );
+  }
+  return true;
+}
+
+/** POST a validated dashboard and print the result. Exits on failure. */
+async function createDashboardAndPrint(
+  client: ApiClient,
+  dashboard: ReturnType<typeof DashboardWithoutIdSchema.parse>,
+  asJson: boolean,
+): Promise<void> {
+  let created;
+  try {
+    created = await client.createDashboard(dashboard);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    _origError(chalk.red(`Failed to create dashboard: ${msg}\n`));
+    process.exit(1);
+  }
+
+  const id = created.id ?? created._id;
+  if (asJson) {
+    process.stdout.write(JSON.stringify(created, null, 2) + '\n');
+    return;
+  }
+  process.stdout.write(
+    `${chalk.green('Created dashboard')} ${chalk.bold.cyan(created.name)} ${chalk.dim(`[${id}]`)}\n${client.getAppUrl()}/dashboards/${id}\n`,
+  );
+}
+
+async function runDashboardsList(opts: {
+  appUrl?: string;
+  json?: boolean;
+  format?: string;
+  query?: string;
+}): Promise<void> {
+  const format = opts.json ? 'json' : (opts.format ?? 'table');
+  if (!['table', 'json', 'csv'].includes(format)) {
+    _origError(
+      chalk.red(
+        `Invalid --format "${opts.format}". Use table, json, or csv.\n`,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const client = await ensureSession(opts.appUrl);
+
+  let dashboards = await client.getDashboards();
+  if (opts.query) {
+    const needle = String(opts.query).toLowerCase();
+    dashboards = dashboards.filter(d => d.name.toLowerCase().includes(needle));
+  }
+
+  if (format === 'json') {
+    const output = dashboards.map(d => ({
+      id: d.id,
+      name: d.name,
+      tags: d.tags ?? [],
+      filters: d.filters ?? [],
+      savedQuery: d.savedQuery ?? null,
+      createdAt: d.createdAt ?? null,
+      updatedAt: d.updatedAt ?? null,
+      tiles: d.tiles.map(t => ({
+        id: t.id,
+        name: t.config.name ?? null,
+        type: t.config.displayType ?? null,
+        source: ('source' in t.config ? t.config.source : null) ?? null,
+        sql: ('sqlTemplate' in t.config ? t.config.sqlTemplate : null) ?? null,
+      })),
+    }));
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+    return;
+  }
+
+  if (format === 'csv') {
+    process.stdout.write('id,name,tags,createdAt,updatedAt,tileCount\n');
+    for (const d of dashboards) {
+      process.stdout.write(
+        [
+          csvField(d.id ?? d._id),
+          csvField(d.name),
+          csvField((d.tags ?? []).join(';')),
+          csvField(d.createdAt ?? ''),
+          csvField(d.updatedAt ?? ''),
+          String(d.tiles.length),
+        ].join(',') + '\n',
+      );
+    }
+    return;
+  }
+
+  if (dashboards.length === 0) {
+    process.stdout.write(
+      opts.query
+        ? `No dashboards matching "${opts.query}".\n`
+        : 'No dashboards found.\n',
+    );
+    return;
+  }
+
+  // Fetch sources to resolve source names for display
+  let sourceNames: Record<string, string> = {};
+  try {
+    const sources = await client.getSources();
+    sourceNames = Object.fromEntries(
+      sources.flatMap(s => [
+        [s.id, s.name],
+        [s._id, s.name],
+      ]),
+    );
+  } catch {
+    // Non-fatal — just won't show source names
+  }
+
+  // Human-readable output
+  for (const d of dashboards) {
+    const tags =
+      d.tags.length > 0 ? `  ${chalk.dim(`[${d.tags.join(', ')}]`)}` : '';
+    process.stdout.write(
+      `${chalk.bold.cyan(d.name)}${tags}  ${chalk.dim(`${d.tiles.length} tile${d.tiles.length !== 1 ? 's' : ''}`)}\n`,
+    );
+
+    for (let i = 0; i < d.tiles.length; i++) {
+      const t = d.tiles[i];
+      const isLast = i === d.tiles.length - 1;
+      const prefix = isLast ? '  └─ ' : '  ├─ ';
+      const name = t.config.name || '(untitled)';
+      const chartType = t.config.displayType ?? 'chart';
+      const tileSource = 'source' in t.config ? t.config.source : undefined;
+      let sourceLabel = '';
+      if ('sqlTemplate' in t.config) {
+        sourceLabel = 'raw SQL';
+      } else if (tileSource) {
+        sourceLabel = `source: ${sourceNames[tileSource] ?? tileSource}`;
+      }
+      const meta = [chartType, sourceLabel].filter(Boolean).join(', ');
+      process.stdout.write(
+        `${chalk.dim(prefix)}${name} ${chalk.dim(`(${meta})`)}\n`,
+      );
+    }
+
+    process.stdout.write('\n');
+  }
+}
+
 const dashboardsCmd = program
   .command('dashboards')
-  .description('List dashboards with tile summaries, or create one from JSON')
+  .alias('dashboard')
+  .description('List, export, create, or import dashboards')
   .option('-a, --app-url <url>', 'HyperDX app URL')
-  .option('--json', 'Output as JSON (for programmatic consumption)')
+  .option('--json', 'Output as JSON (shorthand for --format json)')
+  .option('--format <fmt>', 'Output format: table, json, or csv', 'table')
+  .option('--query <substr>', 'Filter dashboards by name (substring match)')
   .addHelpText(
     'after',
     `
@@ -968,11 +1207,13 @@ About:
   Lists all dashboards for the authenticated team. Each dashboard
   contains tiles (charts/visualizations) that query ClickHouse sources.
 
-  Use 'hdx dashboards create --file <json>' to create a new dashboard.
+  Subcommands:
+    list     List dashboards (default; same as bare 'hdx dashboards')
+    export   Print a dashboard definition as JSON (round-trips via import)
+    create   Create a dashboard from a JSON file or inline chart JSON
+    import   Create a dashboard from an exported definition
 
-  Use --json for structured output suitable for LLM / agent consumption.
-
-JSON output schema (--json):
+JSON output schema (--json / --format json):
   Array of objects, each with:
     id                  - Dashboard ID
     name                - Dashboard name
@@ -988,106 +1229,130 @@ JSON output schema (--json):
         source          - Source ID referenced by this tile (null for raw SQL)
         sql             - Raw SQL query (null for builder-mode charts)
 
+CSV output columns (--format csv):
+  id,name,tags,createdAt,updatedAt,tileCount (tags joined with ';')
+
 Examples:
-  $ hdx dashboards                     # Human-readable list with tiles
-  $ hdx dashboards --json              # JSON for agents / scripts
-  $ hdx dashboards --json | jq '.[0].tiles'  # List tiles of first dashboard
+  $ hdx dashboards                          # Human-readable list with tiles
+  $ hdx dashboards --json                   # JSON for agents / scripts
+  $ hdx dashboards list --query health      # Filter by name
+  $ hdx dashboards list --format csv        # CSV summary
+  $ hdx dashboards export --id "API Health" > dashboard.json
+  $ hdx dashboards import --file dashboard.json --if-not-exists
   $ hdx dashboards create --file my-dashboard.json
+`,
+  )
+  .action(async opts => {
+    await runDashboardsList(opts);
+  });
+
+dashboardsCmd
+  .command('list')
+  .description('List dashboards with tile summaries')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output as JSON (shorthand for --format json)')
+  .option('--format <fmt>', 'Output format: table, json, or csv', 'table')
+  .option('--query <substr>', 'Filter dashboards by name (substring match)')
+  .action(async opts => {
+    await runDashboardsList(opts);
+  });
+
+dashboardsCmd
+  .command('export')
+  .description('Export a dashboard definition as JSON (importable)')
+  .requiredOption('--id <id-or-name>', 'Dashboard ID or name')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .addHelpText(
+    'after',
+    `
+About:
+  Prints the full dashboard definition (name, tags, tiles with chart
+  configs and layout, filters) as JSON on stdout. Server-managed fields
+  (id, timestamps) are stripped so the output is a valid input for
+  'hdx dashboards import' / 'hdx dashboards create --file'.
+
+Examples:
+  $ hdx dashboards export --id "API Health" > dashboard-backup.json
+  $ hdx dashboards export --id 6537a1d2c8b7f4e2a1d2c8b7 | jq '.tiles | length'
 `,
   )
   .action(async opts => {
     const client = await ensureSession(opts.appUrl);
 
     const dashboards = await client.getDashboards();
-    if (dashboards.length === 0) {
-      if (opts.json) {
-        process.stdout.write('[]\n');
-      } else {
-        process.stdout.write('No dashboards found.\n');
+    const needle = String(opts.id).toLowerCase();
+    const dashboard = dashboards.find(
+      d =>
+        d.id === opts.id ||
+        d._id === opts.id ||
+        d.name.toLowerCase() === needle,
+    );
+    if (!dashboard) {
+      _origError(chalk.red(`Dashboard "${opts.id}" not found.\n`));
+      _origError('Available dashboards:');
+      for (const d of dashboards) {
+        _origError(`  - ${d.name} [${d.id ?? d._id}]`);
       }
+      process.exit(1);
+    }
+
+    // Strip server-managed fields; keep everything import accepts.
+    const doc: Record<string, unknown> = {
+      name: dashboard.name,
+      tags: dashboard.tags ?? [],
+      tiles: dashboard.tiles,
+    };
+    for (const key of [
+      'filters',
+      'savedQuery',
+      'savedQueryLanguage',
+      'savedFilterValues',
+      'savedSourceFilterValues',
+      'containers',
+    ] as const) {
+      const value = (dashboard as unknown as Record<string, unknown>)[key];
+      if (value != null) doc[key] = value;
+    }
+
+    // Round-trip guarantee: re-parse through the shared schema so the
+    // output is exactly what import will accept (unknown keys stripped).
+    const parsed = DashboardWithoutIdSchema.safeParse(doc);
+    if (parsed.success) {
+      process.stdout.write(JSON.stringify(parsed.data, null, 2) + '\n');
       return;
     }
-
-    if (opts.json) {
-      const output = dashboards.map(d => ({
-        id: d.id,
-        name: d.name,
-        tags: d.tags ?? [],
-        filters: d.filters ?? [],
-        savedQuery: d.savedQuery ?? null,
-        createdAt: d.createdAt ?? null,
-        updatedAt: d.updatedAt ?? null,
-        tiles: d.tiles.map(t => ({
-          id: t.id,
-          name: t.config.name ?? null,
-          type: t.config.displayType ?? null,
-          source: ('source' in t.config ? t.config.source : null) ?? null,
-          sql:
-            ('sqlTemplate' in t.config ? t.config.sqlTemplate : null) ?? null,
-        })),
-      }));
-      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
-      return;
-    }
-
-    // Fetch sources to resolve source names for display
-    let sourceNames: Record<string, string> = {};
-    try {
-      const sources = await client.getSources();
-      sourceNames = Object.fromEntries(
-        sources.flatMap(s => [
-          [s.id, s.name],
-          [s._id, s.name],
-        ]),
-      );
-    } catch {
-      // Non-fatal — just won't show source names
-    }
-
-    // Human-readable output
-    for (const d of dashboards) {
-      const tags =
-        d.tags.length > 0 ? `  ${chalk.dim(`[${d.tags.join(', ')}]`)}` : '';
-      process.stdout.write(
-        `${chalk.bold.cyan(d.name)}${tags}  ${chalk.dim(`${d.tiles.length} tile${d.tiles.length !== 1 ? 's' : ''}`)}\n`,
-      );
-
-      for (let i = 0; i < d.tiles.length; i++) {
-        const t = d.tiles[i];
-        const isLast = i === d.tiles.length - 1;
-        const prefix = isLast ? '  └─ ' : '  ├─ ';
-        const name = t.config.name || '(untitled)';
-        const chartType = t.config.displayType ?? 'chart';
-        const tileSource = 'source' in t.config ? t.config.source : undefined;
-        let sourceLabel = '';
-        if ('sqlTemplate' in t.config) {
-          sourceLabel = 'raw SQL';
-        } else if (tileSource) {
-          sourceLabel = `source: ${sourceNames[tileSource] ?? tileSource}`;
-        }
-        const meta = [chartType, sourceLabel].filter(Boolean).join(', ');
-        process.stdout.write(
-          `${chalk.dim(prefix)}${name} ${chalk.dim(`(${meta})`)}\n`,
-        );
-      }
-
-      process.stdout.write('\n');
-    }
+    // Legacy dashboards may not validate against the current schema —
+    // still emit the raw doc, but warn that import may reject it.
+    _origError(
+      chalk.yellow(
+        'Warning: exported definition does not fully validate against the current dashboard schema; import may reject it.\n',
+      ),
+    );
+    process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
   });
-
-/**
- * Random id for dashboard tiles, matching the web frontend's `makeId()`
- * (packages/app/src/utils/tilePositioning.ts).
- */
-const makeTileId = () =>
-  Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
 dashboardsCmd
   .command('create')
-  .description('Create a dashboard from a JSON definition file')
-  .requiredOption(
+  .description('Create a dashboard from a JSON file or inline chart JSON')
+  .option(
     '-f, --file <path>',
-    'Path to a JSON file with the dashboard definition (use "-" for stdin)',
+    'Path to a JSON file with the full dashboard definition (use "-" for stdin)',
+  )
+  .option('--name <name>', 'Dashboard name (chart mode; use with --chart)')
+  .option(
+    '--chart <json>',
+    'Inline chart JSON: a tile ({x,y,w,h,config}) or a bare chart config (repeatable)',
+    (value: string, prev: string[]) => [...prev, value],
+    [] as string[],
+  )
+  .option(
+    '--chart-file <path>',
+    'Path to a JSON file with an array of chart definitions',
+  )
+  .option('--tags <tags>', 'Comma-separated tags (chart mode)')
+  .option(
+    '--if-not-exists',
+    'Skip creation if a dashboard with the same name exists',
   )
   .option('-a, --app-url <url>', 'HyperDX app URL')
   .option('--json', 'Output the created dashboard as JSON')
@@ -1095,27 +1360,34 @@ dashboardsCmd
     'after',
     `
 About:
-  Creates a dashboard from a JSON definition. The file must match the
-  DashboardWithoutId schema from @hyperdx/common-utils — the same shape
-  'hdx dashboards --json' reports, minus the id:
+  Two modes:
 
-    {
-      "name": "My Dashboard",
-      "tags": ["team-a"],
-      "tiles": [
-        {
-          "x": 0, "y": 0, "w": 12, "h": 4,
-          "config": {
-            "name": "Requests",
-            "displayType": "line",
-            "source": "<source id>",
-            "select": [{ "aggFn": "count", "valueExpression": "", "alias": "Requests" }],
-            "where": "", "whereLanguage": "lucene",
-            "granularity": "auto"
-          }
-        }
-      ]
-    }
+  1. Full definition:  --file <json>
+     The file must match the DashboardWithoutId schema from
+     @hyperdx/common-utils (the shape 'hdx dashboards export' emits):
+
+       {
+         "name": "My Dashboard",
+         "tags": ["team-a"],
+         "tiles": [
+           {
+             "x": 0, "y": 0, "w": 12, "h": 4,
+             "config": {
+               "name": "Requests",
+               "displayType": "line",
+               "source": "<source id>",
+               "select": [{ "aggFn": "count", "valueExpression": "", "alias": "Requests" }],
+               "where": "", "whereLanguage": "lucene",
+               "granularity": "auto"
+             }
+           }
+         ]
+       }
+
+  2. Inline charts:  --name <name> --chart '<json>' [--chart '<json>' ...]
+     Each --chart (or entry in --chart-file's array) is either a full
+     tile ({x,y,w,h,config}) or a bare chart config. Charts without
+     layout are auto-placed on the 24-column grid (12x4, two per row).
 
   Tile "id" fields are optional — missing ids are generated automatically.
   The definition is validated locally before being sent to the server.
@@ -1123,78 +1395,159 @@ About:
 Examples:
   $ hdx dashboards create --file my-dashboard.json
   $ cat my-dashboard.json | hdx dashboards create --file -
-  $ hdx dashboards create --file my-dashboard.json --json | jq .id
+  $ hdx dashboards create --name "API Health" \\
+      --chart '{"name":"Requests","displayType":"line","source":"<id>","select":[{"aggFn":"count","valueExpression":"","alias":"Requests"}],"where":"","whereLanguage":"lucene","granularity":"auto"}'
+  $ hdx dashboards create --name "API Health" --chart-file charts.json --if-not-exists
 `,
   )
   .action(async opts => {
-    const client = await ensureSession(opts.appUrl);
-
-    let raw: string;
-    try {
-      raw =
-        opts.file === '-'
-          ? fs.readFileSync(0, 'utf-8')
-          : fs.readFileSync(opts.file, 'utf-8');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      _origError(chalk.red(`Failed to read ${opts.file}: ${msg}\n`));
+    const chartInputs: string[] = opts.chart ?? [];
+    const isFileMode = opts.file != null;
+    const isChartMode = opts.name != null;
+    if (isFileMode === isChartMode) {
+      _origError(
+        chalk.red(
+          'Pick one mode: --file <json> (full definition) or --name <name> with --chart/--chart-file (inline charts).\n',
+        ),
+      );
       process.exit(1);
     }
 
     let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(raw);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      _origError(chalk.red(`Invalid JSON in ${opts.file}: ${msg}\n`));
-      process.exit(1);
-    }
-
-    // Fill in missing tile ids before validation (id is required by the
-    // schema but is meaningless to hand-author).
-    if (
-      typeof parsedJson === 'object' &&
-      parsedJson !== null &&
-      Array.isArray((parsedJson as { tiles?: unknown }).tiles)
-    ) {
-      for (const tile of (parsedJson as { tiles: Array<{ id?: unknown }> })
-        .tiles) {
-        if (typeof tile === 'object' && tile !== null && tile.id == null) {
-          tile.id = makeTileId();
-        }
-      }
-    }
-
-    const parsed = DashboardWithoutIdSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      _origError(chalk.red('Dashboard definition is invalid:\n'));
-      for (const issue of parsed.error.issues) {
+    if (isFileMode) {
+      if (chartInputs.length > 0 || opts.chartFile || opts.tags) {
         _origError(
           chalk.red(
-            `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`,
+            '--chart/--chart-file/--tags cannot be combined with --file (the file is the full definition).\n',
           ),
         );
+        process.exit(1);
       }
-      process.exit(1);
+      parsedJson = readJsonFileOrExit(opts.file);
+    } else {
+      // Chart mode: assemble a dashboard from inline / file chart JSON.
+      const charts: unknown[] = [];
+      for (const [i, chartJson] of chartInputs.entries()) {
+        try {
+          charts.push(JSON.parse(chartJson));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          _origError(chalk.red(`Invalid JSON in --chart #${i + 1}: ${msg}\n`));
+          process.exit(1);
+        }
+      }
+      if (opts.chartFile) {
+        const fromFile = readJsonFileOrExit(opts.chartFile);
+        if (!Array.isArray(fromFile)) {
+          _origError(
+            chalk.red(
+              `--chart-file must contain a JSON array of chart definitions.\n`,
+            ),
+          );
+          process.exit(1);
+        }
+        charts.push(...fromFile);
+      }
+      if (charts.length === 0) {
+        _origError(
+          chalk.red(
+            'No charts given. Pass at least one --chart or a --chart-file.\n',
+          ),
+        );
+        process.exit(1);
+      }
+
+      // A chart is either a full tile ({config: ...}) or a bare config.
+      // Auto-flow tiles missing layout onto the 24-column grid.
+      const tiles = charts.map((chart, i) => {
+        const isTile =
+          typeof chart === 'object' &&
+          chart !== null &&
+          'config' in (chart as Record<string, unknown>);
+        const tile: Record<string, unknown> = isTile
+          ? { ...(chart as Record<string, unknown>) }
+          : { config: chart };
+        tile.x = tile.x ?? (i % 2) * 12;
+        tile.y = tile.y ?? Math.floor(i / 2) * 4;
+        tile.w = tile.w ?? 12;
+        tile.h = tile.h ?? 4;
+        return tile;
+      });
+
+      parsedJson = {
+        name: String(opts.name),
+        tags:
+          typeof opts.tags === 'string' && opts.tags.length > 0
+            ? opts.tags
+                .split(',')
+                .map((t: string) => t.trim())
+                .filter(Boolean)
+            : [],
+        tiles,
+      };
     }
 
-    let created;
-    try {
-      created = await client.createDashboard(parsed.data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      _origError(chalk.red(`Failed to create dashboard: ${msg}\n`));
-      process.exit(1);
-    }
+    const dashboard = validateDashboardOrExit(parsedJson);
 
-    const id = created.id ?? created._id;
-    if (opts.json) {
-      process.stdout.write(JSON.stringify(created, null, 2) + '\n');
+    const client = await ensureSession(opts.appUrl);
+    if (
+      opts.ifNotExists &&
+      (await skipIfDashboardExists(client, dashboard.name, !!opts.json))
+    ) {
       return;
     }
-    process.stdout.write(
-      `${chalk.green('Created dashboard')} ${chalk.bold.cyan(created.name)} ${chalk.dim(`[${id}]`)}\n${client.getAppUrl()}/dashboards/${id}\n`,
-    );
+    await createDashboardAndPrint(client, dashboard, !!opts.json);
+  });
+
+dashboardsCmd
+  .command('import')
+  .description('Create a dashboard from an exported JSON definition')
+  .requiredOption(
+    '-f, --file <path>',
+    'Path to a dashboard JSON file (output of \'hdx dashboards export\'; use "-" for stdin)',
+  )
+  .option('--name-override <name>', 'Rename the dashboard on import')
+  .option(
+    '--if-not-exists',
+    'Skip import if a dashboard with the same name exists',
+  )
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--json', 'Output the created dashboard as JSON')
+  .addHelpText(
+    'after',
+    `
+About:
+  Recreates a full dashboard (all charts, layout, and settings) from a
+  JSON definition, typically the output of 'hdx dashboards export'.
+  Round-trip compatible: export | import recreates the dashboard.
+
+Examples:
+  $ hdx dashboards import --file dashboard.json
+  $ hdx dashboards export --id "API Health" | hdx dashboards import --file - \\
+      --name-override "API Health (copy)"
+  $ hdx dashboards import --file dashboard.json --if-not-exists
+`,
+  )
+  .action(async opts => {
+    const parsedJson = readJsonFileOrExit(opts.file);
+    if (
+      opts.nameOverride &&
+      typeof parsedJson === 'object' &&
+      parsedJson !== null
+    ) {
+      (parsedJson as Record<string, unknown>).name = String(opts.nameOverride);
+    }
+
+    const dashboard = validateDashboardOrExit(parsedJson);
+
+    const client = await ensureSession(opts.appUrl);
+    if (
+      opts.ifNotExists &&
+      (await skipIfDashboardExists(client, dashboard.name, !!opts.json))
+    ) {
+      return;
+    }
+    await createDashboardAndPrint(client, dashboard, !!opts.json);
   });
 
 // ---- Saved searches --------------------------------------------------
