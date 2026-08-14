@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
-import { Button, Notification, Paper, Text, TextInput } from '@mantine/core';
+import {
+  Button,
+  List,
+  Notification,
+  Paper,
+  Text,
+  TextInput,
+} from '@mantine/core';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { PasswordCheck } from './PasswordCheck';
@@ -12,17 +19,15 @@ export default function JoinTeam() {
   const { err, reason, token } = router.query;
   const [password, setPassword] = useState('');
 
-  const errorMessage = (() => {
-    if (err == null) {
-      return null;
-    }
-    if (err === 'invalid') {
-      return typeof reason === 'string' && reason.length > 0
-        ? reason
-        : 'Password does not meet the requirements.';
-    }
-    return 'Unknown error occurred, please try again later.';
-  })();
+  const invalidReasons =
+    err === 'invalid'
+      ? (Array.isArray(reason)
+          ? reason
+          : reason != null
+            ? [reason]
+            : []
+        ).filter(r => r.length > 0)
+      : [];
 
   return (
     <div className="AuthPage">
@@ -57,15 +62,28 @@ export default function JoinTeam() {
                 <Notification withCloseButton={false} mt="sm">
                   <PasswordCheck password={password} />
                 </Notification>
-                {errorMessage != null && (
-                  <Text
-                    c="red"
-                    mt="sm"
+                {err != null && (
+                  <div
                     data-test-id="auth-error-msg"
                     style={{ overflowWrap: 'anywhere' }}
                   >
-                    {errorMessage}
-                  </Text>
+                    {err !== 'invalid' ? (
+                      <Text c="red" mt="sm">
+                        Unknown error occurred, please try again later.
+                      </Text>
+                    ) : invalidReasons.length > 1 ? (
+                      <List c="red" size="sm" mt="sm" spacing={4}>
+                        {invalidReasons.map(r => (
+                          <List.Item key={r}>{r}</List.Item>
+                        ))}
+                      </List>
+                    ) : (
+                      <Text c="red" mt="sm">
+                        {invalidReasons[0] ??
+                          'Password does not meet the requirements.'}
+                      </Text>
+                    )}
+                  </div>
                 )}
                 <div className="text-center mt-4">
                   <Button

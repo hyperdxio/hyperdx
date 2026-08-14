@@ -140,13 +140,13 @@ router.post('/team/setup/:token', async (req, res, next) => {
 
     const passwordResult = passwordSchema.safeParse(password);
     if (!passwordResult.success) {
-      const reason = passwordResult.error.issues
-        .map(issue => issue.message)
-        .join(' ');
+      // Emit one `reason` query param per failed requirement so the Join Team
+      // page can render them as a readable list rather than one run-on line.
+      const reasonParams = passwordResult.error.issues
+        .map(issue => `reason=${encodeURIComponent(issue.message)}`)
+        .join('&');
       return res.redirect(
-        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&reason=${encodeURIComponent(
-          reason,
-        )}&token=${token}`,
+        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&${reasonParams}&token=${token}`,
       );
     }
 
