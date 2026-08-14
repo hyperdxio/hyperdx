@@ -93,6 +93,7 @@ import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -2188,6 +2189,14 @@ export function DBSearchPage() {
                 </Button>
               </Tags>
 
+              <ResourceTerraformPopover
+                resource={{
+                  type: 'saved_search',
+                  id: savedSearch.id,
+                  name: savedSearch.name,
+                }}
+              />
+
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
                   deleteSavedSearch.mutate(savedSearch?.id ?? '', {
@@ -2756,7 +2765,7 @@ export function DBSearchPage() {
 
 const DBSearchPageDynamic = dynamic(async () => DBSearchPage, { ssr: false });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 DBSearchPageDynamic.getLayout = withAppNav;
 
 export default DBSearchPageDynamic;

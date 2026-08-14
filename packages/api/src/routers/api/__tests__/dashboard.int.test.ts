@@ -15,7 +15,7 @@ import {
   makeRawSqlTile,
   makeTile,
 } from '@/fixtures';
-import Alert from '@/models/alert';
+import Alert, { AlertSource } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import PresetDashboardFilter from '@/models/presetDashboardFilter';
 import { Source } from '@/models/source';
@@ -251,6 +251,16 @@ describe('dashboard router', () => {
         tileId: dashboard.body.tiles[0].id,
       },
     ]);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert).not.toBeNull();
+    expect(storedAlert?.savedSearch).toBeNull();
+    expect(storedAlert?.groupBy).toBeNull();
   });
 
   it('alerts are created when updating dashboard (adding alert to tile)', async () => {
@@ -371,6 +381,15 @@ describe('dashboard router', () => {
         tileId: dashboard.body.tiles[0].id,
       },
     ]);
+
+    const storedAlerts = await Alert.find({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlerts).toHaveLength(1);
+    expect(storedAlerts[0].threshold).toBe(updatedAlert.threshold);
   });
 
   it('deletes alert when tile is updated from builder to raw SQL config', async () => {
@@ -579,6 +598,385 @@ describe('dashboard router', () => {
 
     // Alert should have updated threshold
     expect(updatedAlertRecord.threshold).toBe(updatedThreshold);
+  });
+
+  describe('dashboard filter variable fields', () => {
+    const makeVariableFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service Name',
+      expression: 'ServiceName',
+      source: new Types.ObjectId().toString(),
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'Service_Name',
+      ...overrides,
+    });
+
+    it('persists the variable fields on create', async () => {
+      const filter = makeVariableFilter();
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('leaves the variable fields absent when they are not sent', async () => {
+      // Absence is meaningful: `isBroadcastEnabled` is read as enabled when
+      // missing, so the server must not materialize a value on the way in.
+      const filter = {
+        id: new Types.ObjectId().toString(),
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        source: new Types.ObjectId().toString(),
+      };
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('isBroadcastEnabled');
+      expect(stored?.filters?.[0]).not.toHaveProperty('isVariableEnabled');
+      expect(stored?.filters?.[0]).not.toHaveProperty('variableName');
+    });
+
+    it('persists updated variable fields on PATCH', async () => {
+      const filter = makeVariableFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const updatedFilter = {
+        ...filter,
+        isBroadcastEnabled: true,
+        isVariableEnabled: false,
+      };
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [updatedFilter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([updatedFilter]);
+    });
+
+    it('leaves stored filters untouched on a PATCH that omits filters', async () => {
+      const filter = makeVariableFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ name: 'Renamed Dashboard' })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.name).toBe('Renamed Dashboard');
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('rejects a variableName that is not a bare token', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeVariableFilter({ variableName: 'has space' })],
+        })
+        .expect(400);
+    });
+
+    // The form blocks duplicates client-side, but the API is reachable directly,
+    // so the same rule has to hold server-side or a dashboard can end up with an
+    // ambiguous `$var` reference.
+    describe('variable name uniqueness', () => {
+      it('rejects two variable-enabled filters sharing a variable name on create', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ variableName: 'service' }),
+              makeVariableFilter({ variableName: 'service' }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects a duplicate introduced by PATCH', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [makeVariableFilter({ variableName: 'service' })],
+          })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [
+              makeVariableFilter({ variableName: 'service' }),
+              makeVariableFilter({ variableName: 'service' }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects a clash against a name derived from the filter name', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              // Derives to `Service_Name`.
+              makeVariableFilter({
+                name: 'Service Name',
+                variableName: undefined,
+              }),
+              makeVariableFilter({ variableName: 'Service_Name' }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('accepts distinct variable names', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ variableName: 'service' }),
+              makeVariableFilter({ variableName: 'environment' }),
+            ],
+          })
+          .expect(200);
+      });
+
+      // Nobody who never enabled the feature can be blocked by this rule, even
+      // though the rule itself always runs.
+      it('accepts duplicate names when the filters are not variable-enabled', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                variableName: 'service',
+                isVariableEnabled: false,
+                isBroadcastEnabled: true,
+              }),
+              makeVariableFilter({
+                variableName: 'service',
+                isVariableEnabled: undefined,
+                isBroadcastEnabled: true,
+              }),
+            ],
+          })
+          .expect(200);
+
+        expect(created.body.filters).toHaveLength(2);
+      });
+
+      // The shape a pre-feature dashboard has: no variable fields at all, and
+      // two filters that legitimately share a display name on different sources.
+      it('accepts identically named filters that carry no variable fields', async () => {
+        const legacyFilter = {
+          id: new Types.ObjectId().toString(),
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Service Name',
+          expression: 'ServiceName',
+          source: new Types.ObjectId().toString(),
+        };
+
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              legacyFilter,
+              { ...legacyFilter, id: new Types.ObjectId().toString() },
+            ],
+          })
+          .expect(200);
+      });
+
+      // Without this, a variable-enabled filter could persist with no token any
+      // tile could reference: the schema allows `variableName` to be omitted, and
+      // the display name has nothing token-safe to derive one from.
+      it('rejects a variable-enabled filter whose name yields no usable variable name', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ name: '环境', variableName: undefined }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('accepts an unusable filter name when an explicit variable name is sent', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ name: '环境', variableName: 'env' }),
+            ],
+          })
+          .expect(200);
+      });
+
+      it('accepts an unusable filter name when the filter is not variable-enabled', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                name: '环境',
+                variableName: undefined,
+                isVariableEnabled: false,
+                isBroadcastEnabled: true,
+              }),
+            ],
+          })
+          .expect(200);
+      });
+    });
+
+    describe('at least one mode enabled', () => {
+      it('rejects a filter with both modes off on create', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                isBroadcastEnabled: false,
+                isVariableEnabled: false,
+              }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('treats an omitted variable flag as off', () =>
+        agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                isBroadcastEnabled: false,
+                isVariableEnabled: undefined,
+                variableName: undefined,
+              }),
+            ],
+          })
+          .expect(400));
+
+      it('rejects the state when PATCH introduces it', async () => {
+        const filter = makeVariableFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [{ ...filter, isVariableEnabled: false }],
+          })
+          .expect(400);
+
+        // The stored filter is untouched by the rejected PATCH.
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      it('accepts broadcast-only and variable-only filters', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                variableName: 'broadcast_only',
+                isBroadcastEnabled: true,
+                isVariableEnabled: false,
+              }),
+              makeVariableFilter({
+                variableName: 'variable_only',
+                isBroadcastEnabled: false,
+                isVariableEnabled: true,
+              }),
+            ],
+          })
+          .expect(200);
+      });
+
+      // Backwards compatibility: a missing `isBroadcastEnabled` reads as
+      // enabled, so no dashboard written before the field existed can be
+      // rejected — nor can one round-tripped by a client that drops it.
+      it('accepts a filter that carries neither flag', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({
+                isBroadcastEnabled: undefined,
+                isVariableEnabled: undefined,
+                variableName: undefined,
+              }),
+            ],
+          })
+          .expect(200);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters?.[0]).not.toHaveProperty('isBroadcastEnabled');
+      });
+
+      it('reports the offending filter by index', async () => {
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeVariableFilter({ variableName: 'ok' }),
+              makeVariableFilter({
+                name: 'Broken',
+                variableName: 'broken',
+                isBroadcastEnabled: false,
+                isVariableEnabled: false,
+              }),
+            ],
+          })
+          .expect(400);
+
+        // Only the second filter is flagged, and the path points at it.
+        expect(response.body[0].errors.issues).toEqual([
+          expect.objectContaining({
+            message:
+              'Filter "Broken" must broadcast its value, be available as a variable, or both',
+            path: ['filters', 1, 'isBroadcastEnabled'],
+          }),
+        ]);
+      });
+    });
   });
 
   describe('preset dashboards', () => {

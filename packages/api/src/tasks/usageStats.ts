@@ -1,9 +1,5 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  MetricsDataType,
-  SourceKind,
-  TMetricSource,
-} from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';
 import os from 'os';
@@ -124,7 +120,7 @@ const getClickhouseTableSize = async () => {
       });
       const res = await _rows.json<ResponseJSON<any>>();
       results.push(...res.data);
-    } catch (error) {
+    } catch {
       // ignore
     }
   }
@@ -178,7 +174,7 @@ async function getUsageStats() {
       },
       'track-hyperdx-oss-usage-stats',
     );
-  } catch (err) {
+  } catch {
     // ignore
   }
 }

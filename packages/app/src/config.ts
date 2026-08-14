@@ -50,10 +50,14 @@ export const IS_DEV = NODE_ENV === 'development';
 
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
 export const IS_LOCAL_MODE = //true;
-  // @ts-ignore
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
+// Deployment path prefix, mirroring `basePath` in next.config.mjs. Needed
+// anywhere an absolute URL is built for something outside the browser to call:
+// `window.location.origin` alone drops the prefix, and the API is served under
+// the same one as the UI.
+export const BASE_PATH = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH ?? '';
 export const IS_NOINDEX = process.env.NEXT_PUBLIC_NOINDEX === 'true';
 
 /** Time captured at module load, use this a stable fallback/default time value instead of Date.now() defined in each React component file */
@@ -66,3 +70,17 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+export const IS_DASHBOARD_VARIABLES_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES') === 'true';
+// Alert detail page (/alerts/:id). Default off — currently enabled only in
+// dev (.env.development) and CI (e2e webserver) while the feature bakes.
+export const IS_ALERT_DETAILS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_ALERT_DETAILS') === 'true';
+// Not exported: IS_IAC_EXPORT_ENABLED below is the only gate callers should
+// read. Leaving the raw flag importable re-opens the "forgot the local-mode
+// check" mistake that folding the two together was meant to close.
+const IS_IAC_HELPERS_ENABLED = true;
+// Local mode has no API server behind it, so there is nothing for the
+// Terraform provider to talk to. Single definition — the alerts, dashboard,
+// search, and team-settings surfaces all read this one constant.
+export const IS_IAC_EXPORT_ENABLED = IS_IAC_HELPERS_ENABLED && !IS_LOCAL_MODE;

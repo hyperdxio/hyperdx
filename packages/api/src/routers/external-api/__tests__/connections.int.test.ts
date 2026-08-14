@@ -176,7 +176,8 @@ describe('External API v2 Connections', () => {
     });
 
     it('should create a connection without a password', async () => {
-      const { password, ...connectionWithoutPassword } = MOCK_CONNECTION;
+      const { password: _password, ...connectionWithoutPassword } =
+        MOCK_CONNECTION;
 
       const response = await authRequest('post', CONNECTIONS_BASE_URL)
         .send(connectionWithoutPassword)

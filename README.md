@@ -110,6 +110,26 @@ include:
 Once HyperDX is running, you can point your OpenTelemetry SDK to the
 OpenTelemetry collector spun up at `http://localhost:4318`.
 
+## HyperDX CLI
+
+Prefer the terminal? [`@hyperdx/cli`](./packages/cli) provides an interactive
+TUI and CLI (`hdx`) for working with your HyperDX data without leaving the
+shell:
+
+```bash
+npm install -g @hyperdx/cli
+hdx auth login
+hdx tui
+```
+
+- 🖥️ Interactive TUI — search, live tail, and trace waterfalls with vim-style
+  keybindings
+- 📊 Render dashboard tiles and ad-hoc charts as ANSI output in the terminal
+- 🤖 Agent-friendly: raw SQL queries, NDJSON output, and Drain log pattern
+  mining for scripts and AI agents
+
+See the [CLI README](./packages/cli#readme) for the full command reference.
+
 ## Contributing
 
 We welcome all contributions! There's many ways to contribute to the project,

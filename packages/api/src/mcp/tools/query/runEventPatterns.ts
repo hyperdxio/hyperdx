@@ -43,6 +43,7 @@ export async function mineWindowPatterns(
     bodyExpression?: string;
     sampleSize?: number;
     trendBuckets?: number;
+    abortSignal?: AbortSignal;
   },
 ): Promise<
   | { error: McpErrorResult }
@@ -174,13 +175,19 @@ export async function mineWindowPatterns(
         config: sampleConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: { max_execution_time: 30 } },
+        opts: {
+          clickhouse_settings: { max_execution_time: 30 },
+          abort_signal: options?.abortSignal,
+        },
       }),
       clickhouseClient.queryChartConfig({
         config: countConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: { max_execution_time: 30 } },
+        opts: {
+          clickhouse_settings: { max_execution_time: 30 },
+          abort_signal: options?.abortSignal,
+        },
       }),
     ]);
   } catch (err) {
@@ -271,6 +278,7 @@ export async function runEventPatterns(
     sampleSize?: number;
     topN?: number;
     trendBuckets?: number;
+    abortSignal?: AbortSignal;
   },
 ) {
   const topN = options?.topN ?? 20;
@@ -291,6 +299,7 @@ export async function runEventPatterns(
     bodyExpression: options?.bodyExpression,
     sampleSize: options?.sampleSize,
     trendBuckets,
+    abortSignal: options?.abortSignal,
   });
   if ('error' in mined) return mined.error;
 

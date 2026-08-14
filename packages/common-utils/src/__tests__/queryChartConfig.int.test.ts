@@ -1,6 +1,7 @@
 import { createClient } from '@clickhouse/client';
 import { ClickHouseClient } from '@clickhouse/client';
 
+import { convertCHDataTypeToJSType, JSDataType } from '@/clickhouse';
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
 import {
@@ -25,7 +26,9 @@ describe('queryChartConfig Integration Tests', () => {
     client = createClient({ url: host, username, password });
     hdxClient = new HdxClickhouseClient({ host, username, password });
 
-    // Mirror the OTel gauge schema so renderChartConfig can target it.
+    // Mirror the OTel gauge schema (see
+    // docker/otel-collector/schema/seed/00003_otel_metrics.sql) so
+    // renderChartConfig can target it.
     await client.command({
       query: `CREATE OR REPLACE TABLE ${DATABASE}.${TABLE_NAME} (
         ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
@@ -36,18 +39,18 @@ describe('queryChartConfig Integration Tests', () => {
         ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
         ScopeSchemaUrl String CODEC(ZSTD(1)),
         ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-        MetricName String CODEC(ZSTD(1)),
+        MetricName LowCardinality(String) CODEC(ZSTD(1)),
         MetricDescription String CODEC(ZSTD(1)),
         MetricUnit String CODEC(ZSTD(1)),
         Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        StartTimeUnix DateTime CODEC(Delta, ZSTD(1)),
+        TimeUnix DateTime CODEC(Delta, ZSTD(1)),
         Value Float64 CODEC(ZSTD(1)),
         Flags UInt32 CODEC(ZSTD(1))
       )
       ENGINE = MergeTree
       PARTITION BY toDate(TimeUnix)
-      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))`,
+      ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)`,
     });
 
     const rows: Array<{
@@ -888,6 +891,836 @@ describe('queryChartConfig Integration Tests', () => {
         result.data[0] as Record<string, string>,
       ).find(([key]) => key.startsWith('divide('))?.[1];
       expect(Number(ratio)).toBeCloseTo(17 / 68, 5);
+    });
+  });
+
+  // Regression baseline for the multi-series metric merge (HDX-5076).
+  //
+  // A metric chart with N select items renders one per-series query per item
+  // and merges them back into one result set. These tests were written
+  // against the original node-side merge (mergeResultSets) and pin its
+  // OBSERVABLE CONTRACT end-to-end through queryChartConfig; the composed
+  // single-query implementation (HDX-5077) must — and does — reproduce it:
+  //
+  //  - meta lists all value columns first, in select order (positional
+  //    contract of useChartNumberFormats);
+  //  - rows join on (time bucket [+ group-by values]); a bucket/group present
+  //    in only one series still appears (full-outer semantics);
+  //  - a series with no data at a joined row reads as a GAP — nullish or NaN,
+  //    never 0. Both the current merge (absent key / JS NaN) and a SQL-side
+  //    merge (JSON null) satisfy this, so gaps are asserted via expectGap
+  //    rather than pinning the exact nullish representation;
+  //  - value column types stay numeric per convertCHDataTypeToJSType (the
+  //    exact ClickHouse type string may become a Nullable supertype when the
+  //    merge moves into SQL, which consumers already handle);
+  //  - ratio semantics (seriesReturnType 'ratio' with exactly two series):
+  //    output column named "<numAlias>/<denomAlias>" replaces the operand
+  //    columns; missing numerator counts as 0; missing or zero denominator is
+  //    a gap; ratioMode 'share_of_total' divides by the per-bucket denominator
+  //    total instead of the row's own denominator;
+  //  - two series resolving to the same alias are disambiguated with a
+  //    "__{splitIndex}" suffix;
+  //  - gauge/sum series expose group-by dimensions as plain columns while
+  //    histogram series expose a single Array column named "group", so grouped
+  //    histogram rows never join with grouped gauge/sum rows.
+  describe('multi-series metric merge (regression baseline)', () => {
+    const GAUGE_TABLE = 'mm_baseline_gauge_int_test';
+    const SUM_TABLE = 'mm_baseline_sum_int_test';
+    const HIST_TABLE = 'mm_baseline_histogram_int_test';
+
+    const metricTables = {
+      gauge: GAUGE_TABLE,
+      sum: SUM_TABLE,
+      histogram: HIST_TABLE,
+      summary: 'unused',
+      'exponential histogram': 'unused',
+    };
+
+    // All timestamps land on exact minute boundaries so `1 minute` buckets
+    // render as the raw timestamp. Inserts use server-local strings and the
+    // CI ClickHouse runs in UTC (like every other fixture in this file);
+    // the client sets date_time_output_format=iso, hence the Z format. The
+    // dateRange is deliberately wide (± a day) to stay clear of boundaries.
+    const insertTs = (minute: number) => `2025-04-15 10:0${minute}:00`;
+    const bucket = (minute: number) => `2025-04-15T10:0${minute}:00Z`;
+    const DATE_RANGE: [Date, Date] = [
+      new Date('2025-04-14'),
+      new Date('2025-04-16'),
+    ];
+
+    // Fixture tables mirror the OTel collector's metric table schemas from
+    // docker/otel-collector/schema/seed/00003_otel_metrics.sql — same columns,
+    // types, engine, partitioning, sorting key, and skip indexes. Only the
+    // env-dependent TTL clause is omitted.
+    const OTEL_COMMON_COLUMNS = `
+      ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+      ResourceSchemaUrl String CODEC(ZSTD(1)),
+      ScopeName String CODEC(ZSTD(1)),
+      ScopeVersion String CODEC(ZSTD(1)),
+      ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+      ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+      ScopeSchemaUrl String CODEC(ZSTD(1)),
+      ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+      MetricName LowCardinality(String) CODEC(ZSTD(1)),
+      MetricDescription String CODEC(ZSTD(1)),
+      MetricUnit String CODEC(ZSTD(1)),
+      Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+      StartTimeUnix DateTime CODEC(Delta, ZSTD(1)),
+      TimeUnix DateTime CODEC(Delta, ZSTD(1))`;
+
+    const OTEL_EXEMPLARS_COLUMNS = `
+      \`Exemplars.FilteredAttributes\` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+      \`Exemplars.TimeUnix\` Array(DateTime) CODEC(ZSTD(1)),
+      \`Exemplars.Value\` Array(Float64) CODEC(ZSTD(1)),
+      \`Exemplars.SpanId\` Array(String) CODEC(ZSTD(1)),
+      \`Exemplars.TraceId\` Array(String) CODEC(ZSTD(1))`;
+
+    const OTEL_INDEXES = `
+      INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+      INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+      INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+      INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+      INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+      INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+      INDEX idx_time_minmax TimeUnix TYPE minmax GRANULARITY 1`;
+
+    const OTEL_ORDER_BY = `ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)`;
+
+    // The per-series key is cityHash64(ScopeAttributes, ResourceAttributes,
+    // Attributes); give every service a distinct resource attribute so two
+    // services never collapse into one attributes-hash series.
+    const commonFields = (metricName: string, ts: string, service: string) => ({
+      ResourceAttributes: { 'service.name': service },
+      ResourceSchemaUrl: '',
+      ScopeName: '',
+      ScopeVersion: '',
+      ScopeAttributes: {},
+      ScopeDroppedAttrCount: 0,
+      ScopeSchemaUrl: '',
+      ServiceName: service,
+      MetricName: metricName,
+      MetricDescription: '',
+      MetricUnit: '',
+      Attributes: {},
+      StartTimeUnix: ts,
+      TimeUnix: ts,
+    });
+
+    const gaugeRow = (
+      metricName: string,
+      ts: string,
+      service: string,
+      value: number,
+    ) => ({
+      ...commonFields(metricName, ts, service),
+      Value: value,
+      Flags: 0,
+    });
+
+    // Cumulative monotonic counter (the standard OTel counter shape).
+    const sumRow = (
+      metricName: string,
+      ts: string,
+      service: string,
+      value: number,
+    ) => ({
+      ...commonFields(metricName, ts, service),
+      Value: value,
+      Flags: 0,
+      AggregationTemporality: 2,
+      IsMonotonic: true,
+    });
+
+    const histRow = (
+      metricName: string,
+      ts: string,
+      service: string,
+      bucketCounts: number[],
+      explicitBounds: number[],
+    ) => ({
+      ...commonFields(metricName, ts, service),
+      Count: bucketCounts.reduce((a, b) => a + b, 0),
+      Sum: 0,
+      BucketCounts: bucketCounts,
+      ExplicitBounds: explicitBounds,
+      Min: 0,
+      Max: 0,
+      Flags: 0,
+      AggregationTemporality: 2,
+    });
+
+    type MetricSelect = {
+      aggFn: 'avg' | 'sum' | 'quantile' | 'increase';
+      aggCondition: string;
+      aggConditionLanguage: 'sql';
+      valueExpression: string;
+      metricName: string;
+      metricType: MetricsDataType;
+      level?: number;
+    };
+
+    const gaugeSelect = (
+      metricName: string,
+      overrides: Partial<MetricSelect> = {},
+    ): MetricSelect => ({
+      aggFn: 'avg',
+      aggCondition: '',
+      aggConditionLanguage: 'sql',
+      valueExpression: 'Value',
+      metricName,
+      metricType: MetricsDataType.Gauge,
+      ...overrides,
+    });
+
+    const increaseSelect = (metricName: string): MetricSelect => ({
+      aggFn: 'increase',
+      aggCondition: '',
+      aggConditionLanguage: 'sql',
+      valueExpression: 'Value',
+      metricName,
+      metricType: MetricsDataType.Sum,
+    });
+
+    const baseConfig = (
+      overrides: Partial<ChartConfigWithOptDateRange>,
+    ): ChartConfigWithOptDateRange =>
+      ({
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables,
+        from: { databaseName: DATABASE, tableName: '' },
+        select: [],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: DATE_RANGE,
+        granularity: '1 minute',
+        ...overrides,
+      }) as ChartConfigWithOptDateRange;
+
+    const runConfig = (config: ChartConfigWithOptDateRange) =>
+      hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+    type Row = Record<string, unknown>;
+
+    /**
+     * Column accessor for result rows keyed by rendered column name. Goes
+     * through Object.entries so the security/detect-object-injection lint
+     * rule doesn't flag every (test-local, literal) column lookup.
+     */
+    const col = (row: Row | undefined, name: string): unknown =>
+      row == null ? undefined : new Map(Object.entries(row)).get(name);
+
+    /** Index rows by their time bucket. Throws on duplicate buckets. */
+    const rowsByBucket = (data: unknown): Map<string, Row> => {
+      const map = new Map<string, Row>();
+      for (const row of data as Row[]) {
+        const key = String(col(row, '__hdx_time_bucket'));
+        expect(map.has(key)).toBe(false);
+        map.set(key, row);
+      }
+      return map;
+    };
+
+    /** Index grouped rows by (bucket, group value). Throws on duplicates. */
+    const rowsByBucketAndGroup = (
+      data: unknown,
+      groupColumn: string,
+    ): Map<string, Row> => {
+      const map = new Map<string, Row>();
+      for (const row of data as Row[]) {
+        const key = `${String(col(row, '__hdx_time_bucket'))}|${String(col(row, groupColumn))}`;
+        expect(map.has(key)).toBe(false);
+        map.set(key, row);
+      }
+      return map;
+    };
+
+    /**
+     * A series with no data at a joined row must read as a gap — nullish or
+     * NaN, never 0 (or any other number). The current node-side merge leaves
+     * the key absent (undefined) or computes JS NaN; a SQL-side merge yields
+     * JSON null. All three are gaps to every consumer, so accept any of them.
+     */
+    const expectGap = (value: unknown) => {
+      expect(value == null || Number.isNaN(Number(value))).toBe(true);
+    };
+
+    /** The value-column contract: numeric per convertCHDataTypeToJSType. */
+    const expectNumericValueColumns = (
+      meta: Array<{ name: string; type: string }> | undefined,
+      expectedNames: string[],
+    ) => {
+      const names = meta?.map(m => m.name) ?? [];
+      expect(names.slice(0, expectedNames.length)).toEqual(expectedNames);
+      for (const name of expectedNames) {
+        const column = meta?.find(m => m.name === name);
+        expect(convertCHDataTypeToJSType(column?.type ?? '')).toBe(
+          JSDataType.Number,
+        );
+      }
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${GAUGE_TABLE} (
+          ${OTEL_COMMON_COLUMNS},
+          Value Float64 CODEC(ZSTD(1)),
+          Flags UInt32 CODEC(ZSTD(1)),
+          ${OTEL_EXEMPLARS_COLUMNS},
+          ${OTEL_INDEXES}
+        ) ENGINE = MergeTree PARTITION BY toDate(TimeUnix) ${OTEL_ORDER_BY}`,
+      });
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${SUM_TABLE} (
+          ${OTEL_COMMON_COLUMNS},
+          Value Float64 CODEC(ZSTD(1)),
+          Flags UInt32 CODEC(ZSTD(1)),
+          ${OTEL_EXEMPLARS_COLUMNS},
+          AggregationTemporality Int32 CODEC(ZSTD(1)),
+          IsMonotonic Bool CODEC(ZSTD(1)),
+          ${OTEL_INDEXES}
+        ) ENGINE = MergeTree PARTITION BY toDate(TimeUnix) ${OTEL_ORDER_BY}`,
+      });
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${HIST_TABLE} (
+          ${OTEL_COMMON_COLUMNS},
+          Count UInt64 CODEC(Delta(8), ZSTD(1)),
+          Sum Float64 CODEC(ZSTD(1)),
+          BucketCounts Array(UInt64) CODEC(ZSTD(1)),
+          ExplicitBounds Array(Float64) CODEC(ZSTD(1)),
+          ${OTEL_EXEMPLARS_COLUMNS},
+          Flags UInt32 CODEC(ZSTD(1)),
+          Min Float64 CODEC(ZSTD(1)),
+          Max Float64 CODEC(ZSTD(1)),
+          AggregationTemporality Int32 CODEC(ZSTD(1)),
+          ${OTEL_INDEXES}
+        ) ENGINE = MergeTree PARTITION BY toDate(TimeUnix) ${OTEL_ORDER_BY}`,
+      });
+
+      await client.insert({
+        table: `${DATABASE}.${GAUGE_TABLE}`,
+        values: [
+          // Gap semantics: gap.one covers buckets 0-1, gap.two covers 1-2.
+          gaugeRow('gap.one', insertTs(0), 'svc-a', 10),
+          gaugeRow('gap.one', insertTs(1), 'svc-a', 20),
+          gaugeRow('gap.two', insertTs(1), 'svc-a', 200),
+          gaugeRow('gap.two', insertTs(2), 'svc-a', 300),
+          // Grouped merge: grp.one has svc-a/svc-b, grp.two has svc-a/svc-c.
+          gaugeRow('grp.one', insertTs(0), 'svc-a', 1),
+          gaugeRow('grp.one', insertTs(0), 'svc-b', 2),
+          gaugeRow('grp.two', insertTs(0), 'svc-a', 10),
+          gaugeRow('grp.two', insertTs(0), 'svc-c', 30),
+          // Ungrouped ratio: err/total per bucket exercises every operand
+          // combination — both present, numerator missing, denominator
+          // missing, denominator zero.
+          gaugeRow('ratio.err', insertTs(0), 'svc-a', 5),
+          gaugeRow('ratio.total', insertTs(0), 'svc-a', 10),
+          gaugeRow('ratio.total', insertTs(1), 'svc-a', 20),
+          gaugeRow('ratio.err', insertTs(2), 'svc-a', 8),
+          gaugeRow('ratio.err', insertTs(3), 'svc-a', 7),
+          gaugeRow('ratio.total', insertTs(3), 'svc-a', 0),
+          // Grouped ratio: per-group operand combinations at bucket 0, plus a
+          // second bucket to prove share_of_total totals are per-bucket.
+          gaugeRow('grpratio.err', insertTs(0), 'svc-a', 1),
+          gaugeRow('grpratio.err', insertTs(0), 'svc-b', 6),
+          gaugeRow('grpratio.total', insertTs(0), 'svc-a', 4),
+          gaugeRow('grpratio.total', insertTs(0), 'svc-b', 12),
+          gaugeRow('grpratio.total', insertTs(0), 'svc-c', 8),
+          gaugeRow('grpratio.err', insertTs(0), 'svc-d', 5),
+          gaugeRow('grpratio.err', insertTs(1), 'svc-a', 2),
+          gaugeRow('grpratio.total', insertTs(1), 'svc-a', 5),
+          // Alias collision: one metric, two services; the filtered split
+          // averages svc-a only, the unfiltered split averages both.
+          gaugeRow('col.one', insertTs(0), 'svc-a', 10),
+          gaugeRow('col.one', insertTs(0), 'svc-b', 30),
+          // Mixed gauge+sum: cpu gauge for svc-a with a gap at bucket 1.
+          gaugeRow('mix.cpu', insertTs(0), 'svc-a', 1),
+          gaugeRow('mix.cpu', insertTs(2), 'svc-a', 3),
+          // Table/number shapes.
+          gaugeRow('tbl.one', insertTs(0), 'svc-a', 10),
+          gaugeRow('tbl.one', insertTs(0), 'svc-b', 20),
+          gaugeRow('tbl.two', insertTs(0), 'svc-a', 100),
+          // Grouped gauge+histogram mix.
+          gaugeRow('grpmix.gauge', insertTs(1), 'svc-a', 42),
+        ],
+        format: 'JSONEachRow',
+      });
+
+      await client.insert({
+        table: `${DATABASE}.${SUM_TABLE}`,
+        values: [
+          // Cumulative counters: svc-a increases by 5 then 10; svc-b by 4.
+          sumRow('mix.requests', insertTs(0), 'svc-a', 10),
+          sumRow('mix.requests', insertTs(1), 'svc-a', 15),
+          sumRow('mix.requests', insertTs(2), 'svc-a', 25),
+          sumRow('mix.requests', insertTs(0), 'svc-b', 100),
+          sumRow('mix.requests', insertTs(1), 'svc-b', 104),
+        ],
+        format: 'JSONEachRow',
+      });
+
+      await client.insert({
+        table: `${DATABASE}.${HIST_TABLE}`,
+        values: [
+          // Cumulative histogram: the first point is the zero baseline, the
+          // second adds 10 observations in the (0, 10] bucket, so p50 at
+          // bucket 1 interpolates to 5 and the all-zero bucket 0 emits no row.
+          histRow('grpmix.latency', insertTs(0), 'svc-a', [0, 0, 0], [10, 30]),
+          histRow('grpmix.latency', insertTs(1), 'svc-a', [10, 0, 0], [10, 30]),
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      for (const table of [GAUGE_TABLE, SUM_TABLE, HIST_TABLE]) {
+        await client.command({
+          query: `DROP TABLE IF EXISTS ${DATABASE}.${table}`,
+        });
+      }
+    });
+
+    it('joins series on the time bucket with full-outer semantics and gaps', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('gap.one'), gaugeSelect('gap.two')],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, ['avg(gap.one)', 'avg(gap.two)']);
+
+      // Buckets present in either series survive: 0 (gap.one only),
+      // 1 (both), 2 (gap.two only).
+      const rows = rowsByBucket(result.data);
+      expect([...rows.keys()].sort()).toEqual([
+        bucket(0),
+        bucket(1),
+        bucket(2),
+      ]);
+
+      expect(col(rows.get(bucket(0)), 'avg(gap.one)')).toBe(10);
+      expectGap(col(rows.get(bucket(0)), 'avg(gap.two)'));
+
+      expect(col(rows.get(bucket(1)), 'avg(gap.one)')).toBe(20);
+      expect(col(rows.get(bucket(1)), 'avg(gap.two)')).toBe(200);
+
+      expectGap(col(rows.get(bucket(2)), 'avg(gap.one)'));
+      expect(col(rows.get(bucket(2)), 'avg(gap.two)')).toBe(300);
+    });
+
+    it('keys grouped rows by (bucket, group) and preserves one-sided groups', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, ['avg(grp.one)', 'avg(grp.two)']);
+
+      // One row per (bucket, service); services from either series survive.
+      const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+      expect([...rows.keys()].sort()).toEqual([
+        `${bucket(0)}|svc-a`,
+        `${bucket(0)}|svc-b`,
+        `${bucket(0)}|svc-c`,
+      ]);
+
+      const svcA = rows.get(`${bucket(0)}|svc-a`);
+      expect(col(svcA, 'avg(grp.one)')).toBe(1);
+      expect(col(svcA, 'avg(grp.two)')).toBe(10);
+
+      // svc-b only exists in grp.one, svc-c only in grp.two.
+      const svcB = rows.get(`${bucket(0)}|svc-b`);
+      expect(col(svcB, 'avg(grp.one)')).toBe(2);
+      expectGap(col(svcB, 'avg(grp.two)'));
+
+      const svcC = rows.get(`${bucket(0)}|svc-c`);
+      expectGap(col(svcC, 'avg(grp.one)'));
+      expect(col(svcC, 'avg(grp.two)')).toBe(30);
+    });
+
+    // Consumers read group columns by the exact name a single-series query
+    // would produce — for an un-aliased map access that is ClickHouse's
+    // DERIVED name (arrayElement(...)), not the expression text. The
+    // Kubernetes dashboard (KubernetesDashboardPage.tsx) and external-API
+    // clients both do row lookups like
+    // row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"], so the
+    // merge must not rename these columns. Regression test for the k8s e2e
+    // failure where the composed query re-aliased group columns to their
+    // expression text and blanked the namespace/pod cells.
+    it('preserves ClickHouse-derived column names for expression group-bys', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+          groupBy: [
+            {
+              aggCondition: '',
+              valueExpression: "ResourceAttributes['service.name']",
+            },
+          ],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, ['avg(grp.one)', 'avg(grp.two)']);
+      const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+      expect(result.meta?.map(m => m.name)).toContain(DERIVED_NAME);
+
+      // Same fixture as the ServiceName-grouped test above (the resource
+      // attribute mirrors ServiceName), keyed by the derived column name.
+      const rows = rowsByBucketAndGroup(result.data, DERIVED_NAME);
+      expect([...rows.keys()].sort()).toEqual([
+        `${bucket(0)}|svc-a`,
+        `${bucket(0)}|svc-b`,
+        `${bucket(0)}|svc-c`,
+      ]);
+      const svcA = rows.get(`${bucket(0)}|svc-a`);
+      expect(col(svcA, 'avg(grp.one)')).toBe(1);
+      expect(col(svcA, 'avg(grp.two)')).toBe(10);
+      expect(col(rows.get(`${bucket(0)}|svc-b`), 'avg(grp.one)')).toBe(2);
+      expectGap(col(rows.get(`${bucket(0)}|svc-b`), 'avg(grp.two)'));
+    });
+
+    it('keeps a user alias on an expression group-by as the column name', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+          groupBy: [
+            {
+              aggCondition: '',
+              valueExpression: "ResourceAttributes['service.name']",
+              alias: 'service',
+            },
+          ],
+        }),
+      );
+
+      expect(result.meta?.map(m => m.name)).toContain('service');
+      const rows = rowsByBucketAndGroup(result.data, 'service');
+      expect(rows.size).toBe(3);
+      expect(col(rows.get(`${bucket(0)}|svc-b`), 'avg(grp.one)')).toBe(2);
+      expect(col(rows.get(`${bucket(0)}|svc-c`), 'avg(grp.two)')).toBe(30);
+    });
+
+    it('computes an ungrouped metric ratio with 0-for-missing-numerator and gap-for-missing-denominator', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('ratio.err'), gaugeSelect('ratio.total')],
+          seriesReturnType: 'ratio',
+        }),
+      );
+
+      const RATIO_COLUMN = 'avg(ratio.err)/avg(ratio.total)';
+
+      // The ratio column replaces both operand columns and leads the meta.
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames[0]).toBe(RATIO_COLUMN);
+      expect(metaNames).not.toContain('avg(ratio.err)');
+      expect(metaNames).not.toContain('avg(ratio.total)');
+
+      const rows = rowsByBucket(result.data);
+      expect(rows.size).toBe(4);
+
+      // Both operands present: plain quotient.
+      expect(Number(col(rows.get(bucket(0)), RATIO_COLUMN))).toBeCloseTo(
+        0.5,
+        5,
+      );
+      // Missing numerator counts as 0, not a gap.
+      expect(Number(col(rows.get(bucket(1)), RATIO_COLUMN))).toBe(0);
+      // Missing denominator is a gap.
+      expectGap(col(rows.get(bucket(2)), RATIO_COLUMN));
+      // Zero denominator is a gap.
+      expectGap(col(rows.get(bucket(3)), RATIO_COLUMN));
+    });
+
+    it('computes a grouped metric ratio per group by default', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grpratio.err'), gaugeSelect('grpratio.total')],
+          seriesReturnType: 'ratio',
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        }),
+      );
+
+      const RATIO_COLUMN = 'avg(grpratio.err)/avg(grpratio.total)';
+      expect(result.meta?.map(m => m.name)[0]).toBe(RATIO_COLUMN);
+
+      const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+      expect(rows.size).toBe(5);
+
+      expect(
+        Number(col(rows.get(`${bucket(0)}|svc-a`), RATIO_COLUMN)),
+      ).toBeCloseTo(1 / 4, 5);
+      expect(
+        Number(col(rows.get(`${bucket(0)}|svc-b`), RATIO_COLUMN)),
+      ).toBeCloseTo(6 / 12, 5);
+      // svc-c has a denominator but no numerator: reads 0, not a gap.
+      expect(Number(col(rows.get(`${bucket(0)}|svc-c`), RATIO_COLUMN))).toBe(0);
+      // svc-d has a numerator but no denominator: a gap.
+      expectGap(col(rows.get(`${bucket(0)}|svc-d`), RATIO_COLUMN));
+      // Second bucket divides by its own denominator.
+      expect(
+        Number(col(rows.get(`${bucket(1)}|svc-a`), RATIO_COLUMN)),
+      ).toBeCloseTo(2 / 5, 5);
+    });
+
+    it('divides by the per-bucket denominator total in share_of_total mode', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('grpratio.err'), gaugeSelect('grpratio.total')],
+          seriesReturnType: 'ratio',
+          ratioMode: 'share_of_total',
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        }),
+      );
+
+      const RATIO_COLUMN = 'avg(grpratio.err)/avg(grpratio.total)';
+      const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+      expect(rows.size).toBe(5);
+
+      // Bucket 0 denominator total: 4 (svc-a) + 12 (svc-b) + 8 (svc-c) = 24.
+      // svc-d contributes no denominator and is excluded from the total, but
+      // its numerator still divides by the bucket total.
+      expect(
+        Number(col(rows.get(`${bucket(0)}|svc-a`), RATIO_COLUMN)),
+      ).toBeCloseTo(1 / 24, 5);
+      expect(
+        Number(col(rows.get(`${bucket(0)}|svc-b`), RATIO_COLUMN)),
+      ).toBeCloseTo(6 / 24, 5);
+      expect(Number(col(rows.get(`${bucket(0)}|svc-c`), RATIO_COLUMN))).toBe(0);
+      expect(
+        Number(col(rows.get(`${bucket(0)}|svc-d`), RATIO_COLUMN)),
+      ).toBeCloseTo(5 / 24, 5);
+      // Bucket 1 has its own total (5), proving totals are per-bucket.
+      expect(
+        Number(col(rows.get(`${bucket(1)}|svc-a`), RATIO_COLUMN)),
+      ).toBeCloseTo(2 / 5, 5);
+    });
+
+    it('disambiguates two series that resolve to the same alias', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [
+            gaugeSelect('col.one', { aggCondition: "ServiceName = 'svc-a'" }),
+            gaugeSelect('col.one'),
+          ],
+        }),
+      );
+
+      // Both selects alias to avg(col.one); the second is suffixed with its
+      // split index so the two operands stay distinct columns.
+      expectNumericValueColumns(result.meta, [
+        'avg(col.one)',
+        'avg(col.one)__1',
+      ]);
+
+      const rows = rowsByBucket(result.data);
+      const row = rows.get(bucket(0));
+      // Filtered split: avg over svc-a only. Unfiltered: avg over both.
+      expect(col(row, 'avg(col.one)')).toBe(10);
+      expect(col(row, 'avg(col.one)__1')).toBe(20);
+    });
+
+    it('strips the collision suffix from the ratio column label', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [
+            gaugeSelect('col.one', { aggCondition: "ServiceName = 'svc-a'" }),
+            gaugeSelect('col.one'),
+          ],
+          seriesReturnType: 'ratio',
+        }),
+      );
+
+      // The denominator's __1 suffix is internal bookkeeping and must not
+      // leak into the user-facing ratio label.
+      const RATIO_COLUMN = 'avg(col.one)/avg(col.one)';
+      expect(result.meta?.map(m => m.name)[0]).toBe(RATIO_COLUMN);
+
+      const rows = rowsByBucket(result.data);
+      expect(Number(col(rows.get(bucket(0)), RATIO_COLUMN))).toBeCloseTo(
+        0.5,
+        5,
+      );
+    });
+
+    it('joins gauge and sum (increase) series from different tables on the bucket', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [gaugeSelect('mix.cpu'), increaseSelect('mix.requests')],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, [
+        'avg(mix.cpu)',
+        'increase(mix.requests)',
+      ]);
+
+      const rows = rowsByBucket(result.data);
+      expect([...rows.keys()].sort()).toEqual([
+        bucket(0),
+        bucket(1),
+        bucket(2),
+      ]);
+
+      // The first counter point contributes no increase; later buckets sum
+      // the per-service deltas: 5 + 4 at bucket 1, 10 at bucket 2.
+      expect(col(rows.get(bucket(0)), 'avg(mix.cpu)')).toBe(1);
+      expect(Number(col(rows.get(bucket(0)), 'increase(mix.requests)'))).toBe(
+        0,
+      );
+
+      expectGap(col(rows.get(bucket(1)), 'avg(mix.cpu)'));
+      expect(Number(col(rows.get(bucket(1)), 'increase(mix.requests)'))).toBe(
+        9,
+      );
+
+      expect(col(rows.get(bucket(2)), 'avg(mix.cpu)')).toBe(3);
+      expect(Number(col(rows.get(bucket(2)), 'increase(mix.requests)'))).toBe(
+        10,
+      );
+    });
+
+    it('joins grouped gauge and sum (increase) series on (bucket, group)', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [increaseSelect('mix.requests'), gaugeSelect('mix.cpu')],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, [
+        'increase(mix.requests)',
+        'avg(mix.cpu)',
+      ]);
+
+      const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+      expect([...rows.keys()].sort()).toEqual([
+        `${bucket(0)}|svc-a`,
+        `${bucket(0)}|svc-b`,
+        `${bucket(1)}|svc-a`,
+        `${bucket(1)}|svc-b`,
+        `${bucket(2)}|svc-a`,
+      ]);
+
+      expect(
+        Number(col(rows.get(`${bucket(1)}|svc-a`), 'increase(mix.requests)')),
+      ).toBe(5);
+      expect(
+        Number(col(rows.get(`${bucket(1)}|svc-b`), 'increase(mix.requests)')),
+      ).toBe(4);
+      expect(
+        Number(col(rows.get(`${bucket(2)}|svc-a`), 'increase(mix.requests)')),
+      ).toBe(10);
+
+      // The gauge only reports svc-a at buckets 0 and 2.
+      expect(col(rows.get(`${bucket(0)}|svc-a`), 'avg(mix.cpu)')).toBe(1);
+      expect(col(rows.get(`${bucket(2)}|svc-a`), 'avg(mix.cpu)')).toBe(3);
+      expectGap(col(rows.get(`${bucket(1)}|svc-a`), 'avg(mix.cpu)'));
+      expectGap(col(rows.get(`${bucket(0)}|svc-b`), 'avg(mix.cpu)'));
+      expectGap(col(rows.get(`${bucket(1)}|svc-b`), 'avg(mix.cpu)'));
+    });
+
+    it('keeps grouped histogram rows separate from gauge rows (Array "group" column)', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [
+            gaugeSelect('grpmix.gauge'),
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              aggCondition: '',
+              aggConditionLanguage: 'sql',
+              valueExpression: 'Value',
+              metricName: 'grpmix.latency',
+              metricType: MetricsDataType.Histogram,
+            },
+          ],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, [
+        'avg(grpmix.gauge)',
+        'quantile(grpmix.latency)',
+      ]);
+
+      // Gauge series group into a plain ServiceName column; histogram series
+      // group into a single Array column named "group". The two shapes never
+      // share a merge key, so the rows stay separate even though both are for
+      // svc-a at bucket 1.
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames).toContain('ServiceName');
+      expect(metaNames).toContain('group');
+
+      const data = result.data as Row[];
+      expect(data).toHaveLength(2);
+
+      const gaugeRowOut = data.find(r => col(r, 'avg(grpmix.gauge)') != null);
+      expect(col(gaugeRowOut, 'avg(grpmix.gauge)')).toBe(42);
+      expect(col(gaugeRowOut, 'ServiceName')).toBe('svc-a');
+      expect(String(col(gaugeRowOut, '__hdx_time_bucket'))).toBe(bucket(1));
+      expectGap(col(gaugeRowOut, 'quantile(grpmix.latency)'));
+
+      const histRowOut = data.find(
+        r => col(r, 'quantile(grpmix.latency)') != null,
+      );
+      // 10 observations in the (0, 10] bucket: p50 interpolates to 5.
+      expect(Number(col(histRowOut, 'quantile(grpmix.latency)'))).toBeCloseTo(
+        5,
+        5,
+      );
+      expect(col(histRowOut, 'group')).toEqual(['svc-a']);
+      expect(String(col(histRowOut, '__hdx_time_bucket'))).toBe(bucket(1));
+      expectGap(col(histRowOut, 'avg(grpmix.gauge)'));
+    });
+
+    it('merges grouped non-timeseries (table) rows on the group values', async () => {
+      const result = await runConfig(
+        baseConfig({
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, ['avg(tbl.one)', 'avg(tbl.two)']);
+
+      const data = result.data as Row[];
+      expect(data).toHaveLength(2);
+      const byService = new Map(data.map(r => [col(r, 'ServiceName'), r]));
+
+      const svcA = byService.get('svc-a');
+      expect(col(svcA, 'avg(tbl.one)')).toBe(10);
+      expect(col(svcA, 'avg(tbl.two)')).toBe(100);
+
+      const svcB = byService.get('svc-b');
+      expect(col(svcB, 'avg(tbl.one)')).toBe(20);
+      expectGap(col(svcB, 'avg(tbl.two)'));
+    });
+
+    it('merges ungrouped number-shape results into a single row', async () => {
+      const result = await runConfig(
+        baseConfig({
+          displayType: DisplayType.Number,
+          granularity: undefined,
+          select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+        }),
+      );
+
+      expectNumericValueColumns(result.meta, ['avg(tbl.one)', 'avg(tbl.two)']);
+
+      const data = result.data as Row[];
+      expect(data).toHaveLength(1);
+      expect(col(data[0], 'avg(tbl.one)')).toBe(15);
+      expect(col(data[0], 'avg(tbl.two)')).toBe(100);
     });
   });
 });

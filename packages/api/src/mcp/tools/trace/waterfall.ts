@@ -176,6 +176,7 @@ export function registerTraceWaterfall({
     'clickstack_trace_waterfall',
     {
       title: 'Trace Waterfall (single trace)',
+      annotations: { readOnlyHint: true },
       description:
         'Fetch all spans in ONE trace and return them as a parent/child waterfall, ' +
         'pre-ordered for human-readable display. Use this for "show me a concrete ' +

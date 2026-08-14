@@ -4,6 +4,8 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
+  validateDashboardFilterModes,
+  validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
@@ -199,6 +201,9 @@ const convertToExternalTileChartConfig = (
           fitYAxisToData: config.fitYAxisToData,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
+          // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+          // null/undefined map to absent (the default-cap state).
+          seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.StackedBar:
         return {
@@ -210,6 +215,9 @@ const convertToExternalTileChartConfig = (
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           numberFormat: config.numberFormat,
+          // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+          // null/undefined map to absent (the default-cap state).
+          seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.Table:
         return {
@@ -299,6 +307,8 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
         seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.StackedBar:
@@ -316,6 +326,8 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
         seriesLimit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Number:
@@ -353,6 +365,8 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
         limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Bar:
@@ -365,6 +379,8 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
         limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Table:
@@ -632,6 +648,8 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            // Round-trip the render cap so a GET→PUT does not silently wipe it.
+            'seriesLimit',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -1396,6 +1414,11 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // (otherwise a tile that references a real preserved container
       // would be rejected against an empty `data.containers ?? []`).
       validateDashboardContainersStructure(data.containers ?? [], ctx);
+
+      // Mirrors the dashboard filter form's validations. Backwards compatible
+      // with pre-`isBroadcastEnabled` payloads.
+      validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+      validateDashboardFilterModes(data.filters ?? [], ctx);
     });
 }
 

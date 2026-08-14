@@ -100,8 +100,6 @@ const searchChartSeriesSchema = z.object({
   whereLanguage: whereLanguageSchema,
 });
 
-type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
-
 const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
   content: z.string().max(100000),
@@ -131,8 +129,6 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
   markdownChartSeriesSchema,
 ]);
 
-type ChartSeries = z.infer<typeof chartSeriesSchema>;
-
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
 export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
@@ -158,10 +154,6 @@ export const externalDashboardSavedFilterValueSchema = z.object({
   type: z.literal('sql').optional().default('sql'),
   condition: z.string().max(10000),
 });
-
-type ExternalDashboardSavedFilterValue = z.infer<
-  typeof externalDashboardSavedFilterValueSchema
->;
 
 // ================================
 // Dashboards (new format)
@@ -268,7 +260,9 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
-    seriesLimit: z.number().int().positive().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -278,12 +272,19 @@ const externalDashboardLineRawSqlChartConfigSchema =
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    // Raw SQL Line tiles carry the client-side render cap too, so it must
+    // round-trip through the external API (GET→PUT) instead of being wiped.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardBarChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('stacked_bar'),
-    seriesLimit: z.number().int().positive().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardBarRawSqlChartConfigSchema =
@@ -291,6 +292,11 @@ const externalDashboardBarRawSqlChartConfigSchema =
     displayType: z.literal('stacked_bar'),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
+    // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
+    // Raw SQL StackedBar tiles carry the client-side render cap too, so it must
+    // round-trip through the external API (GET→PUT) instead of being wiped.
+    seriesLimit: z.number().int().nonnegative().optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
@@ -375,7 +381,8 @@ const externalDashboardPieChartConfigSchema = z.object({
   groupBy: z.string().max(10000).optional(),
   orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
-  limit: z.number().int().positive().optional(),
+  // Three-state: omitted = default cap, 0 = unlimited, positive N = top-N.
+  limit: z.number().int().nonnegative().optional(),
 });
 
 const externalDashboardCategoricalBarChartConfigSchema = z.object({
@@ -385,7 +392,8 @@ const externalDashboardCategoricalBarChartConfigSchema = z.object({
   groupBy: z.string().max(10000).optional(),
   orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
-  limit: z.number().int().positive().optional(),
+  // Three-state: omitted = default cap, 0 = unlimited, positive N = top-N.
+  limit: z.number().int().nonnegative().optional(),
 });
 
 // Heatmap charts use a dedicated select item schema because they carry the
@@ -611,10 +619,6 @@ const externalDashboardTileSchemaWithOptionalId =
     }),
   );
 
-type ExternalDashboardTileWithOptionalId = z.infer<
-  typeof externalDashboardTileSchemaWithOptionalId
->;
-
 export const externalDashboardTileSchemaWithId =
   externalDashboardTileSchema.and(
     z.object({
@@ -650,7 +654,7 @@ const zChannel = z.object({
 
 const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
-  groupBy: z.string().optional(),
+  groupBy: z.string().nullish(),
   savedSearchId: z.string().min(1),
 });
 

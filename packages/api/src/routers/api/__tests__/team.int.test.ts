@@ -102,11 +102,11 @@ describe('team router', () => {
 
   it('GET /team/members', async () => {
     const { agent, team } = await getLoggedInAgent(server);
-    const user1 = await User.create({
+    await User.create({
       email: 'user1@example.com',
       team: team.id,
     });
-    const user2 = await User.create({
+    await User.create({
       email: 'user2@example.com',
       team: team.id,
     });
@@ -157,7 +157,7 @@ describe('team router', () => {
     const { agent } = await getLoggedInAgent(server);
 
     // Create invitation with lowercase email
-    const resp1 = await agent
+    await agent
       .post('/team/invitation')
       .send({
         email: 'casesensitive@example.com',
@@ -172,7 +172,7 @@ describe('team router', () => {
     const firstToken = firstInvite!.token;
 
     // Try to create invitation with uppercase email
-    const resp2 = await agent
+    await agent
       .post('/team/invitation')
       .send({
         email: 'CaseSensitive@Example.com',
@@ -345,6 +345,23 @@ describe('team router', () => {
     const resp2 = await agent.get('/team/invitations').expect(200);
 
     expect(resp2.body.data).toHaveLength(0);
+  });
+
+  // The delete used to be an unscoped findByIdAndDelete, so any authenticated
+  // user could revoke another team's pending invitation given its id.
+  it('DELETE /team/invitation/:teamInviteId will not touch another team', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const otherTeamInvite = await TeamInvite.create({
+      email: 'other_team@example.com',
+      name: 'Other Team Invite',
+      teamId: new ObjectId(),
+      token: 'other_team_token',
+    });
+
+    await agent.delete(`/team/invitation/${otherTeamInvite._id}`).expect(404);
+
+    expect(await TeamInvite.findById(otherTeamInvite._id)).not.toBeNull();
   });
 
   it('PATCH /team/apiKey', async () => {

@@ -552,6 +552,18 @@ describe('renderChartConfig', () => {
       expect(sqlWithRangeOnly).not.toContain('__hdx_series_limit');
     });
 
+    it('does not emit a series-limit CTE when seriesLimit is 0 (unlimited)', async () => {
+      // 0 = unlimited; must skip the CTE rather than emit `LIMIT 0`.
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, seriesLimit: 0 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
     it('pins the series-limit CTE to seriesLimitDateRange while the outer query stays windowed', async () => {
       // The chunking caller pins all chunks to one shared ranking range
       // (the newest window); the render layer is agnostic to which range.
@@ -3581,4 +3593,186 @@ describe('renderChartConfig', () => {
   // attribute columns. Coverage of the variadic form lives in the regenerated
   // gauge / sum / histogram snapshots earlier in this file plus the
   // cross-scope integration test in packages/api/src/clickhouse/__tests__.
+
+  // A metric chart with multiple select items renders one query per series and
+  // composes them into a single UNION ALL + pivot statement (HDX-5077). The
+  // end-to-end result-shape contract is pinned by the queryChartConfig
+  // integration tests; these snapshots pin the generated SQL structure.
+  describe('multi-series metric charts (composed query)', () => {
+    const metricTables = {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+      summary: 'otel_metrics_summary',
+      'exponential histogram': 'otel_metrics_exponential_histogram',
+    };
+
+    const gaugeSelect = (metricName: string) => ({
+      aggFn: 'avg' as const,
+      aggCondition: '',
+      aggConditionLanguage: 'sql' as const,
+      valueExpression: 'Value',
+      metricName,
+      metricType: MetricsDataType.Gauge,
+    });
+
+    const baseMultiSeriesConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables,
+      from: { databaseName: 'default', tableName: '' },
+      select: [gaugeSelect('metric.alpha'), gaugeSelect('metric.beta')],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+    };
+
+    it('composes grouped multi-series gauges into one UNION ALL + pivot query', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // One composed statement: both branch SETTINGS hoisted to a single
+      // trailing clause, deduped.
+      expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+      expect(sql.match(/optimize_read_in_order = 0/g)).toHaveLength(1);
+      // Value columns pivot under the user-facing aliases, NULL for gaps.
+      expect(sql).toContain(
+        'anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 0) AS "avg(metric.alpha)"',
+      );
+      expect(sql).toContain(
+        'anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1) AS "avg(metric.beta)"',
+      );
+      // The group-by column passes through UNRENAMED (consumers look rows up
+      // by the single-series column name, which for expressions is
+      // ClickHouse's derived name and can't be reproduced node-side): the
+      // wrappers keep the branch projection via SELECT * and the outer pivot
+      // passes it through via * EXCEPT + GROUP BY ALL.
+      expect(sql).toContain('SELECT *, 0 AS `__hdx_series_idx`');
+      expect(sql).toContain(
+        '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
+      );
+      expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
+    });
+
+    it('renders a metric ratio as a SQL-side division', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          seriesReturnType: 'ratio',
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // Missing numerator counts as 0; missing/zero denominator yields NULL.
+      expect(sql).toContain(
+        'coalesce(anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 0), 0) / nullif(anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1), 0) AS "avg(metric.alpha)/avg(metric.beta)"',
+      );
+    });
+
+    it('divides by the per-bucket denominator total in share_of_total mode', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          seriesReturnType: 'ratio',
+          ratioMode: 'share_of_total',
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain(
+        'nullif(sum(anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1)) OVER (PARTITION BY `__hdx_time_bucket`), 0)',
+      );
+    });
+
+    it('pads group columns across gauge and histogram branch classes', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          select: [
+            gaugeSelect('metric.alpha'),
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              aggCondition: '',
+              aggConditionLanguage: 'sql',
+              valueExpression: 'Value',
+              metricName: 'metric.latency',
+              metricType: MetricsDataType.Histogram,
+            },
+          ],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // The gauge branch pads the histogram's Array group column with [] and
+      // the histogram branch pads the scalar group column with NULL, so the
+      // UNION column lists line up positionally while grouped rows keep
+      // distinct keys. The scalar branch comes first so its (natural) group
+      // column names win the union.
+      expect(sql).toContain('[] AS `group`');
+      expect(sql).toContain('NULL AS `__hdx_group_pad_0`');
+      expect(sql.indexOf('SELECT *, 0 AS `__hdx_series_idx`')).toBeLessThan(
+        sql.indexOf('NULL AS `__hdx_group_pad_0`'),
+      );
+      expect(sql).toContain('GROUP BY ALL');
+    });
+
+    it('suffixes colliding aliases with the split index', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          select: [
+            {
+              ...gaugeSelect('metric.alpha'),
+              aggCondition: "ServiceName = 'svc-a'",
+            },
+            gaugeSelect('metric.alpha'),
+          ],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "avg(metric.alpha)"');
+      expect(sql).toContain('AS "avg(metric.alpha)__1"');
+    });
+
+    it('merges number-shape series without a GROUP BY into one implicit aggregation', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          displayType: DisplayType.Number,
+          granularity: undefined,
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      // No grouping keys at all: the outer query is one implicit global
+      // aggregation. (The branches' internal `__hdx_time_bucket2` CTE alias
+      // is unrelated to the composed outer bucket.)
+      expect(sql).not.toContain('GROUP BY `__hdx_');
+      expect(sql).not.toContain('`__hdx_time_bucket`');
+      expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+    });
+  });
 });

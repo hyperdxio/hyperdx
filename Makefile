@@ -113,6 +113,7 @@ ci-build:
 .PHONY: ci-lint
 ci-lint:
 	npx nx run-many -t ci:lint
+	node scripts/ci/ratchet.mjs
 
 .PHONY: dev-int-down
 dev-int-down:
@@ -186,10 +187,13 @@ dev-unit:
 .PHONY: ci-unit
 ci-unit:
 	npx nx run-many -t ci:unit
+	node --test .github/scripts/__tests__/release-notes.test.mjs
+	node --test .github/scripts/__tests__/changeset-hash.test.mjs
 
 .PHONY: ci-triage
 ci-triage:
 	node --test .github/scripts/__tests__/pr-triage-classify.test.js
+	node --test scripts/ci/__tests__/ratchet.test.mjs
 
 # ---------------------------------------------------------------------------
 # E2E tests — port isolation is handled by scripts/test-e2e.sh

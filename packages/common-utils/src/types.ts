@@ -415,6 +415,32 @@ export const DerivedColumnSchema = z.intersection(
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
+
+/**
+ * A derived series computed from other series in the chart's `select` list
+ * via a letter-ref arithmetic expression (metric charts only for v1).
+ *
+ * `expression` references select entries by position using single uppercase
+ * letters — `A` is `select[0]`, `B` is `select[1]`, ... (Grafana/Datadog
+ * convention; stable against alias edits). Example: `A / (A + B + C) * 100`.
+ *
+ * The grammar is arithmetic only (`+ - * /`, parentheses, numeric constants)
+ * and is parsed to a validated AST by `core/formula.ts` before any query
+ * rendering — expressions are never passed through as raw SQL.
+ */
+export const MetricFormulaSchema = z.object({
+  // Length-capped at the validation boundary so persisted configs can never
+  // carry an expression large enough to matter for the recursive parser
+  // (mirrors MAX_FORMULA_EXPRESSION_LENGTH in `core/formula.ts`, which
+  // guards the parser itself for arbitrary caller input).
+  expression: z.string().max(1024),
+  // Legend / column name for the formula series. Falls back to the raw
+  // expression when unset (mirrors DerivedColumnSchema.alias semantics).
+  alias: z.string().optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+export type MetricFormula = z.infer<typeof MetricFormulaSchema>;
+
 export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -451,8 +477,10 @@ export const SelectSQLStatementSchema = z.object({
   limit: LimitSchema.optional(),
   // Nullish (not just optional): the chart editor clears the value to `null`
   // so the cleared state survives JSON round-tripping (e.g. through the URL
-  // query state). `null` and `undefined` both mean "disabled" downstream.
-  seriesLimit: z.number().int().positive().nullish(),
+  // query state). See SharedChartSettingsSchema.seriesLimit for full semantics
+  // (0 = unlimited, null/undefined = default cap). On builder group-by time
+  // charts a positive value additionally drives the __hdx_series_limit CTE.
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -597,6 +625,13 @@ export const isRangeThresholdType = (type: string): boolean =>
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
+  /**
+   * Only used on AlertHistory records (never on the alert itself): marks an
+   * evaluation window whose evaluation or notification failed. ERROR history
+   * rows are excluded from alert scheduling/backfill computations so the
+   * failed window is still retried.
+   */
+  ERROR = 'ERROR',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
   PENDING = 'PENDING',
@@ -604,6 +639,8 @@ export enum AlertState {
 
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
+  /** The alert query did not complete within the evaluation timeout. */
+  QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
@@ -799,14 +836,39 @@ export const AlertSchema = z.union([
 
 export type Alert = z.infer<typeof AlertSchema>;
 
+// Diagnostics for the evaluation that wrote a history record. Evaluation-
+// level: identical on every row one evaluation writes (incl. per-group rows).
+export const AlertHistoryAnalyticsSchema = z.object({
+  /** ClickHouse query duration for the evaluation (ms). On query-failure ERROR records, the time until the query failed. */
+  queryDurationMs: z.number().optional(),
+  /** Total wall time delivering webhook notifications in the evaluation, including retries (ms). */
+  webhookDurationMs: z.number().optional(),
+  /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
+  backfilledBuckets: z.number().optional(),
+});
+
+export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;
+
 export const AlertHistorySchema = z.object({
   counts: z.number(),
   createdAt: z.string(),
   lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
   state: z.nativeEnum(AlertState),
+  /** Errors recorded for this evaluation window (query/webhook failures). */
+  errors: z.array(AlertErrorSchema).optional(),
+  /** Diagnostics for the evaluation that wrote this record. */
+  analytics: AlertHistoryAnalyticsSchema.optional(),
 });
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
+
+/**
+ * Max per-group entries returned per evaluation window on the alert detail
+ * page. Groups are sorted firing-first before the cap, so firing groups are
+ * always visible. Shared between the API (enforces the cap) and the app
+ * (explains it in the UI).
+ */
+export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 
 // A single alert state transition within a time range, used to draw
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
@@ -1237,6 +1299,20 @@ const SharedChartSettingsSchema = z.object({
   // types ignore the field. Off by default, so existing tiles are unchanged.
   // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
   alternateRowBackground: z.boolean().optional(),
+  // Per-tile cap on the number of series a time chart renders. Shared level so
+  // it applies to BOTH builder and raw SQL time charts (raw SQL cannot inject
+  // the __hdx_series_limit CTE, so there the cap is enforced client-side in
+  // `formatResponseForTimeChart`). Semantics:
+  //   - null / undefined: use the default client render cap
+  //     (MAX_RENDERED_TIME_CHART_SERIES) — high-cardinality tiles stay
+  //     protected without opting in.
+  //   - a positive integer N: keep the top N series (by peak value).
+  //   - 0: unlimited — render every series (deliberate opt-out; a
+  //     high-cardinality group-by can then exhaust browser memory).
+  // On builder pie/bar charts this instead becomes a plain SQL LIMIT, and on
+  // builder group-by time charts a positive value also drives the
+  // __hdx_series_limit CTE (see SelectSQLStatementSchema.seriesLimit).
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:
@@ -1269,6 +1345,19 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Only meaningful for grouped ratios (seriesReturnType === 'ratio' + a Group
   // By). Defaults to per-group when unset. See RatioModeSchema.
   ratioMode: RatioModeSchema.optional(),
+  // Derived series computed from the `select` entries via letter-ref
+  // arithmetic expressions (`A` = select[0], ...). Metric sources only for
+  // v1; enforced by the editor and query renderer rather than this
+  // (deliberately permissive) schema, mirroring how `seriesReturnType:
+  // 'ratio'` is gated. Formulas are additive — the ratio toggle is untouched
+  // and the two are mutually exclusive in the editor. See
+  // MetricFormulaSchema and `core/formula.ts` for the grammar/validation.
+  formulas: z.array(MetricFormulaSchema).optional(),
+  // Whether the raw operand series referenced by `formulas` are emitted
+  // alongside the formula column(s) (true / unset) or only the formula
+  // column(s) are returned (false). Only meaningful when `formulas` is
+  // non-empty; ignored otherwise.
+  showOperandSeries: z.boolean().optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
@@ -1277,6 +1366,17 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // keys, so unlike `alternateRowBackground` this stays on the builder config.
   groupByColumnsOnLeft: z.boolean().optional(),
 });
+
+/** A dashboard variable as seen by a tile's query. */
+export const ChartVariableSchema = z.object({
+  name: z.string(),
+  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  expression: z.string().optional(),
+  /** Empty means nothing is selected. */
+  values: z.array(z.string()),
+});
+
+export type ChartVariable = z.infer<typeof ChartVariableSchema>;
 
 // This is a ChartConfig type without the `with` CTE clause included.
 // It needs to be a separate, named schema to avoid use of z.lazy(...),
@@ -1335,6 +1435,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -1549,6 +1650,13 @@ export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
+/** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
+export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
+export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
+  `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
+);
+export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+
 export const DashboardFilterSchema = z.object({
   id: z.string(),
   type: DashboardFilterType,
@@ -1561,6 +1669,29 @@ export const DashboardFilterSchema = z.object({
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
+  /**
+   * Whether the selected value is applied as a filter condition on matching
+   * tiles. Undefined / missing means ENABLED — every filter that predates this
+   * field broadcasts, and that must not change. Read it through
+   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+   */
+  isBroadcastEnabled: z.boolean().optional(),
+  /**
+   * Whether the selected value is exposed to tile queries as `$variableName`.
+   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+   * feature is off.
+   */
+  isVariableEnabled: z.boolean().optional(),
+  /**
+   * Token that tiles reference as `$variableName`. Defaults to the filter's display
+   * name with illegal characters replaced by dashes (`deriveVariableName`).
+   * Ignored when `isVariableEnabled` is not true.
+   */
+  variableName: z
+    .string()
+    .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+    .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+    .optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -1801,6 +1932,13 @@ export const LogSourceSchema = BaseSourceSchema.extend({
     .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
+  /**
+   * Expression identifying the running release of a service. Defaults to the
+   * OpenTelemetry `service.version` resource attribute when unset; teams whose
+   * version lives elsewhere - a container image tag under GitOps, a custom
+   * attribute - point it there instead of changing instrumentation.
+   */
+  serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
@@ -1858,6 +1996,8 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   serviceNameExpression: z.string().optional(),
+  /** See `serviceVersionExpression` on `LogSourceSchema`. */
+  serviceVersionExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
@@ -2103,6 +2243,7 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  groupBy: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),
   note: alertNoteSchema,
@@ -2169,6 +2310,50 @@ export const AlertHistoryRangeApiResponseSchema = z.object({
 
 export type AlertHistoryRangeApiResponse = z.infer<
   typeof AlertHistoryRangeApiResponseSchema
+>;
+
+// Per-group result of one evaluation window for a group-by alert.
+export const AlertEvaluationGroupSchema = z.object({
+  group: z.string(),
+  state: z.nativeEnum(AlertState),
+  counts: z.number(),
+  /** The group's most recent bucket value in this window, if any. */
+  lastValue: z.object({ startTime: z.string(), count: z.number() }).optional(),
+  /** True when a notification was actually sent for this group. */
+  fired: z.boolean().optional(),
+});
+
+export type AlertEvaluationGroup = z.infer<typeof AlertEvaluationGroupSchema>;
+
+// One evaluation window on the alert detail page. For group-by alerts,
+// carries the per-group breakdown (firing-first, capped server-side).
+export const AlertEvaluationSchema = AlertHistorySchema.extend({
+  groups: z.array(AlertEvaluationGroupSchema).optional(),
+  /** Total number of groups evaluated in this window (before the cap). */
+  groupsTotal: z.number().optional(),
+});
+
+export type AlertEvaluation = z.infer<typeof AlertEvaluationSchema>;
+
+// Paginated evaluation history for the alert detail page. Each entry is one
+// evaluation window (newest first), including any errors recorded for it.
+export const AlertEvaluationsApiResponseSchema = z.object({
+  data: z.array(AlertEvaluationSchema),
+  /**
+   * True when older evaluation windows may exist within the requested time
+   * range beyond the returned page.
+   */
+  hasMore: z.boolean(),
+  /**
+   * Cursor (epoch ms) for the next-older page: pass as `before` on the next
+   * request. Present when hasMore is true. Cursor-based (not offset-based)
+   * so pages advance even across gaps with no evaluations.
+   */
+  nextBefore: z.number().optional(),
+});
+
+export type AlertEvaluationsApiResponse = z.infer<
+  typeof AlertEvaluationsApiResponseSchema
 >;
 
 // Webhooks
@@ -2299,3 +2484,61 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// IaC (Terraform) export
+//
+// Shared so `GET /iac/import-manifest` and the generators in
+// packages/common-utils/src/iac.ts cannot drift apart. Every listing is
+// id + name only — the endpoint deliberately projects nothing heavier.
+const IacManifestEntrySchema = z.object({
+  // Constrained, not a bare string: `id` is the only manifest value that
+  // reaches generated HCL inside a quoted string literal, and the client parse
+  // is what the export treats as its trust boundary. See assertResourceId in
+  // ./iac.ts, which enforces the same shape at the emit sink.
+  id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+  name: z.string().optional(),
+});
+
+export const IacImportManifestSchema = z.object({
+  dashboards: z.array(
+    IacManifestEntrySchema.extend({
+      // Set when a tile would not survive the import round trip, so the
+      // dashboard must not be offered. Computed server-side: the manifest
+      // deliberately does not ship tile configs. See isUnexportableTile.
+      unexportableTiles: z.boolean().optional(),
+    }),
+  ),
+  alerts: z.array(
+    IacManifestEntrySchema.extend({
+      // Only saved-search alerts are modelled by the Terraform provider.
+      source: z.string().optional(),
+      savedSearchId: z.string().optional(),
+    }),
+  ),
+  savedSearches: z.array(IacManifestEntrySchema),
+  sources: z.array(
+    IacManifestEntrySchema.extend({
+      // The provider models only the ClickHouse-backed kinds, so the client
+      // needs `kind` to filter PromQL sources out. See isImportableSource.
+      kind: z.string().optional(),
+    }),
+  ),
+  connections: z.array(
+    IacManifestEntrySchema.extend({
+      // Tri-state, mirroring the Connection model: undefined = unknown
+      // provenance, true = platform-provisioned, false = self-managed.
+      // Only an explicit `false` makes a connection safe to import.
+      platformProvisioned: z.boolean().optional(),
+    }),
+  ),
+  webhooks: z.array(IacManifestEntrySchema),
+  // Manifest keys whose listing hit IAC_MANIFEST_LIMIT, so the export for
+  // those types is partial. Per-type rather than one global boolean: warning
+  // that the file is incomplete because of a type the user did not tick is a
+  // false alarm. Defaulted so a response predating the field still parses —
+  // app and API ship in one image, but a multi-replica rolling deploy can
+  // briefly serve a new bundle against an old API.
+  truncatedTypes: z.array(z.string()).default([]),
+});
+
+export type IacImportManifest = z.infer<typeof IacImportManifestSchema>;

@@ -126,12 +126,15 @@ describe('convertCHDataTypeToJSType', () => {
   });
 });
 
+// logQuery is protected on the base class; this subclass exposes it so the
+// tests can drive it without reaching through the client's public query path.
+class TestClickhouseClient extends ClickhouseClient {
+  logQuery(query: string, query_params: Record<string, any> = {}): void {
+    super.logQuery(query, query_params);
+  }
+}
+
 describe('BaseClickhouseClient.logQuery', () => {
-  const logQuery = (
-    client: ClickhouseClient,
-    query: string,
-    params?: Record<string, any>,
-  ) => (client as any).logQuery(query, params);
   const makeLogger = () => ({
     trace: jest.fn(),
     debug: jest.fn(),
@@ -146,18 +149,18 @@ describe('BaseClickhouseClient.logQuery', () => {
 
   it('stays silent when no customLogger is configured', () => {
     const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
-    const client = new ClickhouseClient({ host: 'http://localhost' });
-    logQuery(client, 'SELECT 1 FROM system.one');
+    const client = new TestClickhouseClient({ host: 'http://localhost' });
+    client.logQuery('SELECT 1 FROM system.one');
     expect(debugSpy).not.toHaveBeenCalled();
   });
 
   it('logs through the customLogger passed to the client', () => {
     const customLogger = makeLogger();
-    const client = new ClickhouseClient({
+    const client = new TestClickhouseClient({
       host: 'http://localhost',
       customLogger,
     });
-    logQuery(client, 'SELECT 1 FROM system.one');
+    client.logQuery('SELECT 1 FROM system.one');
     expect(customLogger.debug).toHaveBeenCalledWith({
       module: 'clickhouse',
       message: 'Sending query',
@@ -167,11 +170,11 @@ describe('BaseClickhouseClient.logQuery', () => {
 
   it('interpolates query_params into the logged SQL', () => {
     const customLogger = makeLogger();
-    const client = new ClickhouseClient({
+    const client = new TestClickhouseClient({
       host: 'http://localhost',
       customLogger,
     });
-    logQuery(client, 'SELECT {id:Int32}', { id: 5 });
+    client.logQuery('SELECT {id:Int32}', { id: 5 });
     expect(customLogger.debug).toHaveBeenCalledWith({
       module: 'clickhouse',
       message: 'Sending query',

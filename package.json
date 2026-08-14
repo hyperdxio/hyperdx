@@ -26,7 +26,7 @@
     "husky": "^8.0.3",
     "knip": "^6.19.0",
     "lint-staged": "^13.1.2",
-    "nx": "21.3.11",
+    "nx": "23.1.1",
     "prettier": "3.3.3",
     "tslib": "^2.6.0",
     "typescript-eslint": "^8.46.0"
@@ -47,6 +47,8 @@
     "dev:compose": "sh -c '. ./scripts/dev-env.sh && docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml'",
     "knip": "knip",
     "knip:ci": "knip --reporter json",
+    "ratchet": "node scripts/ci/ratchet.mjs",
+    "ratchet:update": "node scripts/ci/ratchet.mjs --update",
     "lint": "npx nx run-many -t ci:lint",
     "lint:fix": "npx nx run-many -t lint:fix",
     "version": "make version",
@@ -76,11 +78,14 @@
     "send": "^0.19.0",
     "serve-static": "^1.16.0",
     "cookie": "^0.7.0",
-    "brace-expansion": "^2.1.2",
+    "@stryker-mutator/core/minimatch": "^9.0.5",
     "diff": "^5.2.2",
     "on-headers": "^1.1.0",
     "fast-xml-parser": "^4.5.6",
     "systeminformation": "^5.24.0",
     "@asyncapi/specs": "6.11.1"
+  },
+  "resolutionsNotes": {
+    "@stryker-mutator/core/minimatch": "Dev tooling, not a CVE override. Added when a blanket `brace-expansion` pin forced v2 (CJS) while minimatch v10 needs v5's named exports. That blanket pin is gone — it broke `nx affected` the same way — so brace-expansion now resolves per consumer and Stryker would most likely work on minimatch v10. The pin stays because no CI job runs `yarn dev:mutation`, so nothing would catch it if that guess is wrong. Drop it once someone has run the mutation suite on v10. See CONTRIBUTING.md#mutation-tests."
   }
 }
