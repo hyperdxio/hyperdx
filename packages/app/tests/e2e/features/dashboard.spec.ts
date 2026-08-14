@@ -1952,6 +1952,25 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           }).toPass({ timeout: 15000 });
         });
 
+        await test.step('Sample Matched Events lists the rows the macro matches', async () => {
+          // The agg condition moves out of `select` into this preview's
+          // `filters`, so an unexpanded macro would reach ClickHouse verbatim
+          // and error instead of listing rows.
+          await dashboardPage.chartEditor.openSampleMatchedEvents();
+          const sampleEvents = dashboardPage.page.getByTestId(
+            'search-results-table',
+          );
+          await expect(
+            sampleEvents.getByTestId(/^table-row-/).first(),
+          ).toBeVisible({ timeout: 30000 });
+          await expect(
+            sampleEvents.getByText('accounting').first(),
+          ).toBeVisible();
+          await expect(
+            dashboardPage.page.getByTestId('chart-error-state'),
+          ).toHaveCount(0);
+        });
+
         await test.step('Clearing the selection keeps every row, rather than none', async () => {
           // With nothing selected the macro renders a no-op predicate, so the
           // tile falls back to showing every service.

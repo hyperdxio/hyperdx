@@ -440,6 +440,20 @@ export class ChartEditorComponent {
     });
   }
 
+  /**
+   * Expand the "Sample Matched Events" accordion in the preview panel. Safe to
+   * call when it is already open. The table only queries once expanded.
+   */
+  async openSampleMatchedEvents() {
+    const control = this.page.getByRole('button', {
+      name: 'Sample Matched Events',
+    });
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+  }
+
   /** CodeMirror content of the rendered "Generated SQL" preview. */
   generatedSqlContent(): Locator {
     return this.page.getByTestId('chart-sql-preview').locator('.cm-content');

@@ -23,7 +23,10 @@ import {
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
-import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
+import {
+  filterReferencedVariables,
+  substituteChartConfigVariables,
+} from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
@@ -167,6 +170,21 @@ export function resolvePreviewVariables({
     : referenced;
 }
 
+/**
+ * Expand a builder config's variable references, falling back to the config as
+ * written when one of them can't be expanded (a malformed reference, or a macro
+ * naming a variable the dashboard doesn't declare).
+ */
+function expandVariablesOrLeaveRaw<
+  T extends Parameters<typeof substituteChartConfigVariables>[0],
+>(config: T): T {
+  try {
+    return substituteChartConfigVariables(config);
+  } catch {
+    return config;
+  }
+}
+
 export function buildSampleEventsConfig(
   queriedConfig: ChartConfigWithDateRange | undefined,
   tableSource: TSource | undefined,
@@ -182,8 +200,13 @@ export function buildSampleEventsConfig(
     return null;
   }
 
+  // The series' agg conditions become `filters` below, and `filters` is
+  // deliberately not scanned for variable references. So expand the variables
+  // here, building the filters in the sample events config below.
+  const config = expandVariablesOrLeaveRaw(queriedConfig);
+
   return {
-    ...queriedConfig,
+    ...config,
     orderBy: [
       {
         ordering: 'DESC' as const,
@@ -202,7 +225,7 @@ export function buildSampleEventsConfig(
         tableSource.kind === SourceKind.Trace) &&
         tableSource.defaultTableSelectExpression) ||
       '',
-    filters: seriesToFilters(queriedConfig.select),
+    filters: seriesToFilters(config.select),
     filtersLogicalOperator: 'OR' as const,
     groupBy: undefined,
     granularity: undefined,
