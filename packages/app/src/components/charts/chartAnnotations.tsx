@@ -73,10 +73,16 @@ const STROKE_OPACITY = 0.9;
 const MUTED_STROKE_OPACITY = 0.35;
 
 /** A marker resolved to its clamped x position, in unix seconds. */
-type PositionedAnnotation = ChartAnnotation & {
+export type PositionedAnnotation = ChartAnnotation & {
   x: number;
   /** Label suppressed — a neighbour carries the group label for this cluster. */
   muted?: boolean;
+  /**
+   * Every marker in this one's cluster, itself included, in time order. Only
+   * set on the labelled anchor. Hover surfaces read this so a cluster shown as
+   * "3 releases" can name all three.
+   */
+  members?: PositionedAnnotation[];
 };
 
 /**
@@ -213,8 +219,9 @@ function collapseLabels(
       }
 
       const size = end - start;
+      const members = sorted.slice(start, end);
       if (size === 1) {
-        collapsed.push(anchor);
+        collapsed.push({ ...anchor, members });
       } else {
         // A cluster covering several series can't wear one of their colors
         // without claiming the others' events as that series'. Go neutral so
@@ -227,6 +234,7 @@ function collapseLabels(
           ...anchor,
           label: `${size} ${noun}`,
           color: spansSeries ? MIXED_SERIES_COLOR : anchor.color,
+          members,
         });
       }
       for (let i = start + 1; i < end; i++) {
@@ -256,10 +264,10 @@ function collapseLabels(
  * Generic over source — feature hooks map their events to `ChartAnnotation[]`.
  * Capped at `MAX_ANNOTATION_MARKERS` to protect against pathological inputs.
  */
-export function getAnnotationElements(
+export function layoutAnnotations(
   annotations: ChartAnnotation[],
   opts: { domain: [number, number]; plotWidth?: number },
-): ReactElement[] {
+): PositionedAnnotation[] {
   const [minX, maxX] = opts.domain;
   const positioned = positionAnnotations(annotations, [minX, maxX]);
 
@@ -272,9 +280,24 @@ export function getAnnotationElements(
   const laidOut =
     plotWidth > 0 && spanSeconds > 0
       ? collapseLabels(positioned, plotWidth / spanSeconds)
-      : positioned;
+      : positioned.map(annotation => ({
+          ...annotation,
+          members: [annotation],
+        }));
 
-  return laidOut.slice(0, MAX_ANNOTATION_MARKERS).map((annotation, i) => {
+  return laidOut.slice(0, MAX_ANNOTATION_MARKERS);
+}
+
+/**
+ * Renders the laid-out markers as dashed vertical reference lines. Takes the
+ * output of `layoutAnnotations` so the hover hit layer can position itself
+ * against exactly the same geometry.
+ */
+export function getAnnotationElements(
+  annotations: ChartAnnotation[],
+  opts: { domain: [number, number]; plotWidth?: number },
+): ReactElement[] {
+  return layoutAnnotations(annotations, opts).map((annotation, i) => {
     const color = annotation.color ?? 'var(--color-border)';
     return (
       <ReferenceLine
@@ -283,6 +306,10 @@ export function getAnnotationElements(
         stroke={color}
         strokeDasharray="3 3"
         strokeOpacity={annotation.muted ? MUTED_STROKE_OPACITY : STROKE_OPACITY}
+        // The lines and labels are decoration; `AnnotationHitLayer` owns the
+        // hover interaction. Without this they sit above it in Recharts'
+        // z-index layers and swallow the pointer.
+        pointerEvents="none"
         label={
           annotation.label ? (
             // Float the label above the line in the top margin so it doesn't
@@ -292,6 +319,7 @@ export function getAnnotationElements(
               position="top"
               fill={color}
               fontSize={10}
+              pointerEvents="none"
               opacity={0.9}
             />
           ) : undefined

@@ -589,13 +589,24 @@ export class DashboardPage {
    * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
    * relies on the editor's default source), this selects a known source so the
    * exported tile carries a deterministic source name that auto-maps on import.
+   *
+   * `seriesWhere` sets the tile's own filter, which a time chart stores as its
+   * series' `aggCondition` — a different field from the dashboard-wide filter
+   * that `setGlobalFilter` drives.
    */
-  async addTileWithSource(chartName: string, sourceName: string) {
+  async addTileWithSource(
+    chartName: string,
+    sourceName: string,
+    seriesWhere?: string,
+  ) {
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartName(chartName);
     await this.chartEditor.selectSource(sourceName);
+    if (seriesWhere != null) {
+      await this.chartEditor.setSeriesWhere(seriesWhere);
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
     await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
@@ -1430,6 +1441,16 @@ export class DashboardPage {
    */
   getAnnotationMarkers(tileIndex = 0): Locator {
     return this.getTile(tileIndex).locator('.recharts-reference-line');
+  }
+
+  /**
+   * Transparent hover targets over the annotation markers, one per cluster.
+   * Hovering one opens a tooltip naming the services that released.
+   */
+  getAnnotationHitTargets(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator(
+      '.recharts-annotation-hit-layer rect',
+    );
   }
 
   /**

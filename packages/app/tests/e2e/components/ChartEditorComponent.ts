@@ -3,9 +3,10 @@
  * Used for creating and configuring dashboard tiles and chart explorer
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -98,6 +99,39 @@ export class ChartEditorComponent {
     await this.page.keyboard.type(expression);
     // Dismiss the autocomplete dropdown so it doesn't intercept the next click.
     await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * The tile-editor modal. Series-level lookups have to be scoped to it: the
+   * dashboard behind it renders its own WHERE input with identical markup.
+   * Only meaningful on a dashboard — the chart explorer has no modal.
+   */
+  private get tileEditor() {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('chart-name-input') });
+  }
+
+  /**
+   * Set the tile's own filter, which a time chart stores as its series'
+   * `aggCondition` rather than in the config's statement-level `where`.
+   *
+   * Switches to Lucene first for two reasons: the mode is sticky (it is kept in
+   * localStorage, so a previous spec can leave it on SQL), and
+   * `series-where-input` exists only on the Lucene branch of SearchWhereInput —
+   * the SQL branch renders a CodeMirror that carries no test id.
+   */
+  async setSeriesWhere(condition: string) {
+    const editor = this.tileEditor;
+    await switchWhereToLucene(editor.getByTestId('where-language-switch'));
+
+    const input = editor.getByTestId('series-where-input');
+    await expect(input).toBeVisible();
+    await input.fill(condition);
+    // Blur to close the suggestion dropdown, which otherwise overlays the
+    // Run/Save buttons and fails their actionability check. Escape would bubble
+    // to the tile-editor modal and close it.
+    await input.blur();
   }
 
   /**
