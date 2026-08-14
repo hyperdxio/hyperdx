@@ -146,8 +146,11 @@ export default [
       
       'react-hook-form/no-use-watch': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
-      '@typescript-eslint/ban-ts-comment': 'warn',
-      '@typescript-eslint/no-empty-function': 'warn',
+      '@typescript-eslint/ban-ts-comment': 'error',
+      // Empty no-op functions are common and intentional (test mocks, default
+      // callback props like onClose/onChange). Flagging them adds noise without
+      // catching real bugs, so this rule is disabled.
+      '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'warn',
       '@typescript-eslint/no-unsafe-type-assertion': 'warn',
@@ -252,6 +255,17 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
       'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
+      // Shared helpers that assert on our behalf, so a test calling only these
+      // still counts as having assertions.
+      'playwright/expect-expect': [
+        'warn',
+        {
+          assertFunctionNames: [
+            'expectFieldSuggestion',
+            'expectValueSuggestion',
+          ],
+        },
+      ],
       // Drop date rules — Date.now() is fine in e2e tests for unique IDs/timestamps
       'no-restricted-syntax': ['error', ...UI_SYNTAX_RESTRICTIONS],
       // e2e tests live outside src/, so no @/ alias reaches sibling test files

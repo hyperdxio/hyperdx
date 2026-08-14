@@ -415,6 +415,32 @@ export const DerivedColumnSchema = z.intersection(
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
+
+/**
+ * A derived series computed from other series in the chart's `select` list
+ * via a letter-ref arithmetic expression (metric charts only for v1).
+ *
+ * `expression` references select entries by position using single uppercase
+ * letters — `A` is `select[0]`, `B` is `select[1]`, ... (Grafana/Datadog
+ * convention; stable against alias edits). Example: `A / (A + B + C) * 100`.
+ *
+ * The grammar is arithmetic only (`+ - * /`, parentheses, numeric constants)
+ * and is parsed to a validated AST by `core/formula.ts` before any query
+ * rendering — expressions are never passed through as raw SQL.
+ */
+export const MetricFormulaSchema = z.object({
+  // Length-capped at the validation boundary so persisted configs can never
+  // carry an expression large enough to matter for the recursive parser
+  // (mirrors MAX_FORMULA_EXPRESSION_LENGTH in `core/formula.ts`, which
+  // guards the parser itself for arbitrary caller input).
+  expression: z.string().max(1024),
+  // Legend / column name for the formula series. Falls back to the raw
+  // expression when unset (mirrors DerivedColumnSchema.alias semantics).
+  alias: z.string().optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+export type MetricFormula = z.infer<typeof MetricFormulaSchema>;
+
 export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -1319,6 +1345,19 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Only meaningful for grouped ratios (seriesReturnType === 'ratio' + a Group
   // By). Defaults to per-group when unset. See RatioModeSchema.
   ratioMode: RatioModeSchema.optional(),
+  // Derived series computed from the `select` entries via letter-ref
+  // arithmetic expressions (`A` = select[0], ...). Metric sources only for
+  // v1; enforced by the editor and query renderer rather than this
+  // (deliberately permissive) schema, mirroring how `seriesReturnType:
+  // 'ratio'` is gated. Formulas are additive — the ratio toggle is untouched
+  // and the two are mutually exclusive in the editor. See
+  // MetricFormulaSchema and `core/formula.ts` for the grammar/validation.
+  formulas: z.array(MetricFormulaSchema).optional(),
+  // Whether the raw operand series referenced by `formulas` are emitted
+  // alongside the formula column(s) (true / unset) or only the formula
+  // column(s) are returned (false). Only meaningful when `formulas` is
+  // non-empty; ignored otherwise.
+  showOperandSeries: z.boolean().optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
@@ -1327,6 +1366,17 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // keys, so unlike `alternateRowBackground` this stays on the builder config.
   groupByColumnsOnLeft: z.boolean().optional(),
 });
+
+/** A dashboard variable as seen by a tile's query. */
+export const ChartVariableSchema = z.object({
+  name: z.string(),
+  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  expression: z.string().optional(),
+  /** Empty means nothing is selected. */
+  values: z.array(z.string()),
+});
+
+export type ChartVariable = z.infer<typeof ChartVariableSchema>;
 
 // This is a ChartConfig type without the `with` CTE clause included.
 // It needs to be a separate, named schema to avoid use of z.lazy(...),
@@ -1385,6 +1435,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -1599,6 +1650,13 @@ export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
+/** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
+export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
+export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
+  `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
+);
+export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+
 export const DashboardFilterSchema = z.object({
   id: z.string(),
   type: DashboardFilterType,
@@ -1611,6 +1669,29 @@ export const DashboardFilterSchema = z.object({
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
+  /**
+   * Whether the selected value is applied as a filter condition on matching
+   * tiles. Undefined / missing means ENABLED — every filter that predates this
+   * field broadcasts, and that must not change. Read it through
+   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+   */
+  isBroadcastEnabled: z.boolean().optional(),
+  /**
+   * Whether the selected value is exposed to tile queries as `$variableName`.
+   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+   * feature is off.
+   */
+  isVariableEnabled: z.boolean().optional(),
+  /**
+   * Token that tiles reference as `$variableName`. Defaults to the filter's display
+   * name with illegal characters replaced by dashes (`deriveVariableName`).
+   * Ignored when `isVariableEnabled` is not true.
+   */
+  variableName: z
+    .string()
+    .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+    .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+    .optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -1851,6 +1932,13 @@ export const LogSourceSchema = BaseSourceSchema.extend({
     .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
+  /**
+   * Expression identifying the running release of a service. Defaults to the
+   * OpenTelemetry `service.version` resource attribute when unset; teams whose
+   * version lives elsewhere - a container image tag under GitOps, a custom
+   * attribute - point it there instead of changing instrumentation.
+   */
+  serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
@@ -1908,6 +1996,8 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   serviceNameExpression: z.string().optional(),
+  /** See `serviceVersionExpression` on `LogSourceSchema`. */
+  serviceVersionExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),

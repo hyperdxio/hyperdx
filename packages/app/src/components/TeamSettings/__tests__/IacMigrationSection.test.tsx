@@ -18,6 +18,19 @@ jest.mock('@/components/Iac/useIacImportManifest', () => ({
   useIacImportManifest: (...args: unknown[]) => useIacImportManifest(...args),
 }));
 
+// `mock` prefix so the hoisted jest.mock factory below may close over them.
+const mockTeamId = '7a1c0de5b2f34c9d8e0a1b2c';
+// Blanked by one test to stand in for a `me` that has not resolved yet.
+let mockMeTeamId: string | undefined = mockTeamId;
+jest.mock('@/api', () => ({
+  __esModule: true,
+  default: {
+    useMe: () => ({
+      data: mockMeTeamId ? { team: { id: mockMeTeamId } } : undefined,
+    }),
+  },
+}));
+
 const MANIFEST = {
   dashboards: [
     { id: '1'.repeat(24), name: 'D1' },
@@ -77,6 +90,7 @@ describe('resource type registry', () => {
 describe('IacMigrationSection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockMeTeamId = mockTeamId;
     refetch.mockResolvedValue({ data: MANIFEST, isSuccess: true });
     useIacImportManifest.mockReturnValue({
       data: MANIFEST,
@@ -118,8 +132,27 @@ describe('IacMigrationSection', () => {
     expect(content).toContain(
       `to = clickhouse_clickstack_saved_search.saved_search_${'4'.repeat(24)}`,
     );
+    // Team-scoped import ids — a ClickHouse Cloud service can back several
+    // teams, so the resource id alone does not say which one to read.
+    expect(content).toContain(`id = "${mockTeamId}/${'1'.repeat(24)}"`);
     expect(content).not.toContain('5'.repeat(24)); // tile alert excluded
     expect(content).not.toContain('6'.repeat(24)); // connections not selected by default
+  });
+
+  // Every import id is prefixed with the team, so a file built before `me`
+  // resolves would carry "undefined/<id>" on every block. The guard is the
+  // disabled button; this pins that it also cannot be driven past.
+  it('writes nothing while the team is unknown', async () => {
+    mockMeTeamId = undefined;
+    renderSection();
+
+    const button = screen.getByTestId('iac-download-button');
+    expect(button).toBeDisabled();
+
+    fireEvent.click(button);
+
+    await waitFor(() => expect(refetch).not.toHaveBeenCalled());
+    expect(downloadTextFile).not.toHaveBeenCalled();
   });
 
   // The manifest is cached for 60s. Building the file from that cache writes

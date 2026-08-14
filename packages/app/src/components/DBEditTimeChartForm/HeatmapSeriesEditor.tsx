@@ -11,6 +11,7 @@ type HeatmapSeriesEditorProps = {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   tableSource?: TSource;
+  dateRange?: [Date, Date];
   onSubmit: () => void;
   onOpenDisplaySettings: () => void;
 };
@@ -19,6 +20,7 @@ export function HeatmapSeriesEditor({
   control,
   setValue,
   tableSource,
+  dateRange,
   onSubmit,
   onOpenDisplaySettings,
 }: HeatmapSeriesEditorProps) {
@@ -28,6 +30,8 @@ export function HeatmapSeriesEditor({
     <Flex direction="column" gap="sm">
       <SearchWhereInput
         tableConnection={connection}
+        sourceId={tableSource?.id}
+        dateRange={dateRange}
         control={control}
         name="where"
         onSubmit={onSubmit}

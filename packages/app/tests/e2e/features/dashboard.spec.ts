@@ -11,6 +11,7 @@ import {
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
 import { runMongoshScript } from '../utils/db-helpers';
+import { getSqlEditor } from '../utils/locators';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
@@ -667,8 +668,12 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         const label = dashboardPage.getFilterLabel('SpanName');
         await expect(label).toBeVisible();
         await label.hover();
+        // New filters are variable-enabled by default while the feature is on,
+        // so both effects are described.
         await expect(
-          dashboardPage.page.getByText('Applies to 1 source'),
+          dashboardPage.page.getByText(
+            'Filters 1 source, available as variable ($SpanName)',
+          ),
         ).toBeVisible();
       });
 
@@ -719,8 +724,348 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const label = dashboardPage.getFilterLabel('Service');
       await label.hover();
       await expect(
-        dashboardPage.page.getByText('Applies to all sources'),
+        dashboardPage.page.getByText(
+          'Filters all sources, available as variable ($Service)',
+        ),
       ).toBeVisible();
+    },
+  );
+
+  test('should configure a filter as a dashboard variable', {}, async () => {
+    test.setTimeout(60000);
+
+    await test.step('Create a dashboard with a tile', async () => {
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.createTable({
+        chartName: 'Logs Table',
+        sourceName: DEFAULT_LOGS_SOURCE_NAME,
+        groupBy: 'ServiceName',
+      });
+    });
+
+    await test.step('Variable name is derived from the filter name', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFiltersButton.click();
+
+      // Enabled by default for new filters while the feature is on.
+      await expect(dashboardPage.broadcastFilterCheckbox).toBeChecked();
+      await expect(dashboardPage.variableEnabledCheckbox).toBeChecked();
+
+      await dashboardPage.page
+        .getByTestId('filter-name-input')
+        .fill('Service Name');
+      await expect(dashboardPage.variableNameInput).toHaveValue('Service_Name');
+    });
+
+    await test.step('Editing the variable name stops the auto-derivation', async () => {
+      await dashboardPage.variableNameInput.fill('svc');
+      await dashboardPage.page
+        .getByTestId('filter-name-input')
+        .fill('Service Name Renamed');
+      await expect(dashboardPage.variableNameInput).toHaveValue('svc');
+    });
+
+    await test.step('Unchecking broadcast hides the source scope', async () => {
+      await expect(dashboardPage.appliesToSourceSelector).toBeVisible();
+      await dashboardPage.broadcastFilterCheckbox.uncheck();
+      await expect(dashboardPage.appliesToSourceSelector).toBeHidden();
+      await dashboardPage.broadcastFilterCheckbox.check();
+      await expect(dashboardPage.appliesToSourceSelector).toBeVisible();
+    });
+
+    await test.step('Unchecking the variable hides its name', async () => {
+      await dashboardPage.variableEnabledCheckbox.uncheck();
+      await expect(dashboardPage.variableNameInput).toBeHidden();
+      await dashboardPage.variableEnabledCheckbox.check();
+      await expect(dashboardPage.variableNameInput).toBeVisible();
+    });
+
+    await test.step('Settings survive a save and reopen', async () => {
+      await dashboardPage.filtersSourceSelector.click();
+      await dashboardPage.page
+        .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+        .click();
+      const editor = getSqlEditor(dashboardPage.page, 'expression');
+      await editor.click();
+      await dashboardPage.page.keyboard.type('ServiceName');
+      await dashboardPage.page.getByTestId('save-filter-button').click();
+
+      const savedFilterItem = dashboardPage.getFilterItemByName(
+        'Service Name Renamed',
+      );
+      await expect(savedFilterItem).toBeVisible();
+      // The list row shows the token the filter is referenced by, next to its name.
+      await expect(savedFilterItem).toContainText('($svc)');
+
+      await dashboardPage.page
+        .getByTestId('edit-filter-button-Service Name Renamed')
+        .click();
+
+      await expect(dashboardPage.variableEnabledCheckbox).toBeChecked();
+      await expect(dashboardPage.variableNameInput).toHaveValue('svc');
+    });
+
+    await test.step('Renaming the filter keeps the stored variable name', async () => {
+      await dashboardPage.page
+        .getByTestId('filter-name-input')
+        .fill('Service Name Again');
+      await expect(dashboardPage.variableNameInput).toHaveValue('svc');
+      await dashboardPage.page.getByTestId('save-filter-button').click();
+      await expect(
+        dashboardPage.getFilterItemByName('Service Name Again'),
+      ).toBeVisible();
+    });
+
+    await test.step('A duplicate variable name is rejected', async () => {
+      await dashboardPage.addFiltersButton.click();
+      await dashboardPage.page.getByTestId('filter-name-input').fill('Other');
+      await dashboardPage.filtersSourceSelector.click();
+      await dashboardPage.page
+        .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+        .click();
+      const editor = getSqlEditor(dashboardPage.page, 'expression');
+      await editor.click();
+      await dashboardPage.page.keyboard.type('ServiceName');
+      await dashboardPage.variableNameInput.fill('svc');
+      await dashboardPage.page.getByTestId('save-filter-button').click();
+
+      await expect(
+        dashboardPage.page.getByText(
+          'This variable name is used by another filter on this dashboard (Service Name Again)',
+        ),
+      ).toBeVisible();
+      // The form stays open rather than persisting the clashing name.
+      await expect(dashboardPage.variableNameInput).toBeVisible();
+    });
+  });
+
+  test(
+    'should refuse to save a filter with neither broadcast nor variable enabled',
+    {},
+    async () => {
+      test.setTimeout(60000);
+
+      const modeError =
+        'A filter must broadcast its value, be available as a variable, or both';
+
+      await test.step('Create a dashboard with a tile', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Logs Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+      });
+
+      await test.step('Fill in a new filter', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFiltersButton.click();
+        await dashboardPage.page
+          .getByTestId('filter-name-input')
+          .fill('Service');
+        await dashboardPage.filtersSourceSelector.click();
+        await dashboardPage.page
+          .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+          .click();
+        const editor = getSqlEditor(dashboardPage.page, 'expression');
+        await editor.click();
+        await dashboardPage.page.keyboard.type('ServiceName');
+
+        // Both modes are on by default, so nothing is wrong yet.
+        await expect(dashboardPage.page.getByText(modeError)).toHaveCount(0);
+      });
+
+      await test.step('Turning off only one mode is fine', async () => {
+        await dashboardPage.broadcastFilterCheckbox.uncheck();
+        await expect(dashboardPage.page.getByText(modeError)).toHaveCount(0);
+
+        await dashboardPage.broadcastFilterCheckbox.check();
+        await dashboardPage.variableEnabledCheckbox.uncheck();
+        await expect(dashboardPage.page.getByText(modeError)).toHaveCount(0);
+      });
+
+      await test.step('Turning off both surfaces the error before saving', async () => {
+        await dashboardPage.broadcastFilterCheckbox.uncheck();
+        await expect(dashboardPage.page.getByText(modeError)).toBeVisible();
+      });
+
+      await test.step('Saving is blocked while both are off', async () => {
+        await dashboardPage.page.getByTestId('save-filter-button').click();
+
+        // The form stays open on the unsaved filter.
+        await expect(dashboardPage.page.getByText(modeError)).toBeVisible();
+        await expect(
+          dashboardPage.page.getByTestId('filter-name-input'),
+        ).toHaveValue('Service');
+        await expect(dashboardPage.getFilterItemByName('Service')).toHaveCount(
+          0,
+        );
+      });
+
+      await test.step('Re-enabling a mode clears the error and saves', async () => {
+        await dashboardPage.variableEnabledCheckbox.check();
+        await expect(dashboardPage.page.getByText(modeError)).toHaveCount(0);
+
+        await dashboardPage.page.getByTestId('save-filter-button').click();
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+      });
+
+      await test.step('The same rule applies when editing a saved filter', async () => {
+        await dashboardPage.page
+          .getByTestId('edit-filter-button-Service')
+          .click();
+        await dashboardPage.variableEnabledCheckbox.uncheck();
+        await expect(dashboardPage.page.getByText(modeError)).toBeVisible();
+
+        await dashboardPage.page.getByTestId('save-filter-button').click();
+        await expect(dashboardPage.page.getByText(modeError)).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should not broadcast a filter to any tile when broadcast is disabled',
+    {},
+    async () => {
+      test.setTimeout(60000);
+
+      const accountingCell = () =>
+        dashboardPage.page.getByTitle('accounting', { exact: true });
+      const adCell = () => dashboardPage.page.getByTitle('ad', { exact: true });
+
+      await test.step('Create a dashboard with a logs tile and a traces tile', async () => {
+        await dashboardPage.createNewDashboard();
+
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Logs Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Traces Table',
+          sourceName: DEFAULT_TRACES_SOURCE_NAME,
+          groupBy: 'SpanName',
+        });
+
+        await expect(accountingCell()).toBeVisible();
+        await expect(adCell()).toBeVisible();
+      });
+
+      await test.step('Add a Service filter with broadcast disabled', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+          undefined,
+          undefined,
+          { isBroadcastEnabled: false },
+        );
+
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+        // The list row drops the "applies to" line entirely for a filter that
+        // broadcasts to nothing.
+        await expect(
+          dashboardPage.page.getByTestId('dashboard-filter-applies-to-Service'),
+        ).toHaveCount(0);
+
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Filter label tooltip drops the broadcast half', async () => {
+        // Broadcast off, variable still on (the default for a new filter while
+        // the feature is enabled), so only the variable effect is described.
+        const label = dashboardPage.getFilterLabel('Service');
+        await expect(label).toBeVisible();
+        await label.hover();
+        await expect(
+          dashboardPage.page.getByText('Available as variable ($Service)'),
+        ).toBeVisible();
+      });
+
+      await test.step('Selecting a value leaves every tile unfiltered', async () => {
+        await dashboardPage.clickFilterOption('Service', 'accounting');
+        await dashboardPage.page.keyboard.press('Escape');
+
+        // Both service rows survive: the selection was never turned into a
+        // WHERE condition on the logs tile...
+        await expect(accountingCell()).toBeVisible();
+        await expect(adCell()).toBeVisible();
+
+        // ...and the traces tile, which has no ServiceName-scoped filter
+        // either, still renders its rows rather than erroring.
+        const tracesTile = dashboardPage.getTile(1);
+        await expect(tracesTile.locator('table tbody tr').first()).toBeVisible({
+          timeout: 15000,
+        });
+      });
+
+      await test.step('Re-enabling broadcast applies the already-selected value', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.setFilterBroadcastEnabled('Service', true);
+        await dashboardPage.closeFiltersModal();
+
+        await expect(accountingCell()).toBeVisible();
+        await expect(adCell()).toHaveCount(0);
+
+        const label = dashboardPage.getFilterLabel('Service');
+        await label.hover();
+        await expect(
+          dashboardPage.page.getByText(
+            'Filters all sources, available as variable ($Service)',
+          ),
+        ).toBeVisible();
+      });
+
+      await test.step('Disabling broadcast again releases the tiles', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.setFilterBroadcastEnabled('Service', false);
+        await dashboardPage.closeFiltersModal();
+
+        await expect(accountingCell()).toBeVisible();
+        await expect(adCell()).toBeVisible();
+      });
+
+      await test.step('A filter with neither mode warns that it does nothing', async () => {
+        // Written straight to Mongo: the API and the form both refuse this
+        // state now, so the only way to hold it is to predate that rule.
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'print(JSON.stringify(db.dashboards.updateOne(',
+            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
+            '  { $set: { "filters.0.isVariableEnabled": false } }',
+            ')));',
+          ].join('\n'),
+        );
+        expect(out).toContain('"matchedCount":1');
+        expect(out).toContain('"modifiedCount":1');
+
+        await dashboardPage.gotoDashboard(dashboardId);
+
+        // The question-mark affordance is replaced by a warning.
+        await expect(dashboardPage.getFilterLabel('Service')).toHaveCount(0);
+        const warning = dashboardPage.getFilterNoEffectIcon('Service');
+        await expect(warning).toBeVisible();
+        await warning.hover();
+        await expect(
+          dashboardPage.page.getByText(
+            'This filter neither broadcasts nor acts as a variable - it has no effect',
+          ),
+        ).toBeVisible();
+      });
     },
   );
 
@@ -1123,6 +1468,362 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         ).toBeVisible({ timeout: 15000 });
       });
     });
+  });
+
+  test.describe('Dashboard Variables in Raw SQL Tiles', () => {
+    // Both `$__filter(<expr>, <name>)` and a bare `$name` reference, so one
+    // query exercises the macro and the plain-reference form together.
+    const VARIABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) AND ServiceName IN ($svc) GROUP BY ServiceName LIMIT 200`;
+
+    const VARIABLE_LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) GROUP BY ts ORDER BY ts ASC`;
+
+    /** Add a variable-enabled `Service` filter exposed as `$svc`. */
+    const addServiceVariable = async () => {
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+        undefined,
+        undefined,
+        { variableName: 'svc' },
+      );
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+      await dashboardPage.closeFiltersModal();
+    };
+
+    test(
+      'substitutes selected variable values in the tile editor previews',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Variable Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a variable-enabled filter', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+        });
+
+        await test.step('Select a value for the variable', async () => {
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a raw SQL tile that references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.switchToSqlMode();
+          await dashboardPage.chartEditor.typeSqlQuery(VARIABLE_SQL);
+          await dashboardPage.chartEditor.runQuery(false);
+        });
+
+        await test.step('Generated SQL expands both reference forms', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            // $__filter(ServiceName, svc) -> (ServiceName IN ('accounting'))
+            expect(sql).toContain("(ServiceName IN ('accounting'))");
+            // ServiceName IN ($svc) -> ServiceName IN ('accounting')
+            expect(sql).toMatch(
+              /ServiceName IN \('accounting'\)[\s\S]*ServiceName IN \('accounting'\)/,
+            );
+            expect(sql).not.toContain('$svc');
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('The preview table only shows the selected service', async () => {
+          const preview = dashboardPage.page.getByRole('dialog').first();
+          await expect(
+            preview.getByTitle('accounting', { exact: true }),
+          ).toBeVisible({ timeout: 15000 });
+          await expect(preview.getByTitle('ad', { exact: true })).toHaveCount(
+            0,
+          );
+        });
+
+        await test.step('The saved tile applies the same substitution', async () => {
+          await dashboardPage.saveTile();
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toBeVisible({ timeout: 15000 });
+          await expect(tile.getByTitle('ad', { exact: true })).toHaveCount(0);
+        });
+
+        await test.step('Changing the selection re-renders the tile', async () => {
+          await dashboardPage.toggleFilterValue('Service', 'accounting');
+          await dashboardPage.toggleFilterValue('Service', 'ad');
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.getByTitle('ad', { exact: true })).toBeVisible({
+            timeout: 15000,
+          });
+          await expect(
+            tile.getByTitle('accounting', { exact: true }),
+          ).toHaveCount(0);
+        });
+      },
+    );
+
+    test(
+      'previews an alerting tile with every variable value emptied',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Variable Alert Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a raw SQL line tile that references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.switchToSqlMode();
+          await dashboardPage.chartEditor.typeSqlQuery(VARIABLE_LINE_SQL);
+          await dashboardPage.chartEditor.runQuery();
+        });
+
+        await test.step('Without an alert the preview uses the selected value', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("ServiceName IN ('accounting')");
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Adding an alert empties the variable in the preview', async () => {
+          // An alert runs on a schedule with no dashboard filter selection, so
+          // the preview must show what the alert will actually evaluate.
+          await dashboardPage.chartEditor.clickAddAlert();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).not.toContain('accounting');
+            expect(sql).toMatch(/1\s*=\s*1/);
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Removing the alert restores the selected value', async () => {
+          await dashboardPage.chartEditor.clickRemoveAlert();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("ServiceName IN ('accounting')");
+          }).toPass({ timeout: 15000 });
+        });
+      },
+    );
+
+    test(
+      'autocompletes every variable reference form',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Open a raw SQL tile on a dashboard with a variable', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.switchToSqlMode();
+        });
+
+        await test.step('The variable macros are offered, with wrapped help text', async () => {
+          const { text, overflowX } =
+            await dashboardPage.chartEditor.readSqlCompletionInfo('$__filter');
+          expect(text).toContain('Expands to 1=1 when nothing is selected');
+          // The suggestion list sets white-space: nowrap, which the info panel
+          // inherits and which ran this prose straight out of its background.
+          expect(overflowX).toBeLessThanOrEqual(1);
+        });
+
+        await test.step("The reference's expansion renders on its own line", async () => {
+          await dashboardPage.chartEditor.replaceSqlQuery('$svc');
+          const info = dashboardPage.page.locator('.cm-completionInfo');
+          await info.waitFor({ state: 'visible', timeout: 10000 });
+
+          // Nothing is selected on this dashboard, so the bare form shows the
+          // empty state it expands to.
+          const footnote = info.locator('.cm-completionInfo-footnote');
+          await expect(footnote).toHaveText('Expands to: NULL');
+
+          // Below the prose rather than run onto the end of it. A `\n` in a
+          // string `info` collapses to a space, which is why this is markup.
+          const gap = await info.evaluate(el => {
+            const sub = el.querySelector('.cm-completionInfo-footnote');
+            const main = sub?.previousElementSibling;
+            if (!sub || !main) return null;
+            return (
+              sub.getBoundingClientRect().top -
+              main.getBoundingClientRect().bottom
+            );
+          });
+          expect(gap).toBeGreaterThanOrEqual(0);
+
+          await dashboardPage.chartEditor.dismissSqlCompletion();
+        });
+
+        await test.step('Typing ${ offers the braced form and every format', async () => {
+          // `${` cannot fuzzy-match `$svc`, so without dedicated braced
+          // entries the popup is empty the moment the brace is typed.
+          await dashboardPage.chartEditor.replaceSqlQuery('${');
+          const options = dashboardPage.chartEditor.sqlCompletionOptions();
+          await expect(options).toHaveCount(5);
+          // Compared as a set: ranking between equally-good matches is
+          // CodeMirror's business, not something worth pinning here.
+          expect((await options.allTextContents()).sort()).toEqual(
+            [
+              '${svc}',
+              '${svc:sqlstring}',
+              '${svc:regex}',
+              '${svc:csv}',
+              '${svc:lucene}',
+            ].sort(),
+          );
+          await dashboardPage.chartEditor.dismissSqlCompletion();
+        });
+
+        await test.step('Accepting a completion inserts well-formed text', async () => {
+          // The replace range covers trailing identifier characters, which
+          // includes the `}` the editor auto-inserts after `${` or `{` — so
+          // `apply` has to carry its own closing brace rather than rely on it.
+          for (const [prefix, label, expected] of [
+            ['${', '${svc}', '${svc}'],
+            ['${', '${svc:csv}', '${svc:csv}'],
+            ['$sv', '$svc', '$svc'],
+            // The one-argument form goes in as written, rather than being
+            // silently rewritten to `$__filter(ServiceName, svc)`.
+            ['$__f', '$__filter(svc)', '$__filter(svc)'],
+            [
+              '{start',
+              '{startDateMilliseconds:Int64}',
+              '{startDateMilliseconds:Int64}',
+            ],
+          ]) {
+            expect(
+              await dashboardPage.chartEditor.acceptSqlCompletion(
+                prefix,
+                label,
+              ),
+            ).toBe(expected);
+          }
+        });
+      },
+    );
+
+    test(
+      'documents the dashboard variables and flags questionable references',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Create a dashboard with a variable-enabled filter', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+        });
+
+        await test.step('Open a raw SQL tile editor', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.switchToSqlMode();
+        });
+
+        await test.step('The instructions panel documents the variable', async () => {
+          const instructions = dashboardPage.chartEditor.sqlInstructions();
+          await expect(instructions).toContainText('Dashboard variables');
+          await expect(instructions).toContainText(
+            'This chart may reference the following variables from the dashboard: $svc.',
+          );
+          await expect(instructions).toContainText(
+            '$__filter and $__conditionalAll',
+          );
+        });
+
+        /**
+         * Put `sql` in the editor and assert what the validation banner says
+         * about it. Both the typing and the (debounced) validation are
+         * retried: CodeMirror occasionally drops a keystroke burst, which
+         * otherwise strands the assertion on the previous step's SQL.
+         */
+        const expectValidationFor = async (
+          sql: string,
+          assertBanner: (banner: string) => void,
+        ) => {
+          const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
+          await expect(async () => {
+            const editor = await dashboardPage.chartEditor.getSqlEditorText();
+            if (normalize(editor) !== normalize(sql)) {
+              await dashboardPage.chartEditor.replaceSqlQuery(sql);
+            }
+            assertBanner(
+              await dashboardPage.chartEditor.getSqlValidationText(),
+            );
+          }).toPass({ timeout: 20000 });
+        };
+
+        await test.step('An empty editor raises nothing at all', async () => {
+          await expectValidationFor('', banner => expect(banner).toBe(''));
+        });
+
+        await test.step('An unknown variable in a macro is an error', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, nope) AND $__timeFilter(Timestamp)`,
+            banner =>
+              expect(banner).toContain(
+                "Error: Macro '$__filter' references unknown variable 'nope'",
+              ),
+          );
+        });
+
+        await test.step('A bare reference is a warning, not an error', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE ServiceName IN ($svc) AND $__timeFilter(Timestamp)`,
+            banner => {
+              expect(banner).toContain(
+                'Warning: $svc has no valid empty-selection value',
+              );
+              expect(banner).not.toContain('Error:');
+            },
+          );
+        });
+
+        await test.step('A quoted reference is an error, because it always breaks', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE ServiceName = '$svc' AND $__timeFilter(Timestamp)`,
+            banner =>
+              expect(banner).toContain('Error: $svc is wrapped in quotes'),
+          );
+        });
+
+        await test.step('A reference guarded by $__conditionalAll raises nothing', async () => {
+          // The condition is dropped entirely while `svc` is unselected, so
+          // the nested $svc never renders as NULL.
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($svc), svc) AND $__timeFilter(Timestamp)`,
+            banner => expect(banner).toBe(''),
+          );
+        });
+
+        await test.step('A correct $__filter usage raises nothing', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, svc) AND $__timeFilter(Timestamp)`,
+            banner => expect(banner).toBe(''),
+          );
+        });
+      },
+    );
   });
 
   test(

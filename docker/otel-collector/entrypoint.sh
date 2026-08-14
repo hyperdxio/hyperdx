@@ -93,20 +93,10 @@ else
   # Supervisor mode - run with OpAMP supervisor
   echo "Running in supervisor mode (OPAMP_SERVER_URL: $OPAMP_SERVER_URL)"
 
-  if [ "$OTEL_SUPERVISOR_LOGS" = "true" ]; then
-   # Start log tailer process in background for agent.log
-    # Arguments: log_file_path [check_interval_seconds]
-    /log-tailer.sh /etc/otel/supervisor-data/agent.log 1 &
-
-    # Create a agent log file for the supervisor and collector child process. Normally
-    # this file would be created as a standard file but we just want a FIFO pipe that
-    # will pass data over to the tail process in the entrypoint script. This avoids
-    # the need to the supervisor to store and forward the logs in its memory while also
-    # eliminating the need for volume based storage.
-    if [ ! -e /etc/otel/supervisor-data/agent.log ]; then
-      mkfifo /etc/otel/supervisor-data/agent.log || echo "Failed to create FIFO" >&2
-    fi
-  fi
+  # OTEL_SUPERVISOR_LOGS=true is consumed by supervisor.yaml.tmpl, which sets
+  # the supervisor's native `agent::passthrough_logs`. With this the supervisor
+  # forwards the collector's stdout/stderr through its own logger, keeping a
+  # single writer on the container's stdout.
 
   # Render the supervisor config template using gomplate
   # Write to supervisor-data directory which has proper permissions for otel user

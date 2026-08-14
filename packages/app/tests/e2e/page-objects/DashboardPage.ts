@@ -81,9 +81,13 @@ export class DashboardPage {
   private readonly editFiltersButton: Locator;
   private readonly filtersListModal: Locator;
   private readonly emptyFiltersListModal: Locator;
-  private readonly addFiltersButton: Locator;
+  readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
-  private readonly filtersSourceSelector: Locator;
+  readonly filtersSourceSelector: Locator;
+  readonly appliesToSourceSelector: Locator;
+  readonly broadcastFilterCheckbox: Locator;
+  readonly variableEnabledCheckbox: Locator;
+  readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
   private readonly aliasInput: Locator;
@@ -136,6 +140,16 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+    this.appliesToSourceSelector = page.getByTestId(
+      'applies-to-source-selector',
+    );
+    this.broadcastFilterCheckbox = page.getByTestId(
+      'filter-broadcast-checkbox',
+    );
+    this.variableEnabledCheckbox = page.getByTestId(
+      'filter-variable-enabled-checkbox',
+    );
+    this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
 
     // Tile editor selectors
@@ -795,20 +809,39 @@ export class DashboardPage {
     await this.closeFiltersModalButton.click();
   }
 
+  /**
+   * Open the "Add filter" form inside the Edit Filters Modal, without filling
+   * it in. Use when a test needs to interact with the form's inputs; use
+   * `addFilterToDashboard` to fill and save one in a single step.
+   */
+  async openAddFilterForm() {
+    await this.addFiltersButton.click();
+  }
+
+  /** Pick the data source in the filter edit form. */
+  async selectFilterSource(sourceName: string) {
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
   async fillFilterForm(
     name: string,
     sourceName: string,
     expression: string,
     metricType?: string,
     appliesToSourceNames?: string[],
+    variableOptions?: {
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+      variableName?: string;
+    },
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
 
-    await this.filtersSourceSelector.click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
+    await this.selectFilterSource(sourceName);
 
     const editor = getSqlEditor(this.page, 'expression');
     await editor.click();
@@ -820,12 +853,21 @@ export class DashboardPage {
         .click();
     }
 
+    // Applied before the applies-to selector below, because unchecking broadcast
+    // hides that control.
+    if (variableOptions?.isBroadcastEnabled === false) {
+      await this.broadcastFilterCheckbox.uncheck();
+    }
+    if (variableOptions?.isVariableEnabled === false) {
+      await this.variableEnabledCheckbox.uncheck();
+    } else if (variableOptions?.variableName !== undefined) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
-      const appliesToSelector = this.page.getByTestId(
-        'applies-to-source-selector',
-      );
       for (const appliesName of appliesToSourceNames) {
-        await appliesToSelector.click();
+        await this.appliesToSourceSelector.click();
         await this.page
           .getByRole('option', { name: appliesName, exact: true })
           .click();
@@ -844,6 +886,11 @@ export class DashboardPage {
     expression: string,
     metricType?: string,
     appliesToSourceNames?: string[],
+    variableOptions?: {
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+      variableName?: string;
+    },
   ) {
     await this.addFiltersButton.click();
 
@@ -853,6 +900,7 @@ export class DashboardPage {
       expression,
       metricType,
       appliesToSourceNames,
+      variableOptions,
     );
   }
 
@@ -878,6 +926,21 @@ export class DashboardPage {
     await editButton.click();
 
     await this.fillFilterForm(name, sourceName, expression, metricType);
+  }
+
+  /**
+   * Toggle "Broadcast filter condition" on an already-saved filter and save.
+   * Assumes the filters list modal is open.
+   */
+  async setFilterBroadcastEnabled(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.broadcastFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /** The warning icon shown when a filter neither broadcasts nor is a variable. */
+  getFilterNoEffectIcon(name: string) {
+    return this.page.getByTestId(`dashboard-filter-no-effect-${name}`);
   }
 
   getFilterItemByName(name: string) {

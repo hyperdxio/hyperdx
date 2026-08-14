@@ -375,7 +375,6 @@ function InsertsTab({
                 size="xs"
                 value={insertsBy ?? 'queries'}
                 onChange={value => {
-                  // @ts-ignore
                   setInsertsBy(value);
                 }}
                 data={[
@@ -653,7 +652,7 @@ function ClickhousePage() {
             mt="md"
             keepMounted={false}
             defaultValue="selects"
-            // @ts-ignore
+            // @ts-expect-error Mantine Tabs onChange passes string | null; setter expects a narrowed union
             onChange={setTab}
             value={tab}
           >
@@ -872,7 +871,7 @@ const ClickhousePageDynamic = dynamic(async () => ClickhousePage, {
   ssr: false,
 });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 ClickhousePageDynamic.getLayout = withAppNav;
 
 export default ClickhousePageDynamic;

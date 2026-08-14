@@ -22,6 +22,7 @@ const COMMON_FIELDS = [
 const LOG_FIELDS = [
   ...COMMON_FIELDS,
   'Service Name Expression',
+  'Service Version Expression',
   'Log Level Expression',
   'Body Expression',
   'Log Attributes Expression',
@@ -50,6 +51,7 @@ const TRACE_FIELDS = [
   'Status Code Expression',
   'Status Message Expression',
   'Service Name Expression',
+  'Service Version Expression',
   'Resource Attributes Expression',
   'Event Attributes Expression',
   'Span Events Expression',

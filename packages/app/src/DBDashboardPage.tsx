@@ -23,7 +23,10 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
@@ -43,10 +46,12 @@ import {
   dashboardHasUnexportableTiles,
   isImportableDashboard,
 } from '@hyperdx/common-utils/dist/iac';
+import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
+  ChartVariable,
   DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   DisplayType,
@@ -60,6 +65,7 @@ import {
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   ActionIcon,
   Alert,
@@ -170,6 +176,7 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
@@ -385,6 +392,7 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      variables,
       showAlertAnnotations,
       isLive,
       readOnly,
@@ -413,6 +421,7 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      variables?: ChartVariable[];
       // When true, draw alert firing/recovery annotations on this tile's chart.
       showAlertAnnotations?: boolean;
       isLive?: boolean;
@@ -529,6 +538,25 @@ const Tile = forwardRef(
       displayTypeRequiresSource(chart.config.displayType) &&
       !chart.config.source;
 
+    // `variables` is a new reference every time the dashboard's filter change. To ensure
+    // `tileVariables` is stable unless the tile's *referenced variables* actually change,
+    // we serialize the referenced subset and use changes in the serialized value to drive
+    // changes to `tileVariables`.
+    const serializedTileVariables = useMemo(
+      () =>
+        !!variables && isRawSqlSavedChartConfig(chart.config)
+          ? JSON.stringify(filterReferencedVariables(chart.config, variables))
+          : undefined,
+      [chart.config, variables],
+    );
+    const tileVariables = useMemo<ChartVariable[] | undefined>(
+      () =>
+        serializedTileVariables
+          ? JSON.parse(serializedTileVariables)
+          : undefined,
+      [serializedTileVariables],
+    );
+
     useEffect(() => {
       if (isPromqlSavedChartConfig(chart.config)) {
         if (source != null) {
@@ -551,6 +579,7 @@ const Tile = forwardRef(
             dateRange,
             granularity,
             filters,
+            variables: tileVariables,
           });
         } else if (source != null) {
           setQueriedConfig({
@@ -569,6 +598,7 @@ const Tile = forwardRef(
             dateRange,
             granularity,
             filters,
+            variables: tileVariables,
           });
         }
 
@@ -613,7 +643,7 @@ const Tile = forwardRef(
           });
         }
       }
-    }, [source, chart, dateRange, granularity, filters]);
+    }, [source, chart, dateRange, granularity, filters, tileVariables]);
 
     const [hovered, setHovered] = useState(false);
 
@@ -672,20 +702,21 @@ const Tile = forwardRef(
         return null;
 
       const isMissingSourceForFiltering = !queriedConfig.source;
-      const isMissingFiltersMacro =
-        !queriedConfig.sqlTemplate.includes('$__filters');
+      const missingFiltersMacro = isMissingFiltersMacro(
+        queriedConfig.sqlTemplate,
+      );
       const isMetricsSourceWithLuceneFilter =
         source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
       if (
         !isMissingSourceForFiltering &&
-        !isMissingFiltersMacro &&
+        !missingFiltersMacro &&
         !isMetricsSourceWithLuceneFilter
       )
         return null;
 
-      const message = isMissingFiltersMacro
-        ? 'Filters are not applied because the SQL does not include the required $__filters macro'
+      const message = missingFiltersMacro
+        ? 'Filters may not be applied correctly because the SQL does not include the recommended $__filters macro'
         : isMetricsSourceWithLuceneFilter
           ? 'Lucene filters are not applied because they are not supported for metrics sources.'
           : 'Filters are not applied because no Source is set for this chart';
@@ -1471,6 +1502,7 @@ const EditTileModal = ({
   onSave,
   isSaving,
   dateRange,
+  variables,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1478,6 +1510,7 @@ const EditTileModal = ({
   dateRange: [Date, Date];
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
+  variables?: ChartVariable[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1532,6 +1565,7 @@ const EditTileModal = ({
             <EditTimeChartForm
               dashboardId={dashboardId}
               chartConfig={chart.config}
+              variables={variables}
               dateRange={dateRange}
               isSaving={isSaving}
               onSave={config => {
@@ -1736,9 +1770,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       const tableName = getMetricTableName(source, metricType);
       if (!tableName) continue;
       tc.push({
-        databaseName: source.from.databaseName,
-        tableName: tableName,
-        connectionId: source.connection,
+        ...tcFromSource(source),
+        tableName,
       });
     }
 
@@ -1771,7 +1804,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   // Track if we've initialized query for this dashboard
-  const initializedDashboard = useRef<string>(undefined);
+  const initializedDashboardRef = useRef<string>(undefined);
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
@@ -1782,7 +1815,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setFilterQueries,
     ignoredFilterExpressions,
     getFilterQueriesForSource,
+    variables,
   } = useDashboardFilters(filters);
+
+  const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
+    useIsVariablesEnabled();
+  const showFilterVariableOptions =
+    !isVariablesFlagLoading && isVariablesEnabled;
 
   const dashboardReady =
     !!dashboard?.id &&
@@ -1904,10 +1943,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   useEffect(() => {
     if (!dashboard?.id || !router.isReady) return;
     if (!isLocalDashboard && isFetchingDashboard) return;
-    if (initializedDashboard.current === dashboard.id) return;
+    if (initializedDashboardRef.current === dashboard.id) return;
     const isSwitchingDashboards =
-      initializedDashboard.current != null &&
-      initializedDashboard.current !== dashboard.id;
+      initializedDashboardRef.current != null &&
+      initializedDashboardRef.current !== dashboard.id;
 
     const hasWhereInUrl = 'where' in router.query;
     const hasFiltersInUrl = 'filters' in router.query;
@@ -1941,7 +1980,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       }
     }
 
-    initializedDashboard.current = dashboard.id;
+    initializedDashboardRef.current = dashboard.id;
   }, [
     dashboard?.id,
     dashboard?.savedQuery,
@@ -2228,6 +2267,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             },
             ...getFilterQueriesForSource(tileSourceId),
           ]}
+          variables={showFilterVariableOptions ? variables : undefined}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
           isHighlighted={highlightedTileId === chart.id}
@@ -2328,6 +2368,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       onTimeRangeSelect,
       showAlertAnnotations,
       getFilterQueriesForSource,
+      showFilterVariableOptions,
+      variables,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
@@ -2907,6 +2949,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     >
       <SearchWhereInput
         tableConnections={tableConnections}
+        dateRange={searchedTimeRange}
         control={control}
         name="where"
         onSubmit={onSubmit}
@@ -2958,7 +3001,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <IconRefresh size={18} />
         </ActionIcon>
       </Tooltip>
-      <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+      <Tooltip
+        withArrow
+        label={
+          isVariablesEnabled ? 'Edit Filters and Variables' : 'Edit Filters'
+        }
+        fz="xs"
+        color="gray"
+      >
         <ActionIcon
           variant="secondary"
           onClick={() => setShowFiltersModal(true)}
@@ -2999,6 +3049,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (!isSaving) setEditedTile(undefined);
           }}
           dateRange={searchedTimeRange}
+          variables={showFilterVariableOptions ? variables : undefined}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {
@@ -3247,6 +3298,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
+          showVariableOptions={showFilterVariableOptions}
         />
       )}
     </>

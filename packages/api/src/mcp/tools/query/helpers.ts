@@ -6,10 +6,7 @@ import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  isBuilderSavedChartConfig,
-  isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
@@ -399,7 +396,11 @@ export async function runConfigTile(
   tile: ExternalDashboardTileWithId,
   startDate: Date,
   endDate: Date,
-  options?: { maxResults?: number; granularity?: string },
+  options?: {
+    maxResults?: number;
+    granularity?: string;
+    abortSignal?: AbortSignal;
+  },
 ) {
   if (!isConfigTile(tile)) {
     return mcpUserError('Invalid tile: config field missing');
@@ -441,6 +442,11 @@ export async function runConfigTile(
           whereLanguage:
             (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
           bodyExpression: selectStr || undefined,
+          // Forward the batch deadline's abort signal so an event-patterns
+          // tile that overruns is cancelled server-side alongside the generic
+          // chart-config path, rather than escaping cancellation and letting
+          // later tiles exceed the concurrency limit.
+          abortSignal: options?.abortSignal,
         },
       );
     }
@@ -580,7 +586,10 @@ export async function runConfigTile(
         config: renderConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+        opts: {
+          clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+          abort_signal: options?.abortSignal,
+        },
       });
       return formatQueryResult(result);
     } catch (e) {
@@ -646,7 +655,10 @@ export async function runConfigTile(
       config: chartConfig,
       metadata,
       querySettings: undefined,
-      opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+      opts: {
+        clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+        abort_signal: options?.abortSignal,
+      },
     });
     return formatQueryResult(result);
   } catch (e) {
