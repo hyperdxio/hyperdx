@@ -1433,6 +1433,16 @@ export class DashboardPage {
   }
 
   /**
+   * Transparent hover targets over the annotation markers, one per cluster.
+   * Hovering one opens a tooltip naming the services that released.
+   */
+  getAnnotationHitTargets(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator(
+      '.recharts-annotation-hit-layer rect',
+    );
+  }
+
+  /**
    * Text labels for the annotation markers. Recharts hoists reference-line
    * labels into a separate z-index layer, so they are NOT descendants of the
    * `.recharts-reference-line` group and cannot be matched by filtering it.
