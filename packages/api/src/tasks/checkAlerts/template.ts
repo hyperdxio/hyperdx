@@ -32,6 +32,12 @@ import {
 } from '@/tasks/checkAlerts';
 import { WebhookRedirectError } from '@/tasks/checkAlerts/errors';
 import {
+  InlineNotificationDispatcher,
+  NotificationDispatcher,
+  NotificationJob,
+  NotificationMessage,
+} from '@/tasks/checkAlerts/notifications';
+import {
   AlertProvider,
   PopulatedAlertChannel,
 } from '@/tasks/checkAlerts/providers';
@@ -173,15 +179,7 @@ export type AlertMessageTemplateDefaultView = {
   value: number;
 };
 
-interface Message {
-  hdxLink: string;
-  title: string;
-  body: string;
-  state: AlertState;
-  startTime: number;
-  endTime: number;
-  eventId: string;
-}
+type Message = NotificationMessage;
 
 export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
@@ -214,13 +212,12 @@ export const formatValueToMatchThreshold = (
   }).format(value);
 };
 
-const notifyChannel = async ({
-  channel,
-  message,
-}: {
-  channel: PopulatedAlertChannel;
-  message: Message;
-}) => {
+/**
+ * Deliver one rendered notification to its channel. Used by every
+ * NotificationDispatcher implementation; rejections signal delivery failure.
+ */
+export const deliverNotification = async (job: NotificationJob) => {
+  const { populatedChannel: channel, message } = job;
   switch (channel.type) {
     case 'webhook': {
       const webhook = channel.channel;
@@ -238,6 +235,45 @@ const notifyChannel = async ({
     default:
       throw new Error(`Unsupported channel type: ${channel.type}`);
   }
+};
+
+// Default dispatcher: deliver inline so errors propagate into the calling
+// evaluation's executionErrors — exactly the pre-seam behavior.
+const inlineNotificationDispatcher = new InlineNotificationDispatcher(
+  deliverNotification,
+);
+
+/**
+ * Build the NotificationJob for a rendered notification and hand it to the
+ * dispatcher (inline delivery when none is provided).
+ */
+const notifyChannel = async ({
+  alertId,
+  channel,
+  dispatcher,
+  group,
+  message,
+}: {
+  alertId?: string;
+  channel: PopulatedAlertChannel;
+  dispatcher?: NotificationDispatcher;
+  group?: string;
+  message: Message;
+}) => {
+  const job: NotificationJob = {
+    v: 1,
+    eventId: message.eventId,
+    alertId,
+    teamId: channel.channel.team?.toString(),
+    group,
+    channel: {
+      type: 'webhook',
+      webhookId: channel.channel._id.toString(),
+    },
+    message,
+    populatedChannel: channel,
+  };
+  await (dispatcher ?? inlineNotificationDispatcher).dispatch(job);
 };
 
 export const handleSendSlackWebhook = async (
@@ -552,6 +588,7 @@ const getPopulatedChannel = (
 export const renderAlertTemplate = async ({
   alertProvider,
   clickhouseClient,
+  dispatcher,
   metadata,
   state,
   template,
@@ -561,6 +598,8 @@ export const renderAlertTemplate = async ({
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
+  /** Notification transport; omitted = inline delivery. */
+  dispatcher?: NotificationDispatcher;
   metadata: Metadata;
   state: AlertState;
   template?: string | null;
@@ -654,7 +693,10 @@ export const renderAlertTemplate = async ({
         });
 
         await notifyChannel({
+          alertId: alert.id,
           channel,
+          dispatcher,
+          group: view.group,
           message: {
             hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
             title,

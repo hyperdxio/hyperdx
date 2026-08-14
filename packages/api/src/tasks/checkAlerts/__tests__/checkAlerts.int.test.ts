@@ -43,6 +43,7 @@ import {
   parseAlertData,
   processAlert,
 } from '@/tasks/checkAlerts';
+import { InProcessNotificationDispatcher } from '@/tasks/checkAlerts/notificationQueue';
 import {
   AlertDetails,
   AlertProvider,
@@ -2114,6 +2115,7 @@ describe('checkAlerts', () => {
       connection: IConnection,
       alertProvider: AlertProvider,
       teamWebhooksById: Map<string, IWebhook>,
+      notificationDispatcher?: InProcessNotificationDispatcher,
     ) => {
       const [previousMap, recentHistoryMap] = await Promise.all([
         getPreviousAlertHistories([details.alert.id], now),
@@ -2130,6 +2132,7 @@ describe('checkAlerts', () => {
         connection.id,
         alertProvider,
         teamWebhooksById,
+        notificationDispatcher,
       );
     };
 
@@ -3859,6 +3862,253 @@ describe('checkAlerts', () => {
           AlertErrorType.WEBHOOK_ERROR,
         );
         expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it('with a notification dispatcher, a hung webhook endpoint does not block the evaluation', async () => {
+        // A webhook endpoint that hangs until the test releases it. Without
+        // the dispatcher, processAlert would await this forever (this test
+        // would time out); with it, evaluation returns immediately.
+        let releaseFetch!: (response: unknown) => void;
+        const fetchGate = new Promise(resolve => {
+          releaseFetch = resolve;
+        });
+        const fetchMock = jest.fn().mockImplementation(() => fetchGate);
+        global.fetch = jest.mocked(fetchMock);
+
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+          dashboard,
+        } = await setupTileAlertForErrors({
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'https://webhook.site/hang',
+            name: 'Generic Webhook',
+            description: 'generic webhook',
+            body: JSON.stringify({ text: '{{title}}' }),
+          },
+        });
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = now.getTime() - ms('5m');
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(eventMs),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(eventMs),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'tile-err',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        const dispatcher = new InProcessNotificationDispatcher();
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+          dispatcher,
+        );
+
+        // Evaluation completed and persisted state while the delivery is
+        // still hanging on the background queue.
+        expect(dispatcher.pending).toBe(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.ALERT);
+        expect(
+          await AlertHistory.countDocuments({ alert: details.alert.id }),
+        ).toBe(1);
+
+        // Release the endpoint; the queued delivery drains.
+        releaseFetch({
+          ok: true,
+          status: 200,
+          text: jest.fn().mockResolvedValue(''),
+        });
+        await dispatcher.shutdown(5_000);
+        expect(dispatcher.pending).toBe(0);
+      });
+
+      it('surfaces queued webhook delivery failures in executionErrors on the next evaluation', async () => {
+        // A generic webhook endpoint that fails every attempt, then recovers.
+        let endpointHealthy = false;
+        const fetchMock = jest.fn().mockImplementation(async () =>
+          endpointHealthy
+            ? { ok: true, status: 200, text: async () => '' }
+            : {
+                ok: false,
+                status: 500,
+                text: async () => 'webhook exploded',
+              },
+        );
+        global.fetch = jest.mocked(fetchMock);
+
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+          dashboard,
+        } = await setupTileAlertForErrors({
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'https://webhook.site/fail',
+            name: 'Generic Webhook',
+            description: 'generic webhook',
+            body: JSON.stringify({ text: '{{title}}' }),
+          },
+        });
+
+        // Three consecutive breaching 5m windows so every tick fires.
+        const tickOne = new Date('2023-11-16T22:12:00.000Z');
+        const tickTwo = new Date('2023-11-16T22:17:00.000Z');
+        const tickThree = new Date('2023-11-16T22:22:00.000Z');
+        await bulkInsertLogs(
+          [tickOne, tickTwo, tickThree].flatMap(tick => {
+            const eventMs = tick.getTime() - ms('5m');
+            return [
+              {
+                ServiceName: 'api',
+                Timestamp: new Date(eventMs),
+                SeverityText: 'error',
+                Body: 'oh no',
+              },
+              {
+                ServiceName: 'api',
+                Timestamp: new Date(eventMs),
+                SeverityText: 'error',
+                Body: 'oh no',
+              },
+            ];
+          }),
+        );
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'tile-err',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        const dispatcher = new InProcessNotificationDispatcher();
+
+        // Tick 1: fires, delivery fails in the background AFTER the
+        // evaluation already persisted — executionErrors stays empty.
+        await processAlertAtTime(
+          tickOne,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+          dispatcher,
+        );
+        await dispatcher.shutdown(15_000);
+        let updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.ALERT);
+        expect(updated!.executionErrors ?? []).toHaveLength(0);
+
+        // Tick 2 (endpoint recovered): drains tick 1's buffered failure into
+        // executionErrors, so the failure surfaces one tick late.
+        endpointHealthy = true;
+        await processAlertAtTime(
+          tickTwo,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+          dispatcher,
+        );
+        await dispatcher.shutdown(15_000);
+        updated = await Alert.findById(details.alert.id);
+        expect(updated!.executionErrors).toHaveLength(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        expect(updated!.executionErrors![0].message).toBe(
+          'Failed to send webhook notification. Check the webhook configuration and destination.',
+        );
+        // The drained failure is also visible in the evaluation history as an
+        // ERROR row for tick 2's window.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+
+        // Tick 3: tick 2's delivery succeeded, nothing left to drain — the
+        // stale webhook error clears from executionErrors.
+        await processAlertAtTime(
+          tickThree,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+          dispatcher,
+        );
+        await dispatcher.shutdown(15_000);
+        updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.ALERT);
+        expect(updated!.executionErrors ?? []).toHaveLength(0);
       });
 
       it('sets state to OK and records a WEBHOOK_ERROR when a resolving webhook send fails', async () => {

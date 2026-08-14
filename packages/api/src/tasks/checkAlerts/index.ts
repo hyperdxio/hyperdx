@@ -41,6 +41,7 @@ import {
   pickSampleWeightExpressionProps,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
+import { trace } from '@opentelemetry/api';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -60,11 +61,14 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import {
+  getErrorMessage,
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
-  WEBHOOK_REDIRECT_ERROR_MESSAGE,
-  WebhookRedirectError,
+  makeAlertError,
+  makeWebhookAlertError,
 } from '@/tasks/checkAlerts/errors';
+import { getNotificationDispatcher } from '@/tasks/checkAlerts/notificationQueue';
+import { NotificationDispatcher } from '@/tasks/checkAlerts/notifications';
 import {
   AlertDetails,
   AlertProvider,
@@ -192,34 +196,6 @@ class InvalidAlertError extends Error {
   }
 }
 
-// For security, we do not surface raw error messages for webhook or unknown
-// failures — they may leak URLs, response bodies, or other sensitive detail
-// from upstream systems. QUERY_ERROR and INVALID_ALERT messages are authored
-// by us (ClickHouse errors or our own validation) and are safe to display.
-const HARDCODED_ALERT_ERROR_MESSAGES: Partial<Record<AlertErrorType, string>> =
-  {
-    [AlertErrorType.WEBHOOK_ERROR]:
-      'Failed to send webhook notification. Check the webhook configuration and destination.',
-    [AlertErrorType.UNKNOWN]:
-      'An unknown error occurred while processing the alert.',
-  };
-
-const makeAlertError = (
-  type: AlertErrorType,
-  message: string,
-): IAlertError => ({
-  timestamp: new Date(),
-  type,
-  message: (HARDCODED_ALERT_ERROR_MESSAGES[type] ?? message).slice(0, 10000),
-});
-
-const getErrorMessage = (e: unknown): string => {
-  if (e instanceof Error) {
-    return e.message;
-  }
-  return String(e);
-};
-
 const QUERY_TIMEOUT_RETRY_NOTE =
   'The evaluation is retried on every check, but the alert will not fire until the query completes in time.';
 
@@ -241,20 +217,6 @@ const makeQueryAlertError = (
     ? `Alert query did not complete within the ${Math.round(requestTimeoutMs / 1000)}s evaluation timeout. ${QUERY_TIMEOUT_RETRY_NOTE}`
     : `Alert query timed out before completing: ${getErrorMessage(e)}. ${QUERY_TIMEOUT_RETRY_NOTE}`;
   return makeAlertError(AlertErrorType.QUERY_TIMEOUT, message);
-};
-
-// Most webhook errors show a hardcoded message to avoid leaking sensitive request details in the UI.
-// Redirect errors are a known class of errors which we want to surface to the user, so it has a specific message.
-const makeWebhookAlertError = (error: unknown): IAlertError => {
-  if (error instanceof WebhookRedirectError) {
-    return {
-      timestamp: new Date(),
-      type: AlertErrorType.WEBHOOK_ERROR,
-      message: WEBHOOK_REDIRECT_ERROR_MESSAGE,
-    };
-  }
-
-  return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
 };
 
 export const doesExceedThreshold = (
@@ -406,6 +368,7 @@ const fireChannelEvent = async ({
   attributes,
   clickhouseClient,
   dashboard,
+  dispatcher,
   endTime,
   group,
   isGroupedAlert,
@@ -423,6 +386,7 @@ const fireChannelEvent = async ({
   attributes: Record<string, string>; // TODO: support other types than string
   clickhouseClient: ClickhouseClient;
   dashboard?: IDashboard | null;
+  dispatcher?: NotificationDispatcher;
   endTime: Date;
   group?: string;
   isGroupedAlert: boolean;
@@ -479,6 +443,7 @@ const fireChannelEvent = async ({
   await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
+    dispatcher,
     metadata,
     state,
     title: buildAlertMessageTemplateTitle({
@@ -813,6 +778,7 @@ export const processAlert = async (
   connectionId: string,
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
+  notificationDispatcher?: NotificationDispatcher,
 ) => {
   const { alert, previousMap, recentHistoryMap } = details;
   const source = 'source' in details ? details.source : undefined;
@@ -936,6 +902,16 @@ export const processAlert = async (
       return;
     }
 
+    // This evaluation is going to run (all skip gates passed) and every exit
+    // from here on persists executionErrors, so pick up webhook failures the
+    // background delivery queue buffered since the last evaluation. Queued
+    // deliveries fail after their originating evaluation already persisted
+    // state, so this is where they join the alert's executionErrors — one
+    // tick late, clearing once deliveries succeed again.
+    executionErrors.push(
+      ...(notificationDispatcher?.drainDeliveryFailures(alert.id) ?? []),
+    );
+
     const metadata = getMetadata(clickhouseClient);
 
     // For saved search alerts, the WHERE clause may reference aliased columns
@@ -1048,9 +1024,12 @@ export const processAlert = async (
       // Record the error on the alert and as an ERROR history row for this
       // window. ERROR rows are excluded from the due-ness gate and date-range
       // computation, so the failed window is still retried/backfilled.
+      // executionErrors carries any drained webhook delivery failures from
+      // earlier evaluations — recordAlertErrors replaces the alert's errors,
+      // so they must ride along or they would be silently dropped.
       await alertProvider.recordAlertErrors(
         alert.id,
-        [alertError],
+        [...executionErrors, alertError],
         nowInMinsRoundDown,
         evaluationAnalytics,
       );
@@ -1145,6 +1124,7 @@ export const processAlert = async (
           attributes,
           clickhouseClient,
           dashboard: (details as any).dashboard,
+          dispatcher: notificationDispatcher,
           startTime,
           endTime: fns.addMinutes(startTime, windowSizeInMins),
           group,
@@ -1514,9 +1494,11 @@ export const processAlert = async (
         ? AlertErrorType.INVALID_ALERT
         : AlertErrorType.UNKNOWN;
     try {
+      // Include any already-collected errors (e.g. drained webhook delivery
+      // failures) — recordAlertErrors replaces the alert's executionErrors.
       await alertProvider.recordAlertErrors(
         alert.id,
-        [makeAlertError(type, message)],
+        [...executionErrors, makeAlertError(type, message)],
         evaluationWindowStart,
         Object.keys(evaluationAnalytics).length > 0
           ? evaluationAnalytics
@@ -1786,6 +1768,9 @@ export default class CheckAlertTask implements HdxTask {
               conn.id,
               this.provider,
               teamWebhooksById,
+              // Cross-tick singleton: deliveries continue after this tick
+              // ends and are drained only at process exit.
+              getNotificationDispatcher(),
             ),
           );
         }
@@ -1877,11 +1862,21 @@ export default class CheckAlertTask implements HdxTask {
     // functions to execute. if not, execute will terminate without
     // executing all checks
     await this.task_queue.onIdle();
+    // Heartbeat reading: the notification queue outlives the tick, so record
+    // its backlog on the tick span (once a minute) where it stays sliceable.
+    const notificationQueueDepth = getNotificationDispatcher().pending;
+    trace
+      .getActiveSpan()
+      ?.setAttribute(
+        'hyperdx.alerts.notification_queue.depth',
+        notificationQueueDepth,
+      );
     logger.info(
       {
         args: this.args,
         taskCount,
         failedBatchCount,
+        notificationQueueDepth,
       },
       'finished processing all tasks on task_queue',
     );

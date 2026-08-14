@@ -7,6 +7,12 @@ import mongoose from 'mongoose';
 
 import { makeTile } from '@/fixtures';
 import { AlertSource } from '@/models/alert';
+import { IWebhook } from '@/models/webhook';
+import {
+  NotificationDispatcher,
+  NotificationJob,
+  zNotificationJobCore,
+} from '@/tasks/checkAlerts/notifications';
 import { loadProvider } from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
@@ -316,6 +322,106 @@ describe('renderAlertTemplate', () => {
         );
         expect(result).toMatchSnapshot();
       });
+    });
+  });
+
+  describe('notification dispatcher seam', () => {
+    const webhookId = '64a000000000000000000001';
+    const makeGenericWebhook = (): IWebhook =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ({
+        _id: {
+          toString: () => webhookId,
+        },
+        team: { toString: () => 'team-123' },
+        service: 'generic',
+        url: 'https://example.com/hook',
+        name: 'Test Webhook',
+      }) as unknown as IWebhook;
+
+    const makeNotifyingView = () => {
+      const view = makeSearchView();
+      view.alert.id = 'alert-123';
+      // Route the alert to a webhook channel so the default external action
+      // dispatches a notification during render.
+      view.alert.channel = { type: 'webhook', webhookId };
+      return view;
+    };
+
+    const originalFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('routes notifications through the provided dispatcher instead of delivering inline', async () => {
+      const fetchMock = jest.fn();
+      global.fetch = jest.mocked(fetchMock);
+      const dispatched: NotificationJob[] = [];
+      const dispatcher: NotificationDispatcher = {
+        dispatch: async job => {
+          dispatched.push(job);
+        },
+        shutdown: async () => {},
+        drainDeliveryFailures: () => [],
+      };
+
+      await renderAlertTemplate({
+        alertProvider,
+        clickhouseClient: mockClickhouseClient,
+        dispatcher,
+        metadata: mockMetadata,
+        state: AlertState.ALERT,
+        template: null,
+        title: 'Test Alert Title',
+        view: makeNotifyingView(),
+        teamWebhooksById: new Map([[webhookId, makeGenericWebhook()]]),
+      });
+
+      expect(dispatched).toHaveLength(1);
+      const job = dispatched[0];
+      expect(job).toMatchObject({
+        v: 1,
+        alertId: 'alert-123',
+        teamId: 'team-123',
+        channel: { type: 'webhook', webhookId },
+        message: {
+          title: 'Test Alert Title',
+          state: AlertState.ALERT,
+        },
+      });
+      expect(job.eventId).toEqual(job.message.eventId);
+      // The transport-local channel carries the resolved webhook doc.
+      expect(job.populatedChannel).toMatchObject({ type: 'webhook' });
+      // The serializable core is a valid wire message.
+      const { populatedChannel: _populatedChannel, ...core } = job;
+      expect(() =>
+        zNotificationJobCore.parse(JSON.parse(JSON.stringify(core))),
+      ).not.toThrow();
+      // Delivery was deferred to the dispatcher — nothing sent inline.
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('delivers inline when no dispatcher is provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue(''),
+      });
+      global.fetch = jest.mocked(fetchMock);
+
+      await renderAlertTemplate({
+        alertProvider,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
+        state: AlertState.ALERT,
+        template: null,
+        title: 'Test Alert Title',
+        view: makeNotifyingView(),
+        teamWebhooksById: new Map([[webhookId, makeGenericWebhook()]]),
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://example.com/hook');
     });
   });
 

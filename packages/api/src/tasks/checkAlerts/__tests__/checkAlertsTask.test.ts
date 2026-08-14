@@ -8,6 +8,7 @@ import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import * as checkAlerts from '@/tasks/checkAlerts';
 import CheckAlertTask from '@/tasks/checkAlerts';
+import { InProcessNotificationDispatcher } from '@/tasks/checkAlerts/notificationQueue';
 import {
   AlertDetails,
   AlertProvider,
@@ -167,6 +168,7 @@ describe('CheckAlertTask', () => {
         'conn-123',
         mockAlertProvider,
         teamWebhooksById,
+        expect.any(InProcessNotificationDispatcher),
       );
 
       mockProcessAlert.mockRestore();
@@ -308,6 +310,7 @@ describe('CheckAlertTask', () => {
         'conn-123',
         mockAlertProvider,
         team1WebhooksById,
+        expect.any(InProcessNotificationDispatcher),
       );
 
       // Second call should use team2's webhooks
@@ -319,6 +322,7 @@ describe('CheckAlertTask', () => {
         'conn-456',
         mockAlertProvider,
         team2WebhooksById,
+        expect.any(InProcessNotificationDispatcher),
       );
 
       // Verify getWebhooks was called for each team
@@ -427,6 +431,7 @@ describe('CheckAlertTask', () => {
           'conn-healthy',
           mockAlertProvider,
           expect.any(Map),
+          expect.any(InProcessNotificationDispatcher),
         );
       });
 

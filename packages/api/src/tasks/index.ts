@@ -4,6 +4,7 @@ import { serializeError } from 'serialize-error';
 
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import CheckAlertTask from '@/tasks/checkAlerts';
+import { shutdownNotificationDispatcher } from '@/tasks/checkAlerts/notificationQueue';
 import {
   taskExecutionDurationGauge,
   taskExecutionFailureCounter,
@@ -82,7 +83,11 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
 } else {
   logger.warn('In-app cron job is disabled');
   instrumentedMain(argv)
-    .then(() => {
+    .then(async () => {
+      // One-shot mode exits right after execute(); give the cross-tick
+      // notification queue a bounded window to flush queued deliveries
+      // before the process dies. No-op if never instantiated.
+      await shutdownNotificationDispatcher(60_000);
       process.exit(0);
     })
     .catch(err => {

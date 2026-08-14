@@ -1,4 +1,7 @@
 import { ClickHouseError } from '@clickhouse/client-common';
+import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
+
+import { IAlertError } from '@/models/alert';
 
 export const WEBHOOK_REDIRECT_ERROR_MESSAGE =
   'Webhook destination responded with a redirect. Redirects are not supported.';
@@ -12,6 +15,48 @@ export class WebhookRedirectError extends Error {
     this.status = status;
   }
 }
+
+// For security, we do not surface raw error messages for webhook or unknown
+// failures — they may leak URLs, response bodies, or other sensitive detail
+// from upstream systems. QUERY_ERROR and INVALID_ALERT messages are authored
+// by us (ClickHouse errors or our own validation) and are safe to display.
+const HARDCODED_ALERT_ERROR_MESSAGES: Partial<Record<AlertErrorType, string>> =
+  {
+    [AlertErrorType.WEBHOOK_ERROR]:
+      'Failed to send webhook notification. Check the webhook configuration and destination.',
+    [AlertErrorType.UNKNOWN]:
+      'An unknown error occurred while processing the alert.',
+  };
+
+export const makeAlertError = (
+  type: AlertErrorType,
+  message: string,
+): IAlertError => ({
+  timestamp: new Date(),
+  type,
+  message: (HARDCODED_ALERT_ERROR_MESSAGES[type] ?? message).slice(0, 10000),
+});
+
+export const getErrorMessage = (e: unknown): string => {
+  if (e instanceof Error) {
+    return e.message;
+  }
+  return String(e);
+};
+
+// Most webhook errors show a hardcoded message to avoid leaking sensitive request details in the UI.
+// Redirect errors are a known class of errors which we want to surface to the user, so it has a specific message.
+export const makeWebhookAlertError = (error: unknown): IAlertError => {
+  if (error instanceof WebhookRedirectError) {
+    return {
+      timestamp: new Date(),
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: WEBHOOK_REDIRECT_ERROR_MESSAGE,
+    };
+  }
+
+  return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
+};
 
 // @clickhouse/client (Node) rejects with these exact messages when the
 // configured request_timeout elapses or the request is aborted. See
