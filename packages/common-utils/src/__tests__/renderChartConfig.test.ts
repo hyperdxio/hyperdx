@@ -3966,7 +3966,7 @@ describe('renderChartConfig', () => {
       expect(sql.match(/SETTINGS/g)).toHaveLength(1);
     });
 
-    // Formula projection over the pivoted per-series columns (HDX-5079).
+    // Formula projection over the pivoted per-series columns.
     describe('formulas', () => {
       const pivot = (idx: number) =>
         `anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = ${idx})`;

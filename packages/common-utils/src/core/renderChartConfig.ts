@@ -121,7 +121,7 @@ export const isMetricChartConfig = (
   return chartConfig.metricTables != null;
 };
 
-/** Whether the config carries at least one metric formula (HDX-5079). */
+/** Whether the config carries at least one metric formula. */
 export const hasMetricFormulas = (
   chartConfig: BuilderChartConfigWithOptDateRange,
 ): boolean => (chartConfig.formulas?.length ?? 0) > 0;
@@ -2281,7 +2281,7 @@ export async function renderRawSqlChartConfig(
  *   columns with a single "<num>/<denom>" column: a missing numerator counts
  *   as 0, a missing or zero denominator yields NULL (a gap), and ratioMode
  *   'share_of_total' divides by the per-bucket denominator total;
- * - `formulas` (HDX-5079) append one derived column per formula after the
+ * - `formulas` append one derived column per formula after the
  *   operand value columns, compiled from the validated letter-ref AST over
  *   the pivot expressions with the same missing-data semantics as the ratio
  *   projection (see compileFormulaAst). `showOperandSeries: false` drops the

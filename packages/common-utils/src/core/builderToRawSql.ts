@@ -93,8 +93,8 @@ export async function renderBuilderConfigAsSqlTemplate(
   // That composed shape hasn't been wired into the raw-SQL template macros
   // yet ($__sourceTable(metricType) per branch), so only single-series metric
   // charts can be converted to a raw-SQL query for now. Formula charts
-  // (HDX-5079) render through the same composed shape regardless of series
-  // count, so they can't be converted either.
+  // render through the same composed shape regardless of series count, so
+  // they can't be converted either.
   const isMetric = config.metricTables != null;
   if (
     isMetric &&

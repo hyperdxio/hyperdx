@@ -515,7 +515,7 @@ const findRefPosition = (expression: string, ref: string): number => {
 
 /**
  * Compile a validated formula AST into a SQL expression over per-series value
- * expressions (HDX-5079).
+ * expressions.
  *
  * `resolveSeriesRef` maps a zero-based `select` index to the SQL expression
  * producing that series' value — for the composed multi-series metric query

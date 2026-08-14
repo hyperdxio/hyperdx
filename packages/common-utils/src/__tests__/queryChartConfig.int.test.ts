@@ -1267,7 +1267,7 @@ describe('queryChartConfig Integration Tests', () => {
           gaugeRow('tbl.one', insertTs(0), 'svc-a', 10),
           gaugeRow('tbl.one', insertTs(0), 'svc-b', 20),
           gaugeRow('tbl.two', insertTs(0), 'svc-a', 100),
-          // Formula motivating example (HDX-4938):
+          // Formula motivating example:
           // success / (success + error + fsi) * 100. Bucket 0 has all three
           // operands; bucket 1 has only a zero success (zero denominator);
           // bucket 2 has only errors (missing numerator).
@@ -1835,10 +1835,10 @@ describe('queryChartConfig Integration Tests', () => {
       expect(col(data[0], 'avg(tbl.two)')).toBe(100);
     });
 
-    // Formulas compile into the composed query's final projection (HDX-5079),
-    // reusing the same fixtures as the merge baseline above.
+    // Formulas compile into the composed query's final projection, reusing
+    // the same fixtures as the merge baseline above.
     describe('formulas', () => {
-      it('computes the HDX-4938 motivating example: A / (A + B + C) * 100', async () => {
+      it('computes the motivating success-rate example: A / (A + B + C) * 100', async () => {
         const result = await runConfig(
           baseConfig({
             select: [

@@ -494,7 +494,7 @@ describe('compileFormulaAst', () => {
     );
   });
 
-  it('compiles the HDX-4938 motivating example', () => {
+  it('compiles the motivating success-rate example', () => {
     expect(compile('A / (A + B + C) * 100')).toBe(
       '((coalesce(v0, 0) / nullif(((coalesce(v0, 0) + coalesce(v1, 0)) + coalesce(v2, 0)), 0)) * 100)',
     );
