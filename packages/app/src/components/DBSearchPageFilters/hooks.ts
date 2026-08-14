@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import produce from 'immer';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
 } from '@hyperdx/common-utils/dist/filters';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  isMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import {
   Facet,
@@ -28,9 +35,35 @@ const INITIAL_LOAD_LIMIT = 20;
 /* The maximum number of values per filter to load when "Load More" is clicked */
 const LOAD_MORE_LOAD_LIMIT = 10000;
 
+/**
+ * Decide which table key-value discovery reads from.
+ *
+ * The source stays authoritative whenever we have one, so its metadata
+ * materialized views keep serving discovery. `fallback` — the table connection
+ * a caller passes — is consulted in the two cases the source can't answer:
+ *
+ *  - No source id is provided
+ *  - A metric source, in which case the fallback provides the metric type's table name
+ */
+export function resolveTableConnection(
+  source: TSource | undefined,
+  fallback: TableConnection | undefined,
+): TableConnection {
+  const isFallbackUsable =
+    !!fallback?.databaseName && !!fallback.tableName && !!fallback.connectionId;
+  if (!source) {
+    return isFallbackUsable ? fallback : tcFromSource(undefined);
+  }
+  if (isMetricSource(source) && isFallbackUsable) {
+    return fallback;
+  }
+  return tcFromSource(source);
+}
+
 function useFacets({
   chartConfig,
   sourceId,
+  tableConnection: tableConnectionFallback,
   mode,
   dateRange,
   filterState,
@@ -40,6 +73,11 @@ function useFacets({
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
+  /**
+   * A table where keys and values are discovered. Used when sourceId
+   * is not provided or references a metrics source.
+   */
+  tableConnection?: TableConnection;
   mode: 'all' | 'exact';
   dateRange: [Date, Date];
   filterState?: FilterState;
@@ -50,7 +88,10 @@ function useFacets({
   const { data: source } = useSource({
     id: sourceId,
   });
-  const tableConnection = useMemo(() => tcFromSource(source), [source]);
+  const tableConnection = useMemo(
+    () => resolveTableConnection(source, tableConnectionFallback),
+    [source, tableConnectionFallback],
+  );
   const { data: columns, isLoading: isColumnsLoading } =
     useColumns(tableConnection);
   const dateTimeColumns = useDateTimeColumns(columns);
@@ -199,18 +240,27 @@ function useFacets({
           };
         }
 
-        if (!source) {
-          throw new Error('loadMoreFacetsForKey: source must be defined');
+        if (
+          !tableConnection.databaseName ||
+          !tableConnection.tableName ||
+          !tableConnection.connectionId
+        ) {
+          throw new Error(
+            'loadMoreFacetsForKey: a source or table connection must be defined',
+          );
         }
         const newKeyVals = await metadata.getAllKeyValues({
-          databaseName: source.from.databaseName,
-          tableName: source.from.tableName,
-          connectionId: source.connection,
+          databaseName: tableConnection.databaseName,
+          tableName: tableConnection.tableName,
+          connectionId: tableConnection.connectionId,
           metadataMVs: tableConnection.metadataMVs,
           keyExpressions: [sqlKey],
           maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
           dateRange,
-          timestampValueExpression: source.timestampValueExpression,
+          timestampValueExpression:
+            source?.timestampValueExpression ??
+            chartConfig.timestampValueExpression ??
+            '',
         });
         return {
           key,
@@ -249,6 +299,7 @@ function useFacets({
 export function useFetchFacets({
   chartConfig,
   sourceId,
+  tableConnection,
   dateRange,
   mode,
   filterState,
@@ -257,6 +308,11 @@ export function useFetchFacets({
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
+  /**
+   * A table where keys and values are discovered. Used when sourceId
+   * is not provided or references a metrics source.
+   */
+  tableConnection?: TableConnection;
   dateRange: [Date, Date];
   mode: 'all' | 'exact';
   filterState?: FilterState;
@@ -266,6 +322,7 @@ export function useFetchFacets({
   const facetsQuery = useFacets({
     chartConfig,
     sourceId,
+    tableConnection,
     mode,
     dateRange,
     filterState,
@@ -353,6 +410,9 @@ export function useFetchFacets({
     setExtraFacetKeys(new Set());
   }, [
     sourceId,
+    tableConnection?.databaseName,
+    tableConnection?.tableName,
+    tableConnection?.connectionId,
     dateRange,
     mode,
     filterState,

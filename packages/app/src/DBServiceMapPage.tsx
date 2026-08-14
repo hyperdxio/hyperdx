@@ -412,7 +412,7 @@ const DBServiceMapPageDynamic = dynamic(async () => DBServiceMapPage, {
   ssr: false,
 });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 DBServiceMapPageDynamic.getLayout = withAppNav;
 
 export default DBServiceMapPageDynamic;

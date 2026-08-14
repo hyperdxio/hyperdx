@@ -119,10 +119,10 @@ export function isUserAuthenticated(
     // If local app mode is enabled, skip authentication
     logger.warn('Skipping authentication in local app mode');
     req.user = {
-      // @ts-ignore
+      // @ts-expect-error local app mode uses a synthetic string id, not an ObjectId
       _id: '_local_user_',
       email: 'local-user@hyperdx.io',
-      // @ts-ignore
+      // @ts-expect-error local app mode uses a synthetic string team, not an ObjectId
       team: '_local_team_',
     };
     setBusinessContext({

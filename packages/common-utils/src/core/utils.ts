@@ -585,7 +585,7 @@ export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 };
 
 export const parseJSON = <T = any>(json: string) => {
-  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  const [_error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
 

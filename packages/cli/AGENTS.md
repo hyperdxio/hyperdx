@@ -147,8 +147,8 @@ dashboard**:
    (`convertToTimeChartConfig` / `convertToNumberChartConfig` /
    `convertToTableChartConfig` / `convertToCategoricalChartConfig`).
 2. `shared/tileQuery.ts` executes it via `clickhouseClient.queryChartConfig()`
-   from common-utils — internally
-   `setChartSelectsAlias → splitChartConfigs → renderChartConfig`, identical to
+   from common-utils — internally `setChartSelectsAlias → renderChartConfig`
+   (one composed statement, even for multi-series metric charts), identical to
    the web's `useQueriedChartConfig` core (minus chunking / MV optimization /
    PromQL).
 3. `shared/chartData.ts` shapes the response (ports of

@@ -45,7 +45,7 @@ function AggFnSelect({
           level: Number.parseFloat(value.replace('p', '0.')),
         });
       } else {
-        // @ts-ignore
+        // @ts-expect-error Mantine Select passes a string; onChange expects a narrowed AggFn union
         onChange({ aggFn: value });
       }
     },

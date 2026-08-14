@@ -24,7 +24,7 @@ export default class Server {
     return http.createServer(opampApp);
   }
 
-  protected async shutdown(signal?: string) {
+  protected async shutdown(_signal?: string) {
     let hasError = false;
     logger.info('Closing all db clients...');
     const [mongoCloseResult] = await Promise.allSettled([
