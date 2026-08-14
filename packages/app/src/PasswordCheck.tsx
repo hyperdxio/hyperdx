@@ -1,11 +1,18 @@
 import { useMemo } from 'react';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  passwordValidators,
+} from '@hyperdx/common-utils/dist/validation';
 import { IconCheck, IconX } from '@tabler/icons-react';
 
-const checkLength = (password: string) => password.length >= 12;
-const checkOneUpper = (password: string) => /[A-Z]+/.test(password);
-const checkOneLower = (password: string) => /[a-z]+/.test(password);
-const checkOneNumber = (password: string) => /\d+/.test(password);
-const checkOneSpecial = (password: string) => /\W+/.test(password);
+const checkLength = (password: string) =>
+  passwordValidators.hasMinLength(password) &&
+  passwordValidators.hasMaxLength(password);
+const checkOneUpper = passwordValidators.hasUpperCase;
+const checkOneLower = passwordValidators.hasLowerCase;
+const checkOneNumber = passwordValidators.hasNumber;
+const checkOneSpecial = passwordValidators.hasSpecialChar;
 
 export const PasswordCheck = (opts: { password: string }) => {
   const password = opts.password;
@@ -13,7 +20,7 @@ export const PasswordCheck = (opts: { password: string }) => {
     <div>
       <div>
         <CheckOrX handler={checkLength} password={password}>
-          minimum 12 characters
+          between {PASSWORD_MIN_LENGTH} and {PASSWORD_MAX_LENGTH} characters
         </CheckOrX>
       </div>
       <div>
