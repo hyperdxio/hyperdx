@@ -86,7 +86,7 @@ export default function ServiceDashboardEndpointSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel}>
             <DrawerHeader
@@ -217,7 +217,7 @@ export default function ServiceDashboardEndpointSidePanel({
             </DrawerBody>
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

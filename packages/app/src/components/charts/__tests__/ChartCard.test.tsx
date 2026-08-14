@@ -5,8 +5,12 @@ import ChartContainer from '@/components/charts/ChartContainer';
 
 // The header row (the Group wrapping the title) gets a bottom border only in
 // "card mode", which ChartCard turns on via its context provider.
-function headerRowFor(title: string) {
-  return screen.getByText(title).parentElement as HTMLElement;
+function headerRowFor(title: string): HTMLElement {
+  const headerRow = screen.getByText(title).parentElement;
+  if (headerRow == null) {
+    throw new Error(`Expected a parent element for "${title}"`);
+  }
+  return headerRow;
 }
 
 describe('ChartCard', () => {
