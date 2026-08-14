@@ -32,6 +32,7 @@ import {
   displayTypeSupportsPromQLAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
@@ -107,6 +108,7 @@ import {
   IconPlus,
   IconPresentation,
   IconRefresh,
+  IconRocket,
   IconSearch,
   IconSquaresDiagonal,
   IconTags,
@@ -118,6 +120,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
+import { mergeAnnotations } from '@/components/charts/chartAnnotations';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
@@ -154,6 +157,7 @@ import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
+import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -391,6 +395,7 @@ const Tile = ({
   filters,
   variables,
   showAlertAnnotations,
+  showReleaseAnnotations,
   isLive,
   readOnly,
 
@@ -422,6 +427,8 @@ const Tile = ({
   variables?: ChartVariable[];
   // When true, draw alert firing/recovery annotations on this tile's chart.
   showAlertAnnotations?: boolean;
+  // When true, draw release markers on this tile's chart.
+  showReleaseAnnotations?: boolean;
   isLive?: boolean;
   readOnly?: boolean;
 
@@ -672,13 +679,46 @@ const Tile = ({
     return tooltip;
   }, [alert]);
 
+  const tileCanDrawAnnotations = isTimeSeriesDisplayType(
+    chart.config.displayType,
+  );
+
   // Firing/recovery markers for this tile's alert, scoped to the *visible*
   // window — the fullscreen range while the fullscreen view is open, else the
   // dashboard range (off unless the dashboard toggle is on).
   const alertAnnotations = useAlertAnnotations(
     alert?.id,
     isFullscreen ? fullscreenDateRange : dateRange,
-    showAlertAnnotations,
+    showAlertAnnotations && tileCanDrawAnnotations,
+  );
+
+  // Release markers, over the same visible window. Scoped to this tile: the
+  // query runs against the tile's own source with the tile's own predicates,
+  // so a chart filtered to one service isn't annotated with another's
+  // releases. Tiles sharing a source and filters share one query.
+  //
+  // A time chart's filter lives in each series' `aggCondition`, not in the
+  // statement-level `where` (the editor clears that one), so `select` has to
+  // come along for the scoping to mean anything — `where` is carried for the
+  // configs that do set it, e.g. an imported dashboard.
+  const builderConfig = isBuilderSavedChartConfig(chart.config)
+    ? chart.config
+    : undefined;
+  const releaseAnnotations = useReleaseAnnotations(
+    isFullscreen ? fullscreenDateRange : dateRange,
+    showReleaseAnnotations && tileCanDrawAnnotations,
+    {
+      source,
+      where: builderConfig?.where,
+      whereLanguage: builderConfig?.whereLanguage,
+      select: builderConfig?.select,
+      filters,
+    },
+  );
+
+  const annotations = useMemo(
+    () => mergeAnnotations(alertAnnotations, releaseAnnotations),
+    [alertAnnotations, releaseAnnotations],
   );
 
   const filterWarning = useMemo(() => {
@@ -1167,7 +1207,7 @@ const Tile = ({
                   showDisplaySwitcher={!readOnly}
                   enabled={chartEnabled}
                   config={effectiveQueriedConfig}
-                  annotations={alertAnnotations}
+                  annotations={annotations}
                   onTimeRangeSelect={
                     readOnly
                       ? undefined
@@ -1378,7 +1418,7 @@ const Tile = ({
       isSourceMissing,
       isSourceUnset,
       hasBeenVisible,
-      alertAnnotations,
+      annotations,
       isLive,
       readOnly,
     ],
@@ -1790,6 +1830,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   // Ephemeral view state (URL param), not persisted on the dashboard.
   const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
     'alertAnnotations',
+    parseAsBoolean.withDefault(false),
+  );
+  // Same for release markers, derived from `service.version` changes.
+  const [showReleaseAnnotations, setShowReleaseAnnotations] = useQueryState(
+    'releaseMarkers',
     parseAsBoolean.withDefault(false),
   );
 
@@ -2260,6 +2305,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           variables={showFilterVariableOptions ? variables : undefined}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
+          showReleaseAnnotations={showReleaseAnnotations}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={
             isKioskMode
@@ -2357,6 +2403,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
+      showReleaseAnnotations,
       getFilterQueriesForSource,
       showFilterVariableOptions,
       variables,
@@ -2801,15 +2848,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {(hasTiles || containers.length > 0) && (
             <>
               {hasTiles && (
-                <Menu.Item
-                  leftSection={<IconTimelineEvent size={16} />}
-                  onClick={() => setShowAlertAnnotations(v => !v)}
-                  data-testid="toggle-alert-annotations-menu-item"
-                >
-                  {showAlertAnnotations
-                    ? 'Hide alert annotations'
-                    : 'Show alert annotations'}
-                </Menu.Item>
+                <>
+                  <Menu.Item
+                    leftSection={<IconTimelineEvent size={16} />}
+                    onClick={() => setShowAlertAnnotations(v => !v)}
+                    data-testid="toggle-alert-annotations-menu-item"
+                  >
+                    {showAlertAnnotations
+                      ? 'Hide alert annotations'
+                      : 'Show alert annotations'}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconRocket size={16} />}
+                    onClick={() => setShowReleaseAnnotations(v => !v)}
+                    data-testid="toggle-release-annotations-menu-item"
+                  >
+                    {showReleaseAnnotations
+                      ? 'Hide release markers'
+                      : 'Show release markers'}
+                  </Menu.Item>
+                </>
               )}
               {containers.length > 0 && (
                 <>
