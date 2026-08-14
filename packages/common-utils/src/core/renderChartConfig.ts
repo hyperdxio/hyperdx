@@ -157,6 +157,16 @@ export const setChartSelectsAlias = (
 const MULTI_SERIES_VALUE_ALIAS = '__hdx_value';
 const MULTI_SERIES_IDX_ALIAS = '__hdx_series_idx';
 
+/**
+ * Render a user-facing output column name as a ClickHouse double-quoted
+ * identifier. User aliases (and metric names, which flow into the default
+ * aliases) can contain double quotes; ClickHouse escapes them by doubling,
+ * so `bad"name` becomes "bad""name" instead of terminating the identifier
+ * early. Escaping happens only at SQL-emission time — collision dedup and
+ * the meta column names consumers see keep the raw name.
+ */
+const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
+
 // Histogram translations bake the group-by dimensions into a single Array
 // column named GROUP_ALIAS instead of projecting them as individual columns
 // (see translateHistogram), so grouped histogram rows never share a merge key
@@ -2475,11 +2485,15 @@ async function renderMultiSeriesMetricChartConfig(
     // pivot expressions).
     if (chartConfig.showOperandSeries !== false) {
       outputNames.forEach((outputName, splitIdx) => {
-        projection.push(`${valueExprFor(splitIdx)} AS "${outputName}"`);
+        projection.push(
+          `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+        );
       });
     }
     formulaColumns.forEach(({ name, ast }) => {
-      projection.push(`${compileFormulaAst(ast, valueExprFor)} AS "${name}"`);
+      projection.push(
+        `${compileFormulaAst(ast, valueExprFor)} AS ${quotedColumnName(name)}`,
+      );
     });
   } else if (isRatio) {
     // A group absent from the (filtered) numerator contributes zero, not
@@ -2502,11 +2516,13 @@ async function renderMultiSeriesMetricChartConfig(
     // same-alias ratio reads "avg(x)/avg(x)", not "avg(x)/avg(x)__1".
     const ratioName = `${outputNames[0]}/${outputNames[1].replace(/__\d+$/, '')}`;
     projection.push(
-      `${numerator} / nullif(${denominator}, 0) AS "${ratioName}"`,
+      `${numerator} / nullif(${denominator}, 0) AS ${quotedColumnName(ratioName)}`,
     );
   } else {
     outputNames.forEach((outputName, splitIdx) => {
-      projection.push(`${valueExprFor(splitIdx)} AS "${outputName}"`);
+      projection.push(
+        `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+      );
     });
   }
 
