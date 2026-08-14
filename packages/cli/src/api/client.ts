@@ -274,9 +274,7 @@ export class ApiClient {
     return res.json() as Promise<DashboardResponse[]>;
   }
 
-  async createDashboard(
-    input: DashboardWithoutId,
-  ): Promise<DashboardResponse> {
+  async createDashboard(input: DashboardWithoutId): Promise<DashboardResponse> {
     const res = await this.post('/dashboards', input);
     if (!res.ok) {
       throw new Error(

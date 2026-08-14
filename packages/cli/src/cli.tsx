@@ -1170,7 +1170,9 @@ Examples:
       _origError(chalk.red('Dashboard definition is invalid:\n'));
       for (const issue of parsed.error.issues) {
         _origError(
-          chalk.red(`  - ${issue.path.join('.') || '(root)'}: ${issue.message}`),
+          chalk.red(
+            `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`,
+          ),
         );
       }
       process.exit(1);
@@ -1283,11 +1285,7 @@ savedSearchesCmd
     "Source name or ID (from 'hdx sources --json')",
   )
   .option('--where <condition>', 'Filter condition', '')
-  .option(
-    '--where-language <lang>',
-    'Filter language: lucene or sql',
-    'lucene',
-  )
+  .option('--where-language <lang>', 'Filter language: lucene or sql', 'lucene')
   .option(
     '--select <clause>',
     'SELECT clause (default: source default columns)',
