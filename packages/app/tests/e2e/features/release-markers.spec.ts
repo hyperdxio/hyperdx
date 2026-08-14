@@ -144,6 +144,35 @@ test.describe('Release markers', { tag: ['@full-stack', '@dashboard'] }, () => {
     await expect(page).not.toHaveURL(/releaseMarkers=true/);
   });
 
+  // The test above filters the *dashboard*; this one filters the *tile*. They
+  // are different fields — a dashboard filter travels as `filters`, while a
+  // time chart's own filter is stored as its series' `aggCondition`, not in the
+  // config's statement-level `where` (the editor clears that). Reading only
+  // `where` left every time chart's markers unscoped, and because the resulting
+  // markers then spanned two services with no matching line, they were all
+  // suppressed: filter to one service, see nothing.
+  test("scopes markers to the tile's own filter", async ({ page }) => {
+    await seedReleases();
+
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.addTileWithSource(
+      'Tile-filtered markers',
+      DEFAULT_LOGS_SOURCE_NAME,
+      `ServiceName:"${RELEASE_SERVICE}"`,
+    );
+    // No dashboard-wide filter this time: the tile's own filter has to be what
+    // narrows the releases query.
+    await dashboardPage.toggleReleaseAnnotations();
+
+    await expect(page).toHaveURL(/releaseMarkers=true/);
+
+    const labels = dashboardPage.getAnnotationLabels();
+    await expect(dashboardPage.getAnnotationMarkers()).toHaveCount(2);
+    await expect(labels.filter({ hasText: OLD_VERSION })).toBeVisible();
+    await expect(labels.filter({ hasText: NEW_VERSION })).toBeVisible();
+    await expect(labels.filter({ hasText: OTHER_VERSION })).toHaveCount(0);
+  });
+
   // Colour alone can't identify a service once the legend overflows its 4-item
   // cap and the matching entry hides behind "+N more". Hover has to name the
   // service outright.
