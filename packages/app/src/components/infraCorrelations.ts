@@ -1,3 +1,5 @@
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+
 import {
   GPU_UTILIZATION_NUMBER_FORMAT,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -6,9 +8,9 @@ import {
 } from '@/ChartUtils';
 import { NumberFormat } from '@/types';
 
-// One metric chart inside an infrastructure correlation group. The rendered
-// metric field is `${fieldPrefix}${field} - ${metricType}` (see DBInfraPanel),
-// so `field` is the metric name without the resource prefix or the type suffix.
+// One metric chart inside an infrastructure correlation group. The queried
+// metric name is `${fieldPrefix}${field}` (see DBInfraPanel), so `field` is
+// the metric name without the resource prefix.
 export type InfraChartSpec = {
   readonly title: string;
   // data-testid for the chart card; the e2e suite selects on these.
@@ -19,8 +21,8 @@ export type InfraChartSpec = {
   readonly where?: string;
   // Per-chart groupBy SQL expressions (passed through as raw SQL).
   readonly groupBy?: readonly string[];
-  // Metric data type suffix; defaults to 'Gauge'.
-  readonly metricType?: 'Gauge' | 'Sum';
+  // Defaults to Gauge.
+  readonly metricType?: MetricsDataType;
 };
 
 // A declarative infrastructure correlation group. `detectAttribute` decides

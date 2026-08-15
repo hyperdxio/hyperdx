@@ -1,9 +1,9 @@
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+
 import {
   getActiveInfraCorrelations,
   INFRA_CORRELATIONS,
 } from '@/components/infraCorrelations';
-import type { GpuMetricsAvailability } from '@/hooks/useGpuMetricsAvailability';
-import { resolveChartAvailability } from '@/hooks/useGpuMetricsAvailability';
 
 describe('getActiveInfraCorrelations', () => {
   it('returns the Pod group when only k8s.pod.uid is present', () => {
@@ -73,11 +73,18 @@ describe('INFRA_CORRELATIONS built-ins', () => {
     ]);
   });
 
+  it('gates only the GPU group on metric availability', () => {
+    for (const correlation of INFRA_CORRELATIONS) {
+      expect(!!correlation.requiresMetricAvailability).toBe(
+        correlation.title === 'GPU',
+      );
+    }
+  });
+
   it('keeps the Pod Timeline only on the Pod group', () => {
-    const node = INFRA_CORRELATIONS.find(c => c.title === 'Node');
-    expect(node?.timeline).toBeUndefined();
-    const gpu = INFRA_CORRELATIONS.find(c => c.title === 'GPU');
-    expect(gpu?.timeline).toBeUndefined();
+    expect(
+      INFRA_CORRELATIONS.filter(c => c.timeline != null).map(c => c.title),
+    ).toEqual(['Pod']);
   });
 
   it('keeps the three k8s metric fields on Pod and Node groups', () => {
@@ -91,6 +98,35 @@ describe('INFRA_CORRELATIONS built-ins', () => {
       ]);
     }
   });
+
+  it('produces the expected fully-qualified metric names per group', () => {
+    const names = INFRA_CORRELATIONS.map(c => ({
+      title: c.title,
+      metrics: c.charts.map(chart => `${c.fieldPrefix}${chart.field}`),
+    }));
+    expect(names).toEqual([
+      {
+        title: 'Pod',
+        metrics: [
+          'k8s.pod.cpu.utilization',
+          'k8s.pod.memory.usage',
+          'k8s.pod.filesystem.available',
+        ],
+      },
+      {
+        title: 'Node',
+        metrics: [
+          'k8s.node.cpu.utilization',
+          'k8s.node.memory.usage',
+          'k8s.node.filesystem.available',
+        ],
+      },
+      {
+        title: 'GPU',
+        metrics: ['hw.gpu.utilization', 'hw.gpu.memory.utilization'],
+      },
+    ]);
+  });
 });
 
 describe('GPU chart specs', () => {
@@ -103,7 +139,7 @@ describe('GPU chart specs', () => {
     ]);
   });
 
-  it('uses correct where clause for utilization (no _exists_ syntax)', () => {
+  it('uses field:* for the task existence check, not _exists_', () => {
     const utilizationChart = gpuCorrelation.charts.find(
       c => c.cardTestId === 'gpu-utilization-card',
     );
@@ -112,14 +148,14 @@ describe('GPU chart specs', () => {
     );
   });
 
-  it('does not define a fallback on memory utilization', () => {
+  it('does not filter the memory chart on hw.gpu.task', () => {
     const memChart = gpuCorrelation.charts.find(
       c => c.cardTestId === 'gpu-memory-utilization-card',
     );
-    expect(memChart).not.toHaveProperty('fallback');
+    expect(memChart?.where).toBeUndefined();
   });
 
-  it('includes hw.id/hw.name/hw.model in groupBy expression', () => {
+  it('includes hw.id/hw.name/hw.model in the groupBy expression', () => {
     for (const chart of gpuCorrelation.charts) {
       expect(chart.groupBy).toHaveLength(1);
       const expr = chart.groupBy![0];
@@ -128,56 +164,12 @@ describe('GPU chart specs', () => {
       expect(expr).toContain("Attributes['hw.model']");
     }
   });
-});
 
-describe('resolveChartAvailability', () => {
-  const fieldPrefix = 'hw.gpu.';
-
-  const makeAvailability = (metrics: string[]): GpuMetricsAvailability => ({
-    availableMetrics: new Set(metrics),
-    hasAny: metrics.length > 0,
-    isLoading: false,
-  });
-
-  it('returns true when the metric exists', () => {
-    const chart = { field: 'utilization' };
-    const availability = makeAvailability(['hw.gpu.utilization']);
-    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      true,
-    );
-  });
-
-  it('returns false when the metric does not exist', () => {
-    const chart = { field: 'utilization' };
-    const availability = makeAvailability([]);
-    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      false,
-    );
-  });
-
-  it('returns true for memory.utilization when present', () => {
-    const chart = { field: 'memory.utilization' };
-    const availability = makeAvailability(['hw.gpu.memory.utilization']);
-    expect(resolveChartAvailability(fieldPrefix, chart, availability)).toBe(
-      true,
-    );
-  });
-
-  it('handles partial availability (one present, one absent)', () => {
-    const availability = makeAvailability(['hw.gpu.utilization']);
-    expect(
-      resolveChartAvailability(
-        fieldPrefix,
-        { field: 'utilization' },
-        availability,
-      ),
-    ).toBe(true);
-    expect(
-      resolveChartAvailability(
-        fieldPrefix,
-        { field: 'memory.utilization' },
-        availability,
-      ),
-    ).toBe(false);
+  it('reads GPU metrics from the gauge table', () => {
+    for (const chart of gpuCorrelation.charts) {
+      expect(chart.metricType ?? MetricsDataType.Gauge).toBe(
+        MetricsDataType.Gauge,
+      );
+    }
   });
 });
