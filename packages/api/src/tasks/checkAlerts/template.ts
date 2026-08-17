@@ -29,14 +29,13 @@ import {
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
 import {
-  createHandlebarsWithHelpers,
-  Message,
-  notifyChannel,
-} from '@/tasks/checkAlerts/notifications';
-import {
   AlertProvider,
   PopulatedAlertChannel,
 } from '@/tasks/checkAlerts/providers';
+import {
+  createHandlebarsWithHelpers,
+  deliverToChannel,
+} from '@/tasks/checkAlerts/transports';
 import { unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
@@ -183,7 +182,7 @@ export const buildAlertMessageTemplateHdxLink = (
     });
   }
 
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+  throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
 export const buildAlertMessageTemplateTitle = ({
@@ -231,7 +230,7 @@ export const buildAlertMessageTemplateTitle = ({
     return `${emoji}${baseTitle}`;
   }
 
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+  throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
 export const getDefaultExternalAction = (
@@ -400,9 +399,9 @@ export const renderAlertTemplate = async ({
           ...(view.isGroupedAlert && group ? { groupId: group } : {}),
         });
 
-        await notifyChannel({
+        await deliverToChannel(
           channel,
-          message: {
+          {
             hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
             title,
             body: renderedBody,
@@ -411,7 +410,8 @@ export const renderAlertTemplate = async ({
             endTime,
             eventId,
           },
-        });
+          { group },
+        );
       }
     });
   };
@@ -536,5 +536,5 @@ ${targetTemplate}`;
     return compiledTemplate(view);
   }
 
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+  throw new Error(`Unsupported alert source: ${alert.source}`);
 };

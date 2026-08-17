@@ -4,15 +4,19 @@ import Handlebars from 'handlebars';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
-import { AlertState } from '@/models/alert';
 import { IWebhook } from '@/models/webhook';
-import { WebhookRedirectError } from '@/tasks/checkAlerts/errors';
-import { PopulatedAlertChannel } from '@/tasks/checkAlerts/providers';
+import {
+  WebhookRedirectError,
+  WebhookResponseError,
+} from '@/tasks/checkAlerts/errors';
+import type {
+  Message,
+  WebhookChannel,
+} from '@/tasks/checkAlerts/transports/types';
 import { escapeJsonString } from '@/tasks/util';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
-import * as slack from '@/utils/slack';
 import {
   validateWebhookUrl,
   WebhookUrlValidationError,
@@ -21,11 +25,14 @@ import {
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
 // happens in the background task, so failures only show up in logs today.
 // `service` and `outcome` are bounded enums (see agent_docs/observability.md).
-const webhookDeliveryCounter = getCounter('hyperdx.alerts.webhook_deliveries', {
-  description:
-    'Count of alert webhook delivery attempts, labeled by service (slack, generic, incidentio) and outcome (success, error).',
-});
-const webhookDeliveryDuration = getHistogram(
+export const webhookDeliveryCounter = getCounter(
+  'hyperdx.alerts.webhook_deliveries',
+  {
+    description:
+      'Count of alert webhook delivery attempts, labeled by service (slack, generic, incidentio) and outcome (success, error).',
+  },
+);
+export const webhookDeliveryDuration = getHistogram(
   'hyperdx.alerts.webhook_delivery.duration_ms',
   {
     description:
@@ -34,7 +41,10 @@ const webhookDeliveryDuration = getHistogram(
   },
 );
 
-const logBlockedWebhookDelivery = (error: unknown, webhook: IWebhook) => {
+export const logBlockedWebhookDelivery = (
+  error: unknown,
+  webhook: IWebhook,
+) => {
   if (error instanceof WebhookUrlValidationError) {
     logger.warn(
       {
@@ -67,84 +77,26 @@ export const createHandlebarsWithHelpers = () => {
   return hb;
 };
 
-export interface Message {
-  hdxLink: string;
-  title: string;
-  body: string;
-  state: AlertState;
-  startTime: number;
-  endTime: number;
-  eventId: string;
-}
-
-export const notifyChannel = async ({
-  channel,
-  message,
-}: {
-  channel: PopulatedAlertChannel;
-  message: Message;
-}) => {
-  switch (channel.type) {
-    case 'webhook': {
-      const webhook = channel.channel;
-      // TODO: migrate to use handleSendGenericWebhook so templates can be used
-      if (webhook.service === WebhookService.Slack) {
-        await handleSendSlackWebhook(webhook, message);
-      } else if (
-        webhook.service === WebhookService.Generic ||
-        webhook.service === WebhookService.IncidentIO
-      ) {
-        await handleSendGenericWebhook(webhook, message);
-      }
-      break;
-    }
-    default:
-      throw new Error(`Unsupported channel type: ${channel.type}`);
-  }
-};
-
-export const handleSendSlackWebhook = async (
-  webhook: IWebhook,
-  message: Message,
-) => {
-  const startedAt = performance.now();
-  try {
-    validateWebhookUrl(webhook);
-
-    await slack.postMessageToWebhook(webhook.url, {
-      text: message.title,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
-          },
-        },
-      ],
-    });
-    webhookDeliveryCounter.add(1, {
-      service: WebhookService.Slack,
-      outcome: 'success',
-    });
-  } catch (e) {
-    logBlockedWebhookDelivery(e, webhook);
-    webhookDeliveryCounter.add(1, {
-      service: WebhookService.Slack,
-      outcome: 'error',
-    });
-    throw e;
-  } finally {
-    webhookDeliveryDuration.record(performance.now() - startedAt, {
-      service: WebhookService.Slack,
-    });
-  }
+/**
+ * Bounds a single attempt so a black-holed receiver releases its socket. Read
+ * lazily, not as a module const, so integration tests can override per suite.
+ *
+ * Not wired into the `fetch()` call below yet — a follow-up task threads it
+ * through as an `AbortSignal`. Exported now as part of the transport
+ * registry's public surface (see `ChannelTransport`'s `signal` field).
+ *
+ * @public
+ */
+export const getWebhookFetchTimeoutMs = () => {
+  const parsed = Number(process.env.ALERT_NOTIFICATION_FETCH_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
 };
 
 export const handleSendGenericWebhook = async (
-  webhook: IWebhook,
+  channel: WebhookChannel,
   message: Message,
 ) => {
+  const webhook = channel.channel;
   const startedAt = performance.now();
   // webhook.service is an enum, so it is safe as a low-cardinality label.
   const service = webhook.service ?? WebhookService.Generic;
@@ -158,6 +110,24 @@ export const handleSendGenericWebhook = async (
   } finally {
     webhookDeliveryDuration.record(performance.now() - startedAt, { service });
   }
+};
+
+// `webhook.headers` is a Mongoose map; `.toJSON()` types as a plain object or
+// a `Map` depending on how it's called (see IWebhook), and the schema
+// restricts values to strings, but nothing enforces that at the type level.
+// Narrow explicitly instead of asserting so a stray non-string value is
+// dropped rather than sent as `[object Object]`. A real `Map` yields no
+// entries here, matching how `Object.entries`/spread already treat one (its
+// data lives outside its own enumerable properties).
+const toStringHeaderRecord = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  );
 };
 
 const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
@@ -183,9 +153,9 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   // TODO: handle real webhook security and signage after v0
   // X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC, time based nonces, caching functionality etc
 
-  const headers = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toJSON() ?? {}),
+    ...toStringHeaderRecord(webhook.headers?.toJSON()),
     // Stable per-alert key for receivers that honour Idempotency-Key; delivery is at-least-once.
     'Idempotency-Key': objectHash({
       eventId: message.eventId,
@@ -232,7 +202,7 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
       const res = await fetch(url, {
         method: 'POST',
         redirect: 'manual',
-        headers: headers as Record<string, string>,
+        headers,
         body,
       });
 
@@ -247,9 +217,7 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        const err = new Error(errorText) as any;
-        err.status = res.status;
-        throw err;
+        throw new WebhookResponseError(errorText, res.status);
       }
 
       return res;
