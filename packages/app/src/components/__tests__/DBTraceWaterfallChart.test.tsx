@@ -200,7 +200,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     traceId: string = mockTraceId,
   ) => {
     return renderWithMantine(
-      <RowSidePanelContext.Provider value={{}}>
+      <RowSidePanelContext value={{}}>
         <DBTraceWaterfallChartContainer
           traceTableSource={mockTraceTableSource}
           logTableSource={logTableSource}
@@ -208,7 +208,7 @@ describe('DBTraceWaterfallChartContainer', () => {
           dateRange={mockDateRange}
           focusDate={mockFocusDate}
         />
-      </RowSidePanelContext.Provider>,
+      </RowSidePanelContext>,
     );
   };
 

@@ -53,7 +53,7 @@ export default function FullscreenPanelModal({
       trapFocus={false}
       lockScroll
     >
-      <ZIndexContext.Provider value={modalZIndex}>
+      <ZIndexContext value={modalZIndex}>
         {/* Isolate chart cross-syncing to this modal: a chart shown fullscreen
             should not drive shadow tooltips on the dashboard tiles behind it
             (which now render over the modal). */}
@@ -70,7 +70,7 @@ export default function FullscreenPanelModal({
             {children}
           </Box>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Modal>
   );
 }

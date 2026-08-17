@@ -115,7 +115,7 @@ export default function DBSqlRowTableWithSideBar({
   );
 
   return (
-    <RowSidePanelContext.Provider value={context ?? {}}>
+    <RowSidePanelContext value={context ?? {}}>
       {sourceData && (rowSource === sourceId || !rowSource) && (
         <DBRowSidePanel
           source={sourceData}
@@ -148,7 +148,7 @@ export default function DBSqlRowTableWithSideBar({
         errorVariant={errorVariant}
         onResolvedColumnsChange={onResolvedColumnsChange}
       />
-    </RowSidePanelContext.Provider>
+    </RowSidePanelContext>
   );
 }
 

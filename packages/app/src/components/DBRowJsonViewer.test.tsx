@@ -69,9 +69,9 @@ describe('DBRowJsonViewer', () => {
   // Helper to render component
   const renderComponent = (data: any) => {
     return renderWithMantine(
-      <RowSidePanelContext.Provider value={defaultContext}>
+      <RowSidePanelContext value={defaultContext}>
         <DBRowJsonViewer data={data} />
-      </RowSidePanelContext.Provider>,
+      </RowSidePanelContext>,
     );
   };
 
