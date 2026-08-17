@@ -132,7 +132,14 @@ async function attachMetricNamePreviews({
     for (const [kind, tableName] of Object.entries(entry.metricTables)) {
       if (!queryableKinds.has(kind)) continue;
       tasks.push(async () => {
-        const cacheKey = `${entry.connectionId}|${entry.databaseName}|${tableName}|${entry.timestampValueExpression}`;
+        // JSON-encode the tuple so delimiter characters inside a
+        // component cannot make two distinct tuples collide.
+        const cacheKey = JSON.stringify([
+          entry.connectionId,
+          entry.databaseName,
+          tableName,
+          entry.timestampValueExpression,
+        ]);
         let namesPromise = tableSampleCache.get(cacheKey);
         if (!namesPromise) {
           namesPromise = sampleMetricNamesWithLookback({
