@@ -28,6 +28,30 @@ describe('ChartCard', () => {
     );
   });
 
+  it('makes the card-mode header sticky so it stays visible while the body scrolls', () => {
+    renderWithMantine(
+      <ChartCard>
+        <ChartContainer title="Throughput">
+          <div>chart</div>
+        </ChartContainer>
+      </ChartCard>,
+    );
+
+    const header = headerRowFor('Throughput');
+    expect(header.style.position).toBe('sticky');
+    expect(header.style.top).toBe('0px');
+  });
+
+  it('leaves a standalone ChartContainer header plain (not sticky, no divider)', () => {
+    renderWithMantine(
+      <ChartContainer title="Throughput">
+        <div>chart</div>
+      </ChartContainer>,
+    );
+
+    expect(headerRowFor('Throughput').style.position).toBe('');
+  });
+
   it('leaves a standalone ChartContainer header plain (no divider)', () => {
     renderWithMantine(
       <ChartContainer title="Throughput">

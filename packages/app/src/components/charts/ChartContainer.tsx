@@ -118,6 +118,15 @@ function ChartContainer({
                     paddingTop: HEADER_SPACING_SLIM,
                     paddingBottom: HEADER_SPACING_SLIM,
                     borderBottom: '1px solid var(--color-border)',
+                    // Pin the header to the top of the card's scroll area so it
+                    // stays visible while the body scrolls (e.g. cards with
+                    // overflow:auto around a long table/list). Needs an opaque
+                    // background matching the card so scrolled content doesn't
+                    // bleed through, and a z-index to sit above that content.
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 2,
+                    background: 'var(--color-bg-body)',
                   }
                 : undefined
             }
