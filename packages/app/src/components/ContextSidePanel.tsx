@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { use, useCallback, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -72,7 +72,7 @@ export default function ContextSubpanel({
   const formWhere = useWatch({ control, name: 'where' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
-  const { setChildModalOpen } = useContext(RowSidePanelContext);
+  const { setChildModalOpen } = use(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
     (rowWhere: RowWhereResult, row: Record<string, any>) => {
