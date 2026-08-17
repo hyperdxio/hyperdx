@@ -493,9 +493,12 @@ export async function getAlertTransitionsInRange({
   const windows = await AlertHistory.aggregate<{
     _id: Date;
     states: string[];
-    // Newest lastValues.startTime across the window's rows (one per group for
-    // group-by alerts); null when no row carries lastValues.
-    lastBucketStart: Date | null;
+    // One lastValues array per row in the window (one row per group for
+    // group-by alerts). $push whole arrays and derive the newest bucket in
+    // JS — the file's DocumentDB-safe pattern (see mapGroupedHistories);
+    // expression operators inside accumulators are not uniformly supported
+    // across Mongo-compatible engines.
+    lastValues: IAlertHistory['lastValues'][];
   }>([
     {
       $match: {
@@ -508,13 +511,25 @@ export async function getAlertTransitionsInRange({
       $group: {
         _id: '$createdAt',
         states: { $push: '$state' },
-        // Inner $max traverses each row's lastValues array; the accumulator
-        // takes the max across rows and ignores nulls (empty arrays).
-        lastBucketStart: { $max: { $max: '$lastValues.startTime' } },
+        lastValues: { $push: '$lastValues' },
       },
     },
     { $sort: { _id: 1 } },
   ]);
+
+  // Newest lastValues.startTime across the window's rows; null when no row
+  // carries lastValues. Be defensive about missing arrays/fields in case of
+  // engine differences (e.g. DocumentDB).
+  const newestBucketStart = (
+    lastValues: IAlertHistory['lastValues'][] | undefined,
+  ): Date | null =>
+    (lastValues ?? []).flat().reduce<Date | null>(
+      (max, v) =>
+        v?.startTime != null && (max == null || v.startTime > max)
+          ? v.startTime
+          : max,
+      null,
+    );
 
   const transitions: AlertTransition[] = [];
   // Assume "not firing" before the earliest known window, so an alert whose
@@ -549,7 +564,7 @@ export async function getAlertTransitionsInRange({
       // Fall back to createdAt − interval when the window has no lastValues
       // (mirrors the evaluation table's fallback for failed evaluations).
       const bucketStart =
-        evalWindow.lastBucketStart ??
+        newestBucketStart(evalWindow.lastValues) ??
         new Date(evalWindow._id.getTime() - intervalMs);
       transitions.push({
         createdAt: evalWindow._id.toISOString(),

@@ -57,6 +57,27 @@ describe('alertTransitionsToAnnotations', () => {
     expect(annotations[0]).toMatchObject({ time: bucketStart, label: 'OK' });
   });
 
+  it('maps each transition to its own bucketStart', () => {
+    // Fire and recovery in one range, each evaluated over different buckets —
+    // every marker must land on its own transition's newest bucket.
+    const firedAt = '2026-07-01T00:10:00.000Z';
+    const firedBucket = '2026-07-01T00:09:00.000Z';
+    const recoveredAt = '2026-07-01T00:30:00.000Z';
+    const recoveredBucket = '2026-07-01T00:29:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition(firedAt, AlertState.ALERT, firedBucket),
+      makeTransition(recoveredAt, AlertState.OK, recoveredBucket),
+    ]);
+
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ time: firedBucket, label: 'Alert' });
+    expect(annotations[1]).toMatchObject({
+      time: recoveredBucket,
+      label: 'OK',
+    });
+  });
+
   it('falls back to createdAt when bucketStart is absent (older API)', () => {
     const evaluatedAt = '2026-07-01T00:30:00.000Z';
 
