@@ -12,10 +12,12 @@ import {
 import logger from '@/utils/logger';
 
 declare global {
+  // Express type augmentation requires `namespace` + interface merging; there is
+  // no non-namespace / non-empty-interface equivalent for extending these types.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     interface User extends UserDocument {}
-  }
-  namespace Express {
     interface Request {
       _hdx_connection?: Connection;
     }

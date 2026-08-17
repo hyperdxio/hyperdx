@@ -272,16 +272,16 @@ export function useQueryHistory(type: string | undefined) {
 }
 
 export function useIntersectionObserver(onIntersect: () => void) {
-  const observer = useRef<IntersectionObserver | null>(null);
+  const observerInstanceRef = useRef<IntersectionObserver | null>(null);
   const observerRef = useCallback(
     (node: Element | null) => {
-      if (observer.current) observer.current.disconnect();
-      observer.current = new IntersectionObserver(entries => {
+      if (observerInstanceRef.current) observerInstanceRef.current.disconnect();
+      observerInstanceRef.current = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting) {
           onIntersect();
         }
       });
-      if (node) observer.current.observe(node);
+      if (node) observerInstanceRef.current.observe(node);
     },
     [onIntersect],
   );
