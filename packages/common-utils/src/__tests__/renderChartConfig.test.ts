@@ -3965,5 +3965,175 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain('`__hdx_time_bucket`');
       expect(sql.match(/SETTINGS/g)).toHaveLength(1);
     });
+
+    // Formula projection over the pivoted per-series columns.
+    describe('formulas', () => {
+      const pivot = (idx: number) =>
+        `anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = ${idx})`;
+
+      it('appends the formula column after the operand value columns', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [
+              { expression: 'A / (A + B) * 100', alias: 'Success rate' },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+
+        // Operand series pivot under their user-facing aliases, in select
+        // order, followed by the compiled formula column.
+        expect(sql).toContain(`${pivot(0)} AS "avg(metric.alpha)"`);
+        expect(sql).toContain(`${pivot(1)} AS "avg(metric.beta)"`);
+        const formulaSql = `((coalesce(${pivot(0)}, 0) / nullif((coalesce(${pivot(0)}, 0) + coalesce(${pivot(1)}, 0)), 0)) * 100) AS "Success rate"`;
+        expect(sql).toContain(formulaSql);
+        expect(sql.indexOf('AS "avg(metric.beta)"')).toBeLessThan(
+          sql.indexOf('AS "Success rate"'),
+        );
+      });
+
+      it('emits only the formula column when showOperandSeries is false', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [{ expression: 'A / B', alias: 'ratio' }],
+            showOperandSeries: false,
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).not.toContain('AS "avg(metric.alpha)"');
+        expect(sql).not.toContain('AS "avg(metric.beta)"');
+        expect(sql).toContain(
+          `(coalesce(${pivot(0)}, 0) / nullif(coalesce(${pivot(1)}, 0), 0)) AS "ratio"`,
+        );
+        // The passthrough bucket column + grouping survive.
+        expect(sql).toContain(
+          '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
+        );
+        expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
+      });
+
+      it('names an alias-less formula column by its expression text', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [{ expression: 'A + B' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "A + B"');
+      });
+
+      it('routes a single-series chart with a formula through the composed path', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [gaugeSelect('metric.alpha')],
+            formulas: [{ expression: 'A * 100', alias: 'pct' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+        expect(sql).toContain(`(coalesce(${pivot(0)}, 0) * 100) AS "pct"`);
+        expect(sql).toContain(
+          'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+        );
+        expect(sql).not.toContain('UNION ALL');
+      });
+
+      it('takes precedence over seriesReturnType ratio', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            seriesReturnType: 'ratio',
+            formulas: [{ expression: 'B / A', alias: 'inverse' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "inverse"');
+        expect(sql).not.toContain('AS "avg(metric.alpha)/avg(metric.beta)"');
+      });
+
+      it('suffixes a formula name colliding with an operand alias', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [{ expression: 'A + B', alias: 'avg(metric.alpha)' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "avg(metric.alpha)"');
+        // Formula column index continues after the select entries (2).
+        expect(sql).toContain('AS "avg(metric.alpha)__2"');
+      });
+
+      it('escapes double quotes in formula and operand column names', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [
+              { ...gaugeSelect('metric.alpha'), alias: 'operand "quoted"' },
+              gaugeSelect('metric.beta'),
+            ],
+            formulas: [{ expression: 'A / B', alias: 'bad"name' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        // ClickHouse escapes a double quote inside a double-quoted
+        // identifier by doubling it — a raw interpolation would terminate
+        // the identifier early (AS "bad"name") and fail to parse.
+        expect(sql).toContain('AS "bad""name"');
+        expect(sql).toContain('AS "operand ""quoted"""');
+        expect(sql).not.toContain('AS "bad"name"');
+      });
+
+      it('escapes double quotes in the ratio column label', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [
+              { ...gaugeSelect('metric.alpha'), alias: 'err"s' },
+              { ...gaugeSelect('metric.beta'), alias: 'total' },
+            ],
+            seriesReturnType: 'ratio',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "err""s/total"');
+      });
+
+      it('throws a structured error for an invalid persisted formula', async () => {
+        await expect(
+          renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              formulas: [{ expression: 'A / C' }],
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        ).rejects.toThrow(
+          'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
+        );
+      });
+    });
   });
 });
