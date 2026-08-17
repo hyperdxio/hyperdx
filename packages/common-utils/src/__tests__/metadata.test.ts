@@ -1000,6 +1000,80 @@ describe('Metadata', () => {
       expect(sql).toContain('substring(token, position(token,');
       expect(sql).toContain('GROUP BY column, key');
     });
+        it('routes TraceId (Distributed source) through getTextIndexKeyValues using the resolved local table + cluster()', async () => {
+      mockCache.getOrFetch.mockImplementation((_key: string, fn: () => any) =>
+        fn(),
+      );
+      (mockClickhouseClient.query as jest.Mock).mockImplementation(
+        ({ query }: { query: string }) => {
+          if (query.includes('FROM system.tables')) {
+            return Promise.resolve({
+              json: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      database: 'default',
+                      name: 'otel_logs',
+                      engine: 'Distributed',
+                      engine_full:
+                        "Distributed('my_cluster', 'default', 'otel_logs_local', rand())",
+                      create_table_query:
+                        'CREATE TABLE default.otel_logs ...',
+                    },
+                  ],
+                }),
+            });
+          }
+          return Promise.resolve({ json: () => Promise.resolve({ data: [{}] }) });
+        },
+      );
+
+      jest.spyOn(metadata, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+      jest.spyOn(metadata, 'getColumns').mockResolvedValue([
+        { name: 'Timestamp', type: 'DateTime64(9)' },
+        { name: 'TraceId', type: 'String' },
+      ] as any);
+      jest.spyOn(metadata, 'getMapColumnTextIndexes').mockResolvedValue(
+        new Map() as any,
+      );
+      jest.spyOn(metadata, 'getNativeArrayColumnTextIndexes').mockResolvedValue(
+        new Map([
+          [
+            'TraceId',
+            {
+              name: 'idx_trace_id',
+              type: 'text',
+              typeFull: "text(tokenizer = 'array')",
+              expression: 'TraceId',
+              granularity: 1,
+            },
+          ],
+        ]),
+      );
+      jest
+        .spyOn(metadata as any, 'doMetadataMVsAggregateColumn')
+        .mockResolvedValue(false);
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['TraceId'],
+      });
+
+      const calls = (mockClickhouseClient.query as jest.Mock).mock.calls;
+      const lastCall = calls[calls.length - 1][0];
+      const sql = lastCall.query as string;
+
+      expect(sql).toContain('mergeTreeTextIndex(');
+      expect(sql).toContain('cluster(');
+      expect(sql).toContain('system.parts');
+
+      const paramValues = Object.values(
+        lastCall.query_params as Record<string, string>,
+      );
+      expect(paramValues).toContain('my_cluster');
+      expect(paramValues).toContain('otel_logs_local');
+      expect(paramValues).not.toContain('otel_logs');
+    });
 
     it('routes ServiceName and SeverityText through getMetadataMVKeyValues (KV rollup MV path)', async () => {
       setupDefaultLogsSchema();
@@ -1903,7 +1977,139 @@ describe('Metadata', () => {
       expect(keysB).toEqual(['b']);
     });
   });
+    // Regression guard for GH-2880: when the source table is `Distributed`,
+  // `mergeTreeTextIndex(...)` and `system.parts` must target the underlying
+  // local table (wrapped in `cluster()`), not the Distributed table name —
+  // ClickHouse throws BAD_ARGUMENTS ("There is no index with name ...")
+  // otherwise, since the index and parts only exist on the local table.
+  describe('getMapKeys (Distributed table text index path)', () => {
+    const distributedTableMetadata = {
+      database: 'observability',
+      name: 'otel_logs',
+      engine: 'Distributed',
+      engine_full:
+        "Distributed('my_cluster', 'observability', 'otel_logs_local', rand())",
+      create_table_query: 'CREATE TABLE observability.otel_logs ...',
+    };
 
+    const buildMetadata = () => {
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      const md = new Metadata(mockClickhouseClient, realCache);
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+      jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(
+        new Map([
+          [
+            'LogAttributes',
+            {
+              kv: {
+                columnName: 'LogAttributes',
+                mapColumn: 'LogAttributes',
+                indexName: 'idx_log_attr_items',
+                separator: '=',
+                useHasAny: false,
+              },
+            },
+          ],
+        ]) as any,
+      );
+      return md;
+    };
+
+    beforeEach(() => {
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+    });
+
+    it('resolves the Distributed table to its local table + cluster() for mergeTreeTextIndex and system.parts', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          // queryTableMetadata (system.tables) -> Distributed table
+          json: () => Promise.resolve({ data: [distributedTableMetadata] }),
+        })
+        .mockResolvedValueOnce({
+          // mergeTreeTextIndex key query
+          json: () => Promise.resolve({ data: [{ key: 'requestId' }] }),
+        });
+
+      const dateRange: [Date, Date] = [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ];
+
+      const keys = await md.getMapKeys({
+        databaseName: 'observability',
+        tableName: 'otel_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        dateRange,
+        timestampValueExpression: 'Timestamp',
+      });
+
+      expect(keys).toEqual(['requestId']);
+
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+
+      // The table function must be wrapped in cluster(...) and the local
+      // table name, not the Distributed table name, must be used.
+      expect(textIndexCall.query).toContain('cluster(');
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex(');
+      expect(textIndexCall.query).toContain('system.parts');
+
+      const paramValues = Object.values(textIndexCall.query_params);
+      expect(paramValues).toContain('my_cluster');
+      expect(paramValues).toContain('otel_logs_local');
+      expect(paramValues).not.toContain('otel_logs');
+    });
+
+    it('falls through to the raw-table scan (instead of returning []) when the text-index query fails', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [distributedTableMetadata] }),
+        })
+        .mockImplementationOnce(() =>
+          Promise.reject(
+            new Error(
+              "Code: 36. DB::Exception: There is no index with name 'idx_log_attr_items'. (BAD_ARGUMENTS)",
+            ),
+          ),
+        )
+        .mockResolvedValueOnce({
+          // getColumn (DESCRIBE) for the raw-table scan fallback
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  name: 'LogAttributes',
+                  type: 'Map(LowCardinality(String), String)',
+                },
+              ],
+            }),
+        })
+        .mockResolvedValueOnce({
+          // sampledKeys raw-table scan query — LogAttributes is
+          // Map(LowCardinality(String), String), so getMapKeys uses the
+          // 'lowCardinalityKeys' strategy, which reads a `key` column per
+          // row (not `keysArr`, which is only for the groupUniqArrayArray
+          // strategy used by plain Map(String, String) columns).
+          json: () => Promise.resolve({ data: [{ key: 'fallbackKey' }] }),
+        });
+
+      const keys = await md.getMapKeys({
+        databaseName: 'observability',
+        tableName: 'otel_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      });
+
+      expect(keys).toEqual(['fallbackKey']);
+    });
+  });
   // Regression guard for commit 612bb2f9a: the `keyRollupTable` MV is no
   // longer in the recommended log/trace schemas, but users who still have
   // the MV configured must be able to query it.

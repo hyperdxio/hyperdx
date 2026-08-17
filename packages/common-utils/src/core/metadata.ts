@@ -614,6 +614,70 @@ export class Metadata {
       },
     );
   }
+  /**
+ * Resolves the table that should actually be used for `mergeTreeTextIndex(...)`
+ * and `system.parts` lookups.
+ *
+ * `mergeTreeTextIndex` (and `system.parts`) only understand MergeTree-family
+ * tables — a `Distributed` table has neither the index nor any local parts.
+ * When `tableName` refers to a `Distributed` table, this resolves the
+ * underlying local table + cluster (the same way `getSkipIndices` already
+ * does), so callers can query the correct table and, if needed, wrap the
+ * table function in `cluster(...)` to reach every shard.
+ */
+private async resolveTextIndexTableRef({
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}): Promise<{ database: string; table: string; cluster?: string }> {
+  const tableMetadata = await this.queryTableMetadata({
+    cache: this.cache,
+    database: databaseName,
+    table: tableName,
+    connectionId,
+  });
+
+  if (tableMetadata?.engine === 'Distributed') {
+    const parsed = getDistributedTableArgs(tableMetadata);
+    if (parsed) {
+      return {
+        database: parsed.database,
+        table: parsed.table,
+        cluster: parsed.cluster,
+      };
+    }
+    console.error(
+      `Could not parse local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
+    );
+  }
+
+  return { database: databaseName, table: tableName };
+}
+
+/**
+ * Builds the `mergeTreeTextIndex(...)` table function expression, wrapping
+ * it in `cluster(...)` when the caller resolved a Distributed table's
+ * underlying local table (see `resolveTextIndexTableRef`), so all shards
+ * are queried rather than just the local node's.
+ */
+private mergeTreeTextIndexExpr({
+  database,
+  table,
+  index,
+  cluster,
+}: {
+  database: string;
+  table: string;
+  index: string;
+  cluster?: string;
+}): ChSql {
+  const fn = chSql`mergeTreeTextIndex(${{ String: database }}, ${{ String: table }}, ${{ String: index }})`;
+  return cluster ? chSql`cluster(${{ String: cluster }}, ${fn})` : fn;
+}
 
   private async partsOverlapFilter({
     databaseName,
@@ -696,16 +760,27 @@ export class Metadata {
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
     if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
-      const partsFilter = await this.partsOverlapFilter({
+      const index = textIndexInfo.key.indexName;
+      const textIndexTableRef = await this.resolveTextIndexTableRef({
         databaseName,
         tableName,
+        connectionId,
+      });
+      const partsFilter = await this.partsOverlapFilter({
+        databaseName: textIndexTableRef.database,
+        tableName: textIndexTableRef.table,
         dateRange,
         timestampValueExpression,
       });
-      const index = textIndexInfo.key.indexName;
+      const textIndexExpr = this.mergeTreeTextIndexExpr({
+        database: textIndexTableRef.database,
+        table: textIndexTableRef.table,
+        index,
+        cluster: textIndexTableRef.cluster,
+      });
       const sql = chSql`
         SELECT token AS key
-        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
+        FROM ${textIndexExpr}
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
         LIMIT ${{ Int32: maxKeys }}`;
@@ -728,20 +803,30 @@ export class Metadata {
           'getMapKeys rollup query failed for key text index query',
           e,
         );
-        return [];
       }
     } else if (textIndexInfo?.kv?.indexName && canQueryMergeTreeTextIndex) {
-      const partsFilter = await this.partsOverlapFilter({
+      const index = textIndexInfo.kv.indexName;
+      const separator = textIndexInfo.kv.separator;
+      const textIndexTableRef = await this.resolveTextIndexTableRef({
         databaseName,
         tableName,
+        connectionId,
+      });
+      const partsFilter = await this.partsOverlapFilter({
+        databaseName: textIndexTableRef.database,
+        tableName: textIndexTableRef.table,
         dateRange,
         timestampValueExpression,
       });
-      const index = textIndexInfo.kv.indexName;
-      const separator = textIndexInfo.kv.separator;
+      const textIndexExpr = this.mergeTreeTextIndexExpr({
+        database: textIndexTableRef.database,
+        table: textIndexTableRef.table,
+        index,
+        cluster: textIndexTableRef.cluster,
+      });
       const sql = chSql`
         SELECT splitByString(${{ String: separator }}, token)[1] AS key
-        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
+        FROM ${textIndexExpr}
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
         LIMIT ${{ Int32: maxKeys }}`;
@@ -764,7 +849,6 @@ export class Metadata {
           'getMapKeys rollup query failed for kv text index query',
           e,
         );
-        return [];
       }
     }
 
@@ -1189,19 +1273,30 @@ export class Metadata {
                 chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
             ),
           );
-          const partsFilter = await this.partsOverlapFilter({
+          const textIndexTableRef = await this.resolveTextIndexTableRef({
             databaseName,
             tableName,
+            connectionId,
+          });
+          const partsFilter = await this.partsOverlapFilter({
+            databaseName: textIndexTableRef.database,
+            tableName: textIndexTableRef.table,
             dateRange,
             timestampValueExpression,
           });
           const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
+          const textIndexExpr = this.mergeTreeTextIndexExpr({
+            database: textIndexTableRef.database,
+            table: textIndexTableRef.table,
+            index: info.indexName,
+            cluster: textIndexTableRef.cluster,
+          });
           const sql = chSql`
         SELECT * FROM (
           SELECT ${{ String: columnName }} as column,
             substring(token, 1, position(token, ${{ String: info.separator }}) - 1) AS key,
             groupUniqArray(${{ Int32: info.limit }})(${valueSql}) AS value
-          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: info.indexName }})
+          FROM ${textIndexExpr}
           WHERE ${partsFilter}
             AND (${orChain})
             AND ${valueSql} != ''
@@ -1268,17 +1363,28 @@ export class Metadata {
       try {
         const sqlBranches: Array<ChSql> = [];
         for (const [columnName, info] of queryOptions.entries()) {
-          const partsFilter = await this.partsOverlapFilter({
+          const textIndexTableRef = await this.resolveTextIndexTableRef({
             databaseName,
             tableName,
+            connectionId,
+          });
+          const partsFilter = await this.partsOverlapFilter({
+            databaseName: textIndexTableRef.database,
+            tableName: textIndexTableRef.table,
             dateRange,
             timestampValueExpression,
+          });
+          const textIndexExpr = this.mergeTreeTextIndexExpr({
+            database: textIndexTableRef.database,
+            table: textIndexTableRef.table,
+            index: info.indexName,
+            cluster: textIndexTableRef.cluster,
           });
           const sql = chSql`
         SELECT * FROM (
           SELECT ${{ String: columnName }} AS key,
             groupUniqArray(${{ Int32: info.limit }})(token) AS value
-          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: info.indexName }})
+          FROM ${textIndexExpr}
           WHERE ${partsFilter}
             AND token != ''
           GROUP BY key

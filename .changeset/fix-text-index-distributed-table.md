@@ -1,0 +1,5 @@
+---
+'@hyperdx/common-utils': patch
+---
+
+Fix `mergeTreeTextIndex(...)` metadata queries (map keys, map key-values, and native text-index key-values) throwing `BAD_ARGUMENTS` ("There is no index with name ...") when a source's table is `Distributed`. `mergeTreeTextIndex` and `system.parts` only understand MergeTree-family tables, but these queries were passing the Distributed table name straight through instead of resolving it to the underlying local table, the way `getSkipIndices` already does. Affected queries now resolve the Distributed table to its local table + cluster and wrap the table function in `cluster(...)`, restoring autocomplete/filter-value keys (e.g. `SpanAttributes`/`LogAttributes` map keys, `TraceId`) for Distributed sources. `getMapKeys` also now falls through to its MV/raw-table-scan tiers instead of returning an empty array when the text-index query fails, so a transient text-index failure degrades gracefully instead of hiding all keys for that column.
