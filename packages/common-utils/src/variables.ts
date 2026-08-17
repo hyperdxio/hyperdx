@@ -68,7 +68,13 @@ export function formatVariableValues(
 
 export type TemplateToken =
   | { kind: 'text'; text: string }
-  | { kind: 'macro'; name: string; args: string[]; inStringLiteral: boolean }
+  | {
+      kind: 'macro';
+      name: string;
+      args: string[];
+      raw: string;
+      inStringLiteral: boolean;
+    }
   | {
       kind: 'braced';
       name: string;
@@ -128,7 +134,7 @@ const isWordChar = (char: string | undefined) =>
  * Index of the `)` closing the `(` at `start`, or -1 when it is unclosed.
  *
  * Quote-aware: parens inside single- or double-quoted strings don't count, so
- * `$__conditionalAll(col = 'a)b', name)` terminates where it should.
+ * `$__conditionalAll(col = 'a)b', $name)` terminates where it should.
  */
 export function findBalancedParens(input: string, start: number): number {
   let depth = 0;
@@ -242,7 +248,13 @@ export function scanTemplateTokens(
       const argsStart = nameStart + name.length;
       if (input.charAt(argsStart) !== '(') {
         flushText();
-        tokens.push({ kind: 'macro', name, args: [], inStringLiteral });
+        tokens.push({
+          kind: 'macro',
+          name,
+          args: [],
+          raw: input.slice(i, argsStart),
+          inStringLiteral,
+        });
         i = argsStart;
         continue;
       }
@@ -262,6 +274,7 @@ export function scanTemplateTokens(
         kind: 'macro',
         name,
         args: splitAndTrimWithBracket(input.slice(argsStart + 1, closeIndex)),
+        raw: input.slice(i, closeIndex + 1),
         inStringLiteral,
       });
       i = closeIndex + 1;
@@ -316,7 +329,7 @@ export function scanTemplateTokens(
 /**
  * The argument a variable macro reads as a variable *name* rather than as a
  * template, or undefined for a macro with no such argument. Nothing is expanded
- * there: `$__filter(ServiceName, svc)` has to see `svc`, not its selected values.
+ * there: `$__filter(ServiceName, $svc)` has to see `$svc`, not its selected values.
  */
 function variableNameArgIndex(
   macroName: string,
@@ -324,7 +337,7 @@ function variableNameArgIndex(
 ): number | undefined {
   if (!isVariableMacroName(macroName)) return undefined;
 
-  // $__filter(name) | $__filter(expression, name) | $__conditionalAll(condition, name)
+  // $__filter($name) | $__filter(expression, $name) | $__conditionalAll(condition, $name)
   switch (macroName) {
     case 'filter':
       return argCount - 1;
@@ -391,10 +404,50 @@ export type VariableContext = {
 const sqlNoOp = (name: string) =>
   `(1=1 /** no values selected for variable '${name}' */)`;
 
-/** Read the variable name out of a macro argument - either `name` or `$name` */
-function parseVariableNameArg(arg: string): string {
+/**
+ * The variable a macro's name argument refers to, or undefined when the argument
+ * isn't a `$name` reference.
+ *
+ * Detection is deliberately lenient about the sigil — a bare `name` is read as
+ * the variable it was meant to be, so a template written the old way is still
+ * reported as using the macro rather than going silent. Expansion is where the
+ * sigil is required; see `requireVariableNameArg`.
+ */
+function parseVariableNameArg(arg: string): string | undefined {
   const trimmed = arg.trim();
-  return trimmed.startsWith('$') ? trimmed.slice(1) : trimmed;
+  const name = trimmed.startsWith('$') ? trimmed.slice(1) : trimmed;
+  return DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(name) ? name : undefined;
+}
+
+/**
+ * The variable a macro's name argument refers to, which has to be written as a
+ * `$name` reference — the same form the variable takes everywhere else, and
+ * unambiguous against the SQL expression in the neighbouring argument.
+ */
+function requireVariableNameArg(
+  macroName: VariableMacroName,
+  args: string[],
+): string {
+  const arg = args[args.length - 1].trim();
+  const name = arg.startsWith('$') ? parseVariableNameArg(arg) : undefined;
+  if (name != null) return name;
+
+  // Suggest the reference form of whatever was written, when it could be a name.
+  const suggested = DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(arg)
+    ? arg
+    : 'name';
+  const usage =
+    macroName === 'conditionalAll'
+      ? `$__conditionalAll(<condition>, $${suggested})`
+      : args.length === 1
+        ? `$__filter($${suggested})`
+        : `$__filter(<expression>, $${suggested})`;
+
+  throw new MacroExpansionError(
+    macroName,
+    `Macro '$__${macroName}' requires its variable argument to be written as a reference, ` +
+      `as in ${usage} — got '${arg}'.`,
+  );
 }
 
 /** Require that a variable with the given name exists in the context. Throws an error if not found. */
@@ -426,7 +479,7 @@ function expandFilterMacro(args: string[], ctx: VariableContext): string {
     );
   }
 
-  const variableName = parseVariableNameArg(args[args.length - 1]);
+  const variableName = requireVariableNameArg('filter', args);
   const variable = requireVariable(ctx, 'filter', variableName);
 
   // Resolve the filtered expression before the empty-selection shortcut so a
@@ -439,8 +492,8 @@ function expandFilterMacro(args: string[], ctx: VariableContext): string {
     if (!variable.expression) {
       throw new MacroExpansionError(
         'filter',
-        `Macro '$__filter(${variableName})' requires the variable's filter expression, ` +
-          `which is not available — pass it explicitly, e.g. $__filter(<expression>, ${variableName}).`,
+        `Macro '$__filter($${variableName})' requires the variable's filter expression, ` +
+          `which is not available — pass it explicitly, e.g. $__filter(<expression>, $${variableName}).`,
       );
     }
     // Wrap in toString() to match how the broadcast path renders the same
@@ -464,7 +517,7 @@ function expandConditionalAllMacro(
     );
   }
 
-  const variableName = parseVariableNameArg(args[1]);
+  const variableName = requireVariableNameArg('conditionalAll', args);
   const variable = requireVariable(ctx, 'conditionalAll', variableName);
 
   if (variable.values.length === 0) return sqlNoOp(variableName);
@@ -508,11 +561,32 @@ export function expandVariableToken(
   );
 }
 
+/**
+ * Expand references, leaving each variable macro exactly as written — argument
+ * list and all, so the `$name` argument that names the variable survives too.
+ *
+ * The macros are still *scanned* rather than left to the text branch, which is
+ * what makes "exactly as written" true: their arguments are never visited, so
+ * nothing inside one is substituted. A macro missing its closing paren is
+ * tolerated (`skip`), since this runs over expressions as they are typed.
+ */
+function substituteReferencesOnly(input: string, ctx: VariableContext): string {
+  return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
+    onMalformed: 'skip',
+  })
+    .map(token => {
+      if (token.kind === 'text') return token.text;
+      if (token.kind === 'macro') return token.raw;
+      return expandVariableToken(token, ctx);
+    })
+    .join('');
+}
+
 function substituteWithContext(input: string, ctx: VariableContext): string {
+  if (ctx.disableMacros) return substituteReferencesOnly(input, ctx);
+
   return expandTemplate(input, {
-    // Unregistering the macro names is what leaves them verbatim: the scanner
-    // emits an unknown `$__x` as plain text, arguments and all.
-    macroNames: ctx.disableMacros ? [] : VARIABLE_MACRO_NAMES,
+    macroNames: VARIABLE_MACRO_NAMES,
     expandMacro: token => expandVariableToken(token, ctx),
     expandReference: token => expandVariableToken(token, ctx),
   });
@@ -707,7 +781,10 @@ export type VariableReference = {
  * Never throws: it runs over saved SQL that may be mid-edit or malformed.
  *
  * Names that aren't token-safe are dropped — a macro argument like
- * `$__filter(x, ${svc})` can't name a variable, and expansion reports it.
+ * `$__filter(x, ${svc})` can't name a variable, and expansion reports it. A
+ * name argument missing its `$` is still read as the variable it names, so a
+ * template written that way is reported as using the macro; expansion is what
+ * rejects it.
  */
 export function getVariableReferences(input: string): VariableReference[] {
   const references: VariableReference[] = [];
@@ -720,7 +797,7 @@ export function getVariableReferences(input: string): VariableReference[] {
     guardedBy: string | undefined,
   ): string | undefined => {
     const name = parseVariableNameArg(arg);
-    if (!DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(name)) return undefined;
+    if (name == null) return undefined;
     references.push({
       name,
       kind: 'macro',
@@ -751,7 +828,7 @@ export function getVariableReferences(input: string): VariableReference[] {
       if (!isVariableMacroName(token.name)) continue;
       switch (token.name) {
         case 'filter': {
-          // $__filter(name) | $__filter(expression, name)
+          // $__filter($name) | $__filter(expression, $name)
           const [first, second] = token.args;
           if (second != null) {
             const name = addMacroRef(
@@ -767,7 +844,7 @@ export function getVariableReferences(input: string): VariableReference[] {
           break;
         }
         case 'conditionalAll': {
-          // $__conditionalAll(expression, name)
+          // $__conditionalAll(expression, $name)
           const [expression, name] = token.args;
           const guard =
             name != null
@@ -806,11 +883,9 @@ export type VariableReferenceIssues = { errors: string[]; warnings: string[] };
  * the feature flag off) where nothing is substituted at all; `[]` is a dashboard
  * whose filters expose no variables.
  *
- * Only *value* references (`$name`, `${name}`, `${name:format}`) are inspected.
- * The macro forms either expand correctly or throw, and those messages reach
- * the user through expansion — except in the two cases where expansion never
- * runs and they would pass through silently: no context at all, and a Lucene
- * expression. Both are reported here.
+ * A macro form is checked by *attempting* its expansion, so the one message the
+ * user sees is the one expansion would give. Every other check is on the value
+ * references (`$name`, `${name}`, `${name:format}`).
  */
 export function validateVariableReferencesInTemplate(
   template: string,
@@ -829,6 +904,18 @@ export function validateVariableReferencesInTemplate(
   const warnings: string[] = [];
 
   const references = getVariableReferences(template);
+
+  // Attempt to expand macros, so that errors during expansion can be surfaced.
+  if (variables != null && hasVariableMacro(template)) {
+    try {
+      substituteVariablesForLanguage(template, variables, language);
+    } catch (e) {
+      // Surface only MacroExpansionError, anything else is a bug the user can't act
+      // on, or could be from the user typing an incomplete template
+      if (e instanceof MacroExpansionError) errors.push(e.message);
+    }
+  }
+
   if (references.length === 0) return { errors, warnings };
 
   const macroReferences = references.filter(r => r.kind === 'macro');
@@ -890,7 +977,7 @@ export function validateVariableReferencesInTemplate(
   if (quoted.length > 0) {
     const [{ name }] = quoted;
     errors.push(
-      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, ${name}) or \${${name}:csv} instead?`,
+      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, $${name}) or \${${name}:csv} instead?`,
     );
   }
 
@@ -903,7 +990,7 @@ export function validateVariableReferencesInTemplate(
   if (unguarded.length > 0) {
     const [{ name }] = unguarded;
     warnings.push(
-      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, ${name}) or $__conditionalAll(<condition>, ${name}) so the query stays valid when no values are selected.`,
+      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, $${name}) or $__conditionalAll(<condition>, $${name}) so the query stays valid when no values are selected.`,
     );
   }
 

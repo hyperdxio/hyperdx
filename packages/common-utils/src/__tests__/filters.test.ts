@@ -747,9 +747,12 @@ describe('filters', () => {
       });
 
       it.each([
-        ['a macro on an explicit expression', '$__filter(ServiceName, svc)'],
-        ['a macro on the variable expression', '$__filter(svc)'],
-        ['a conditionalAll macro', "$__conditionalAll(ServiceName = 'x', svc)"],
+        ['a macro on an explicit expression', '$__filter(ServiceName, $svc)'],
+        ['a macro on the variable expression', '$__filter($svc)'],
+        [
+          'a conditionalAll macro',
+          "$__conditionalAll(ServiceName = 'x', $svc)",
+        ],
         ['a braced reference', 'ServiceName IN (${svc})'],
         ['a bare reference', 'ServiceName IN ($svc)'],
       ])('accepts a sql where clause using %s', (_label, where) => {
@@ -786,7 +789,7 @@ describe('filters', () => {
           filter({
             id: 'sev',
             name: 'Severity',
-            where: '$__filter(ServiceName, nope)',
+            where: '$__filter(ServiceName, $nope)',
             whereLanguage: 'sql',
           }),
         ]);
@@ -796,7 +799,7 @@ describe('filters', () => {
           filterName: 'Severity',
           language: 'sql',
           // The raw template is reported, not its expansion.
-          where: '$__filter(ServiceName, nope)',
+          where: '$__filter(ServiceName, $nope)',
         });
         expect(issues[0].detail).toMatch(/unknown variable 'nope'/);
       });
@@ -806,7 +809,7 @@ describe('filters', () => {
           filter({
             id: 'sev',
             name: 'Severity',
-            where: '$__filter(ServiceName, svc)',
+            where: '$__filter(ServiceName, $svc)',
             whereLanguage: 'sql',
           }),
         ]);
@@ -862,7 +865,7 @@ describe('filters', () => {
     it('expands a macro against the selected values', () => {
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
           [svc(['accounting'])],
         ),
       ).toEqual({
@@ -873,7 +876,7 @@ describe('filters', () => {
 
     it('expands a macro to a no-op when nothing is selected', () => {
       const { where } = resolveFilterValuesWhere(
-        { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+        { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
         [svc([])],
       );
       expect(where).toContain('1=1');
@@ -881,7 +884,7 @@ describe('filters', () => {
 
     it('expands the one-argument macro form using the declared expression', () => {
       expect(
-        resolveFilterValuesWhere({ where: '$__filter(svc)' }, [
+        resolveFilterValuesWhere({ where: '$__filter($svc)' }, [
           svc(['accounting']),
         ]).where,
       ).toBe("(toString(ServiceName) IN ('accounting'))");
@@ -917,10 +920,10 @@ describe('filters', () => {
     it('leaves a macro as written in a lucene clause', () => {
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'lucene' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'lucene' },
           [svc(['accounting'])],
         ).where,
-      ).toBe('$__filter(ServiceName, svc)');
+      ).toBe('$__filter(ServiceName, $svc)');
     });
 
     it("narrows by a filter's own variable when it references itself", () => {
@@ -928,7 +931,7 @@ describe('filters', () => {
       // filter's own selection, which is what the author asked for.
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
           [svc(['accounting'])],
         ).where,
       ).toBe("(ServiceName IN ('accounting'))");
@@ -936,10 +939,10 @@ describe('filters', () => {
 
     it('reports a macro naming an unknown variable without throwing', () => {
       const resolved = resolveFilterValuesWhere(
-        { where: '$__filter(ServiceName, nope)', whereLanguage: 'sql' },
+        { where: '$__filter(ServiceName, $nope)', whereLanguage: 'sql' },
         [svc(['accounting'])],
       );
-      expect(resolved.where).toBe('$__filter(ServiceName, nope)');
+      expect(resolved.where).toBe('$__filter(ServiceName, $nope)');
       expect(resolved.error).toMatch(/unknown variable 'nope'/);
     });
 
@@ -1004,15 +1007,15 @@ describe('filters', () => {
     });
 
     it.each([
-      ['a macro', '$__filter(ServiceName, svc)', 'sql'],
+      ['a macro', '$__filter(ServiceName, $svc)', 'sql'],
       [
         'a conditionalAll macro',
-        "$__conditionalAll(ServiceName = 'x', svc)",
+        "$__conditionalAll(ServiceName = 'x', $svc)",
         'sql',
       ],
       [
         'a reference guarded by its own macro',
-        '$__filter(ServiceName IN ($svc), svc)',
+        '$__filter(ServiceName IN ($svc), $svc)',
         'sql',
       ],
       [

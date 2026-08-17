@@ -239,14 +239,14 @@ export const VARIABLE_MACRO_SUGGESTIONS: MacroSuggestion[] = [
     minArgs: 1,
     maxArgs: 2,
     description:
-      "$__filter(<expression>, <variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
+      "$__filter(<expression>, $<variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
   },
   {
     name: 'conditionalAll',
     minArgs: 2,
     maxArgs: 2,
     description:
-      '$__conditionalAll(<condition>, <variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
+      '$__conditionalAll(<condition>, $<variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
   },
 ];
 
@@ -386,7 +386,7 @@ const NO_FILTERS = '(1=1 /** no filters applied */)';
  * output buffer. A macro's arguments are expanded first, recursively, so a
  * variable or macro nested in an argument resolves before the enclosing macro
  * sees it — `$__timeFilter(${TsColumn:csv})` filters on the selected column, and
- * `$__conditionalAll($__timeFilter(ts), env)` expands the inner macro. Only
+ * `$__conditionalAll($__timeFilter(ts), $env)` expands the inner macro. Only
  * template source is recursed into: an expansion is never re-scanned, so neither
  * `$__filters` output nor a selected variable value can trigger further
  * substitution.

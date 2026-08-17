@@ -1386,7 +1386,7 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
 /** A dashboard variable as seen by a tile's query. */
 export const ChartVariableSchema = z.object({
   name: z.string(),
-  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  /** The filter's target expression; enables the 1-arg `$__filter($name)` form. */
   expression: z.string().optional(),
   /** Empty means nothing is selected. */
   values: z.array(z.string()),

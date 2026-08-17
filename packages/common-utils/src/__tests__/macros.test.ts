@@ -46,11 +46,11 @@ describe('isMissingFiltersMacro', () => {
 
   it('is false when a variable macro applies filtering instead', () => {
     expect(
-      isMissingFiltersMacro('SELECT * WHERE $__filter(ServiceName, service)'),
+      isMissingFiltersMacro('SELECT * WHERE $__filter(ServiceName, $service)'),
     ).toBe(false);
     expect(
       isMissingFiltersMacro(
-        'SELECT * WHERE $__conditionalAll(ServiceName IN ${service}, service)',
+        'SELECT * WHERE $__conditionalAll(ServiceName IN ${service}, $service)',
       ),
     ).toBe(false);
   });
@@ -368,7 +368,7 @@ describe('replaceMacros with variables', () => {
 
     it('leaves the variable macros verbatim, arguments and all', () => {
       const sqlTemplate =
-        "WHERE $__filter(ServiceName, service) AND $__conditionalAll(x = 'a)b', env)";
+        "WHERE $__filter(ServiceName, $service) AND $__conditionalAll(x = 'a)b', $env)";
       expect(replaceMacros({ sqlTemplate })).toBe(sqlTemplate);
     });
 
@@ -387,8 +387,8 @@ describe('replaceMacros with variables', () => {
         {
           sqlTemplate:
             'SELECT $__timeInterval(ts) FROM $__sourceTable ' +
-            'WHERE $__timeFilter(ts) AND $__filters AND $__filter(service) ' +
-            'AND svc IN ($service) AND $__conditionalAll(Env != $service, service)',
+            'WHERE $__timeFilter(ts) AND $__filters AND $__filter($service) ' +
+            'AND svc IN ($service) AND $__conditionalAll(Env != $service, $service)',
           from: { databaseName: 'otel', tableName: 'otel_logs' },
           variables,
         },
@@ -411,7 +411,8 @@ describe('replaceMacros with variables', () => {
       expect(
         replaceMacros(
           {
-            sqlTemplate: 'WHERE $__filters AND $__filter(ServiceName, service)',
+            sqlTemplate:
+              'WHERE $__filters AND $__filter(ServiceName, $service)',
             variables,
           },
           '(1=2)',
@@ -422,7 +423,7 @@ describe('replaceMacros with variables', () => {
     it('expands an unselected variable to a no-op predicate', () => {
       expect(
         replaceMacros({
-          sqlTemplate: 'WHERE $__filter(env)',
+          sqlTemplate: 'WHERE $__filter($env)',
           variables,
         }),
       ).toBe("WHERE (1=1 /** no values selected for variable 'env' */)");
@@ -449,7 +450,7 @@ describe('replaceMacros with variables', () => {
     it('throws when a variable macro names an unknown variable', () => {
       expect(() =>
         replaceMacros({
-          sqlTemplate: 'WHERE $__filter(ServiceName, nope)',
+          sqlTemplate: 'WHERE $__filter(ServiceName, $nope)',
           variables,
         }),
       ).toThrow("references unknown variable 'nope'");
@@ -464,7 +465,7 @@ describe('replaceMacros with variables', () => {
     it('treats an empty variables array as a provided context', () => {
       expect(() =>
         replaceMacros({
-          sqlTemplate: 'WHERE $__filter(ServiceName, service)',
+          sqlTemplate: 'WHERE $__filter(ServiceName, $service)',
           variables: [],
         }),
       ).toThrow("references unknown variable 'service'");
@@ -528,7 +529,7 @@ describe('replaceMacros with variables', () => {
       expect(
         replaceMacros({
           sqlTemplate:
-            'WHERE $__conditionalAll($__timeFilter(Timestamp), service)',
+            'WHERE $__conditionalAll($__timeFilter(Timestamp), $service)',
           variables: nested,
         }),
       ).toBe(`WHERE (${timeFilterOn('Timestamp')})`);
@@ -538,7 +539,7 @@ describe('replaceMacros with variables', () => {
       expect(
         replaceMacros({
           sqlTemplate:
-            'WHERE $__filter(if($__conditionalAll($__timeFilter(${tsCol:csv}), service), a, b), service)',
+            'WHERE $__filter(if($__conditionalAll($__timeFilter(${tsCol:csv}), $service), a, b), $service)',
           variables: nested,
         }),
       ).toBe(

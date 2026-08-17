@@ -1523,9 +1523,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   test.describe('Dashboard Variables in Raw SQL Tiles', () => {
     // Both `$__filter(<expr>, <name>)` and a bare `$name` reference, so one
     // query exercises the macro and the plain-reference form together.
-    const VARIABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) AND ServiceName IN ($svc) GROUP BY ServiceName LIMIT 200`;
+    const VARIABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, $svc) AND ServiceName IN ($svc) GROUP BY ServiceName LIMIT 200`;
 
-    const VARIABLE_LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, svc) GROUP BY ts ORDER BY ts ASC`;
+    const VARIABLE_LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filter(ServiceName, $svc) GROUP BY ts ORDER BY ts ASC`;
 
     test(
       'substitutes selected variable values in the tile editor previews',
@@ -1559,7 +1559,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await dashboardPage.chartEditor.openGeneratedSql();
           await expect(async () => {
             const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
-            // $__filter(ServiceName, svc) -> (ServiceName IN ('accounting'))
+            // $__filter(ServiceName, $svc) -> (ServiceName IN ('accounting'))
             expect(sql).toContain("(ServiceName IN ('accounting'))");
             // ServiceName IN ($svc) -> ServiceName IN ('accounting')
             expect(sql).toMatch(
@@ -1612,7 +1612,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // `$__timeFilter` sits in a `$__conditionalAll` argument, so it only
         // expands if arguments are expanded before the enclosing macro runs.
-        const NESTED_MACRO_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE $__conditionalAll($__timeFilter(Timestamp), svc) AND $__filter(ServiceName, svc) GROUP BY ServiceName LIMIT 200`;
+        const NESTED_MACRO_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE $__conditionalAll($__timeFilter(Timestamp), $svc) AND $__filter(ServiceName, $svc) GROUP BY ServiceName LIMIT 200`;
 
         await test.step('Create a dashboard with a selected variable value', async () => {
           await dashboardPage.createNewDashboard();
@@ -1795,8 +1795,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             ['${', '${svc:csv}', '${svc:csv}'],
             ['$sv', '$svc', '$svc'],
             // The one-argument form goes in as written, rather than being
-            // silently rewritten to `$__filter(ServiceName, svc)`.
-            ['$__f', '$__filter(svc)', '$__filter(svc)'],
+            // silently rewritten to `$__filter(ServiceName, $svc)`.
+            ['$__f', '$__filter($svc)', '$__filter($svc)'],
             [
               '{start',
               '{startDateMilliseconds:Int64}',
@@ -1872,7 +1872,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         await test.step('An unknown variable in a macro is an error', async () => {
           await expectValidationFor(
-            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, nope) AND $__timeFilter(Timestamp)`,
+            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $nope) AND $__timeFilter(Timestamp)`,
             banner =>
               expect(banner).toContain(
                 "Error: Macro '$__filter' references unknown variable 'nope'",
@@ -1904,14 +1904,14 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           // The condition is dropped entirely while `svc` is unselected, so
           // the nested $svc never renders as NULL.
           await expectValidationFor(
-            `SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($svc), svc) AND $__timeFilter(Timestamp)`,
+            `SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($svc), $svc) AND $__timeFilter(Timestamp)`,
             banner => expect(banner).toBe(''),
           );
         });
 
         await test.step('A correct $__filter usage raises nothing', async () => {
           await expectValidationFor(
-            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, svc) AND $__timeFilter(Timestamp)`,
+            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $svc) AND $__timeFilter(Timestamp)`,
             banner => expect(banner).toBe(''),
           );
         });
@@ -2029,7 +2029,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             DEFAULT_LOGS_SOURCE_NAME,
           );
           await dashboardPage.chartEditor.setSqlWhere(
-            '$__filter(ServiceName, svc)',
+            '$__filter(ServiceName, $svc)',
           );
           await dashboardPage.chartEditor.runQuery();
         });
@@ -2096,7 +2096,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           );
           await dashboardPage.chartEditor.setGroupBy('ServiceName');
           await dashboardPage.chartEditor.setSqlWhere(
-            '$__filter(ServiceName, svc)',
+            '$__filter(ServiceName, $svc)',
             'series',
           );
           await dashboardPage.chartEditor.runQuery(false);
@@ -2222,7 +2222,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             expect.arrayContaining([
               '$__filter',
               '$__conditionalAll',
-              '$__filter(svc)',
+              '$__filter($svc)',
             ]),
           );
           // A builder input only expands the variable macros; the raw SQL ones
@@ -2306,8 +2306,27 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         });
 
         await test.step('A correct $__filter usage is left alone', async () => {
-          await expectWhereWarning('$__filter(ServiceName, svc)', warning => {
+          await expectWhereWarning('$__filter(ServiceName, $svc)', warning => {
             expect(warning).toBe('');
+          });
+        });
+
+        await test.step('A macro the builder cannot expand says so here', async () => {
+          // This input is only expanded when the query runs, so without this the
+          // macro would look fine right up until the chart failed.
+          await expectWhereWarning('$__filter(ServiceName, svc)', warning => {
+            expect(warning).toContain(
+              "Macro '$__filter' requires its variable argument to be written " +
+                "as a reference, as in $__filter(<expression>, $svc) — got 'svc'.",
+            );
+          });
+        });
+
+        await test.step('A macro naming a variable the dashboard lacks says so too', async () => {
+          await expectWhereWarning('$__filter(ServiceName, $nope)', warning => {
+            expect(warning).toContain(
+              "Macro '$__filter' references unknown variable 'nope'",
+            );
           });
         });
 
@@ -2341,7 +2360,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           // keeps the text, and here it is never expanded — it would be
           // searched for as literal text, so it has to be called out.
           await dashboardPage.chartEditor.typeLuceneWhere(
-            '$__filter(ServiceName, svc)',
+            '$__filter(ServiceName, $svc)',
           );
           await expect(async () => {
             expect(

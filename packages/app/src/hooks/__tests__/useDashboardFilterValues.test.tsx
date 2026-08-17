@@ -1365,7 +1365,7 @@ describe('useDashboardFilterValues', () => {
               envAndStatus[0],
               {
                 ...envAndStatus[1],
-                where: '$__filter(service_name, svc)',
+                where: '$__filter(service_name, $svc)',
                 whereLanguage: 'sql',
               },
             ],
@@ -1434,7 +1434,7 @@ describe('useDashboardFilterValues', () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, svc)')],
+            filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
           }),
@@ -1458,7 +1458,7 @@ describe('useDashboardFilterValues', () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, svc)')],
+            filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable([]),
           }),
@@ -1499,7 +1499,7 @@ describe('useDashboardFilterValues', () => {
       const { result, rerender } = renderHook(
         ({ values }: { values: string[] }) =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, svc)')],
+            filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable(values),
           }),
@@ -1548,7 +1548,7 @@ describe('useDashboardFilterValues', () => {
               // Written out exactly as the macro below expands.
               statusFilter("(service_name IN ('api'))"),
               {
-                ...statusFilter('$__filter(service_name, svc)'),
+                ...statusFilter('$__filter(service_name, $svc)'),
                 id: 'log_level',
                 name: 'Log Level',
                 expression: 'log_level',
@@ -1572,7 +1572,7 @@ describe('useDashboardFilterValues', () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, nope)')],
+            filters: [statusFilter('$__filter(service_name, $nope)')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
           }),
@@ -1582,7 +1582,7 @@ describe('useDashboardFilterValues', () => {
       await waitFor(() => expect(result.current.isFetching).toBe(false));
 
       // Left as written — ClickHouse will reject it, but the control reports why.
-      expect(lastWhereFor(['status'])).toBe('$__filter(service_name, nope)');
+      expect(lastWhereFor(['status'])).toBe('$__filter(service_name, $nope)');
       expect(result.current.erroredFilterIds.has('status')).toBe(true);
       expect(result.current.filterErrorMessages.get('status')).toMatch(
         /unknown variable 'nope'/,
