@@ -123,12 +123,37 @@ jobs:
 
       # Check out the PR head so reviewer sub-agents can read the actual code.
       # Works for both same-repo and forked PRs.
+      #
+      # `allow-unsafe-pr-checkout` is REQUIRED for the fork case. checkout
+      # v6.1.0 (2026-07-20) backported it as an explicitly BREAKING change
+      # defaulting to false, so checking out fork code from a
+      # `pull_request_target` workflow now hard-fails. Because we track the
+      # moving `v6` tag, that arrived with no change on our side -- and every
+      # fork-PR review failed at this step until this flag was set. Bumping to
+      # v7 is not an escape: v7.0.1 ships the same input with the same default.
+      # https://github.blog/changelog/2026-06-18-safer-pull_request_target-defaults-for-github-actions-checkout/
+      #
+      # The flag's warning is about executing fork code in a credentialed
+      # context. This job never executes it: no `yarn install`, no build, no
+      # Edit/Write tools, `contents: read`, and `--setting-sources user` below
+      # so the fork's `.claude/settings.json` cannot widen permissions. Note
+      # the checkout widens the prompt-injection surface from "the diff" to
+      # "all files" but does not create it -- `Bash(gh pr diff:*)` already
+      # feeds untrusted fork text to the model with no checkout at all.
       - name: Checkout PR head
         uses: actions/checkout@v6
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
+          allow-unsafe-pr-checkout: true
+          # Keep the base repo's GITHUB_TOKEN out of `.git/config` inside an
+          # untrusted worktree, where the reviewer's `Bash(git:*)` grant could
+          # read it back via `git config --get http.<url>.extraheader`.
+          # Nothing downstream needs git credentials: the base fetch below
+          # uses a public HTTPS URL, and every `gh` call takes its token from
+          # the environment rather than from git config.
+          persist-credentials: false
 
       # Make the PR base SHA reachable AND fetch enough history that
       # `git merge-base HEAD <base_sha>` succeeds. The ce-code-review skill
@@ -489,9 +514,20 @@ jobs:
             3. Do NOT post the review yourself with `gh` or any comment tool --
                the workflow posts the structured output as a sticky comment.
 
+          # Deliberately no `Bash(gh api:*)` in the allowlist below.
+          # --allowedTools matches by command prefix and cannot constrain an
+          # HTTP method, so granting `gh api` grants POST/PATCH/DELETE against a
+          # token holding `pull-requests: write` + `issues: write` -- a
+          # repo-write channel driven by a model reading untrusted fork code.
+          # In the pinned plugin only ce-previous-comments-reviewer reaches for
+          # it, and that agent already prefers
+          # `gh pr view <n> --json reviews,comments` (still allowed via
+          # `Bash(gh pr view:*)`); the sole loss is inline-comment path/line
+          # metadata. Comments must stay OUT of the block scalar below -- every
+          # line in it is passed to the CLI verbatim as an argument.
           claude_args: |
             --setting-sources user
-            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
+            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
             --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
 
       # --- Sandbox smoke check ----------------------------------------------
