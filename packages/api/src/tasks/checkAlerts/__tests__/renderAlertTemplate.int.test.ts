@@ -22,7 +22,7 @@ import {
 const TEST_TEAM_ID = new mongoose.Types.ObjectId().toString();
 
 // Test fixtures only need a handful of IWebhook fields — a single narrowing
-// point instead of an `as unknown as IWebhook` (or an eslint-disable) at
+// point instead of an `as unknown as IWebhook` suppression-worthy cast at
 // every call site.
 const castWebhook = (over: Record<string, unknown>): IWebhook => over as any;
 
