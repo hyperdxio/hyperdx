@@ -270,7 +270,14 @@ export default function DBListBarChart({
   ]);
 
   return (
-    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+    <ChartContainer
+      title={title}
+      toolbarItems={toolbarItemsMemo}
+      // A bar list is normal-flow content, not a recharts responsive chart, so
+      // it doesn't need the absolute-fill wrapper. Rendering it in normal flow
+      // lets the card body grow and scroll under the fixed/sticky card header.
+      disableReactiveContainer
+    >
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...

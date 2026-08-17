@@ -71,7 +71,7 @@ export default function SlowestEventsTile({
       <ChartContainer
         title={<Text size="sm">{title}</Text>}
         toolbarItems={[
-          <Text key="slower-than" size="xs">
+          <Text key="slower-than" size="xs" style={{ whiteSpace: 'nowrap' }}>
             (Slower than {roundedP95}ms)
           </Text>,
         ]}
