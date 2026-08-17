@@ -3,9 +3,10 @@
  * Used for creating and configuring dashboard tiles and chart explorer
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -52,12 +53,15 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line and StackedBar share the "Time Series" tab; other display types
-    // match their tab label by name (case-insensitive substring).
+    // Line and StackedBar share the "Time Series" tab, and EventPatterns' tab
+    // is labelled just "Patterns"; the rest match their tab label by name
+    // (case-insensitive substring).
     const tabName =
       name === DisplayType.Line || name === DisplayType.StackedBar
         ? 'Time Series'
-        : name;
+        : name === DisplayType.EventPatterns
+          ? 'Patterns'
+          : name;
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
@@ -95,6 +99,39 @@ export class ChartEditorComponent {
     await this.page.keyboard.type(expression);
     // Dismiss the autocomplete dropdown so it doesn't intercept the next click.
     await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * The tile-editor modal. Series-level lookups have to be scoped to it: the
+   * dashboard behind it renders its own WHERE input with identical markup.
+   * Only meaningful on a dashboard — the chart explorer has no modal.
+   */
+  private get tileEditor() {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('chart-name-input') });
+  }
+
+  /**
+   * Set the tile's own filter, which a time chart stores as its series'
+   * `aggCondition` rather than in the config's statement-level `where`.
+   *
+   * Switches to Lucene first for two reasons: the mode is sticky (it is kept in
+   * localStorage, so a previous spec can leave it on SQL), and
+   * `series-where-input` exists only on the Lucene branch of SearchWhereInput —
+   * the SQL branch renders a CodeMirror that carries no test id.
+   */
+  async setSeriesWhere(condition: string) {
+    const editor = this.tileEditor;
+    await switchWhereToLucene(editor.getByTestId('where-language-switch'));
+
+    const input = editor.getByTestId('series-where-input');
+    await expect(input).toBeVisible();
+    await input.fill(condition);
+    // Blur to close the suggestion dropdown, which otherwise overlays the
+    // Run/Save buttons and fails their actionability check. Escape would bubble
+    // to the tile-editor modal and close it.
+    await input.blur();
   }
 
   /**
@@ -274,6 +311,111 @@ export class ChartEditorComponent {
   async getGeneratedSqlText(): Promise<string> {
     const text = await this.generatedSqlContent().innerText();
     return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * The raw SQL validation banner. Absent from the DOM entirely when the
+   * template raises neither an error nor a warning.
+   */
+  sqlValidationBanner(): Locator {
+    return this.page.getByTestId('raw-sql-validation');
+  }
+
+  /**
+   * The validation banner's messages as one whitespace-collapsed string.
+   * Validation is debounced by 300ms, so assert with `toPass`.
+   */
+  async getSqlValidationText(): Promise<string> {
+    const banner = this.sqlValidationBanner();
+    if ((await banner.count()) === 0) return '';
+    return (await banner.innerText()).replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Type `prefix` into the SQL editor to open the autocomplete popup, and
+   * report the info panel of the highlighted suggestion.
+   *
+   * Dismisses the popup and clears the editor before returning: the tooltip
+   * sits over the editor and would intercept the next caller's click.
+   *
+   * `overflowX` is how far the content extends past the panel's own box, so a
+   * caller can assert the help text stays inside its background.
+   */
+  async readSqlCompletionInfo(
+    prefix: string,
+  ): Promise<{ text: string; overflowX: number }> {
+    await this.replaceSqlQuery(prefix);
+
+    const info = this.page.locator('.cm-completionInfo');
+    await info.waitFor({ state: 'visible', timeout: 10000 });
+
+    const text = await info.innerText();
+    const overflowX = await info.evaluate(
+      el => el.scrollWidth - el.clientWidth,
+    );
+
+    await this.dismissSqlCompletion();
+
+    return { text, overflowX };
+  }
+
+  /**
+   * Close the autocomplete popup by emptying the editor, leaving it clean for
+   * the next interaction.
+   *
+   * The popup sits over the editor and intercepts clicks, so anything that
+   * opens one has to close it. Emptying the document is the way to do that:
+   * Escape also closes it, but it bubbles to the tile modal and pops the
+   * discard-changes dialog.
+   */
+  async dismissSqlCompletion() {
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    await this.page
+      .locator('.cm-tooltip-autocomplete')
+      .waitFor({ state: 'hidden', timeout: 10000 });
+  }
+
+  /** Labels currently offered by the SQL autocomplete popup. */
+  sqlCompletionOptions(): Locator {
+    return this.page.locator(
+      '.cm-tooltip-autocomplete > ul > li .cm-completionLabel',
+    );
+  }
+
+  /**
+   * Type `prefix` into the SQL editor, accept the suggestion labelled `label`,
+   * and return the resulting document text.
+   *
+   * Verifies that what a completion inserts is actually well-formed — the
+   * replace range extends over trailing identifier characters, so a bracket
+   * auto-inserted by the editor is inside it and `apply` has to supply its own.
+   */
+  async acceptSqlCompletion(prefix: string, label: string): Promise<string> {
+    await this.replaceSqlQuery(prefix);
+
+    const option = this.page
+      .locator('.cm-tooltip-autocomplete > ul > li')
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+
+    const text = await this.getSqlEditorText();
+    // Accepting can immediately re-open the popup on the inserted text, which
+    // would intercept the next caller's click.
+    await this.dismissSqlCompletion();
+    return text;
+  }
+
+  /** The "SQL Chart Instructions" panel, which documents params and macros. */
+  sqlInstructions(): Locator {
+    return this.page
+      .locator('div')
+      .filter({ hasText: /^SQL Chart Instructions/ })
+      .first();
   }
 
   /**

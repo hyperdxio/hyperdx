@@ -28,7 +28,6 @@ import {
 import type {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
   Filter,
   MetricsDataType,
   SavedChartConfig,

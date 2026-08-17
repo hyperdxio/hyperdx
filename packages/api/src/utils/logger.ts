@@ -67,10 +67,10 @@ export const REDACTED_PATHS = [
 ];
 
 // `redact` addresses object paths, so it cannot reach a credential embedded in
-// a URL string. These two routes each take a standalone bearer token as a path
-// segment, which pino-http emits via `req.url` and which the custom message
-// builders interpolate into `msg`.
-const TOKEN_PATH_RE = /\/(ext\/silence-alert|team\/setup)\/[^/?#]+/g;
+// a URL string. This route takes a standalone bearer token as a path segment,
+// which pino-http emits via `req.url` and which the custom message builders
+// interpolate into `msg`.
+const TOKEN_PATH_RE = /\/(team\/setup)\/[^/?#]+/g;
 
 export const scrubUrlTokens = (url: string): string =>
   url.replace(TOKEN_PATH_RE, '/$1/[REDACTED]');
@@ -129,13 +129,13 @@ export const expressLogger = pinoHttp({
     }
     return 'info';
   },
-  customSuccessMessage: (req: Request, res: Response) => {
+  customSuccessMessage: (req: Request, _res: Response) => {
     return `HTTP ${req.method} ${scrubUrlTokens(req.originalUrl)}`;
   },
-  customErrorMessage: (req: Request, res: Response, err) => {
+  customErrorMessage: (req: Request, _res: Response, _err) => {
     return `HTTP ${req.method} ${scrubUrlTokens(req.originalUrl)}`;
   },
-  customProps: (req: Request, res: Response) => {
+  customProps: (req: Request, _res: Response) => {
     const user = req.user;
     if (user) {
       return {

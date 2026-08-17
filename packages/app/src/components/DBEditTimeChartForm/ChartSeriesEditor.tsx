@@ -89,6 +89,7 @@ type ChartSeriesEditorProps = {
 export function ChartSeriesEditor({
   control,
   databaseName,
+  dateRange,
   connectionId,
   index,
   namePrefix,
@@ -430,11 +431,14 @@ export function ChartSeriesEditor({
                 >
                   <SearchWhereInput
                     tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
                     showLabel={false}
                     additionalSuggestions={attributeSuggestions}
+                    data-testid="series-where-input"
                   />
                 </div>
               </>

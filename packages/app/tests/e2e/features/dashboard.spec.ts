@@ -1621,6 +1621,209 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         });
       },
     );
+
+    test(
+      'autocompletes every variable reference form',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Open a raw SQL tile on a dashboard with a variable', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.switchToSqlMode();
+        });
+
+        await test.step('The variable macros are offered, with wrapped help text', async () => {
+          const { text, overflowX } =
+            await dashboardPage.chartEditor.readSqlCompletionInfo('$__filter');
+          expect(text).toContain('Expands to 1=1 when nothing is selected');
+          // The suggestion list sets white-space: nowrap, which the info panel
+          // inherits and which ran this prose straight out of its background.
+          expect(overflowX).toBeLessThanOrEqual(1);
+        });
+
+        await test.step("The reference's expansion renders on its own line", async () => {
+          await dashboardPage.chartEditor.replaceSqlQuery('$svc');
+          const info = dashboardPage.page.locator('.cm-completionInfo');
+          await info.waitFor({ state: 'visible', timeout: 10000 });
+
+          // Nothing is selected on this dashboard, so the bare form shows the
+          // empty state it expands to.
+          const footnote = info.locator('.cm-completionInfo-footnote');
+          await expect(footnote).toHaveText('Expands to: NULL');
+
+          // Below the prose rather than run onto the end of it. A `\n` in a
+          // string `info` collapses to a space, which is why this is markup.
+          const gap = await info.evaluate(el => {
+            const sub = el.querySelector('.cm-completionInfo-footnote');
+            const main = sub?.previousElementSibling;
+            if (!sub || !main) return null;
+            return (
+              sub.getBoundingClientRect().top -
+              main.getBoundingClientRect().bottom
+            );
+          });
+          expect(gap).toBeGreaterThanOrEqual(0);
+
+          await dashboardPage.chartEditor.dismissSqlCompletion();
+        });
+
+        await test.step('Typing ${ offers the braced form and every format', async () => {
+          // `${` cannot fuzzy-match `$svc`, so without dedicated braced
+          // entries the popup is empty the moment the brace is typed.
+          await dashboardPage.chartEditor.replaceSqlQuery('${');
+          const options = dashboardPage.chartEditor.sqlCompletionOptions();
+          await expect(options).toHaveCount(5);
+          // Compared as a set: ranking between equally-good matches is
+          // CodeMirror's business, not something worth pinning here.
+          expect((await options.allTextContents()).sort()).toEqual(
+            [
+              '${svc}',
+              '${svc:sqlstring}',
+              '${svc:regex}',
+              '${svc:csv}',
+              '${svc:lucene}',
+            ].sort(),
+          );
+          await dashboardPage.chartEditor.dismissSqlCompletion();
+        });
+
+        await test.step('Accepting a completion inserts well-formed text', async () => {
+          // The replace range covers trailing identifier characters, which
+          // includes the `}` the editor auto-inserts after `${` or `{` — so
+          // `apply` has to carry its own closing brace rather than rely on it.
+          for (const [prefix, label, expected] of [
+            ['${', '${svc}', '${svc}'],
+            ['${', '${svc:csv}', '${svc:csv}'],
+            ['$sv', '$svc', '$svc'],
+            // The one-argument form goes in as written, rather than being
+            // silently rewritten to `$__filter(ServiceName, svc)`.
+            ['$__f', '$__filter(svc)', '$__filter(svc)'],
+            [
+              '{start',
+              '{startDateMilliseconds:Int64}',
+              '{startDateMilliseconds:Int64}',
+            ],
+          ]) {
+            expect(
+              await dashboardPage.chartEditor.acceptSqlCompletion(
+                prefix,
+                label,
+              ),
+            ).toBe(expected);
+          }
+        });
+      },
+    );
+
+    test(
+      'documents the dashboard variables and flags questionable references',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Create a dashboard with a variable-enabled filter', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+        });
+
+        await test.step('Open a raw SQL tile editor', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.switchToSqlMode();
+        });
+
+        await test.step('The instructions panel documents the variable', async () => {
+          const instructions = dashboardPage.chartEditor.sqlInstructions();
+          await expect(instructions).toContainText('Dashboard variables');
+          await expect(instructions).toContainText(
+            'This chart may reference the following variables from the dashboard: $svc.',
+          );
+          await expect(instructions).toContainText(
+            '$__filter and $__conditionalAll',
+          );
+        });
+
+        /**
+         * Put `sql` in the editor and assert what the validation banner says
+         * about it. Both the typing and the (debounced) validation are
+         * retried: CodeMirror occasionally drops a keystroke burst, which
+         * otherwise strands the assertion on the previous step's SQL.
+         */
+        const expectValidationFor = async (
+          sql: string,
+          assertBanner: (banner: string) => void,
+        ) => {
+          const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
+          await expect(async () => {
+            const editor = await dashboardPage.chartEditor.getSqlEditorText();
+            if (normalize(editor) !== normalize(sql)) {
+              await dashboardPage.chartEditor.replaceSqlQuery(sql);
+            }
+            assertBanner(
+              await dashboardPage.chartEditor.getSqlValidationText(),
+            );
+          }).toPass({ timeout: 20000 });
+        };
+
+        await test.step('An empty editor raises nothing at all', async () => {
+          await expectValidationFor('', banner => expect(banner).toBe(''));
+        });
+
+        await test.step('An unknown variable in a macro is an error', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, nope) AND $__timeFilter(Timestamp)`,
+            banner =>
+              expect(banner).toContain(
+                "Error: Macro '$__filter' references unknown variable 'nope'",
+              ),
+          );
+        });
+
+        await test.step('A bare reference is a warning, not an error', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE ServiceName IN ($svc) AND $__timeFilter(Timestamp)`,
+            banner => {
+              expect(banner).toContain(
+                'Warning: $svc has no valid empty-selection value',
+              );
+              expect(banner).not.toContain('Error:');
+            },
+          );
+        });
+
+        await test.step('A quoted reference is an error, because it always breaks', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE ServiceName = '$svc' AND $__timeFilter(Timestamp)`,
+            banner =>
+              expect(banner).toContain('Error: $svc is wrapped in quotes'),
+          );
+        });
+
+        await test.step('A reference guarded by $__conditionalAll raises nothing', async () => {
+          // The condition is dropped entirely while `svc` is unselected, so
+          // the nested $svc never renders as NULL.
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($svc), svc) AND $__timeFilter(Timestamp)`,
+            banner => expect(banner).toBe(''),
+          );
+        });
+
+        await test.step('A correct $__filter usage raises nothing', async () => {
+          await expectValidationFor(
+            `SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, svc) AND $__timeFilter(Timestamp)`,
+            banner => expect(banner).toBe(''),
+          );
+        });
+      },
+    );
   });
 
   test(

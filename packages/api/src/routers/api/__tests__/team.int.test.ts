@@ -102,11 +102,11 @@ describe('team router', () => {
 
   it('GET /team/members', async () => {
     const { agent, team } = await getLoggedInAgent(server);
-    const user1 = await User.create({
+    await User.create({
       email: 'user1@example.com',
       team: team.id,
     });
-    const user2 = await User.create({
+    await User.create({
       email: 'user2@example.com',
       team: team.id,
     });
@@ -157,7 +157,7 @@ describe('team router', () => {
     const { agent } = await getLoggedInAgent(server);
 
     // Create invitation with lowercase email
-    const resp1 = await agent
+    await agent
       .post('/team/invitation')
       .send({
         email: 'casesensitive@example.com',
@@ -172,7 +172,7 @@ describe('team router', () => {
     const firstToken = firstInvite!.token;
 
     // Try to create invitation with uppercase email
-    const resp2 = await agent
+    await agent
       .post('/team/invitation')
       .send({
         email: 'CaseSensitive@Example.com',

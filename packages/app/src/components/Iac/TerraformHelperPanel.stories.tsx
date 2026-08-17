@@ -32,7 +32,10 @@ const ref = {
 export const Default: Story = {
   args: {
     snippets: [
-      { label: 'Import block', snippet: buildImportBlock(ref) },
+      {
+        label: 'Import block',
+        snippet: buildImportBlock(ref, '7a1c0de5b2f34c9d8e0a1b2c'),
+      },
       {
         label: 'Provider setup',
         collapsible: true,

@@ -566,7 +566,7 @@ export function buildMetricSeries({
   unit: string;
   team_id: string;
 }): MetricModel[] {
-  // @ts-ignore TODO: Fix Timestamp types
+  // @ts-expect-error TODO: Fix Timestamp types
   return points.map(({ value, timestamp, le }) => ({
     _string_attributes: { ...tags, ...(le && { le }) },
     name,
