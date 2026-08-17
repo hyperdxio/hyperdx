@@ -7,7 +7,14 @@ import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { getSqlEditor } from '../utils/locators';
+import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import { switchWhereLanguage } from '../utils/lucene-autocomplete';
+
+/** The "Dropdown values filter" on a dashboard filter, and its language. */
+export type FilterWhereOptions = {
+  value: string;
+  language?: 'sql' | 'lucene';
+};
 
 /**
  * Config format tile config, as accepted by the external dashboard API.
@@ -856,6 +863,7 @@ export class DashboardPage {
       isVariableEnabled?: boolean;
       variableName?: string;
     },
+    whereOptions?: FilterWhereOptions,
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
@@ -870,6 +878,10 @@ export class DashboardPage {
       await this.page
         .getByRole('radio', { name: metricType, exact: true })
         .click();
+    }
+
+    if (whereOptions) {
+      await this.fillFilterDropdownValuesWhere(whereOptions);
     }
 
     // Applied before the applies-to selector below, because unchecking broadcast
@@ -910,6 +922,7 @@ export class DashboardPage {
       isVariableEnabled?: boolean;
       variableName?: string;
     },
+    whereOptions?: FilterWhereOptions,
   ) {
     await this.addFiltersButton.click();
 
@@ -920,7 +933,75 @@ export class DashboardPage {
       metricType,
       appliesToSourceNames,
       variableOptions,
+      whereOptions,
     );
+  }
+
+  /** The filter edit form's dialog, scoped so page-level locators stay unambiguous. */
+  getFilterForm(): Locator {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('filter-name-input') });
+  }
+
+  /**
+   * The "Dropdown values filter" input's root, reached from its language switch.
+   *
+   * Located this way because the input itself carries no test id, and matching
+   * it by placeholder only works while it is empty.
+   */
+  getFilterWhereRoot(): Locator {
+    return this.getFilterForm()
+      .getByTestId('where-language-switch')
+      .locator('xpath=..');
+  }
+
+  /** The CodeMirror editor behind the SQL form of the dropdown values filter. */
+  getFilterWhereSqlEditor(): Locator {
+    return this.getFilterWhereRoot().locator('div.cm-editor');
+  }
+
+  /** What the dropdown values filter flags about the variables it references. */
+  getFilterWhereVariableWarning(): Locator {
+    return this.getFilterWhereRoot().getByTestId('variable-validation');
+  }
+
+  /**
+   * Fill the "Dropdown values filter" (the filter's `where`) in the open filter
+   * edit form, replacing whatever is there.
+   *
+   * The language is always set explicitly: the form seeds it from the
+   * `hdx-search-where-language` localStorage key, which other specs write, so
+   * "it defaults to SQL" is not safe to assume.
+   */
+  async fillFilterDropdownValuesWhere({
+    value,
+    language = 'sql',
+  }: FilterWhereOptions) {
+    await switchWhereLanguage(
+      this.getFilterForm().getByTestId('where-language-switch'),
+      language === 'sql' ? 'SQL' : 'Lucene',
+    );
+
+    if (language === 'lucene') {
+      const input = this.getFilterWhereRoot().getByRole('textbox');
+      await input.click();
+      await input.fill(value);
+      // Blur so the Lucene suggestion dropdown can't cover the save button.
+      await this.page.getByTestId('filter-name-input').click();
+      return;
+    }
+
+    const editor = this.getFilterWhereSqlEditor();
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    // insertText, not type: CodeMirror's bracket auto-closing would corrupt a
+    // clause containing `(`, as every macro reference does.
+    await this.page.keyboard.insertText(value);
+    await dismissSqlAutocomplete(this.page);
   }
 
   getFilterLabel(name: string) {
@@ -1000,6 +1081,37 @@ export class DashboardPage {
    */
   getFilterEmptyDropdownState(): Locator {
     return this.page.getByText('Nothing found...').first();
+  }
+
+  /**
+   * Open a dashboard filter's dropdown, leaving it open so the caller can
+   * assert on the options it offers.
+   */
+  async openFilterDropdown(filterName: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.waitFor({ state: 'visible', timeout: 15000 });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+  }
+
+  /**
+   * Locator for one option in a dashboard filter's (open) dropdown. The
+   * dropdown is portaled out of the select, so this is located at page level.
+   */
+  getFilterOption(value: string): Locator {
+    return this.page.getByRole('option', { name: value, exact: true });
+  }
+
+  /** The warning shown when a filter's dropdown query awaits a variable's value. */
+  getFilterPendingVariableWarning(filterName: string): Locator {
+    return this.page.getByTestId(
+      `dashboard-filter-pending-variable-${filterName}`,
+    );
+  }
+
+  /** The error shown when a filter's dropdown values query failed. */
+  getFilterErrorIcon(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-error-${filterName}`);
   }
 
   /**

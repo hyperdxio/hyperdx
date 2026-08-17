@@ -10,6 +10,7 @@ import {
   validateVariableName,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  ChartVariable,
   DashboardFilter,
   MetricsDataType,
   SourceKind,
@@ -46,6 +47,7 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 
 import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
 import SourceSchemaPreview, {
@@ -359,7 +361,7 @@ const DashboardFilterEditForm = ({
 
             <CustomInputWrapper
               label="Dropdown values filter"
-              tooltipText="Optional condition used to filter the rows from which available filter values are queried"
+              tooltipText="Optional condition used to filter the rows from which available filter values are queried. May reference the dashboard's other variables."
             >
               <SearchWhereInput
                 tableConnection={tableConnection}
@@ -371,6 +373,7 @@ const DashboardFilterEditForm = ({
                 allowMultiline={true}
                 sqlPlaceholder="Filter for dropdown values"
                 lucenePlaceholder="Filter for dropdown values"
+                enableVariables={showVariableOptions}
               />
             </CustomInputWrapper>
 
@@ -652,6 +655,8 @@ interface DashboardFiltersEditModalProps {
   source?: TSource;
   /** Whether to offer the broadcast / variable controls. */
   showVariableOptions: boolean;
+  /** The dashboard's variables, if any */
+  variables?: ChartVariable[];
   onClose: () => void;
   onSaveFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (id: string) => void;
@@ -665,6 +670,7 @@ const DashboardFiltersModal = ({
   isLoading,
   source,
   showVariableOptions,
+  variables,
   onClose,
   onSaveFilter,
   onRemoveFilter,
@@ -719,16 +725,18 @@ const DashboardFiltersModal = ({
     return <EmptyState onCreateFilter={handleAddNewFilter} onClose={onClose} />;
   } else if (selectedFilter) {
     return (
-      <DashboardFilterEditForm
-        filter={selectedFilter}
-        onSave={handleSaveFilter}
-        onCancel={() => setSelectedFilter(undefined)}
-        onClose={onClose}
-        isNew={selectedFilter.id === NEW_FILTER_ID}
-        source={source}
-        filters={filters}
-        showVariableOptions={showVariableOptions}
-      />
+      <SqlVariablesProvider variables={variables}>
+        <DashboardFilterEditForm
+          filter={selectedFilter}
+          onSave={handleSaveFilter}
+          onCancel={() => setSelectedFilter(undefined)}
+          onClose={onClose}
+          isNew={selectedFilter.id === NEW_FILTER_ID}
+          source={source}
+          filters={filters}
+          showVariableOptions={showVariableOptions}
+        />
+      </SqlVariablesProvider>
     );
   } else {
     return (
