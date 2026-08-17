@@ -4616,7 +4616,7 @@ __metadata:
     "@braintree/sanitize-url": "npm:^7.1.1"
     "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.25.0"
+    "@hyperdx/common-utils": "npm:^0.26.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -4640,6 +4640,7 @@ __metadata:
     "@types/swagger-jsdoc": "npm:^6"
     "@types/uuid": "npm:^8.3.4"
     ai: "npm:^6.0.116"
+    ajv: "npm:^8.20.0"
     aws4: "npm:^1.13.2"
     chrono-node: "npm:^2.9.0"
     compression: "npm:^1.7.4"
@@ -4707,7 +4708,7 @@ __metadata:
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/api": "workspace:*"
     "@hyperdx/browser": "npm:^0.22.1"
-    "@hyperdx/common-utils": "npm:^0.25.0"
+    "@hyperdx/common-utils": "npm:^0.26.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@mantine/core": "npm:^9.0.0"
     "@mantine/dates": "npm:^9.0.0"
@@ -4833,7 +4834,7 @@ __metadata:
   resolution: "@hyperdx/cli@workspace:packages/cli"
   dependencies:
     "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
-    "@hyperdx/common-utils": "npm:^0.25.0"
+    "@hyperdx/common-utils": "npm:^0.26.0"
     "@jest/globals": "npm:^30.2.0"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/jest": "npm:^29.5.14"
@@ -4860,7 +4861,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/common-utils@npm:^0.25.0, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.26.0, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -12012,7 +12013,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ajv@npm:^8.0.0, ajv@npm:^8.0.1, ajv@npm:^8.17.1, ajv@npm:^8.9.0":
+"ajv@npm:^8.0.0, ajv@npm:^8.0.1, ajv@npm:^8.17.1, ajv@npm:^8.20.0, ajv@npm:^8.9.0":
   version: 8.20.0
   resolution: "ajv@npm:8.20.0"
   dependencies:

@@ -3,4 +3,4 @@
 '@hyperdx/common-utils': patch
 ---
 
-feat: Substitute dashboard variables in raw SQL tiles
+feat: Substitute dashboard variables in chart builder tiles

@@ -1,12 +1,12 @@
 {
   "api": {
-    "as-any": 95,
-    "ts-ignore": 4,
-    "eslint-disable": 29
+    "as-any": 94,
+    "ts-ignore": 0,
+    "eslint-disable": 31
   },
   "app": {
     "as-any": 215,
-    "ts-ignore": 11,
+    "ts-ignore": 0,
     "eslint-disable": 143
   },
   "cli": {
@@ -16,7 +16,7 @@
   },
   "common-utils": {
     "as-any": 116,
-    "ts-ignore": 5,
+    "ts-ignore": 0,
     "eslint-disable": 39
   },
   "hdx-eval": {

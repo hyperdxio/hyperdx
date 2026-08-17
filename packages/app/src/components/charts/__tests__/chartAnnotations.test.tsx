@@ -5,6 +5,7 @@ import {
   type ChartAnnotation,
   getAnnotationElements,
   labelSeparationPx,
+  layoutAnnotations,
   MAX_ANNOTATION_MARKERS,
   mergeAnnotations,
   resolveAnnotationSeries,
@@ -426,5 +427,64 @@ describe('resolveAnnotationSeries', () => {
     resolveAnnotationSeries([input], charted);
 
     expect(input.color).toBe('#fallback');
+  });
+});
+
+describe('layoutAnnotations', () => {
+  const collapsing = {
+    domain: [0, 1000] as [number, number],
+    plotWidth: 1000,
+  };
+  const release = (seconds: number, label: string, group: string) => ({
+    time: seconds * 1000,
+    label,
+    group,
+    kind: 'release',
+    groupNoun: 'releases',
+  });
+
+  // The hover tooltip reads `members` so a cluster shown as "N releases" can
+  // still name every service inside it — which colour alone cannot do once the
+  // legend overflows.
+  it('gives a collapsed cluster the members it swallowed', () => {
+    const laidOut = layoutAnnotations(
+      [
+        release(0, '1.0.0', 'checkout'),
+        release(10, '2.0.0', 'payments'),
+        release(600, '3.0.0', 'search'),
+      ],
+      collapsing,
+    );
+
+    const anchors = laidOut.filter(a => a.members != null);
+    expect(anchors).toHaveLength(2);
+    expect(anchors[0].label).toBe('2 releases');
+    expect(anchors[0].members?.map(m => m.group)).toEqual([
+      'checkout',
+      'payments',
+    ]);
+    // Members keep their own labels, so the tooltip shows real versions.
+    expect(anchors[0].members?.map(m => m.label)).toEqual(['1.0.0', '2.0.0']);
+    expect(anchors[1].members?.map(m => m.group)).toEqual(['search']);
+  });
+
+  it('gives a lone marker itself as its only member', () => {
+    const [only] = layoutAnnotations(
+      [release(500, '1.0.0', 'checkout')],
+      collapsing,
+    );
+
+    expect(only.members?.map(m => m.label)).toEqual(['1.0.0']);
+  });
+
+  // Before the plot is measured there is no collapsing, but hover still needs
+  // members to render a row.
+  it('populates members even when the geometry is unknown', () => {
+    const laidOut = layoutAnnotations(
+      [release(0, '1.0.0', 'checkout'), release(10, '2.0.0', 'payments')],
+      { domain: collapsing.domain },
+    );
+
+    expect(laidOut.every(a => a.members?.length === 1)).toBe(true);
   });
 });

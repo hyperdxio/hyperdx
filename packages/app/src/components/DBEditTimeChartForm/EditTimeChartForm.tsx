@@ -13,7 +13,7 @@ import {
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  isRawSqlChartConfig,
+  isPromqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -211,12 +211,12 @@ export default function EditTimeChartForm({
   // Track whether sub-form changes (display settings, heatmap settings) have
   // been applied. These bypass RHF's dirty tracking, so we latch here: once
   // set, only a parent reset (new tile opened) clears it via onDirtyChange.
-  const subFormDirty = useRef(false);
+  const subFormDirtyRef = useRef(false);
 
   useEffect(() => {
     // Don't let RHF's isDirty=false clear the flag after sub-form changes
     // were applied (RHF resets isDirty when its `values` prop re-syncs).
-    onDirtyChange?.(isDirty || subFormDirty.current);
+    onDirtyChange?.(isDirty || subFormDirtyRef.current);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
@@ -374,7 +374,7 @@ export default function EditTimeChartForm({
 
   // Attach variables so that variable references can be validated and expanded in the preview
   const previewConfig = useMemo(() => {
-    if (queriedConfig == null || !isRawSqlChartConfig(queriedConfig)) {
+    if (queriedConfig == null || isPromqlChartConfig(queriedConfig)) {
       return queriedConfig;
     }
     return {
@@ -490,10 +490,10 @@ export default function EditTimeChartForm({
     }
   }, [onSubmit, submitRef]);
 
-  const autoRunFired = useRef(false);
+  const autoRunFiredRef = useRef(false);
   useEffect(() => {
-    if (autoRun && !autoRunFired.current && tableSource) {
-      autoRunFired.current = true;
+    if (autoRun && !autoRunFiredRef.current && tableSource) {
+      autoRunFiredRef.current = true;
       onSubmit(true);
     }
   }, [autoRun, tableSource, onSubmit]);
@@ -681,7 +681,7 @@ export default function EditTimeChartForm({
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {
-        subFormDirty.current = true;
+        subFormDirtyRef.current = true;
         onDirtyChange?.(true);
       }
       onSubmit();
@@ -695,7 +695,7 @@ export default function EditTimeChartForm({
       setValue('series.0.countExpression', data.count || 'count()');
       setValue('series.0.heatmapScaleType', data.scaleType);
       // Heatmap settings are applied outside RHF's change tracking.
-      subFormDirty.current = true;
+      subFormDirtyRef.current = true;
       onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
