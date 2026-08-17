@@ -17,7 +17,7 @@ import Webhook, { WebhookService } from '@/models/webhook';
 import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
-} from '@/tasks/checkAlerts/notifications';
+} from '@/tasks/checkAlerts/transports';
 import { isDuplicateKeyError } from '@/utils/errors';
 import {
   validateWebhookUrl,
@@ -470,13 +470,15 @@ router.post(
         eventId: 'test-event-id',
       };
 
+      const testChannel = { type: 'webhook' as const, channel: testWebhook };
+
       if (service === WebhookService.Slack) {
-        await handleSendSlackWebhook(testWebhook, testMessage);
+        await handleSendSlackWebhook(testChannel, testMessage);
       } else if (
         service === WebhookService.Generic ||
         service === WebhookService.IncidentIO
       ) {
-        await handleSendGenericWebhook(testWebhook, testMessage);
+        await handleSendGenericWebhook(testChannel, testMessage);
       } else {
         return res.status(400).json({
           message: 'Unsupported webhook service type',
