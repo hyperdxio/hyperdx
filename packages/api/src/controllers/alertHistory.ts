@@ -521,9 +521,7 @@ export async function getAlertTransitionsInRange({
   // Newest bucket start across the window's rows; null when no row carries
   // lastValues. Be defensive about missing arrays/fields in case of engine
   // differences (e.g. DocumentDB).
-  const newestBucketStart = (
-    bucketStarts: Date[][] | undefined,
-  ): Date | null =>
+  const newestBucketStart = (bucketStarts: Date[][] | undefined): Date | null =>
     (bucketStarts ?? [])
       .flat()
       .reduce<Date | null>(
