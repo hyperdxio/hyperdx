@@ -134,8 +134,10 @@ describe('DBSearchPageAlertModal', () => {
     const alertTab = await screen.findByRole('tab', { name: /Alert 2/ });
     fireEvent.click(alertTab);
 
-    const saveButton = await screen.findByText('Save Alert');
-    fireEvent.click(saveButton.closest('button') as HTMLButtonElement);
+    const saveButton = await screen.findByRole('button', {
+      name: 'Save Alert',
+    });
+    fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(updateAlertMutateAsync).toHaveBeenCalledTimes(1);
@@ -161,8 +163,10 @@ describe('DBSearchPageAlertModal', () => {
     const alertTab = await screen.findByRole('tab', { name: /Alert 2/ });
     fireEvent.click(alertTab);
 
-    const saveButton = await screen.findByText('Save Alert');
-    fireEvent.click(saveButton.closest('button') as HTMLButtonElement);
+    const saveButton = await screen.findByRole('button', {
+      name: 'Save Alert',
+    });
+    fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(updateAlertMutateAsync).toHaveBeenCalledTimes(1);
