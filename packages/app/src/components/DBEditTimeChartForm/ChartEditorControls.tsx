@@ -188,6 +188,7 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="Pattern Expression"
+            enableVariables
           />
           {typeof select === 'string' &&
             select.length > 0 &&
@@ -209,6 +210,7 @@ export function ChartEditorControls({
               setValue('whereLanguage', lang)
             }
             showLabel={false}
+            enableVariables
           />
         </Flex>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -276,6 +278,7 @@ export function ChartEditorControls({
                     placeholder="SQL Columns"
                     onSubmit={onSubmit}
                     disableKeywordAutocomplete
+                    enableVariables
                   />
                 </div>
                 {displayType === DisplayType.Table && (
@@ -298,6 +301,7 @@ export function ChartEditorControls({
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>
@@ -430,6 +434,7 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="SELECT"
+            enableVariables
           />
           <SearchWhereInput
             tableConnection={tableConnection}
@@ -442,6 +447,7 @@ export function ChartEditorControls({
               setValue('whereLanguage', lang)
             }
             showLabel={false}
+            enableVariables
           />
         </Flex>
       )}

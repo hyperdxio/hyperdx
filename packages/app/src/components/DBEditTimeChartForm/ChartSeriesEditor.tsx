@@ -409,6 +409,7 @@ export function ChartSeriesEditor({
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
               onSubmit={onSubmit}
+              enableVariables
             />
           </div>
         )}
@@ -439,6 +440,7 @@ export function ChartSeriesEditor({
                     showLabel={false}
                     additionalSuggestions={attributeSuggestions}
                     data-testid="series-where-input"
+                    enableVariables
                   />
                 </div>
               </>
@@ -464,6 +466,7 @@ export function ChartSeriesEditor({
                     placeholder="SQL Columns"
                     disableKeywordAutocomplete
                     onSubmit={onSubmit}
+                    enableVariables
                   />
                 </div>
                 {showHaving && (
@@ -479,6 +482,7 @@ export function ChartSeriesEditor({
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>

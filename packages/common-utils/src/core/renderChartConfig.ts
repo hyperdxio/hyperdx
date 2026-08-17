@@ -53,6 +53,7 @@ import {
   SqlAstFilter,
   SQLInterval,
 } from '@/types';
+import { substituteChartConfigVariables } from '@/variables';
 
 /**
  * Helper function to create a MetricName filter condition.
@@ -2486,17 +2487,21 @@ export async function renderChartConfig(
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
+  // Expand dashboard variables before anything reads the config's expressions,
+  // so metric translation and the CTEs it builds all see final SQL fragments.
+  const substitutedChartConfig = substituteChartConfigVariables(rawChartConfig);
+
   // A metric chart with multiple series composes one query per series into a
   // single UNION ALL + pivot statement (each metric type needs its own CTE
   // scaffolding, and different types read different physical tables). The
   // per-series branches recurse through this function with a single select.
   if (
-    isMetricChartConfig(rawChartConfig) &&
-    Array.isArray(rawChartConfig.select) &&
-    rawChartConfig.select.length > 1
+    isMetricChartConfig(substitutedChartConfig) &&
+    Array.isArray(substitutedChartConfig.select) &&
+    substitutedChartConfig.select.length > 1
   ) {
     return renderMultiSeriesMetricChartConfig(
-      rawChartConfig,
+      substitutedChartConfig,
       metadata,
       querySettings,
     );
@@ -2504,9 +2509,9 @@ export async function renderChartConfig(
 
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
-  const translatedChartConfig = isMetricChartConfig(rawChartConfig)
-    ? await translateMetricChartConfig(rawChartConfig, metadata)
-    : rawChartConfig;
+  const translatedChartConfig = isMetricChartConfig(substitutedChartConfig)
+    ? await translateMetricChartConfig(substitutedChartConfig, metadata)
+    : substitutedChartConfig;
 
   // Resolve the bucket column once for the whole render. A source with
   // `timestampValueExpression = "EventDate, EventTime"` should bucket on

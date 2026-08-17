@@ -3400,6 +3400,186 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('dashboard variables', () => {
+    const configWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'ServiceName IN ($service)',
+          aggConditionLanguage: 'sql',
+        },
+      ],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      having: 'count() > 0',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and variable macros in a builder config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(configWithVariables, mockMetadata, undefined),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('api', 'web'))");
+      expect(sql).toContain("countIf(ServiceName IN ('api', 'web'))");
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('leaves references untouched when the config carries no variables', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...configWithVariables, where: '$service', variables: undefined },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain('$service');
+    });
+
+    it('does not re-expand a selected value that looks like a reference', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...configWithVariables,
+            variables: [
+              { name: 'service', values: ['$other'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('$other'))");
+      expect(sql).not.toContain('nope');
+    });
+
+    // A metric config is rewritten into CTEs by translateMetricChartConfig
+    // (single series) or split into one query per series (multi-series), and
+    // both read the config's expressions. Substitution therefore has to run
+    // *before* that rewriting for the expansions to reach the generated SQL at
+    // all — and exactly once, since the per-series branches recurse back
+    // through renderChartConfig.
+    const gaugeSeriesWithVariable = {
+      aggFn: 'avg' as const,
+      aggCondition: 'ServiceName IN ($service)',
+      aggConditionLanguage: 'sql' as const,
+      valueExpression: 'Value',
+      metricName: 'metric.alpha',
+      metricType: MetricsDataType.Gauge,
+    };
+
+    const metricConfigWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: { databaseName: 'default', tableName: '' },
+      select: [gaugeSeriesWithVariable],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and macros in a single-series metric config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          metricConfigWithVariables,
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // The WHERE macro and the series aggCondition, once each.
+      expect(sql.match(/ServiceName IN \('api', 'web'\)/g)).toHaveLength(2);
+      // Both land in the Source CTE's filter, which only happens when
+      // substitution runs before the metric translation builds that CTE —
+      // afterwards the CTE body is already rendered SQL text.
+      expect(sql).toMatch(
+        /FROM default\.otel_metrics_gauge[\s\S]*ServiceName IN \('api', 'web'\)[\s\S]*FROM Bucketed/,
+      );
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('expands references in every branch of a multi-series metric config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...metricConfigWithVariables,
+            select: [
+              gaugeSeriesWithVariable,
+              { ...gaugeSeriesWithVariable, metricName: 'metric.beta' },
+              {
+                ...gaugeSeriesWithVariable,
+                aggFn: 'sum',
+                metricName: 'metric.gamma',
+                metricType: MetricsDataType.Sum,
+              },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // Three branches (two gauge, one sum — a different physical table with
+      // its own CTE scaffolding), each carrying both expansions.
+      expect(sql.match(/UNION ALL/g)).toHaveLength(2);
+      expect(sql.match(/ServiceName IN \('api', 'web'\)/g)).toHaveLength(6);
+      expect(sql).toContain('FROM default.otel_metrics_sum');
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('substitutes exactly once across a multi-series metric render', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...metricConfigWithVariables,
+            select: [
+              gaugeSeriesWithVariable,
+              { ...gaugeSeriesWithVariable, metricName: 'metric.beta' },
+            ],
+            // The per-series branches recurse through renderChartConfig, so a
+            // value that itself looks like a reference must not be expanded a
+            // second time on the way down.
+            variables: [
+              { name: 'service', values: ['$other'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // Two branches × (WHERE macro + aggCondition), all left as written.
+      expect(sql.match(/ServiceName IN \('\$other'\)/g)).toHaveLength(4);
+      expect(sql).not.toContain('nope');
+    });
+  });
+
   // HDX-4371: a source with `timestampValueExpression = "EventDate, EventTime"`
   // should bucket on `EventTime` (the DateTime token), not on `EventDate`
   // (the partition-key Date). The WHERE clause keeps using both columns so

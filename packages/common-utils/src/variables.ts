@@ -10,6 +10,9 @@ import {
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   SavedChartConfig,
+  SearchConditionLanguage,
+  SelectList,
+  SortSpecificationList,
 } from './types';
 
 /** Rendering formats a reference can request via `${name:format}`. */
@@ -53,7 +56,7 @@ export function formatVariableValues(
       return values.join(',');
     case 'lucene':
       return values.length === 0
-        ? '*'
+        ? '("")'
         : `(${values.map(value => `"${escapeLuceneValue(value)}"`).join(' OR ')})`;
     default:
       format satisfies never; // Unreachable
@@ -316,6 +319,13 @@ export type VariableContext = {
   variables: ChartVariable[];
   /** Format used by references that don't request one. */
   defaultFormat: VariableFormat;
+  /**
+   * When true, `$__filter` and `$__conditionalAll` are left exactly as
+   * written. They expand to SQL predicates, so they have no meaning in a
+   * Lucene expression — expanding one there would splice SQL into a query
+   * that is about to be parsed as Lucene.
+   */
+  disableMacros?: boolean;
 };
 
 const sqlNoOp = (name: string) =>
@@ -436,7 +446,10 @@ export function expandVariableToken(
 }
 
 function substituteWithContext(input: string, ctx: VariableContext): string {
-  return scanTemplateTokens(input, VARIABLE_MACRO_NAMES)
+  // Unregistering the macro names is what leaves them verbatim: the scanner
+  // emits an unknown `$__x` as plain text, arguments and all.
+  const macroNames = ctx.disableMacros ? [] : VARIABLE_MACRO_NAMES;
+  return scanTemplateTokens(input, macroNames)
     .map(token =>
       token.kind === 'text' ? token.text : expandVariableToken(token, ctx),
     )
@@ -454,9 +467,148 @@ function substituteWithContext(input: string, ctx: VariableContext): string {
 export function substituteVariables(
   input: string,
   variables: ChartVariable[],
-  { defaultFormat = 'sqlstring' }: { defaultFormat?: VariableFormat } = {},
+  {
+    defaultFormat = 'sqlstring',
+    disableMacros,
+  }: { defaultFormat?: VariableFormat; disableMacros?: boolean } = {},
 ): string {
-  return substituteWithContext(input, { variables, defaultFormat });
+  return substituteWithContext(input, {
+    variables,
+    defaultFormat,
+    disableMacros,
+  });
+}
+
+// -- Chart builder configs --------------------------------------------------
+
+/**
+ * The chart builder fields whose expressions may reference variables. Kept
+ * structural rather than tied to one config type so both runtime configs (which
+ * carry `variables`) and saved configs (which don't) can be walked.
+ */
+type BuilderVariableFields = {
+  select: SelectList;
+  where?: string;
+  whereLanguage?: SearchConditionLanguage;
+  having?: string;
+  havingLanguage?: SearchConditionLanguage;
+  groupBy?: SelectList;
+  orderBy?: SortSpecificationList;
+};
+
+/**
+ * Rewrites the given template. `language` is the language the renderer will parse
+ * that expression as, so a reference can be expanded in a matching format.
+ */
+type TemplateMapper = (
+  template: string,
+  language: SearchConditionLanguage,
+) => string;
+
+const mapSelectList = (list: SelectList, map: TemplateMapper): SelectList =>
+  typeof list === 'string'
+    ? map(list, 'sql')
+    : list.map(column => ({
+        ...column,
+        valueExpression: map(
+          column.valueExpression,
+          column.valueExpressionLanguage ?? 'sql',
+        ),
+        // Left absent when absent: the select union makes `aggCondition`
+        // required for some aggregations and optional for others.
+        ...(column.aggCondition
+          ? {
+              aggCondition: map(
+                column.aggCondition,
+                column.aggConditionLanguage ?? 'lucene',
+              ),
+            }
+          : {}),
+      }));
+
+const mapSortList = (
+  list: SortSpecificationList,
+  map: TemplateMapper,
+): SortSpecificationList =>
+  typeof list === 'string'
+    ? map(list, 'sql')
+    : list.map(spec => ({
+        ...spec,
+        // `renderSortSpecificationList` always renders items as SQL
+        valueExpression: map(spec.valueExpression, 'sql'),
+      }));
+
+/**
+ * Calls the given map function to rewrite every chart builder expression
+ * that may contain variable references, leaving the rest of the config untouched.
+ */
+function mapBuilderVariableTemplates<T extends BuilderVariableFields>(
+  config: T,
+  map: TemplateMapper,
+): T {
+  return {
+    ...config,
+    select: mapSelectList(config.select, map),
+    ...(config.where
+      ? { where: map(config.where, config.whereLanguage ?? 'sql') }
+      : {}),
+    ...(config.having
+      ? { having: map(config.having, config.havingLanguage ?? 'sql') }
+      : {}),
+    ...(config.groupBy != null
+      ? { groupBy: mapSelectList(config.groupBy, map) }
+      : {}),
+    ...(config.orderBy != null
+      ? { orderBy: mapSortList(config.orderBy, map) }
+      : {}),
+  };
+}
+
+/**
+ * Expand variable references and the variable macros throughout a chart builder
+ * config, returning the config with `variables` consumed. `variables` being
+ * undefined means this is a no-op.
+ *
+ * Each expression is expanded for the language it will be parsed as. A Lucene
+ * expression renders values in the `lucene` format and gets no macros.
+ *
+ * Dropping `variables` from the result ensures that variables are never substituted
+ * twice, even when the config is passed through `substituteChartConfigVariables`
+ * recursively (eg. for CTEs or Metrics).
+ */
+export function substituteChartConfigVariables<
+  T extends BuilderVariableFields & { variables?: ChartVariable[] },
+>(config: T): T {
+  const { variables } = config;
+  if (variables == null) return config;
+
+  const substituted = mapBuilderVariableTemplates(
+    config,
+    (template, language) => {
+      const isLucene = language === 'lucene';
+      return substituteVariables(template, variables, {
+        defaultFormat: isLucene ? 'lucene' : 'sqlstring',
+        disableMacros: isLucene,
+      });
+    },
+  );
+
+  return { ...substituted, variables: undefined };
+}
+
+/**
+ * Every variable reference across a chart builder config's expressions.
+ * Never throws: it runs over saved configs that may be mid-edit or malformed.
+ */
+function getBuilderVariableReferences(
+  config: BuilderVariableFields,
+): VariableReference[] {
+  const references: VariableReference[] = [];
+  mapBuilderVariableTemplates(config, template => {
+    references.push(...getVariableReferences(template));
+    return template;
+  });
+  return references;
 }
 
 /** One occurrence of a variable reference in a template. */
@@ -566,6 +718,125 @@ export function getVariableReferences(input: string): VariableReference[] {
   return references;
 }
 
+/** `$a, $b` — deduplicated, in source order, for use in a message. */
+function formatReferenceList(references: VariableReference[]): string {
+  return [...new Set(references.map(reference => reference.raw))].join(', ');
+}
+
+export type VariableReferenceIssues = { errors: string[]; warnings: string[] };
+
+/**
+ * Checks on the dashboard variables a single expression references.
+ *
+ * `variables` is tri-state and each state means something different here:
+ * `undefined` is "no variable context" (the chart explorer, or a dashboard with
+ * the feature flag off) where nothing is substituted at all; `[]` is a dashboard
+ * whose filters expose no variables.
+ *
+ * Only *value* references (`$name`, `${name}`, `${name:format}`) are inspected.
+ * The macro forms either expand correctly or throw, and those messages reach
+ * the user through expansion — except in the two cases where expansion never
+ * runs and they would pass through silently: no context at all, and a Lucene
+ * expression. Both are reported here.
+ */
+export function validateVariableReferencesInTemplate(
+  template: string,
+  variables: ChartVariable[] | undefined,
+  {
+    subject = 'SQL',
+    language = 'sql',
+  }: {
+    /** The sentence subject of each message, e.g. `SQL references ...`. */
+    subject?: string;
+    /** The language the renderer parses this template as. */
+    language?: SearchConditionLanguage;
+  } = {},
+): VariableReferenceIssues {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const references = getVariableReferences(template);
+  if (references.length === 0) return { errors, warnings };
+
+  const macroReferences = references.filter(r => r.kind === 'macro');
+  const valueReferences = references.filter(r => r.kind !== 'macro');
+
+  // Variables are not available on chart explorer (and maybe other contexts)
+  if (variables == null) {
+    // Macros are always an error, we assume no query will intentionally include them without variable context.
+    if (macroReferences.length > 0) {
+      errors.push(
+        `${subject} uses ${formatReferenceList(macroReferences)}, but no variables are available here.`,
+      );
+    }
+
+    // $var and ${var} references only trigger a warning since they may be a literal the user means to keep.
+    if (valueReferences.length > 0) {
+      warnings.push(
+        `${subject} references ${formatReferenceList(valueReferences)}, but no variables are available here.`,
+      );
+    }
+    return { errors, warnings };
+  }
+
+  const knownVariableNames = new Set(variables.map(variable => variable.name));
+  const available =
+    variables.length > 0
+      ? variables.map(variable => variable.name).join(', ')
+      : '(none)';
+
+  const unknown = valueReferences.filter(r => !knownVariableNames.has(r.name));
+  if (unknown.length > 0) {
+    warnings.push(
+      `${subject} references unknown variable ${formatReferenceList(unknown)}. Available variables: ${available}.`,
+    );
+  }
+
+  // Macros are not supported in lucene
+  if (language === 'lucene') {
+    if (macroReferences.length > 0) {
+      const [{ name }] = macroReferences;
+      errors.push(
+        `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
+      );
+    }
+    // The two checks below are specific to the `sqlstring` default format.
+    return { errors, warnings };
+  }
+
+  // An unrecognized format throws during expansion, so it is already reported.
+  const resolved = valueReferences.filter(
+    r =>
+      knownVariableNames.has(r.name) &&
+      (r.format == null || isVariableFormat(r.format)),
+  );
+
+  const quoted = resolved.filter(
+    r => (r.format ?? 'sqlstring') === 'sqlstring' && r.inStringLiteral,
+  );
+  if (quoted.length > 0) {
+    const [{ name }] = quoted;
+    errors.push(
+      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, ${name}) or \${${name}:csv} instead?`,
+    );
+  }
+
+  const unguarded = resolved.filter(
+    r =>
+      (r.format ?? 'sqlstring') === 'sqlstring' &&
+      !r.inStringLiteral &&
+      r.guardedBy !== r.name,
+  );
+  if (unguarded.length > 0) {
+    const [{ name }] = unguarded;
+    warnings.push(
+      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, ${name}) or $__conditionalAll(<condition>, ${name}) so the query stays valid when no values are selected.`,
+    );
+  }
+
+  return { errors, warnings };
+}
+
 /**
  * Returns the names of every variable the template could reference.
  * Never throws: it runs over saved SQL that may be mid-edit or malformed.
@@ -584,15 +855,28 @@ export function hasVariableMacro(input: string): boolean {
   }).some(token => token.kind === 'macro');
 }
 
-/** Returns the subset of `variables` that `config` actually references. */
+/**
+ * Returns the subset of `variables` that `config` actually references.
+ *
+ * Keying a tile's query on only these keeps it from re-running when an
+ * unrelated variable's selection changes.
+ */
 export function filterReferencedVariables(
   config: ChartConfigWithOptDateRange | SavedChartConfig,
   variables: ChartVariable[],
 ): ChartVariable[] {
-  // Only Raw SQL configs can reference variables today.
-  if (!('configType' in config) || config.configType !== 'sql') {
+  let names: string[];
+  if ('configType' in config && config.configType === 'sql') {
+    names = getReferencedVariableNames(config.sqlTemplate);
+  } else if ('configType' in config && config.configType === 'promql') {
+    // PromQL queries don't support variables yet.
     return [];
+  } else {
+    names = getBuilderVariableReferences(config).map(
+      reference => reference.name,
+    );
   }
-  const referenced = new Set(getReferencedVariableNames(config.sqlTemplate));
+
+  const referenced = new Set(names);
   return variables.filter(variable => referenced.has(variable.name));
 }

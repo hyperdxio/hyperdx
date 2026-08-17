@@ -39,6 +39,7 @@ export function HeatmapSeriesEditor({
           setValue('whereLanguage', lang)
         }
         showLabel={false}
+        enableVariables
       />
       <Divider />
       <Flex justify="flex-end">
