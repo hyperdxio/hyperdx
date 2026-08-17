@@ -39,6 +39,11 @@ export class TeamPage {
   private readonly rotateApiKeyButton: Locator;
   private readonly rotateApiKeyConfirm: Locator;
   private readonly rotateApiKeyCancel: Locator;
+  private readonly rotateApiKeyModal: Locator;
+  private readonly rotateAccessKeyButton: Locator;
+  private readonly rotateAccessKeyConfirm: Locator;
+  private readonly rotateAccessKeyCancel: Locator;
+  private readonly rotateAccessKeyModal: Locator;
 
   // Connections elements
   private readonly addConnectionButton: Locator;
@@ -103,6 +108,11 @@ export class TeamPage {
     this.rotateApiKeyButton = page.getByTestId('rotate-api-key-button');
     this.rotateApiKeyConfirm = page.getByTestId('rotate-api-key-confirm');
     this.rotateApiKeyCancel = page.getByTestId('rotate-api-key-cancel');
+    this.rotateApiKeyModal = page.getByTestId('rotate-api-key-modal');
+    this.rotateAccessKeyButton = page.getByTestId('rotate-access-key-button');
+    this.rotateAccessKeyConfirm = page.getByTestId('rotate-access-key-confirm');
+    this.rotateAccessKeyCancel = page.getByTestId('rotate-access-key-cancel');
+    this.rotateAccessKeyModal = page.getByTestId('rotate-access-key-modal');
 
     this.addConnectionButton = page.getByTestId('add-connection-button');
 
@@ -197,6 +207,22 @@ export class TeamPage {
 
   async cancelRotateApiKey() {
     await this.rotateApiKeyCancel.click();
+  }
+
+  async clickRotateAccessKey() {
+    await this.rotateAccessKeyButton.click();
+  }
+
+  // Confirming rotates the shared E2E account's personal access key, which
+  // 401s the bearer requests in dashboard-external-api-*.spec.ts running in
+  // parallel workers. Covered by me.int.test.ts instead — see the note in
+  // team.spec.ts.
+  async confirmRotateAccessKey() {
+    await this.rotateAccessKeyConfirm.click();
+  }
+
+  async cancelRotateAccessKey() {
+    await this.rotateAccessKeyCancel.click();
   }
 
   // --- Connections ---
@@ -394,6 +420,18 @@ export class TeamPage {
 
   get rotateButton() {
     return this.rotateApiKeyButton;
+  }
+
+  get rotateApiKeyDialog() {
+    return this.rotateApiKeyModal;
+  }
+
+  get rotateAccessKeyTrigger() {
+    return this.rotateAccessKeyButton;
+  }
+
+  get rotateAccessKeyDialog() {
+    return this.rotateAccessKeyModal;
   }
 
   get members() {

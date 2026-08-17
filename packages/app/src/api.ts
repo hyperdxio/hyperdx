@@ -11,6 +11,7 @@ import type {
   MeApiResponse,
   PresetDashboard,
   PresetDashboardFilter,
+  RotateAccessKeyApiResponse,
   RotateApiKeyApiResponse,
   TeamApiResponse,
   TeamClickHouseSettingsUpdate,
@@ -267,6 +268,14 @@ const api = {
         hdxServer(`team/apiKey`, {
           method: 'PATCH',
         }).json<RotateApiKeyApiResponse>(),
+    });
+  },
+  useRotatePersonalAccessKey() {
+    return useMutation<RotateAccessKeyApiResponse, Error | HTTPError>({
+      mutationFn: async () =>
+        hdxServer(`me/accessKey`, {
+          method: 'PATCH',
+        }).json<RotateAccessKeyApiResponse>(),
     });
   },
   useDeleteTeamMember() {
