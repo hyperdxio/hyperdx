@@ -1153,11 +1153,10 @@ async function renderWhere(
 ): Promise<ChSql> {
   // Build the lookup first — it's needed by both the `where` block and the
   // `filters` block below.
-  const hasSqlFilter =
-  chartConfig.whereLanguage === 'sql' ||
-  (chartConfig.filters?.some(f => f.type === 'sql') ?? false) ||
-  (typeof chartConfig.select !== 'string' &&
-    chartConfig.select.some(s => s.aggConditionLanguage === 'sql'));
+    const hasSqlFilter =
+    (isNonEmptyWhereExpr(chartConfig.where) &&
+      (chartConfig.whereLanguage ?? 'sql') === 'sql') ||
+    (chartConfig.filters?.some(f => f.type === 'sql') ?? false);
   const textIndexInfoLookup: TextIndexInfoLookup =
     hasSqlFilter &&
     chartConfig.from.databaseName &&
@@ -1173,8 +1172,8 @@ async function renderWhere(
 
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
-    const rewrittenWhere =
-      chartConfig.whereLanguage === 'sql'
+        const rewrittenWhere =
+      (chartConfig.whereLanguage ?? 'sql') === 'sql'
         ? rewriteSqlFilterWithKvItems(chartConfig.where, textIndexInfoLookup)
         : chartConfig.where;
     whereSearchCondition = wrapChSqlIfNotEmpty(
