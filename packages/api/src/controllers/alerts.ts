@@ -129,7 +129,12 @@ export const validateAlertInput = async (
   }
 };
 
-const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+// Exported for unit testing the channel-mirroring invariant (see
+// controllers/__tests__/alerts.test.ts) -- otherwise only used internally.
+export const makeAlert = (
+  alert: AlertInput,
+  userId?: ObjectId,
+): Partial<IAlert> => {
   // Preserve existing DB value when scheduleStartAt is omitted from updates
   // (undefined), while still allowing explicit clears via null.
   const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
