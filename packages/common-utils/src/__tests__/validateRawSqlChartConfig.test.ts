@@ -1,4 +1,7 @@
-import { validateRawSqlChartConfig } from '@/core/utils';
+import {
+  validateRawSqlChartConfig,
+  validateRawSqlForAlert,
+} from '@/core/utils';
 import { DisplayType, RawSqlChartConfig } from '@/types';
 
 function config(overrides: Partial<RawSqlChartConfig>): RawSqlChartConfig {
@@ -208,6 +211,29 @@ describe('validateRawSqlChartConfig', () => {
     ).not.toThrow();
   });
 
+  it('stays silent on the console while a macro is half-typed', () => {
+    // The editor revalidates on every keystroke, so an unterminated argument
+    // list is the expected path, not a bug. Logging it would put a stack trace
+    // in the console on each debounce tick.
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      for (const sqlTemplate of [
+        'SELECT * FROM $__sourceTable(',
+        'SELECT * WHERE $__filters(',
+        'SELECT $__sourceTable( FROM logs',
+      ]) {
+        validateRawSqlChartConfig(config({ sqlTemplate }), {
+          isDashboardTile: true,
+        });
+      }
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it('reports the missing-interval error for a metric $__sourceTable(type) macro when metricTables is provided', () => {
     const { errors } = validateRawSqlChartConfig(
       config({
@@ -335,5 +361,249 @@ describe('validateRawSqlChartConfig', () => {
       configType: 'metric',
     } as unknown as RawSqlChartConfig);
     expect(result).toEqual({ errors: [], warnings: [] });
+  });
+
+  describe('an empty SQL template', () => {
+    it.each([
+      ['empty', ''],
+      ['whitespace only', '  \n  '],
+    ])('reports nothing when the editor is %s', (_label, sqlTemplate) => {
+      expect(
+        validateRawSqlChartConfig(
+          config({ sqlTemplate, displayType: DisplayType.Line }),
+          { isDashboardTile: true },
+        ),
+      ).toEqual({ errors: [], warnings: [] });
+    });
+
+    it('is still rejected for an alert', () => {
+      // The quiet-while-empty rule above is for the editor banner only.
+      // `validateRawSqlForAlert` also backs `validateAlertInput` on the API,
+      // where an empty template must not be allowed to save an alert on a
+      // tile that can never produce a series.
+      const { errors } = validateRawSqlForAlert(
+        config({ sqlTemplate: '', displayType: DisplayType.Line }),
+      );
+      expect(errors).toContain(
+        'SQL used for alerts must include an interval parameter or macro.',
+      );
+    });
+  });
+
+  describe('macro expansion failures', () => {
+    it('surfaces an unresolvable metric type, which no other check covers', () => {
+      const { errors } = validateRawSqlChartConfig(
+        config({
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable(bogus) WHERE $__timeFilter(ts)',
+          metricTables: {
+            gauge: 'otel_metrics_gauge',
+            histogram: 'otel_metrics_histogram',
+            sum: 'otel_metrics_sum',
+            summary: 'otel_metrics_summary',
+            'exponential histogram': 'otel_metrics_exponential_histogram',
+          },
+        }),
+      );
+      expect(errors).toContain(
+        "Macro '$__sourceTable(metricType)' invalid argument 'bogus'. Expected a valid metrics data type (gauge, histogram, sum, summary, exponential histogram).",
+      );
+    });
+
+    it('stays silent on an unterminated argument list, which is what half-typed SQL looks like', () => {
+      const { errors } = validateRawSqlChartConfig(
+        config({
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable WHERE $__timeFilter(',
+        }),
+      );
+      expect(errors).toEqual([]);
+    });
+
+    it('does not repeat a $__sourceTable failure the source checks already describe', () => {
+      const { errors } = validateRawSqlChartConfig(
+        config({
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable(gauge) WHERE $__timeFilter(ts)',
+          metricTables: undefined,
+        }),
+      );
+      expect(errors).toEqual([
+        'SQL uses $__sourceTable(<metricType>) but the selected source is not a metrics source — use a bare $__sourceTable instead.',
+      ]);
+    });
+  });
+
+  describe('variable references', () => {
+    const withVariables = (sqlTemplate: string) =>
+      config({
+        sqlTemplate,
+        variables: [
+          { name: 'service', values: ['api'], expression: 'ServiceName' },
+          { name: 'env', values: [], expression: 'Env' },
+        ],
+      });
+
+    it('errors on a macro naming a variable the dashboard does not have', () => {
+      const { errors } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, nope)',
+        ),
+      );
+      expect(errors).toContain(
+        "Macro '$__filter' references unknown variable 'nope'. Available variables: service, env.",
+      );
+    });
+
+    it('warns on a bare reference the dashboard does not have', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE ServiceName IN ($nope)',
+        ),
+      );
+      expect(warnings).toContain(
+        'SQL references unknown variable $nope. Available variables: service, env.',
+      );
+    });
+
+    it('errors on a resolved reference wrapped in quotes, which always produces invalid SQL', () => {
+      const { errors } = validateRawSqlChartConfig(
+        withVariables(
+          "SELECT count() FROM $__sourceTable WHERE ServiceName = '$service'",
+        ),
+      );
+      expect(errors).toContain(
+        '$service is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, service) or ${service:csv} instead?',
+      );
+    });
+
+    it('warns that a bare reference has no valid empty state', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE ServiceName IN ($service)',
+        ),
+      );
+      expect(warnings).toContain(
+        '$service has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, service) or $__conditionalAll(<condition>, service) so the query stays valid when no values are selected.',
+      );
+    });
+
+    it('leaves an explicitly formatted reference alone', () => {
+      // A non-default format is a deliberate choice, and the empty-selection
+      // warning below is specific to how sqlstring renders.
+      const { errors, warnings } = validateRawSqlChartConfig(
+        withVariables(
+          "SELECT count() FROM $__sourceTable WHERE ServiceName IN ('${service:csv}') AND $__timeFilter(ts)",
+        ),
+      );
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([]);
+    });
+
+    it('does not call a reference unguarded when the enclosing macro guards that same variable', () => {
+      const { errors, warnings } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($service), service) AND $__timeFilter(ts)',
+        ),
+      );
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([]);
+    });
+
+    it('still warns when the enclosing macro guards a different variable', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE $__conditionalAll(Env IN ($env), service) AND $__timeFilter(ts)',
+        ),
+      );
+      expect(warnings).toContain(
+        '$env has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, env) or $__conditionalAll(<condition>, env) so the query stays valid when no values are selected.',
+      );
+    });
+
+    it('leaves a correct $__filter usage alone', () => {
+      const { errors, warnings } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service) AND $__timeFilter(ts)',
+        ),
+      );
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([]);
+    });
+
+    it('reports each unknown name once however many times it is written', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        withVariables('SELECT $nope FROM $__sourceTable WHERE x = $nope'),
+      );
+      expect(warnings.filter(w => w.includes('unknown variable'))).toHaveLength(
+        1,
+      );
+    });
+
+    it('says "(none)" when the dashboard exposes no variables at all', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        config({
+          sqlTemplate: 'SELECT count() FROM $__sourceTable WHERE x = $nope',
+          variables: [],
+        }),
+      );
+      expect(warnings).toContain(
+        'SQL references unknown variable $nope. Available variables: (none).',
+      );
+    });
+
+    describe('with no variable context (chart explorer, or the feature disabled)', () => {
+      it('errors on the macro forms, which are always invalid SQL there', () => {
+        const { errors } = validateRawSqlChartConfig(
+          config({
+            sqlTemplate:
+              'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service)',
+          }),
+        );
+        expect(errors).toContain(
+          'SQL uses $__filter, but no variables are available here.',
+        );
+      });
+
+      it('warns on a bare reference, which may well be a literal', () => {
+        const { warnings } = validateRawSqlChartConfig(
+          config({
+            sqlTemplate:
+              'SELECT count() FROM $__sourceTable WHERE x IN ($service)',
+          }),
+        );
+        expect(warnings).toContain(
+          'SQL references $service, but no variables are available here.',
+        );
+      });
+    });
+  });
+
+  describe('the $__filters recommendation', () => {
+    it('is made for a dashboard tile that filters nothing', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        config({ sqlTemplate: 'SELECT count() FROM $__sourceTable' }),
+        { isDashboardTile: true },
+      );
+      expect(warnings).toContain(
+        'SQL should include the $__filters macro so dashboard filters apply to this tile.',
+      );
+    });
+
+    it('is withheld from a tile that already filters per-variable', () => {
+      const { warnings } = validateRawSqlChartConfig(
+        config({
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service)',
+          variables: [
+            { name: 'service', values: ['api'], expression: 'ServiceName' },
+          ],
+        }),
+        { isDashboardTile: true },
+      );
+      expect(warnings).not.toContain(
+        'SQL should include the $__filters macro so dashboard filters apply to this tile.',
+      );
+    });
   });
 });

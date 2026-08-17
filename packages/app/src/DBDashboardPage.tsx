@@ -23,13 +23,17 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsPromQLAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
@@ -43,10 +47,12 @@ import {
   dashboardHasUnexportableTiles,
   isImportableDashboard,
 } from '@hyperdx/common-utils/dist/iac';
+import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
+  ChartVariable,
   DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   DisplayType,
@@ -60,6 +66,7 @@ import {
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   ActionIcon,
   Alert,
@@ -102,6 +109,7 @@ import {
   IconPlus,
   IconPresentation,
   IconRefresh,
+  IconRocket,
   IconSearch,
   IconSquaresDiagonal,
   IconTags,
@@ -113,6 +121,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
+import { mergeAnnotations } from '@/components/charts/chartAnnotations';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
@@ -135,6 +144,7 @@ import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
+import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
 import {
@@ -149,6 +159,7 @@ import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
+import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -386,7 +397,9 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      variables,
       showAlertAnnotations,
+      showReleaseAnnotations,
       isLive,
       readOnly,
 
@@ -414,8 +427,11 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      variables?: ChartVariable[];
       // When true, draw alert firing/recovery annotations on this tile's chart.
       showAlertAnnotations?: boolean;
+      // When true, draw release markers on this tile's chart.
+      showReleaseAnnotations?: boolean;
       isLive?: boolean;
       readOnly?: boolean;
 
@@ -530,6 +546,25 @@ const Tile = forwardRef(
       displayTypeRequiresSource(chart.config.displayType) &&
       !chart.config.source;
 
+    // `variables` is a new reference every time the dashboard's filter change. To ensure
+    // `tileVariables` is stable unless the tile's *referenced variables* actually change,
+    // we serialize the referenced subset and use changes in the serialized value to drive
+    // changes to `tileVariables`.
+    const serializedTileVariables = useMemo(
+      () =>
+        !!variables && !isPromqlSavedChartConfig(chart.config)
+          ? JSON.stringify(filterReferencedVariables(chart.config, variables))
+          : undefined,
+      [chart.config, variables],
+    );
+    const tileVariables = useMemo<ChartVariable[] | undefined>(
+      () =>
+        serializedTileVariables
+          ? JSON.parse(serializedTileVariables)
+          : undefined,
+      [serializedTileVariables],
+    );
+
     useEffect(() => {
       if (isPromqlSavedChartConfig(chart.config)) {
         if (source != null) {
@@ -552,6 +587,7 @@ const Tile = forwardRef(
             dateRange,
             granularity,
             filters,
+            variables: tileVariables,
           });
         } else if (source != null) {
           setQueriedConfig({
@@ -570,6 +606,7 @@ const Tile = forwardRef(
             dateRange,
             granularity,
             filters,
+            variables: tileVariables,
           });
         }
 
@@ -610,11 +647,12 @@ const Tile = forwardRef(
               : undefined,
             sampleWeightExpression: getSampleWeightExpression(source),
             filters,
+            variables: tileVariables,
             metricTables: isMetricSource ? source.metricTables : undefined,
           });
         }
       }
-    }, [source, chart, dateRange, granularity, filters]);
+    }, [source, chart, dateRange, granularity, filters, tileVariables]);
 
     const [hovered, setHovered] = useState(false);
 
@@ -648,13 +686,49 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
+    // Only DBTimeChart draws annotations (see the render below) — a tile
+    // showing a table, number, pie, ... discards them. Both annotation queries
+    // stay idle for those rather than paying for a result nothing can show.
+    const tileCanDrawAnnotations = isTimeSeriesDisplayType(
+      chart.config.displayType,
+    );
+
     // Firing/recovery markers for this tile's alert, scoped to the *visible*
     // window — the fullscreen range while the fullscreen view is open, else the
     // dashboard range (off unless the dashboard toggle is on).
     const alertAnnotations = useAlertAnnotations(
       alert?.id,
       isFullscreen ? fullscreenDateRange : dateRange,
-      showAlertAnnotations,
+      showAlertAnnotations && tileCanDrawAnnotations,
+    );
+
+    // Release markers, over the same visible window. Scoped to this tile: the
+    // query runs against the tile's own source with the tile's own predicates,
+    // so a chart filtered to one service isn't annotated with another's
+    // releases. Tiles sharing a source and filters share one query.
+    //
+    // A time chart's filter lives in each series' `aggCondition`, not in the
+    // statement-level `where` (the editor clears that one), so `select` has to
+    // come along for the scoping to mean anything — `where` is carried for the
+    // configs that do set it, e.g. an imported dashboard.
+    const builderConfig = isBuilderSavedChartConfig(chart.config)
+      ? chart.config
+      : undefined;
+    const releaseAnnotations = useReleaseAnnotations(
+      isFullscreen ? fullscreenDateRange : dateRange,
+      showReleaseAnnotations && tileCanDrawAnnotations,
+      {
+        source,
+        where: builderConfig?.where,
+        whereLanguage: builderConfig?.whereLanguage,
+        select: builderConfig?.select,
+        filters,
+      },
+    );
+
+    const annotations = useMemo(
+      () => mergeAnnotations(alertAnnotations, releaseAnnotations),
+      [alertAnnotations, releaseAnnotations],
     );
 
     const filterWarning = useMemo(() => {
@@ -673,20 +747,21 @@ const Tile = forwardRef(
         return null;
 
       const isMissingSourceForFiltering = !queriedConfig.source;
-      const isMissingFiltersMacro =
-        !queriedConfig.sqlTemplate.includes('$__filters');
+      const missingFiltersMacro = isMissingFiltersMacro(
+        queriedConfig.sqlTemplate,
+      );
       const isMetricsSourceWithLuceneFilter =
         source?.kind === SourceKind.Metric && doLuceneFiltersExist;
 
       if (
         !isMissingSourceForFiltering &&
-        !isMissingFiltersMacro &&
+        !missingFiltersMacro &&
         !isMetricsSourceWithLuceneFilter
       )
         return null;
 
-      const message = isMissingFiltersMacro
-        ? 'Filters are not applied because the SQL does not include the required $__filters macro'
+      const message = missingFiltersMacro
+        ? 'Filters may not be applied correctly because the SQL does not include the recommended $__filters macro'
         : isMetricsSourceWithLuceneFilter
           ? 'Lucene filters are not applied because they are not supported for metrics sources.'
           : 'Filters are not applied because no Source is set for this chart';
@@ -1145,7 +1220,7 @@ const Tile = forwardRef(
                     showDisplaySwitcher={!readOnly}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
-                    annotations={alertAnnotations}
+                    annotations={annotations}
                     onTimeRangeSelect={
                       readOnly
                         ? undefined
@@ -1357,7 +1432,7 @@ const Tile = forwardRef(
         isSourceMissing,
         isSourceUnset,
         hasBeenVisible,
-        alertAnnotations,
+        annotations,
         isLive,
         readOnly,
       ],
@@ -1472,6 +1547,7 @@ const EditTileModal = ({
   onSave,
   isSaving,
   dateRange,
+  variables,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1479,6 +1555,7 @@ const EditTileModal = ({
   dateRange: [Date, Date];
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
+  variables?: ChartVariable[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1530,22 +1607,28 @@ const EditTileModal = ({
           {/* Isolate chart cross-syncing to this edit modal: the preview chart
               must not drive shadow tooltips on the dashboard tiles behind it. */}
           <IsolatedChartSyncProvider>
-            <EditTimeChartForm
-              dashboardId={dashboardId}
-              chartConfig={chart.config}
-              dateRange={dateRange}
-              isSaving={isSaving}
-              onSave={config => {
-                onSave({
-                  ...chart,
-                  config: config,
-                });
-              }}
-              onClose={handleClose}
-              onDirtyChange={setHasUnsavedChanges}
-              isDashboardForm
-              autoRun
-            />
+            {/* Offers the dashboard's variables as completions in every
+                expression input the editor renders. */}
+            <SqlVariablesProvider variables={variables}>
+              <EditTimeChartForm
+                data-testid="tile-editor-form"
+                dashboardId={dashboardId}
+                chartConfig={chart.config}
+                variables={variables}
+                dateRange={dateRange}
+                isSaving={isSaving}
+                onSave={config => {
+                  onSave({
+                    ...chart,
+                    config: config,
+                  });
+                }}
+                onClose={handleClose}
+                onDirtyChange={setHasUnsavedChanges}
+                isDashboardForm
+                autoRun
+              />
+            </SqlVariablesProvider>
           </IsolatedChartSyncProvider>
         </ZIndexContext.Provider>
       )}
@@ -1737,9 +1820,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       const tableName = getMetricTableName(source, metricType);
       if (!tableName) continue;
       tc.push({
-        databaseName: source.from.databaseName,
-        tableName: tableName,
-        connectionId: source.connection,
+        ...tcFromSource(source),
+        tableName,
       });
     }
 
@@ -1770,6 +1852,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'alertAnnotations',
     parseAsBoolean.withDefault(false),
   );
+  // Same for release markers, derived from `service.version` changes.
+  const [showReleaseAnnotations, setShowReleaseAnnotations] = useQueryState(
+    'releaseMarkers',
+    parseAsBoolean.withDefault(false),
+  );
 
   // Track if we've initialized query for this dashboard
   const initializedDashboardRef = useRef<string>(undefined);
@@ -1783,6 +1870,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setFilterQueries,
     ignoredFilterExpressions,
     getFilterQueriesForSource,
+    variables,
   } = useDashboardFilters(filters);
 
   const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
@@ -2234,8 +2322,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             },
             ...getFilterQueriesForSource(tileSourceId),
           ]}
+          variables={showFilterVariableOptions ? variables : undefined}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
+          showReleaseAnnotations={showReleaseAnnotations}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={
             isKioskMode
@@ -2333,7 +2423,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
+      showReleaseAnnotations,
       getFilterQueriesForSource,
+      showFilterVariableOptions,
+      variables,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
@@ -2775,15 +2868,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {(hasTiles || containers.length > 0) && (
             <>
               {hasTiles && (
-                <Menu.Item
-                  leftSection={<IconTimelineEvent size={16} />}
-                  onClick={() => setShowAlertAnnotations(v => !v)}
-                  data-testid="toggle-alert-annotations-menu-item"
-                >
-                  {showAlertAnnotations
-                    ? 'Hide alert annotations'
-                    : 'Show alert annotations'}
-                </Menu.Item>
+                <>
+                  <Menu.Item
+                    leftSection={<IconTimelineEvent size={16} />}
+                    onClick={() => setShowAlertAnnotations(v => !v)}
+                    data-testid="toggle-alert-annotations-menu-item"
+                  >
+                    {showAlertAnnotations
+                      ? 'Hide alert annotations'
+                      : 'Show alert annotations'}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconRocket size={16} />}
+                    onClick={() => setShowReleaseAnnotations(v => !v)}
+                    data-testid="toggle-release-annotations-menu-item"
+                  >
+                    {showReleaseAnnotations
+                      ? 'Hide release markers'
+                      : 'Show release markers'}
+                  </Menu.Item>
+                </>
               )}
               {containers.length > 0 && (
                 <>
@@ -2913,6 +3017,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     >
       <SearchWhereInput
         tableConnections={tableConnections}
+        dateRange={searchedTimeRange}
         control={control}
         name="where"
         onSubmit={onSubmit}
@@ -3012,6 +3117,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (!isSaving) setEditedTile(undefined);
           }}
           dateRange={searchedTimeRange}
+          variables={showFilterVariableOptions ? variables : undefined}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {

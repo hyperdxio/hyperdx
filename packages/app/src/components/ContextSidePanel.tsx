@@ -232,6 +232,8 @@ export default function ContextSubpanel({
             {contextBy === ContextBy.Custom && (
               <SearchWhereInput
                 tableConnection={tcFromSource(source)}
+                sourceId={source.id}
+                dateRange={newDateRange}
                 control={control}
                 name="where"
                 enableHotkey

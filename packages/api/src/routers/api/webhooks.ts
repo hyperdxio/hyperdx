@@ -78,7 +78,7 @@ const toWebhookPlain = (doc: mongoose.Document): WebhookPlain =>
   doc.toJSON({ flattenMaps: true }) as WebhookPlain;
 
 const serializeWebhook = (doc: mongoose.Document): WebhookApiData => {
-  const { team, __v, ...data } = doc.toJSON({ flattenMaps: true });
+  const { team: _team, __v, ...data } = doc.toJSON({ flattenMaps: true });
   return data as WebhookApiData;
 };
 

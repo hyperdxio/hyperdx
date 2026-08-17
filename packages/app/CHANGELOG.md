@@ -1,5 +1,90 @@
 # @hyperdx/app
 
+## 2.35.0
+
+### Minor Changes
+
+- 88f62274: Add an alert detail page (/alerts/:id) with the alert's query charted against
+  its threshold, a widened evaluation-history strip, and a paginated evaluation
+  event stream (per-group breakdown for group-by alerts, evaluation analytics
+  columns, time-range-scoped cursor pagination). The alerts page history strip
+  renders errored evaluation windows with per-window error details. Gated behind
+  NEXT_PUBLIC_ENABLE_ALERT_DETAILS (default off).
+- 8508b6c7: Terraform export now emits team-scoped import ids (`<team_id>/<resource_id>`),
+  so resources can be imported from a ClickStack deployment that backs more than
+  one team. Each imported resource gains a `team` attribute, which the provider
+  marks as forcing replacement — the generated file now says to keep it. The
+  provider floor moves to `>= 3.25.0`, which drops server-only dashboard ids when
+  importing, so the generated dashboard config no longer churns tile ids (and the
+  tile alerts attached to them) on apply.
+- 72269ece: Hovering a release marker now lists every release in its cluster with the
+  service that shipped it, its version, and the time. Colour alone could not
+  identify a service once a chart had more series than the legend shows, and a
+  collapsed "N releases" cluster named none of them.
+- 08b8783b: Overlay release markers on dashboard tile charts, showing when each version of a
+  service first appeared so a deployment can be lined up against a change in the
+  data. Markers are scoped to the data each tile is charting and tinted to match
+  their service's series color, and are suppressed on charts where they can't be
+  tied to a visible line, so an aggregate line spanning many services isn't
+  annotated with releases you can't attribute to it.
+- d201b71f: Add an optional `serviceVersionExpression` to log and trace sources, identifying
+  the running release of a service. Defaults to the OpenTelemetry
+  `service.version` resource attribute; teams whose release identifier lives
+  elsewhere, such as a container image tag under GitOps, can point it there
+  instead of changing instrumentation.
+
+### Patch Changes
+
+- 05a3fd81: Add the AlertHistory evaluations read model and GET /alerts/:id/evaluations
+  endpoint: per-window evaluation history scoped to a time range (clamped to the
+  retention window) with per-group breakdown for group-by alerts, evaluation
+  analytics fields, deduped error surfacing for ERROR-state windows, and
+  cursor-based pagination that always advances across gaps. Adds read-side
+  schema/type support for ERROR-state AlertHistory rows and evaluation analytics.
+- c46ddaee: Require confirmation before deleting a dashboard from its detail page.
+- b9430a62: feat: Add broadcast and variable settings to dashboard filters
+- 546dd442: feat: Improve SQL Editor validations and autocomplete for variables
+- cab98c7c: feat: Substitute dashboard variables in raw SQL tiles
+- 90729734: Name `useRef` values consistently with a `Ref` suffix and enforce it via ESLint.
+  Renames the 10 flagged refs (in `DOMPlayer`, `EditTimeChartForm`, `useMetadata`,
+  `sessions`, and `utils`) to end in `Ref`, promotes
+  `@eslint-react/naming-convention/ref-name` to `error`, and lowers the app's
+  `--max-warnings` ceiling. Behavior is unchanged.
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+- 582f3940: Show password requirements on the Join Team page and align the checklist with the server policy. When a user accepts a team invite and sets their password, the same live password policy checklist used on the auth/register page is now displayed, so users no longer have to guess the required length, casing, number, and special-character rules. The checklist previously diverged from the server in two ways that could show all-green checks for a password the server rejects: its special-character rule used a broader pattern than the backend (so a password whose only special character was e.g. `~`, a backtick, or a space passed the checklist but failed on submit), and it never surfaced the 72-character maximum (so an over-long password passed the checklist but failed on submit). The length rule now enforces both the minimum and maximum, and the password policy checks (length bounds, casing, number, and the accepted special-character set) live in a single shared module in `@hyperdx/common-utils` used by both the frontend checklist and the backend `passwordSchema`, so they can no longer drift. Finally, when the server rejects a password the Join Team page now shows the specific reason(s) it failed (e.g. "Password must include at least one special character (!@#$%^&\*(),.?\":{}|<>;-+=)") instead of a generic "Password is invalid", so users are told exactly what to change — including which special characters are accepted.
+- 69a89aa9: fix: Restore Lucene autocomplete
+- aedb514f: Multi-series metric charts now run as a single composed ClickHouse query instead of one query per series joined client-side. The per-series queries are combined via UNION ALL and pivoted back into one row per (group, time bucket) in SQL, including ratio charts (`seriesReturnType: 'ratio'`) and both `ratioMode` variants, which previously divided the two result sets in the browser/node. Result shape, column naming (including same-alias `__{index}` disambiguation), gap semantics, and ratio semantics are unchanged; charts with many series render with fewer round trips, and "View SQL" for multi-series metric charts now shows the full query instead of only the first series.
+- 463fd6a1: Preserve literal percent sequences in legacy JSON URL parameters.
+- Updated dependencies [fd54ac78]
+- Updated dependencies [05a3fd81]
+- Updated dependencies [b9430a62]
+- Updated dependencies [546dd442]
+- Updated dependencies [cab98c7c]
+- Updated dependencies [b6196031]
+- Updated dependencies [de783063]
+- Updated dependencies [018a6486]
+- Updated dependencies [8508b6c7]
+- Updated dependencies [582f3940]
+- Updated dependencies [2d33b83b]
+- Updated dependencies [4fa4975a]
+- Updated dependencies [f891eb19]
+- Updated dependencies [4c5ccfc4]
+- Updated dependencies [6662379e]
+- Updated dependencies [0ed72ddf]
+- Updated dependencies [aedb514f]
+- Updated dependencies [f34cfaed]
+- Updated dependencies [d201b71f]
+- Updated dependencies [711b905d]
+- Updated dependencies [908b27ed]
+  - @hyperdx/common-utils@0.26.0
+  - @hyperdx/api@2.35.0
+
 ## 2.34.0
 
 ### Minor Changes

@@ -3400,6 +3400,186 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('dashboard variables', () => {
+    const configWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'ServiceName IN ($service)',
+          aggConditionLanguage: 'sql',
+        },
+      ],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      having: 'count() > 0',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and variable macros in a builder config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(configWithVariables, mockMetadata, undefined),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('api', 'web'))");
+      expect(sql).toContain("countIf(ServiceName IN ('api', 'web'))");
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('leaves references untouched when the config carries no variables', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...configWithVariables, where: '$service', variables: undefined },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain('$service');
+    });
+
+    it('does not re-expand a selected value that looks like a reference', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...configWithVariables,
+            variables: [
+              { name: 'service', values: ['$other'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('$other'))");
+      expect(sql).not.toContain('nope');
+    });
+
+    // A metric config is rewritten into CTEs by translateMetricChartConfig
+    // (single series) or split into one query per series (multi-series), and
+    // both read the config's expressions. Substitution therefore has to run
+    // *before* that rewriting for the expansions to reach the generated SQL at
+    // all — and exactly once, since the per-series branches recurse back
+    // through renderChartConfig.
+    const gaugeSeriesWithVariable = {
+      aggFn: 'avg' as const,
+      aggCondition: 'ServiceName IN ($service)',
+      aggConditionLanguage: 'sql' as const,
+      valueExpression: 'Value',
+      metricName: 'metric.alpha',
+      metricType: MetricsDataType.Gauge,
+    };
+
+    const metricConfigWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: { databaseName: 'default', tableName: '' },
+      select: [gaugeSeriesWithVariable],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and macros in a single-series metric config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          metricConfigWithVariables,
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // The WHERE macro and the series aggCondition, once each.
+      expect(sql.match(/ServiceName IN \('api', 'web'\)/g)).toHaveLength(2);
+      // Both land in the Source CTE's filter, which only happens when
+      // substitution runs before the metric translation builds that CTE —
+      // afterwards the CTE body is already rendered SQL text.
+      expect(sql).toMatch(
+        /FROM default\.otel_metrics_gauge[\s\S]*ServiceName IN \('api', 'web'\)[\s\S]*FROM Bucketed/,
+      );
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('expands references in every branch of a multi-series metric config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...metricConfigWithVariables,
+            select: [
+              gaugeSeriesWithVariable,
+              { ...gaugeSeriesWithVariable, metricName: 'metric.beta' },
+              {
+                ...gaugeSeriesWithVariable,
+                aggFn: 'sum',
+                metricName: 'metric.gamma',
+                metricType: MetricsDataType.Sum,
+              },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // Three branches (two gauge, one sum — a different physical table with
+      // its own CTE scaffolding), each carrying both expansions.
+      expect(sql.match(/UNION ALL/g)).toHaveLength(2);
+      expect(sql.match(/ServiceName IN \('api', 'web'\)/g)).toHaveLength(6);
+      expect(sql).toContain('FROM default.otel_metrics_sum');
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('substitutes exactly once across a multi-series metric render', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...metricConfigWithVariables,
+            select: [
+              gaugeSeriesWithVariable,
+              { ...gaugeSeriesWithVariable, metricName: 'metric.beta' },
+            ],
+            // The per-series branches recurse through renderChartConfig, so a
+            // value that itself looks like a reference must not be expanded a
+            // second time on the way down.
+            variables: [
+              { name: 'service', values: ['$other'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // Two branches × (WHERE macro + aggCondition), all left as written.
+      expect(sql.match(/ServiceName IN \('\$other'\)/g)).toHaveLength(4);
+      expect(sql).not.toContain('nope');
+    });
+  });
+
   // HDX-4371: a source with `timestampValueExpression = "EventDate, EventTime"`
   // should bucket on `EventTime` (the DateTime token), not on `EventDate`
   // (the partition-key Date). The WHERE clause keeps using both columns so
@@ -3593,4 +3773,197 @@ describe('renderChartConfig', () => {
   // attribute columns. Coverage of the variadic form lives in the regenerated
   // gauge / sum / histogram snapshots earlier in this file plus the
   // cross-scope integration test in packages/api/src/clickhouse/__tests__.
+
+  // A metric chart with multiple select items renders one query per series and
+  // composes them into a single UNION ALL + pivot statement (HDX-5077). The
+  // end-to-end result-shape contract is pinned by the queryChartConfig
+  // integration tests; these snapshots pin the generated SQL structure.
+  describe('multi-series metric charts (composed query)', () => {
+    const metricTables = {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+      summary: 'otel_metrics_summary',
+      'exponential histogram': 'otel_metrics_exponential_histogram',
+    };
+
+    const gaugeSelect = (metricName: string) => ({
+      aggFn: 'avg' as const,
+      aggCondition: '',
+      aggConditionLanguage: 'sql' as const,
+      valueExpression: 'Value',
+      metricName,
+      metricType: MetricsDataType.Gauge,
+    });
+
+    const baseMultiSeriesConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables,
+      from: { databaseName: 'default', tableName: '' },
+      select: [gaugeSelect('metric.alpha'), gaugeSelect('metric.beta')],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+    };
+
+    it('composes grouped multi-series gauges into one UNION ALL + pivot query', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // One composed statement: both branch SETTINGS hoisted to a single
+      // trailing clause, deduped.
+      expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+      expect(sql.match(/optimize_read_in_order = 0/g)).toHaveLength(1);
+      // Value columns pivot under the user-facing aliases, NULL for gaps.
+      expect(sql).toContain(
+        'anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 0) AS "avg(metric.alpha)"',
+      );
+      expect(sql).toContain(
+        'anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1) AS "avg(metric.beta)"',
+      );
+      // The group-by column passes through UNRENAMED (consumers look rows up
+      // by the single-series column name, which for expressions is
+      // ClickHouse's derived name and can't be reproduced node-side): the
+      // wrappers keep the branch projection via SELECT * — normalizing only
+      // the value column to Float64 via REPLACE, so mixed-type series (e.g.
+      // Float64 quantile + Int64 count) never UNION into a Variant — and the
+      // outer pivot passes it through via * EXCEPT + GROUP BY ALL.
+      expect(sql).toContain(
+        'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+      );
+      expect(sql).toContain(
+        '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
+      );
+      expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
+    });
+
+    it('renders a metric ratio as a SQL-side division', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          seriesReturnType: 'ratio',
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // Missing numerator counts as 0; missing/zero denominator yields NULL.
+      expect(sql).toContain(
+        'coalesce(anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 0), 0) / nullif(anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1), 0) AS "avg(metric.alpha)/avg(metric.beta)"',
+      );
+    });
+
+    it('divides by the per-bucket denominator total in share_of_total mode', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          seriesReturnType: 'ratio',
+          ratioMode: 'share_of_total',
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain(
+        'nullif(sum(anyOrNullIf(`__hdx_value`, `__hdx_series_idx` = 1)) OVER (PARTITION BY `__hdx_time_bucket`), 0)',
+      );
+    });
+
+    it('pads group columns across gauge and histogram branch classes', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          select: [
+            gaugeSelect('metric.alpha'),
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              aggCondition: '',
+              aggConditionLanguage: 'sql',
+              valueExpression: 'Value',
+              metricName: 'metric.latency',
+              metricType: MetricsDataType.Histogram,
+            },
+          ],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // The gauge branch pads the histogram's Array group column with [] and
+      // the histogram branch pads the scalar group column with NULL, so the
+      // UNION column lists line up positionally while grouped rows keep
+      // distinct keys. The scalar branch comes first so its (natural) group
+      // column names win the union.
+      expect(sql).toContain('[] AS `group`');
+      expect(sql).toContain('NULL AS `__hdx_group_pad_0`');
+      expect(
+        sql.indexOf(
+          'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+        ),
+      ).toBeLessThan(sql.indexOf('NULL AS `__hdx_group_pad_0`'));
+      // The histogram branch re-projects the value column explicitly, with
+      // the same Float64 normalization.
+      expect(sql).toContain(
+        'SELECT toFloat64(`__hdx_value`) AS `__hdx_value`, NULL AS `__hdx_group_pad_0`',
+      );
+      expect(sql).toContain('GROUP BY ALL');
+    });
+
+    it('suffixes colliding aliases with the split index', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          select: [
+            {
+              ...gaugeSelect('metric.alpha'),
+              aggCondition: "ServiceName = 'svc-a'",
+            },
+            gaugeSelect('metric.alpha'),
+          ],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "avg(metric.alpha)"');
+      expect(sql).toContain('AS "avg(metric.alpha)__1"');
+    });
+
+    it('merges number-shape series without a GROUP BY into one implicit aggregation', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          displayType: DisplayType.Number,
+          granularity: undefined,
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      // No grouping keys at all: the outer query is one implicit global
+      // aggregation. (The branches' internal `__hdx_time_bucket2` CTE alias
+      // is unrelated to the composed outer bucket.)
+      expect(sql).not.toContain('GROUP BY `__hdx_');
+      expect(sql).not.toContain('`__hdx_time_bucket`');
+      expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+    });
+  });
 });
