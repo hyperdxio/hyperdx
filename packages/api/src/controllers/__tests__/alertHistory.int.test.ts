@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { Types } from 'mongoose';
 
 import {
   ALERT_EVALUATION_GROUPS_LIMIT,
@@ -498,7 +499,7 @@ describe('alertHistory controller', () => {
       });
     };
 
-    const createOkWindow = (alertId: any, createdAt: Date) =>
+    const createOkWindow = (alertId: Types.ObjectId, createdAt: Date) =>
       AlertHistory.create({
         alert: alertId,
         createdAt,
@@ -1052,7 +1053,7 @@ describe('alertHistory controller', () => {
     };
 
     const createHistory = (
-      alertId: any,
+      alertId: Types.ObjectId,
       createdAt: Date,
       state: AlertState,
       counts: number,
@@ -1265,7 +1266,7 @@ describe('alertHistory controller', () => {
 
     describe('bucketStart', () => {
       const createHistoryWithBuckets = (
-        alertId: any,
+        alertId: Types.ObjectId,
         createdAt: Date,
         state: AlertState,
         bucketStarts: Date[],
