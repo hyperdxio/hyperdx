@@ -334,6 +334,16 @@ export type NotificationFailure = {
   error: unknown;
 };
 
+// PopulatedAlertChannel only has a `webhook` variant in this repo, but a
+// downstream build adds more (e.g. `email`) without a `channel` field at all.
+// Narrowing here — rather than assuming `.channel` exists — keeps this
+// mechanical for that merge instead of a judgement call, and keeps an error
+// handler from throwing on an unrecognized channel type.
+const channelKey = (c: PopulatedAlertChannel) =>
+  c.type === 'webhook' ? c.channel._id.toString() : JSON.stringify(c);
+const channelLabel = (c: PopulatedAlertChannel) =>
+  c.type === 'webhook' ? c.channel.name : c.type;
+
 export type RenderedAlert = {
   /** The rendered message body, as delivered to every target. */
   body: string;
@@ -487,7 +497,7 @@ export const renderAlertTemplate = async ({
       // Resolve and dedupe before the cap check: a channel and an @mention can
       // name the same target by id and by name prefix, and a repeat of an
       // already-queued target is a no-op, not a target the cap turned away.
-      const webhookId = channel.channel._id.toString();
+      const webhookId = channelKey(channel);
       if (queuedWebhookIds.has(webhookId)) {
         return;
       }
@@ -679,13 +689,13 @@ ${targetTemplate}`;
           logger.error(
             {
               alertId: alert.id,
-              webhookId: job.populatedChannel.channel._id.toString(),
+              webhookId: channelKey(job.populatedChannel),
               error: serializeError(e),
             },
             'Failed to deliver alert notification',
           );
           failures.push({
-            target: job.populatedChannel.channel.name,
+            target: channelLabel(job.populatedChannel),
             error: e,
           });
         }

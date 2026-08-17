@@ -21,6 +21,11 @@ import {
 
 const TEST_TEAM_ID = new mongoose.Types.ObjectId().toString();
 
+// Test fixtures only need a handful of IWebhook fields — a single narrowing
+// point instead of an `as unknown as IWebhook` (or an eslint-disable) at
+// every call site.
+const castWebhook = (over: Record<string, unknown>): IWebhook => over as any;
+
 // A dispatcher that records jobs instead of delivering them, so these tests
 // assert on fan-out (who got a job) without exercising real transports.
 const makeRecordingDispatcher = () => {
@@ -527,14 +532,13 @@ describe('per-event notification cap', () => {
   const CAP = 20;
 
   const makeWebhook = (i: number) =>
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    ({
+    castWebhook({
       _id: new mongoose.Types.ObjectId(),
       team: new mongoose.Types.ObjectId(),
       service: 'slack',
       name: `hook-${i}`,
       url: 'https://hooks.slack.com/services/x',
-    }) as unknown as IWebhook;
+    });
 
   // A repeat of a target that is already queued is a no-op, so it must not be
   // reported as a target the cap turned away.
@@ -596,14 +600,13 @@ describe('per-event notification cap', () => {
 
 describe('notification targets are resolved once per webhook', () => {
   const makeWebhook = (name: string) =>
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    ({
+    castWebhook({
       _id: new mongoose.Types.ObjectId(),
       team: new mongoose.Types.ObjectId(),
       service: 'slack',
       name,
       url: 'https://hooks.slack.com/services/x',
-    }) as unknown as IWebhook;
+    });
 
   it('does not notify a webhook twice when a mention repeats a channel', async () => {
     const webhook = makeWebhook('dupe-hook');
