@@ -1,12 +1,19 @@
 import { Types } from 'mongoose';
 
 import {
+  type AlertChannel,
   type AlertDocument,
   AlertSource,
   AlertState,
   AlertThresholdType,
 } from '@/models/alert';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+
+// A channel type this repo doesn't define -- see
+// models/__tests__/alert.test.ts for why. `value: any` (rather than an `as`
+// cast) keeps this off the no-unsafe-type-assertion budget while still
+// producing a value typed as AlertChannel for the call below.
+const foreignChannel = (value: any): AlertChannel => value;
 
 const createAlertDocument = (
   overrides: Partial<Record<string, unknown>> = {},
@@ -95,6 +102,28 @@ describe('utils/externalApi', () => {
       const translated = translateAlertDocumentToExternalAlert(alert);
 
       expect(translated.numConsecutiveWindows).toBe(3);
+    });
+  });
+
+  describe('channel mirroring', () => {
+    // translateAlertDocumentToExternalAlert mirrors channels[0] into
+    // `channel`, same as makeAlert (controllers/__tests__/alerts.test.ts).
+    // That mirroring must stay opaque: a downstream fork's channel types
+    // must survive verbatim, not get projected onto webhook-shaped fields.
+    it('mirrors channels[0] into channel verbatim, preserving fields this repo does not define', () => {
+      const exotic = foreignChannel({
+        type: 'email',
+        emailRecipients: ['ops@example.test'],
+      });
+      const alert = createAlertDocument({
+        channel: undefined,
+        channels: [exotic],
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.channel).toEqual(exotic);
+      expect(translated.channels).toEqual([exotic]);
     });
   });
 });
