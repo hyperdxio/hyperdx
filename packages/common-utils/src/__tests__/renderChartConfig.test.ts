@@ -1489,6 +1489,28 @@ describe('renderChartConfig', () => {
       );
       expect(sql).toContain("SeverityText = 'error'");
     });
+    it('rewrites `Map[key] = value` in chartConfig.where when whereLanguage is sql', async () => {
+      stubKvItemsMetadata();
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: "LogAttributes['service.name'] = 'api'",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        granularity: '1 minute',
+      };
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
+    });
   });
 
   describe('k8s semantic convention migrations', () => {

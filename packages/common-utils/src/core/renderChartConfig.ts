@@ -1142,11 +1142,35 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  // Build the lookup first — it's needed by both the `where` block and the
+  // `filters` block below.
+  const hasSqlFilter =
+  chartConfig.whereLanguage === 'sql' ||
+  (chartConfig.filters?.some(f => f.type === 'sql') ?? false) ||
+  (typeof chartConfig.select !== 'string' &&
+    chartConfig.select.some(s => s.aggConditionLanguage === 'sql'));
+  const textIndexInfoLookup: TextIndexInfoLookup =
+    hasSqlFilter &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildTextIndexInfoLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
+    const rewrittenWhere =
+      chartConfig.whereLanguage === 'sql'
+        ? rewriteSqlFilterWithKvItems(chartConfig.where, textIndexInfoLookup)
+        : chartConfig.where;
     whereSearchCondition = wrapChSqlIfNotEmpty(
       await renderWhereExpression({
-        condition: chartConfig.where,
+        condition: rewrittenWhere,
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1192,21 +1216,6 @@ async function renderWhere(
     ).filter(v => v !== null) as ChSql[];
   }
 
-  const hasSqlFilter =
-    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const textIndexInfoLookup: TextIndexInfoLookup =
-    hasSqlFilter &&
-    chartConfig.from.databaseName &&
-    chartConfig.from.tableName &&
-    !hasSubqueryCte(chartConfig.with)
-      ? await buildTextIndexInfoLookup({
-          metadata,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-          connectionId: chartConfig.connection,
-        })
-      : new Map();
-
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
       if (filter.type === 'sql_ast') {
@@ -1237,7 +1246,6 @@ async function renderWhere(
           ')',
         );
       }
-
       throw new Error(`Unknown filter type: ${filter.type}`);
     }),
   );
