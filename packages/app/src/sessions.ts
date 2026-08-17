@@ -343,7 +343,7 @@ export function useRRWebEventStream(
   const [isFetching, setIsFetching] = useState<boolean>(true);
   const [hasNextPage, setHasNextPage] = useState<boolean>(true);
 
-  const lastAbortController = useRef<AbortController | null>(null);
+  const lastAbortControllerRef = useRef<AbortController | null>(null);
   const [_fetchStatus, setFetchStatus] = useState<'fetching' | 'idle'>('idle');
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
@@ -367,7 +367,7 @@ export function useRRWebEventStream(
       const offset = pageParam.toString();
 
       const ctrl = new AbortController();
-      lastAbortController.current = ctrl;
+      lastAbortControllerRef.current = ctrl;
 
       setIsFetching(true);
       setFetchStatus('fetching');
@@ -528,7 +528,7 @@ export function useRRWebEventStream(
           shouldAbortPendingRequest &&
           lastFetchStatusRef.current === 'fetching'
         ) {
-          lastAbortController.current?.abort();
+          lastAbortControllerRef.current?.abort();
         }
 
         // Clean up previous results if we shouldn't keep them
@@ -569,7 +569,7 @@ export function useRRWebEventStream(
   );
 
   const abort = useCallback(() => {
-    lastAbortController.current?.abort();
+    lastAbortControllerRef.current?.abort();
   }, []);
 
   return {

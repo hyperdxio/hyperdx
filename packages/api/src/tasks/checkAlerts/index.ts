@@ -1366,8 +1366,9 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
-        // this happens when the ratio is 0/0
+        // NULL means no data: a metric series with no row at this bucket, or
+        // a ratio with a missing/zero denominator. Skip the row instead of
+        // fabricating a state from a gap.
         if (value == null) {
           continue;
         }

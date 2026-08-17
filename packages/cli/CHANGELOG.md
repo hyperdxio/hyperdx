@@ -1,5 +1,21 @@
 # @hyperdx/cli
 
+## 0.6.1
+
+### Patch Changes
+
+- 9581e164: Rewrite the README with the full feature set and command reference (TUI, chart,
+  query, sources/connections/dashboards, auth, team, upload-sourcemaps) ahead of
+  launch, so npm and GitHub show everything the CLI can do. Also remove a stale
+  reference to the removed `hdx stream` command from `hdx chart --help`.
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+
 ## 0.6.0
 
 ### Minor Changes
