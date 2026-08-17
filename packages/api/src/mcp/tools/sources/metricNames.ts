@@ -13,13 +13,16 @@ import logger from '@/utils/logger';
 const MAX_METRIC_NAMES_PER_KIND = 20;
 
 /**
- * Lookback windows tried in order when sampling metric names. The first
- * window that yields any names wins. Metrics reported sparsely (batch
- * jobs, low-traffic services) or backfilled historical data may have no
- * points in the last 24h — falling back to a wider window keeps the
- * sample useful instead of silently empty.
+ * Lookback windows tried in order (shortest to longest) when sampling
+ * metric names. The first window that yields any names wins. Starting
+ * small keeps the common case (actively-reporting metrics) cheap on
+ * large tables; metrics reported sparsely (batch jobs, low-traffic
+ * services) or backfilled historical data may have no recent points —
+ * falling back to a wider window keeps the sample useful instead of
+ * silently empty.
  */
 const METRIC_NAME_LOOKBACK_WINDOWS_MS: readonly number[] = [
+  60 * 60 * 1000, // 1 hour
   24 * 60 * 60 * 1000, // 24 hours
   30 * 24 * 60 * 60 * 1000, // 30 days
 ];
@@ -45,7 +48,6 @@ export async function sampleMetricNamesForKind({
   dateRange,
   timestampValueExpression,
   signal,
-  cachedColumns,
   maxNames = MAX_METRIC_NAMES_PER_KIND,
   enrich = true,
 }: {
@@ -57,7 +59,6 @@ export async function sampleMetricNamesForKind({
   dateRange: [Date, Date];
   timestampValueExpression: string;
   signal: AbortSignal;
-  cachedColumns?: { name: string }[];
   maxNames?: number;
   enrich?: boolean;
 }): Promise<MetricNameSample[]> {
@@ -84,9 +85,13 @@ export async function sampleMetricNamesForKind({
   }
 
   // Defensive column presence check for MetricUnit / MetricDescription.
-  const kindColumns =
-    cachedColumns ??
-    (await metadata.getColumns({ databaseName, tableName, connectionId }));
+  // metadata.getColumns caches per (connection, db, table), so repeated
+  // calls for the same table are cheap.
+  const kindColumns = await metadata.getColumns({
+    databaseName,
+    tableName,
+    connectionId,
+  });
   const columnNames = new Set(kindColumns.map(c => c.name));
   const hasUnit = columnNames.has('MetricUnit');
   const hasDescription = columnNames.has('MetricDescription');
@@ -137,21 +142,28 @@ export async function sampleMetricNamesWithLookback({
   now?: Date;
   windowsMs?: readonly number[];
 }): Promise<MetricNameSample[]> {
+  // Each fallback window ends where the previous (shorter) window
+  // started: that slice is already known to be empty, so rescanning it
+  // would be wasted work. Assumes windowsMs is sorted ascending.
+  let windowEnd = now;
   for (const windowMs of windowsMs) {
     if (rest.signal.aborted) break;
+    const windowStart = new Date(now.getTime() - windowMs);
     const samples = await sampleMetricNamesForKind({
       ...rest,
-      dateRange: [new Date(now.getTime() - windowMs), now],
+      dateRange: [windowStart, windowEnd],
     });
     if (samples.length > 0) return samples;
+    windowEnd = windowStart;
   }
   return [];
 }
 
 /**
  * Fetch MetricUnit and MetricDescription for a batch of metric names.
- * Uses `anyLast` so the most-recent value wins when a metric has changed
- * unit/description over time.
+ * Uses `argMax(col, TimeUnix)` so the most-recent value wins when a
+ * metric has changed unit/description over time (`anyLast` would return
+ * an arbitrary value — it depends on parallel read order, not time).
  */
 async function fetchMetricNameEnrichments({
   clickhouseClient,
@@ -180,11 +192,11 @@ async function fetchMetricNameEnrichments({
   const projections = [
     chSql`MetricName`,
     ...(hasUnit
-      ? [chSql`anyLast(${{ Identifier: 'MetricUnit' }}) AS MetricUnit`]
+      ? [chSql`argMax(${{ Identifier: 'MetricUnit' }}, TimeUnix) AS MetricUnit`]
       : []),
     ...(hasDescription
       ? [
-          chSql`anyLast(${{ Identifier: 'MetricDescription' }}) AS MetricDescription`,
+          chSql`argMax(${{ Identifier: 'MetricDescription' }}, TimeUnix) AS MetricDescription`,
         ]
       : []),
   ];
