@@ -3664,19 +3664,27 @@ describe('checkAlerts', () => {
           status: 500,
           responseBody: 'webhook exploded',
           expectedRequestCount: 3,
+          // Per-target message: names the failing webhook so a multi-channel
+          // alert's errors are attributable. Raw upstream detail stays hidden.
+          expectedErrorMessage:
+            'Failed to send notification to webhook "Generic Webhook". Check the webhook configuration and destination.',
         },
         {
           responseDescription: 'a redirect response',
           status: 302,
           responseBody: 'redirecting',
           expectedRequestCount: 1,
+          expectedErrorMessage:
+            'Webhook destination responded with a redirect. Redirects are not supported. (webhook "Generic Webhook")',
         },
       ])(
-        // Delivery failures are metrics/logs only now (see renderAlertTemplate):
-        // the dispatcher contract can't guarantee synchronous outcome reporting,
-        // so this no longer surfaces as a WEBHOOK_ERROR execution error.
-        'still fires the alert when the generic webhook returns $responseDescription',
-        async ({ status, responseBody, expectedRequestCount }) => {
+        'sets state to ALERT and records a WEBHOOK_ERROR when the generic webhook returns $responseDescription',
+        async ({
+          status,
+          responseBody,
+          expectedRequestCount,
+          expectedErrorMessage,
+        }) => {
           const redirectTarget = 'http://169.254.169.254/latest/meta-data/';
           const fetchMock = jest.fn().mockImplementation(async () => {
             return new Response(responseBody, {
@@ -3755,23 +3763,39 @@ describe('checkAlerts', () => {
 
           const updated = await Alert.findById(details.alert.id);
           expect(updated!.state).toBe(AlertState.ALERT);
-          // Query succeeded, so normal AlertHistory should have been written.
+          // Query succeeded, so normal AlertHistory should have been written
           expect(
             await AlertHistory.countDocuments({
               alert: details.alert.id,
               state: { $ne: AlertState.ERROR },
             }),
           ).toBe(1);
-          // The failed delivery is isolated inside the dispatcher (see
-          // renderAlertTemplate) and never reaches executionErrors, so no
-          // ERROR history row is written for it either.
-          expect(
-            await AlertHistory.countDocuments({
-              alert: details.alert.id,
-              state: AlertState.ERROR,
-            }),
-          ).toBe(0);
-          expect(updated!.executionErrors ?? []).toHaveLength(0);
+          // The webhook failure is also persisted as an ERROR history row
+          const errorHistories = await AlertHistory.find({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          });
+          expect(errorHistories).toHaveLength(1);
+          expect(errorHistories[0].errors).toHaveLength(1);
+          expect(errorHistories[0].errors![0].type).toBe(
+            AlertErrorType.WEBHOOK_ERROR,
+          );
+          expect(errorHistories[0].errors![0].message).toBe(
+            expectedErrorMessage,
+          );
+          // ...carrying the evaluation's analytics, including the time spent
+          // attempting the webhook delivery
+          expect(errorHistories[0].analytics?.webhookDurationMs).toEqual(
+            expect.any(Number),
+          );
+          expect(updated!.executionErrors).toBeDefined();
+          expect(updated!.executionErrors!.length).toBe(1);
+          expect(updated!.executionErrors![0].type).toBe(
+            AlertErrorType.WEBHOOK_ERROR,
+          );
+          expect(updated!.executionErrors![0].message).toBe(
+            expectedErrorMessage,
+          );
           expect(fetchMock).toHaveBeenCalledWith(
             'https://webhook.site/fail',
             expect.objectContaining({ redirect: 'manual' }),
@@ -3788,7 +3812,7 @@ describe('checkAlerts', () => {
         },
       );
 
-      it('blocks a generic webhook at a private IP without calling it', async () => {
+      it('records a WEBHOOK_ERROR without calling a generic webhook at a private IP', async () => {
         const fetchMock = jest.fn();
         global.fetch = jest.mocked(fetchMock);
 
@@ -3860,15 +3884,14 @@ describe('checkAlerts', () => {
         );
 
         const updated = await Alert.findById(details.alert.id);
-        // The SSRF guard still blocks the call — this is a delivery-layer
-        // check, not a pre-dispatch one, so (like every other delivery
-        // failure) it no longer surfaces as an execution error; it's a log
-        // line and a metric in the transport instead.
-        expect(updated!.executionErrors ?? []).toHaveLength(0);
+        expect(updated!.executionErrors).toHaveLength(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
         expect(fetchMock).not.toHaveBeenCalled();
       });
 
-      it('sets state to OK when a resolving webhook send fails', async () => {
+      it('sets state to OK and records a WEBHOOK_ERROR when a resolving webhook send fails', async () => {
         const fetchMock = jest.fn();
         fetchMock
           .mockResolvedValueOnce({
@@ -3967,10 +3990,12 @@ describe('checkAlerts', () => {
         );
 
         const updated = await Alert.findById(details.alert.id);
-        // The resolve state transition is unaffected by the failed delivery —
-        // it's isolated inside the dispatcher and never reaches executionErrors.
         expect(updated!.state).toBe(AlertState.OK);
-        expect(updated!.executionErrors ?? []).toHaveLength(0);
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
       });
 
       it('clears errors after a successful execution', async () => {
@@ -4047,11 +4072,9 @@ describe('checkAlerts', () => {
         expect((updated!.executionErrors ?? []).length).toBe(0);
       });
 
-      it('still fires every group when the generic webhook fails for all of them', async () => {
-        // Every generic-webhook fetch fails. Delivery failures are metrics/logs
-        // only (see renderAlertTemplate), so this proves the failures don't
-        // block the groups' state/history from being recorded, and don't leak
-        // into executionErrors.
+      it('records one WEBHOOK_ERROR per failing group for a grouped alert', async () => {
+        // Every generic-webhook fetch fails. With two alerting groups in a
+        // single execution, the alert should end up with two WEBHOOK_ERRORs.
         const fetchMock = jest.fn().mockResolvedValue({
           ok: false,
           status: 500,
@@ -4150,19 +4173,44 @@ describe('checkAlerts', () => {
         expect(histories.length).toBe(2);
         expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
 
-        // Both groups' webhook failures are isolated inside the dispatcher —
-        // no ERROR history row and no execution error, for either group.
+        // Both groups' webhook failures land on a single ERROR history row
+        // for the evaluation window.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors).toHaveLength(2);
         expect(
-          await AlertHistory.countDocuments({
-            alert: details.alert.id,
-            state: AlertState.ERROR,
-          }),
-        ).toBe(0);
+          errorHistories[0].errors!.every(
+            e => e.type === AlertErrorType.WEBHOOK_ERROR,
+          ),
+        ).toBe(true);
 
         // Each group attempted to send a webhook and each one failed. withRetry
         // retries up to 3 times per group (2 groups × 3 attempts = 6 total calls).
         expect(fetchMock).toHaveBeenCalledTimes(6);
-        expect(updated!.executionErrors ?? []).toHaveLength(0);
+        expect(updated!.executionErrors).toBeDefined();
+        expect(updated!.executionErrors!.length).toBe(2);
+        expect(
+          updated!.executionErrors!.every(
+            e => e.type === AlertErrorType.WEBHOOK_ERROR,
+          ),
+        ).toBe(true);
+        // Webhook error messages are hardcoded for security; the raw upstream
+        // error ("group webhook failed") must not leak into the stored message.
+        expect(
+          updated!.executionErrors!.every(
+            e => !e.message.includes('group webhook failed'),
+          ),
+        ).toBe(true);
+        expect(
+          updated!.executionErrors!.every(e =>
+            /^Failed to send notification to webhook ".+"\. Check the webhook configuration and destination\.$/.test(
+              e.message,
+            ),
+          ),
+        ).toBe(true);
       });
 
       it('records a WEBHOOK_ERROR when the referenced webhook is not found', async () => {

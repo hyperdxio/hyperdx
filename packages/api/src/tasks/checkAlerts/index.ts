@@ -79,7 +79,7 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
-  PreDispatchFailure,
+  NotificationFailure,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
 import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
@@ -265,12 +265,13 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
 };
 
 // Per-target variant: names the target so a multi-channel alert's errors are
-// attributable. Only pre-dispatch failures reach here — an unresolvable
-// mention/webhook or the per-event cap. Actual delivery failures are not
-// reported per-target (see renderAlertTemplate); they fall back to
-// makeWebhookAlertError only if they somehow escape that isolation.
+// attributable. Two kinds of failure reach here (see renderAlertTemplate):
+// pre-dispatch (unresolvable mention/webhook, the per-event cap) and, for the
+// inline dispatcher, an actual delivery rejection. Raw upstream detail stays
+// hidden (same policy as makeWebhookAlertError); timeout and not-found
+// messages are authored by us.
 const makeNotificationAlertError = (
-  failure: PreDispatchFailure,
+  failure: NotificationFailure,
 ): IAlertError => {
   const target = `webhook "${failure.target}"`;
   const timestamp = new Date();
@@ -297,7 +298,23 @@ const makeNotificationAlertError = (
       message: `${failure.error.message} (${target})`.slice(0, 10000),
     };
   }
-  return makeWebhookAlertError(failure.error);
+  if (failure.error instanceof WebhookRedirectError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${WEBHOOK_REDIRECT_ERROR_MESSAGE} (${target})`.slice(0, 10000),
+    };
+  }
+  // A delivery rejection from the inline dispatcher — the only case left.
+  return {
+    timestamp,
+    type: AlertErrorType.WEBHOOK_ERROR,
+    message:
+      `Failed to send notification to ${target}. Check the webhook configuration and destination.`.slice(
+        0,
+        10000,
+      ),
+  };
 };
 
 export const doesExceedThreshold = (
@@ -477,7 +494,7 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<PreDispatchFailure[]> => {
+}): Promise<NotificationFailure[]> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
@@ -1224,9 +1241,9 @@ export const processAlert = async (
           windowSizeInMins,
           teamWebhooksById,
         });
-        // Every entry here is a pre-dispatch failure (unresolvable target or
-        // the per-event cap) — actual delivery outcomes never reach this
-        // array (see renderAlertTemplate).
+        // Each entry is a target that didn't end up delivered: unresolvable,
+        // capped, or (for the inline dispatcher) an actual send rejection —
+        // see renderAlertTemplate.
         for (const failure of results) {
           logger.error(
             {

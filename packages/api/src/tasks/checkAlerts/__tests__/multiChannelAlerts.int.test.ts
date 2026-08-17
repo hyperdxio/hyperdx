@@ -1,9 +1,15 @@
+import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
 import { getServer } from '@/fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert, {
+  AlertSource,
+  AlertState,
+  AlertThresholdType,
+} from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
 import { loadProvider } from '@/tasks/checkAlerts/providers';
 
 import {
@@ -123,11 +129,75 @@ describe('Multi-channel alert dispatch', () => {
 
     expect(requestedUrls.slice().sort()).toEqual([HOOK_BAD, HOOK_OK].sort());
     expect(updated!.state).toBe('ALERT');
-    // Delivery failures are metrics/logs only, not execution errors: the
-    // dispatcher contract can't guarantee synchronous delivery reporting (a
-    // queued implementation wouldn't have an outcome yet), so this stays
-    // dispatcher-agnostic rather than special-casing the inline case.
-    expect(updated!.executionErrors ?? []).toHaveLength(0);
+    // The healthy target's delivery is unaffected by the other's failure —
+    // the failing target's own error is still recorded (both the inline
+    // dispatcher's job and the pre-dispatch path get here through the same
+    // per-target failure list, see renderAlertTemplate).
+    expect(updated!.executionErrors).toHaveLength(1);
+    // The error names the failing target, not the healthy one.
+    expect(updated!.executionErrors![0].message).toContain('Hook Bad');
+    expect(updated!.executionErrors![0].message).not.toContain('Hook OK');
+    expect(updated!.executionErrors![0].type).toBe(
+      AlertErrorType.WEBHOOK_ERROR,
+    );
+
+    const errorHistories = await AlertHistory.find({
+      alert: alert.id,
+      state: AlertState.ERROR,
+    });
+    expect(errorHistories).toHaveLength(1);
+    expect(errorHistories[0].errors).toHaveLength(1);
+    expect(errorHistories[0].errors![0].type).toBe(
+      AlertErrorType.WEBHOOK_ERROR,
+    );
+  });
+
+  it('records a WEBHOOK_ERROR and an ERROR history row when the only channel fails to deliver', async () => {
+    const { team, connection, source, savedSearch } = await setup();
+    const bad = await makeWebhook(team._id, 'Hook Bad', HOOK_BAD);
+
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channels: [{ type: 'webhook', webhookId: bad._id.toString() }],
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        savedSearchId: savedSearch.id,
+        name: 'Single Failing Channel Alert',
+      },
+      new mongoose.Types.ObjectId(),
+    );
+
+    await seedTriggeringLogs();
+    const updated = await runAlert({
+      alertId: alert.id,
+      connection,
+      source,
+      savedSearch,
+      webhooks: [bad],
+    });
+
+    expect(requestedUrls).toEqual([HOOK_BAD]);
+    // The query still fired the alert; the delivery failure is a separate
+    // execution error, not a change to the threshold evaluation.
+    expect(updated!.state).toBe('ALERT');
+    expect(updated!.executionErrors).toHaveLength(1);
+    expect(updated!.executionErrors![0].type).toBe(
+      AlertErrorType.WEBHOOK_ERROR,
+    );
+    expect(updated!.executionErrors![0].message).toContain('Hook Bad');
+
+    const errorHistories = await AlertHistory.find({
+      alert: alert.id,
+      state: AlertState.ERROR,
+    });
+    expect(errorHistories).toHaveLength(1);
+    expect(errorHistories[0].errors).toHaveLength(1);
+    expect(errorHistories[0].errors![0].type).toBe(
+      AlertErrorType.WEBHOOK_ERROR,
+    );
   });
 
   it('still notifies a pre-multi-channel document that only has `channel`', async () => {

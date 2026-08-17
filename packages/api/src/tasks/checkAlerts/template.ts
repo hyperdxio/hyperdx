@@ -320,9 +320,16 @@ const getPopulatedChannel = (
   }
 };
 
-/** A notification target that could not be handed to the dispatcher at all. */
-export type PreDispatchFailure = {
-  /** The webhook id/name prefix, or the raw @mention, that failed to resolve. */
+/**
+ * A notification target that did not end up delivered: it never reached the
+ * dispatcher (unresolvable mention/webhook, the per-event cap), or it did
+ * reach the dispatcher and `dispatch()` rejected. The inline dispatcher
+ * resolves after delivery, so a real send failure rejects and is caught below
+ * — a queued dispatcher instead resolves after enqueue and reports delivery
+ * outcomes through its own logs/metrics, so this array simply won't see them.
+ */
+export type NotificationFailure = {
+  /** The webhook id/name prefix, or the raw @mention, that failed. */
   target: string;
   error: unknown;
 };
@@ -330,14 +337,8 @@ export type PreDispatchFailure = {
 export type RenderedAlert = {
   /** The rendered message body, as delivered to every target. */
   body: string;
-  /**
-   * Targets that never reached the dispatcher: an unresolvable mention/webhook,
-   * or the per-event cap. Actual delivery outcomes are not reported here — the
-   * dispatcher may be a queue that can't report them synchronously — they
-   * surface as metrics/spans in the transport layer instead (see
-   * agent_docs/observability.md).
-   */
-  results: PreDispatchFailure[];
+  /** One entry per target that did not end up delivered — see NotificationFailure. */
+  results: NotificationFailure[];
 };
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
@@ -418,7 +419,7 @@ export const renderAlertTemplate = async ({
   // Rendering collects the notification jobs; dispatch happens once afterwards
   // so every target goes out concurrently instead of serially mid-render.
   const jobs: NotificationJob[] = [];
-  const preDispatchFailures: PreDispatchFailure[] = [];
+  const failures: NotificationFailure[] = [];
   // Webhook ids already queued this event, so a target configured as a channel
   // and also named by an @mention is only notified once.
   const queuedWebhookIds = new Set<string>();
@@ -426,7 +427,7 @@ export const renderAlertTemplate = async ({
   // A target that failed before dispatch still needs to surface as its own
   // result, so the alert reports which channel missed out.
   const recordPreFailure = (target: string, error: unknown) => {
-    preDispatchFailures.push({ target, error });
+    failures.push({ target, error });
   };
 
   const registerHelpers = (rawTemplateBody: string) => {
@@ -491,10 +492,7 @@ export const renderAlertTemplate = async ({
         return;
       }
 
-      if (
-        jobs.length + preDispatchFailures.length >=
-        MAX_NOTIFICATIONS_PER_EVENT
-      ) {
+      if (jobs.length + failures.length >= MAX_NOTIFICATIONS_PER_EVENT) {
         logger.warn(
           { alertId: alert.id, cap: MAX_NOTIFICATIONS_PER_EVENT },
           'Notification cap reached for this alert event; skipping channel',
@@ -664,11 +662,15 @@ ${targetTemplate}`;
     const body = await compiledTemplate(view);
 
     // Dispatch every surviving channel concurrently, once the render (and
-    // therefore the message body) is complete. Each dispatch is isolated: the
-    // dispatcher contract doesn't let a queueing implementation report
-    // delivery outcome synchronously, so a failure here is logged and left to
-    // the transport layer's own metrics/spans rather than turned into an
-    // execution error (see agent_docs/observability.md).
+    // therefore the message body) is complete. Each dispatch is isolated in
+    // its own try/catch so one failing channel can't stop the others.
+    //
+    // The inline dispatcher resolves *after* delivery, so a real send failure
+    // rejects here and is recorded exactly like a pre-dispatch failure — this
+    // preserves WEBHOOK_ERROR reporting for the default (only) dispatcher. A
+    // queued dispatcher resolves after enqueue and never rejects here; it
+    // reports delivery outcomes through its own logs/metrics instead (see
+    // agent_docs/observability.md).
     await Promise.all(
       jobs.map(async job => {
         try {
@@ -682,11 +684,15 @@ ${targetTemplate}`;
             },
             'Failed to deliver alert notification',
           );
+          failures.push({
+            target: job.populatedChannel.channel.name,
+            error: e,
+          });
         }
       }),
     );
 
-    return { body, results: preDispatchFailures };
+    return { body, results: failures };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
