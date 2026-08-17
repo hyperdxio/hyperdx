@@ -10,7 +10,7 @@ import { Grid } from '@mantine/core';
 import { IconFilter, IconTable } from '@tabler/icons-react';
 
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import DisplaySwitcher from '@/components/charts/DisplaySwitcher';
 import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
@@ -305,7 +305,7 @@ function DatabaseTab({
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
+        <ChartCard style={{ height: 350 }}>
           {source && totalTimePerQueryConfig && (
             <DBTimeChart
               title="Total Time Consumed per Query"
@@ -315,10 +315,10 @@ function DatabaseTab({
               disableQueryChunking
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
+        <ChartCard style={{ height: 350 }}>
           {source && totalThroughputPerQueryConfig && (
             <DBTimeChart
               title="Throughput per Query"
@@ -328,10 +328,10 @@ function DatabaseTab({
               disableDrillDown
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 350, overflow: 'auto' }}>
+        <ChartCard style={{ height: 350, overflow: 'auto' }}>
           {source &&
             expressions &&
             (chartType === 'list' ? (
@@ -508,7 +508,7 @@ function DatabaseTab({
                 }}
               />
             ))}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
     </Grid>
   );
