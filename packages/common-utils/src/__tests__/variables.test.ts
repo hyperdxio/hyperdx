@@ -290,6 +290,32 @@ describe('substituteVariables', () => {
       ).toBe("WHERE (ServiceName IN ('api', 'web'))");
     });
 
+    it('accepts a $-prefixed name argument', () => {
+      expect(
+        substituteVariables('WHERE $__conditionalAll(1=1, $service)', [
+          SERVICE,
+        ]),
+      ).toBe('WHERE (1=1)');
+    });
+
+    it('expands a variable macro nested in the condition', () => {
+      expect(
+        substituteVariables(
+          'WHERE $__conditionalAll(NOT $__filter(ServiceName, service), env)',
+          [SERVICE, variable('env', ['prod'])],
+        ),
+      ).toBe("WHERE (NOT (ServiceName IN ('api', 'web')))");
+    });
+
+    it('expands a nested reference exactly once', () => {
+      expect(
+        substituteVariables('$__conditionalAll(col = $a, service)', [
+          SERVICE,
+          variable('a', ['$service']),
+        ]),
+      ).toBe("(col = '$service')");
+    });
+
     it('throws when the named variable does not exist', () => {
       expect(() =>
         substituteVariables('$__conditionalAll(x = 1, nope)', [SERVICE]),
@@ -348,6 +374,14 @@ describe('substituteVariables', () => {
     expect(
       substituteVariables('WHERE $__timeFilter(ts) AND $__filters', [SERVICE]),
     ).toBe('WHERE $__timeFilter(ts) AND $__filters');
+  });
+
+  it('substitutes a reference written inside a non-variable macro, which is only text here', () => {
+    // Standard macros exist in the raw SQL path (`replaceMacros`) alone, so
+    // there is no argument to recurse into — the reference is plain text.
+    expect(
+      substituteVariables('WHERE $__timeFilter(${service:csv})', [SERVICE]),
+    ).toBe('WHERE $__timeFilter(api,web)');
   });
 
   it('does not treat $__filters as the $__filter macro', () => {
@@ -1055,6 +1089,25 @@ describe('validateVariableReferencesInTemplate', () => {
     expect(validate('match(ServiceName, ${service:regex})', [SERVICE])).toEqual(
       { errors: [], warnings: [] },
     );
+  });
+
+  describe('a reference in a macro argument', () => {
+    const TS_COL = variable('tsCol', ['Timestamp']);
+
+    it('warns about the bare form, which expands to a quoted value', () => {
+      expect(
+        validate('WHERE $__timeFilter($tsCol)', [TS_COL]).warnings,
+      ).toEqual([
+        '$tsCol has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, tsCol) or $__conditionalAll(<condition>, tsCol) so the query stays valid when no values are selected.',
+      ]);
+    });
+
+    it('says nothing about the csv form, which expands to the column itself', () => {
+      expect(validate('WHERE $__timeFilter(${tsCol:csv})', [TS_COL])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+    });
   });
 
   describe('with no variable context at all', () => {

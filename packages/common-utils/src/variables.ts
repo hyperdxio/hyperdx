@@ -313,6 +313,66 @@ export function scanTemplateTokens(
   return tokens;
 }
 
+/**
+ * The argument a variable macro reads as a variable *name* rather than as a
+ * template, or undefined for a macro with no such argument. Nothing is expanded
+ * there: `$__filter(ServiceName, svc)` has to see `svc`, not its selected values.
+ */
+function variableNameArgIndex(
+  macroName: string,
+  argCount: number,
+): number | undefined {
+  if (!isVariableMacroName(macroName)) return undefined;
+
+  // $__filter(name) | $__filter(expression, name) | $__conditionalAll(condition, name)
+  switch (macroName) {
+    case 'filter':
+      return argCount - 1;
+    case 'conditionalAll':
+      return 1;
+    default:
+      macroName satisfies never;
+      throw new Error('Unexpected macro name in variableNameArgIndex');
+  }
+}
+
+export type TemplateExpander = {
+  macroNames: readonly string[];
+  /** Expand a macro token whose arguments have already been expanded. */
+  expandMacro: (token: Extract<TemplateToken, { kind: 'macro' }>) => string;
+  /** Expand a `$name` / `${name}` / `${name:format}` reference. */
+  expandReference: (
+    token: Exclude<TemplateToken, { kind: 'text' | 'macro' }>,
+  ) => string;
+};
+
+/**
+ * Expand a template, recursing into each macro argument first so a variable or
+ * macro nested in an argument resolves before the enclosing macro sees it —
+ * `$__timeFilter(${TsColumn:csv})` filters on the selected column. The one
+ * exception is a variable macro's name argument, which stays as written.
+ *
+ * Only template *source* is recursed into; an expansion is never re-scanned, so
+ * a selected value that looks like `$foo` or `$__fromTime` stays inert.
+ */
+export function expandTemplate(
+  input: string,
+  expander: TemplateExpander,
+): string {
+  return scanTemplateTokens(input, expander.macroNames)
+    .map(token => {
+      if (token.kind === 'text') return token.text;
+      if (token.kind !== 'macro') return expander.expandReference(token);
+
+      const nameIndex = variableNameArgIndex(token.name, token.args.length);
+      const args = token.args.map((arg, index) =>
+        index === nameIndex ? arg : expandTemplate(arg, expander),
+      );
+      return expander.expandMacro({ ...token, args });
+    })
+    .join('');
+}
+
 // -- Variable expansion -----------------------------------------------------
 
 export type VariableContext = {
@@ -373,7 +433,8 @@ function expandFilterMacro(args: string[], ctx: VariableContext): string {
   // structurally invalid usage reports regardless of what's selected.
   let expression: string;
   if (args.length === 2) {
-    expression = substituteWithContext(args[0], ctx);
+    // Already expanded by `expandTemplate`, which walks arguments first.
+    expression = args[0];
   } else {
     if (!variable.expression) {
       throw new MacroExpansionError(
@@ -408,11 +469,13 @@ function expandConditionalAllMacro(
 
   if (variable.values.length === 0) return sqlNoOp(variableName);
 
-  return `(${substituteWithContext(args[0], ctx)})`;
+  // The condition is already expanded by `expandTemplate`.
+  return `(${args[0]})`;
 }
 
 /**
- * Expand one non-text token against a variable context.
+ * Expand one non-text token against a variable context. A macro token's
+ * arguments must already be expanded, so call this through `expandTemplate`.
  *
  * Unknown *reference* names are emitted verbatim (a SQL literal that happens
  * to look like `$foo` must survive untouched), while a macro naming an unknown
@@ -446,14 +509,13 @@ export function expandVariableToken(
 }
 
 function substituteWithContext(input: string, ctx: VariableContext): string {
-  // Unregistering the macro names is what leaves them verbatim: the scanner
-  // emits an unknown `$__x` as plain text, arguments and all.
-  const macroNames = ctx.disableMacros ? [] : VARIABLE_MACRO_NAMES;
-  return scanTemplateTokens(input, macroNames)
-    .map(token =>
-      token.kind === 'text' ? token.text : expandVariableToken(token, ctx),
-    )
-    .join('');
+  return expandTemplate(input, {
+    // Unregistering the macro names is what leaves them verbatim: the scanner
+    // emits an unknown `$__x` as plain text, arguments and all.
+    macroNames: ctx.disableMacros ? [] : VARIABLE_MACRO_NAMES,
+    expandMacro: token => expandVariableToken(token, ctx),
+    expandReference: token => expandVariableToken(token, ctx),
+  });
 }
 
 /**

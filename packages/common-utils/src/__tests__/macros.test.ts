@@ -470,4 +470,110 @@ describe('replaceMacros with variables', () => {
       ).toThrow("references unknown variable 'service'");
     });
   });
+
+  describe('nested in macro arguments', () => {
+    const nested = [
+      ...variables,
+      { name: 'tsCol', values: ['Timestamp'] },
+      { name: 'noCol', values: [] },
+      { name: 'metricType', values: ['gauge'] },
+    ];
+
+    /** What `$__timeFilter(<col>)` expands to, so each test shows its column. */
+    const timeFilterOn = (col: string) =>
+      `${col} >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND ` +
+      `${col} <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))`;
+
+    it('filters on the column a variable names', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${tsCol:csv})',
+          variables: nested,
+        }),
+      ).toBe(`WHERE ${timeFilterOn('Timestamp')}`);
+    });
+
+    it('renders a bare reference in the quoted sqlstring format', () => {
+      // The default format doesn't change inside an argument, so the column
+      // form needs `:csv` — as the editor's warning on `$tsCol` says.
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter($tsCol)',
+          variables: nested,
+        }),
+      ).toBe(`WHERE ${timeFilterOn("'Timestamp'")}`);
+    });
+
+    it('renders an unselected variable as empty, with no special case', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${noCol:csv})',
+          variables: nested,
+        }),
+      ).toBe(`WHERE ${timeFilterOn('')}`);
+    });
+
+    it('expands a reference in a $__sourceTable argument', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'FROM $__sourceTable(${metricType:csv})',
+          from: { databaseName: 'otel', tableName: '' },
+          metricTables: ALL_METRIC_TABLES,
+          variables: nested,
+        }),
+      ).toBe('FROM `otel`.`otel_metrics_gauge`');
+    });
+
+    it('expands a macro nested in a variable macro argument', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate:
+            'WHERE $__conditionalAll($__timeFilter(Timestamp), service)',
+          variables: nested,
+        }),
+      ).toBe(`WHERE (${timeFilterOn('Timestamp')})`);
+    });
+
+    it('expands to any depth', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate:
+            'WHERE $__filter(if($__conditionalAll($__timeFilter(${tsCol:csv}), service), a, b), service)',
+          variables: nested,
+        }),
+      ).toBe(
+        `WHERE (if((${timeFilterOn('Timestamp')}), a, b) IN ('api', 'web'))`,
+      );
+    });
+
+    it('leaves the variable name argument unexpanded', () => {
+      // Expanding it there would hand the macro the selected values, leaving it
+      // with no variable to filter by.
+      expect(
+        replaceMacros({
+          sqlTemplate:
+            'WHERE $__filter(ServiceName, $service) AND $__conditionalAll(1=1, $service)',
+          variables: nested,
+        }),
+      ).toBe("WHERE (ServiceName IN ('api', 'web')) AND (1=1)");
+    });
+
+    it('does not re-expand a value that lands in an argument', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${tricky:csv})',
+          variables: [{ name: 'tricky', values: ['$__fromTime'] }],
+        }),
+      ).toBe(`WHERE ${timeFilterOn('$__fromTime')}`);
+    });
+
+    it('throws when a nested argument list is never closed', () => {
+      expect(() =>
+        replaceMacros({
+          sqlTemplate: 'WHERE $__conditionalAll($__timeFilter(ts, service)',
+          variables: nested,
+        }),
+      ).toThrow(MalformedMacroArgsError);
+    });
+  });
 });

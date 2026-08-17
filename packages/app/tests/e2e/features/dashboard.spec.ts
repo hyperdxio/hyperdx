@@ -1604,6 +1604,56 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     );
 
     test(
+      'expands a macro nested in another macro argument',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Nested Macro Tile ${Date.now()}`;
+
+        // `$__timeFilter` sits in a `$__conditionalAll` argument, so it only
+        // expands if arguments are expanded before the enclosing macro runs.
+        const NESTED_MACRO_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE $__conditionalAll($__timeFilter(Timestamp), svc) AND $__filter(ServiceName, svc) GROUP BY ServiceName LIMIT 200`;
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a raw SQL tile with a macro inside a macro', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.switchToSqlMode();
+          await dashboardPage.chartEditor.typeSqlQuery(NESTED_MACRO_SQL);
+          await dashboardPage.chartEditor.runQuery(false);
+        });
+
+        await test.step('Generated SQL expands the inner time filter', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain('Timestamp >=');
+            expect(sql).not.toContain('$__timeFilter');
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('The preview only shows the selected service', async () => {
+          const preview = dashboardPage.page.getByRole('dialog').first();
+          await expect(
+            preview.getByTitle('accounting', { exact: true }),
+          ).toBeVisible({ timeout: 15000 });
+          await expect(preview.getByTitle('ad', { exact: true })).toHaveCount(
+            0,
+          );
+        });
+      },
+    );
+
+    test(
       'previews an alerting tile with every variable value emptied',
       { tag: '@full-stack' },
       async () => {
