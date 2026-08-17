@@ -1366,8 +1366,9 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
-        // this happens when the ratio is 0/0
+        // NULL means no data: a metric series with no row at this bucket, or
+        // a ratio with a missing/zero denominator. Skip the row instead of
+        // fabricating a state from a gap.
         if (value == null) {
           continue;
         }
@@ -1457,7 +1458,6 @@ export const processAlert = async (
       let groupPrevious = previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
-      const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
 
       // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
       if (hitAlertThisRun) {
@@ -1734,7 +1734,7 @@ export const getConsecutiveWindowHistories = async (
   return map;
 };
 
-export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
+export default class CheckAlertTask implements HdxTask {
   private provider!: AlertProvider;
   private task_queue: PQueue;
 

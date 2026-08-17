@@ -50,8 +50,9 @@ export function registerSaveDashboard({
       description:
         'Create a new dashboard (omit id) or update an existing one (provide id). ' +
         'Call clickstack_list_sources first to obtain sourceId and connectionId values. ' +
-        'IMPORTANT: After saving a dashboard, always run clickstack_query_tile on each tile ' +
-        'to confirm the queries work and return expected data. Tiles can silently fail ' +
+        'IMPORTANT: After saving a dashboard, always run clickstack_query_tiles to validate ' +
+        'every tile in one call (or clickstack_query_tile for a single tile) and confirm the ' +
+        'queries work and return expected data. Tiles can silently fail ' +
         'due to incorrect filter syntax, missing attributes, or wrong column names. ' +
         'TIP: To update a single tile without resubmitting all tiles, use clickstack_patch_dashboard instead.',
       inputSchema: z.object({
@@ -221,7 +222,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
+            hint: 'Use clickstack_query_tiles to validate every tile in one call (or clickstack_query_tile for a single tile) before viewing the dashboard.',
             ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
           null,
@@ -372,7 +373,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
+            hint: 'Use clickstack_query_tiles to validate every tile in one call (or clickstack_query_tile for a single tile) before viewing the dashboard.',
             ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
           null,

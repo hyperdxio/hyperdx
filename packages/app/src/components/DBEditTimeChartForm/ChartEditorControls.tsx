@@ -171,6 +171,7 @@ export function ChartEditorControls({
           control={control}
           setValue={setValue}
           tableSource={tableSource}
+          dateRange={dateRange}
           onSubmit={onSubmit}
           onOpenDisplaySettings={openHeatmapSettings}
         />
@@ -187,6 +188,7 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="Pattern Expression"
+            enableVariables
           />
           {typeof select === 'string' &&
             select.length > 0 &&
@@ -199,6 +201,8 @@ export function ChartEditorControls({
             )}
           <SearchWhereInput
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="where"
             onSubmit={onSubmit}
@@ -206,6 +210,7 @@ export function ChartEditorControls({
               setValue('whereLanguage', lang)
             }
             showLabel={false}
+            enableVariables
           />
         </Flex>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -273,6 +278,7 @@ export function ChartEditorControls({
                     placeholder="SQL Columns"
                     onSubmit={onSubmit}
                     disableKeywordAutocomplete
+                    enableVariables
                   />
                 </div>
                 {displayType === DisplayType.Table && (
@@ -295,6 +301,7 @@ export function ChartEditorControls({
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>
@@ -344,12 +351,12 @@ export function ChartEditorControls({
               )}
               {/* Grouped ratios divide per-group by default; this opts into
                   share-of-total (each group's contribution to the blended
-                  rate). Only metric sources fan out to per-series queries
-                  merged client-side (see mergeResultSets/ratioMode) — other
-                  sources compute the ratio within-group in the DB, where
-                  ratioMode has no effect — so restrict to metric sources. No
-                  effect on ungrouped ratios either, so also gate on a Group
-                  By. */}
+                  rate). Only metric sources render the ratio over composed
+                  per-series branches where ratioMode applies (see
+                  renderMultiSeriesMetricChartConfig) — other sources compute
+                  the ratio within-group via divide(), where ratioMode has no
+                  effect — so restrict to metric sources. No effect on
+                  ungrouped ratios either, so also gate on a Group By. */}
               {fields.length === 2 &&
                 seriesReturnType === 'ratio' &&
                 tableSource?.kind === SourceKind.Metric &&
@@ -427,9 +434,12 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="SELECT"
+            enableVariables
           />
           <SearchWhereInput
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="where"
             onSubmit={onSubmit}
@@ -437,6 +447,7 @@ export function ChartEditorControls({
               setValue('whereLanguage', lang)
             }
             showLabel={false}
+            enableVariables
           />
         </Flex>
       )}

@@ -12,9 +12,13 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isPromqlChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
+  ChartVariable,
   DisplayType,
   SavedChartConfig,
   SourceKind,
@@ -88,6 +92,7 @@ import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
+  resolvePreviewVariables,
   TABS_WITH_GENERATED_SQL,
   zSavedChartConfig,
 } from './utils';
@@ -95,6 +100,8 @@ import {
 type EditTimeChartFormProps = {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
+  /** Variables and their selected values, from the parent dashboard (if one exists). */
+  variables?: ChartVariable[];
   displayedTimeInputValue?: string;
   dateRange: [Date, Date];
   isSaving?: boolean;
@@ -133,6 +140,7 @@ function applyHeatmapDefaults(
 export default function EditTimeChartForm({
   dashboardId,
   chartConfig,
+  variables,
   displayedTimeInputValue,
   dateRange,
   isSaving,
@@ -203,12 +211,12 @@ export default function EditTimeChartForm({
   // Track whether sub-form changes (display settings, heatmap settings) have
   // been applied. These bypass RHF's dirty tracking, so we latch here: once
   // set, only a parent reset (new tile opened) clears it via onDirtyChange.
-  const subFormDirty = useRef(false);
+  const subFormDirtyRef = useRef(false);
 
   useEffect(() => {
     // Don't let RHF's isDirty=false clear the flag after sub-form changes
     // were applied (RHF resets isDirty when its `values` prop re-syncs).
-    onDirtyChange?.(isDirty || subFormDirty.current);
+    onDirtyChange?.(isDirty || subFormDirtyRef.current);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
@@ -364,9 +372,24 @@ export default function EditTimeChartForm({
     [],
   );
 
+  // Attach variables so that variable references can be validated and expanded in the preview
+  const previewConfig = useMemo(() => {
+    if (queriedConfig == null || isPromqlChartConfig(queriedConfig)) {
+      return queriedConfig;
+    }
+    return {
+      ...queriedConfig,
+      variables: resolvePreviewVariables({
+        config: queriedConfig,
+        variables,
+        hasAlert: alert != null,
+      }),
+    };
+  }, [queriedConfig, variables, alert]);
+
   const dbTimeChartConfig = useMemo(
-    () => computeDbTimeChartConfig(queriedConfig, alert),
-    [queriedConfig, alert],
+    () => computeDbTimeChartConfig(previewConfig, alert),
+    [previewConfig, alert],
   );
 
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
@@ -467,10 +490,10 @@ export default function EditTimeChartForm({
     }
   }, [onSubmit, submitRef]);
 
-  const autoRunFired = useRef(false);
+  const autoRunFiredRef = useRef(false);
   useEffect(() => {
-    if (autoRun && !autoRunFired.current && tableSource) {
-      autoRunFired.current = true;
+    if (autoRun && !autoRunFiredRef.current && tableSource) {
+      autoRunFiredRef.current = true;
       onSubmit(true);
     }
   }, [autoRun, tableSource, onSubmit]);
@@ -595,7 +618,7 @@ export default function EditTimeChartForm({
   const chartConfigForExplanations = useMemo(
     () =>
       buildChartConfigForExplanations({
-        queriedConfig,
+        queriedConfig: previewConfig,
         queriedSourceId: queriedSource?.id,
         tableSource,
         chartConfig,
@@ -604,7 +627,7 @@ export default function EditTimeChartForm({
         dbTimeChartConfig,
       }),
     [
-      queriedConfig,
+      previewConfig,
       queriedSource?.id,
       tableSource,
       chartConfig,
@@ -658,7 +681,7 @@ export default function EditTimeChartForm({
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {
-        subFormDirty.current = true;
+        subFormDirtyRef.current = true;
         onDirtyChange?.(true);
       }
       onSubmit();
@@ -672,7 +695,7 @@ export default function EditTimeChartForm({
       setValue('series.0.countExpression', data.count || 'count()');
       setValue('series.0.heatmapScaleType', data.scaleType);
       // Heatmap settings are applied outside RHF's change tracking.
-      subFormDirty.current = true;
+      subFormDirtyRef.current = true;
       onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
@@ -850,6 +873,7 @@ export default function EditTimeChartForm({
             isDashboardForm={isDashboardForm}
             alert={alert}
             dashboardId={dashboardId}
+            variables={variables}
           />
         ) : (
           <ChartEditorControls
@@ -903,7 +927,7 @@ export default function EditTimeChartForm({
         />
       </ErrorBoundary>
       <ChartPreviewPanel
-        queriedConfig={queriedConfig}
+        queriedConfig={previewConfig}
         tableSource={tableSource}
         dateRange={dateRange}
         activeTab={activeTab}

@@ -495,6 +495,20 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     },
   );
 
+  // What the `lucene` variable format renders for an empty selection. It has
+  // to drop out of the predicate rather than match nothing, and it stays
+  // parenthesized for exactly that reason: the bare `ServiceName:""` below
+  // compares the column against the empty string instead.
+  it.each([
+    ['ServiceName:("")', '(((1=1)))'],
+    ['("")', '(((1=1)))'],
+    ['ServiceName:""', "((ServiceName = ''))"],
+  ])('renders the empty lucene term %s as %s', async (lucene, expected) => {
+    expect(await new SearchQueryBuilder(lucene, serializer).build()).toBe(
+      expected,
+    );
+  });
+
   it('correctly searches multi-column implicit field', async () => {
     const serializer = new CustomSchemaSQLSerializerV2({
       metadata,

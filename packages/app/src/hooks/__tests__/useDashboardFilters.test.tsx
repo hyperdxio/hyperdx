@@ -338,6 +338,132 @@ describe('useDashboardFilters', () => {
     });
   });
 
+  describe('variables', () => {
+    it('is empty when no filter is variable-enabled', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.variables).toEqual([]);
+    });
+
+    it('exposes a variable-enabled filter with its expression and selection', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], isVariableEnabled: true, variableName: 'env' },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.variables).toEqual([
+        { name: 'env', expression: 'environment', values: ['production'] },
+      ]);
+    });
+
+    it('derives the name from the filter name when none is set', () => {
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[1], isVariableEnabled: true },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.variables).toEqual([
+        { name: 'Service', expression: 'service.name', values: [] },
+      ]);
+    });
+
+    it('excludes filters that are not variable-enabled', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "service.name IN ('api')" },
+      ];
+      const filters: DashboardFilter[] = [
+        mockFilters[0],
+        { ...mockFilters[1], isVariableEnabled: true, variableName: 'service' },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.variables.map(v => v.name)).toEqual(['service']);
+    });
+
+    it('exposes a broadcast-disabled filter as a variable', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+      const filters: DashboardFilter[] = [
+        {
+          ...mockFilters[0],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.getFilterQueriesForSource('logs')).toEqual([]);
+      expect(result.current.variables).toEqual([
+        { name: 'env', expression: 'environment', values: ['production'] },
+      ]);
+    });
+
+    it('yields an empty value list when nothing is selected', () => {
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], isVariableEnabled: true, variableName: 'env' },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.variables).toEqual([
+        { name: 'env', expression: 'environment', values: [] },
+      ]);
+    });
+
+    it('sorts values so selection order does not change the payload', () => {
+      const { result } = renderHook(() =>
+        useDashboardFilters([
+          { ...mockFilters[0], isVariableEnabled: true, variableName: 'env' },
+        ]),
+      );
+
+      act(() => {
+        result.current.setFilterValue('environment', [
+          'staging',
+          'development',
+          'production',
+        ]);
+      });
+
+      const { result: result2 } = renderHook(() =>
+        useDashboardFilters([
+          { ...mockFilters[0], isVariableEnabled: true, variableName: 'env' },
+        ]),
+      );
+
+      expect(result2.current.variables[0].values).toEqual([
+        'development',
+        'production',
+        'staging',
+      ]);
+    });
+
+    it('keeps the first definition when two share a variable name', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "service.name IN ('api')" },
+      ];
+      const filters: DashboardFilter[] = [
+        { ...mockFilters[0], isVariableEnabled: true, variableName: 'dupe' },
+        { ...mockFilters[1], isVariableEnabled: true, variableName: 'dupe' },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      expect(result.current.variables).toEqual([
+        { name: 'dupe', expression: 'environment', values: ['production'] },
+      ]);
+    });
+  });
+
   describe('ignoredFilterExpressions', () => {
     it('is empty when no URL filters are set', () => {
       const { result } = renderHook(() => useDashboardFilters(mockFilters));
