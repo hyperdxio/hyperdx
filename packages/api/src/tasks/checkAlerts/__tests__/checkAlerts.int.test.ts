@@ -4549,6 +4549,7 @@ describe('checkAlerts', () => {
           Authorization: 'Bearer test-token',
           'Idempotency-Key': expect.any(String),
         }),
+        signal: expect.any(AbortSignal),
       });
     });
 
