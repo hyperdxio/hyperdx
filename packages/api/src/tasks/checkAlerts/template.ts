@@ -29,13 +29,15 @@ import {
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
 import {
+  inlineNotificationDispatcher,
+  NotificationDispatcher,
+  NotificationJob,
+} from '@/tasks/checkAlerts/notifications';
+import {
   AlertProvider,
   PopulatedAlertChannel,
 } from '@/tasks/checkAlerts/providers';
-import {
-  createHandlebarsWithHelpers,
-  deliverToChannel,
-} from '@/tasks/checkAlerts/transports';
+import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import { unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
@@ -304,6 +306,7 @@ export const renderAlertTemplate = async ({
   title,
   view: inputView,
   teamWebhooksById,
+  dispatcher = inlineNotificationDispatcher,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -313,6 +316,7 @@ export const renderAlertTemplate = async ({
   title: string;
   view: AlertMessageTemplateDefaultView;
   teamWebhooksById: Map<string, IWebhook>;
+  dispatcher?: NotificationDispatcher;
 }) => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
@@ -399,9 +403,12 @@ export const renderAlertTemplate = async ({
           ...(view.isGroupedAlert && group ? { groupId: group } : {}),
         });
 
-        await deliverToChannel(
-          channel,
-          {
+        const job: NotificationJob = {
+          eventId,
+          alertId: alert.id,
+          group,
+          populatedChannel: channel,
+          message: {
             hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
             title,
             body: renderedBody,
@@ -410,8 +417,9 @@ export const renderAlertTemplate = async ({
             endTime,
             eventId,
           },
-          { group },
-        );
+        };
+
+        await dispatcher.dispatch(job);
       }
     });
   };
