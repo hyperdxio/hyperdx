@@ -96,6 +96,9 @@ export const AlertChannelForm = <T extends FieldValues>({
           <WebhookChannelForm
             control={control}
             namePrefix={`${channelsName}.${index}.`}
+            takenWebhookIds={selectedWebhookIds.filter(
+              (id, i) => i !== index && !!id,
+            )}
           />
           {/* A single channel is not removable: an alert with no target
               would fire into the void, and the API rejects it anyway. */}
