@@ -1262,5 +1262,117 @@ describe('alertHistory controller', () => {
       expect(transitions).toHaveLength(1);
       expect(transitions[0].state).toBe(AlertState.ALERT);
     });
+
+    describe('bucketStart', () => {
+      const createHistoryWithBuckets = (
+        alertId: any,
+        createdAt: Date,
+        state: AlertState,
+        bucketStarts: Date[],
+        group?: string,
+      ) =>
+        AlertHistory.create({
+          alert: alertId,
+          createdAt,
+          state,
+          counts: state === AlertState.ALERT ? 1 : 0,
+          ...(group != null ? { group } : {}),
+          lastValues: bucketStarts.map(startTime => ({
+            startTime,
+            count: 1,
+          })),
+        });
+
+      it('emits the newest evaluated bucket start for each transition', async () => {
+        // Evaluation at t(20) covered 1-minute buckets t(25)..t(21) (anomaly
+        // alerts bucket finer than the interval) — the marker belongs on the
+        // newest bucket, where the chart plots the transitioning value.
+        const alert = await createAlert();
+        await createHistory(alert._id, t(25), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(20), AlertState.ALERT, [
+          t(25),
+          t(24),
+          t(23),
+          t(22),
+          t(21),
+        ]);
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(22),
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].createdAt).toBe(t(20).toISOString());
+        expect(transitions[0].bucketStart).toBe(t(21).toISOString());
+      });
+
+      it('falls back to createdAt − interval when the window has no lastValues', async () => {
+        const alert = await createAlert();
+        await createHistory(alert._id, t(25), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(20), AlertState.ALERT, []);
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(22),
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].bucketStart).toBe(t(25).toISOString());
+      });
+
+      it('takes the newest bucket across group rows in one window', async () => {
+        // Group-by alerts write one history row per group; the marker should
+        // reflect the newest bucket evaluated by any of them.
+        const alert = await createAlert();
+        await createHistory(alert._id, t(25), AlertState.OK, 0);
+        await createHistoryWithBuckets(
+          alert._id,
+          t(20),
+          AlertState.ALERT,
+          [t(23)],
+          'group-a',
+        );
+        await createHistoryWithBuckets(
+          alert._id,
+          t(20),
+          AlertState.OK,
+          [t(21)],
+          'group-b',
+        );
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(22),
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].state).toBe(AlertState.ALERT);
+        expect(transitions[0].bucketStart).toBe(t(21).toISOString());
+      });
+
+      it('pins the carry-in marker bucketStart to the range start', async () => {
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.ALERT, 5);
+        await createHistory(alert._id, t(25), AlertState.ALERT, 5);
+
+        const startTime = t(27);
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime,
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].bucketStart).toBe(startTime.toISOString());
+      });
+    });
   });
 });

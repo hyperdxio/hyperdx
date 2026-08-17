@@ -11,7 +11,8 @@ import { getChartColorError, getChartColorSuccess } from '@/utils';
 const makeTransition = (
   createdAt: string,
   state: AlertState,
-): AlertTransition => ({ createdAt, state });
+  bucketStart?: string,
+): AlertTransition => ({ createdAt, state, bucketStart });
 
 describe('alertTransitionsToAnnotations', () => {
   it('returns no annotations for an empty list', () => {
@@ -40,6 +41,30 @@ describe('alertTransitionsToAnnotations', () => {
     });
     // Distinct keys so React can reconcile the markers.
     expect(annotations[0].key).not.toEqual(annotations[1].key);
+  });
+
+  it('draws the marker at bucketStart so it lines up with the plotted bucket', () => {
+    // Evaluation ran at 00:30 over buckets whose newest starts at 00:29 —
+    // the chart plots that bucket at 00:29, so the marker must sit there too.
+    const evaluatedAt = '2026-07-01T00:30:00.000Z';
+    const bucketStart = '2026-07-01T00:29:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition(evaluatedAt, AlertState.OK, bucketStart),
+    ]);
+
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({ time: bucketStart, label: 'OK' });
+  });
+
+  it('falls back to createdAt when bucketStart is absent (older API)', () => {
+    const evaluatedAt = '2026-07-01T00:30:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition(evaluatedAt, AlertState.ALERT),
+    ]);
+
+    expect(annotations[0]).toMatchObject({ time: evaluatedAt });
   });
 });
 

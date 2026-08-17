@@ -876,6 +876,12 @@ export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 export const AlertTransitionSchema = z.object({
   createdAt: z.string(),
   state: z.nativeEnum(AlertState),
+  // Start of the newest bucket evaluated by the transitioning window. Charts
+  // plot each bucket's value at its *start*, while the evaluation runs at the
+  // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
+  // data point that produced the transition. Optional for compatibility with
+  // older API responses; consumers fall back to createdAt.
+  bucketStart: z.string().optional(),
 });
 
 export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
