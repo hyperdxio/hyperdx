@@ -493,12 +493,13 @@ export async function getAlertTransitionsInRange({
   const windows = await AlertHistory.aggregate<{
     _id: Date;
     states: string[];
-    // One lastValues array per row in the window (one row per group for
-    // group-by alerts). $push whole arrays and derive the newest bucket in
-    // JS — the file's DocumentDB-safe pattern (see mapGroupedHistories);
-    // expression operators inside accumulators are not uniformly supported
-    // across Mongo-compatible engines.
-    lastValues: IAlertHistory['lastValues'][];
+    // One array of bucket-start dates per row in the window (one row per
+    // group for group-by alerts). Push only the dates via a plain field path
+    // and derive the newest in JS — the file's DocumentDB-safe pattern (see
+    // mapGroupedHistories) avoids expression operators inside accumulators,
+    // and pushing dates instead of whole lastValues rows keeps the buffered
+    // payload small. The router caps the scanned span (MAX_HISTORY_SPAN_MS).
+    bucketStarts: Date[][];
   }>([
     {
       $match: {
@@ -511,24 +512,24 @@ export async function getAlertTransitionsInRange({
       $group: {
         _id: '$createdAt',
         states: { $push: '$state' },
-        lastValues: { $push: '$lastValues' },
+        bucketStarts: { $push: '$lastValues.startTime' },
       },
     },
     { $sort: { _id: 1 } },
   ]);
 
-  // Newest lastValues.startTime across the window's rows; null when no row
-  // carries lastValues. Be defensive about missing arrays/fields in case of
-  // engine differences (e.g. DocumentDB).
+  // Newest bucket start across the window's rows; null when no row carries
+  // lastValues. Be defensive about missing arrays/fields in case of engine
+  // differences (e.g. DocumentDB).
   const newestBucketStart = (
-    lastValues: IAlertHistory['lastValues'][] | undefined,
+    bucketStarts: Date[][] | undefined,
   ): Date | null =>
-    (lastValues ?? [])
+    (bucketStarts ?? [])
       .flat()
       .reduce<Date | null>(
-        (max, v) =>
-          v?.startTime != null && (max == null || v.startTime > max)
-            ? v.startTime
+        (max, startedAt) =>
+          startedAt != null && (max == null || startedAt > max)
+            ? startedAt
             : max,
         null,
       );
@@ -565,9 +566,14 @@ export async function getAlertTransitionsInRange({
     if (inRange && isAlert !== prevIsAlert) {
       // Fall back to createdAt − interval when the window has no lastValues
       // (mirrors the evaluation table's fallback for failed evaluations).
-      const bucketStart =
-        newestBucketStart(evalWindow.lastValues) ??
+      const derived =
+        newestBucketStart(evalWindow.bucketStarts) ??
         new Date(evalWindow._id.getTime() - intervalMs);
+      // Floor at startTime: a derived bucket start one bucket earlier than an
+      // edge crossing's createdAt can precede the range start, and a marker
+      // before startTime would render at or left of a carry-in pin (which is
+      // pinned to startTime) — inverting the firing→recovery order.
+      const bucketStart = derived >= startTime ? derived : startTime;
       transitions.push({
         createdAt: evalWindow._id.toISOString(),
         state: isAlert ? AlertState.ALERT : AlertState.OK,

@@ -888,9 +888,9 @@ export const AlertTransitionSchema = z.object({
   // plot each bucket's value at its *start*, while the evaluation runs at the
   // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
   // data point that produced the transition. Optional for compatibility with
-  // older API responses; consumers fall back to createdAt. May precede a
-  // requested range start (it is one bucket earlier than createdAt); charts
-  // clamp edge markers into the visible domain.
+  // older API responses; consumers fall back to createdAt. Floored at the
+  // requested range start so an edge crossing's marker never precedes a
+  // carry-in pin; charts clamp edge markers into their rendered domain.
   bucketStart: z.string().datetime().optional(),
 });
 
