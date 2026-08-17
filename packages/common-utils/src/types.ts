@@ -333,7 +333,15 @@ const numericOrderedColorCondition = z.object({
 
 const betweenColorCondition = z.object({
   operator: z.literal('between'),
-  value: z.tuple([z.number().finite(), z.number().finite()]),
+  // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
+  // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
+  // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
+  // draft-07 form (`items: [ ... ]`). In JSON Schema draft 2020-12 `items` must
+  // be a schema, not an array, so a tuple here makes the whole tool schema
+  // invalid and any strict draft-2020-12 client (e.g. the Anthropic API) rejects
+  // the tool list outright. The wire format — `[min, max]` — is identical either
+  // way, and matches the published `BetweenColorCondition` external-API schema.
+  value: z.array(z.number().finite()).length(2),
   color: ChartPaletteTokenSchema,
   label: z.string().max(40).optional(),
 });
