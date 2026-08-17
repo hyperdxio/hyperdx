@@ -523,13 +523,15 @@ export async function getAlertTransitionsInRange({
   const newestBucketStart = (
     lastValues: IAlertHistory['lastValues'][] | undefined,
   ): Date | null =>
-    (lastValues ?? []).flat().reduce<Date | null>(
-      (max, v) =>
-        v?.startTime != null && (max == null || v.startTime > max)
-          ? v.startTime
-          : max,
-      null,
-    );
+    (lastValues ?? [])
+      .flat()
+      .reduce<Date | null>(
+        (max, v) =>
+          v?.startTime != null && (max == null || v.startTime > max)
+            ? v.startTime
+            : max,
+        null,
+      );
 
   const transitions: AlertTransition[] = [];
   // Assume "not firing" before the earliest known window, so an alert whose
