@@ -882,14 +882,16 @@ export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
 // emitted: ALERT = fired, OK = recovered.
 export const AlertTransitionSchema = z.object({
-  createdAt: z.string(),
+  createdAt: z.string().datetime(),
   state: z.nativeEnum(AlertState),
   // Start of the newest bucket evaluated by the transitioning window. Charts
   // plot each bucket's value at its *start*, while the evaluation runs at the
   // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
   // data point that produced the transition. Optional for compatibility with
-  // older API responses; consumers fall back to createdAt.
-  bucketStart: z.string().optional(),
+  // older API responses; consumers fall back to createdAt. May precede a
+  // requested range start (it is one bucket earlier than createdAt); charts
+  // clamp edge markers into the visible domain.
+  bucketStart: z.string().datetime().optional(),
 });
 
 export type AlertTransition = z.infer<typeof AlertTransitionSchema>;

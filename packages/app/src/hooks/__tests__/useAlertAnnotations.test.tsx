@@ -87,6 +87,19 @@ describe('alertTransitionsToAnnotations', () => {
 
     expect(annotations[0]).toMatchObject({ time: evaluatedAt });
   });
+
+  it('keeps keys distinct for opposite-state transitions sharing a time', () => {
+    // Keys derive from the annotation time — the state must keep two markers
+    // at the same instant reconcilable as distinct React elements.
+    const bucketStart = '2026-07-01T00:29:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition('2026-07-01T00:30:00.000Z', AlertState.ALERT, bucketStart),
+      makeTransition('2026-07-01T00:35:00.000Z', AlertState.OK, bucketStart),
+    ]);
+
+    expect(annotations[0].key).not.toEqual(annotations[1].key);
+  });
 });
 
 describe('useAlertAnnotations', () => {

@@ -1326,6 +1326,57 @@ describe('alertHistory controller', () => {
         expect(transitions[0].bucketStart).toBe(t(25).toISOString());
       });
 
+      it("derives a recovery's bucketStart from the recovering window's lastValues", async () => {
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(25), AlertState.ALERT, [
+          t(27),
+          t(26),
+        ]);
+        await createHistoryWithBuckets(alert._id, t(20), AlertState.OK, [
+          t(22),
+          t(21),
+        ]);
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(26),
+          endTime: t(5),
+        });
+
+        expect(transitions.map(tr => tr.state)).toEqual([
+          AlertState.ALERT,
+          AlertState.OK,
+        ]);
+        expect(transitions[1].createdAt).toBe(t(20).toISOString());
+        expect(transitions[1].bucketStart).toBe(t(21).toISOString());
+      });
+
+      it('may emit a bucketStart before the range start for an edge crossing', async () => {
+        // A crossing whose evaluation lands just inside the range derives a
+        // bucketStart one bucket earlier — possibly before startTime. That is
+        // by design: the chart clamps edge markers into the visible domain
+        // (see chartAnnotations "clamps a marker before the domain").
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(25), AlertState.ALERT, []);
+
+        const startTime = t(25); // crossing evaluated exactly at range start
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime,
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].state).toBe(AlertState.ALERT);
+        // Empty lastValues → createdAt − interval, 5 minutes before startTime.
+        expect(transitions[0].bucketStart).toBe(t(30).toISOString());
+        expect(new Date(transitions[0].bucketStart!) < startTime).toBe(true);
+      });
+
       it('takes the newest bucket across group rows in one window', async () => {
         // Group-by alerts write one history row per group; the marker should
         // reflect the newest bucket evaluated by any of them.
