@@ -3,6 +3,33 @@ import { ClickHouseError } from '@clickhouse/client-common';
 export const WEBHOOK_REDIRECT_ERROR_MESSAGE =
   'Webhook destination responded with a redirect. Redirects are not supported.';
 
+export class WebhookNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebhookNotFoundError';
+  }
+}
+
+// A "@word" mention in an alert message that isn't a supported channel type
+// (e.g. "@here"). Recorded per-target rather than aborting the whole render.
+export class UnsupportedMentionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedMentionError';
+  }
+}
+
+// MAX_NOTIFICATIONS_PER_EVENT was reached; this target was dropped before
+// dispatch rather than silently skipped, so it's still visible as an error.
+export class NotificationCapExceededError extends Error {
+  constructor(cap: number) {
+    super(
+      `Notification cap of ${cap} targets reached for this alert event; this channel was not notified.`,
+    );
+    this.name = 'NotificationCapExceededError';
+  }
+}
+
 export class WebhookRedirectError extends Error {
   readonly status: number;
 

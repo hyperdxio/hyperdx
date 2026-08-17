@@ -63,7 +63,10 @@ import { IWebhook } from '@/models/webhook';
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
+  NotificationCapExceededError,
+  UnsupportedMentionError,
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
+  WebhookNotFoundError,
   WebhookRedirectError,
 } from '@/tasks/checkAlerts/errors';
 import {
@@ -76,6 +79,7 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
+  PreDispatchFailure,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
 import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
@@ -90,7 +94,9 @@ import {
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
+  setBusinessContext,
   SpanStatusCode,
+  withSpan,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -256,6 +262,42 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
   }
 
   return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
+};
+
+// Per-target variant: names the target so a multi-channel alert's errors are
+// attributable. Only pre-dispatch failures reach here — an unresolvable
+// mention/webhook or the per-event cap. Actual delivery failures are not
+// reported per-target (see renderAlertTemplate); they fall back to
+// makeWebhookAlertError only if they somehow escape that isolation.
+const makeNotificationAlertError = (
+  failure: PreDispatchFailure,
+): IAlertError => {
+  const target = `webhook "${failure.target}"`;
+  const timestamp = new Date();
+  if (failure.error instanceof UnsupportedMentionError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: failure.error.message.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof NotificationCapExceededError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookNotFoundError) {
+    // Name the target like every other branch — with several channels, "a
+    // webhook was deleted" is useless unless it says which one.
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  return makeWebhookAlertError(failure.error);
 };
 
 export const doesExceedThreshold = (
@@ -435,7 +477,7 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}) => {
+}): Promise<PreDispatchFailure[]> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
@@ -446,6 +488,7 @@ const fireChannelEvent = async ({
     alert: {
       id: alert.id,
       channel: alert.channel,
+      channels: alert.channels,
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
@@ -477,7 +520,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  await renderAlertTemplate({
+  const { results } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -489,8 +532,10 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
+    teamId: team.toString(),
     teamWebhooksById,
   });
+  return results;
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -1161,7 +1206,7 @@ export const processAlert = async (
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        await fireChannelEvent({
+        const results = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
@@ -1179,7 +1224,24 @@ export const processAlert = async (
           windowSizeInMins,
           teamWebhooksById,
         });
+        // Every entry here is a pre-dispatch failure (unresolvable target or
+        // the per-event cap) — actual delivery outcomes never reach this
+        // array (see renderAlertTemplate).
+        for (const failure of results) {
+          logger.error(
+            {
+              alertId: alert.id,
+              group,
+              target: failure.target,
+              error: serializeError(failure.error),
+            },
+            'Notification target could not be dispatched',
+          );
+          executionErrors.push(makeNotificationAlertError(failure));
+        }
       } catch (e) {
+        // Render-level failures (title/link building, template compile) —
+        // nothing was dispatched.
         logger.error(
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
@@ -1778,6 +1840,7 @@ export default class CheckAlertTask implements HdxTask {
     teamWebhooksById: Map<string, IWebhook>,
   ): Promise<boolean> {
     return tasksTracer.startActiveSpan('processAlertTask', async span => {
+      setBusinessContext({ teamId: alertTask.conn.team.toString() });
       try {
         span.setAttribute(
           'hyperdx.alerts.team.id',
@@ -1801,13 +1864,28 @@ export default class CheckAlertTask implements HdxTask {
 
         for (const alert of alerts) {
           this.task_queue.add(async () =>
-            processAlert(
-              alertTask.now,
-              alert,
-              clickhouseClient,
-              conn.id,
-              this.provider,
-              teamWebhooksById,
+            // withSpan (not a hand-rolled tracer) so exceptions and status are
+            // recorded the same way as everywhere else — see agent_docs/observability.md.
+            withSpan(
+              'processAlert',
+              async () => {
+                setBusinessContext({ teamId: conn.team.toString() });
+                await processAlert(
+                  alertTask.now,
+                  alert,
+                  clickhouseClient,
+                  conn.id,
+                  this.provider,
+                  teamWebhooksById,
+                );
+              },
+              {
+                attributes: {
+                  'hyperdx.alert.id': alert.alert.id,
+                  'hyperdx.team.id': conn.team.toString(),
+                  'hyperdx.alert.source': alert.alert.source ?? 'unknown',
+                },
+              },
             ),
           );
         }
