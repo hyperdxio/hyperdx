@@ -35,7 +35,6 @@ type MutateOptions = {
 };
 
 let capturedPersonalOptions: MutateOptions | undefined;
-const refetchMe = jest.fn();
 const rotatePersonalMutate = jest.fn(
   (_vars: undefined, options?: MutateOptions) => {
     capturedPersonalOptions = options;
@@ -57,7 +56,6 @@ function setMe(accessKey: string | null, isLoading = false) {
             createdAt: '',
           },
     isLoading,
-    refetch: refetchMe,
   });
 }
 
@@ -145,7 +143,26 @@ describe('ApiKeysSection', () => {
     );
   });
 
-  it('refetches me and notifies on a successful rotation', async () => {
+  // The modal closes on confirm, but Mantine keeps its content mounted through
+  // the exit transition, so without this guard a fast double click fires two
+  // PATCHes and the second revokes the key the first just generated.
+  it('disables confirm while a rotation is already in flight', async () => {
+    mockUseRotatePersonalAccessKey.mockReturnValue({
+      mutate: rotatePersonalMutate,
+      isPending: true,
+    });
+    const user = userEvent.setup();
+    renderWithMantine(<ApiKeysSection />);
+
+    await openPersonalRotateModal(user);
+    const confirm = screen.getByTestId('rotate-access-key-confirm');
+    expect(confirm).toBeDisabled();
+
+    await user.click(confirm);
+    expect(rotatePersonalMutate).not.toHaveBeenCalled();
+  });
+
+  it('notifies on a successful rotation', async () => {
     const user = userEvent.setup();
     renderWithMantine(<ApiKeysSection />);
 
@@ -153,7 +170,6 @@ describe('ApiKeysSection', () => {
     await user.click(screen.getByTestId('rotate-access-key-confirm'));
     act(() => capturedPersonalOptions?.onSuccess?.());
 
-    expect(refetchMe).toHaveBeenCalledTimes(1);
     expect(
       await screen.findByText(/Revoked your old personal access key/),
     ).toBeInTheDocument();
@@ -167,7 +183,6 @@ describe('ApiKeysSection', () => {
     await user.click(screen.getByTestId('rotate-access-key-confirm'));
     act(() => capturedPersonalOptions?.onError?.(new Error('rotate blew up')));
 
-    expect(refetchMe).not.toHaveBeenCalled();
     expect(await screen.findByText('rotate blew up')).toBeInTheDocument();
   });
 

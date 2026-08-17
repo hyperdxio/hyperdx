@@ -72,7 +72,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
     await test.step('Verify API & Agents tab headings exist', async () => {
       await expect(
-        teamPage.apiKeys.getByText('API Keys', { exact: true }),
+        teamPage.apiKeys.getByText('API keys', { exact: true }),
       ).toBeVisible();
       await expect(
         teamPage.mcpServer.getByText('Connect your AI Agents', { exact: true }),
@@ -160,10 +160,10 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
     await test.step('Verify API key labels are visible', async () => {
       await expect(
-        teamPage.apiKeys.getByText('Ingestion API Key'),
+        teamPage.apiKeys.getByText('Ingestion API key'),
       ).toBeVisible();
       await expect(
-        teamPage.apiKeys.getByText('Personal API Access Key'),
+        teamPage.apiKeys.getByText('Personal API access key'),
       ).toBeVisible();
     });
 

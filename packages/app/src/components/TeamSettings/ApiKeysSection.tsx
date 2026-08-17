@@ -42,12 +42,20 @@ function RotateKeyConfirmModal({
   onConfirm,
   title,
   testIdPrefix,
+  confirmDisabled = false,
   children,
 }: {
   opened: boolean;
   onClose: () => void;
   onConfirm: () => void;
   title: string;
+  /**
+   * Blocks a second rotation while the first is still in flight. The modal
+   * closes on confirm, but Mantine keeps its content mounted for the exit
+   * transition, so a fast double click would otherwise fire two PATCHes and
+   * revoke the key the first one just generated.
+   */
+  confirmDisabled?: boolean;
   /**
    * Yields `${prefix}-modal`, `-cancel` and `-confirm`. The ingestion flow
    * passes `rotate-api-key` to preserve the testids that
@@ -86,6 +94,7 @@ function RotateKeyConfirmModal({
             variant="danger"
             className="mt-2 px-4 float-end"
             size="sm"
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             Confirm
@@ -98,7 +107,7 @@ function RotateKeyConfirmModal({
 
 export default function ApiKeysSection() {
   const { data: team, refetch: refetchTeam } = api.useTeam();
-  const { data: me, isLoading: isLoadingMe, refetch: refetchMe } = api.useMe();
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const rotatePersonalAccessKey = api.useRotatePersonalAccessKey();
   const hasAdminAccess = true;
@@ -144,7 +153,6 @@ export default function ApiKeysSection() {
           message:
             'Revoked your old personal access key and generated a new one.',
         });
-        refetchMe();
       },
       onError: e => {
         notifications.show({
@@ -158,10 +166,10 @@ export default function ApiKeysSection() {
 
   return (
     <Box id="api_keys" data-testid="api-keys-section">
-      <Text size="md">API Keys</Text>
+      <Text size="md">API keys</Text>
       <Divider my="md" />
       <Card mb="md">
-        <Text mb="md">Ingestion API Key</Text>
+        <Text mb="md">Ingestion API key</Text>
         <Group gap="xs">
           {team?.apiKey && (
             <APIKeyCopyButton
@@ -175,7 +183,7 @@ export default function ApiKeysSection() {
               variant="danger"
               onClick={() => setRotateApiKeyConfirmationModalShow(true)}
             >
-              Rotate API Key
+              Rotate API key
             </Button>
           )}
         </Group>
@@ -183,8 +191,9 @@ export default function ApiKeysSection() {
           opened={rotateApiKeyConfirmationModalShow}
           onClose={() => setRotateApiKeyConfirmationModalShow(false)}
           onConfirm={onConfirmUpdateTeamApiKey}
-          title="Rotate API Key"
+          title="Rotate API key"
           testIdPrefix="rotate-api-key"
+          confirmDisabled={rotateTeamApiKey.isPending}
         >
           <Text size="md">
             Rotating the API key will invalidate your existing API key and
@@ -195,7 +204,7 @@ export default function ApiKeysSection() {
       {!isLoadingMe && me != null && (
         <Card>
           <Card.Section p="md">
-            <Text mb="md">Personal API Access Key</Text>
+            <Text mb="md">Personal API access key</Text>
             <Group gap="xs">
               <APIKeyCopyButton
                 value={me.accessKey}
@@ -206,15 +215,16 @@ export default function ApiKeysSection() {
                 variant="danger"
                 onClick={() => setRotateAccessKeyConfirmationModalShow(true)}
               >
-                Rotate Access Key
+                Rotate access key
               </Button>
             </Group>
             <RotateKeyConfirmModal
               opened={rotateAccessKeyConfirmationModalShow}
               onClose={() => setRotateAccessKeyConfirmationModalShow(false)}
               onConfirm={onConfirmRotateAccessKey}
-              title="Rotate Personal API Access Key"
+              title="Rotate personal API access key"
               testIdPrefix="rotate-access-key"
+              confirmDisabled={rotatePersonalAccessKey.isPending}
             >
               <Text size="md">
                 Rotating your personal access key immediately revokes the
