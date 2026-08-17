@@ -370,12 +370,6 @@ async function describeSourceSchema(
             now,
             timestampValueExpression,
             signal,
-            // Reuse representative columns when the kind matches the
-            // representative table to avoid a second getColumns round-trip.
-            cachedColumns:
-              representativeMetric?.tableName === kindTableName
-                ? columns
-                : undefined,
           });
           if (samples.length > 0) {
             metricNames[kind] = samples;

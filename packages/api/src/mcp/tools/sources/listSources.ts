@@ -1,3 +1,8 @@
+import PQueue from '@esm2cjs/p-queue';
+import type {
+  DataFormat,
+  QueryInputs,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -26,27 +31,30 @@ const MAX_PREVIEW_NAMES_PER_KIND = 10;
 // Max concurrent ClickHouse sampling queries during preview collection.
 const PREVIEW_CONCURRENCY = 6;
 
-/** Run tasks through a small worker pool, stopping early on abort. */
-async function runWithConcurrency(
-  tasks: Array<() => Promise<void>>,
-  limit: number,
-  signal: AbortSignal,
-): Promise<void> {
-  let next = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, tasks.length) },
-    async () => {
-      while (next < tasks.length && !signal.aborted) {
-        const task = tasks[next++];
-        try {
-          await task();
-        } catch {
-          // Best-effort: individual sampling failures never fail the call.
-        }
-      }
-    },
-  );
-  await Promise.all(workers);
+// Server-side cap per preview query, slightly under the wall-clock budget
+// so break-mode partial results make it back and get attached before the
+// AbortController fires.
+const PREVIEW_QUERY_MAX_EXECUTION_SEC = 2.5;
+
+/**
+ * ClickhouseClient that caps every query with max_execution_time +
+ * timeout_overflow_mode=break, so a slow sampling query returns whatever
+ * rows ClickHouse processed within the budget instead of timing out with
+ * nothing. The AbortController in attachMetricNamePreviews remains the
+ * wall-clock backstop for stalls the server-side cap cannot cover (e.g.
+ * network).
+ */
+class PreviewClickhouseClient extends ClickhouseClient {
+  query<Format extends DataFormat>(props: QueryInputs<Format>) {
+    return super.query({
+      ...props,
+      clickhouse_settings: {
+        ...props.clickhouse_settings,
+        max_execution_time: PREVIEW_QUERY_MAX_EXECUTION_SEC,
+        timeout_overflow_mode: 'break' as const,
+      },
+    });
+  }
 }
 
 /**
@@ -87,7 +95,7 @@ async function attachMetricNamePreviews({
     connectionIds.map(async connectionId => {
       const connection = await getConnectionById(teamId, connectionId, true);
       if (!connection) return;
-      const clickhouseClient = new ClickhouseClient({
+      const clickhouseClient = new PreviewClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -159,13 +167,25 @@ async function attachMetricNamePreviews({
     });
   });
 
+  const queue = new PQueue({ concurrency: PREVIEW_CONCURRENCY });
+  const drained = Promise.all(
+    tasks.map(task =>
+      queue.add(async () => {
+        // Don't start new sampling once the budget has expired.
+        if (controller.signal.aborted) return;
+        try {
+          await task();
+        } catch {
+          // Best-effort: individual sampling failures never fail the call.
+        }
+      }),
+    ),
+  );
+
   try {
-    // Race the pool against the abort so a ClickHouse call that ignores
+    // Race the queue against the abort so a ClickHouse call that ignores
     // the signal cannot hold list_sources past its budget.
-    await Promise.race([
-      runWithConcurrency(tasks, PREVIEW_CONCURRENCY, controller.signal),
-      abortedPromise,
-    ]);
+    await Promise.race([drained, abortedPromise]);
   } finally {
     clearTimeout(timeoutId);
   }
