@@ -274,6 +274,58 @@ describe('MCP Source Tools', () => {
         );
       });
 
+      it('excludes non-queryable summary metrics from metricNamesPreview', async () => {
+        const metricSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+            [MetricsDataType.Summary.toLowerCase()]: 'otel_metrics_summary',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name: 'Metrics With Summary',
+        });
+        const now = new Date();
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'system.memory.usage',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 1024,
+          },
+        ]);
+        await bulkInsertMetricsSummary([
+          {
+            MetricName: 'rpc.server.duration.summary',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Count: 10,
+            Sum: 123,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        // The summary table stays discoverable in metricTables...
+        expect(metric.metricTables.summary).toBe('otel_metrics_summary');
+        // ...but its metrics are not previewed, since the query builder
+        // tools reject metricType 'summary'.
+        expect(metric.metricNamesPreview.gauge).toEqual(
+          expect.arrayContaining(['system.memory.usage']),
+        );
+        expect(metric.metricNamesPreview.summary).toBeUndefined();
+      });
+
       it('omits metricNamesPreview when the metric tables are empty', async () => {
         const metricSource = await createMetricSource('Empty Metrics');
 
