@@ -10,6 +10,10 @@ import { handleAuthError, redirectToDashboard } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user'; // TODO -> do not import model directly
 import { setupTeamDefaults } from '@/setupDefaults';
+import {
+  setBusinessContext,
+  withOperationMetrics,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
 import { isMongoConnected, mongoReadyStateName } from '@/utils/readiness';
@@ -185,6 +189,24 @@ router.post('/team/setup/:token', async (req, res, next) => {
           logger.error({ err: serializeError(err) }, 'Team setup error');
           return res.redirect(
             `${config.FRONTEND_REDIRECT_BASE}/join-team?token=${token}&err=500`,
+          );
+        }
+
+        const teamId = teamInvite.teamId.toString();
+        setBusinessContext({
+          teamId,
+          userId: user._id.toString(),
+          email: user.email,
+        });
+
+        try {
+          await withOperationMetrics('team_defaults.setup', () =>
+            setupTeamDefaults(teamId),
+          );
+        } catch (error) {
+          logger.error(
+            { err: serializeError(error) },
+            'Failed to setup team defaults',
           );
         }
 

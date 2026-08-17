@@ -6,6 +6,7 @@ import {
   getTeamInviteUrl,
 } from '@/controllers/team';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
+import Team from '@/models/team';
 
 describe('getTeamInviteUrl', () => {
   it('builds the join-team URL for a token', () => {
@@ -37,7 +38,12 @@ describe('team controller', () => {
 
     await team.save();
 
+    const otherTeam = await Team.create({ name: 'Other Team' });
+
     expect(await getTeam(team._id)).toBeTruthy();
+    expect((await getTeam(otherTeam._id))?._id.toString()).toBe(
+      otherTeam._id.toString(),
+    );
     expect(await getTeamByApiKey('apiKey')).toBeTruthy();
   });
 });
