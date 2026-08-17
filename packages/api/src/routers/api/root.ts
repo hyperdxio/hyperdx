@@ -168,6 +168,15 @@ router.post('/team/setup/:token', async (req, res, next) => {
           );
         }
 
+        try {
+          await setupTeamDefaults(teamInvite.teamId.toString());
+        } catch (error) {
+          logger.error(
+            { err: serializeError(error) },
+            'Failed to setup team defaults',
+          );
+        }
+
         await TeamInvite.findByIdAndRemove(teamInvite._id);
 
         req.login(user, err => {
