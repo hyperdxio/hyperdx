@@ -11,7 +11,7 @@ import { getSources } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import logger from '@/utils/logger';
 
-import { sanitizeMetricTables } from './metricKinds';
+import { QUERYABLE_METRIC_KINDS, sanitizeMetricTables } from './metricKinds';
 import { sampleMetricNamesWithLookback } from './metricNames';
 
 // Wall-clock budget for the best-effort metric-name preview sampling.
@@ -112,11 +112,17 @@ async function attachMetricNamePreviews({
   const tableSampleCache = new Map<string, Promise<string[]>>();
   const previews = new Map<Record<string, unknown>, Map<string, string[]>>();
 
+  // Only sample kinds the query renderer supports: metricsUsage tells
+  // the agent everything in the preview is queryable via
+  // clickstack_timeseries / clickstack_table, and summary metrics are not.
+  const queryableKinds = new Set<string>(QUERYABLE_METRIC_KINDS);
+
   const tasks: Array<() => Promise<void>> = [];
   for (const entry of entries) {
     const client = clients.get(entry.connectionId);
     if (!client) continue;
     for (const [kind, tableName] of Object.entries(entry.metricTables)) {
+      if (!queryableKinds.has(kind)) continue;
       tasks.push(async () => {
         const cacheKey = `${entry.connectionId}|${entry.databaseName}|${tableName}|${entry.timestampValueExpression}`;
         let namesPromise = tableSampleCache.get(cacheKey);
