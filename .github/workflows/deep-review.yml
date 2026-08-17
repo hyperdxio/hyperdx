@@ -285,6 +285,15 @@ jobs:
           repository: EveryInc/compound-engineering-plugin
           ref: ${{ env.PLUGIN_REF }}
           path: ce-plugin
+          # Same reason as the PR-head checkout above, and it matters even
+          # though this repo is not the untrusted one: `ce-plugin` is a
+          # subdirectory of the very worktree holding fork code, so a
+          # credential left in `ce-plugin/.git/config` is reachable from the
+          # same reviewer that reads that code. Nothing here needs it -- the
+          # plugin is consumed only as a local marketplace path
+          # (`plugin_marketplaces: ./ce-plugin`) and the repo is public, so
+          # even a re-fetch would not need auth.
+          persist-credentials: false
 
       # --- CLI pin (TEMPORARY) ----------------------------------------------
       # claude-code-action hardcodes the Claude Code CLI version it installs
@@ -343,6 +352,28 @@ jobs:
             exit 1
           fi
           echo "PINNED_CLAUDE=$CLAUDE_BIN" >> "$GITHUB_ENV"
+
+      # Backstop for the two `persist-credentials: false` settings above, and
+      # the last step before the reviewer runs -- so it covers every worktree
+      # any earlier step created, not just the two checkouts we know about.
+      # The reviewer's git grant reads from an untrusted worktree, so a
+      # checkout added later without the flag (or an upstream default that
+      # flips back) must fail loud here rather than leak quietly.
+      - name: Assert no persisted git credentials in the workspace
+        if: steps.gate.outputs.should_review == 'true'
+        run: |
+          set -euo pipefail
+          # `-name config -path '*/.git/*'` also catches submodule configs at
+          # `.git/modules/<name>/config`. `|| true` is required: `grep -l`
+          # exits 1 on no match, which pipefail would turn into a job failure
+          # on the healthy path.
+          LEAKED=$(find "$GITHUB_WORKSPACE" -type f -name config -path '*/.git/*' -print0 \
+            | xargs -0 -r grep -lEi 'extraheader|sshCommand' || true)
+          if [ -n "$LEAKED" ]; then
+            echo "::error::Persisted git credentials found in: $(echo "$LEAKED" | tr '\n' ' '). Add 'persist-credentials: false' to the checkout that created it -- the reviewer's git grant can read it back out of an untrusted worktree."
+            exit 1
+          fi
+          echo "No persisted git credentials under $GITHUB_WORKSPACE."
 
       - name: Run deep review
         id: review
@@ -523,11 +554,49 @@ jobs:
           # it, and that agent already prefers
           # `gh pr view <n> --json reviews,comments` (still allowed via
           # `Bash(gh pr view:*)`); the sole loss is inline-comment path/line
-          # metadata. Comments must stay OUT of the block scalar below -- every
-          # line in it is passed to the CLI verbatim as an argument.
+          # metadata.
+          #
+          # git is granted per read-only subcommand rather than as `Bash(git:*)`
+          # for the same reason: a wildcard git grant is a credential-read
+          # channel (`git config --file <any>/.git/config --list`) and a network
+          # egress channel (`git fetch`/`ls-remote`/`archive --remote` to an
+          # attacker URL), both driven by a model reading untrusted fork code.
+          # The allowlist is the primary control: a denylist cannot enumerate
+          # every subcommand that reaches the network or a credential
+          # (`git archive --remote`, `git credential fill`, `git submodule
+          # update --remote`), whereas an allowlist has no such tail. The
+          # `--disallowedTools` line is belt-and-suspenders, because
+          # --allowedTools only PRE-APPROVES -- an un-approved call fails here
+          # only because a `-p` run cannot answer the prompt -- while
+          # --disallowedTools is a real deny.
+          #
+          # Verified against the pinned plugin ref. Of the 21 personas in
+          # ce-code-review/references/persona-catalog.md, 20 invoke git zero
+          # times; references/diff-scope.md says why -- "The scope step in the
+          # SKILL.md handles discovery and passes you the resolved diff." The
+          # exception, ce-schema-drift-detector, is Rails-only (spawned solely
+          # for `db/migrate/*.rb` / `db/schema.rb`, which do not exist in this
+          # repo) and its reads are plain `git diff`; its one write,
+          # `git checkout <base> -- db/schema.rb`, is a working-tree mutation
+          # `mode:report-only` forbids regardless.
+          #
+          # The orchestrator's own surface is the `base:<sha>` fast path
+          # (SKILL.md "Skip all base-branch detection, remote resolution, and
+          # merge-base computation"), which needs only
+          # merge-base/diff/ls-files/rev-parse/log. The skill's `git fetch`
+          # fallbacks live in scripts/resolve-base.sh, which needs
+          # `Bash(bash:*)` -- never granted -- and which `base:` skips anyway;
+          # `git checkout` / `gh pr checkout` are already blocked by
+          # `mode:report-only`. `git -c <cfg> diff` cannot slip past the
+          # allowlist either: `-c` precedes the subcommand, so the command
+          # string starts `git -c` and matches no prefix.
+          #
+          # Comments must stay OUT of the block scalar below -- every line in it
+          # is passed to the CLI verbatim as an argument.
           claude_args: |
             --setting-sources user
-            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git cat-file:*),Bash(git status:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
+            --disallowedTools "Bash(git config:*),Bash(git credential:*),Bash(git fetch:*),Bash(git pull:*),Bash(git clone:*),Bash(git ls-remote:*),Bash(git remote:*),Bash(git push:*),Bash(git archive:*),Bash(git submodule:*)"
             --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
 
       # --- Sandbox smoke check ----------------------------------------------
