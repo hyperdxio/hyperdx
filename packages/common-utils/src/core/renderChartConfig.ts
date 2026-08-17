@@ -2355,15 +2355,27 @@ async function renderMultiSeriesMetricChartConfig(
   // irrelevant: UNION ALL takes names from its first branch). Scalar
   // branches are ordered first so their names win; when every branch is a
   // histogram there are no scalar group columns to preserve.
+  //
+  // Every wrapper normalizes the value column to Float64. Different
+  // aggregations produce different native types — quantile is Float64 while
+  // histogram count is Int64 and scalar count() is UInt64 — and Int64/UInt64
+  // have no least supertype with Float64, so a mixed-type UNION ALL either
+  // fails with NO_COMMON_TYPE (use_variant_as_common_type = 0) or silently
+  // unifies as Variant(Float64, Int64) (the modern default), which the
+  // anyOrNullIf pivot then propagates to every output column and no consumer
+  // classifies as numeric. toFloat64 makes the union type deterministic
+  // (Float64, or Nullable(Float64) when a branch value is Nullable) and
+  // matches the JS-number semantics of the old node-side merge.
   const orderedBranches = [
     ...branches.filter(branch => !branch.isHistogram),
     ...branches.filter(branch => branch.isHistogram),
   ];
+  const normalizedValueColumn = `toFloat64(\`${MULTI_SERIES_VALUE_ALIAS}\`) AS \`${MULTI_SERIES_VALUE_ALIAS}\``;
   const branchSelects = orderedBranches.map(branch => {
     const idxColumn = `${branch.splitIdx} AS \`${MULTI_SERIES_IDX_ALIAS}\``;
     const columns: string[] = [];
     if (branch.isHistogram) {
-      columns.push(`\`${MULTI_SERIES_VALUE_ALIAS}\``);
+      columns.push(normalizedValueColumn);
       if (hasScalarGroups) {
         for (let j = 0; j < scalarGroupCount; j++) {
           columns.push(`NULL AS \`__hdx_group_pad_${j}\``);
@@ -2377,7 +2389,7 @@ async function renderMultiSeriesMetricChartConfig(
         columns.push(`\`${GROUP_ALIAS}\``);
       }
     } else {
-      columns.push('*');
+      columns.push(`* REPLACE (${normalizedValueColumn})`);
       columns.push(idxColumn);
       if (hasHistogramGroup) {
         // Empty-array pad ([] is Array(Nothing), the supertype-compatible

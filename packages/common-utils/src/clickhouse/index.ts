@@ -94,6 +94,22 @@ export const convertCHDataTypeToJSType = (
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
   } else if (dataType.startsWith('Nullable(')) {
     return convertCHDataTypeToJSType(dataType.slice(9, -1));
+  } else if (dataType.startsWith('Variant(') && dataType.endsWith(')')) {
+    // A UNION ALL over branches whose column types have no least supertype
+    // (e.g. Float64 and Int64) unifies as Variant(...) when the server runs
+    // with use_variant_as_common_type = 1 (the modern default). Treat an
+    // all-numeric Variant as numeric so such columns still chart; mixed
+    // variants stay unclassified.
+    const memberTypes = splitAndTrimWithBracket(dataType.slice(8, -1));
+    if (
+      memberTypes.length > 0 &&
+      memberTypes.every(
+        memberType =>
+          convertCHDataTypeToJSType(memberType) === JSDataType.Number,
+      )
+    ) {
+      return JSDataType.Number;
+    }
   }
 
   return null;

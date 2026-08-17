@@ -3655,9 +3655,13 @@ describe('renderChartConfig', () => {
       // The group-by column passes through UNRENAMED (consumers look rows up
       // by the single-series column name, which for expressions is
       // ClickHouse's derived name and can't be reproduced node-side): the
-      // wrappers keep the branch projection via SELECT * and the outer pivot
-      // passes it through via * EXCEPT + GROUP BY ALL.
-      expect(sql).toContain('SELECT *, 0 AS `__hdx_series_idx`');
+      // wrappers keep the branch projection via SELECT * — normalizing only
+      // the value column to Float64 via REPLACE, so mixed-type series (e.g.
+      // Float64 quantile + Int64 count) never UNION into a Variant — and the
+      // outer pivot passes it through via * EXCEPT + GROUP BY ALL.
+      expect(sql).toContain(
+        'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+      );
       expect(sql).toContain(
         '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
       );
@@ -3730,8 +3734,15 @@ describe('renderChartConfig', () => {
       // column names win the union.
       expect(sql).toContain('[] AS `group`');
       expect(sql).toContain('NULL AS `__hdx_group_pad_0`');
-      expect(sql.indexOf('SELECT *, 0 AS `__hdx_series_idx`')).toBeLessThan(
-        sql.indexOf('NULL AS `__hdx_group_pad_0`'),
+      expect(
+        sql.indexOf(
+          'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+        ),
+      ).toBeLessThan(sql.indexOf('NULL AS `__hdx_group_pad_0`'));
+      // The histogram branch re-projects the value column explicitly, with
+      // the same Float64 normalization.
+      expect(sql).toContain(
+        'SELECT toFloat64(`__hdx_value`) AS `__hdx_value`, NULL AS `__hdx_group_pad_0`',
       );
       expect(sql).toContain('GROUP BY ALL');
     });
