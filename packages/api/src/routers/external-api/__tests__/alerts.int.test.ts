@@ -1545,7 +1545,7 @@ describe('External API Alerts', () => {
         .send({ ...base, channels: [ch, ch] })
         .expect(400);
       // over the cap
-      const many = Array.from({ length: 11 }, (_, i) => ({
+      const many = Array.from({ length: 11 }, () => ({
         type: 'webhook',
         webhookId: new ObjectId().toString(),
       }));
