@@ -11,6 +11,7 @@ import type {
   MeApiResponse,
   PresetDashboard,
   PresetDashboardFilter,
+  RotateAccessKeyApiResponse,
   RotateApiKeyApiResponse,
   TeamApiResponse,
   TeamClickHouseSettingsUpdate,
@@ -23,7 +24,12 @@ import type {
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
 } from '@hyperdx/common-utils/dist/types';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import { getLocalDashboardTags } from './dashboard';
@@ -267,6 +273,24 @@ const api = {
         hdxServer(`team/apiKey`, {
           method: 'PATCH',
         }).json<RotateApiKeyApiResponse>(),
+    });
+  },
+  useRotatePersonalAccessKey() {
+    const queryClient = useQueryClient();
+    return useMutation<RotateAccessKeyApiResponse, Error | HTTPError>({
+      mutationFn: async () =>
+        hdxServer(`me/accessKey`, {
+          method: 'PATCH',
+        }).json<RotateAccessKeyApiResponse>(),
+      // Seed the cache from the response rather than refetching `me`. The old
+      // key is already revoked by the time this runs, so a refetch that fails
+      // would leave every `useMe` consumer rendering a dead credential with no
+      // way to reach the new one short of a reload.
+      onSuccess: data => {
+        queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
+          prev == null ? prev : { ...prev, accessKey: data.newAccessKey },
+        );
+      },
     });
   },
   useDeleteTeamMember() {

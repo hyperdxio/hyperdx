@@ -13,7 +13,7 @@ import {
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  isRawSqlChartConfig,
+  isPromqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -24,6 +24,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
 import {
   Box,
   Divider,
@@ -33,7 +34,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { useDisclosure, usePrevious } from '@mantine/hooks';
+import { useDebouncedValue, useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconBracketsContain,
@@ -211,12 +212,12 @@ export default function EditTimeChartForm({
   // Track whether sub-form changes (display settings, heatmap settings) have
   // been applied. These bypass RHF's dirty tracking, so we latch here: once
   // set, only a parent reset (new tile opened) clears it via onDirtyChange.
-  const subFormDirty = useRef(false);
+  const subFormDirtyRef = useRef(false);
 
   useEffect(() => {
     // Don't let RHF's isDirty=false clear the flag after sub-form changes
     // were applied (RHF resets isDirty when its `values` prop re-syncs).
-    onDirtyChange?.(isDirty || subFormDirty.current);
+    onDirtyChange?.(isDirty || subFormDirtyRef.current);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
@@ -374,7 +375,7 @@ export default function EditTimeChartForm({
 
   // Attach variables so that variable references can be validated and expanded in the preview
   const previewConfig = useMemo(() => {
-    if (queriedConfig == null || !isRawSqlChartConfig(queriedConfig)) {
+    if (queriedConfig == null || isPromqlChartConfig(queriedConfig)) {
       return queriedConfig;
     }
     return {
@@ -391,6 +392,23 @@ export default function EditTimeChartForm({
     () => computeDbTimeChartConfig(previewConfig, alert),
     [previewConfig, alert],
   );
+
+  // Casting because `useWatch` returns a deep partial type, but we know that the
+  // form state is complete due to default values set above.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const watchedForm = useWatch({ control }) as ChartEditorFormState;
+  const [debouncedForm] = useDebouncedValue(watchedForm, 300);
+  const additionalAlertWarnings = useMemo(() => {
+    if (alert == null) return [];
+    const config = convertFormStateToSavedChartConfig(
+      debouncedForm,
+      tableSource,
+    );
+    const variableWarning = config
+      ? getAlertVariableWarning(config, variables)
+      : undefined;
+    return variableWarning ? [variableWarning] : [];
+  }, [alert, debouncedForm, tableSource, variables]);
 
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
@@ -490,10 +508,10 @@ export default function EditTimeChartForm({
     }
   }, [onSubmit, submitRef]);
 
-  const autoRunFired = useRef(false);
+  const autoRunFiredRef = useRef(false);
   useEffect(() => {
-    if (autoRun && !autoRunFired.current && tableSource) {
-      autoRunFired.current = true;
+    if (autoRun && !autoRunFiredRef.current && tableSource) {
+      autoRunFiredRef.current = true;
       onSubmit(true);
     }
   }, [autoRun, tableSource, onSubmit]);
@@ -681,7 +699,7 @@ export default function EditTimeChartForm({
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {
-        subFormDirty.current = true;
+        subFormDirtyRef.current = true;
         onDirtyChange?.(true);
       }
       onSubmit();
@@ -695,7 +713,7 @@ export default function EditTimeChartForm({
       setValue('series.0.countExpression', data.count || 'count()');
       setValue('series.0.heatmapScaleType', data.scaleType);
       // Heatmap settings are applied outside RHF's change tracking.
-      subFormDirty.current = true;
+      subFormDirtyRef.current = true;
       onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
@@ -872,6 +890,7 @@ export default function EditTimeChartForm({
             onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
             alert={alert}
+            additionalWarnings={additionalAlertWarnings}
             dashboardId={dashboardId}
             variables={variables}
           />
@@ -897,6 +916,7 @@ export default function EditTimeChartForm({
             seriesReturnType={seriesReturnType}
             ratioMode={ratioMode}
             alert={alert}
+            additionalWarnings={additionalAlertWarnings}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}
             parentRef={parentRef}

@@ -1,5 +1,11 @@
 # @hyperdx/hdx-eval
 
+## 0.3.2
+
+### Patch Changes
+
+- 6662379e: feat: expose summary metrics through the mcp
+
 ## 0.3.1
 
 ### Patch Changes

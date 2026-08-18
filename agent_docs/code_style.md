@@ -131,6 +131,56 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 
 **Note**: Existing `<Alert color="...">` call sites are untouched; the semantic variants are opt-in. Prefer the variant for any **new** callout, and migrate nearby `color="..."` alerts when you touch them.
 
+### Confirmation dialogs: use `useConfirm` (REQUIRED)
+
+**Use `useConfirm` (`@/useConfirm`) for any "are you sure?" step. Do not
+hand-roll a `<Modal>` with Cancel/Confirm buttons.** The provider is already
+mounted app-wide in `pages/_app.tsx`, so there is no setup at the call site.
+
+```tsx
+const confirm = useConfirm();
+
+const handleDelete = async () => {
+  if (
+    await confirm(
+      <>
+        Deleting {name} is <b>not reversible</b>.
+      </>,
+      'Delete',
+      { variant: 'danger' },
+    )
+  ) {
+    await deleteThing.mutateAsync({ id });
+  }
+};
+```
+
+- The message is a `ReactNode`, so it can carry emphasis and multiple sentences.
+- Pass `{ variant: 'danger' }` for destructive actions; the confirm label
+  defaults to `Confirm`.
+- It resolves **exactly once**, so a double click on Confirm during the modal's
+  exit transition cannot fire the action twice. A hand-rolled modal has to guard
+  that itself.
+- Test ids are shared and already exist: `confirm-modal`,
+  `confirm-confirm-button`, `confirm-cancel-button`. **Do not invent per-flow
+  confirm/cancel test ids** — E2E page objects key off the shared ones.
+
+**Known limits.** It passes no `title` to the Modal and renders the body at
+`size="sm" opacity={0.7}`, and CSS opacity applies to the whole subtree so a
+nested `<Text>` cannot opt back out. If a flow genuinely needs a heading or
+full-contrast body, **extend `useConfirm`** (an optional prop, applied to all
+call sites) rather than forking a one-off modal.
+
+**In component tests**, mock it — `ConfirmProvider` pulls in `next/router`,
+which is not available in jsdom:
+
+```tsx
+jest.mock('@/useConfirm', () => ({ useConfirm: jest.fn() }));
+```
+
+Assert on the arguments (and render the message `ReactNode` if you need to check
+the copy). Exercise the real dialog in E2E instead.
+
 ### EmptyState Component (REQUIRED)
 
 **Use `EmptyState` (`@/components/EmptyState`) for all empty/no-data states.** Do not create ad-hoc inline empty states.
@@ -158,6 +208,49 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 ```
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
+
+### Chart cards (ChartCard)
+
+**Use `ChartCard` (`@/components/charts/ChartCard`) to wrap a chart in a card.**
+It is a bordered surface with the same header treatment as a custom dashboard
+tile (a full-bleed divider under the title). It replaces the older `ChartBox`;
+don't hand-roll a bordered `<div>`/`<Paper>` around a chart.
+
+`ChartCard` renders the card **chrome only**. The header divider is drawn only
+when a descendant renders a `ChartContainer` with a `title` (or `toolbarItems`) —
+`ChartCard` supplies the `ChartContainerCardHeaderProvider` that switches that
+header into card mode — so put a chart that renders a `ChartContainer` inside it
+(`DBTimeChart`, `DBTableChart`, `DBHeatmapChart`, `DBListBarChart`, …). Content
+with its own heading (e.g. a bespoke table card) should still route that heading
+through a titled `ChartContainer` rather than a bare `Text`, so it gets the same
+card header — divider and top padding included — instead of sitting flush against
+the top border. The tile-level controls (fullscreen, line/bar display switcher,
+kebab menu) belong to dashboard tiles and are intentionally **not** part of
+`ChartCard`.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `children` | `ReactNode` | The chart, usually a `DB*Chart` (or a titled `ChartContainer`) |
+| `style` | `CSSProperties` | Sizing/overflow override — pass a fixed `height`, or `flex: 1; height: 100%` to fill a flex row (`paddingInline` is pinned to keep the divider aligned) |
+| `data-testid` | `string` | Test hook |
+
+```tsx
+// ✅ GOOD — shared card chrome, consistent with dashboard tiles
+<ChartCard style={{ height: 350 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</ChartCard>
+
+// ❌ BAD — hand-rolled card that drifts from the dashboard look
+<Box style={{ border: '1px solid var(--color-border)', borderRadius: 4 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</Box>
+```
+
+**Give it a height.** `ChartCard` is `width: 100%` and fills its parent, so the
+parent (or a `style={{ height }}`) must define the height. For equal-width
+side-by-side charts (e.g. the RED row) use
+`style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}` inside a
+`Flex`. See the `Charts/ChartCard` Storybook stories for the variants.
 
 ## UI text: use sentence case
 

@@ -3,6 +3,7 @@ import {
   FilterState,
   filterStateToPredicate,
   filtersToQuery,
+  getDashboardVariableDeclarations,
   getFilterVariableName,
   hasFilterEffect,
   isFilterBroadcastEnabled,
@@ -990,6 +991,87 @@ describe('filters', () => {
 
     it('returns undefined when nothing usable can be derived', () => {
       expect(getFilterVariableName({ name: '环境' })).toBeUndefined();
+    });
+  });
+
+  describe('getDashboardVariableDeclarations', () => {
+    const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('returns nothing for a dashboard with no filters', () => {
+      expect(getDashboardVariableDeclarations(undefined)).toEqual([]);
+      expect(getDashboardVariableDeclarations([])).toEqual([]);
+    });
+
+    it('skips filters that do not expose a variable', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({ id: 'broadcast-only', isVariableEnabled: false }),
+          filter({ id: 'unset', name: 'Env', expression: 'Env' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('declares the name and the expression it filters on', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({ isVariableEnabled: true, variableName: 'svc' }),
+        ]),
+      ).toEqual([{ name: 'svc', expression: 'ServiceName' }]);
+    });
+
+    it('falls back to the name derived from the display name', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({ name: 'Total Requests', isVariableEnabled: true }),
+        ]),
+      ).toEqual([{ name: 'Total_Requests', expression: 'ServiceName' }]);
+    });
+
+    it('skips a filter whose display name derives nothing usable', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({ name: '环境', isVariableEnabled: true }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('keeps the first of two filters claiming the same name', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({ id: 'a', isVariableEnabled: true, variableName: 'svc' }),
+          filter({
+            id: 'b',
+            expression: 'Other',
+            isVariableEnabled: true,
+            variableName: 'svc',
+          }),
+        ]),
+      ).toEqual([{ name: 'svc', expression: 'ServiceName' }]);
+    });
+
+    it('keeps the declarations in filter order', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({ isVariableEnabled: true, variableName: 'svc' }),
+          filter({
+            id: 'f2',
+            name: 'Env',
+            expression: 'Env',
+            isVariableEnabled: true,
+            variableName: 'env',
+          }),
+        ]),
+      ).toEqual([
+        { name: 'svc', expression: 'ServiceName' },
+        { name: 'env', expression: 'Env' },
+      ]);
     });
   });
 

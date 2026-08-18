@@ -1050,7 +1050,7 @@ describe('queryChartConfig Integration Tests', () => {
     });
 
     type MetricSelect = {
-      aggFn: 'avg' | 'sum' | 'quantile' | 'increase';
+      aggFn: 'avg' | 'sum' | 'quantile' | 'increase' | 'count';
       aggCondition: string;
       aggConditionLanguage: 'sql';
       valueExpression: string;
@@ -1079,6 +1079,28 @@ describe('queryChartConfig Integration Tests', () => {
       valueExpression: 'Value',
       metricName,
       metricType: MetricsDataType.Sum,
+    });
+
+    const histQuantileSelect = (
+      metricName: string,
+      level: number,
+    ): MetricSelect => ({
+      aggFn: 'quantile',
+      level,
+      aggCondition: '',
+      aggConditionLanguage: 'sql',
+      valueExpression: 'Value',
+      metricName,
+      metricType: MetricsDataType.Histogram,
+    });
+
+    const histCountSelect = (metricName: string): MetricSelect => ({
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: 'sql',
+      valueExpression: '',
+      metricName,
+      metricType: MetricsDataType.Histogram,
     });
 
     const baseConfig = (
@@ -1245,6 +1267,15 @@ describe('queryChartConfig Integration Tests', () => {
           gaugeRow('tbl.one', insertTs(0), 'svc-a', 10),
           gaugeRow('tbl.one', insertTs(0), 'svc-b', 20),
           gaugeRow('tbl.two', insertTs(0), 'svc-a', 100),
+          // Formula motivating example:
+          // success / (success + error + fsi) * 100. Bucket 0 has all three
+          // operands; bucket 1 has only a zero success (zero denominator);
+          // bucket 2 has only errors (missing numerator).
+          gaugeRow('form.success', insertTs(0), 'svc-a', 90),
+          gaugeRow('form.error', insertTs(0), 'svc-a', 8),
+          gaugeRow('form.fsi', insertTs(0), 'svc-a', 2),
+          gaugeRow('form.success', insertTs(1), 'svc-a', 0),
+          gaugeRow('form.error', insertTs(2), 'svc-a', 5),
           // Grouped gauge+histogram mix.
           gaugeRow('grpmix.gauge', insertTs(1), 'svc-a', 42),
         ],
@@ -1681,6 +1712,87 @@ describe('queryChartConfig Integration Tests', () => {
       expectGap(col(histRowOut, 'avg(grpmix.gauge)'));
     });
 
+    // Regression (HDX-5077 follow-up): series whose native value types have
+    // no least supertype — histogram quantile (Float64) vs histogram count
+    // (Int64) / scalar count (UInt64) — must still merge. Without per-branch
+    // Float64 normalization the UNION ALL either fails with NO_COMMON_TYPE
+    // (use_variant_as_common_type = 0) or produces Variant(Float64, Int64)
+    // columns (the modern default) that consumers don't classify as numeric.
+    // The meta assertions pin the normalized type directly (not just
+    // convertCHDataTypeToJSType, which also tolerates numeric Variants as a
+    // defensive layer) because a Variant here would break servers running
+    // with use_variant_as_common_type = 0 before any JS ever sees it.
+    const expectFloat64ValueColumns = (
+      meta: Array<{ name: string; type: string }> | undefined,
+      expectedNames: string[],
+    ) => {
+      expectNumericValueColumns(meta, expectedNames);
+      for (const name of expectedNames) {
+        const column = meta?.find(m => m.name === name);
+        expect(['Float64', 'Nullable(Float64)']).toContain(column?.type);
+      }
+    };
+
+    it('merges histogram quantile (Float64) with histogram count (Int64)', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [
+            histQuantileSelect('grpmix.latency', 0.5),
+            histCountSelect('grpmix.latency'),
+          ],
+        }),
+      );
+
+      expectFloat64ValueColumns(result.meta, [
+        'quantile(grpmix.latency)',
+        'count(grpmix.latency)',
+      ]);
+
+      const rows = rowsByBucket(result.data);
+      expect([...rows.keys()].sort()).toEqual([bucket(0), bucket(1)]);
+
+      // Bucket 0 is the cumulative zero baseline: the count series emits a
+      // 0 delta row while the all-zero quantile emits no row (a gap).
+      expectGap(col(rows.get(bucket(0)), 'quantile(grpmix.latency)'));
+      expect(Number(col(rows.get(bucket(0)), 'count(grpmix.latency)'))).toBe(0);
+
+      // Bucket 1 adds 10 observations in the (0, 10] bucket: p50
+      // interpolates to 5 and the count delta is 10.
+      expect(
+        Number(col(rows.get(bucket(1)), 'quantile(grpmix.latency)')),
+      ).toBeCloseTo(5, 5);
+      expect(Number(col(rows.get(bucket(1)), 'count(grpmix.latency)'))).toBe(
+        10,
+      );
+    });
+
+    it('merges gauge avg (Float64) with histogram count (Int64)', async () => {
+      const result = await runConfig(
+        baseConfig({
+          select: [
+            gaugeSelect('grpmix.gauge'),
+            histCountSelect('grpmix.latency'),
+          ],
+        }),
+      );
+
+      expectFloat64ValueColumns(result.meta, [
+        'avg(grpmix.gauge)',
+        'count(grpmix.latency)',
+      ]);
+
+      const rows = rowsByBucket(result.data);
+      expect([...rows.keys()].sort()).toEqual([bucket(0), bucket(1)]);
+
+      expectGap(col(rows.get(bucket(0)), 'avg(grpmix.gauge)'));
+      expect(Number(col(rows.get(bucket(0)), 'count(grpmix.latency)'))).toBe(0);
+
+      expect(col(rows.get(bucket(1)), 'avg(grpmix.gauge)')).toBe(42);
+      expect(Number(col(rows.get(bucket(1)), 'count(grpmix.latency)'))).toBe(
+        10,
+      );
+    });
+
     it('merges grouped non-timeseries (table) rows on the group values', async () => {
       const result = await runConfig(
         baseConfig({
@@ -1721,6 +1833,200 @@ describe('queryChartConfig Integration Tests', () => {
       expect(data).toHaveLength(1);
       expect(col(data[0], 'avg(tbl.one)')).toBe(15);
       expect(col(data[0], 'avg(tbl.two)')).toBe(100);
+    });
+
+    // Formulas compile into the composed query's final projection, reusing
+    // the same fixtures as the merge baseline above.
+    describe('formulas', () => {
+      it('computes the motivating success-rate example: A / (A + B + C) * 100', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('form.success'),
+              gaugeSelect('form.error'),
+              gaugeSelect('form.fsi'),
+            ],
+            formulas: [
+              { expression: 'A / (A + B + C) * 100', alias: 'Success rate' },
+            ],
+          }),
+        );
+
+        // Meta contract: operand value columns first, in select order, then
+        // the formula column — all numeric — ahead of the bucket column.
+        expectNumericValueColumns(result.meta, [
+          'avg(form.success)',
+          'avg(form.error)',
+          'avg(form.fsi)',
+          'Success rate',
+        ]);
+
+        const rows = rowsByBucket(result.data);
+        expect([...rows.keys()].sort()).toEqual([
+          bucket(0),
+          bucket(1),
+          bucket(2),
+        ]);
+
+        // All operands present: 90 / (90 + 8 + 2) * 100.
+        expect(Number(col(rows.get(bucket(0)), 'Success rate'))).toBeCloseTo(
+          90,
+          5,
+        );
+        // Zero success and nothing else: denominator 0 -> gap, not 0 or error.
+        expectGap(col(rows.get(bucket(1)), 'Success rate'));
+        // Missing success counts as 0: 0 / (0 + 5 + 0) * 100 = 0.
+        expect(Number(col(rows.get(bucket(2)), 'Success rate'))).toBe(0);
+      });
+
+      it('matches the ratio projection semantics for A / B (0-for-missing-numerator, gap-for-zero/missing-denominator)', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('ratio.err'), gaugeSelect('ratio.total')],
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            showOperandSeries: false,
+          }),
+        );
+
+        const rows = rowsByBucket(result.data);
+        expect(rows.size).toBe(4);
+
+        // Same fixture and expectations as the seriesReturnType: 'ratio'
+        // test above — the formula path must be drop-in consistent.
+        expect(Number(col(rows.get(bucket(0)), 'err rate'))).toBeCloseTo(
+          0.5,
+          5,
+        );
+        expect(Number(col(rows.get(bucket(1)), 'err rate'))).toBe(0);
+        expectGap(col(rows.get(bucket(2)), 'err rate'));
+        expectGap(col(rows.get(bucket(3)), 'err rate'));
+      });
+
+      it('computes a formula over mixed gauge and sum (increase) operands', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('mix.cpu'), increaseSelect('mix.requests')],
+            formulas: [{ expression: 'A + B', alias: 'combined' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, [
+          'avg(mix.cpu)',
+          'increase(mix.requests)',
+          'combined',
+        ]);
+
+        const rows = rowsByBucket(result.data);
+        // Gauge 1 + increase 0 at bucket 0; missing gauge counts as 0 at
+        // bucket 1; both present at bucket 2.
+        expect(Number(col(rows.get(bucket(0)), 'combined'))).toBe(1);
+        expect(Number(col(rows.get(bucket(1)), 'combined'))).toBe(9);
+        expect(Number(col(rows.get(bucket(2)), 'combined'))).toBe(13);
+      });
+
+      it('computes a grouped formula per (bucket, group) row', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            formulas: [{ expression: 'A + B', alias: 'both' }],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, [
+          'avg(grp.one)',
+          'avg(grp.two)',
+          'both',
+        ]);
+
+        const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+        expect(rows.size).toBe(3);
+        expect(Number(col(rows.get(`${bucket(0)}|svc-a`), 'both'))).toBe(11);
+        // One-sided groups: the missing operand contributes 0.
+        expect(Number(col(rows.get(`${bucket(0)}|svc-b`), 'both'))).toBe(2);
+        expect(Number(col(rows.get(`${bucket(0)}|svc-c`), 'both'))).toBe(30);
+      });
+
+      it('drops the operand columns from meta and rows when showOperandSeries is false', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            formulas: [{ expression: 'A + B', alias: 'both' }],
+            showOperandSeries: false,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          }),
+        );
+
+        // The formula column leads the meta; the operands are gone but the
+        // group/bucket passthrough columns survive.
+        expectNumericValueColumns(result.meta, ['both']);
+        const metaNames = result.meta?.map(m => m.name) ?? [];
+        expect(metaNames).not.toContain('avg(grp.one)');
+        expect(metaNames).not.toContain('avg(grp.two)');
+        expect(metaNames).toContain('ServiceName');
+
+        const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+        expect(rows.size).toBe(3);
+        expect(Number(col(rows.get(`${bucket(0)}|svc-a`), 'both'))).toBe(11);
+      });
+
+      it('computes a single-series formula (composed path with one branch)', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('gap.one')],
+            formulas: [{ expression: 'A * 100', alias: 'pct' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, ['avg(gap.one)', 'pct']);
+
+        const rows = rowsByBucket(result.data);
+        expect(rows.size).toBe(2);
+        expect(Number(col(rows.get(bucket(0)), 'pct'))).toBe(1000);
+        expect(Number(col(rows.get(bucket(1)), 'pct'))).toBe(2000);
+      });
+
+      it('computes formulas for number-shape (ungrouped, no time bucket) charts', async () => {
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Number,
+            granularity: undefined,
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            formulas: [{ expression: 'A / B * 100', alias: 'pct' }],
+            showOperandSeries: false,
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, ['pct']);
+        const data = result.data as Row[];
+        expect(data).toHaveLength(1);
+        // avg(tbl.one) = 15, avg(tbl.two) = 100.
+        expect(Number(col(data[0], 'pct'))).toBeCloseTo(15, 5);
+      });
+
+      it('computes formulas for grouped table-shape charts', async () => {
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            formulas: [{ expression: 'B / A', alias: 'ratio' }],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, [
+          'avg(tbl.one)',
+          'avg(tbl.two)',
+          'ratio',
+        ]);
+
+        const data = result.data as Row[];
+        const byService = new Map(data.map(r => [col(r, 'ServiceName'), r]));
+        expect(Number(col(byService.get('svc-a'), 'ratio'))).toBeCloseTo(10, 5);
+        // svc-b has no tbl.two rows: 0 / 20 = 0.
+        expect(Number(col(byService.get('svc-b'), 'ratio'))).toBe(0);
+      });
     });
   });
 });

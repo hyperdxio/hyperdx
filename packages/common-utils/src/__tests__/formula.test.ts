@@ -1,4 +1,5 @@
 import {
+  compileFormulaAst,
   FormulaAst,
   indexToSeriesRef,
   MAX_FORMULA_DEPTH,
@@ -461,5 +462,61 @@ describe('validateFormula', () => {
   it('propagates empty-expression errors unchanged', () => {
     const { errors } = expectErrors(validateFormula('', { seriesCount: 3 }));
     expect(errors).toMatchObject([{ code: 'empty-expression' }]);
+  });
+});
+
+describe('compileFormulaAst', () => {
+  /** Compile an expression against v0/v1/... series value placeholders. */
+  const compile = (expression: string): string => {
+    const parsed = expectOk(parseFormula(expression));
+    return compileFormulaAst(parsed.ast, index => `v${index}`);
+  };
+
+  it('compiles a series ref to a 0-coalesced value expression', () => {
+    expect(compile('A')).toBe('coalesce(v0, 0)');
+    expect(compile('C')).toBe('coalesce(v2, 0)');
+  });
+
+  it('compiles numeric literals as-is', () => {
+    expect(compile('A + 2')).toBe('(coalesce(v0, 0) + 2)');
+    expect(compile('A * 0.5')).toBe('(coalesce(v0, 0) * 0.5)');
+  });
+
+  it('wraps division denominators in nullif so /0 and /missing read NULL', () => {
+    expect(compile('A / B')).toBe(
+      '(coalesce(v0, 0) / nullif(coalesce(v1, 0), 0))',
+    );
+  });
+
+  it('nullif-wraps compound denominators, not just bare refs', () => {
+    expect(compile('A / (B + C)')).toBe(
+      '(coalesce(v0, 0) / nullif((coalesce(v1, 0) + coalesce(v2, 0)), 0))',
+    );
+  });
+
+  it('compiles the motivating success-rate example', () => {
+    expect(compile('A / (A + B + C) * 100')).toBe(
+      '((coalesce(v0, 0) / nullif(((coalesce(v0, 0) + coalesce(v1, 0)) + coalesce(v2, 0)), 0)) * 100)',
+    );
+  });
+
+  it('parenthesizes to the parsed precedence, not textual order', () => {
+    expect(compile('A + B * C')).toBe(
+      '(coalesce(v0, 0) + (coalesce(v1, 0) * coalesce(v2, 0)))',
+    );
+    expect(compile('(A + B) * C')).toBe(
+      '((coalesce(v0, 0) + coalesce(v1, 0)) * coalesce(v2, 0))',
+    );
+  });
+
+  it('compiles unary minus', () => {
+    expect(compile('-A')).toBe('(-coalesce(v0, 0))');
+    expect(compile('B - -A')).toBe('(coalesce(v1, 0) - (-coalesce(v0, 0)))');
+  });
+
+  it('nested divisions each get their own nullif guard', () => {
+    expect(compile('A / B / C')).toBe(
+      '((coalesce(v0, 0) / nullif(coalesce(v1, 0), 0)) / nullif(coalesce(v2, 0), 0))',
+    );
   });
 });

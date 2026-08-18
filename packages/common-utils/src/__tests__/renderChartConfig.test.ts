@@ -3400,6 +3400,186 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('dashboard variables', () => {
+    const configWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'ServiceName IN ($service)',
+          aggConditionLanguage: 'sql',
+        },
+      ],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      having: 'count() > 0',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and variable macros in a builder config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(configWithVariables, mockMetadata, undefined),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('api', 'web'))");
+      expect(sql).toContain("countIf(ServiceName IN ('api', 'web'))");
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('leaves references untouched when the config carries no variables', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...configWithVariables, where: '$service', variables: undefined },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain('$service');
+    });
+
+    it('does not re-expand a selected value that looks like a reference', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...configWithVariables,
+            variables: [
+              { name: 'service', values: ['$other'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          undefined,
+        ),
+      );
+
+      expect(sql).toContain("(ServiceName IN ('$other'))");
+      expect(sql).not.toContain('nope');
+    });
+
+    // A metric config is rewritten into CTEs by translateMetricChartConfig
+    // (single series) or split into one query per series (multi-series), and
+    // both read the config's expressions. Substitution therefore has to run
+    // *before* that rewriting for the expansions to reach the generated SQL at
+    // all — and exactly once, since the per-series branches recurse back
+    // through renderChartConfig.
+    const gaugeSeriesWithVariable = {
+      aggFn: 'avg' as const,
+      aggCondition: 'ServiceName IN ($service)',
+      aggConditionLanguage: 'sql' as const,
+      valueExpression: 'Value',
+      metricName: 'metric.alpha',
+      metricType: MetricsDataType.Gauge,
+    };
+
+    const metricConfigWithVariables: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: { databaseName: 'default', tableName: '' },
+      select: [gaugeSeriesWithVariable],
+      groupBy: [{ valueExpression: 'ServiceName' }],
+      where: '$__filter(ServiceName, service)',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+      variables: [{ name: 'service', values: ['api', 'web'] }],
+    };
+
+    it('expands references and macros in a single-series metric config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          metricConfigWithVariables,
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // The WHERE macro and the series aggCondition, once each.
+      expect(sql.match(/ServiceName IN \('api', 'web'\)/g)).toHaveLength(2);
+      // Both land in the Source CTE's filter, which only happens when
+      // substitution runs before the metric translation builds that CTE —
+      // afterwards the CTE body is already rendered SQL text.
+      expect(sql).toMatch(
+        /FROM default\.otel_metrics_gauge[\s\S]*ServiceName IN \('api', 'web'\)[\s\S]*FROM Bucketed/,
+      );
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('expands references in every branch of a multi-series metric config', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...metricConfigWithVariables,
+            select: [
+              gaugeSeriesWithVariable,
+              { ...gaugeSeriesWithVariable, metricName: 'metric.beta' },
+              {
+                ...gaugeSeriesWithVariable,
+                aggFn: 'sum',
+                metricName: 'metric.gamma',
+                metricType: MetricsDataType.Sum,
+              },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // Three branches (two gauge, one sum — a different physical table with
+      // its own CTE scaffolding), each carrying both expansions.
+      expect(sql.match(/UNION ALL/g)).toHaveLength(2);
+      expect(sql.match(/ServiceName IN \('api', 'web'\)/g)).toHaveLength(6);
+      expect(sql).toContain('FROM default.otel_metrics_sum');
+      expect(sql).not.toContain('$service');
+      expect(sql).not.toContain('$__filter');
+    });
+
+    it('substitutes exactly once across a multi-series metric render', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...metricConfigWithVariables,
+            select: [
+              gaugeSeriesWithVariable,
+              { ...gaugeSeriesWithVariable, metricName: 'metric.beta' },
+            ],
+            // The per-series branches recurse through renderChartConfig, so a
+            // value that itself looks like a reference must not be expanded a
+            // second time on the way down.
+            variables: [
+              { name: 'service', values: ['$other'] },
+              { name: 'other', values: ['nope'] },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+      // Two branches × (WHERE macro + aggCondition), all left as written.
+      expect(sql.match(/ServiceName IN \('\$other'\)/g)).toHaveLength(4);
+      expect(sql).not.toContain('nope');
+    });
+  });
+
   // HDX-4371: a source with `timestampValueExpression = "EventDate, EventTime"`
   // should bucket on `EventTime` (the DateTime token), not on `EventDate`
   // (the partition-key Date). The WHERE clause keeps using both columns so
@@ -3655,9 +3835,13 @@ describe('renderChartConfig', () => {
       // The group-by column passes through UNRENAMED (consumers look rows up
       // by the single-series column name, which for expressions is
       // ClickHouse's derived name and can't be reproduced node-side): the
-      // wrappers keep the branch projection via SELECT * and the outer pivot
-      // passes it through via * EXCEPT + GROUP BY ALL.
-      expect(sql).toContain('SELECT *, 0 AS `__hdx_series_idx`');
+      // wrappers keep the branch projection via SELECT * — normalizing only
+      // the value column to Float64 via REPLACE, so mixed-type series (e.g.
+      // Float64 quantile + Int64 count) never UNION into a Variant — and the
+      // outer pivot passes it through via * EXCEPT + GROUP BY ALL.
+      expect(sql).toContain(
+        'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+      );
       expect(sql).toContain(
         '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
       );
@@ -3730,8 +3914,15 @@ describe('renderChartConfig', () => {
       // column names win the union.
       expect(sql).toContain('[] AS `group`');
       expect(sql).toContain('NULL AS `__hdx_group_pad_0`');
-      expect(sql.indexOf('SELECT *, 0 AS `__hdx_series_idx`')).toBeLessThan(
-        sql.indexOf('NULL AS `__hdx_group_pad_0`'),
+      expect(
+        sql.indexOf(
+          'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+        ),
+      ).toBeLessThan(sql.indexOf('NULL AS `__hdx_group_pad_0`'));
+      // The histogram branch re-projects the value column explicitly, with
+      // the same Float64 normalization.
+      expect(sql).toContain(
+        'SELECT toFloat64(`__hdx_value`) AS `__hdx_value`, NULL AS `__hdx_group_pad_0`',
       );
       expect(sql).toContain('GROUP BY ALL');
     });
@@ -3773,6 +3964,176 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain('GROUP BY `__hdx_');
       expect(sql).not.toContain('`__hdx_time_bucket`');
       expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+    });
+
+    // Formula projection over the pivoted per-series columns.
+    describe('formulas', () => {
+      const pivot = (idx: number) =>
+        `anyOrNullIf(\`__hdx_value\`, \`__hdx_series_idx\` = ${idx})`;
+
+      it('appends the formula column after the operand value columns', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [
+              { expression: 'A / (A + B) * 100', alias: 'Success rate' },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+
+        // Operand series pivot under their user-facing aliases, in select
+        // order, followed by the compiled formula column.
+        expect(sql).toContain(`${pivot(0)} AS "avg(metric.alpha)"`);
+        expect(sql).toContain(`${pivot(1)} AS "avg(metric.beta)"`);
+        const formulaSql = `((coalesce(${pivot(0)}, 0) / nullif((coalesce(${pivot(0)}, 0) + coalesce(${pivot(1)}, 0)), 0)) * 100) AS "Success rate"`;
+        expect(sql).toContain(formulaSql);
+        expect(sql.indexOf('AS "avg(metric.beta)"')).toBeLessThan(
+          sql.indexOf('AS "Success rate"'),
+        );
+      });
+
+      it('emits only the formula column when showOperandSeries is false', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [{ expression: 'A / B', alias: 'ratio' }],
+            showOperandSeries: false,
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).not.toContain('AS "avg(metric.alpha)"');
+        expect(sql).not.toContain('AS "avg(metric.beta)"');
+        expect(sql).toContain(
+          `(coalesce(${pivot(0)}, 0) / nullif(coalesce(${pivot(1)}, 0), 0)) AS "ratio"`,
+        );
+        // The passthrough bucket column + grouping survive.
+        expect(sql).toContain(
+          '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
+        );
+        expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
+      });
+
+      it('names an alias-less formula column by its expression text', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [{ expression: 'A + B' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "A + B"');
+      });
+
+      it('routes a single-series chart with a formula through the composed path', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [gaugeSelect('metric.alpha')],
+            formulas: [{ expression: 'A * 100', alias: 'pct' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+        expect(sql).toContain(`(coalesce(${pivot(0)}, 0) * 100) AS "pct"`);
+        expect(sql).toContain(
+          'SELECT * REPLACE (toFloat64(`__hdx_value`) AS `__hdx_value`), 0 AS `__hdx_series_idx`',
+        );
+        expect(sql).not.toContain('UNION ALL');
+      });
+
+      it('takes precedence over seriesReturnType ratio', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            seriesReturnType: 'ratio',
+            formulas: [{ expression: 'B / A', alias: 'inverse' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "inverse"');
+        expect(sql).not.toContain('AS "avg(metric.alpha)/avg(metric.beta)"');
+      });
+
+      it('suffixes a formula name colliding with an operand alias', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            formulas: [{ expression: 'A + B', alias: 'avg(metric.alpha)' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "avg(metric.alpha)"');
+        // Formula column index continues after the select entries (2).
+        expect(sql).toContain('AS "avg(metric.alpha)__2"');
+      });
+
+      it('escapes double quotes in formula and operand column names', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [
+              { ...gaugeSelect('metric.alpha'), alias: 'operand "quoted"' },
+              gaugeSelect('metric.beta'),
+            ],
+            formulas: [{ expression: 'A / B', alias: 'bad"name' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        // ClickHouse escapes a double quote inside a double-quoted
+        // identifier by doubling it — a raw interpolation would terminate
+        // the identifier early (AS "bad"name") and fail to parse.
+        expect(sql).toContain('AS "bad""name"');
+        expect(sql).toContain('AS "operand ""quoted"""');
+        expect(sql).not.toContain('AS "bad"name"');
+      });
+
+      it('escapes double quotes in the ratio column label', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [
+              { ...gaugeSelect('metric.alpha'), alias: 'err"s' },
+              { ...gaugeSelect('metric.beta'), alias: 'total' },
+            ],
+            seriesReturnType: 'ratio',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "err""s/total"');
+      });
+
+      it('throws a structured error for an invalid persisted formula', async () => {
+        await expect(
+          renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              formulas: [{ expression: 'A / C' }],
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        ).rejects.toThrow(
+          'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
+        );
+      });
     });
   });
 });
