@@ -233,9 +233,60 @@ describe('withToolTracing', () => {
     const traced = withToolTracing('my_tool', context, handler);
     await traced({});
 
-    expect(mockSpan.setStatus).toHaveBeenCalledWith({ code: 2 }); // SpanStatusCode.ERROR
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2, // SpanStatusCode.ERROR
+      message: 'something went wrong',
+    });
     expect(mockSpan.setAttribute).toHaveBeenCalledWith('mcp.tool.error', true);
     expect(mockSpan.end).toHaveBeenCalled();
+  });
+
+  it('should join all text blocks into the ERROR status message', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [
+        { type: 'text', text: 'Query failed' },
+        { type: 'text', text: 'timeout after 10000ms' },
+      ],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: 'Query failed\ntimeout after 10000ms',
+    });
+  });
+
+  it('should truncate a long ERROR status message', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'x'.repeat(600) }],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: `${'x'.repeat(512)}...`,
+    });
+  });
+
+  it('should omit the status message when the error has no text', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: '   ' }],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: undefined,
+    });
   });
 
   it('should set ERROR status and re-throw on handler exception', async () => {
