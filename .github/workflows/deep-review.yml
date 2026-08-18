@@ -129,6 +129,22 @@ jobs:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
+          # REQUIRED for the fork case. checkout v6.1.0 (2026-07-20) backported
+          # this as an explicitly BREAKING change defaulting to false, so
+          # checking out fork code from a `pull_request_target` workflow now
+          # hard-fails. Because we track the moving `v6` tag it arrived with no
+          # change on our side, and every fork-PR review has failed at this step
+          # since. Bumping to v7 is not an escape: v7.0.1 ships the same input
+          # with the same default.
+          # https://github.blog/changelog/2026-06-18-safer-pull_request_target-defaults-for-github-actions-checkout/
+          #
+          # The flag's warning is about running fork code in a credentialed
+          # context. What makes that acceptable here is NOT this checkout, it is
+          # the reviewer's tool set further down: no Bash, no WebFetch, no
+          # Write. The model cannot execute anything it reads, and its only
+          # output channel is the review text. Do not widen that tool set
+          # without revisiting this flag -- the two are a pair.
+          allow-unsafe-pr-checkout: true
           # Keep the base repo's GITHUB_TOKEN out of `.git/config`, where the
           # reviewer's `Bash(git:*)` grant can read it back via
           # `git config --get http.<url>.extraheader`. Nothing downstream needs
@@ -173,6 +189,7 @@ jobs:
       # Fetch the full base ref instead, then assert the merge-base exists.
       # For fork PRs the base lives in a different repo than `origin`.
       - name: Fetch PR base and confirm merge-base
+        id: base
         run: |
           set -e
           BASE_REPO_URL="https://github.com/${{ steps.pr.outputs.base_repo }}.git"
@@ -195,6 +212,10 @@ jobs:
             exit 1
           fi
           echo "Merge-base: $MB"
+          # Exported so the scope-materialization step below can reuse the
+          # merge-base this step already validated, rather than recomputing it
+          # (and risking a different answer).
+          echo "merge_base=$MB" >> "$GITHUB_OUTPUT"
 
       # Defense in depth: even with a correct merge-base, confirm the
       # locally-computed file list matches the PR's actual file list from
@@ -250,10 +271,15 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
-          # Hash the exact diff the reviewers see. ce-code-review with
-          # `base:<sha>` computes `git merge-base HEAD <sha>` then diffs from
-          # there with no rename detection, so mirror that. --no-color and
-          # --no-renames remove the config/heuristic sources of non-determinism.
+          # Change-detection hash over the reviewed diff, from the same
+          # merge-base the reviewers get. --no-color and --no-renames remove the
+          # config/heuristic sources of non-determinism.
+          #
+          # This runs BEFORE the scope is materialized (the materialize step is
+          # gated on this one), so it cannot hash that file directly. It differs
+          # from the materialized diff only in context-line count (-U3 here,
+          # -U10 there), which does not change what the hash detects: any edit
+          # to the reviewed content changes both.
           MB=$(git merge-base HEAD "$BASE_SHA")
           CUR_HASH=$(git diff --no-color --no-renames "$MB" HEAD | sha256sum | cut -d' ' -f1)
           echo "diff_hash=$CUR_HASH" >> "$GITHUB_OUTPUT"
@@ -278,6 +304,62 @@ jobs:
 
           echo "should_review=false" >> "$GITHUB_OUTPUT"
           echo "gate: skipping -- effective diff unchanged since last review ($CUR_HASH)"
+
+      # Materialize everything the reviewer would otherwise shell out for.
+      #
+      # This is what lets the reviewer run with no Bash tool at all (see
+      # `claude_args` below). The ce-code-review skill drives git itself in
+      # Stage 1 (scope) and Stage 2 (intent) -- verified against the pinned
+      # plugin ref that those two stages are its ONLY shell dependencies in
+      # `mode:report-only`, because report-only also skips run-id generation and
+      # artifact writes ("Agents return compact JSON only with no file write").
+      # Stages 3-6 (select, spawn, merge, validate, synthesize) shell out
+      # nowhere, and the personas never fetch the diff themselves -- the
+      # orchestrator embeds it in their prompts.
+      #
+      # Written to RUNNER_TEMP, outside GITHUB_WORKSPACE, so the branch under
+      # review cannot ship a file at these paths and shadow them.
+      - name: Materialize review scope for a shell-less reviewer
+        id: scope
+        if: steps.gate.outputs.should_review == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MB: ${{ steps.base.outputs.merge_base }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          DIR="$RUNNER_TEMP/review-scope"
+          mkdir -p "$DIR"
+          # Same diff form the gate hashes (`<merge-base> HEAD`, no renames), so
+          # the hash in the state marker describes exactly what the reviewers
+          # were given. `--text` is belt-and-suspenders alongside the
+          # `.git/info/attributes` override above: the two fail independently,
+          # and neither alone should be load-bearing for "the reviewer sees the
+          # real content".
+          printf '%s\n' "$MB" > "$DIR/base.txt"
+          printf '%s\n' "$HEAD_REF" > "$DIR/branch.txt"
+          git diff --text --no-color --no-renames --name-only "$MB" HEAD > "$DIR/files.txt"
+          git diff --text --no-color --no-renames -U10 "$MB" HEAD > "$DIR/diff.patch"
+          git log --no-color --oneline "$MB"..HEAD > "$DIR/commits.txt"
+
+          # ce-previous-comments-reviewer normally reaches for `gh pr view`, and
+          # the orchestrator derives `hasPriorComments` the same way. Without a
+          # shell it can do neither, so that persona would silently drop off the
+          # roster. Materialize the threads instead of losing the reviewer.
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
+            --jq '[.[] | {path, line: (.line // .original_line), user: .user.login, body: (.body[0:2000])}]' \
+            > "$DIR/prior-review-comments.json" || echo '[]' > "$DIR/prior-review-comments.json"
+
+          # An empty diff here means the reviewers would get nothing while the
+          # job still reported success -- fail loud instead.
+          if [ ! -s "$DIR/diff.patch" ]; then
+            echo "::error::Materialized diff is empty for merge-base $MB. Refusing to dispatch reviewers with no scope."
+            exit 1
+          fi
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Materialized scope in $DIR:"
+          wc -l "$DIR"/files.txt "$DIR"/diff.patch "$DIR"/commits.txt
 
       # Pre-clone the plugin marketplace at a pinned tag and pass it to the
       # action as a local path. The action's `plugin_marketplaces` input
@@ -373,6 +455,10 @@ jobs:
           # https://github.com/anthropics/claude-code-action/issues/1547
           path_to_claude_code_executable: ${{ env.PINNED_CLAUDE }}
           allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
+          # Any fork contributor can trigger a review. That is acceptable only
+          # because of the tool restriction in `claude_args` below -- a
+          # stranger-triggered run cannot execute anything or reach the network.
+          # Narrow this to write-access users if the reviewer ever regains Bash.
           allowed_non_write_users: '*' # allow fork-PR contributors to trigger reviews
 
           plugin_marketplaces: |
@@ -401,13 +487,38 @@ jobs:
             ${{ steps.pr.outputs.fence }}
 
             Run the compound-engineering multi-agent code review against this
-            PR's diff. The PR head is already checked out and the base SHA is
-            reachable locally.
+            PR's diff. The PR head is already checked out.
+
+            You have NO Bash tool and no shell access. Do not attempt to run
+            git, gh, or any command -- those tools do not exist in this
+            session. A trusted CI step has already resolved the review scope.
+            Wherever the ce-code-review skill tells you to run a command in
+            Stage 1 (Determine scope) or Stage 2 (Intent discovery), read these
+            files instead and treat their contents as authoritative and
+            equivalent to that command's output:
+
+              BASE sha (merge-base):  ${{ steps.scope.outputs.dir }}/base.txt
+              BRANCH:                 ${{ steps.scope.outputs.dir }}/branch.txt
+              FILES (--name-only):    ${{ steps.scope.outputs.dir }}/files.txt
+              DIFF (-U10):            ${{ steps.scope.outputs.dir }}/diff.patch
+              COMMITS (--oneline):    ${{ steps.scope.outputs.dir }}/commits.txt
+              PRIOR REVIEW COMMENTS:  ${{ steps.scope.outputs.dir }}/prior-review-comments.json
+
+            Treat UNTRACKED as empty. Derive `hasPriorComments` from whether
+            prior-review-comments.json is a non-empty array. Use Read, Grep and
+            Glob to explore the checkout for surrounding context.
 
             Step 1. Invoke the plugin skill (note the namespace prefix --
             `/compound-engineering:ce-code-review`, NOT `/review`):
 
               /compound-engineering:ce-code-review mode:report-only base:${{ steps.pr.outputs.base_sha }}
+
+            You MUST actually spawn the reviewer sub-agents. Do not simulate
+            them in-context and do not substitute your own single-pass
+            analysis: without this instruction the orchestrator has been
+            observed to skip dispatch entirely and return a plausible
+            single-pass review instead. The fan-out is the point, and the
+            workflow fails the job if fewer than 4 sub-agents are dispatched.
 
             - `mode:report-only` is required: it disables file edits, commits,
               and on-disk artifacts, and is the only mode that is parallel-safe
@@ -530,9 +641,48 @@ jobs:
             3. Do NOT post the review yourself with `gh` or any comment tool --
                the workflow posts the structured output as a sticky comment.
 
+          # The reviewer gets NO Bash, and this is what makes running fork code
+          # in this job defensible. Three flags with three different jobs, the
+          # same split release.yml's changelog generator relies on:
+          #
+          # --tools RESTRICTS. It replaces the built-in roster, which is
+          # otherwise `Bash, Edit, Glob, Grep, Read, Task, TodoWrite, WebFetch,
+          # WebSearch, Write`. Dropping Bash, Write/Edit and WebFetch/WebSearch
+          # leaves the model no way to execute what it reads and no network
+          # egress: its only output channel is the review text this workflow
+          # posts. `Task` is the subagent tool (it appears as `Agent` in the
+          # transcript) and is required for the fan-out; `Skill` is required to
+          # invoke the plugin skill at all.
+          #
+          # Note --tools does NOT validate names -- a typo yields a silently
+          # tool-less agent, and `--tools ""` does not disable everything the
+          # way its help text claims (it falls back to the full roster). Change
+          # this list only against a real run.
+          #
+          # Why an allowlist over git was not enough: `Bash(git:*)` cannot be
+          # narrowed into a read-only grant, because --allowedTools matches by
+          # command prefix and cannot constrain a flag. `git log --output=<path>`
+          # is an arbitrary file write (point it at `.git/config`, set
+          # `diff.external`, and the next `git diff` executes it) and
+          # `git diff --no-index <a> <b>` is an arbitrary file read, so no
+          # subset of git subcommands is read-only. Removing the tool is the
+          # only version of this that holds.
+          #
+          # --allowedTools only PRE-APPROVES; it is what keeps a `-p` run from
+          # stalling on a permission prompt nothing can answer. Read is granted
+          # broadly on purpose: the reviewer's job is to read the whole
+          # checkout, plus the materialized scope under RUNNER_TEMP.
+          #
+          # --disallowedTools DENIES, and deny beats allow. /proc/self/environ
+          # carries the whole environment including ANTHROPIC_API_KEY, and the
+          # review body is published to a public PR. /home is NOT denied here
+          # (unlike release.yml, which works out of /tmp) because the checkout
+          # this reviewer must read lives under /home/runner/work.
           claude_args: |
             --setting-sources user
-            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*)"
+            --tools "Read" "Grep" "Glob" "Task" "Skill"
+            --allowedTools "Read" "Grep" "Glob" "Task" "Skill"
+            --disallowedTools "Read(//proc/**)" "Read(//sys/**)"
             --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
 
       # --- Sandbox smoke check ----------------------------------------------
@@ -561,6 +711,13 @@ jobs:
       # the comment at that check below. Both belong here because they are the
       # same failure shape: a review that looks complete and is not, with
       # nothing in the job status to say so.
+      #
+      # NOTE: while the reviewer runs with no Bash tool (see `claude_args`
+      # above), the bwrap arm below can never fire -- it counts errored
+      # tool_results correlated to a *Bash* tool_use, and there are none. The
+      # fan-out assertion is the live check today. Keep the bwrap arm anyway: it
+      # is the guard that matters the moment Bash comes back, and the CLI pin it
+      # backs is still in place.
       #
       # This step only DETECTS and records the verdict. The job is failed by
       # "Fail if reviewer sandbox was unhealthy" below, AFTER the review
