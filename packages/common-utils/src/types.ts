@@ -2250,7 +2250,10 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({ type: z.string().optional().nullable() }),
+  channel: z.object({
+    type: z.string().optional().nullable(),
+    webhookId: z.string().optional(),
+  }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),

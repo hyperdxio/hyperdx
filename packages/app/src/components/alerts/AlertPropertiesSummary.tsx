@@ -14,6 +14,12 @@ type AlertPropertiesSummaryProps = {
    * keep the shorter line.
    */
   showSchedule?: boolean;
+  /**
+   * Display name of the notification webhook (the alert only stores its id).
+   * The detail page resolves and passes it; the alerts-page rows keep the
+   * generic "Webhook" label.
+   */
+  webhookName?: string;
 };
 
 /**
@@ -24,6 +30,7 @@ type AlertPropertiesSummaryProps = {
 export function AlertPropertiesSummary({
   alert,
   showSchedule = false,
+  webhookName,
 }: AlertPropertiesSummaryProps) {
   const thresholdLabel =
     TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
@@ -58,7 +65,8 @@ export function AlertPropertiesSummary({
       )}
       <span>&middot;</span>
       <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
+        Notify via {getWebhookChannelIcon(alert.channel.type)}
+        <span>{webhookName ?? 'Webhook'}</span>
       </Group>
       {alert.createdBy && (
         <>
