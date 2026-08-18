@@ -8,9 +8,11 @@ import { makeId } from '@/utils/tilePositioning';
 export default function useTileSelection({
   dashboard,
   setDashboard,
+  enabled = true,
 }: {
   dashboard: Dashboard | undefined;
   setDashboard: (dashboard: Dashboard) => void;
+  enabled?: boolean;
 }) {
   const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(
     () => new Set(),
@@ -26,7 +28,7 @@ export default function useTileSelection({
   }, []);
 
   const handleGroupSelected = useCallback(() => {
-    if (!dashboard || selectedTileIds.size === 0) return;
+    if (!enabled || !dashboard || selectedTileIds.size === 0) return;
     const groupId = makeId();
     const tabId = makeId();
     const sourceContainerIds = new Set<string>();
@@ -60,12 +62,13 @@ export default function useTileSelection({
       }),
     );
     setSelectedTileIds(new Set());
-  }, [dashboard, selectedTileIds, setDashboard]);
+  }, [dashboard, enabled, selectedTileIds, setDashboard]);
 
   useHotkeys([
     [
       'mod+g',
       e => {
+        if (!enabled) return;
         e.preventDefault();
         handleGroupSelected();
       },

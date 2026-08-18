@@ -79,13 +79,14 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
   const created: string[] = [];
   const scenarioIds: Record<
     string,
-    { tracesSourceId: string; logsSourceId: string }
+    { tracesSourceId: string; logsSourceId: string; metricsSourceId: string }
   > = {};
 
   for (const name of SCENARIO_NAMES) {
     const tables = scenarioTables(name);
     const traceName = `eval-${name}-traces`;
     const logName = `eval-${name}-logs`;
+    const metricName = `eval-${name}-metrics`;
 
     let traceSource = sourcesByName.get(traceName);
     if (!traceSource) {
@@ -109,9 +110,29 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
       created.push(logName);
     }
 
+    let metricSource = sourcesByName.get(metricName);
+    if (!metricSource) {
+      metricSource = await api.createSource(
+        buildMetricSourceBody(
+          metricName,
+          connection._id,
+          {
+            gauge: tables.metricsGauge,
+            sum: tables.metricsSum,
+            histogram: tables.metricsHistogram,
+            exponentialHistogram: tables.metricsExponentialHistogram,
+            summary: tables.metricsSummary,
+          },
+          sourceId(logSource),
+        ),
+      );
+      created.push(metricName);
+    }
+
     scenarioIds[name] = {
       tracesSourceId: sourceId(traceSource),
       logsSourceId: sourceId(logSource),
+      metricsSourceId: sourceId(metricSource),
     };
   }
 
@@ -137,6 +158,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
       'mcp__hyperdx__clickstack_get_alert',
       'mcp__hyperdx__clickstack_get_webhook',
       'mcp__hyperdx__clickstack_save_alert',
+      'mcp__hyperdx__clickstack_save_webhook',
+      'mcp__hyperdx__clickstack_delete_webhook',
+      'mcp__hyperdx__clickstack_save_source',
+      'mcp__hyperdx__clickstack_delete_source',
     ],
   };
 
@@ -230,6 +255,38 @@ function buildTraceSourceBody(
       kvRollupTable: rollup.kvRollupTable,
       granularity: '15 minute',
     },
+  };
+}
+
+function buildMetricSourceBody(
+  name: string,
+  connectionId: string,
+  metricTables: {
+    gauge: string;
+    sum: string;
+    histogram: string;
+    exponentialHistogram: string;
+    summary: string;
+  },
+  logSourceId: string,
+): Record<string, unknown> {
+  return {
+    name,
+    kind: 'metric',
+    connection: connectionId,
+    from: { databaseName: 'default', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    serviceNameExpression: 'ServiceName',
+    resourceAttributesExpression: 'ResourceAttributes',
+    metricTables: {
+      gauge: metricTables.gauge,
+      sum: metricTables.sum,
+      histogram: metricTables.histogram,
+      'exponential histogram': metricTables.exponentialHistogram,
+      summary: metricTables.summary,
+    },
+    logSourceId,
+    querySettings: EVAL_QUERY_SETTINGS,
   };
 }
 

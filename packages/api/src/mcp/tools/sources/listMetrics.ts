@@ -15,8 +15,8 @@ import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 
 import {
-  QUERYABLE_METRIC_KINDS,
-  type QueryableMetricKind,
+  DISCOVERABLE_METRIC_KINDS,
+  type DiscoverableMetricKind,
 } from './metricKinds';
 
 const DEFAULT_LIMIT = 50;
@@ -33,7 +33,7 @@ const MAX_EXEC_SECONDS = 8;
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
 export type ListMetricsCursorPayload = {
-  kind: QueryableMetricKind;
+  kind: DiscoverableMetricKind;
   lastName: string;
 };
 
@@ -52,10 +52,10 @@ export function decodeCursor(raw: string): ListMetricsCursorPayload | null {
       parsed !== null &&
       typeof parsed.kind === 'string' &&
       typeof parsed.lastName === 'string' &&
-      (QUERYABLE_METRIC_KINDS as readonly string[]).includes(parsed.kind)
+      (DISCOVERABLE_METRIC_KINDS as readonly string[]).includes(parsed.kind)
     ) {
       return {
-        kind: parsed.kind as QueryableMetricKind,
+        kind: parsed.kind as DiscoverableMetricKind,
         lastName: parsed.lastName,
       };
     }
@@ -74,11 +74,13 @@ const listMetricsSchema = z.object({
       'Source ID. Must reference a metric source — get IDs from clickstack_list_sources.',
     ),
   kind: z
-    .enum(QUERYABLE_METRIC_KINDS)
+    .enum(DISCOVERABLE_METRIC_KINDS)
     .optional()
     .describe(
       'Optional metric kind filter. Omit to scan every populated kind on the source ' +
-        '(gauge → sum → histogram). Set to narrow results to one kind.',
+        '(gauge, sum, histogram, exponential histogram, summary). Set to narrow results to one kind. ' +
+        'NOTE: summary metrics are discovery-only — they cannot be passed to ' +
+        'clickstack_timeseries / clickstack_table; query them with clickstack_sql.',
     ),
   namePattern: z
     .string()
@@ -121,7 +123,7 @@ const listMetricsSchema = z.object({
 
 type MetricEntry = {
   name: string;
-  kind: QueryableMetricKind;
+  kind: DiscoverableMetricKind;
   unit?: string;
   description?: string;
 };
@@ -161,7 +163,7 @@ async function fetchMetricsForKind({
 }: {
   clickhouseClient: ClickhouseClient;
   metadata: ReturnType<typeof getMetadata>;
-  kind: QueryableMetricKind;
+  kind: DiscoverableMetricKind;
   databaseName: string;
   tableName: string;
   connectionId: string;
@@ -253,13 +255,17 @@ export function registerListMetrics({
     'clickstack_list_metrics',
     {
       title: 'List Metric Names',
+      annotations: { readOnlyHint: true },
       description:
         'DISCOVERY: Use this after clickstack_describe_source when you need more metric ' +
         'names than the per-kind sample shows, or when you want to narrow by ' +
         'kind / name pattern / time window. ' +
-        'Returns paginated metric names per kind (gauge/sum/histogram) ' +
+        'Returns paginated metric names per kind (gauge/sum/histogram/exponential histogram/summary) ' +
         'with optional unit and description (when the OTel-default columns are present). ' +
         'Pass the returned `nextCursor` back unchanged to fetch the next page.\n\n' +
+        'Summary metrics are listed for discovery only — they cannot be passed to ' +
+        'clickstack_timeseries / clickstack_table; query them with clickstack_sql ' +
+        "against the table in the source's metricTables.summary.\n\n" +
         'Workflow: clickstack_list_sources → clickstack_describe_source → ' +
         'clickstack_list_metrics → clickstack_describe_metric → ' +
         'clickstack_timeseries|clickstack_table.',
@@ -340,9 +346,9 @@ async function listMetricsImpl(
   // Resolve which kinds to scan, in order. When a cursor is set,
   // skip kinds before the cursor's kind (already returned) and start
   // the cursor's kind at the lastName-exclusive position.
-  const requestedKinds: QueryableMetricKind[] = input.kind
+  const requestedKinds: DiscoverableMetricKind[] = input.kind
     ? [input.kind]
-    : QUERYABLE_METRIC_KINDS.filter(k => Boolean(source.metricTables[k]));
+    : DISCOVERABLE_METRIC_KINDS.filter(k => Boolean(source.metricTables[k]));
   const startKindIdx = cursor ? requestedKinds.indexOf(cursor.kind) : 0;
   if (startKindIdx < 0) {
     // Cursor points at a kind that's not in scope for this call —
@@ -433,6 +439,11 @@ async function listMetricsImpl(
   const responseObj: Record<string, unknown> = {
     metrics,
     ...(nextCursor && { nextCursor }),
+    ...(metrics.some(m => m.kind === 'summary') && {
+      summaryNote:
+        'summary metrics cannot be queried with clickstack_timeseries / clickstack_table — ' +
+        "use clickstack_sql against the table in the source's metricTables.summary.",
+    }),
     ...(partialFailure.length > 0 && {
       partialFailure,
       hint:
@@ -446,7 +457,8 @@ async function listMetricsImpl(
           'removing the namePattern filter, or omitting `kind` to scan every populated metric table.',
       }),
     usage:
-      'Pass `metricType` + `metricName` from each entry to clickstack_timeseries / clickstack_table. ' +
+      'Pass `metricType` + `metricName` from each entry to clickstack_timeseries / clickstack_table ' +
+      '(summary metrics excepted — query those with clickstack_sql). ' +
       'For per-metric attribute keys and sampled values, call clickstack_describe_metric.',
   };
 

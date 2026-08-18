@@ -64,6 +64,13 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: savedSearchName }),
         ).toBeVisible({ timeout: 10000 });
+        // The provider models saved-search alerts, so this one is offered for
+        // import.
+        await expect(
+          alertsPage
+            .getAlertCardByName(savedSearchName)
+            .locator('[data-testid^="terraform-popover-button-"]'),
+        ).toBeVisible();
       });
     },
   );
@@ -124,6 +131,13 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
+        // Tile alerts have no Terraform resource, so they must not be offered
+        // for import — this is the eligibility branch in AlertsPage.
+        await expect(
+          alertsPage
+            .getAlertCardByName(tileName)
+            .locator('[data-testid^="terraform-popover-button-"]'),
+        ).toBeHidden();
       });
     },
   );
@@ -449,6 +463,81 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
   );
 });
 
+test.describe(
+  'Alert Lifecycle (create/update/delete)',
+  { tag: ['@alerts', '@full-stack'] },
+  () => {
+    let searchPage: SearchPage;
+    let alertsPage: AlertsPage;
+
+    test.beforeEach(async ({ page }) => {
+      searchPage = new SearchPage(page);
+      alertsPage = new AlertsPage(page);
+    });
+
+    test(
+      'should create, then update the interval of, then delete a saved-search alert',
+      { tag: '@full-stack' },
+      async () => {
+        const ts = Date.now();
+        const savedSearchName = `E2E Lifecycle Alert ${ts}`;
+        const webhookName = `E2E Webhook Lifecycle ${ts}`;
+        const webhookUrl = `https://example.com/lifecycle-${ts}`;
+
+        await test.step('Create a saved search', async () => {
+          await searchPage.goto();
+          await searchPage.openSaveSearchModal();
+          await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+            savedSearchName,
+          );
+        });
+
+        await test.step('Create an alert with a 1 minute interval', async () => {
+          await searchPage.openAlertsModal();
+          await searchPage.alertModal.addWebhookAndWait(
+            'Generic',
+            webhookName,
+            webhookUrl,
+          );
+          await searchPage.alertModal.selectWebhook(webhookName);
+          // Start on a 1-minute cadence so the update below is observable.
+          await searchPage.alertModal.selectInterval('1m');
+          await searchPage.alertModal.createAlert();
+        });
+
+        await test.step('Reopen the alert and confirm the 1 minute interval persisted', async () => {
+          await searchPage.openAlertsModal();
+          await searchPage.alertModal.selectExistingAlertTab(0);
+          expect(await searchPage.alertModal.getSelectedInterval()).toBe('1m');
+        });
+
+        await test.step('Change the interval to 5 minute and Save Alert (dispatches PUT)', async () => {
+          await searchPage.alertModal.selectInterval('5m');
+          await searchPage.alertModal.saveAlert();
+        });
+
+        await test.step('Reopen the alert and confirm the interval update was persisted', async () => {
+          await searchPage.openAlertsModal();
+          await searchPage.alertModal.selectExistingAlertTab(0);
+          expect(await searchPage.alertModal.getSelectedInterval()).toBe('5m');
+        });
+
+        await test.step('Delete the alert', async () => {
+          await searchPage.alertModal.deleteAlert();
+        });
+
+        await test.step('Verify the alert no longer appears on the alerts page', async () => {
+          await alertsPage.goto();
+          await expect(alertsPage.pageContainer).toBeVisible();
+          await expect(
+            alertsPage.getAlertCardByName(savedSearchName),
+          ).toBeHidden({ timeout: 10000 });
+        });
+      },
+    );
+  },
+);
+
 test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
   let searchPage: SearchPage;
   let dashboardPage: DashboardPage;
@@ -628,6 +717,56 @@ test.describe(
       await expect(alertsPage.errorModalMessage).toContainText(
         SEEDED_ERROR_ALERT.errorMessage,
       );
+    });
+
+    test('shows an errored evaluation in the history strip with details on click', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      // The seeded ERROR evaluation window renders as a clickable segment
+      const errorSegment = alertsPage.getErrorHistorySegments(seededCard);
+      await expect(errorSegment).toHaveCount(1);
+
+      await errorSegment.click();
+      await expect(alertsPage.evaluationErrorModal).toBeVisible();
+      await expect(alertsPage.evaluationErrorModal).toContainText(
+        'Query Timeout',
+      );
+      await expect(
+        alertsPage.evaluationErrorModal.locator('pre'),
+      ).toContainText(SEEDED_ERROR_ALERT.historyErrorMessage);
+    });
+
+    test('navigates to the alert detail page and shows the evaluation history', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      await alertsPage.getDetailsLinkForAlertCard(seededCard).click();
+
+      // Generous timeout: in dev mode the first hit compiles the new route,
+      // which can take tens of seconds before the navigation completes.
+      await alertsPage.page.waitForURL(/\/alerts\/[a-f0-9]{24}/, {
+        timeout: 30000,
+      });
+      await expect(alertsPage.detailPageContainer).toBeVisible({
+        timeout: 15000,
+      });
+
+      // The event stream lists the errored evaluation with its type label
+      await expect(alertsPage.evaluationsTable).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(alertsPage.evaluationsTable).toContainText('Query Timeout');
+      // ...and the OK window seeded alongside it
+      await expect(
+        alertsPage.evaluationsTable.locator(
+          '[data-testid="alert-evaluation-row"]',
+        ),
+      ).toHaveCount(2);
     });
   },
 );

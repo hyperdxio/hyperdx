@@ -1,8 +1,13 @@
 import * as SQLParser from 'node-sql-parser';
 
-import { replaceJsonExpressions } from '@/core/utils';
+import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
-import { DashboardFilter, Filter } from '@/types';
+import {
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  DashboardFilter,
+  Filter,
+} from '@/types';
 
 export type FilterState = {
   [key: string]: {
@@ -10,10 +15,6 @@ export type FilterState = {
     excluded: Set<string | boolean>;
     range?: { min: number; max: number }; // For BETWEEN conditions
   };
-};
-
-const escapeString = (s: string) => {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
 };
 
 // Wrap a quoted string literal in a ClickHouse expression whose result type
@@ -71,8 +72,8 @@ export const filtersToQuery = (
         typeof v !== 'string'
           ? v
           : chType != null
-            ? dateTimeValueExpr(chType, `'${escapeString(v)}'`)
-            : `'${escapeString(v)}'`;
+            ? dateTimeValueExpr(chType, `'${escapeSqlString(v)}'`)
+            : `'${escapeSqlString(v)}'`;
 
       if (values.included.size > 0) {
         conditions.push({
@@ -100,6 +101,61 @@ export const filtersToQuery = (
     });
 };
 
+/**
+ * Render a FilterState as a single AND-joined SQL predicate, remapping every
+ * key through `renderKey` first.
+ *
+ * Callers that also emit the same keys elsewhere in the query (e.g. inside a
+ * SELECT aggregate) must render both halves the same way, or the predicate
+ * silently addresses a different expression than the one being aggregated.
+ * `stringifyKeys` is deliberately false: a rendered JSON path already carries
+ * the `.:String` type suffix, so it needs no `toString()` wrapper.
+ *
+ * Returns undefined when nothing is selected, so callers can branch on
+ * "constrained vs unconstrained" without inspecting the string.
+ */
+export const filterStateToPredicate = (
+  state: FilterState,
+  renderKey: (rawKey: string) => string,
+): string | undefined => {
+  const rendered: FilterState = {};
+  for (const [rawKey, selection] of Object.entries(state)) {
+    rendered[renderKey(rawKey)] = selection;
+  }
+  const conditions = filtersToQuery(rendered).flatMap(f =>
+    // filtersToQuery only emits `sql` filters (which carry `condition`); the
+    // `in` guard narrows away the `sql_ast` member of the Filter union.
+    'condition' in f ? [f.condition] : [],
+  );
+  return conditions.length
+    ? conditions.map(c => `(${c})`).join(' AND ')
+    : undefined;
+};
+
+/**
+ * Stable, JSON-safe projection of a FilterState, for use in react-query keys.
+ *
+ * A raw FilterState cannot be used as a query key: its selections are `Set`s,
+ * and TanStack Query hashes keys with JSON.stringify, which serializes any Set
+ * to `{}` — so every distinct selection would collide on one cache entry.
+ * Keys and members are sorted so that insertion order alone never produces a
+ * spurious cache miss.
+ */
+export const serializeFilterState = (state: FilterState): string => {
+  const sortMembers = (values: Set<string | boolean>) =>
+    Array.from(values).map(String).sort();
+  return JSON.stringify(
+    Object.entries(state)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, { included, excluded, range }]) => [
+        key,
+        sortMembers(included),
+        sortMembers(excluded),
+        range ?? null,
+      ]),
+  );
+};
+
 // Helper function to parse a string value as boolean if possible, or otherwise
 // return as string with surrounding quotes removed and SQL-escaped quotes unescaped.
 const getBooleanOrUnquotedString = (value: string): string | boolean => {
@@ -110,7 +166,7 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
   }
 
   // Remove surrounding quotes and reverse the escape sequences produced by
-  // filtersToQuery's escapeString. Order matters: collapse \\ → \ first so
+  // filtersToQuery's escapeSqlString. Order matters: collapse \\ → \ first so
   // that the following '' → ' pass doesn't mistake content for an escape.
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1).replace(/\\\\/g, '\\').replace(/''/g, "'");
@@ -664,4 +720,98 @@ export function validateDashboardFilterQueries(
     }
   }
   return issues;
+}
+
+/** Derive the default `variableName` for a filter from its display name. */
+export function deriveVariableName(filterName: string): string {
+  const sanitized = filterName
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]+/g, '');
+
+  // Add a `v` prefix if the sanitized name starts with a number or underscore,
+  // to ensure it is a valid variable name.
+  return /^[0-9_]/.test(sanitized) ? `v${sanitized}` : sanitized;
+}
+
+/**
+ * Whether a filter's selected value is applied as a condition on matching tiles.
+ *
+ * Missing means enabled: filters that predate the field must keep broadcasting.
+ * Compared against `false` rather than defaulted with `??` because filters are
+ * stored in an untyped Mongo array, so `null` is reachable.
+ */
+export function isFilterBroadcastEnabled(filter: {
+  isBroadcastEnabled?: boolean;
+}): boolean {
+  return filter.isBroadcastEnabled !== false;
+}
+
+/** Whether a filter's selected value is exposed to tiles as a variable. */
+export function isFilterVariableEnabled(filter: {
+  isVariableEnabled?: boolean;
+}): boolean {
+  return filter.isVariableEnabled === true;
+}
+
+/**
+ * Whether a filter does anything at all with the value it collects — broadcast
+ * it as a condition, expose it as `$variableName`, or both.
+ */
+export function hasFilterEffect(filter: {
+  isBroadcastEnabled?: boolean;
+  isVariableEnabled?: boolean;
+}): boolean {
+  return isFilterBroadcastEnabled(filter) || isFilterVariableEnabled(filter);
+}
+
+/**
+ * The token a filter is referenced by, falling back to the value derived
+ * from its display name.
+ */
+export function getFilterVariableName(filter: {
+  name: string;
+  variableName?: string;
+}): string | undefined {
+  return (
+    filter.variableName?.trim() || deriveVariableName(filter.name) || undefined
+  );
+}
+
+/**
+ * Validate a variable name against the token grammar and against the names
+ * already taken by other variable-enabled filters on the same dashboard.
+ * Returns an error message, or undefined when the name is usable. Only
+ * variable-*enabled* siblings are considered.
+ */
+export function validateVariableName({
+  value,
+  otherFilters,
+}: {
+  value: string | undefined;
+  otherFilters: {
+    name: string;
+    variableName?: string;
+    isVariableEnabled?: boolean;
+  }[];
+}): string | undefined {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) {
+    return 'Variable name is required';
+  }
+  if (trimmed.length > DASHBOARD_VARIABLE_NAME_MAX_LENGTH) {
+    return `Variable name must be ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters or fewer`;
+  }
+  if (!DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(trimmed)) {
+    return 'Variable names must start with a letter and may contain only letters, numbers, and underscores';
+  }
+  const clash = otherFilters.find(
+    other =>
+      isFilterVariableEnabled(other) &&
+      getFilterVariableName(other) === trimmed,
+  );
+  if (clash) {
+    return `This variable name is used by another filter on this dashboard (${clash.name})`;
+  }
+  return undefined;
 }

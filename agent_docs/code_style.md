@@ -99,6 +99,38 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 
 This pattern cannot be enforced by ESLint and requires manual code review.
 
+### Semantic component variants (Alert / Text / danger controls)
+
+We ship **themed semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven and consistent across the HyperDX and ClickStack brands (and light/dark). **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
+
+The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design Tokens/Semantic Variants` for the full visual matrix.
+
+**`Alert`** — `info` | `success` | `warning` | `danger`. Renders a tinted `-subtle` background with the title, icon, **and body text** in the semantic color token:
+
+```tsx
+// ✅ token-driven, works in both brands + light/dark, meets WCAG AA
+<Alert variant="warning" title="Heads up">This may take a while.</Alert>
+<Alert variant="danger" title="Failed">Could not save the alert.</Alert>
+
+// ❌ hardcoded Mantine palette — not theme-aware, inconsistent contrast
+<Alert color="yellow" title="Heads up">...</Alert>
+<Alert color="red" title="Failed">...</Alert>
+```
+
+**`Text`** — `danger` | `warning` | `success` for inline status/validation text:
+
+```tsx
+<Text variant="danger">Required field</Text>
+<Text variant="success">Connection verified</Text>
+
+// ❌ don't reach for raw palette colors for semantic status text
+<Text c="red.5">Required field</Text>
+```
+
+**`Button` / `ActionIcon` `variant="danger"`** is a **soft** control: a tinted `--color-bg-danger-subtle` background (with hover) and semantic foreground, not a solid red fill. `warning`/`success` are intentionally **not** exposed as control variants — use them on `Text` and `Alert` only.
+
+**Note**: Existing `<Alert color="...">` call sites are untouched; the semantic variants are opt-in. Prefer the variant for any **new** callout, and migrate nearby `color="..."` alerts when you touch them.
+
 ### EmptyState Component (REQUIRED)
 
 **Use `EmptyState` (`@/components/EmptyState`) for all empty/no-data states.** Do not create ad-hoc inline empty states.
@@ -126,6 +158,78 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 ```
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
+
+### Chart cards (ChartCard)
+
+**Use `ChartCard` (`@/components/charts/ChartCard`) to wrap a chart in a card.**
+It is a bordered surface with the same header treatment as a custom dashboard
+tile (a full-bleed divider under the title). It replaces the older `ChartBox`;
+don't hand-roll a bordered `<div>`/`<Paper>` around a chart.
+
+`ChartCard` renders the card **chrome only**. The header divider is drawn only
+when a descendant renders a `ChartContainer` with a `title` (or `toolbarItems`) —
+`ChartCard` supplies the `ChartContainerCardHeaderProvider` that switches that
+header into card mode — so put a chart that renders a `ChartContainer` inside it
+(`DBTimeChart`, `DBTableChart`, `DBHeatmapChart`, `DBListBarChart`, …). Content
+with its own heading (e.g. a bespoke table card) should still route that heading
+through a titled `ChartContainer` rather than a bare `Text`, so it gets the same
+card header — divider and top padding included — instead of sitting flush against
+the top border. The tile-level controls (fullscreen, line/bar display switcher,
+kebab menu) belong to dashboard tiles and are intentionally **not** part of
+`ChartCard`.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `children` | `ReactNode` | The chart, usually a `DB*Chart` (or a titled `ChartContainer`) |
+| `style` | `CSSProperties` | Sizing/overflow override — pass a fixed `height`, or `flex: 1; height: 100%` to fill a flex row (`paddingInline` is pinned to keep the divider aligned) |
+| `data-testid` | `string` | Test hook |
+
+```tsx
+// ✅ GOOD — shared card chrome, consistent with dashboard tiles
+<ChartCard style={{ height: 350 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</ChartCard>
+
+// ❌ BAD — hand-rolled card that drifts from the dashboard look
+<Box style={{ border: '1px solid var(--color-border)', borderRadius: 4 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</Box>
+```
+
+**Give it a height.** `ChartCard` is `width: 100%` and fills its parent, so the
+parent (or a `style={{ height }}`) must define the height. For equal-width
+side-by-side charts (e.g. the RED row) use
+`style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}` inside a
+`Flex`. See the `Charts/ChartCard` Storybook stories for the variants.
+
+## UI text: use sentence case
+
+All user-facing text uses **sentence case** — capitalize only the **first word**
+and any proper nouns/acronyms. Do **not** use Title Case (capitalizing every
+significant word).
+
+This applies to every string a user reads: field labels, buttons, tab/menu
+items, headings, section titles, modal titles, placeholders, tooltips, table
+column headers, empty states, and toast/notification copy.
+
+| Title Case (avoid) | Sentence case (use) |
+|--------------------|---------------------|
+| `Data Source`      | `Data source`       |
+| `Chart Name`       | `Chart name`        |
+| `Add Series`       | `Add series`        |
+| `Count of Events`  | `Count of events`   |
+| `Save Changes`     | `Save changes`      |
+| `Delete Dashboard` | `Delete dashboard`  |
+
+**Keep the original casing of proper nouns, product names, and acronyms**
+anywhere in the string — sentence case only changes the words around them:
+HyperDX, ClickHouse, ClickStack, OpenTelemetry/OTel, Lucene, SQL, PromQL,
+MongoDB, Kubernetes, JSON, CSV, URL, ID, API, MCP, CPU, P95. For example:
+`Search your events w/ Lucene`, `Edit SQL`, `Copy as cURL`, `View in ClickHouse`.
+
+Only sentence-case **static UI chrome**. Never rewrite dynamic/user data (column
+names, tag values, log/trace content, source or dashboard names a user typed) —
+render those verbatim.
 
 ## Semantic design tokens (prefer over raw Mantine colors)
 

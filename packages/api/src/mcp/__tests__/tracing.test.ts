@@ -72,11 +72,23 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
+import type { McpContext } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import type { McpClientInfo } from '@/mcp/utils/mcpClient';
 import { withToolTracing } from '@/mcp/utils/tracing';
 
+// Build a context whose mcpClient resolves to the given identity. The actual
+// clientInfo/User-Agent resolution logic is covered in mcpClient.test.ts.
+function ctx(clientInfo: McpClientInfo = {}): McpContext {
+  return {
+    teamId: 'team-123',
+    userId: 'user-456',
+    mcpClient: clientInfo,
+  };
+}
+
 describe('withToolTracing', () => {
-  const context = { teamId: 'team-123', userId: 'user-456' };
+  const context = ctx();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -118,6 +130,88 @@ describe('withToolTracing', () => {
     );
   });
 
+  it('should set client name and version attributes when resolved', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+    });
+
+    const traced = withToolTracing(
+      'my_tool',
+      ctx({ name: 'cursor', version: '1.2.3' }),
+      handler,
+    );
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.client.name',
+      'cursor',
+    );
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.client.version',
+      '1.2.3',
+    );
+  });
+
+  it('should set only the client name when version is unresolved', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+    });
+
+    const traced = withToolTracing(
+      'my_tool',
+      ctx({ name: 'opencode' }),
+      handler,
+    );
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.client.name',
+      'opencode',
+    );
+    expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+      'mcp.client.version',
+      expect.anything(),
+    );
+  });
+
+  it('should not set client attributes when identity is unresolved', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+    });
+
+    const traced = withToolTracing('my_tool', ctx({}), handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+      'mcp.client.name',
+      expect.anything(),
+    );
+    expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+      'mcp.client.version',
+      expect.anything(),
+    );
+  });
+
+  it('should tolerate a context without an mcpClient', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+    });
+
+    const contextNoClient = { teamId: 'team-123', userId: 'user-456' };
+
+    const traced = withToolTracing('my_tool', contextNoClient, handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.tool.name',
+      'my_tool',
+    );
+    expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+      'mcp.client.name',
+      expect.anything(),
+    );
+  });
+
   it('should set OK status for successful results', async () => {
     const handler = jest.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'ok' }],
@@ -139,9 +233,60 @@ describe('withToolTracing', () => {
     const traced = withToolTracing('my_tool', context, handler);
     await traced({});
 
-    expect(mockSpan.setStatus).toHaveBeenCalledWith({ code: 2 }); // SpanStatusCode.ERROR
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2, // SpanStatusCode.ERROR
+      message: 'something went wrong',
+    });
     expect(mockSpan.setAttribute).toHaveBeenCalledWith('mcp.tool.error', true);
     expect(mockSpan.end).toHaveBeenCalled();
+  });
+
+  it('should join all text blocks into the ERROR status message', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [
+        { type: 'text', text: 'Query failed' },
+        { type: 'text', text: 'timeout after 10000ms' },
+      ],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: 'Query failed\ntimeout after 10000ms',
+    });
+  });
+
+  it('should truncate a long ERROR status message', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'x'.repeat(600) }],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: `${'x'.repeat(512)}...`,
+    });
+  });
+
+  it('should omit the status message when the error has no text', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: '   ' }],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: undefined,
+    });
   });
 
   it('should set ERROR status and re-throw on handler exception', async () => {

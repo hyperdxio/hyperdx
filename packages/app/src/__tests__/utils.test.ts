@@ -14,6 +14,7 @@ import {
   evaluateColorCondition,
   formatAttributeClause,
   formatColumnEquals,
+  formatDistanceToNowStrictShort,
   formatDurationMs,
   formatDurationMsCompact,
   formatNumber,
@@ -740,6 +741,49 @@ describe('formatDurationMs', () => {
 
   it('handles sub-microsecond precision', () => {
     expect(formatDurationMs(0.0005)).toBe('0.5µs');
+  });
+});
+
+describe('formatDistanceToNowStrictShort', () => {
+  const now = new Date('2025-06-15T12:00:00');
+  const msAgo = (ms: number) => new Date(now.getTime() - ms);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('abbreviates seconds, minutes, hours and days', () => {
+    expect(formatDistanceToNowStrictShort(msAgo(1_000))).toBe('1s');
+    expect(formatDistanceToNowStrictShort(msAgo(45_000))).toBe('45s');
+    expect(formatDistanceToNowStrictShort(msAgo(60_000))).toBe('1m');
+    expect(formatDistanceToNowStrictShort(msAgo(5 * 60_000))).toBe('5m');
+    expect(formatDistanceToNowStrictShort(msAgo(3_600_000))).toBe('1h');
+    expect(formatDistanceToNowStrictShort(msAgo(3 * 3_600_000))).toBe('3h');
+    expect(formatDistanceToNowStrictShort(msAgo(86_400_000))).toBe('1d');
+    expect(formatDistanceToNowStrictShort(msAgo(2 * 86_400_000))).toBe('2d');
+  });
+
+  it('abbreviates months', () => {
+    expect(
+      formatDistanceToNowStrictShort(new Date('2025-05-15T12:00:00')),
+    ).toBe('1mo.');
+    expect(
+      formatDistanceToNowStrictShort(new Date('2025-03-15T12:00:00')),
+    ).toBe('3mo.');
+  });
+
+  it('abbreviates years', () => {
+    expect(
+      formatDistanceToNowStrictShort(new Date('2024-06-15T12:00:00')),
+    ).toBe('1y');
+    expect(
+      formatDistanceToNowStrictShort(new Date('2023-06-15T12:00:00')),
+    ).toBe('2y');
   });
 });
 

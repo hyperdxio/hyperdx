@@ -6,10 +6,7 @@ import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  isBuilderSavedChartConfig,
-  isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
@@ -356,7 +353,7 @@ export function assertSourceKindMatchesSelect(
   if (isMetricSource && metricItemCount === 0) {
     return mcpUserError(
       'Source kind is "metric", but no select item specifies metricType + metricName. ' +
-        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
+        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") ' +
         'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
         'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
     );
@@ -376,12 +373,34 @@ export function assertSourceKindMatchesSelect(
 
 // ─── Tile execution ──────────────────────────────────────────────────────────
 
+/**
+ * `getSource` returns a hydrated Mongoose document, so `source.metricTables`
+ * is a live subdocument rather than a plain object. Downstream render paths
+ * may clone the chart config — notably `convertToCategoricalChartConfig`
+ * (pie/bar) runs it through `structuredClone`, which cannot clone a Mongoose
+ * subdocument and throws `DataCloneError: [object Array] could not be cloned`.
+ * Materialize a plain object so the chart config is always structured-cloneable.
+ */
+function toPlainMetricTables(
+  metricTables: MetricTable | undefined,
+): MetricTable | undefined {
+  if (metricTables == null) return undefined;
+  return 'toObject' in metricTables &&
+    typeof metricTables.toObject === 'function'
+    ? metricTables.toObject()
+    : metricTables;
+}
+
 export async function runConfigTile(
   teamId: string,
   tile: ExternalDashboardTileWithId,
   startDate: Date,
   endDate: Date,
-  options?: { maxResults?: number; granularity?: string },
+  options?: {
+    maxResults?: number;
+    granularity?: string;
+    abortSignal?: AbortSignal;
+  },
 ) {
   if (!isConfigTile(tile)) {
     return mcpUserError('Invalid tile: config field missing');
@@ -423,6 +442,11 @@ export async function runConfigTile(
           whereLanguage:
             (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
           bodyExpression: selectStr || undefined,
+          // Forward the batch deadline's abort signal so an event-patterns
+          // tile that overruns is cancelled server-side alongside the generic
+          // chart-config path, rather than escaping cancellation and letting
+          // later tiles exceed the concurrency limit.
+          abortSignal: options?.abortSignal,
         },
       );
     }
@@ -538,7 +562,9 @@ export async function runConfigTile(
         databaseName: source.from.databaseName,
         tableName: isMetricSource ? '' : source.from.tableName,
       },
-      ...(isMetricSource && { metricTables: source.metricTables }),
+      ...(isMetricSource && {
+        metricTables: toPlainMetricTables(source.metricTables),
+      }),
       connection: source.connection.toString(),
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
@@ -560,7 +586,10 @@ export async function runConfigTile(
         config: renderConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+        opts: {
+          clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+          abort_signal: options?.abortSignal,
+        },
       });
       return formatQueryResult(result);
     } catch (e) {
@@ -589,7 +618,9 @@ export async function runConfigTile(
             ? source.useTextIndexForImplicitColumn
             : undefined,
         metricTables:
-          source.kind === SourceKind.Metric ? source.metricTables : undefined,
+          source.kind === SourceKind.Metric
+            ? toPlainMetricTables(source.metricTables)
+            : undefined,
       };
     }
   }
@@ -624,7 +655,10 @@ export async function runConfigTile(
       config: chartConfig,
       metadata,
       querySettings: undefined,
-      opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+      opts: {
+        clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+        abort_signal: options?.abortSignal,
+      },
     });
     return formatQueryResult(result);
   } catch (e) {

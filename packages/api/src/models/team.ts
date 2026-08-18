@@ -34,6 +34,10 @@ export default mongoose.model<ITeam>(
         type: Boolean,
         default: false,
       },
+      isMetricsSeriesTableEnabled: {
+        type: Boolean,
+        default: false,
+      },
       // TODO: maybe add these to a top level Mixed type
       // CH Client Settings
       metadataMaxRowsToRead: Number,

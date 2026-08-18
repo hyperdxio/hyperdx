@@ -1,5 +1,6 @@
 import type {
   AlertApiResponse,
+  AlertEvaluationsApiResponse,
   AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   AlertsPageItem,
@@ -11,6 +12,7 @@ import { z } from 'zod';
 import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import {
+  getAlertEvaluations,
   getAlertTransitionsInRange,
   getRecentAlertHistories,
   getRecentAlertHistoriesBatch,
@@ -81,13 +83,14 @@ const formatAlertResponse = (
       'thresholdType',
       'state',
       'source',
-      'tileId',
       'note',
       'createdAt',
       'updatedAt',
       'executionErrors',
       'numConsecutiveWindows',
     ]),
+    tileId: alert.tileId ?? undefined,
+    groupBy: alert.groupBy ?? undefined,
   };
 };
 
@@ -155,11 +158,93 @@ router.get(
   },
 );
 
+// Alert history has a ~30-day TTL, so cap queried spans to bound the
+// aggregations regardless of how small a startTime the caller sends.
+const MAX_HISTORY_SPAN_MS = 31 * 24 * 60 * 60 * 1000;
+
+// Paginated evaluation history for the alert detail page: one entry per
+// evaluation window (grouped across group-by groups), newest first, including
+// any errors recorded for the window. Scoped to [startTime, endTime] (epoch
+// ms; endTime defaults to now, startTime is clamped to the history retention
+// span). `before` (epoch ms, from the previous response's `nextBefore`) pages
+// to older windows within the range. Note: /:id/history (below) returns
+// firing transitions for chart annotations, which is a different shape.
+const EVALUATIONS_LIMIT = 200;
+type AlertEvaluationsExpRes = express.Response<AlertEvaluationsApiResponse>;
+router.get(
+  '/:id/evaluations',
+  processRequest({
+    params: z.object({ id: objectIdSchema }),
+    query: z
+      .object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(EVALUATIONS_LIMIT)
+          .default(EVALUATIONS_LIMIT),
+        before: z.coerce.number().int().positive().optional(),
+        startTime: z.coerce.number().int().positive().optional(),
+        endTime: z.coerce.number().int().positive().optional(),
+      })
+      .refine(
+        q =>
+          q.startTime == null || q.endTime == null || q.startTime < q.endTime,
+        { message: 'startTime must be less than endTime' },
+      ),
+  }),
+  async (req, res: AlertEvaluationsExpRes, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      // Scope to the caller's team (404 for alerts they can't see).
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        return res.sendStatus(404);
+      }
+
+      // zod applies the default at runtime, but the middleware types the
+      // parsed query with the input (pre-default) shape.
+      const limit = req.query.limit ?? EVALUATIONS_LIMIT;
+      const { before } = req.query;
+      const endTime =
+        req.query.endTime != null ? new Date(req.query.endTime) : new Date();
+      // Clamp the span so a tiny/zero startTime can't page beyond the history
+      // retention window (same cap as the /history transitions endpoint).
+      const startTime = new Date(
+        Math.max(
+          req.query.startTime ?? endTime.getTime() - MAX_HISTORY_SPAN_MS,
+          endTime.getTime() - MAX_HISTORY_SPAN_MS,
+        ),
+      );
+
+      const page = await getAlertEvaluations({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+        limit,
+        startTime,
+        endTime,
+        before: before != null ? new Date(before) : undefined,
+      });
+
+      sendJson(res, {
+        data: page.data,
+        hasMore: page.hasMore,
+        ...(page.nextBefore != null && {
+          nextBefore: page.nextBefore.getTime(),
+        }),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
 // Alert firing/recovery transitions within a time range, used to draw
 // annotations on dashboard charts (startTime/endTime are epoch milliseconds).
-// Alert history has a ~30-day TTL, so cap the queried span to bound the
-// aggregation regardless of how small a startTime the caller sends.
-const MAX_HISTORY_SPAN_MS = 31 * 24 * 60 * 60 * 1000;
 type AlertHistoryRangeExpRes = express.Response<AlertHistoryRangeApiResponse>;
 router.get(
   '/:id/history',
@@ -247,9 +332,11 @@ router.put(
       const { id } = req.params;
       const alertInput = req.body;
       await validateAlertInput(teamId, alertInput);
-      res.json({
-        data: await updateAlert(id, teamId, alertInput),
-      });
+      const alert = await updateAlert(id, teamId, alertInput);
+      if (alert == null) {
+        return res.sendStatus(404);
+      }
+      return res.json({ data: alert });
     } catch (e) {
       next(e);
     }

@@ -1,5 +1,9 @@
 import { KubernetesPage } from '../page-objects/KubernetesPage';
 import { expect, test } from '../utils/base-test';
+import {
+  expectFieldSuggestion,
+  expectValueSuggestion,
+} from '../utils/lucene-autocomplete';
 
 test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   let k8sPage: KubernetesPage;
@@ -132,6 +136,20 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
     );
   });
 
+  test('should suggest fields and values in the Lucene search', async () => {
+    // A metric source's `from.tableName` is empty (the rows live in per-type
+    // tables), so this input has to be pointed at the gauge table explicitly —
+    // otherwise field discovery queries nothing and never suggests anything.
+    await expectFieldSuggestion(k8sPage.search, {
+      prefix: 'k8s.namespace.name',
+      field: 'ResourceAttributes.k8s.namespace.name',
+    });
+
+    await expectValueSuggestion(k8sPage.search, {
+      field: 'ResourceAttributes.k8s.namespace.name',
+    });
+  });
+
   test('should switch to "All" tab when filtering by pod or namespace', async () => {
     // Verify initial state is "Running"
     const podsTable = k8sPage.getPodsTable();
@@ -151,9 +169,7 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   });
 
   test.describe('Pods Table Sorting', () => {
-    // Currently the data sources all have 0 restarts, so this test fails.
-    // eslint-disable-next-line playwright/no-skipped-test
-    test.skip('should sort by restarts column', async () => {
+    test('should sort by restarts column', async () => {
       const podsTable = k8sPage.getPodsTable();
       await expect(podsTable.locator('tbody tr').first()).toBeVisible();
 

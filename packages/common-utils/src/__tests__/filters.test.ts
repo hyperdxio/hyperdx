@@ -1,12 +1,25 @@
 import {
+  deriveVariableName,
+  FilterState,
+  filterStateToPredicate,
   filtersToQuery,
+  getFilterVariableName,
+  hasFilterEffect,
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
   isRenderablePinnedFilter,
   parseQuery,
+  serializeFilterState,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
   validateSavedQuery,
+  validateVariableName,
 } from '@/filters';
 import type { DashboardFilter, Filter } from '@/types';
+import {
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+} from '@/types';
 
 describe('filters', () => {
   describe('filtersToQuery', () => {
@@ -354,6 +367,119 @@ describe('filters', () => {
           { type: 'sql', condition: "Timestamp NOT IN ('2026-06-16')" },
         ]);
       });
+    });
+  });
+
+  describe('filterStateToPredicate', () => {
+    const identity = (k: string) => k;
+
+    it('returns undefined when nothing is selected', () => {
+      expect(filterStateToPredicate({}, identity)).toBeUndefined();
+      expect(
+        filterStateToPredicate(
+          { colA: { included: new Set(), excluded: new Set() } },
+          identity,
+        ),
+      ).toBeUndefined();
+    });
+
+    it('wraps a single condition in parentheses', () => {
+      expect(
+        filterStateToPredicate(
+          { colA: { included: new Set(['x']), excluded: new Set() } },
+          identity,
+        ),
+      ).toBe("(colA IN ('x'))");
+    });
+
+    it('AND-joins conditions across keys and across include/exclude', () => {
+      const predicate = filterStateToPredicate(
+        {
+          colA: { included: new Set(['x']), excluded: new Set(['y']) },
+          colB: { included: new Set(['z']), excluded: new Set() },
+        },
+        identity,
+      );
+      expect(predicate).toBe(
+        "(colA IN ('x')) AND (colA NOT IN ('y')) AND (colB IN ('z'))",
+      );
+    });
+
+    it('addresses each key through renderKey', () => {
+      // The whole point of the callback: a JSON column is aggregated as a
+      // typed subcolumn, so the predicate has to name it the same way.
+      expect(
+        filterStateToPredicate(
+          {
+            "Attributes['cluster']": {
+              included: new Set(['prod']),
+              excluded: new Set(),
+            },
+          },
+          () => '`Attributes`.`cluster`.:String',
+        ),
+      ).toBe("(`Attributes`.`cluster`.:String IN ('prod'))");
+    });
+  });
+
+  describe('serializeFilterState', () => {
+    it('distinguishes different selections', () => {
+      const a: FilterState = {
+        colA: { included: new Set(['x']), excluded: new Set() },
+      };
+      const b: FilterState = {
+        colA: { included: new Set(['y']), excluded: new Set() },
+      };
+      expect(serializeFilterState(a)).not.toBe(serializeFilterState(b));
+      // JSON.stringify alone would flatten both Sets to {} and collide, which
+      // is exactly what this helper exists to prevent in react-query keys.
+      expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    });
+
+    it('distinguishes an included value from an excluded one', () => {
+      expect(
+        serializeFilterState({
+          colA: { included: new Set(['x']), excluded: new Set() },
+        }),
+      ).not.toBe(
+        serializeFilterState({
+          colA: { included: new Set(), excluded: new Set(['x']) },
+        }),
+      );
+    });
+
+    it('is stable across key and member insertion order', () => {
+      expect(
+        serializeFilterState({
+          colA: { included: new Set(['x', 'y']), excluded: new Set() },
+          colB: { included: new Set(['z']), excluded: new Set() },
+        }),
+      ).toBe(
+        serializeFilterState({
+          colB: { included: new Set(['z']), excluded: new Set() },
+          colA: { included: new Set(['y', 'x']), excluded: new Set() },
+        }),
+      );
+    });
+
+    it('includes the range bound', () => {
+      expect(
+        serializeFilterState({
+          colA: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min: 1, max: 2 },
+          },
+        }),
+      ).not.toBe(
+        serializeFilterState({
+          colA: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min: 1, max: 3 },
+          },
+        }),
+      );
     });
   });
 
@@ -713,6 +839,262 @@ describe('filters', () => {
       for (const f of emitted) {
         expect(isRenderablePinnedFilter(f)).toBe(true);
       }
+    });
+  });
+
+  describe('deriveVariableName', () => {
+    it.each([
+      ['Total Requests', 'Total_Requests'],
+      ['HTTP Status (5xx)', 'HTTP_Status_5xx'],
+      ['  env  ', 'env'],
+      ['a   b', 'a_b'],
+      ['ServiceName', 'ServiceName'],
+      ['already-valid_1', 'alreadyvalid_1'],
+      ['(leading)', 'leading'],
+      // A leading digit or underscore is not a legal start, so the name is
+      // prefixed rather than rejected.
+      ['1st metric', 'v1st_metric'],
+      ['_private', 'v_private'],
+      // The prefix is decided after stripping, since stripping can expose a
+      // leading character that was not leading in the display name.
+      ['(5xx) errors', 'v5xx_errors'],
+      ['#1 metric', 'v1_metric'],
+      ['-1abc', 'v1abc'],
+      ['环境', ''],
+      ['', ''],
+      ['   ', ''],
+    ])('derives %p as %p', (input, expected) => {
+      expect(deriveVariableName(input)).toBe(expected);
+    });
+
+    it('derives a name that satisfies the token grammar', () => {
+      const names = [
+        'Total Requests',
+        "SpanAttributes['http.method']",
+        'p99 latency — checkout',
+        'a/b\\c',
+        '  spaced  out  ',
+        '1st metric',
+        '_private',
+        '(5xx) errors',
+        '#1 metric',
+        '-1abc',
+        '(_leading)',
+      ];
+      for (const name of names) {
+        const derived = deriveVariableName(name);
+        expect(derived).not.toBe('');
+        expect(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(derived)).toBe(
+          true,
+        );
+      }
+    });
+  });
+
+  describe('isFilterBroadcastEnabled', () => {
+    it('treats a missing flag as enabled so pre-existing filters keep broadcasting', () => {
+      expect(isFilterBroadcastEnabled({})).toBe(true);
+      expect(isFilterBroadcastEnabled({ isBroadcastEnabled: undefined })).toBe(
+        true,
+      );
+    });
+
+    it('treats a null flag as enabled', () => {
+      expect(
+        isFilterBroadcastEnabled({
+          isBroadcastEnabled: null,
+        } as unknown as DashboardFilter),
+      ).toBe(true);
+    });
+
+    it('respects an explicit flag', () => {
+      expect(isFilterBroadcastEnabled({ isBroadcastEnabled: true })).toBe(true);
+      expect(isFilterBroadcastEnabled({ isBroadcastEnabled: false })).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('isFilterVariableEnabled', () => {
+    it('treats a missing flag as disabled', () => {
+      expect(isFilterVariableEnabled({})).toBe(false);
+      expect(isFilterVariableEnabled({ isVariableEnabled: undefined })).toBe(
+        false,
+      );
+    });
+
+    it('respects an explicit flag', () => {
+      expect(isFilterVariableEnabled({ isVariableEnabled: true })).toBe(true);
+      expect(isFilterVariableEnabled({ isVariableEnabled: false })).toBe(false);
+    });
+  });
+
+  describe('hasFilterEffect', () => {
+    it('holds for a filter that predates both flags', () => {
+      expect(hasFilterEffect({})).toBe(true);
+    });
+
+    it('holds when either mode is on', () => {
+      expect(
+        hasFilterEffect({ isBroadcastEnabled: true, isVariableEnabled: false }),
+      ).toBe(true);
+      expect(
+        hasFilterEffect({ isBroadcastEnabled: false, isVariableEnabled: true }),
+      ).toBe(true);
+      expect(
+        hasFilterEffect({ isBroadcastEnabled: true, isVariableEnabled: true }),
+      ).toBe(true);
+    });
+
+    it('fails only when broadcasting is explicitly off and no variable is set', () => {
+      expect(hasFilterEffect({ isBroadcastEnabled: false })).toBe(false);
+      expect(
+        hasFilterEffect({
+          isBroadcastEnabled: false,
+          isVariableEnabled: false,
+        }),
+      ).toBe(false);
+      expect(
+        hasFilterEffect({
+          isBroadcastEnabled: false,
+          isVariableEnabled: undefined,
+        }),
+      ).toBe(false);
+    });
+  });
+
+  describe('getFilterVariableName', () => {
+    it('prefers an explicit variable name', () => {
+      expect(
+        getFilterVariableName({ name: 'Total Requests', variableName: 'reqs' }),
+      ).toBe('reqs');
+    });
+
+    it('trims an explicit variable name', () => {
+      expect(
+        getFilterVariableName({
+          name: 'Total Requests',
+          variableName: ' reqs ',
+        }),
+      ).toBe('reqs');
+    });
+
+    it('falls back to the derived name when unset or whitespace-only', () => {
+      expect(getFilterVariableName({ name: 'Total Requests' })).toBe(
+        'Total_Requests',
+      );
+      expect(
+        getFilterVariableName({ name: 'Total Requests', variableName: '   ' }),
+      ).toBe('Total_Requests');
+    });
+
+    it('returns undefined when nothing usable can be derived', () => {
+      expect(getFilterVariableName({ name: '环境' })).toBeUndefined();
+    });
+  });
+
+  describe('validateVariableName', () => {
+    const variableFilter = (
+      overrides: Partial<DashboardFilter>,
+    ): DashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      isVariableEnabled: true,
+      ...overrides,
+    });
+
+    it('accepts a valid unique name', () => {
+      expect(
+        validateVariableName({ value: 'env_prod_1', otherFilters: [] }),
+      ).toBeUndefined();
+    });
+
+    it('requires a name', () => {
+      expect(validateVariableName({ value: '', otherFilters: [] })).toBe(
+        'Variable name is required',
+      );
+      expect(validateVariableName({ value: '  ', otherFilters: [] })).toBe(
+        'Variable name is required',
+      );
+      expect(validateVariableName({ value: undefined, otherFilters: [] })).toBe(
+        'Variable name is required',
+      );
+    });
+
+    it('rejects names longer than the maximum', () => {
+      expect(
+        validateVariableName({
+          value: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH + 1),
+          otherFilters: [],
+        }),
+      ).toBe(
+        `Variable name must be ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters or fewer`,
+      );
+    });
+
+    it.each([
+      'has space',
+      'dollar$',
+      'dot.notation',
+      "quote'",
+      'br[ackets]',
+      'with-dash',
+      '1leading',
+      '_leading',
+    ])('rejects %p', value => {
+      expect(validateVariableName({ value, otherFilters: [] })).toBe(
+        'Variable names must start with a letter and may contain only letters, numbers, and underscores',
+      );
+    });
+
+    it('rejects a name already used by another variable-enabled filter', () => {
+      expect(
+        validateVariableName({
+          value: 'env',
+          otherFilters: [variableFilter({ name: 'Env', variableName: 'env' })],
+        }),
+      ).toBe(
+        'This variable name is used by another filter on this dashboard (Env)',
+      );
+    });
+
+    it('compares names case-sensitively', () => {
+      expect(
+        validateVariableName({
+          value: 'ENV',
+          otherFilters: [variableFilter({ name: 'Env', variableName: 'env' })],
+        }),
+      ).toBeUndefined();
+    });
+
+    it('clashes against a sibling that only has a derived name', () => {
+      expect(
+        validateVariableName({
+          value: 'Total_Requests',
+          otherFilters: [variableFilter({ name: 'Total Requests' })],
+        }),
+      ).toBe(
+        'This variable name is used by another filter on this dashboard (Total Requests)',
+      );
+    });
+
+    it('ignores siblings whose variables are disabled', () => {
+      expect(
+        validateVariableName({
+          value: 'env',
+          otherFilters: [
+            variableFilter({
+              name: 'Env',
+              variableName: 'env',
+              isVariableEnabled: false,
+            }),
+            variableFilter({ name: 'Other Env', isVariableEnabled: undefined }),
+          ],
+        }),
+      ).toBeUndefined();
     });
   });
 });

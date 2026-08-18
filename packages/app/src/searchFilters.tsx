@@ -186,6 +186,32 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  // Apply several "only" filters atomically: each listed property is set to
+  // exactly its given value in a single state update, emitting onFilterChange
+  // (and therefore a re-query) once rather than once per property. Use this
+  // instead of looping setFilterValue(..., 'only') when scoping to multiple
+  // columns at once (e.g. focusing a multi-group chart series).
+  const setOnlyFilters = useCallback(
+    (entries: { property: string; value: string | boolean }[]) => {
+      if (entries.length === 0) {
+        return;
+      }
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          for (const { property, value } of entries) {
+            draft[property] = {
+              included: new Set([value]),
+              excluded: new Set(),
+            };
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
@@ -281,6 +307,7 @@ export const useSearchPageFilterState = ({
     filters,
     setFilters,
     setFilterValue,
+    setOnlyFilters,
     replaceFilterValue,
     setFilterRange,
     clearFilter,

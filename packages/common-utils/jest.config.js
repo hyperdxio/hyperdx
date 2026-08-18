@@ -15,4 +15,15 @@ module.exports = {
   moduleNameMapper: {
     '@/(.*)$': '<rootDir>/$1',
   },
+  // Coverage floor pinned just below measured reality so coverage can only
+  // ratchet up. Decay below these numbers fails the build. Raise them
+  // deliberately as coverage improves; never lower them silently.
+  coverageThreshold: {
+    global: {
+      statements: 86,
+      branches: 78,
+      functions: 85,
+      lines: 86,
+    },
+  },
 };

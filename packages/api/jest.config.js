@@ -17,6 +17,7 @@ module.exports = {
   verbose: true,
   rootDir: './src',
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '.*\\.int\\.test\\.tsx?$'],
   testTimeout: 30000,
   moduleNameMapper: {
     '@/(.*)$': '<rootDir>/$1',

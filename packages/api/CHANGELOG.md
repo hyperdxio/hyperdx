@@ -1,5 +1,384 @@
 # @hyperdx/api
 
+## 2.35.0
+
+### Minor Changes
+
+- fd54ac78: Persist alert evaluation errors (query errors, timeouts, webhook failures) as
+  ERROR-state AlertHistory records instead of only a latest-only snapshot,
+  upserted per evaluation window so retries collapse into a single row. Query
+  timeouts are classified separately (QUERY_TIMEOUT, including timeouts wrapped
+  by the ClickHouse query client) with an actionable message. ERROR rows are
+  excluded from scheduling/backfill computations so failed windows are still
+  retried and backfilled, and once a failed window recovers (via a same-window
+  retry or a later tick's backfill) its stale ERROR row is removed. Evaluation
+  analytics (query/webhook durations, backfilled buckets) are recorded on every
+  history row.
+- 05a3fd81: Add the AlertHistory evaluations read model and GET /alerts/:id/evaluations
+  endpoint: per-window evaluation history scoped to a time range (clamped to the
+  retention window) with per-group breakdown for group-by alerts, evaluation
+  analytics fields, deduped error surfacing for ERROR-state windows, and
+  cursor-based pagination that always advances across gaps. Adds read-side
+  schema/type support for ERROR-state AlertHistory rows and evaluation analytics.
+- 4fa4975a: Add a `clickstack_query_tiles` MCP tool that validates many dashboard tiles in
+  a single call. It accepts a dashboard ID and an optional list of tile IDs
+  (default: every non-markdown tile), runs the tile queries with bounded
+  concurrency, and returns a compact per-tile success/failure summary
+  (status, row count, errors, and raw-SQL macro warnings) plus an aggregate
+  count. A tile that fails to query is reported inline without failing the whole
+  call, so an agent can validate an entire dashboard in one or two calls instead
+  of one `clickstack_query_tile` call per tile. The `clickstack_save_dashboard`
+  guidance now points at the batch tool for post-save validation.
+- d201b71f: Add an optional `serviceVersionExpression` to log and trace sources, identifying
+  the running release of a service. Defaults to the OpenTelemetry
+  `service.version` resource attribute; teams whose release identifier lives
+  elsewhere, such as a container image tag under GitOps, can point it there
+  instead of changing instrumentation.
+
+### Patch Changes
+
+- b9430a62: feat: Add broadcast and variable settings to dashboard filters
+- b6196031: Treat a session whose user no longer exists as logged out instead of failing the
+  request. Deleting a team member left that person's browser holding a session
+  cookie pointing at a user document that was gone, and `deserializeUser` reported
+  the missing user as an error rather than as an unauthenticated session. Because
+  `passport.session()` runs ahead of every router, each request carrying the
+  cookie came back `500 Something went wrong :(` regardless of path or method,
+  including public routes such as `POST /team/setup/:token` and `GET /logout`, so
+  a removed person could neither accept a fresh invite nor clear their own
+  session. The stale id is now dropped from the session and the request continues
+  unauthenticated, so protected routes answer 401 and the browser is sent back to
+  the login page.
+- de783063: Clear the remaining small api ESLint warnings and enforce their rules. Merges
+  the duplicate Express `declare global` namespace blocks in the auth middleware
+  (the `namespace` + empty-interface augmentation pattern is required, so it
+  carries a scoped disable with a comment), and scopes `n/no-process-exit` off for
+  the process entry points (`src/index.ts`, `src/tasks/index.ts`) where exiting
+  with a status code is intended. `@typescript-eslint/no-namespace`,
+  `no-empty-object-type`, and `n/no-process-exit` are promoted to `error` and the
+  api `--max-warnings` ceiling is lowered. Behavior is unchanged.
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+- 582f3940: Show password requirements on the Join Team page and align the checklist with the server policy. When a user accepts a team invite and sets their password, the same live password policy checklist used on the auth/register page is now displayed, so users no longer have to guess the required length, casing, number, and special-character rules. The checklist previously diverged from the server in two ways that could show all-green checks for a password the server rejects: its special-character rule used a broader pattern than the backend (so a password whose only special character was e.g. `~`, a backtick, or a space passed the checklist but failed on submit), and it never surfaced the 72-character maximum (so an over-long password passed the checklist but failed on submit). The length rule now enforces both the minimum and maximum, and the password policy checks (length bounds, casing, number, and the accepted special-character set) live in a single shared module in `@hyperdx/common-utils` used by both the frontend checklist and the backend `passwordSchema`, so they can no longer drift. Finally, when the server rejects a password the Join Team page now shows the specific reason(s) it failed (e.g. "Password must include at least one special character (!@#$%^&\*(),.?\":{}|<>;-+=)") instead of a generic "Password is invalid", so users are told exactly what to change — including which special characters are accepted.
+- f891eb19: fix(mcp): steer agents toward builder query tools instead of raw SQL (HDX-4892). Telemetry showed agents (notebook investigations) using `clickstack_sql` for ~73% of data queries — usually for single-source aggregations, top-N, and time-series that the builder tools express more reliably (raw SQL also had ~2x the error rate). Reworded the `clickstack_sql` description to mark it a last resort, added a reciprocal "prefer me over SQL" nudge to `clickstack_table`, `clickstack_timeseries`, and `clickstack_search`, and added a server-level `instructions` tool-selection policy so the guidance is surfaced on `initialize` rather than only via the opt-in `query_guide` prompt.
+- 4c5ccfc4: Add MCP tool annotations (readOnlyHint, destructiveHint) to every MCP tool so
+  clients can distinguish read-only query tools from mutating ones. Read/query
+  tools are marked read-only; save/patch and delete tools are marked destructive
+  since they can overwrite or remove existing resources. Hints that would be
+  redundant against the MCP spec defaults are omitted (e.g. destructiveHint is
+  left off read-only tools, where it has no meaning).
+- 6662379e: feat: expose summary metrics through the mcp
+- f34cfaed: Remove the non-functional `GET /ext/silence-alert/:token` endpoint and its dead code path.
+- 711b905d: Guide dashboard MCP agents to filter builder tiles (table, line, stacked_bar,
+  number, pie, bar) with the per-series `where` on each select item, which the
+  chart editor surfaces as the tile's visible "Where" box. The dashboard prompt
+  and the select-item `where` tool description now steer toward it, and the save
+  and patch tools reject a tile-config-level `where`/`whereLanguage` on these
+  types with an actionable message (the editor does not render a tile-level filter
+  for them, so it would be invisible and uneditable). Search, heatmap, and
+  event_patterns tiles keep their tile-level `where`.
+- 908b27ed: Reject source writes that reference malformed, missing, or another team's
+  connection.
+- Updated dependencies [fd54ac78]
+- Updated dependencies [05a3fd81]
+- Updated dependencies [b9430a62]
+- Updated dependencies [546dd442]
+- Updated dependencies [cab98c7c]
+- Updated dependencies [018a6486]
+- Updated dependencies [8508b6c7]
+- Updated dependencies [2d33b83b]
+- Updated dependencies [0ed72ddf]
+- Updated dependencies [aedb514f]
+  - @hyperdx/common-utils@0.26.0
+
+## 2.34.0
+
+### Minor Changes
+
+- 3d61cf92: Cap high-cardinality time-chart series to protect the browser from rendering
+  thousands of lines at once. Time charts now materialize and draw a bounded
+  number of series per tile, with escape hatches to reveal the rest on demand: a
+  "+N more" affordance in the hover and pinned tooltips, and a "load all series"
+  action that lifts the cap for a chart. Tooltips also cap how many rows they
+  render per frame so a wide bucket can't mount thousands of popovers. The
+  external dashboards API exposes the per-tile series limit as a three-state value
+  across tile types — omit for the default cap, 0 for unlimited, or a positive N
+  for the top N
+- fa73b84c: feat(mcp): add `clickstack_emerging_signals` MCP tool — a two-window Drain pattern novelty detector that set-differences mined log/event patterns between an earlier baseline window and a current window to surface what is newly emerging or has disappeared. Shares the Drain sample-and-mine pipeline with `clickstack_event_patterns` via an extracted `mineWindowPatterns` helper, and keys patterns across windows with a `normalizeTemplate` helper.
+- 97ca34df: feat: Allow configuring a `series` table for accelerating metrics
+- f9c52445: feat: add /v1/prometheus/query_exemplars, and harden the Prometheus proxy
+
+  Adds a `query_exemplars` route that proxies to Prometheus's native
+  `/api/v1/query_exemplars` for Prometheus-backed connections, and answers with an
+  empty success for ClickHouse-backed ones, where exemplars are read from the metric
+  table instead.
+
+  Three fixes to the shared proxy while adding a route to it:
+
+  - Responses now carry `X-Content-Type-Options: nosniff`, set before anything can
+    return so the proxy's own error bodies get it too, and the upstream content-type
+    is never forwarded — every response is relabelled `application/json`. The
+    connection host is member-configured, so its response body is untrusted output on
+    our own origin, and an allowlist is easy to slip past: `application/json,
+text/html` clears a prefix-anchored JSON test while the browser keeps the last
+    media type.
+  - A client that navigates away mid-body no longer counts as a backend error.
+  - Proxy failures increment `prometheusQueryErrors`. `proxyToPrometheus` handles its
+    own failures and returns normally, so the callers' `catch` never ran and all four
+    proxied endpoints reported zero errors while still recording duration. Counted on
+    5xx only, so a user's malformed PromQL does not read as a backend fault.
+  - The exemplar window is bounded by narrowing rather than rejecting, so a wide
+    dashboard range still works.
+
+- 1af1998c: Add Terraform helpers for adopting existing HyperDX resources with the ClickHouse provider. An "Export to Terraform" button on dashboards, saved searches, and saved-search alerts shows a ready-to-paste `import {}` block plus collapsible provider setup, and a team settings section ("API & Agents") downloads an import file covering dashboards, alerts, saved searches, sources, connections, and webhooks.
+
+  Dashboards carrying a tile the provider cannot represent, and PromQL sources, are excluded from the export and reported as skipped — in the UI and in the generated file. The provider reads a dashboard back through the external API v2, which either drops such a tile or substitutes an empty line chart, and writes tiles back whole, so importing one would destroy that tile on the next apply.
+
+  Import-only by design: resource configuration is generated by `terraform plan -generate-config-out`, which reads through the provider, rather than by HyperDX — the external API's dashboard serialisation is a field allowlist, so generating `dashboard_json` from it could silently drop tile settings on apply. Tile alerts are excluded because the provider models only saved-search alerts.
+
+  Terraform addresses are derived from each resource's id, not its name, so renaming a resource in HyperDX and re-exporting does not produce a destroy-and-recreate plan. The generator lives in `@hyperdx/common-utils` so the API can produce the same artefact the UI does. The manifest endpoint caps each listing at 1000 rows and reports which types were capped, so a very large team is told its export is partial rather than silently receiving one.
+
+  Also redacts `Authorization` and `Cookie` headers from API request logs.
+
+### Patch Changes
+
+- 3f87fe4b: Return 404 when updating a missing alert.
+- 94d028c8: Return a not-found response when updating a missing dashboard.
+- a794562d: Clear stale source-specific alert references when changing alert source.
+- 2d78083a: fix: Expose `seriesLimit` via external API and MCP
+- 1c3be6f0: Key the external API and MCP rate limiters on the access key, not the raw
+  `Authorization` header
+
+  `validateUserAccessKey` accepts any text before `Bearer `, so a single access
+  key authenticates under unlimited header spellings. The limiter bucketed on the
+  header value, so varying that prefix handed each request a fresh quota. Requests
+  that carry no usable access key now fall back to the client IP.
+
+- 1af1998c: Scope `DELETE /team/invitation/:id` to the caller's team. It previously deleted by id alone, so any authenticated user could revoke another team's pending invitation if they knew its id. Unknown or out-of-team ids now return 404.
+- Updated dependencies [3d61cf92]
+- Updated dependencies [ed9d9a67]
+- Updated dependencies [c97789a0]
+- Updated dependencies [2468b256]
+- Updated dependencies [97ca34df]
+- Updated dependencies [6a35df06]
+- Updated dependencies [d1c669dc]
+- Updated dependencies [1af1998c]
+- Updated dependencies [b082f700]
+- Updated dependencies [347f0a69]
+  - @hyperdx/common-utils@0.25.0
+
+## 2.33.0
+
+### Minor Changes
+
+- 874a5e95: feat(mcp): add source and webhook management tools so the ingest → dashboard flow can be automated end to end. New MCP tools: `clickstack_save_source` / `clickstack_delete_source` and `clickstack_save_webhook` / `clickstack_delete_webhook` (save creates when `id` is omitted and updates when provided). Webhook logic is now shared via `createWebhook` / `updateWebhook` / `deleteWebhook` controllers: `createWebhook` is used by the internal API, External API v2, and MCP; `updateWebhook` / `deleteWebhook` are shared by External API v2 and MCP (the internal API retains its own masked-secret update/delete flow).
+
+  `clickstack_describe_source` now returns a round-trippable `config` block — the exact flat shape `clickstack_save_source` accepts, including fields the curated summary previously omitted (correlation IDs `logSourceId`/`traceSourceId`/`metricSourceId`/`sessionSourceId`, `defaultTableSelectExpression`, `parentSpanIdExpression`, `spanKindExpression`, materialized views, etc.). This closes the read/write asymmetry that made a faithful source clone impossible: an agent can read a source's full config back and pass it straight into `clickstack_save_source` to clone or read-modify-write it.
+
+  fix(alerts): a generic/incidentio webhook persisted without a body (the body default is only applied by the UI form, not the API/MCP create paths) no longer crashes `sendGenericWebhook` on `Handlebars.compile(undefined)`. It now falls back to the default body template so the alert still fires.
+
+### Patch Changes
+
+- 017c296e: fix: Fix DataCloneError from MCP grouped bar/pie query
+- 0e280949: fix: MCP endpoint (`/api/mcp`) now returns 405 for GET and DELETE instead of aborting spec-compliant clients. The stateless Streamable HTTP transport doesn't offer a server-initiated SSE stream or client-terminable sessions, so it now responds `405 Method Not Allowed` (with `Allow: POST`) for those methods, which official MCP SDK clients (e.g. Claude Code) treat as "not offered, continue" rather than a failed connection.
+- 1b658f3c: fix: Handle per-connection failures in alerts task without exiting
+- Updated dependencies [fa1a0687]
+  - @hyperdx/common-utils@0.24.1
+
+## 2.32.0
+
+### Patch Changes
+
+- 01508d1d: fix: Improve and standardize webhook URL validation
+
+  ### `WEBHOOK_HOSTNAME_ALLOWLIST`
+
+  Use this optional setting to permit webhook delivery to a hostname or private/reserved IP address that the SSRF validator would otherwise block. Values are comma-separated. A hostname entry also permits its subdomains, while an IPv4 or IPv6 entry matches only that exact address. The allowlist does not bypass protocol validation, Slack hostname validation, or the exact host-and-port block for configured ClickHouse and MongoDB services.
+
+  For example, this permits `localhost`, any `*.hooks.localhost` hostname, the exact IPv4 address `10.0.0.1`, and the exact IPv6 address `fd00::1`:
+
+  ```env
+  WEBHOOK_HOSTNAME_ALLOWLIST=localhost,hooks.localhost,10.0.0.1,fd00::1
+  ```
+
+- 641175d8: Add MCP client name and version attributes to tool-invocation spans.
+- 00eef721: feat: Implement quantile for exponential histogram metrics
+- eadea332: feat: surface OpenTelemetry span links in the trace view. Trace sources gain an
+  optional `spanLinksValueExpression` field (auto-detected from the OTel `Links`
+  column), and the span detail panel shows a new "Span Links" section. Each link
+  has an "Open trace" action that opens the linked trace in place in the same
+  panel, with a breadcrumb trail you can step back through, and shows the link's
+  trace state and attributes as chips.
+- 5dd6facb: feat: Add exponential histogram metrics support to MCP
+- Updated dependencies [ad27a513]
+- Updated dependencies [00eef721]
+- Updated dependencies [00eef721]
+- Updated dependencies [7a4ad986]
+- Updated dependencies [eadea332]
+- Updated dependencies [9cb69915]
+- Updated dependencies [7d806fb8]
+- Updated dependencies [f5f9cd19]
+  - @hyperdx/common-utils@0.24.0
+
+## 2.31.0
+
+### Patch Changes
+
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+- 3d02a56a: fix: Disable redirects when delivering alert webhooks
+- 758ab638: Fix: Prevent grouped alerts from getting permanently stuck in the ALERT state by resetting history state to OK when thresholds are no longer exceeded.
+- Updated dependencies [ff05b3df]
+- Updated dependencies [1705b37a]
+- Updated dependencies [73819932]
+- Updated dependencies [7accfd2e]
+  - @hyperdx/common-utils@0.23.0
+
+## 2.30.1
+
+## 2.30.0
+
+### Minor Changes
+
+- c29d0df23: feat: Add categorical bar chart display type
+- 727d3274: Add an opt-in Datadog receiver (gated behind `ENABLE_DATADOG_RECEIVER`) so a
+  Datadog Agent can ship traces, metrics, and logs to HyperDX. The contrib
+  `datadogreceiver` is compiled into the collector binary and, when enabled, the
+  OpAMP controller attaches it (listening on `0.0.0.0:8126`) to the traces,
+  metrics, and logs pipelines. When collector authentication is enforced, the
+  receiver validates the `DD-API-KEY` header against team API keys.
+- 880fb668c: feat: add event patterns as a first-class dashboard tile type
+
+  Event patterns can now be created, edited, and saved as dashboard tiles with a dedicated "Pattern Expression" editor. Supported across the UI, MCP server, and External API v2.
+
+- 232e87139: feat(dashboards): overlay alert firing/recovery markers on tile charts
+
+  Adds an optional "alert annotations" overlay to dashboard timeseries tiles.
+  When enabled via the dashboard menu ("Show alert annotations"), tiles that have
+  an alert draw a red vertical marker at the moment the alert fired and a green
+  marker when it recovered, so alert events can be correlated with the chart in
+  one view. The overlay is off by default and its state lives in the URL
+  (`?alertAnnotations=true`), not on the saved dashboard. Backed by a new
+  team-scoped `GET /api/alerts/:id/history` endpoint that returns only alert state
+  transitions within the requested time range, so annotations honor the
+  dashboard's selected window.
+
+- 617355378: External API v2: make error responses consistent and add concurrency safety.
+
+  - `/api/v2/alerts` `403`/`404` responses now return a JSON `{ message }` body
+    (previously an empty plaintext body), matching the documented `Error` schema
+    and the saved-search/webhook routers.
+  - `DELETE /api/v2/alerts/:id` now returns `404` for an alert that does not exist
+    (previously always `200`). The `404` was already part of the documented
+    contract; delete is no longer idempotent for a missing alert.
+  - `PUT /api/v2/webhooks/:id` can now return `409` when the webhook's destination
+    (`url`/`service`) was changed concurrently between read and write. Clients
+    should re-read and retry.
+
+- 617355378: External API v2: add offset/limit pagination to the alerts, saved-searches, and
+  webhooks list endpoints. Each now accepts `limit` (1–1000, default 1000) and
+  `offset` (>=0, default 0) query params and returns a `meta: { total, limit,
+offset }` block alongside `data`. Results are sorted by `_id` so paging is
+  stable across requests.
+
+  Backward compatible: the default `limit` is the maximum (1000), so callers that
+  don't paginate keep receiving all their records (up to the cap) as before. Use
+  `limit`/`offset` to page through larger result sets.
+
+  Behavior change: `/api/v2/alerts` and `/api/v2/webhooks` were previously
+  unbounded and now hard-cap a single page at 1000 records. A team that exceeds
+  1000 alerts or webhooks will only see the first 1000 unless the client reads
+  the total and pages with `offset`; the full set is still reachable, but a
+  pre-`meta` client that never paginated would silently process only the first
+  page. To make the truncation detectable without parsing the body, each list
+  response now also sets an `X-Total-Count` header with the full count (matching
+  `meta.total`), and the server logs a warning when a default-limit page is
+  truncated.
+
+- 617355378: External API v2: add bearer-auth CRUD for saved searches and webhooks so
+  providers can manage them as resources. Adds a new
+  `/api/v2/saved-searches` router (list/get/create/update/delete, team-scoped,
+  validates `sourceId` ownership) and upgrades `/api/v2/webhooks` from
+  list-only to full CRUD (POST/PUT/DELETE). Webhook `headers` and `queryParams`
+  are write-only — accepted on create/update but never returned on read — so
+  auth tokens and other secrets do not leak.
+- abf5b537: Adds a POST /api/v2/dashboards/validate endpoint to the external v2 API. It
+- ba598baba: feat: Add a custom ORDER BY input for Bar and Pie charts
+- c29d0df23: feat: Allow specifying a limit on pie and bar chart series
+- 0c7254360: Adding consecutive-window configuration to alerts, so that you can specify a condition like "only fire this alert after some condition is met for N consecutive windows." This helps prevent flaky alerts (and pages), and cut down on alert noise in many cases.
+
+  Also adds a `PENDING` alert state for alarms that _will_ fire if current trends continue.
+
+- bdf9352a2: Add Create, Read (by ID), Update, and Delete routes to the external API v2 sources router. Granularity fields in write requests accept the same short format the API returns (e.g. `5m`, `15s`).
+- 27e80e965: feat(alerts): implement webhook retries and exponential backoff
+
+### Patch Changes
+
+- 73e6e876e: Expose consecutive-window alerting on the external API.
+- 1aaa9388a: fix: honor INGESTION_API_KEY in the all-in-one auth image
+
+  The all-in-one entrypoint set `HYPERDX_IMAGE` to values (`all-in-one` /
+  `all-in-one-noauth`) that did not match the strings `config.ts` compares against
+  (`all-in-one-auth` / `all-in-one-noauth`). As a result `IS_ALL_IN_ONE_IMAGE` was
+  never true in the auth image, so the `INGESTION_API_KEY` env var was silently
+  ignored and the OpAMP-delivered collector config only accepted the team's
+  UI-generated key.
+
+  The entrypoint now reports `all-in-one-auth` for the auth variant and
+  `all-in-one-noauth` for the no-auth variant, so a pre-shared `INGESTION_API_KEY`
+  is added to the collector's accepted bearer tokens. This lets demo/bootstrap
+  stacks specify a known ingestion key up front instead of retrieving the
+  generated key from the UI — the all-in-one equivalent of the standalone
+  collector's `OTLP_AUTH_TOKEN`.
+
+- ec11fae92: fix: allow creating and editing Sources in Local App Mode
+
+  In Local App Mode (`IS_LOCAL_APP_MODE`) the auth middleware injects a plain
+  string team id onto the request instead of a Mongoose `ObjectId`. The sources
+  router's create/update handlers called `teamId.toJSON()`, which only exists on
+  `ObjectId`, causing an HTTP 500 (`TypeError: teamId.toJSON is not a function`)
+  when saving a Source. Use `teamId.toString()` instead, which works for both
+  string and `ObjectId` team ids.
+
+- 328e7b437: Fix: Block webhook deletion when one or more alerts still reference it, prompting the user to reassign or remove those alerts first.
+- 60cf52842: fix(mcp): guide agents to size dashboard tiles correctly (HDX-4661)
+- bfc6fb5c: Classify MCP tool errors as `user` (bad input, not-found) or `server` (infrastructure failure, timeout) so alerting rules can filter on `error_category=server` without noise from agent input mistakes. Adds `error_category` attribute to spans and the `hyperdx.mcp.tool.errors` metric counter. ClickHouse errors are auto-classified by inspecting the error type and walking the cause chain for TCP-level codes.
+- d16db2557: Add `backgroundChart` support to number tiles in the MCP dashboard tools (`clickstack_save_dashboard` and `clickstack_patch_dashboard`). Builder number tiles can now carry an optional background trend sparkline (`type` line or area, with an optional palette-token `color`), matching the dashboard editor and the v2 REST API. Raw SQL number tiles do not support it.
+- 5081c8cbb: feat: include the source Section in MCP source tools
+
+  The `clickstack_list_sources` and `clickstack_describe_source` MCP tools now
+  return the optional Section label on each source, so agents see the same source
+  grouping that the source selector shows. Sources without a section are
+  unchanged.
+
+- 476add172: Improve API telemetry quality. The OpAMP message handler span is now a wide event
+  carrying agent correlation and self-description context (instance UID, sequence
+  number and gap, raw + decoded capability flags, new-vs-existing, service name and
+  version, OS type, host arch, health/last-error/uptime, remote config apply
+  status/error, last-applied and sent config hashes for drift detection, effective
+  config presence/size, teams count, request/response sizes). A new
+  `hyperdx.opamp.remote_config_applications` counter tracks whether pushed configs
+  actually applied on agents. The shared error middleware now recognizes body-parser
+  errors: client disconnects (`request.aborted` / `ECONNABORTED`) are classified as
+  operational, logged at debug instead of error, and kept out of error tracking, and
+  `hyperdx.api.errors` gains a bounded `error_type` dimension so aborts, oversized
+  bodies, and malformed payloads are distinguishable.
+- a01717e47: Bumped node version in .nvmrc to 22.23.1
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+- Updated dependencies [c29d0df23]
+- Updated dependencies [ba598baba]
+- Updated dependencies [c29d0df23]
+- Updated dependencies [3f1e1fe4]
+- Updated dependencies [0c7254360]
+- Updated dependencies [617355378]
+- Updated dependencies [e2145678d]
+- Updated dependencies [bb7ae21e8]
+  - @hyperdx/common-utils@0.22.0
+
 ## 2.29.0
 
 ### Minor Changes

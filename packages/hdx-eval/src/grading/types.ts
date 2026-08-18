@@ -10,6 +10,30 @@ export type ProgrammaticCheck = {
   negative?: boolean;
 };
 
+/**
+ * An adoption check detects metric engagement from tool-call **arguments**
+ * alone: it is satisfied when some single tool call's input args name one of
+ * the scenario's target metrics, regardless of which tool was called. This
+ * keeps the grader arm-agnostic — a ClickStack metric tool naming
+ * `jvm.gc.pause` and a raw SQL query filtering `MetricName = 'jvm.gc.pause'`
+ * both count. Tool names and tool outputs are never matched.
+ */
+export type AdoptionCheck = {
+  id: string;
+  weight: number;
+  /**
+   * Any-of list of full metric names/keys (e.g.
+   * `process.runtime.jvm.memory.used`). Matched case-insensitively with
+   * `.`/`_`-tolerant separators, so `jvm_gc_pause` also counts.
+   */
+  metrics: string[];
+  /**
+   * Optional extra regex that must ALSO match the same call's args (e.g.
+   * `pool|pod` for "grouped the memory metric by pod/pool").
+   */
+  alsoPattern?: string;
+};
+
 type JudgeCriterion = {
   id: string;
   weight: number;
@@ -18,6 +42,12 @@ type JudgeCriterion = {
 
 export type Rubric = {
   programmatic: ProgrammaticCheck[];
+  /**
+   * Optional metric-adoption checks, run against the input args of each
+   * tool call (never tool names, outputs, or the prompt). Absent ⇒ the
+   * scenario has no adoption grading.
+   */
+  adoption?: AdoptionCheck[];
   judge: { criteria: JudgeCriterion[] };
 };
 
@@ -78,6 +108,11 @@ export type GradeRecord = {
   scenario: string;
   mcp: McpKind;
   programmatic: ProgrammaticResult;
+  /**
+   * Metric-adoption check results, when the scenario rubric defines an
+   * `adoption` block. Absent when the rubric has no `adoption` block.
+   */
+  adoption?: ProgrammaticResult;
   judge: JudgeResult | null;
   toolErrors: ToolErrorStats;
   /**

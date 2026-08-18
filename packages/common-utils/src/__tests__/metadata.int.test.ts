@@ -2,6 +2,7 @@ import { createClient } from '@clickhouse/client';
 import { ClickHouseClient } from '@clickhouse/client';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
+import { supportsMergeTreeTextIndex } from '@/core/clickhouseVersion';
 import { Metadata, MetadataCache } from '@/core/metadata';
 import {
   parseKvItemsCastExpression,
@@ -777,45 +778,71 @@ describe('Metadata Integration Tests', () => {
     });
   });
 
-  describe('getAllFieldsAndValues', () => {
-    let metadata: Metadata;
-    const kvRollupTableName = 'test_kv_rollup';
+  describe('getAllKeyValues (strategy routing)', () => {
+    // Exercises the four strategies `getAllKeyValues` routes to, against the
+    // production `default.otel_logs` schema (auto-created by the OTel
+    // Collector's migration on stack startup — see
+    // docker/otel-collector/schema/seed/00002_otel_logs.sql and
+    // 00006_otel_logs_rollups.sql). No custom tables or MVs are created here.
+    const connectionId = 'test_connection';
+    const tag = `getAllKeyValues-routing-${Date.now()}`;
 
-    const metadataMVs = {
-      keyRollupTable: 'test_key_rollup', // not used by this method
-      kvRollupTable: kvRollupTableName,
-      granularity: '1 minute',
+    // Anchor timestamps to now so they stay inside the otel_logs 1-day TTL.
+    // The 15-minute-bucketed MV rows for these inserts land in the bucket
+    // containing `testTime`, so the query dateRange below must cover it.
+    const testTime = new Date();
+    const dateRange: [Date, Date] = [
+      new Date(testTime.getTime() - 60 * 60 * 1000),
+      new Date(testTime.getTime() + 60 * 1000),
+    ];
+
+    const commonArgs = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId,
+      dateRange,
+      timestampValueExpression: 'Timestamp',
+      metadataMVs: {
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute' as const,
+      },
     };
 
-    beforeAll(async () => {
-      // Create KV rollup table matching the schema getAllFieldsAndValues expects
-      await client.command({
-        query: `CREATE OR REPLACE TABLE default.${kvRollupTableName} (
-            Timestamp DateTime CODEC(Delta, ZSTD(1)),
-            ColumnIdentifier String CODEC(ZSTD(1)),
-            Key String CODEC(ZSTD(1)),
-            Value String CODEC(ZSTD(1)),
-            count UInt64
-          )
-          ENGINE = SummingMergeTree()
-          ORDER BY (Timestamp, ColumnIdentifier, Key, Value)
-        `,
-      });
+    // Values unique to this suite so `expect.arrayContaining` still passes
+    // when the shared table already holds other rows (dev stacks with live
+    // telemetry). The MV's default maxValuesPerKey=20 could otherwise drop
+    // our values if the target key already has >20 distinct entries.
+    const podNameA = `pod-a-${tag}`;
+    const podNameB = `pod-b-${tag}`;
+    const traceIdA = `trace-a-${tag}`;
+    const traceIdB = `trace-b-${tag}`;
+    const traceIdC = `trace-c-${tag}`;
+    const bodyA = `Body A ${tag}`;
+    const bodyB = `Body B ${tag}`;
+    const bodyC = `Body C ${tag}`;
+    const schemaUrlA = `https://example.test/${tag}/a`;
+    const schemaUrlB = `https://example.test/${tag}/b`;
+    const mapKey = `pod.name.${tag}`;
 
-      // Insert sample data: native columns + map sub-fields
+    let metadata: Metadata;
+    // `mergeTreeTextIndex(...)` — used by both getMapTextIndexKeyValues and
+    // getTextIndexKeyValues — was introduced in 26.3. Older servers skip
+    // those code paths entirely, which would make the routing assertions
+    // meaningless. Detect once and skip those two cases on older servers.
+    let textIndexSupported = false;
+
+    beforeAll(async () => {
+      const probe = new Metadata(hdxClient, new MetadataCache());
+      const version = await probe.getServerVersion({ connectionId });
+      textIndexSupported = supportsMergeTreeTextIndex(version);
+
+      const timestamp = testTime.toISOString().replace('T', ' ').slice(0, 23);
       await client.command({
-        query: `INSERT INTO default.${kvRollupTableName}
-          (Timestamp, ColumnIdentifier, Key, Value, count) VALUES
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'info', 10),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'error', 5),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'warning', 2),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', '', 1),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'ServiceName', 'api', 8),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'ServiceName', 'web', 6),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'env', 'prod', 12),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'env', 'staging', 3),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'region', 'us-east', 7),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'region', 'eu-west', 4)
+        query: `INSERT INTO default.otel_logs
+          (Timestamp, TraceId, ServiceName, SeverityText, Body, ResourceSchemaUrl, ResourceAttributes) VALUES
+          ('${timestamp}', '${traceIdA}', 'api', 'info',    '${bodyA}', '${schemaUrlA}', {'${mapKey}': '${podNameA}'}),
+          ('${timestamp}', '${traceIdB}', 'api', 'error',   '${bodyB}', '${schemaUrlA}', {'${mapKey}': '${podNameB}'}),
+          ('${timestamp}', '${traceIdC}', 'web', 'warning', '${bodyC}', '${schemaUrlB}', {'${mapKey}': '${podNameA}'})
         `,
       });
     });
@@ -824,137 +851,124 @@ describe('Metadata Integration Tests', () => {
       metadata = new Metadata(hdxClient, new MetadataCache());
     });
 
-    afterAll(async () => {
-      await client.command({
-        query: `DROP TABLE IF EXISTS default.${kvRollupTableName}`,
-      });
+    afterEach(() => {
+      jest.restoreAllMocks();
     });
 
-    it('should return all keys and values from the KV rollup table', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-      });
+    type StrategySpies = {
+      mapTextIndex: jest.SpyInstance;
+      textIndex: jest.SpyInstance;
+      mv: jest.SpyInstance;
+      raw: jest.SpyInstance;
+    };
 
-      // Should have 4 keys: SeverityText, ServiceName, ResourceAttributes['env'], ResourceAttributes['region']
-      expect(result).toHaveLength(4);
-
-      // Native columns use bare key names
-      const severity = result.find(r => r.key === 'SeverityText');
-      expect(severity).toBeDefined();
-      expect(severity!.value).toEqual(
-        expect.arrayContaining(['info', 'error', 'warning']),
-      );
-      // Empty values should be excluded
-      expect(severity!.value).not.toContain('');
-
-      const service = result.find(r => r.key === 'ServiceName');
-      expect(service).toBeDefined();
-      expect(service!.value).toEqual(expect.arrayContaining(['api', 'web']));
-
-      // Map sub-fields use bracket notation
-      const env = result.find(r => r.key === "ResourceAttributes['env']");
-      expect(env).toBeDefined();
-      expect(env!.value).toEqual(expect.arrayContaining(['prod', 'staging']));
-
-      const region = result.find(r => r.key === "ResourceAttributes['region']");
-      expect(region).toBeDefined();
-      expect(region!.value).toEqual(
-        expect.arrayContaining(['us-east', 'eu-west']),
-      );
+    const spyOnAllStrategies = (m: Metadata): StrategySpies => ({
+      mapTextIndex: jest.spyOn(m as any, 'getMapTextIndexKeyValues'),
+      textIndex: jest.spyOn(m as any, 'getTextIndexKeyValues'),
+      mv: jest.spyOn(m as any, 'getMetadataMVKeyValues'),
+      raw: jest.spyOn(m, 'getKeyValues'),
     });
 
-    it('should return native columns before map sub-fields', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-      });
-
-      // NativeColumn rows are ordered first by the ORDER BY clause
-      const nativeKeys = result
-        .filter(r => !r.key.includes('['))
-        .map(r => r.key);
-      const mapKeys = result.filter(r => r.key.includes('[')).map(r => r.key);
-
-      // All native keys should come before map keys
-      const lastNativeIdx = Math.max(
-        ...nativeKeys.map(k => result.findIndex(r => r.key === k)),
-      );
-      const firstMapIdx = Math.min(
-        ...mapKeys.map(k => result.findIndex(r => r.key === k)),
-      );
-      expect(lastNativeIdx).toBeLessThan(firstMapIdx);
-    });
-
-    it('should respect maxKeys limit', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-        maxKeys: 2,
-      });
-
-      expect(result).toHaveLength(2);
-    });
-
-    it('should respect maxValuesPerKey limit', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-        maxValuesPerKey: 1,
-      });
-
-      // Each key should have at most 1 value
-      for (const entry of result) {
-        expect(entry.value.length).toBeLessThanOrEqual(1);
+    const expectOnlyCalled = (
+      spies: StrategySpies,
+      called: keyof StrategySpies,
+    ) => {
+      for (const [name, spy] of Object.entries(spies)) {
+        if (name === called) {
+          expect(spy).toHaveBeenCalledTimes(1);
+        } else {
+          expect(spy).not.toHaveBeenCalled();
+        }
       }
-    });
+    };
 
-    it('should return empty array when metadataMVs is undefined', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs: undefined,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+    it(`routes ResourceAttributes[<mapKey>] through getMapTextIndexKeyValues`, async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: [`ResourceAttributes['${mapKey}']`],
       });
 
-      expect(result).toEqual([]);
+      expectOnlyCalled(spies, 'mapTextIndex');
+
+      const podNames = result.find(
+        r => r.key === `ResourceAttributes['${mapKey}']`,
+      );
+      expect(podNames).toBeDefined();
+      expect(podNames!.value).toEqual(
+        expect.arrayContaining([podNameA, podNameB]),
+      );
     });
 
-    it('should return empty array when dateRange is undefined', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: undefined,
+    it('routes TraceId through getTextIndexKeyValues', async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['TraceId'],
       });
 
-      expect(result).toEqual([]);
+      expectOnlyCalled(spies, 'textIndex');
+
+      const traceIds = result.find(r => r.key === 'TraceId');
+      expect(traceIds).toBeDefined();
+      expect(traceIds!.value).toEqual(
+        expect.arrayContaining([traceIdA, traceIdB, traceIdC]),
+      );
     });
 
-    it('should return empty array when date range has no matching data', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2025-06-01'), new Date('2025-06-30')],
+    it('routes ResourceSchemaUrl through getMetadataMVKeyValues', async () => {
+      // ResourceSchemaUrl has no text index but appears as a NativeColumn
+      // in the otel_logs_attr_kv_rollup_15m_mv SELECT, so it should be
+      // routed through the MV.
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['ResourceSchemaUrl'],
       });
 
-      expect(result).toEqual([]);
+      expectOnlyCalled(spies, 'mv');
+
+      const schemas = result.find(r => r.key === 'ResourceSchemaUrl');
+      expect(schemas).toBeDefined();
+      expect(schemas!.value).toEqual(
+        expect.arrayContaining([schemaUrlA, schemaUrlB]),
+      );
+    });
+
+    it('routes Body through getKeyValues (raw table fallback)', async () => {
+      // The `idx_lower_body` skip index is on the expression `lower(Body)`,
+      // not the bare `Body` column, so getNativeArrayColumnTextIndexes will
+      // not match it. Body is also absent from the KV rollup MV SELECT.
+      // The only remaining route is the raw-table fallback via getKeyValues.
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['Body'],
+      });
+
+      expectOnlyCalled(spies, 'raw');
+
+      const bodies = result.find(r => r.key === 'Body');
+      expect(bodies).toBeDefined();
+      expect(bodies!.value).toEqual(
+        expect.arrayContaining([bodyA, bodyB, bodyC]),
+      );
     });
   });
 });

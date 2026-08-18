@@ -9,13 +9,11 @@ import type {
 } from '@clickhouse/client-common';
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
-import objectHash from 'object-hash';
 
 import { getMetadata, Metadata } from '@/core/metadata';
 import {
   renderChartConfig,
   setChartSelectsAlias,
-  splitChartConfigs,
 } from '@/core/renderChartConfig';
 import {
   extractSettingsClauseFromEnd,
@@ -96,6 +94,22 @@ export const convertCHDataTypeToJSType = (
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
   } else if (dataType.startsWith('Nullable(')) {
     return convertCHDataTypeToJSType(dataType.slice(9, -1));
+  } else if (dataType.startsWith('Variant(') && dataType.endsWith(')')) {
+    // A UNION ALL over branches whose column types have no least supertype
+    // (e.g. Float64 and Int64) unifies as Variant(...) when the server runs
+    // with use_variant_as_common_type = 1 (the modern default). Treat an
+    // all-numeric Variant as numeric so such columns still chart; mixed
+    // variants stay unclassified.
+    const memberTypes = splitAndTrimWithBracket(dataType.slice(8, -1));
+    if (
+      memberTypes.length > 0 &&
+      memberTypes.every(
+        memberType =>
+          convertCHDataTypeToJSType(memberType) === JSDataType.Number,
+      )
+    ) {
+      return JSDataType.Number;
+    }
   }
 
   return null;
@@ -362,74 +376,6 @@ export const extractColumnReferencesFromKey = (expr: string): string[] => {
   });
 };
 
-const castToNumber = (value: string | number) => {
-  if (typeof value === 'string') {
-    if (value.trim() === '') {
-      return NaN;
-    }
-    return Number(value);
-  }
-  return value;
-};
-
-export const computeRatio = (
-  numeratorInput: string | number,
-  denominatorInput: string | number,
-) => {
-  const numerator = castToNumber(numeratorInput);
-  const denominator = castToNumber(denominatorInput);
-
-  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
-    return NaN;
-  }
-
-  return numerator / denominator;
-};
-
-export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
-  const _meta = resultSet.meta;
-  const _data = resultSet.data;
-  const timestampColumn = inferTimestampColumn(_meta ?? []);
-  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
-  const firstColumn = _restColumns?.[0];
-  const secondColumn = _restColumns?.[1];
-  if (!firstColumn || !secondColumn) {
-    throw new Error(
-      `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
-    );
-  }
-  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
-  const result = {
-    ...resultSet,
-    data: _data.map(row => ({
-      [ratioColumnName]: computeRatio(
-        row[firstColumn.name],
-        row[secondColumn.name],
-      ),
-      ...(timestampColumn
-        ? {
-            [timestampColumn.name]: row[timestampColumn.name],
-          }
-        : {}),
-    })),
-    meta: [
-      {
-        name: ratioColumnName,
-        type: 'Float64',
-      },
-      ...(timestampColumn
-        ? [
-            {
-              name: timestampColumn.name,
-              type: timestampColumn.type,
-            },
-          ]
-        : []),
-    ],
-  };
-  return result;
-};
-
 export interface QueryInputs<Format extends DataFormat> {
   query: string;
   format?: Format;
@@ -486,6 +432,15 @@ export abstract class BaseClickhouseClient {
     }
   }
 
+  /**
+   * The configured request timeout in milliseconds. Exposed so callers (e.g.
+   * the alert task) can produce actionable error messages when a query is
+   * aborted by this timeout.
+   */
+  get requestTimeoutMs(): number {
+    return this.requestTimeout;
+  }
+
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
     if (!this.client) {
       throw new Error(
@@ -506,7 +461,7 @@ export abstract class BaseClickhouseClient {
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
+    } catch {
       debugSql = query;
     }
 
@@ -615,12 +570,12 @@ export abstract class BaseClickhouseClient {
                 sql: props.query,
                 params: props.query_params ?? {},
               });
-            } catch (e) {
+            } catch {
               debugSql = props.query;
             }
             err = new ClickHouseQueryError(error.message, debugSql);
             err.cause = error;
-          } catch (_) {
+          } catch {
             // ignore
           }
 
@@ -637,8 +592,13 @@ export abstract class BaseClickhouseClient {
     inputs: QueryInputs<Format>,
   ): Promise<BaseResultSet<ReadableStream, Format>>;
 
-  // TODO: only used when multi-series 'metrics' is selected (no effects on the events chart)
-  // eventually we want to generate union CTEs on the db side instead of computing it on the client side
+  /**
+   * Render the chart config into a single ClickHouse query and return the
+   * JSON result set. Multi-series metric charts (which used to fan out into
+   * one query per series merged client-side) are composed into one UNION ALL
+   * + pivot statement by renderChartConfig, so every config is exactly one
+   * query round trip.
+   */
   async queryChartConfig({
     config,
     metadata,
@@ -656,95 +616,17 @@ export abstract class BaseClickhouseClient {
     config = isBuilderChartConfig(config)
       ? setChartSelectsAlias(config)
       : config;
-    const queries: ChSql[] = await Promise.all(
-      splitChartConfigs(config).map(c =>
-        renderChartConfig(c, metadata, querySettings),
-      ),
-    );
+    const query = await renderChartConfig(config, metadata, querySettings);
 
-    const isTimeSeries = config.displayType === 'line';
-
-    const resultSets = await Promise.all(
-      queries.map(async query => {
-        const resp = await this.query<'JSON'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSON',
-          abort_signal: opts?.abort_signal,
-          connectionId: config.connection,
-          clickhouse_settings: opts?.clickhouse_settings,
-        });
-        return resp.json<any>();
-      }),
-    );
-
-    if (resultSets.length === 1) {
-      return resultSets[0];
-    }
-    // metrics -> join resultSets
-    else if (isBuilderChartConfig(config) && resultSets.length > 1) {
-      const metaSet = new Map<string, { name: string; type: string }>();
-      const tsBucketMap = new Map<string, Record<string, string | number>>();
-      // Seed metaSet with each split's value column in resultSet order, so the
-      // joined meta is [value0, value1, ..., non-value columns]. This matches the
-      // order of config.select that useChartNumberFormats indexes into.
-      for (const resultSet of resultSets) {
-        const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
-        if (valueColumn && !metaSet.has(valueColumn.name)) {
-          metaSet.set(valueColumn.name, valueColumn);
-        }
-      }
-      // Add other (non-value) columns to metaSet
-      for (const resultSet of resultSets) {
-        if (Array.isArray(resultSet.meta)) {
-          for (const meta of resultSet.meta) {
-            const key = meta.name;
-            if (!metaSet.has(key)) {
-              metaSet.set(key, meta);
-            }
-          }
-        }
-
-        const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
-        const numericColumn = inferNumericColumn(resultSet.meta ?? []);
-        const numericColumnName = numericColumn?.[0]?.name;
-        for (const row of resultSet.data) {
-          const _rowWithoutValue = numericColumnName
-            ? Object.fromEntries(
-                Object.entries(row).filter(
-                  ([key]) => key !== numericColumnName,
-                ),
-              )
-            : { ...row };
-          const ts =
-            timestampColumn != null
-              ? row[timestampColumn.name]
-              : isTimeSeries
-                ? objectHash(_rowWithoutValue)
-                : '__FIXED_TIMESTAMP__';
-          if (tsBucketMap.has(ts)) {
-            const existingRow = tsBucketMap.get(ts);
-            tsBucketMap.set(ts, {
-              ...existingRow,
-              ...row,
-            });
-          } else {
-            tsBucketMap.set(ts, row);
-          }
-        }
-      }
-
-      const isRatio =
-        config.seriesReturnType === 'ratio' && resultSets.length === 2;
-
-      const _resultSet: ResponseJSON<any> = {
-        meta: Array.from(metaSet.values()),
-        data: Array.from(tsBucketMap.values()),
-      };
-      // TODO: we should compute the ratio on the db side
-      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
-    }
-    throw new Error('No result sets');
+    const resp = await this.query<'JSON'>({
+      query: query.sql,
+      query_params: query.params,
+      format: 'JSON',
+      abort_signal: opts?.abort_signal,
+      connectionId: config.connection,
+      clickhouse_settings: opts?.clickhouse_settings,
+    });
+    return resp.json<any>();
   }
 
   /**
@@ -828,7 +710,9 @@ export function parameterizedQueryToSql({
   params: Record<string, any>;
 }) {
   return Object.entries(params).reduce((acc, [key, value]) => {
-    return acc.replace(new RegExp(`{${key}:\\w+}`, 'g'), value);
+    return acc.replace(new RegExp(`{${key}:(\\w+)}`, 'g'), (_, type) => {
+      return type === 'String' ? `'${value}'` : String(value);
+    });
   }, sql);
 }
 

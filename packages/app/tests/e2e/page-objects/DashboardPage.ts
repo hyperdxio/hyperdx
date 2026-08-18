@@ -81,9 +81,13 @@ export class DashboardPage {
   private readonly editFiltersButton: Locator;
   private readonly filtersListModal: Locator;
   private readonly emptyFiltersListModal: Locator;
-  private readonly addFiltersButton: Locator;
+  readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
-  private readonly filtersSourceSelector: Locator;
+  readonly filtersSourceSelector: Locator;
+  readonly appliesToSourceSelector: Locator;
+  readonly broadcastFilterCheckbox: Locator;
+  readonly variableEnabledCheckbox: Locator;
+  readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
   private readonly aliasInput: Locator;
@@ -97,6 +101,12 @@ export class DashboardPage {
   private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
+  private readonly enterKioskModeMenuItem: Locator;
+  private readonly toggleReleaseAnnotationsMenuItem: Locator;
+  private readonly exitKioskModeBtn: Locator;
+  private readonly kioskHeaderContainer: Locator;
+  private readonly kioskLiveStatusBadge: Locator;
+  readonly appNav: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -131,6 +141,16 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+    this.appliesToSourceSelector = page.getByTestId(
+      'applies-to-source-selector',
+    );
+    this.broadcastFilterCheckbox = page.getByTestId(
+      'filter-broadcast-checkbox',
+    );
+    this.variableEnabledCheckbox = page.getByTestId(
+      'filter-variable-enabled-checkbox',
+    );
+    this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
 
     // Tile editor selectors
@@ -138,7 +158,9 @@ export class DashboardPage {
     this.aliasInput = page.getByTestId('series-alias-input');
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.markdownTextarea = page.locator('textarea[name="markdown"]');
-    this.confirmModal = page.getByTestId('confirm-modal');
+    this.confirmModal = page
+      .getByRole('dialog')
+      .filter({ has: page.getByTestId('confirm-confirm-button') });
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
@@ -154,6 +176,16 @@ export class DashboardPage {
     this.exportDashboardMenuItem = page.getByTestId(
       'export-dashboard-menu-item',
     );
+    this.enterKioskModeMenuItem = page.getByTestId(
+      'enter-kiosk-mode-menu-item',
+    );
+    this.toggleReleaseAnnotationsMenuItem = page.getByTestId(
+      'toggle-release-annotations-menu-item',
+    );
+    this.exitKioskModeBtn = page.getByTestId('exit-kiosk-mode-button');
+    this.kioskHeaderContainer = page.getByTestId('kiosk-header');
+    this.kioskLiveStatusBadge = page.getByTestId('kiosk-live-status');
+    this.appNav = page.getByTestId('app-nav');
   }
 
   /**
@@ -557,13 +589,24 @@ export class DashboardPage {
    * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
    * relies on the editor's default source), this selects a known source so the
    * exported tile carries a deterministic source name that auto-maps on import.
+   *
+   * `seriesWhere` sets the tile's own filter, which a time chart stores as its
+   * series' `aggCondition` — a different field from the dashboard-wide filter
+   * that `setGlobalFilter` drives.
    */
-  async addTileWithSource(chartName: string, sourceName: string) {
+  async addTileWithSource(
+    chartName: string,
+    sourceName: string,
+    seriesWhere?: string,
+  ) {
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartName(chartName);
     await this.chartEditor.selectSource(sourceName);
+    if (seriesWhere != null) {
+      await this.chartEditor.setSeriesWhere(seriesWhere);
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
     await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
@@ -647,6 +690,10 @@ export class DashboardPage {
    */
   async setGlobalFilter(filter: string) {
     await this.searchInput.fill(filter);
+    // Dismiss the suggestion popover, which otherwise overlays the submit
+    // button and fails its actionability check. Blur (not Escape) so it can't
+    // close a surrounding modal — same reasoning as `dismissSqlAutocomplete`.
+    await this.searchInput.blur();
     await this.searchSubmitButton.click();
   }
 
@@ -660,9 +707,54 @@ export class DashboardPage {
     await this.removeDefaultQueryAndFiltersMenuItem.click();
   }
 
-  async deleteDashboard() {
+  /**
+   * Open the "Delete Dashboard" confirm dialog via the dashboard overflow menu
+   * without confirming. The caller can then assert the modal is visible and
+   * choose to cancel (`cancelDeleteDashboardDialog`) or confirm
+   * (`confirmDeleteDashboard`).
+   */
+  async openDeleteDashboardDialog() {
     await this.dashboardMenuButton.click();
     await this.deleteDashboardMenuItem.click();
+  }
+
+  /**
+   * Click the cancel button inside the delete-dashboard confirm modal.
+   */
+  async cancelDeleteDashboardDialog() {
+    await this.confirmCancelButton.click();
+  }
+
+  /**
+   * Click the confirm button inside the delete-dashboard confirm modal.
+   */
+  async confirmDeleteDashboard() {
+    await this.confirmConfirmButton.click();
+  }
+
+  /**
+   * Open the delete-dashboard dialog and immediately confirm it.
+   * Convenience wrapper for tests that only need the happy path.
+   */
+  async deleteDashboard() {
+    await this.openDeleteDashboardDialog();
+    await this.confirmDeleteDashboard();
+  }
+
+  /**
+   * The shared confirm modal. Exposed so specs can assert it is
+   * visible/hidden during the delete-dashboard flow.
+   */
+  get deleteConfirmModal(): Locator {
+    return this.confirmModal;
+  }
+
+  /**
+   * The dashboard page shell container. Used to verify the dashboard is
+   * still present after cancelling a deletion.
+   */
+  get dashboardPageContainer(): Locator {
+    return this.page.getByTestId('dashboard-page');
   }
 
   /**
@@ -736,20 +828,39 @@ export class DashboardPage {
     await this.closeFiltersModalButton.click();
   }
 
+  /**
+   * Open the "Add filter" form inside the Edit Filters Modal, without filling
+   * it in. Use when a test needs to interact with the form's inputs; use
+   * `addFilterToDashboard` to fill and save one in a single step.
+   */
+  async openAddFilterForm() {
+    await this.addFiltersButton.click();
+  }
+
+  /** Pick the data source in the filter edit form. */
+  async selectFilterSource(sourceName: string) {
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
   async fillFilterForm(
     name: string,
     sourceName: string,
     expression: string,
     metricType?: string,
     appliesToSourceNames?: string[],
+    variableOptions?: {
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+      variableName?: string;
+    },
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
 
-    await this.filtersSourceSelector.click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
+    await this.selectFilterSource(sourceName);
 
     const editor = getSqlEditor(this.page, 'expression');
     await editor.click();
@@ -761,12 +872,21 @@ export class DashboardPage {
         .click();
     }
 
+    // Applied before the applies-to selector below, because unchecking broadcast
+    // hides that control.
+    if (variableOptions?.isBroadcastEnabled === false) {
+      await this.broadcastFilterCheckbox.uncheck();
+    }
+    if (variableOptions?.isVariableEnabled === false) {
+      await this.variableEnabledCheckbox.uncheck();
+    } else if (variableOptions?.variableName !== undefined) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
-      const appliesToSelector = this.page.getByTestId(
-        'applies-to-source-selector',
-      );
       for (const appliesName of appliesToSourceNames) {
-        await appliesToSelector.click();
+        await this.appliesToSourceSelector.click();
         await this.page
           .getByRole('option', { name: appliesName, exact: true })
           .click();
@@ -785,6 +905,11 @@ export class DashboardPage {
     expression: string,
     metricType?: string,
     appliesToSourceNames?: string[],
+    variableOptions?: {
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+      variableName?: string;
+    },
   ) {
     await this.addFiltersButton.click();
 
@@ -794,6 +919,7 @@ export class DashboardPage {
       expression,
       metricType,
       appliesToSourceNames,
+      variableOptions,
     );
   }
 
@@ -821,12 +947,95 @@ export class DashboardPage {
     await this.fillFilterForm(name, sourceName, expression, metricType);
   }
 
+  /**
+   * Toggle "Broadcast filter condition" on an already-saved filter and save.
+   * Assumes the filters list modal is open.
+   */
+  async setFilterBroadcastEnabled(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.broadcastFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /** The warning icon shown when a filter neither broadcasts nor is a variable. */
+  getFilterNoEffectIcon(name: string) {
+    return this.page.getByTestId(`dashboard-filter-no-effect-${name}`);
+  }
+
   getFilterItemByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-item-${name}`);
   }
 
   getFilterSelectByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-select-${name}`);
+  }
+
+  /**
+   * Locator for the freeform search/text field inside a dashboard filter's
+   * select (the underlying Mantine `PillsInput.Field`). Scoped to the
+   * filter's select test id so it stays unambiguous across multiple filters.
+   */
+  getFilterSearchInput(filterName: string): Locator {
+    return this.getFilterSelectByName(filterName).getByRole('textbox');
+  }
+
+  /**
+   * Locator for the pill rendered for `value` inside a dashboard filter's
+   * select. Pills (Mantine `Pill`) render the selected value as their text
+   * content; scoping to the filter select keeps this from matching an
+   * equally-named dropdown option or another filter's pill.
+   */
+  getFilterPill(filterName: string, value: string): Locator {
+    return this.getFilterSelectByName(filterName).getByText(value, {
+      exact: true,
+    });
+  }
+
+  /**
+   * Locator for the "Nothing found..." Combobox.Empty state rendered when a
+   * dashboard filter's search text matches no dropdown option. This renders
+   * in a portaled Combobox.Dropdown outside the filter select's DOM subtree,
+   * so it's located at the page level. `.first()` guards against multiple
+   * (mostly-hidden) dropdown portals coexisting in the DOM.
+   */
+  getFilterEmptyDropdownState(): Locator {
+    return this.page.getByText('Nothing found...').first();
+  }
+
+  /**
+   * Click into a dashboard filter's select and type `value` into its search
+   * field without submitting. Used to drive the freeform-filter-value flow,
+   * where the caller asserts the "Nothing found..." empty dropdown state
+   * before pressing Enter (see `submitFilterSearchValue`) to add the typed
+   * value as a pill.
+   */
+  async typeFilterSearchValue(filterName: string, value: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.click();
+    const input = this.getFilterSearchInput(filterName);
+    await input.click();
+    await input.fill(value);
+  }
+
+  /**
+   * Press Enter in a dashboard filter's search field. When no dropdown
+   * option is keyboard-highlighted, `VirtualMultiSelect` treats this as
+   * "add the typed value as a pill" rather than submitting a highlighted
+   * option (see `handleKeyDown` in VirtualMultiSelect.tsx).
+   */
+  async submitFilterSearchValue(filterName: string) {
+    await this.getFilterSearchInput(filterName).press('Enter');
+  }
+
+  /**
+   * Focus a dashboard filter's (empty) search field and press Backspace,
+   * removing the most recently added pill. Mirrors `handleKeyDown`'s
+   * "Backspace with empty search removes the last value" behavior.
+   */
+  async removeLastFilterPillViaBackspace(filterName: string) {
+    const input = this.getFilterSearchInput(filterName);
+    await input.click();
+    await input.press('Backspace');
   }
 
   /**
@@ -1211,6 +1420,119 @@ export class DashboardPage {
     await this.ignoredUrlFiltersBanner
       .getByRole('button', { name: 'Dismiss' })
       .click();
+  }
+
+  // ---- Chart annotation helpers ----
+
+  /**
+   * Open the dashboard overflow menu and toggle deployment markers on tile
+   * charts. Expects the menu item with
+   * data-testid="toggle-release-annotations-menu-item", which only renders once
+   * the dashboard has at least one tile.
+   */
+  async toggleReleaseAnnotations() {
+    await this.dashboardMenuButton.click();
+    await this.toggleReleaseAnnotationsMenuItem.click();
+  }
+
+  /**
+   * Annotation markers (deployments, alerts) drawn on a tile's time chart as
+   * dashed vertical Recharts reference lines.
+   */
+  getAnnotationMarkers(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('.recharts-reference-line');
+  }
+
+  /**
+   * Transparent hover targets over the annotation markers, one per cluster.
+   * Hovering one opens a tooltip naming the services that released.
+   */
+  getAnnotationHitTargets(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator(
+      '.recharts-annotation-hit-layer rect',
+    );
+  }
+
+  /**
+   * Text labels for the annotation markers. Recharts hoists reference-line
+   * labels into a separate z-index layer, so they are NOT descendants of the
+   * `.recharts-reference-line` group and cannot be matched by filtering it.
+   */
+  getAnnotationLabels(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('text.recharts-label');
+  }
+
+  // ---- Kiosk mode helpers ----
+
+  /**
+   * Open the dashboard overflow menu and click "Enter kiosk mode".
+   * Expects the menu item with data-testid="enter-kiosk-mode-menu-item".
+   */
+  async enterKioskMode() {
+    await this.dashboardMenuButton.click();
+    await this.enterKioskModeMenuItem.click();
+  }
+
+  /**
+   * Click the "Exit kiosk mode" button (data-testid="exit-kiosk-mode-button")
+   * that is rendered as part of the kiosk chrome.
+   */
+  async exitKioskMode() {
+    await this.exitKioskModeBtn.click();
+  }
+
+  /**
+   * Locator scoped to the kiosk header bar that contains `name` as text.
+   * Used to verify the saved dashboard name is displayed in kiosk mode.
+   */
+  getKioskHeading(name: string): Locator {
+    return this.kioskHeaderContainer.getByText(name, { exact: false });
+  }
+
+  /** The full kiosk header bar (data-testid="kiosk-header"). */
+  get kioskHeader(): Locator {
+    return this.kioskHeaderContainer;
+  }
+
+  /**
+   * The "Live" read-only status badge shown in kiosk mode
+   * (data-testid="kiosk-live-status").
+   */
+  get kioskLiveStatus(): Locator {
+    return this.kioskLiveStatusBadge;
+  }
+
+  /**
+   * The first tile actions (kebab) button. In kiosk mode this should be absent
+   * or hidden, confirming that tile edit affordances are locked.
+   */
+  get firstTileActionsButton(): Locator {
+    return this.page.locator('[data-testid^="tile-actions-button-"]').first();
+  }
+
+  /**
+   * All react-grid-layout resize handles on the dashboard grid. In kiosk mode
+   * the grid is static so every handle must be absent or hidden.
+   */
+  get tileResizeHandles(): Locator {
+    return this.page.locator('.react-resizable-handle');
+  }
+
+  /**
+   * Reload the current page and wait for the network to settle.
+   * Prefer this over `page.reload()` in spec files so all navigation
+   * stays inside the page object.
+   */
+  async reload() {
+    await this.page.reload({ waitUntil: 'networkidle' });
+  }
+
+  /**
+   * The dashboard overflow ("...") menu button. Exposed so specs can assert
+   * it is hidden in kiosk mode without needing to open it.
+   */
+  get menuButton(): Locator {
+    return this.dashboardMenuButton;
   }
 
   // Getters for assertions

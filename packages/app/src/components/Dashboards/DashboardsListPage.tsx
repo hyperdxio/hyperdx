@@ -153,7 +153,7 @@ export default function DashboardsListPage() {
     async (id: string) => {
       const confirmed = await confirm(
         'Are you sure you want to delete this dashboard? This action cannot be undone.',
-        'Delete',
+        'Delete Dashboard',
         { variant: 'danger' },
       );
       if (!confirmed) return;

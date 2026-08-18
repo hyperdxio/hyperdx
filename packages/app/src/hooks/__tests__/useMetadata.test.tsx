@@ -14,6 +14,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import api from '@/api';
 import {
   deduplicate2dArray,
+  intersect2dArray,
   useGetKeyValues,
   useMultipleAllFields,
   useMultipleGetKeyValues,
@@ -403,6 +404,67 @@ describe('useMultipleAllFields', () => {
 
     expect(result.current.data).toEqual(fieldsA);
   });
+
+  // `tcFromSource` returns an all-empty-strings connection (never undefined)
+  // while the source is still loading, so an unpopulated connection must never
+  // reach `getAllFields` — it would issue `DESCRIBE .` with no connection id.
+  it('should not fetch for an unpopulated table connection', async () => {
+    const getAllFields = jest.spyOn(mockMetadata, 'getAllFields');
+
+    const { result } = renderHook(
+      () =>
+        useMultipleAllFields([
+          { databaseName: '', tableName: '', connectionId: '' },
+        ]),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('should not fetch for an unpopulated table connection even when the caller passes enabled: true', async () => {
+    const getAllFields = jest.spyOn(mockMetadata, 'getAllFields');
+
+    const { result } = renderHook(
+      () =>
+        useMultipleAllFields(
+          [{ databaseName: '', tableName: '', connectionId: '' }],
+          { enabled: true },
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('should still honor a caller opting out with enabled: false', async () => {
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(
+      () => useMultipleAllFields([tcA], { enabled: false }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('should fetch a populated table connection when the caller passes enabled: true', async () => {
+    jest.spyOn(mockMetadata, 'getAllFields').mockResolvedValueOnce(fieldsA);
+
+    const { result } = renderHook(
+      () => useMultipleAllFields([tcA], { enabled: true }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual(fieldsA);
+  });
 });
 
 describe('deduplicate2dArray', () => {
@@ -495,5 +557,47 @@ describe('deduplicate2dArray', () => {
     const result = deduplicate2dArray(input);
 
     expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }]);
+  });
+});
+
+describe('intersect2dArray', () => {
+  it('keeps only elements present in every sub-array', () => {
+    const input = [
+      [
+        { id: 1, name: 'Alice' },
+        { id: 2, name: 'Bob' },
+      ],
+      [
+        { id: 1, name: 'Alice' },
+        { id: 3, name: 'Charlie' },
+      ],
+    ];
+
+    // Only Alice appears in both — the fields valid across all connections.
+    expect(intersect2dArray(input)).toEqual([{ id: 1, name: 'Alice' }]);
+  });
+
+  it('collapses to empty when any sub-array is empty (a failed fetch fails closed)', () => {
+    const input = [[{ id: 1, name: 'Alice' }], []];
+
+    expect(intersect2dArray(input)).toEqual([]);
+  });
+
+  it('dedupes repeats within a single sub-array before intersecting', () => {
+    const input = [
+      [
+        { id: 1, name: 'Alice' },
+        { id: 1, name: 'Alice' },
+      ],
+      [{ id: 1, name: 'Alice' }],
+    ];
+
+    // A repeat within one table must not be counted twice toward the "present
+    // in every sub-array" tally.
+    expect(intersect2dArray(input)).toEqual([{ id: 1, name: 'Alice' }]);
+  });
+
+  it('returns empty for an empty 2D array', () => {
+    expect(intersect2dArray([])).toEqual([]);
   });
 });

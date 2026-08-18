@@ -28,8 +28,8 @@ import {
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
- * the three kinds the query renderer can translate today; summary and
- * exponential histogram are intentionally excluded. Imports the shared
+ * the kinds the query renderer can translate today; summary is intentionally
+ * excluded. Imports the shared
  * `QUERYABLE_METRIC_KINDS` source-of-truth tuple from `../sources/metricKinds`.
  */
 const mcpTileMetricTypeSchema = z.enum(QUERYABLE_METRIC_KINDS);
@@ -46,6 +46,40 @@ const tileLevelNumberFormatDescription =
   'Controls how the number value(s) are formatted for display. Applies to series or numbers without a series-level numberFormat. ' +
   'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
   'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+// Aggregation builder tiles (table, line, stacked_bar, number, pie, bar) do NOT
+// support a tile-level `where`: the chart editor only surfaces a per-select-item
+// filter, so a tile-level filter would be applied to the query yet stay
+// invisible and uneditable in the UI. Rather than silently dropping the field,
+// these fields are declared solely to REJECT it with an actionable message that
+// points at the per-select-item `where`. Keeping them as plain object fields (a
+// refinement, not a wrapping `.superRefine`) preserves each config schema's
+// `.shape` so the patch tile union can still read `.shape.config`.
+const rejectTileWhereMessage =
+  'This tile type has no tile-level `where`. Put the filter on each select ' +
+  'item\'s `where` instead (that is the tile\'s visible "Where" box); use a ' +
+  'dashboard-level filter to scope the whole dashboard.';
+
+const rejectedTileWhereField = z
+  .never({ invalid_type_error: rejectTileWhereMessage })
+  .optional()
+  .describe(
+    "Not supported on this tile type. Filter via each select item's `where`.",
+  );
+
+const rejectedTileWhereFields = {
+  where: rejectedTileWhereField,
+  whereLanguage: rejectedTileWhereField,
+};
+
+const timeChartSeriesLimitDescription =
+  'Maximum number of series to fetch (the "Series Limit" display setting). ' +
+  'Keeps the top-N groups by aggregated value over the queried range and ' +
+  'drops the rest. Requires `groupBy`; ignored on a chart without one. ' +
+  'Three-state: omit to apply the default render cap, 0 for unlimited, or a ' +
+  'positive N to keep the top N.';
+
+const seriesLimitSchema = z.number().int().nonnegative().optional();
 
 const numberTileColorDescription =
   'Static color for the displayed number, as a palette token such as ' +
@@ -137,8 +171,8 @@ const mcpTileSelectItemSchema = z
     aggFn: AggregateFunctionSchema.describe(
       'Aggregation function. "count" requires no valueExpression; all others do. ' +
         'METRIC SOURCES: "increase" computes the per-bucket counter increase for Sum metrics ' +
-        '(reset-aware). For Gauges use last_value/avg/min/max. For Histograms use "quantile" ' +
-        'with level or "count".',
+        '(reset-aware). For Gauges use last_value/avg/min/max. For Histograms and ' +
+        'Exponential Histograms use "quantile" with level or "count".',
     ),
     valueExpression: z
       .string()
@@ -155,7 +189,15 @@ const mcpTileSelectItemSchema = z
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Row filter for THIS series (compiles to `countIf(...)`). This is how ' +
+          "you filter a builder tile: the chart editor renders it as the tile's " +
+          'visible "Where" box, so the user can see and edit it. To scope the ' +
+          'whole tile to a subset of rows, put the same `where` on every select ' +
+          'item; use different filters per item for cohort comparisons (errors ' +
+          'vs total). There is no tile-level `where` for these tile types. ' +
+          'Lucene syntax by default. Example: "level:error"',
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     alias: z
@@ -170,7 +212,7 @@ const mcpTileSelectItemSchema = z
     level: externalQuantileLevelSchema
       .optional()
       .describe(
-        'Percentile level for aggFn="quantile". REQUIRED for histogram metrics with aggFn:"quantile".',
+        'Percentile level for aggFn="quantile". REQUIRED for histogram and exponential histogram metrics with aggFn:"quantile".',
       ),
     numberFormat: mcpNumberFormatSchema
       .optional()
@@ -178,9 +220,10 @@ const mcpTileSelectItemSchema = z
     metricType: mcpTileMetricTypeSchema
       .optional()
       .describe(
-        'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, or histogram. ' +
+        'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, histogram, or exponential histogram. ' +
           'Required (with metricName) when the tile sourceId is a metric source. ' +
-          'summary and exponential histogram are not supported by the renderer yet.',
+          'summary is not supported by the renderer — chart summary metrics with a raw ' +
+          'SQL tile (configType:"sql") against the table in the source\'s metricTables.summary.',
       ),
     metricName: z
       .string()
@@ -218,7 +261,12 @@ const mcpTileSelectItemSchema = z
         message: issue.message,
       });
     }
-  });
+  })
+  .transform(data =>
+    data.metricType && data.aggFn !== 'count' && !data.valueExpression
+      ? { ...data, valueExpression: 'Value' }
+      : data,
+  );
 
 // ─── OnClick (link-out) schemas for table tiles ──────────────────────────────
 const mcpOnClickFilterTemplateSchema = z
@@ -492,6 +540,7 @@ const mcpTileLayoutSchema = z.object({
 
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('line').describe('Line chart over time'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
@@ -529,11 +578,13 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
+    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
   }),
 });
 
 const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
@@ -546,11 +597,13 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
   }),
 });
 
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('table').describe('Tabular aggregated data'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
@@ -596,6 +649,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('number').describe('Single aggregate scalar value'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
@@ -621,6 +675,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('pie').describe('Pie chart'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).length(1),
@@ -646,12 +701,12 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
     limit: z
       .number()
       .int()
-      .positive()
+      .nonnegative()
       .optional()
       .describe(
         'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
           'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
-          'keeps the first N in that order. Omit to fetch all groups.',
+          'keeps the first N in that order. Omit or set 0 to fetch all groups.',
       ),
   }),
 });
@@ -661,6 +716,7 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
 // from 'stacked_bar', which is a time series.
 const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z
       .literal('bar')
       .describe('Bar chart — one bar per group value (not a time series)'),
@@ -688,12 +744,12 @@ const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
     limit: z
       .number()
       .int()
-      .positive()
+      .nonnegative()
       .optional()
       .describe(
         'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
           'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
-          'keeps the first N in that order. Omit to fetch all groups.',
+          'keeps the first N in that order. Omit or set 0 to fetch all groups.',
       ),
   }),
 });

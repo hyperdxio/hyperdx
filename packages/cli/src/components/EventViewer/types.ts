@@ -5,7 +5,6 @@ import type {
   SavedSearchResponse,
   ProxyClickhouseClient,
 } from '@/api/client';
-import type { TimeRange } from '@/utils/editor';
 
 export interface EventViewerProps {
   clickhouseClient: ProxyClickhouseClient;
@@ -17,6 +16,7 @@ export interface EventViewerProps {
   savedSearches: SavedSearchResponse[];
   onSavedSearchSelect: (search: SavedSearchResponse) => void;
   onOpenAlerts?: () => void;
+  onOpenDashboards?: () => void;
   initialQuery?: string;
   follow?: boolean;
 }

@@ -1,11 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import {
-  _useTry,
-  formatDate,
-  objectHash,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
   AlertThresholdType,
@@ -17,7 +13,6 @@ import {
   WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
-import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
 import { performance } from 'perf_hooks';
@@ -25,7 +20,6 @@ import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 
-import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { AlertSource, AlertState } from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
@@ -36,6 +30,7 @@ import {
   computeAliasWithClauses,
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
+import { WebhookRedirectError } from '@/tasks/checkAlerts/errors';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -46,6 +41,10 @@ import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
+import {
+  validateWebhookUrl,
+  WebhookUrlValidationError,
+} from '@/utils/validators';
 
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
 // happens in the background task, so failures only show up in logs today.
@@ -62,6 +61,21 @@ const webhookDeliveryDuration = getHistogram(
     unit: 'ms',
   },
 );
+
+const logBlockedWebhookDelivery = (error: unknown, webhook: IWebhook) => {
+  if (error instanceof WebhookUrlValidationError) {
+    logger.warn(
+      {
+        error: serializeError(error),
+        webhook: {
+          id: webhook._id.toString(),
+          team: webhook.team.toString(),
+        },
+      },
+      'Blocked alert webhook delivery',
+    );
+  }
+};
 
 const describeThresholdViolation = (
   thresholdType: AlertThresholdType,
@@ -118,6 +132,13 @@ const describeThreshold = (alert: AlertInput): string => {
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
+
+// Fallback body for a generic/incidentio webhook persisted without one. Mirrors
+// the default template the UI form applies (WebhookForm.tsx) so a webhook
+// created via the API/MCP (where body is optional) still fires with a sensible
+// payload instead of crashing Handlebars.compile on an undefined template.
+const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
+  '{"text": "{{title}} | {{body}} | {{link}} | {{state}} | {{startTime}} | {{endTime}} | {{eventId}}"}';
 
 /**
  * Creates a Handlebars instance with common helpers registered.
@@ -219,65 +240,6 @@ const notifyChannel = async ({
   }
 };
 
-const blacklistedWebhookHosts = (() => {
-  const map = new Map<string, string>();
-  const configKeys = ['CLICKHOUSE_HOST', 'MONGO_URI'];
-  for (const configKey of configKeys) {
-    // ignore errors
-    const [_, e] = _useTry(() =>
-      map.set(new URL(config[configKey]).host, configKey),
-    );
-  }
-  return map;
-})();
-
-function validateWebhookUrl(
-  webhook: IWebhook,
-): asserts webhook is IWebhook & { url: string } {
-  if (!webhook.url) {
-    throw new Error('Webhook URL is not set');
-  }
-
-  if (webhook.service === WebhookService.Slack) {
-    // check that hostname ends in "slack.com"
-    if (!isValidSlackUrl(webhook.url)) {
-      const message = `Slack Webhook URL ${webhook.url} does not have hostname that ends in 'slack.com'`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-            body: webhook.body,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-  } else {
-    // check webhookurl host is not blacklisted
-    const url = new URL(webhook.url);
-    if (blacklistedWebhookHosts.has(url.host)) {
-      const message = `Webhook attempting to query blacklisted route ${blacklistedWebhookHosts.get(
-        url.host,
-      )}`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-            body: webhook.body,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-  }
-}
-
 export const handleSendSlackWebhook = async (
   webhook: IWebhook,
   message: Message,
@@ -303,6 +265,7 @@ export const handleSendSlackWebhook = async (
       outcome: 'success',
     });
   } catch (e) {
+    logBlockedWebhookDelivery(e, webhook);
     webhookDeliveryCounter.add(1, {
       service: WebhookService.Slack,
       outcome: 'error',
@@ -326,6 +289,7 @@ export const handleSendGenericWebhook = async (
     await sendGenericWebhook(webhook, message);
     webhookDeliveryCounter.add(1, { service, outcome: 'success' });
   } catch (e) {
+    logBlockedWebhookDelivery(e, webhook);
     webhookDeliveryCounter.add(1, { service, outcome: 'error' });
     throw e;
   } finally {
@@ -372,7 +336,14 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   try {
     const handlebars = createHandlebarsWithHelpers();
 
-    body = handlebars.compile(webhook.body, {
+    // Handlebars.compile throws on undefined; the API/MCP create paths allow an
+    // absent body (the UI form applies the default). An explicit "" is honored.
+    const bodyTemplate =
+      webhook.body == null
+        ? DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE
+        : webhook.body;
+
+    body = handlebars.compile(bodyTemplate, {
       noEscape: true,
     })({
       body: escapeJsonString(message.body),
@@ -394,12 +365,22 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   }
 
   try {
-    const response = await withRetry(async () => {
+    await withRetry(async () => {
       const res = await fetch(url, {
         method: 'POST',
+        redirect: 'manual',
         headers: headers as Record<string, string>,
         body,
       });
+
+      // Disallow redirects to avoid redirect-based SSRF.
+      if (res.status >= 300 && res.status < 400) {
+        logger.error(
+          { webhookId: webhook._id.toString(), teamId: webhook.team },
+          'Webhook request was redirected, which is not allowed',
+        );
+        throw new WebhookRedirectError(res.status);
+      }
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -451,7 +432,7 @@ export const buildAlertMessageTemplateHdxLink = (
       endTime,
       granularity,
       startTime,
-      tileId: alert.tileId,
+      tileId: alert.tileId ?? undefined,
     });
   }
 

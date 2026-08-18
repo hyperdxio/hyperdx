@@ -14,6 +14,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history so `nx affected` can diff against the PR base ref.
+          # Blobless, not treeless: `nx affected` runs `git diff --name-only`,
+          # which needs the trees. `tree:0` makes that diff pay a lazy fetch
+          # round trip and comes out slower than the bytes it saves.
+          fetch-depth: 0
+          filter: blob:none
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -21,13 +28,45 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
-      - name: Build dependencies
-        run: make ci-build
+        run: yarn install --immutable
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
-      - name: Run lint + type check
-        run: make ci-lint
+      # Restore-only on PRs: a PR-scoped cache entry can't be read by any other
+      # branch, so saving one buys nothing and just evicts other entries out of
+      # the repo's shared 10GB budget (including the integration job's buildx
+      # layer cache). Only push runs write, and PRs read main's entry.
+      - name: Restore nx computation cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+      # Upstream `ci:build` runs automatically via the `dependsOn` wiring in
+      # nx.json, so unchanged projects are served from the nx cache.
+      - name: Run lint + type check (affected)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npx nx affected -t ci:lint --base="origin/${BASE_REF}"
+      - name: Run lint + type check (full)
+        if: github.event_name != 'pull_request'
+        run: npx nx run-many -t ci:lint
+      # Whole-repo escape-hatch ratchet — runs unconditionally (not via `nx
+      # affected`, and not via `make ci-lint`, which this job no longer calls),
+      # so the gate can't be silently skipped for a PR that touches few projects.
+      - name: Escape-hatch ratchet tests
+        run: node --test scripts/ci/__tests__/ratchet.test.mjs
+      - name: Escape-hatch ratchet
+        run: node scripts/ci/ratchet.mjs
+      # Runs even when lint fails, so a red main still refreshes the cache that
+      # PR runs restore from.
+      - name: Save nx computation cache
+        if: always() && github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
   unit:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
@@ -41,14 +80,19 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Build dependencies
         run: make ci-build
       - name: Run unit tests
         run: make ci-unit
-  integration:
+  integration-shards:
+    name: Integration - Shard ${{ matrix.shard }}
     timeout-minutes: 16
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -59,17 +103,46 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v4
       - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
-          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
+          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha,mode=max,scope=ci-integration" --set *.cache-from="type=gha,scope=ci-integration" --load
       - name: Build dependencies
         run: make ci-build
+      # Integration tests boot a MockServer on fixed ports and share a single
+      # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
+      # within a runner. We shard ACROSS runners instead: each shard is its own
+      # VM with its own Docker stack, and jest's --shard splits the test files
+      # so the shards run in parallel. --shard is forwarded through nx (args
+      # after `--` reach the underlying jest invocations).
+      #
+      # Runs inline (not `make ci-int`) so the compose project stays `hdx-ci`
+      # (matching the bake step above); make ci-int's `-p int-<slot>` is local
+      # multi-worktree isolation that CI doesn't need, and routing through it
+      # would reintroduce a project-name mismatch against bake. Teardown and
+      # log-archival are omitted intentionally — the runner is ephemeral and
+      # Actions streams stdout.
       - name: Run integration tests
-        run: make ci-int
+        run: |
+          docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
+          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+  # Stable aggregator context: `integration` is green only when all four shards
+  # pass. Merge-queue / required-status checks target this single context, since
+  # the per-shard contexts (Integration - Shard N) are not stable check names.
+  integration:
+    needs: [integration-shards]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify all integration shards passed
+        if: needs.integration-shards.result != 'success'
+        run: |
+          echo "::error::One or more integration shards failed"
+          exit 1
   otel-unit-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
@@ -264,7 +337,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install
+        run: yarn install --immutable
 
       - name: Build App
         run: yarn build:clickhouse

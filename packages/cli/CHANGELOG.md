@@ -1,5 +1,49 @@
 # @hyperdx/cli
 
+## 0.6.1
+
+### Patch Changes
+
+- 9581e164: Rewrite the README with the full feature set and command reference (TUI, chart,
+  query, sources/connections/dashboards, auth, team, upload-sourcemaps) ahead of
+  launch, so npm and GitHub show everything the CLI can do. Also remove a stale
+  reference to the removed `hdx stream` command from `hdx chart --help`.
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+
+## 0.6.0
+
+### Minor Changes
+
+- 386c365d: Add terminal charting to the CLI, built on the same renderChartConfig SQL
+  pipeline as the web dashboards:
+
+  - Interactive Dashboards page in the TUI (`d` key) with tile navigation,
+    fullscreen tiles, time-range editing, and refresh
+  - `hdx chart` command for troubleshooting from the terminal (including by
+    AI agents): render saved dashboard tiles (`-d/-t`), ad-hoc builder charts
+    (`-s <source>` with `--agg/--value/--where/--group-by/--series`), or ad-hoc
+    raw SQL (`--sql` with `$__timeFilter`/`$__timeInterval` macros)
+  - Supported chart types: line, stacked bar, number, table, bar, pie, and
+    markdown; flexible time ranges (`--since 1h`, `--from now-24h`, ISO dates);
+    `--json` output for structured consumption; ANSI colors auto-stripped when
+    piping (`--color auto|always|never`)
+
+### Patch Changes
+
+- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
+
+## 0.5.2
+
+### Patch Changes
+
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+
 ## 0.5.1
 
 ### Patch Changes

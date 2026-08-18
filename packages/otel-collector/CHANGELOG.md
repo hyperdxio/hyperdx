@@ -1,5 +1,42 @@
 # @hyperdx/otel-collector
 
+## 2.35.0
+
+### Minor Changes
+
+- 8351d632: Add OIDC-based bearer token authentication for the OTLP receiver in standalone mode, as an alternative to the existing static `OTLP_AUTH_TOKEN`. Set `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` to validate incoming OTLP requests against an OIDC provider's published JWKS instead of a single long-lived shared secret.
+
+### Patch Changes
+
+- 58a467ae: Use the OpAMP supervisor's native `passthrough_logs` for collector log
+  forwarding instead of a background `tail` process. The old approach had
+  the supervisor and the tailer writing to the same stdout fd with no
+  synchronization, so log lines were getting mangled by the two streams
+  interleaving mid-line. The native approach has the supervisor re-emitting
+  the collector's output through its own logger to avoid this.
+
+## 2.34.0
+
+## 2.33.0
+
+## 2.32.0
+
+## 2.31.0
+
+## 2.30.1
+
+## 2.30.0
+
+### Minor Changes
+
+- 727d3274: Add an opt-in Datadog receiver (gated behind `ENABLE_DATADOG_RECEIVER`) so a
+  Datadog Agent can ship traces, metrics, and logs to HyperDX. The contrib
+  `datadogreceiver` is compiled into the collector binary and, when enabled, the
+  OpAMP controller attaches it (listening on `0.0.0.0:8126`) to the traces,
+  metrics, and logs pipelines. When collector authentication is enforced, the
+  receiver validates the `DD-API-KEY` header against team API keys.
+- 3f1e1fe4: feat: update metrics schema for more efficient PK and time pruning
+
 ## 2.29.0
 
 ### Minor Changes

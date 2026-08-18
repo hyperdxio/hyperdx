@@ -50,6 +50,7 @@ function makeSearchFilters(
     filters,
     setFilters: jest.fn(),
     setFilterValue: jest.fn(),
+    setOnlyFilters: jest.fn(),
     replaceFilterValue: jest.fn(),
     setFilterRange: jest.fn(),
     clearFilter: jest.fn(),

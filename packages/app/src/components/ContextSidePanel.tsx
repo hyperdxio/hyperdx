@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ms from 'ms';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useForm, useWatch } from 'react-hook-form';
@@ -73,7 +73,7 @@ export default function ContextSubpanel({
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
   const effectiveWhereLanguage = formWhereLanguage || originalLanguage;
 
-  const { setChildModalOpen } = useContext(RowSidePanelContext);
+  const { setChildModalOpen } = use(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
     (rowWhere: RowWhereResult, row: Record<string, any>) => {

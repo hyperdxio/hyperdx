@@ -17,6 +17,8 @@ function pair(args: {
   durationMs: number;
   model?: string;
   plugin?: string;
+  /** When set, attaches a transcript-aware adoption block to the grade. */
+  adoption?: { score: number; hits: Array<{ id: string; satisfied: boolean }> };
 }): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
@@ -98,6 +100,17 @@ function pair(args: {
     gradedAt: '',
     judgeModel: 'claude-opus-4-7',
   };
+  if (args.adoption) {
+    grade.adoption = {
+      score: args.adoption.score,
+      hits: args.adoption.hits.map(h => ({
+        id: h.id,
+        weight: 1,
+        matched: h.satisfied,
+        satisfied: h.satisfied,
+      })),
+    };
+  }
   return { run, grade };
 }
 
@@ -447,5 +460,101 @@ describe('buildAggregate', () => {
     const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
     expect(summary.multiPlugin).toBe(false);
     expect(summary.columnOrder).toEqual(['clickhouse', 'hyperdx']);
+  });
+
+  it('aggregates adoption mean + per-check usage rate with a baseline delta', () => {
+    const base = {
+      scenario: 'metric-saturation',
+      programmaticScore: 1,
+      judgeScore: 1,
+      toolCalls: 10,
+      outputTokens: 3000,
+      durationMs: 40_000,
+    };
+    const pairs: GradedRunPair[] = [
+      // baseline (clickhouse): no metric tools used.
+      pair({
+        ...base,
+        mcp: 'clickhouse',
+        i: 0,
+        adoption: {
+          score: 0,
+          hits: [
+            { id: 'used_metric_tool', satisfied: false },
+            { id: 'named_jvm_memory', satisfied: false },
+          ],
+        },
+      }),
+      // challenger (hyperdx): run 0 fully adopts, run 1 partially adopts.
+      pair({
+        ...base,
+        mcp: 'hyperdx',
+        i: 0,
+        adoption: {
+          score: 1,
+          hits: [
+            { id: 'used_metric_tool', satisfied: true },
+            { id: 'named_jvm_memory', satisfied: true },
+          ],
+        },
+      }),
+      pair({
+        ...base,
+        mcp: 'hyperdx',
+        i: 1,
+        adoption: {
+          score: 0.5,
+          hits: [
+            { id: 'used_metric_tool', satisfied: true },
+            { id: 'named_jvm_memory', satisfied: false },
+          ],
+        },
+      }),
+    ];
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    const sc = summary.scenarios[0];
+    const h = sc.cells['hyperdx']!;
+    const c = sc.cells['clickhouse']!;
+    // Mean adoption score across the two hyperdx runs: (1 + 0.5) / 2.
+    expect(h.adoption?.mean).toBeCloseTo(0.75, 5);
+    expect(c.adoption?.mean).toBeCloseTo(0, 5);
+    // Per-check usage rate: used_metric_tool hit in both hyperdx runs (1.0),
+    // named_jvm_memory only in run 0 (0.5).
+    expect(h.adoption?.perCheck['used_metric_tool']).toBeCloseTo(1, 5);
+    expect(h.adoption?.perCheck['named_jvm_memory']).toBeCloseTo(0.5, 5);
+    expect(c.adoption?.perCheck['used_metric_tool']).toBeCloseTo(0, 5);
+    // Delta = challenger - baseline.
+    expect(sc.deltas['hyperdx'].adoptionScore).toBeCloseTo(0.75, 5);
+  });
+
+  it('omits adoption from cells and deltas when no grade carries it', () => {
+    const pairs: GradedRunPair[] = [
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'clickhouse',
+        i: 0,
+        programmaticScore: 1,
+        judgeScore: 1,
+        toolCalls: 7,
+        outputTokens: 1500,
+        durationMs: 30_000,
+      }),
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'hyperdx',
+        i: 0,
+        programmaticScore: 1,
+        judgeScore: 0.9,
+        toolCalls: 13,
+        outputTokens: 4000,
+        durationMs: 60_000,
+      }),
+    ];
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    const sc = summary.scenarios[0];
+    expect(sc.cells['hyperdx'].adoption).toBeUndefined();
+    expect(sc.cells['clickhouse'].adoption).toBeUndefined();
+    // The delta object should not carry an adoptionScore key at all.
+    expect('adoptionScore' in sc.deltas['hyperdx']).toBe(false);
   });
 });

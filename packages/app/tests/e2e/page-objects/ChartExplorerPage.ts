@@ -54,8 +54,13 @@ export class ChartExplorerPage {
    * query result. Labels may be truncated with an ellipsis by the chart.
    */
   async getBarLabels(): Promise<string[]> {
+    // Recharts renders axis tick labels in a dedicated
+    // `.recharts-<axis>-tick-labels` group (hoisted into a top-level z-index
+    // layer, so it is no longer nested inside the `.recharts-xAxis` element).
+    // Scope to the x-axis label group to read category labels without picking
+    // up the y-axis ticks.
     const ticks = this.page.locator(
-      '[data-testid="bar-chart-container"] .recharts-xAxis .recharts-cartesian-axis-tick-value',
+      '[data-testid="bar-chart-container"] .recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value',
     );
     await ticks.first().waitFor({ state: 'visible', timeout: 15000 });
     const labels = await ticks.allTextContents();

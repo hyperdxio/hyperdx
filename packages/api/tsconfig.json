@@ -16,8 +16,7 @@
     "compilerOptions": {
       // ts-node compiles single files on demand (e.g. `src/index.ts` for the
       // dev server), so TypeScript infers the common source dir as `./src`.
-      // TS 6 requires that inferred rootDir to be explicit (TS5011). The full
-      // `tsc` build keeps its implicit root (which spans src/migrations/scripts).
+      // TS 6 requires that inferred rootDir to be explicit (TS5011).
       "rootDir": "./src"
     }
   },

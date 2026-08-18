@@ -8,6 +8,7 @@ import {
 } from 'react-hook-form';
 import {
   DateRange,
+  isChartPaletteToken,
   MetricsDataType,
   SourceKind,
   TSource,
@@ -26,11 +27,15 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconCopy,
+  IconPalette,
   IconTrash,
 } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
-import { AggFnSelectControlled } from '@/components/AggFnSelect';
+import {
+  AggFnSelectControlled,
+  HISTOGRAM_SUPPORTED_AGG_FNS,
+} from '@/components/AggFnSelect';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
@@ -43,6 +48,7 @@ import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPa
 import { MetricNameSelect } from '@/components/MetricNameSelect';
 import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SeriesColorDrawer from '@/components/SeriesColorDrawer';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
@@ -50,7 +56,7 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { getMetricTableName } from '@/utils';
+import { getColorFromCSSToken, getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -72,6 +78,7 @@ type ChartSeriesEditorProps = {
   showGroupBy: boolean;
   showHaving: boolean;
   showDuplicate: boolean;
+  showColor: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -82,6 +89,7 @@ type ChartSeriesEditorProps = {
 export function ChartSeriesEditor({
   control,
   databaseName,
+  dateRange,
   connectionId,
   index,
   namePrefix,
@@ -93,6 +101,7 @@ export function ChartSeriesEditor({
   showGroupBy,
   showHaving,
   showDuplicate,
+  showColor,
   tableName: _tableName,
   parentRef,
   length,
@@ -131,6 +140,21 @@ export function ChartSeriesEditor({
       metricType === MetricsDataType.Sum;
     if (!isSumMetric && aggFn === 'increase') {
       setValue(`${namePrefix}aggFn`, 'sum');
+    }
+  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
+
+  // Histogram and exponential histogram metrics only support 'count' and
+  // 'quantile' aggregations. Reset any unsupported aggFn to a default, valid one
+  useEffect(() => {
+    const isHistogramMetric =
+      tableSource?.kind === SourceKind.Metric &&
+      (metricType === MetricsDataType.Histogram ||
+        metricType === MetricsDataType.ExponentialHistogram);
+    if (
+      isHistogramMetric &&
+      !HISTOGRAM_SUPPORTED_AGG_FNS.includes(aggFn ?? '')
+    ) {
+      setValue(`${namePrefix}aggFn`, 'count');
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
@@ -214,6 +238,17 @@ export function ChartSeriesEditor({
     { open: openSeriesNumberFormat, close: closeSeriesNumberFormat },
   ] = useDisclosure(false);
 
+  const seriesColor = useWatch({ control, name: `${namePrefix}color` });
+  const seriesColorRules = useWatch({
+    control,
+    name: `${namePrefix}colorRules`,
+  });
+
+  const [
+    isSeriesColorOpen,
+    { open: openSeriesColor, close: closeSeriesColor },
+  ] = useDisclosure(false);
+
   return (
     <>
       <Divider
@@ -287,6 +322,27 @@ export function ChartSeriesEditor({
                 {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
               </ActionIcon>
             </Tooltip>
+            {showColor && (
+              <Tooltip label="Edit column color">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="xs"
+                  onClick={openSeriesColor}
+                  aria-label="Edit column color"
+                  data-testid="series-color-button"
+                >
+                  <IconPalette
+                    size={16}
+                    color={
+                      seriesColor && isChartPaletteToken(seriesColor)
+                        ? getColorFromCSSToken(seriesColor)
+                        : undefined
+                    }
+                  />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         }
         labelPosition="right"
@@ -353,6 +409,7 @@ export function ChartSeriesEditor({
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
               onSubmit={onSubmit}
+              enableVariables
             />
           </div>
         )}
@@ -375,11 +432,15 @@ export function ChartSeriesEditor({
                 >
                   <SearchWhereInput
                     tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
                     showLabel={false}
                     additionalSuggestions={attributeSuggestions}
+                    data-testid="series-where-input"
+                    enableVariables
                   />
                 </div>
               </>
@@ -405,6 +466,7 @@ export function ChartSeriesEditor({
                     placeholder="SQL Columns"
                     disableKeywordAutocomplete
                     onSubmit={onSubmit}
+                    enableVariables
                   />
                 </div>
                 {showHaving && (
@@ -420,6 +482,7 @@ export function ChartSeriesEditor({
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>
@@ -454,6 +517,19 @@ export function ChartSeriesEditor({
           closeSeriesNumberFormat();
         }}
       />
+      {showColor && (
+        <SeriesColorDrawer
+          opened={isSeriesColorOpen}
+          color={seriesColor}
+          colorRules={seriesColorRules}
+          onChange={next => {
+            setValue(`${namePrefix}color`, next.color);
+            setValue(`${namePrefix}colorRules`, next.colorRules);
+            onSubmit();
+          }}
+          onClose={closeSeriesColor}
+        />
+      )}
     </>
   );
 }

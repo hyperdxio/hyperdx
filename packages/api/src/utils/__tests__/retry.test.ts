@@ -42,6 +42,18 @@ describe('withRetry', () => {
     expect(fn400).toHaveBeenCalledTimes(1); // aborted early
   });
 
+  it('should not retry on 3xx redirect responses', async () => {
+    const redirectError = new Error('redirect') as any;
+    redirectError.status = 302;
+
+    const fn = jest.fn().mockRejectedValue(redirectError);
+
+    await expect(
+      withRetry(fn, { initialDelayMs: 10, jitter: false }),
+    ).rejects.toThrow('redirect');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it('should retry on 429 Too Many Requests', async () => {
     const error429 = new Error('rate limited') as any;
     error429.status = 429;

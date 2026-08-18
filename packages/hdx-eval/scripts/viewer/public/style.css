@@ -76,6 +76,20 @@ select {
   min-width: 280px;
 }
 
+.copy-btn {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  color: var(--text);
+}
+
 main {
   display: flex;
   flex: 1;
@@ -472,6 +486,10 @@ pre.code.error {
 .tag.small {
   font-size: 10px;
   padding: 0 0.3rem;
+}
+.tag.adopt {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .small {
   font-size: 11px;

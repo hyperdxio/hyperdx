@@ -272,16 +272,16 @@ export function useQueryHistory(type: string | undefined) {
 }
 
 export function useIntersectionObserver(onIntersect: () => void) {
-  const observer = useRef<IntersectionObserver | null>(null);
+  const observerInstanceRef = useRef<IntersectionObserver | null>(null);
   const observerRef = useCallback(
     (node: Element | null) => {
-      if (observer.current) observer.current.disconnect();
-      observer.current = new IntersectionObserver(entries => {
+      if (observerInstanceRef.current) observerInstanceRef.current.disconnect();
+      observerInstanceRef.current = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting) {
           onIntersect();
         }
       });
-      if (node) observer.current.observe(node);
+      if (node) observerInstanceRef.current.observe(node);
     },
     [onIntersect],
   );
@@ -309,14 +309,12 @@ export function truncateText(
 
 export function formatDistanceToNowStrictShort(date: Date) {
   return formatDistanceToNowStrict(date)
-    .replace(' month', 'mo.')
-    .replace(' days', 'd')
-    .replace(' day', 'd')
-    .replace(' hours', 'h')
-    .replace(' hour', 'h')
-    .replace(' minutes', 'm')
-    .replace(' minute', 'm')
-    .replace(' seconds', 's');
+    .replace(/ seconds?$/, 's')
+    .replace(/ minutes?$/, 'm')
+    .replace(/ hours?$/, 'h')
+    .replace(/ days?$/, 'd')
+    .replace(/ months?$/, 'mo.')
+    .replace(/ years?$/, 'y');
 }
 
 export function formatmmss(milliseconds?: number) {

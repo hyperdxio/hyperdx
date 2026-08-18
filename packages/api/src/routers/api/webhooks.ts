@@ -11,13 +11,18 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import Alert, { AlertState } from '@/models/alert';
+import { createWebhook, deleteWebhook } from '@/controllers/webhook';
+import { AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
 } from '@/tasks/checkAlerts/template';
 import { isDuplicateKeyError } from '@/utils/errors';
+import {
+  validateWebhookUrl,
+  WebhookUrlValidationError,
+} from '@/utils/validators';
 import {
   webhookHeaderNameSchema,
   webhookHeaderValueSchema,
@@ -73,7 +78,7 @@ const toWebhookPlain = (doc: mongoose.Document): WebhookPlain =>
   doc.toJSON({ flattenMaps: true }) as WebhookPlain;
 
 const serializeWebhook = (doc: mongoose.Document): WebhookApiData => {
-  const { team, __v, ...data } = doc.toJSON({ flattenMaps: true });
+  const { team: _team, __v, ...data } = doc.toJSON({ flattenMaps: true });
   return data as WebhookApiData;
 };
 
@@ -108,6 +113,15 @@ const emptyToUndefined = (
   map?: Record<string, string>,
 ): Record<string, string> | undefined =>
   map && Object.keys(map).length > 0 ? map : undefined;
+
+const handleWebhookUrlValidationError = (
+  err: unknown,
+  res: express.Response,
+): boolean => {
+  if (!(err instanceof WebhookUrlValidationError)) return false;
+  res.status(400).json({ message: err.message });
+  return true;
+};
 
 router.get(
   '/',
@@ -176,21 +190,20 @@ router.post(
           message: 'Webhook already exists',
         });
       }
-      const webhook = new Webhook({
-        team: teamId,
+      const webhook = await createWebhook(teamId, {
+        name,
         service,
         url,
-        name,
         description,
         queryParams,
         headers,
         body,
       });
-      await webhook.save();
       res.json({
         data: sanitizeWebhook(serializeWebhook(webhook)),
       });
     } catch (err) {
+      if (handleWebhookUrlValidationError(err, res)) return;
       // Backstop the pre-flight check against a concurrent create racing on the
       // same (team, service, name): the unique index rejects it as a duplicate.
       if (isDuplicateKeyError(err)) {
@@ -268,6 +281,8 @@ router.put(
         });
       }
 
+      validateWebhookUrl({ service, url: resolvedUrl });
+
       // When the URL is changing, use submitted values as-is (no merge).
       // An omitted field becomes undefined → $unset, so stored secrets
       // are never silently carried over to a new destination.
@@ -338,6 +353,7 @@ router.put(
         data: sanitizeWebhook(serializeWebhook(updatedWebhook)),
       });
     } catch (err) {
+      if (handleWebhookUrlValidationError(err, res)) return;
       // Backstop the pre-flight check against a concurrent rename racing onto
       // the same (team, service, name): the unique index rejects it.
       if (isDuplicateKeyError(err)) {
@@ -366,19 +382,13 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      // Block deletion when alerts still reference this webhook.
-      // The user must reassign or delete those alerts first.
-      const referencingAlertCount = await Alert.countDocuments({
-        'channel.webhookId': req.params.id,
-        team: teamId,
-      });
-      if (referencingAlertCount > 0) {
+      const result = await deleteWebhook(teamId, req.params.id);
+      if (result.status === 'referenced') {
         return res.status(409).json({
-          message: `Cannot delete webhook: ${referencingAlertCount} alert(s) still reference it. Please update or remove those alerts first.`,
+          message: `Cannot delete webhook: ${result.alertCount} alert(s) still reference it. Please update or remove those alerts first.`,
         });
       }
-
-      await Webhook.findOneAndDelete({ _id: req.params.id, team: teamId });
+      // Respond 200 even on a missing id, preserving the prior behavior here.
       res.json({});
     } catch (err) {
       next(err);
@@ -437,6 +447,8 @@ router.post(
         }
       }
 
+      validateWebhookUrl({ service, url });
+
       // Create a temporary webhook object for testing
       const testWebhook = new Webhook({
         team: new ObjectId(teamId),
@@ -475,6 +487,7 @@ router.post(
         message: 'Test webhook sent successfully',
       });
     } catch (err) {
+      if (handleWebhookUrlValidationError(err, res)) return;
       next(err);
     }
   },

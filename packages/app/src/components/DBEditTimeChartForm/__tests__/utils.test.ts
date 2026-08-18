@@ -9,6 +9,7 @@ import {
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import {
   buildChartConfigForExplanations,
+  buildGroupByConnectionProps,
   buildSampleEventsConfig,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
@@ -349,6 +350,122 @@ describe('buildSampleEventsConfig', () => {
     expect(result).not.toBeNull();
     expect(result!.select).toBe('');
   });
+
+  // The agg conditions leave `select` for `filters`, which is never scanned for
+  // variables, so they have to be expanded on the way out.
+  describe('dashboard variables', () => {
+    const configWithAggCondition = (
+      aggCondition: string,
+      aggConditionLanguage: 'lucene' | 'sql',
+      values: string[],
+    ): ChartConfigWithDateRange =>
+      ({
+        ...builderConfig,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition,
+            aggConditionLanguage,
+            valueExpression: '',
+          },
+        ],
+        variables: [{ name: 'svc', expression: 'ServiceName', values }],
+      }) as ChartConfigWithDateRange;
+
+    it('expands a Lucene reference in an agg condition to the selected values', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('ServiceName:${svc:lucene}', 'lucene', [
+          'accounting',
+        ]),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        { type: 'lucene', condition: 'ServiceName:("accounting")' },
+      ]);
+    });
+
+    it('expands a Lucene reference to its empty state when nothing is selected', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('ServiceName:${svc:lucene}', 'lucene', []),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        { type: 'lucene', condition: 'ServiceName:("")' },
+      ]);
+    });
+
+    it('expands $__filter in a SQL agg condition to the selected values', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('$__filter(ServiceName, svc)', 'sql', [
+          'accounting',
+        ]),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        { type: 'sql', condition: "(ServiceName IN ('accounting'))" },
+      ]);
+    });
+
+    it('expands $__filter to its no-op form when nothing is selected', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('$__filter(ServiceName, svc)', 'sql', []),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        {
+          type: 'sql',
+          condition: "(1=1 /** no values selected for variable 'svc' */)",
+        },
+      ]);
+    });
+
+    it('expands the chart-level where and consumes the variables', () => {
+      const config = configWithAggCondition('', 'lucene', ['accounting']);
+      const result = buildSampleEventsConfig(
+        {
+          ...config,
+          where: 'ServiceName IN ($svc)',
+          whereLanguage: 'sql',
+        } as ChartConfigWithDateRange,
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.where).toBe("ServiceName IN ('accounting')");
+      // Cleared so the renderer doesn't substitute a second time
+      expect(result!.variables).toBeUndefined();
+    });
+
+    it('leaves the condition as written when a macro names an unknown variable', () => {
+      const build = () =>
+        buildSampleEventsConfig(
+          configWithAggCondition('$__filter(ServiceName, nope)', 'sql', [
+            'accounting',
+          ]),
+          logSource,
+          dateRange,
+          true,
+        );
+
+      expect(build).not.toThrow();
+      expect(build()!.filters).toEqual([
+        { type: 'sql', condition: '$__filter(ServiceName, nope)' },
+      ]);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -426,7 +543,6 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
-    // @ts-expect-error union types..
     expect(result!.seriesLimit).toBe(3);
   });
 
@@ -441,7 +557,6 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
-    // @ts-expect-error union types..
     expect(result!.seriesLimit).toBeUndefined();
   });
 
@@ -501,5 +616,69 @@ describe('buildChartConfigForExplanations', () => {
     // Raw SQL saved config is handled early, returns with dateRange
     expect(result).toBeDefined();
     expect(result!.dateRange).toBe(dateRange);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGroupByConnectionProps
+// ---------------------------------------------------------------------------
+
+describe('buildGroupByConnectionProps', () => {
+  const tableConnection = {
+    databaseName: 'default',
+    tableName: 'logs',
+    connectionId: 'clickhouse',
+  };
+
+  it('falls back to the source tableConnection for non-metric sources', () => {
+    const result = buildGroupByConnectionProps({
+      tableSource: logSource,
+      series: [{ metricType: 'gauge', metricName: 'cpu' }],
+      tableConnection,
+    });
+
+    expect(result).toEqual({ tableConnection });
+  });
+
+  it('builds one intersected connection per distinct metric table + name for mixed-type series', () => {
+    const result = buildGroupByConnectionProps({
+      tableSource: metricSource,
+      series: [
+        { metricType: 'gauge', metricName: 'cpu' },
+        { metricType: 'sum', metricName: 'requests' },
+        // duplicate of the first series — must be deduped
+        { metricType: 'gauge', metricName: 'cpu' },
+        // incomplete series — skipped
+        { metricType: 'gauge' },
+      ],
+      tableConnection,
+    });
+
+    expect(result.tableConnection).toBeUndefined();
+    expect(result.intersectFields).toBe(true);
+    expect(result.tableConnections).toEqual([
+      {
+        databaseName: 'default',
+        tableName: 'metrics.gauge',
+        connectionId: 'clickhouse',
+        metricName: 'cpu',
+      },
+      {
+        databaseName: 'default',
+        tableName: 'metrics.sum',
+        connectionId: 'clickhouse',
+        metricName: 'requests',
+      },
+    ]);
+  });
+
+  it('falls back to the tableConnection when a metric source has no resolvable series', () => {
+    const result = buildGroupByConnectionProps({
+      tableSource: metricSource,
+      series: [{ metricName: 'cpu' }], // no metricType
+      tableConnection,
+    });
+
+    expect(result).toEqual({ tableConnection });
   });
 });

@@ -6,9 +6,12 @@ import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
+import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
+import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
 import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
+  ChartVariable,
   DisplayType,
   getSampleWeightExpression,
   isLogSource,
@@ -25,8 +28,44 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { getStoredLanguage } from '@/components/SearchInput';
+import { type SQLCompletion } from '@/components/SQLEditor/utils';
+import {
+  buildVariableCompletions,
+  toMacroCompletion,
+} from '@/components/SQLEditor/variableCompletions';
 
 import { ChartEditorFormState } from './types';
+
+/**
+ * Autocomplete entries offered on top of columns/keywords in the raw SQL
+ * editor: query params, macros, and variables (when available).
+ */
+export function buildRawSqlCompletions({
+  displayType,
+  variables,
+}: {
+  displayType: DisplayType | undefined;
+  variables: ChartVariable[] | undefined;
+}): SQLCompletion[] {
+  const effectiveDisplayType = displayType ?? DisplayType.Table;
+  const params = QUERY_PARAMS_BY_DISPLAY_TYPE[effectiveDisplayType];
+
+  const paramCompletions: SQLCompletion[] = params.map(
+    ({ name, type, description }) => ({
+      label: `{${name}:${type}}`,
+      apply: `{${name}:${type}}`,
+      detail: 'param',
+      info: description,
+      type: 'variable',
+    }),
+  );
+
+  return [
+    ...paramCompletions,
+    ...MACRO_SUGGESTIONS.map(toMacroCompletion),
+    ...buildVariableCompletions(variables),
+  ];
+}
 
 function normalizeChartConfig<
   C extends Pick<
@@ -122,6 +161,7 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alternateRowBackground',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: form.promqlExpression ?? '',
@@ -144,6 +184,11 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alternateRowBackground',
+        // Per-tile render cap for raw SQL time charts (drives the client-side
+        // series cap in formatResponseForTimeChart). See
+        // SharedChartSettingsSchema.seriesLimit.
+        'seriesLimit',
         'alert',
         'onClick',
       ]),
@@ -197,6 +242,7 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alternateRowBackground',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: source?.connection ?? form.connection ?? '',
@@ -219,6 +265,10 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'alternateRowBackground',
+        // Per-tile render cap for raw SQL time charts (see the save-config path
+        // above and SharedChartSettingsSchema.seriesLimit).
+        'seriesLimit',
         'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',
@@ -393,7 +443,7 @@ export const validateChartForm = (
     if (alertErrors.length > 0) {
       errors.push({
         path: `sqlTemplate`,
-        message: alertErrors.join('. '),
+        message: alertErrors.join(' '),
       });
     }
   }

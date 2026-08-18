@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo } from 'react';
+import { use, useCallback, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -20,24 +20,32 @@ import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
   source,
   rowId,
   aliasWith,
+  dateRange,
   hideHeader = false,
+  flush = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  dateRange?: [Date, Date];
   hideHeader?: boolean;
+  // When true, drop the horizontal padding so content aligns flush with
+  // surrounding chrome (e.g. the tab bar in the trace span detail panel).
+  flush?: boolean;
   'data-testid'?: string;
 }) {
-  const { data } = useRowData({ source, rowId, aliasWith });
-  const { onPropertyAddClick, generateSearchUrl } =
-    useContext(RowSidePanelContext);
+  const contentPx = flush ? 0 : 'md';
+  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
+  const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
+    use(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =
@@ -183,6 +191,10 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
+  const hasSpanLinks = useMemo(() => {
+    return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
+  }, [firstRow?.__hdx_span_links]);
+
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -193,7 +205,7 @@ export function RowOverviewPanel({
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
-        <Box px="sm" pt="md">
+        <Box px={flush ? 0 : 'sm'} pt="md">
           <DBRowSidePanelHeader
             attributes={highlightedAttributeValues}
             mainContent={mainContent}
@@ -213,6 +225,7 @@ export function RowOverviewPanel({
         defaultValue={[
           'exception',
           'spanEvents',
+          'spanLinks',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -224,12 +237,12 @@ export function RowOverviewPanel({
         {isHttpRequest && (
           <Accordion.Item value="network">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 HTTP Request
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box px={contentPx}>
                 <NetworkPropertySubpanel
                   eventAttributes={flattenedEventAttributes}
                 />
@@ -241,12 +254,12 @@ export function RowOverviewPanel({
         {hasException && (
           <Accordion.Item value="exception">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Exception
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box px={contentPx}>
                 <ExceptionSubpanel
                   exceptionValues={exceptionValues}
                   breadcrumbs={[]}
@@ -259,30 +272,15 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {hasSpanEvents && (
-          <Accordion.Item value="spanEvents">
-            <Accordion.Control>
-              <Text size="sm" ps="md">
-                Span Events
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px="md">
-                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {Object.keys(topLevelAttributes).length > 0 && (
           <Accordion.Item value="topLevelAttributes">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Top Level Attributes
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box px={contentPx}>
                 <DBRowJsonViewer
                   data={topLevelAttributes}
                   jsonColumns={jsonColumns}
@@ -296,12 +294,12 @@ export function RowOverviewPanel({
         {Object.keys(filteredEventAttributes).length > 0 && (
           <Accordion.Item value="eventAttributes">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 {source.kind === 'log' ? 'Log' : 'Span'} Attributes
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box px={contentPx}>
                 <DBRowJsonViewer
                   data={filteredEventAttributes}
                   jsonColumns={jsonColumns}
@@ -312,15 +310,48 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
+        {hasSpanEvents && (
+          <Accordion.Item value="spanEvents">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Span Events
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box ps={contentPx}>
+                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {hasSpanLinks && (
+          <Accordion.Item value="spanLinks">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Span Links
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <SpanLinksSubpanel
+                  spanLinks={firstRow?.__hdx_span_links}
+                  onOpenTrace={onOpenLinkedTrace}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
         {Object.keys(resourceAttributes).length > 0 && (
           <Accordion.Item value="resourceAttributes">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Resource Attributes
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
+              <Flex wrap="wrap" gap="2px" mx={contentPx} mb="lg">
                 {Object.entries(resourceAttributes).map(([key, value]) => (
                   <EventTag
                     {...(onPropertyAddClick

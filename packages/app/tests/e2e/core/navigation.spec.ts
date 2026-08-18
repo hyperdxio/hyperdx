@@ -137,6 +137,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       const setupItem = page.locator(
         '[data-testid="setup-instructions-menu-item"]',
       );
+      const changelogItem = page.locator('[data-testid="changelog-menu-item"]');
       const shortcutsItem = page.locator(
         '[data-testid="keyboard-shortcuts-menu-item"]',
       );
@@ -144,11 +145,67 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
 
       await expect(documentationItem).toBeVisible();
       await expect(setupItem).toBeVisible();
+      await expect(changelogItem).toBeVisible();
       await expect(shortcutsItem).toBeVisible();
       await expect(discordItem).toBeVisible();
     });
 
+    await test.step('Open changelog from help menu with rendered markdown', async () => {
+      // Serve a deterministic root-changelog fixture. The real file's release
+      // sections are written by CI at release time, so its shape depends on
+      // whether a release has landed — mocking pins the assertions below to
+      // the transformation under test rather than to ambient repo state.
+      await page.route('**/CHANGELOG.md', route =>
+        route.fulfill({
+          status: 200,
+          body: [
+            '# HyperDX Changelog',
+            '',
+            'Maintainer preamble that must never reach users.',
+            '',
+            '## v9.9.9 — 2026-07-28',
+            '',
+            '<!-- hyperdx-release-notes version=9.9.9 inputs=abc123 -->',
+            '',
+            'Fixture release summary.',
+          ].join('\n'),
+        }),
+      );
+
+      const changelogItem = page.getByTestId('changelog-menu-item');
+      await changelogItem.scrollIntoViewIfNeeded();
+      await changelogItem.click();
+
+      const dialog = page.getByRole('dialog', { name: "What's New" });
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+      const modal = dialog.getByTestId('changelog-modal');
+      const heading = modal.locator('h2').first();
+      const errorText = modal.getByText('Unable to load the changelog.');
+
+      // Wait for the async fetch to settle into either outcome, then assert it
+      // settled on success. The changelog asset is copied into public/ by
+      // next.config, so a broken copy fails here fast and legibly instead of
+      // timing out on the heading check.
+      await expect(heading.or(errorText)).toBeVisible({ timeout: 10_000 });
+      await expect(errorText).toHaveCount(0);
+
+      // Pinned to <h2>, against the mocked fixture above: the H1 and its
+      // maintainer-facing preamble must be stripped, so an <h1> surviving here
+      // is the regression this asserts against.
+      await expect(modal.locator('h1')).toHaveCount(0);
+      await expect(heading).toContainText('9.9.9');
+
+      // Close so the help menu can be reopened for the next step.
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+    });
+
     await test.step('Open keyboard shortcuts from help menu', async () => {
+      // The changelog step closed the menu, so reopen it first.
+      const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+      await helpMenuTrigger.click({ timeout: 10000 });
+
       const shortcutsItem = page.getByTestId('keyboard-shortcuts-menu-item');
       await shortcutsItem.scrollIntoViewIfNeeded();
       await shortcutsItem.click();
@@ -158,32 +215,115 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       ).toBeVisible({ timeout: 10_000 });
     });
   });
-});
 
-// Full-server tests that require authentication and backend services
-test.skip('Navigation - Full Server Features', { tag: ['@core'] }, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/search');
+  test('should show a fallback when the changelog fails to load', async ({
+    page,
+  }) => {
+    // Force the changelog asset to 404 so the modal's error branch renders.
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({ status: 404, body: 'not found' }),
+    );
+
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+
+    const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+    await helpMenuTrigger.click({ timeout: 10000 });
+
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
+
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Unable to load the changelog.')).toBeVisible(
+      { timeout: 10_000 },
+    );
   });
 
-  test('should show full server navigation links', async ({ page }) => {
-    await test.step('Verify team settings link is visible', async () => {
-      const teamSettingsLink = page.locator(
-        '[data-testid="nav-link-team-settings"]',
-      );
-      await expect(teamSettingsLink).toBeVisible();
-      await expect(teamSettingsLink).toHaveAttribute('href', '/team-settings');
-    });
+  test('should not render off-site images or links from the changelog', async ({
+    page,
+  }) => {
+    // The changelog body is model-authored from changeset bodies, commit
+    // messages and PR titles, so it is untrusted. The release workflow greps
+    // for disallowed markdown before publishing, but grep cannot be complete
+    // over CommonMark — every construct below passes those greps. The
+    // enforceable check is react-markdown's urlTransform/disallowedElements,
+    // which this test exercises for real (Jest stubs react-markdown out).
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({
+        status: 200,
+        body: [
+          '# HyperDX Changelog',
+          '',
+          'Preamble.',
+          '',
+          '## v9.9.9 — 2026-07-28',
+          '',
+          'Bare autolink: <https://evil.example/beacon>',
+          '',
+          'Inline off-site link: [click](https://evil.example/phish)',
+          '',
+          'Shortcut image reference: ![banner]',
+          '',
+          'Inline image: ![x](https://evil.example/beacon.png)',
+          '',
+          'Allowed: [PR](https://github.com/hyperdxio/hyperdx/pull/1)',
+          '',
+          '[banner]:',
+          '  https://evil.example/split-definition.png',
+        ].join('\n'),
+      }),
+    );
 
-    await test.step('Verify alerts link functionality', async () => {
-      const alertsLink = page.locator('[data-testid="nav-link-alerts"]');
-      await expect(alertsLink).toBeVisible();
-      await expect(alertsLink).toHaveAttribute('href', '/alerts');
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+    await page.getByTestId('help-menu-trigger').click({ timeout: 10000 });
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
 
-      // In full-server mode, we can actually navigate to alerts
-      await alertsLink.click();
-      await page.waitForURL('**/alerts**');
-      await expect(page).toHaveURL(/.*\/alerts/);
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    const modal = dialog.getByTestId('changelog-modal');
+    await expect(modal.locator('h2')).toContainText('9.9.9');
+
+    // No image reaches the DOM, by any syntax.
+    await expect(modal.locator('img')).toHaveCount(0);
+
+    // The allowed link survives intact.
+    await expect(
+      modal.locator('a[href="https://github.com/hyperdxio/hyperdx/pull/1"]'),
+    ).toHaveCount(1);
+
+    // Nothing anywhere in the modal points at the off-site host.
+    await expect(modal.locator('a[href*="evil.example"]')).toHaveCount(0);
+  });
+
+  test('should show an empty state before any release section exists', async ({
+    page,
+  }) => {
+    // The seed changelog carries only the H1 and a maintainer-facing preamble.
+    // That preamble must never be shown to users as if it were release notes.
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({
+        status: 200,
+        body: '# HyperDX Changelog\n\nKeep the `hyperdx-release-notes` marker intact when editing.\n',
+      }),
+    );
+
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+
+    const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+    await helpMenuTrigger.click({ timeout: 10000 });
+
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
+
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('No releases yet.')).toBeVisible({
+      timeout: 10_000,
     });
+    await expect(dialog.getByText('marker intact')).toHaveCount(0);
   });
 });

@@ -41,7 +41,9 @@ export function Sparkline({
   points: SparklinePoint[];
   type: SparklineType;
   color: string;
-  height?: number | string;
+  // Matches ResponsiveContainer's accepted height: a pixel number or a
+  // percentage string (e.g. "100%").
+  height?: number | `${number}%`;
 }) {
   if (points.length < 2) return null;
 

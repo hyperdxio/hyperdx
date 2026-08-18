@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 
 import {
+  mcpPatchDashboardSchema,
+  mcpTilesParam,
+} from '@/mcp/tools/dashboards/schemas';
+import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
   getRawSqlTilesMissingRequiredSource,
@@ -9,6 +13,38 @@ import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 const connectionId = new mongoose.Types.ObjectId().toString();
 const sourceId = new mongoose.Types.ObjectId().toString();
+
+describe('metric tile schema', () => {
+  it('accepts exponential histograms and defaults their value expression', () => {
+    const parsed = mcpTilesParam.parse([
+      {
+        name: 'P95 Duration',
+        config: {
+          displayType: 'line',
+          sourceId,
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.95,
+              metricType: 'exponential histogram',
+              metricName: 'http.server.request.duration',
+            },
+          ],
+        },
+      },
+    ]);
+
+    const config = parsed[0].config;
+    expect(config).toMatchObject({ displayType: 'line' });
+    if (!('select' in config)) {
+      throw new Error('Expected a builder tile');
+    }
+    expect(config.select[0]).toMatchObject({
+      metricType: 'exponential histogram',
+      valueExpression: 'Value',
+    });
+  });
+});
 
 function makeSqlTile(overrides: {
   name?: string;
@@ -32,6 +68,99 @@ function makeSqlTile(overrides: {
     },
   } as ExternalDashboardTileWithId;
 }
+
+describe('tile-level where rejection (builder tiles)', () => {
+  const builderTypes = [
+    { displayType: 'line' },
+    { displayType: 'stacked_bar' },
+    { displayType: 'table', extra: { groupBy: 'SpanName' } },
+    { displayType: 'number' },
+    { displayType: 'pie', extra: { groupBy: 'SpanName' } },
+    { displayType: 'bar', extra: { groupBy: 'SpanName' } },
+  ];
+
+  const baseConfig = (displayType: string, extra: object) => ({
+    displayType,
+    sourceId,
+    select: [{ aggFn: 'count', alias: 'Count' }],
+    ...extra,
+  });
+
+  it.each(builderTypes)(
+    'rejects a tile-level where on a $displayType tile with an actionable message',
+    ({ displayType, extra = {} }) => {
+      const result = mcpTilesParam.safeParse([
+        {
+          name: 'T',
+          config: { ...baseConfig(displayType, extra), where: 'level:error' },
+        },
+      ]);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const msg = JSON.stringify(result.error.issues);
+        expect(msg).toContain('no tile-level `where`');
+        expect(msg).toContain('select');
+      }
+    },
+  );
+
+  it('rejects a tile-level whereLanguage on a builder tile', () => {
+    const result = mcpTilesParam.safeParse([
+      {
+        name: 'T',
+        config: {
+          ...baseConfig('table', { groupBy: 'SpanName' }),
+          whereLanguage: 'sql',
+        },
+      },
+    ]);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a tile-level where on the patch schema too', () => {
+    const result = mcpPatchDashboardSchema.safeParse({
+      dashboardId: new mongoose.Types.ObjectId().toString(),
+      tileId: 'tile-1',
+      tile: {
+        config: {
+          ...baseConfig('table', { groupBy: 'SpanName' }),
+          where: 'level:error',
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('still parses a builder tile with no tile-level where', () => {
+    const result = mcpTilesParam.safeParse([
+      { name: 'T', config: baseConfig('table', { groupBy: 'SpanName' }) },
+    ]);
+    expect(result.success).toBe(true);
+  });
+
+  it('still ACCEPTS a tile-level where on search / heatmap / event_patterns', () => {
+    const search = mcpTilesParam.safeParse([
+      {
+        name: 'S',
+        config: { displayType: 'search', sourceId, where: 'level:error' },
+      },
+    ]);
+    expect(search.success).toBe(true);
+
+    const heatmap = mcpTilesParam.safeParse([
+      {
+        name: 'H',
+        config: {
+          displayType: 'heatmap',
+          sourceId,
+          select: [{ valueExpression: 'Duration' }],
+          where: 'level:error',
+        },
+      },
+    ]);
+    expect(heatmap.success).toBe(true);
+  });
+});
 
 describe('getRawSqlTilesMissingRequiredSource', () => {
   it('flags a raw SQL tile that uses $__filters without a sourceId', () => {
