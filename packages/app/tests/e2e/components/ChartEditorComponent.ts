@@ -80,6 +80,147 @@ export class ChartEditorComponent {
   }
 
   /**
+   * The chart editor's root, in either place it renders: the dashboard's tile
+   * editor modal or the chart explorer page. Inputs that also exist outside it
+   * — most notably the dashboard's own search WHERE input, sitting behind the
+   * modal where the overlay swallows every click — must stay out of reach.
+   */
+  private editorForm(): Locator {
+    return this.page.locator(
+      '[data-testid="tile-editor-form"], [data-testid="chart-explorer-form"]',
+    );
+  }
+
+  /**
+   * The editor renders one WHERE input per series (the series' agg condition)
+   * followed by the chart-level WHERE, and they share a placeholder and testid.
+   * `'series'` takes the first, `'chart'` the last — so `'series'` only
+   * addresses the first series, which is all the tests need so far.
+   */
+  private whereInput(locator: Locator, scope: 'chart' | 'series'): Locator {
+    return scope === 'series' ? locator.first() : locator.last();
+  }
+
+  /**
+   * A whole WHERE input — its language switch, the SQL or Lucene editor, and
+   * anything the input renders beside them. Located from the language switch,
+   * which is the one part present in both languages and whichever state the
+   * editor is in.
+   */
+  private whereRow(scope: 'chart' | 'series' = 'chart'): Locator {
+    return this.whereInput(
+      this.editorForm().getByTestId('where-language-switch'),
+      scope,
+    ).locator('xpath=..');
+  }
+
+  /** The warning icon a WHERE input shows about the variables it references. */
+  whereVariableWarning(scope: 'chart' | 'series' = 'chart'): Locator {
+    return this.whereRow(scope).getByTestId('variable-validation');
+  }
+
+  /**
+   * What a WHERE input says about the dashboard variables its expression
+   * references, or '' when it flags nothing.
+   */
+  async getWhereVariableWarning(
+    scope: 'chart' | 'series' = 'chart',
+  ): Promise<string> {
+    const messages = await this.whereVariableWarning(scope).evaluateAll(
+      elements =>
+        elements.map(element => element.getAttribute('aria-label') ?? ''),
+    );
+    return messages.join(' ');
+  }
+
+  /**
+   * Select SQL or Lucene on a WHERE input. Both inputs default to Lucene.
+   */
+  async setWhereLanguage(
+    language: 'SQL' | 'Lucene',
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    // A completion popup left open by a prior editor can overlay the switch.
+    await dismissSqlAutocomplete(this.page);
+    const select = this.whereInput(
+      this.editorForm().getByTestId('where-language-switch'),
+      scope,
+    ).getByLabel('Query language');
+    await select.click();
+    await this.page
+      .getByRole('option', { name: language, exact: true })
+      .click();
+  }
+
+  /** Focus a WHERE input and replace its contents with `expression`. */
+  private async fillWhereEditor(expression: string, scope: 'chart' | 'series') {
+    // Located through the row rather than the placeholder, which CodeMirror
+    // drops as soon as there is content — so this can refill an input it has
+    // already filled once.
+    const editor = this.whereRow(scope).locator('.cm-content');
+    await editor.click();
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Delete');
+    await this.page.keyboard.type(expression);
+  }
+
+  /**
+   * Type a SQL WHERE clause into a WHERE input, replacing any existing
+   * contents. Switches the input to SQL first.
+   */
+  async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
+    await this.setWhereLanguage('SQL', scope);
+    await this.fillWhereEditor(expression, scope);
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * Type into a WHERE input while it is in Lucene mode, where it renders as a
+   * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
+   */
+  async typeLuceneWhere(text: string, scope: 'chart' | 'series' = 'chart') {
+    const input = this.whereInput(
+      this.editorForm().getByPlaceholder(/Search your events w\/ Lucene/i),
+      scope,
+    );
+    await input.click();
+    await input.fill(text);
+  }
+
+  /**
+   * Type `prefix` into a SQL WHERE input to open its autocomplete popup, and
+   * report what it offers plus the help panel of the highlighted suggestion.
+   *
+   * Empties the input and closes the popup before returning: the tooltip sits
+   * over the editor and would intercept the next interaction.
+   */
+  async readWhereCompletions(
+    prefix: string,
+    scope: 'chart' | 'series' = 'chart',
+  ): Promise<{ labels: string[]; info: string }> {
+    await this.setWhereLanguage('SQL', scope);
+    await this.fillWhereEditor(prefix, scope);
+
+    const popup = this.page.locator('.cm-tooltip-autocomplete');
+    await popup.waitFor({ state: 'visible', timeout: 10000 });
+    const labels = await this.sqlCompletionOptions().allInnerTexts();
+
+    const infoPanel = this.page.locator('.cm-completionInfo');
+    const info =
+      (await infoPanel.count()) > 0
+        ? (await infoPanel.innerText()).replace(/\s+/g, ' ').trim()
+        : '';
+
+    // The editor still has focus, so clear it from the keyboard rather than
+    // re-locating it: a non-empty editor no longer shows its placeholder.
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Backspace');
+    await popup.waitFor({ state: 'hidden', timeout: 10000 });
+
+    return { labels, info };
+  }
+
+  /**
    * Set a custom ORDER BY expression in the chart editor's ORDER BY input.
    * Available on the Table, Pie, and Bar display types. Clears any existing
    * value first, then types the new expression and dismisses the autocomplete
@@ -299,6 +440,20 @@ export class ChartEditorComponent {
     });
   }
 
+  /**
+   * Expand the "Sample Matched Events" accordion in the preview panel. Safe to
+   * call when it is already open. The table only queries once expanded.
+   */
+  async openSampleMatchedEvents() {
+    const control = this.page.getByRole('button', {
+      name: 'Sample Matched Events',
+    });
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+  }
+
   /** CodeMirror content of the rendered "Generated SQL" preview. */
   generatedSqlContent(): Locator {
     return this.page.getByTestId('chart-sql-preview').locator('.cm-content');
@@ -513,6 +668,24 @@ export class ChartEditorComponent {
     await this.selectSource(sourceName);
     if (groupBy) await this.setGroupBy(groupBy);
     await this.save();
+  }
+
+  /** The badge the alert block shows when the tile's query has a warning. */
+  alertWarningBadge(): Locator {
+    return this.page
+      .getByTestId('alert-details')
+      .getByText('Warning', { exact: true });
+  }
+
+  /**
+   * What the alert block's warning badge says, or '' when it shows none. The
+   * message only exists as a tooltip, so this hovers the badge to read it.
+   */
+  async getAlertWarning(): Promise<string> {
+    const badge = this.alertWarningBadge();
+    if ((await badge.count()) === 0) return '';
+    await badge.hover();
+    return (await this.page.getByRole('tooltip').innerText()).trim();
   }
 
   /**

@@ -1,7 +1,7 @@
 import {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -338,7 +338,7 @@ export const DBRowSidePanelInner = ({
 
   const hasActiveStacks = activeSourceFrame != null || leafNav != null;
 
-  const parentContext = useContext(RowSidePanelContext);
+  const parentContext = use(RowSidePanelContext);
   // Nested rows shouldn't inherit the parent table's row config.
   const dbSqlRowTableConfig = hasActiveStacks
     ? undefined

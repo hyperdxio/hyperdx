@@ -333,7 +333,15 @@ const numericOrderedColorCondition = z.object({
 
 const betweenColorCondition = z.object({
   operator: z.literal('between'),
-  value: z.tuple([z.number().finite(), z.number().finite()]),
+  // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
+  // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
+  // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
+  // draft-07 form (`items: [ ... ]`). In JSON Schema draft 2020-12 `items` must
+  // be a schema, not an array, so a tuple here makes the whole tool schema
+  // invalid and any strict draft-2020-12 client (e.g. the Anthropic API) rejects
+  // the tool list outright. The wire format — `[min, max]` — is identical either
+  // way, and matches the published `BetweenColorCondition` external-API schema.
+  value: z.array(z.number().finite()).length(2),
   color: ChartPaletteTokenSchema,
   label: z.string().max(40).optional(),
 });
@@ -874,8 +882,16 @@ export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
 // emitted: ALERT = fired, OK = recovered.
 export const AlertTransitionSchema = z.object({
-  createdAt: z.string(),
+  createdAt: z.string().datetime(),
   state: z.nativeEnum(AlertState),
+  // Start of the newest bucket evaluated by the transitioning window. Charts
+  // plot each bucket's value at its *start*, while the evaluation runs at the
+  // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
+  // data point that produced the transition. Optional for compatibility with
+  // older API responses; consumers fall back to createdAt. Floored at the
+  // requested range start so an edge crossing's marker never precedes a
+  // carry-in pin; charts clamp edge markers into their rendered domain.
+  bucketStart: z.string().datetime().optional(),
 });
 
 export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
@@ -1411,7 +1427,12 @@ export const WithClauseSchema = z.object({
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z.object({ with: z.array(WithClauseSchema) }).partial(),
+  z
+    .object({
+      with: z.array(WithClauseSchema),
+      variables: z.array(ChartVariableSchema),
+    })
+    .partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
@@ -2237,7 +2258,10 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({ type: z.string().optional().nullable() }),
+  channel: z.object({
+    type: z.string().optional().nullable(),
+    webhookId: z.string().optional(),
+  }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
@@ -2484,6 +2508,20 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Response for `PATCH /me/accessKey`.
+//
+// Deliberately not RotateApiKeyApiResponseSchema (`{ newApiKey }`): `team.apiKey`
+// is the shared ingestion key, while `user.accessKey` is the per-user bearer
+// token for the external API v2 and the MCP server. The two are rendered side by
+// side in Team Settings, so the wire names must not blur together.
+export const RotateAccessKeyApiResponseSchema = z.object({
+  newAccessKey: z.string(),
+});
+
+export type RotateAccessKeyApiResponse = z.infer<
+  typeof RotateAccessKeyApiResponseSchema
+>;
 
 // IaC (Terraform) export
 //

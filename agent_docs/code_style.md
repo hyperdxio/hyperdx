@@ -131,6 +131,56 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 
 **Note**: Existing `<Alert color="...">` call sites are untouched; the semantic variants are opt-in. Prefer the variant for any **new** callout, and migrate nearby `color="..."` alerts when you touch them.
 
+### Confirmation dialogs: use `useConfirm` (REQUIRED)
+
+**Use `useConfirm` (`@/useConfirm`) for any "are you sure?" step. Do not
+hand-roll a `<Modal>` with Cancel/Confirm buttons.** The provider is already
+mounted app-wide in `pages/_app.tsx`, so there is no setup at the call site.
+
+```tsx
+const confirm = useConfirm();
+
+const handleDelete = async () => {
+  if (
+    await confirm(
+      <>
+        Deleting {name} is <b>not reversible</b>.
+      </>,
+      'Delete',
+      { variant: 'danger' },
+    )
+  ) {
+    await deleteThing.mutateAsync({ id });
+  }
+};
+```
+
+- The message is a `ReactNode`, so it can carry emphasis and multiple sentences.
+- Pass `{ variant: 'danger' }` for destructive actions; the confirm label
+  defaults to `Confirm`.
+- It resolves **exactly once**, so a double click on Confirm during the modal's
+  exit transition cannot fire the action twice. A hand-rolled modal has to guard
+  that itself.
+- Test ids are shared and already exist: `confirm-modal`,
+  `confirm-confirm-button`, `confirm-cancel-button`. **Do not invent per-flow
+  confirm/cancel test ids** — E2E page objects key off the shared ones.
+
+**Known limits.** It passes no `title` to the Modal and renders the body at
+`size="sm" opacity={0.7}`, and CSS opacity applies to the whole subtree so a
+nested `<Text>` cannot opt back out. If a flow genuinely needs a heading or
+full-contrast body, **extend `useConfirm`** (an optional prop, applied to all
+call sites) rather than forking a one-off modal.
+
+**In component tests**, mock it — `ConfirmProvider` pulls in `next/router`,
+which is not available in jsdom:
+
+```tsx
+jest.mock('@/useConfirm', () => ({ useConfirm: jest.fn() }));
+```
+
+Assert on the arguments (and render the message `ReactNode` if you need to check
+the copy). Exercise the real dialog in E2E instead.
+
 ### EmptyState Component (REQUIRED)
 
 **Use `EmptyState` (`@/components/EmptyState`) for all empty/no-data states.** Do not create ad-hoc inline empty states.

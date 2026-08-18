@@ -3,6 +3,7 @@ import * as SQLParser from 'node-sql-parser';
 import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
+  ChartVariable,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
@@ -776,6 +777,33 @@ export function getFilterVariableName(filter: {
   return (
     filter.variableName?.trim() || deriveVariableName(filter.name) || undefined
   );
+}
+
+/** A dashboard variable's identity, before any selection is attached. */
+export type DashboardVariableDeclaration = Pick<
+  ChartVariable,
+  'name' | 'expression'
+>;
+
+/** The variables a dashboard declares, in filter order. */
+export function getDashboardVariableDeclarations(
+  filters: DashboardFilter[] | undefined,
+): DashboardVariableDeclaration[] {
+  const declarations: DashboardVariableDeclaration[] = [];
+  const takenNames = new Set<string>();
+
+  for (const filter of filters ?? []) {
+    if (!isFilterVariableEnabled(filter)) continue;
+
+    // There shouldn't be any duplicate names, but if there are then the first one wins.
+    const name = getFilterVariableName(filter);
+    if (!name || takenNames.has(name)) continue;
+    takenNames.add(name);
+
+    declarations.push({ name, expression: filter.expression });
+  }
+
+  return declarations;
 }
 
 /**

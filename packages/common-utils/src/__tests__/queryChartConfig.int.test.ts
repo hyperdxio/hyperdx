@@ -1267,6 +1267,15 @@ describe('queryChartConfig Integration Tests', () => {
           gaugeRow('tbl.one', insertTs(0), 'svc-a', 10),
           gaugeRow('tbl.one', insertTs(0), 'svc-b', 20),
           gaugeRow('tbl.two', insertTs(0), 'svc-a', 100),
+          // Formula motivating example:
+          // success / (success + error + fsi) * 100. Bucket 0 has all three
+          // operands; bucket 1 has only a zero success (zero denominator);
+          // bucket 2 has only errors (missing numerator).
+          gaugeRow('form.success', insertTs(0), 'svc-a', 90),
+          gaugeRow('form.error', insertTs(0), 'svc-a', 8),
+          gaugeRow('form.fsi', insertTs(0), 'svc-a', 2),
+          gaugeRow('form.success', insertTs(1), 'svc-a', 0),
+          gaugeRow('form.error', insertTs(2), 'svc-a', 5),
           // Grouped gauge+histogram mix.
           gaugeRow('grpmix.gauge', insertTs(1), 'svc-a', 42),
         ],
@@ -1824,6 +1833,200 @@ describe('queryChartConfig Integration Tests', () => {
       expect(data).toHaveLength(1);
       expect(col(data[0], 'avg(tbl.one)')).toBe(15);
       expect(col(data[0], 'avg(tbl.two)')).toBe(100);
+    });
+
+    // Formulas compile into the composed query's final projection, reusing
+    // the same fixtures as the merge baseline above.
+    describe('formulas', () => {
+      it('computes the motivating success-rate example: A / (A + B + C) * 100', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('form.success'),
+              gaugeSelect('form.error'),
+              gaugeSelect('form.fsi'),
+            ],
+            formulas: [
+              { expression: 'A / (A + B + C) * 100', alias: 'Success rate' },
+            ],
+          }),
+        );
+
+        // Meta contract: operand value columns first, in select order, then
+        // the formula column — all numeric — ahead of the bucket column.
+        expectNumericValueColumns(result.meta, [
+          'avg(form.success)',
+          'avg(form.error)',
+          'avg(form.fsi)',
+          'Success rate',
+        ]);
+
+        const rows = rowsByBucket(result.data);
+        expect([...rows.keys()].sort()).toEqual([
+          bucket(0),
+          bucket(1),
+          bucket(2),
+        ]);
+
+        // All operands present: 90 / (90 + 8 + 2) * 100.
+        expect(Number(col(rows.get(bucket(0)), 'Success rate'))).toBeCloseTo(
+          90,
+          5,
+        );
+        // Zero success and nothing else: denominator 0 -> gap, not 0 or error.
+        expectGap(col(rows.get(bucket(1)), 'Success rate'));
+        // Missing success counts as 0: 0 / (0 + 5 + 0) * 100 = 0.
+        expect(Number(col(rows.get(bucket(2)), 'Success rate'))).toBe(0);
+      });
+
+      it('matches the ratio projection semantics for A / B (0-for-missing-numerator, gap-for-zero/missing-denominator)', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('ratio.err'), gaugeSelect('ratio.total')],
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            showOperandSeries: false,
+          }),
+        );
+
+        const rows = rowsByBucket(result.data);
+        expect(rows.size).toBe(4);
+
+        // Same fixture and expectations as the seriesReturnType: 'ratio'
+        // test above — the formula path must be drop-in consistent.
+        expect(Number(col(rows.get(bucket(0)), 'err rate'))).toBeCloseTo(
+          0.5,
+          5,
+        );
+        expect(Number(col(rows.get(bucket(1)), 'err rate'))).toBe(0);
+        expectGap(col(rows.get(bucket(2)), 'err rate'));
+        expectGap(col(rows.get(bucket(3)), 'err rate'));
+      });
+
+      it('computes a formula over mixed gauge and sum (increase) operands', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('mix.cpu'), increaseSelect('mix.requests')],
+            formulas: [{ expression: 'A + B', alias: 'combined' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, [
+          'avg(mix.cpu)',
+          'increase(mix.requests)',
+          'combined',
+        ]);
+
+        const rows = rowsByBucket(result.data);
+        // Gauge 1 + increase 0 at bucket 0; missing gauge counts as 0 at
+        // bucket 1; both present at bucket 2.
+        expect(Number(col(rows.get(bucket(0)), 'combined'))).toBe(1);
+        expect(Number(col(rows.get(bucket(1)), 'combined'))).toBe(9);
+        expect(Number(col(rows.get(bucket(2)), 'combined'))).toBe(13);
+      });
+
+      it('computes a grouped formula per (bucket, group) row', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            formulas: [{ expression: 'A + B', alias: 'both' }],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, [
+          'avg(grp.one)',
+          'avg(grp.two)',
+          'both',
+        ]);
+
+        const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+        expect(rows.size).toBe(3);
+        expect(Number(col(rows.get(`${bucket(0)}|svc-a`), 'both'))).toBe(11);
+        // One-sided groups: the missing operand contributes 0.
+        expect(Number(col(rows.get(`${bucket(0)}|svc-b`), 'both'))).toBe(2);
+        expect(Number(col(rows.get(`${bucket(0)}|svc-c`), 'both'))).toBe(30);
+      });
+
+      it('drops the operand columns from meta and rows when showOperandSeries is false', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            formulas: [{ expression: 'A + B', alias: 'both' }],
+            showOperandSeries: false,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          }),
+        );
+
+        // The formula column leads the meta; the operands are gone but the
+        // group/bucket passthrough columns survive.
+        expectNumericValueColumns(result.meta, ['both']);
+        const metaNames = result.meta?.map(m => m.name) ?? [];
+        expect(metaNames).not.toContain('avg(grp.one)');
+        expect(metaNames).not.toContain('avg(grp.two)');
+        expect(metaNames).toContain('ServiceName');
+
+        const rows = rowsByBucketAndGroup(result.data, 'ServiceName');
+        expect(rows.size).toBe(3);
+        expect(Number(col(rows.get(`${bucket(0)}|svc-a`), 'both'))).toBe(11);
+      });
+
+      it('computes a single-series formula (composed path with one branch)', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('gap.one')],
+            formulas: [{ expression: 'A * 100', alias: 'pct' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, ['avg(gap.one)', 'pct']);
+
+        const rows = rowsByBucket(result.data);
+        expect(rows.size).toBe(2);
+        expect(Number(col(rows.get(bucket(0)), 'pct'))).toBe(1000);
+        expect(Number(col(rows.get(bucket(1)), 'pct'))).toBe(2000);
+      });
+
+      it('computes formulas for number-shape (ungrouped, no time bucket) charts', async () => {
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Number,
+            granularity: undefined,
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            formulas: [{ expression: 'A / B * 100', alias: 'pct' }],
+            showOperandSeries: false,
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, ['pct']);
+        const data = result.data as Row[];
+        expect(data).toHaveLength(1);
+        // avg(tbl.one) = 15, avg(tbl.two) = 100.
+        expect(Number(col(data[0], 'pct'))).toBeCloseTo(15, 5);
+      });
+
+      it('computes formulas for grouped table-shape charts', async () => {
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            formulas: [{ expression: 'B / A', alias: 'ratio' }],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          }),
+        );
+
+        expectNumericValueColumns(result.meta, [
+          'avg(tbl.one)',
+          'avg(tbl.two)',
+          'ratio',
+        ]);
+
+        const data = result.data as Row[];
+        const byService = new Map(data.map(r => [col(r, 'ServiceName'), r]));
+        expect(Number(col(byService.get('svc-a'), 'ratio'))).toBeCloseTo(10, 5);
+        // svc-b has no tbl.two rows: 0 / 20 = 0.
+        expect(Number(col(byService.get('svc-b'), 'ratio'))).toBe(0);
+      });
     });
   });
 });
