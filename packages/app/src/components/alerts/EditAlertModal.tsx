@@ -15,6 +15,7 @@ import {
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Accordion,
   Alert as MantineAlert,
   Button,
   Group,
@@ -25,12 +26,13 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconInfoCircleFilled } from '@tabler/icons-react';
+import { IconChartLine, IconInfoCircleFilled } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
 import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
+import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useSavedSearch } from '@/savedSearch';
@@ -126,10 +128,13 @@ export function EditAlertModal({
   alert,
   opened,
   onClose,
+  dateRange,
 }: {
   alert: AlertsPageItem;
   opened: boolean;
   onClose: () => void;
+  /** Time range for the threshold preview chart (the detail page's picked range). */
+  dateRange: [Date, Date];
 }) {
   const brandName = useBrandDisplayName();
   const queryClient = useQueryClient();
@@ -192,6 +197,30 @@ export function EditAlertModal({
     ? TILE_ALERT_THRESHOLD_TYPE_OPTIONS
     : ALERT_THRESHOLD_TYPE_OPTIONS;
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
+
+  // Live threshold preview: AlertDetailChart reads everything off the alert
+  // object, so overlay the watched form values onto the persisted alert. The
+  // chart uses the detail page's picked time range (passed via `dateRange`)
+  // so the preview matches the chart behind the modal.
+  const previewAlert = React.useMemo<AlertsPageItem>(
+    () => ({
+      ...alert,
+      interval: interval ?? alert.interval,
+      threshold: threshold ?? alert.threshold,
+      thresholdMax,
+      thresholdType: thresholdType ?? alert.thresholdType,
+      ...(!isTileAlert && { groupBy: groupBy || undefined }),
+    }),
+    [
+      alert,
+      interval,
+      threshold,
+      thresholdMax,
+      thresholdType,
+      groupBy,
+      isTileAlert,
+    ],
+  );
 
   const onSubmit = handleSubmit(async data => {
     // Faithful view of which schedule keys the persisted alert actually has
@@ -257,7 +286,7 @@ export function EditAlertModal({
       opened={opened}
       onClose={onClose}
       title="Edit Alert"
-      size="lg"
+      size="xl"
     >
       <form onSubmit={onSubmit}>
         <Stack gap="xs">
@@ -406,6 +435,16 @@ export function EditAlertModal({
             </MantineAlert>
           )}
         </Stack>
+        <Accordion defaultValue="chart" mt="sm" mx={-16}>
+          <Accordion.Item value="chart">
+            <Accordion.Control icon={<IconChartLine size={16} />}>
+              <Text size="sm">Threshold chart</Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <AlertDetailChart alert={previewAlert} dateRange={dateRange} />
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
         <Group mt="lg" justify="flex-end" gap="xs">
           <Button variant="secondary" onClick={onClose}>
             Cancel

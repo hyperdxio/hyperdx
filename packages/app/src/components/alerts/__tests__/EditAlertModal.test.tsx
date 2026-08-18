@@ -50,6 +50,24 @@ jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   __esModule: true,
   SQLInlineEditorControlled: () => <div data-testid="sql-inline-editor" />,
 }));
+// The threshold preview stub surfaces the live values it was rendered with so
+// tests can assert the form -> preview wiring.
+jest.mock('@/components/alerts/AlertDetailChart', () => ({
+  __esModule: true,
+  AlertDetailChart: ({
+    alert,
+    dateRange,
+  }: {
+    alert: { threshold: number };
+    dateRange: [Date, Date];
+  }) => (
+    <div
+      data-testid="alert-detail-chart"
+      data-threshold={alert.threshold}
+      data-date-range={dateRange.map(d => d.toISOString()).join('/')}
+    />
+  ),
+}));
 
 // The persisted alert shape returned by GET /alerts/:id (fields the form
 // doesn't edit — name, message — must round-trip through a save).
@@ -83,13 +101,23 @@ const tileAlert = {
   tileId: 'tile-id',
 } as AlertsPageItem;
 
+const dateRange: [Date, Date] = [
+  new Date('2026-05-01T00:00:00.000Z'),
+  new Date('2026-05-02T00:00:00.000Z'),
+];
+
 const renderModal = (alert: AlertsPageItem) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return renderWithMantine(
     <QueryClientProvider client={queryClient}>
-      <EditAlertModal alert={alert} opened onClose={jest.fn()} />
+      <EditAlertModal
+        alert={alert}
+        opened
+        onClose={jest.fn()}
+        dateRange={dateRange}
+      />
     </QueryClientProvider>,
   );
 };
@@ -162,6 +190,25 @@ describe('EditAlertModal', () => {
 
     expect(updateAlertMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ threshold: 42 }),
+    );
+  });
+
+  it('renders a threshold preview driven by live form values and the page time range', () => {
+    renderModal(savedSearchAlert);
+
+    const chart = screen.getByTestId('alert-detail-chart');
+    expect(chart).toHaveAttribute('data-threshold', '3');
+    expect(chart).toHaveAttribute(
+      'data-date-range',
+      '2026-05-01T00:00:00.000Z/2026-05-02T00:00:00.000Z',
+    );
+
+    // Editing the threshold updates the preview immediately (pre-save).
+    const thresholdInput = screen.getByDisplayValue('3');
+    fireEvent.change(thresholdInput, { target: { value: '42' } });
+    expect(screen.getByTestId('alert-detail-chart')).toHaveAttribute(
+      'data-threshold',
+      '42',
     );
   });
 });

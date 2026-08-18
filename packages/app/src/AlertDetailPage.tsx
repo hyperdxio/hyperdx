@@ -212,6 +212,7 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
         alert={alert}
         opened={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
+        dateRange={searchedTimeRange}
       />
       <div style={{ overflow: 'auto', flexGrow: 1 }}>
         <Container size="xl" py="md">
