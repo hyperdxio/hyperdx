@@ -2501,6 +2501,20 @@ export const MeApiResponseSchema = z.object({
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
 
+// Response for `PATCH /me/accessKey`.
+//
+// Deliberately not RotateApiKeyApiResponseSchema (`{ newApiKey }`): `team.apiKey`
+// is the shared ingestion key, while `user.accessKey` is the per-user bearer
+// token for the external API v2 and the MCP server. The two are rendered side by
+// side in Team Settings, so the wire names must not blur together.
+export const RotateAccessKeyApiResponseSchema = z.object({
+  newAccessKey: z.string(),
+});
+
+export type RotateAccessKeyApiResponse = z.infer<
+  typeof RotateAccessKeyApiResponseSchema
+>;
+
 // IaC (Terraform) export
 //
 // Shared so `GET /iac/import-manifest` and the generators in
