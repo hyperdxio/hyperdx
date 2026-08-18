@@ -26,9 +26,17 @@ jest.mock('@/components/TeamSettings/WebhookForm', () => ({
   WebhookForm: () => <div data-testid="webhook-form" />,
 }));
 
+type Channel = { type: 'webhook'; webhookId: string };
+
 type FormValues = {
-  channels: { type: 'webhook'; webhookId: string }[];
+  channels: Channel[];
 };
+
+// A channel type this repo doesn't render (e.g. a downstream fork's email
+// channel). `value: any` (rather than an `as` cast) keeps this off the
+// no-unsafe-type-assertion budget while still producing a value shaped like
+// this form's channel type for the harness below.
+const foreignChannel = (value: any): Channel => value;
 
 const ONE_EMPTY_CHANNEL: FormValues['channels'] = [
   { type: 'webhook', webhookId: '' },
@@ -42,13 +50,7 @@ const Harness = ({
   const { control } = useForm<FormValues>({
     defaultValues: { channels: initial },
   });
-  return (
-    <AlertChannelForm
-      control={control}
-      type="webhook"
-      channelsName="channels"
-    />
-  );
+  return <AlertChannelForm control={control} channelsName="channels" />;
 };
 
 // jsdom has no layout, and Mantine's combobox scrolls the active option.
@@ -112,6 +114,20 @@ describe('AlertChannelForm', () => {
     expect(beta.closest('[data-combobox-option]')).not.toHaveAttribute(
       'data-combobox-disabled',
     );
+  });
+
+  it('renders nothing for a row of a type this repo does not handle, but keeps the rest of the list working', () => {
+    renderWithMantine(
+      <Harness
+        initial={[
+          foreignChannel({ type: 'email', emailRecipients: ['ops@x.test'] }),
+          { type: 'webhook', webhookId: 'w1' },
+        ]}
+      />,
+    );
+
+    // Only the webhook row renders a channel picker.
+    expect(rows()).toHaveLength(1);
   });
 
   it('stops offering more channels at the cap', async () => {

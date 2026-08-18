@@ -64,7 +64,6 @@ export function TileAlertEditor({
 }) {
   const [opened, { toggle }] = useDisclosure(true);
 
-  const alertChannelType = useWatch({ control, name: 'alert.channels.0.type' });
   const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
   const alertThreshold = useWatch({ control, name: 'alert.threshold' });
   const alertThresholdMax = useWatch({ control, name: 'alert.thresholdMax' });
@@ -247,11 +246,7 @@ export function TileAlertEditor({
           <Text size="xxs" opacity={0.5} mb={4} mt="sm">
             Send to
           </Text>
-          <AlertChannelForm
-            control={control}
-            type={alertChannelType}
-            channelsName="alert.channels"
-          />
+          <AlertChannelForm control={control} channelsName="alert.channels" />
           <AlertNoteField
             control={control}
             name="alert.note"

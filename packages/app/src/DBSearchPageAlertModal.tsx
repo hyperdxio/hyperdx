@@ -146,7 +146,6 @@ const AlertForm = ({
 
   const groupBy = useWatch({ control, name: 'groupBy' });
   const thresholdType = useWatch({ control, name: 'thresholdType' });
-  const channelType = useWatch({ control, name: 'channels.0.type' });
   const interval = useWatch({ control, name: 'interval' });
   const scheduleOffsetMinutes = useWatch({
     control,
@@ -301,11 +300,7 @@ const AlertForm = ({
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
-          <AlertChannelForm
-            control={control}
-            type={channelType}
-            channelsName="channels"
-          />
+          <AlertChannelForm control={control} channelsName="channels" />
           <AlertNoteField control={control} name="note" />
           {groupBy &&
             (thresholdType === AlertThresholdType.BELOW ||

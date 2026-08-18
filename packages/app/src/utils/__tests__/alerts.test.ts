@@ -3,6 +3,13 @@ import {
   toAlertChannels,
 } from '@/utils/alerts';
 
+// A channel shape this repo doesn't define -- e.g. a downstream fork's email
+// channel, or a webhook channel carrying `webhookService`/`slackChannelId`/
+// `severity`. `value: any` (rather than an `as` cast) keeps this off the
+// no-unsafe-type-assertion budget while still producing a value typed as the
+// generic channel type `toAlertChannels` accepts.
+const foreignChannel = (value: any): { type?: string | null } => value;
+
 describe('normalizeNoOpAlertScheduleFields', () => {
   it('drops no-op schedule fields for pre-migration alerts', () => {
     const normalized = normalizeNoOpAlertScheduleFields(
@@ -117,5 +124,41 @@ describe('toAlertChannels', () => {
     expect(toAlertChannels()).toEqual([wh('')]);
     expect(toAlertChannels({})).toEqual([wh('')]);
     expect(toAlertChannels({ channel: { type: null } })).toEqual([wh('')]);
+  });
+
+  // The invariant guard: this repo only defines webhook channels, but a
+  // downstream fork adds others. toAlertChannels must copy them by
+  // reference, not project them onto webhook-shaped fields.
+  it('keeps an email-shaped channel intact', () => {
+    const exotic = foreignChannel({
+      type: 'email',
+      emailRecipients: ['ops@example.test'],
+    });
+
+    expect(toAlertChannels({ channels: [exotic] })).toEqual([exotic]);
+  });
+
+  it('keeps webhookService, slackChannelId and severity on a webhook channel', () => {
+    const exotic = foreignChannel({
+      type: 'webhook',
+      webhookId: 'w1',
+      webhookService: 'slack',
+      slackChannelId: 'C123',
+      severity: 'critical',
+    });
+
+    expect(toAlertChannels({ channels: [exotic] })).toEqual([exotic]);
+  });
+
+  it('keeps both entries in a mixed webhook + email list', () => {
+    const email = foreignChannel({
+      type: 'email',
+      emailRecipients: ['ops@example.test'],
+    });
+
+    expect(toAlertChannels({ channels: [wh('a'), email] })).toEqual([
+      wh('a'),
+      email,
+    ]);
   });
 });

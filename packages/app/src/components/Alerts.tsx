@@ -10,7 +10,6 @@ import {
 } from 'react-hook-form';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import {
-  type AlertChannelType,
   AlertThresholdType,
   MAX_ALERT_CHANNELS,
   WebhookService,
@@ -42,11 +41,9 @@ function makeWebhookChannel<T extends FieldValues>(
 
 export const AlertChannelForm = <T extends FieldValues>({
   control,
-  type,
   channelsName,
 }: {
   control: Control<T>;
-  type: AlertChannelType;
   /** Path of the alert's channels array, e.g. "channels" or "alert.channels". */
   channelsName: ArrayPath<T> & Path<T>;
 }) => {
@@ -55,9 +52,9 @@ export const AlertChannelForm = <T extends FieldValues>({
     name: channelsName,
   });
   // `fields` holds the values from the last render, so watch for the live ones
-  // the duplicate check needs.
+  // the duplicate check (and the per-row type discriminant below) need.
   const channels = useWatch({ control, name: channelsName }) as
-    | { webhookId?: string }[]
+    | { type?: string | null; webhookId?: string }[]
     | undefined;
   const { refetch: refetchWebhooks } = useAlertWebhooks();
   const [opened, { open, close }] = useDisclosure(false);
@@ -85,36 +82,42 @@ export const AlertChannelForm = <T extends FieldValues>({
     close();
   };
 
-  if (type !== 'webhook') {
-    return null;
-  }
-
   return (
     <Stack gap="xs">
-      {fields.map((field, index) => (
-        <Group key={field.id} gap="md" align="flex-start" wrap="nowrap">
-          <WebhookChannelForm
-            control={control}
-            namePrefix={`${channelsName}.${index}.`}
-            takenWebhookIds={selectedWebhookIds.filter(
-              (id, i) => i !== index && !!id,
+      {fields.map((field, index) => {
+        // The discriminant is per-row, not per-array: a downstream fork can
+        // mix channel types (e.g. webhook + email) in one alert. A row whose
+        // type this repo doesn't render (anything but webhook) is skipped so
+        // the rest of the list still works.
+        const channelType = channels?.[index]?.type;
+        if (channelType !== 'webhook') {
+          return null;
+        }
+        return (
+          <Group key={field.id} gap="md" align="flex-start" wrap="nowrap">
+            <WebhookChannelForm
+              control={control}
+              namePrefix={`${channelsName}.${index}.`}
+              takenWebhookIds={selectedWebhookIds.filter(
+                (id, i) => i !== index && !!id,
+              )}
+            />
+            {/* A single channel is not removable: an alert with no target
+                would fire into the void, and the API rejects it anyway. */}
+            {fields.length > 1 && (
+              <ActionIcon
+                data-testid="remove-webhook-channel-button"
+                aria-label="Remove notification channel"
+                size="md"
+                variant="danger"
+                onClick={() => remove(index)}
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
             )}
-          />
-          {/* A single channel is not removable: an alert with no target
-              would fire into the void, and the API rejects it anyway. */}
-          {fields.length > 1 && (
-            <ActionIcon
-              data-testid="remove-webhook-channel-button"
-              aria-label="Remove notification channel"
-              size="md"
-              variant="danger"
-              onClick={() => remove(index)}
-            >
-              <IconTrash size={14} />
-            </ActionIcon>
-          )}
-        </Group>
-      ))}
+          </Group>
+        );
+      })}
       <Group gap="xs">
         <Button
           data-testid="add-alert-channel-button"

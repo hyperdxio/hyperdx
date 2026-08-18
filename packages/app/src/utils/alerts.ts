@@ -134,21 +134,21 @@ const EMPTY_ALERT_CHANNEL = { type: 'webhook', webhookId: '' } as const;
  * Form value for an alert's notification channels. Alerts saved before
  * multi-channel support only carry the singular `channel`, and the form always
  * needs at least one row to render.
+ *
+ * A downstream fork defines channel types this repo doesn't (e.g. email).
+ * Channels are copied through untouched rather than rebuilt field-by-field,
+ * so saving an alert here never destroys fields this repo doesn't know about.
  */
-export function toAlertChannels(alert?: {
-  channel?: { type?: string | null; webhookId?: string } | null;
-  channels?: { type?: string | null; webhookId?: string }[] | null;
-}): { type: 'webhook'; webhookId: string }[] {
-  const source =
-    alert?.channels != null && alert.channels.length > 0
-      ? alert.channels
-      : alert?.channel != null
-        ? [alert.channel]
-        : [];
-  const channels = source
-    .filter(c => c.type === 'webhook')
-    .map(c => ({ type: 'webhook' as const, webhookId: c.webhookId ?? '' }));
-  return channels.length > 0 ? channels : [{ ...EMPTY_ALERT_CHANNEL }];
+export function toAlertChannels<T extends { type?: string | null }>(alert?: {
+  channel?: T | null;
+  channels?: T[] | null;
+}): T[] | [typeof EMPTY_ALERT_CHANNEL] {
+  const source = alert?.channels?.length
+    ? alert.channels
+    : alert?.channel != null && alert.channel.type != null
+      ? [alert.channel]
+      : [];
+  return source.length > 0 ? source : [{ ...EMPTY_ALERT_CHANNEL }];
 }
 
 export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
