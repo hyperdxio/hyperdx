@@ -45,6 +45,7 @@ import {
 import {
   getAlignedDateRange,
   getDistributedTableArgs,
+  isDateRangeValid,
   MetadataMVQueryOptions,
   objectHash,
   TextIndexColumnQueryOptions,
@@ -662,6 +663,13 @@ export class Metadata {
     signal?: AbortSignal;
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
+    if (dateRange && !isDateRangeValid(dateRange)) {
+      console.warn(
+        'getMapKeys: skipping metadata queries, dateRange contains an invalid date',
+        dateRange,
+      );
+      return [];
+    }
 
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
@@ -1330,6 +1338,13 @@ export class Metadata {
     maxValuesPerKey: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
+    if (!isDateRangeValid(dateRange)) {
+      console.warn(
+        'getMetadataMVKeyValues: skipping rollup query, dateRange contains an invalid date',
+        dateRange,
+      );
+      return undefined;
+    }
     const queryOptionsHash = objectHash(queryOptions);
     const metadataMVsHash = objectHash(metadataMVs ?? {});
     const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${metadataMVsHash}.${queryOptionsHash}.getMetadataMVKeyValues`;
