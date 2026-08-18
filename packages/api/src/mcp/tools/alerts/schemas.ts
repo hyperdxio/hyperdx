@@ -1,5 +1,6 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
+  alertChannelKey,
   type AlertInterval,
   isRangeThresholdType,
   MAX_ALERT_CHANNELS,
@@ -140,12 +141,15 @@ export function validateSaveAlertInput(data: McpSaveAlertInput): string | null {
   }
   if (hasChannel && hasChannels) {
     const first = data.channels?.[0];
-    if (first == null || first.webhookId !== data.channel?.webhookId) {
+    if (
+      first == null ||
+      alertChannelKey(first) !== alertChannelKey(data.channel!)
+    ) {
       return 'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"';
     }
   }
-  const webhookIds = (data.channels ?? []).map(c => c.webhookId);
-  if (new Set(webhookIds).size !== webhookIds.length) {
+  const keys = (data.channels ?? []).map(alertChannelKey);
+  if (new Set(keys).size !== keys.length) {
     return 'Duplicate notification channels are not allowed';
   }
 

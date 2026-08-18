@@ -14,28 +14,11 @@ import {
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
-import { type AlertChannel, AlertSource } from '@/models/alert';
+import { AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
-import {
-  type McpSaveAlertInput,
-  mcpSaveAlertSchema,
-  validateSaveAlertInput,
-} from './schemas';
-
-/**
- * Convert the flat MCP channel objects into the discriminated-union
- * `AlertChannel[]` that the controller layer expects. `channel` and `channels`
- * are already checked to agree by validateSaveAlertInput.
- */
-function toAlertChannels(input: McpSaveAlertInput): AlertChannel[] {
-  const flat = input.channels ?? (input.channel ? [input.channel] : []);
-  return flat.map(c => ({
-    type: 'webhook' as const,
-    webhookId: c.webhookId,
-  }));
-}
+import { mcpSaveAlertSchema, validateSaveAlertInput } from './schemas';
 
 export function registerSaveAlert({
   context,
@@ -79,7 +62,7 @@ export function registerSaveAlert({
       const alertInput: AlertInput = {
         source,
         // `channel` is omitted; makeAlert mirrors it from channels[0].
-        channels: toAlertChannels(input),
+        channels: input.channels ?? (input.channel ? [input.channel] : []),
         interval: input.interval,
         threshold: input.threshold,
         thresholdType: input.thresholdType as AlertThresholdType,
