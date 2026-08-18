@@ -1,8 +1,10 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
 import ApiKeysSection from '@/components/TeamSettings/ApiKeysSection';
+import { useConfirm } from '@/useConfirm';
 
 jest.mock('@/api', () => ({
   __esModule: true,
@@ -15,10 +17,14 @@ jest.mock('@/api', () => ({
   hdxServer: jest.fn(),
 }));
 
+// The real ConfirmProvider lives in pages/_app.tsx and pulls in next/router,
+// so the shared dialog is mocked here and exercised in the E2E specs instead.
+jest.mock('@/useConfirm', () => ({ useConfirm: jest.fn() }));
+
 // Annotated as the loose `jest.Mock` rather than `jest.mocked(...)`'s exact
 // MockedFunction: these hooks return TanStack `UseQueryResult` /
 // `UseMutationResult` objects with ~25 members, and the tests only need the
-// three the component reads. The loose type keeps `mockReturnValue` at `any`
+// few the component reads. The loose type keeps `mockReturnValue` at `any`
 // so the partial fixtures below need no type assertions.
 const mockUseMe: jest.Mock = jest.mocked(api.useMe);
 const mockUseTeam: jest.Mock = jest.mocked(api.useTeam);
@@ -26,6 +32,7 @@ const mockUseRotateTeamApiKey: jest.Mock = jest.mocked(api.useRotateTeamApiKey);
 const mockUseRotatePersonalAccessKey: jest.Mock = jest.mocked(
   api.useRotatePersonalAccessKey,
 );
+const mockUseConfirm: jest.Mock = jest.mocked(useConfirm);
 
 /** Options object the component hands to `mutate`, captured so the tests can
  *  drive `onSuccess` / `onError` without a real mutation. */
@@ -40,8 +47,18 @@ const rotatePersonalMutate = jest.fn(
     capturedPersonalOptions = options;
   },
 );
+const rotateTeamMutate = jest.fn();
 
-const PERSONAL_MODAL_COPY = /Rotating your personal access key/;
+/** Resolution of the next `confirm(...)` call, i.e. did the user accept. */
+let confirmAccepts = true;
+// Params are declared so `mock.calls[n][i]` stays typed; the body ignores them.
+const confirmSpy = jest.fn(
+  (
+    _message: ReactNode,
+    _confirmLabel?: string,
+    _options?: { variant?: 'primary' | 'danger' },
+  ) => Promise.resolve(confirmAccepts),
+);
 
 function setMe(accessKey: string | null, isLoading = false) {
   mockUseMe.mockReturnValue({
@@ -59,28 +76,25 @@ function setMe(accessKey: string | null, isLoading = false) {
   });
 }
 
-/**
- * Mantine mounts modal content one tick after `opened` flips, so every
- * open-the-modal step has to await the content rather than the modal root —
- * the root stays in the DOM (empty) the whole time.
- */
-async function openPersonalRotateModal(
-  user: ReturnType<typeof userEvent.setup>,
-) {
-  await user.click(screen.getByTestId('rotate-access-key-button'));
-  await screen.findByText(PERSONAL_MODAL_COPY);
+/** Renders the ReactNode the component passed to `confirm` so the dialog copy
+ *  stays asserted even though the dialog itself is mocked out. */
+function renderConfirmMessage(callIndex = 0) {
+  const message = confirmSpy.mock.calls[callIndex][0];
+  return render(<>{message}</>);
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   capturedPersonalOptions = undefined;
+  confirmAccepts = true;
 
   setMe('personal_key_abc');
+  mockUseConfirm.mockReturnValue(confirmSpy);
   mockUseTeam.mockReturnValue({
     data: { apiKey: 'ingestion_key_xyz' },
     refetch: jest.fn(),
   });
-  mockUseRotateTeamApiKey.mockReturnValue({ mutate: jest.fn() });
+  mockUseRotateTeamApiKey.mockReturnValue({ mutate: rotateTeamMutate });
   mockUseRotatePersonalAccessKey.mockReturnValue({
     mutate: rotatePersonalMutate,
   });
@@ -101,74 +115,49 @@ describe('ApiKeysSection', () => {
     );
   });
 
-  it('opens the personal rotate modal with the breakage warning', async () => {
+  it('asks for a danger confirmation naming what the old key breaks', async () => {
     const user = userEvent.setup();
     renderWithMantine(<ApiKeysSection />);
 
-    await openPersonalRotateModal(user);
+    await user.click(screen.getByTestId('rotate-access-key-button'));
 
-    const modal = screen.getByTestId('rotate-access-key-modal');
-    expect(modal).toHaveTextContent(/not reversible/);
-    expect(modal).toHaveTextContent(/MCP/);
-    expect(modal).toHaveTextContent(/stay signed in/);
-    // The ingestion modal must not have opened alongside it.
-    expect(
-      screen.queryByText(/Rotating the API key will invalidate/),
-    ).not.toBeInTheDocument();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][1]).toBe('Rotate key');
+    expect(confirmSpy.mock.calls[0][2]).toEqual({ variant: 'danger' });
+
+    const { container } = renderConfirmMessage();
+    expect(container).toHaveTextContent(/not reversible/);
+    expect(container).toHaveTextContent(/MCP \/ AI agent configs/);
+    expect(container).toHaveTextContent(/stay signed in/);
   });
 
-  it('closes the personal rotate modal on cancel without mutating', async () => {
+  it('does not rotate when the confirmation is declined', async () => {
+    confirmAccepts = false;
     const user = userEvent.setup();
     renderWithMantine(<ApiKeysSection />);
 
-    await openPersonalRotateModal(user);
-    await user.click(screen.getByTestId('rotate-access-key-cancel'));
+    await user.click(screen.getByTestId('rotate-access-key-button'));
 
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(rotatePersonalMutate).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(screen.queryByText(PERSONAL_MODAL_COPY)).not.toBeInTheDocument(),
-    );
   });
 
-  it('rotates once on confirm and closes the modal', async () => {
+  it('rotates once when the confirmation is accepted', async () => {
     const user = userEvent.setup();
     renderWithMantine(<ApiKeysSection />);
 
-    await openPersonalRotateModal(user);
-    await user.click(screen.getByTestId('rotate-access-key-confirm'));
+    await user.click(screen.getByTestId('rotate-access-key-button'));
 
-    expect(rotatePersonalMutate).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(screen.queryByText(PERSONAL_MODAL_COPY)).not.toBeInTheDocument(),
-    );
-  });
-
-  // The modal closes on confirm, but Mantine keeps its content mounted through
-  // the exit transition, so without this guard a fast double click fires two
-  // PATCHes and the second revokes the key the first just generated.
-  it('disables confirm while a rotation is already in flight', async () => {
-    mockUseRotatePersonalAccessKey.mockReturnValue({
-      mutate: rotatePersonalMutate,
-      isPending: true,
-    });
-    const user = userEvent.setup();
-    renderWithMantine(<ApiKeysSection />);
-
-    await openPersonalRotateModal(user);
-    const confirm = screen.getByTestId('rotate-access-key-confirm');
-    expect(confirm).toBeDisabled();
-
-    await user.click(confirm);
-    expect(rotatePersonalMutate).not.toHaveBeenCalled();
+    await waitFor(() => expect(rotatePersonalMutate).toHaveBeenCalledTimes(1));
   });
 
   it('notifies on a successful rotation', async () => {
     const user = userEvent.setup();
     renderWithMantine(<ApiKeysSection />);
 
-    await openPersonalRotateModal(user);
-    await user.click(screen.getByTestId('rotate-access-key-confirm'));
-    act(() => capturedPersonalOptions?.onSuccess?.());
+    await user.click(screen.getByTestId('rotate-access-key-button'));
+    await waitFor(() => expect(rotatePersonalMutate).toHaveBeenCalled());
+    capturedPersonalOptions?.onSuccess?.();
 
     expect(
       await screen.findByText(/Revoked your old personal access key/),
@@ -179,11 +168,23 @@ describe('ApiKeysSection', () => {
     const user = userEvent.setup();
     renderWithMantine(<ApiKeysSection />);
 
-    await openPersonalRotateModal(user);
-    await user.click(screen.getByTestId('rotate-access-key-confirm'));
-    act(() => capturedPersonalOptions?.onError?.(new Error('rotate blew up')));
+    await user.click(screen.getByTestId('rotate-access-key-button'));
+    await waitFor(() => expect(rotatePersonalMutate).toHaveBeenCalled());
+    capturedPersonalOptions?.onError?.(new Error('rotate blew up'));
 
     expect(await screen.findByText('rotate blew up')).toBeInTheDocument();
+  });
+
+  it('confirms separately before rotating the ingestion key', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<ApiKeysSection />);
+
+    await user.click(screen.getByTestId('rotate-api-key-button'));
+
+    await waitFor(() => expect(rotateTeamMutate).toHaveBeenCalledTimes(1));
+    expect(rotatePersonalMutate).not.toHaveBeenCalled();
+    const { container } = renderConfirmMessage();
+    expect(container).toHaveTextContent(/invalidate your existing API key/);
   });
 
   it('renders neither the personal key nor its rotate button when me is null', () => {

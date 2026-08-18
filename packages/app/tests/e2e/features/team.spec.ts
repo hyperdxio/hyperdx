@@ -184,40 +184,39 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
       await teamPage.clickRotateApiKey();
     });
 
-    await test.step('Verify modal shows irreversible warning', async () => {
-      // Scoped to this modal: both rotate dialogs carry "not reversible".
+    await test.step('Verify dialog shows irreversible warning', async () => {
       await expect(
-        teamPage.rotateApiKeyDialog.getByText('not reversible'),
+        teamPage.confirmDialogBox.getByText(/invalidate your existing API key/),
       ).toBeVisible();
     });
 
-    await test.step('Cancel and verify modal closes', async () => {
-      await teamPage.cancelRotateApiKey();
+    await test.step('Cancel and verify dialog closes', async () => {
+      await teamPage.cancelConfirmDialog();
       await expect(
-        teamPage.rotateApiKeyDialog.getByText('not reversible'),
+        teamPage.confirmDialogBox.getByText(/invalidate your existing API key/),
       ).toBeHidden();
     });
   });
 
-  test('should open and cancel rotate personal access key modal', async () => {
-    await test.step('Open rotate personal access key modal', async () => {
+  test('should open and cancel rotate personal access key dialog', async () => {
+    await test.step('Open rotate personal access key dialog', async () => {
       await teamPage.openApiAndAgentsTab();
       await teamPage.clickRotateAccessKey();
     });
 
-    await test.step('Verify modal warns about irreversibility and agent configs', async () => {
+    await test.step('Verify dialog warns about irreversibility and agent configs', async () => {
       await expect(
-        teamPage.rotateAccessKeyDialog.getByText('not reversible'),
+        teamPage.confirmDialogBox.getByText(/not reversible/),
       ).toBeVisible();
       await expect(
-        teamPage.rotateAccessKeyDialog.getByText(/MCP \/ AI agent configs/),
+        teamPage.confirmDialogBox.getByText(/MCP \/ AI agent configs/),
       ).toBeVisible();
     });
 
-    await test.step('Cancel and verify modal closes', async () => {
-      await teamPage.cancelRotateAccessKey();
+    await test.step('Cancel and verify dialog closes', async () => {
+      await teamPage.cancelConfirmDialog();
       await expect(
-        teamPage.rotateAccessKeyDialog.getByText('not reversible'),
+        teamPage.confirmDialogBox.getByText(/MCP \/ AI agent configs/),
       ).toBeHidden();
     });
   });

@@ -1,10 +1,11 @@
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { Box, Button, Card, Divider, Group, Modal, Text } from '@mantine/core';
+import { Box, Button, Card, Divider, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconClipboard } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useConfirm } from '@/useConfirm';
 
 function APIKeyCopyButton({
   value,
@@ -36,91 +37,29 @@ function APIKeyCopyButton({
   );
 }
 
-function RotateKeyConfirmModal({
-  opened,
-  onClose,
-  onConfirm,
-  title,
-  testIdPrefix,
-  confirmDisabled = false,
-  children,
-}: {
-  opened: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  title: string;
-  /**
-   * Blocks a second rotation while the first is still in flight. The modal
-   * closes on confirm, but Mantine keeps its content mounted for the exit
-   * transition, so a fast double click would otherwise fire two PATCHes and
-   * revoke the key the first one just generated.
-   */
-  confirmDisabled?: boolean;
-  /**
-   * Yields `${prefix}-modal`, `-cancel` and `-confirm`. The ingestion flow
-   * passes `rotate-api-key` to preserve the testids that
-   * tests/e2e/page-objects/TeamPage.ts already depends on.
-   */
-  testIdPrefix: string;
-  children: ReactNode;
-}) {
-  return (
-    <Modal
-      centered
-      data-testid={`${testIdPrefix}-modal`}
-      onClose={onClose}
-      opened={opened}
-      size="lg"
-      title={
-        <Text size="xl">
-          <b>{title}</b>
-        </Text>
-      }
-    >
-      <Modal.Body>
-        {children}
-        <Group justify="end">
-          <Button
-            data-testid={`${testIdPrefix}-cancel`}
-            variant="secondary"
-            className="mt-2 px-4 ms-2 float-end"
-            size="sm"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            data-testid={`${testIdPrefix}-confirm`}
-            variant="danger"
-            className="mt-2 px-4 float-end"
-            size="sm"
-            disabled={confirmDisabled}
-            onClick={onConfirm}
-          >
-            Confirm
-          </Button>
-        </Group>
-      </Modal.Body>
-    </Modal>
-  );
-}
-
 export default function ApiKeysSection() {
   const { data: team, refetch: refetchTeam } = api.useTeam();
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const rotatePersonalAccessKey = api.useRotatePersonalAccessKey();
+  const confirm = useConfirm();
   const hasAdminAccess = true;
-  const [
-    rotateApiKeyConfirmationModalShow,
-    setRotateApiKeyConfirmationModalShow,
-  ] = useState(false);
-  const [
-    rotateAccessKeyConfirmationModalShow,
-    setRotateAccessKeyConfirmationModalShow,
-  ] = useState(false);
 
-  const rotateTeamApiKeyAction = () => {
+  // `confirm` resolves exactly once, so a double click on its Confirm button
+  // during the modal's exit transition cannot fire a second rotation.
+  const onRotateTeamApiKey = async () => {
+    const confirmed = await confirm(
+      <>
+        Rotating the API key will invalidate your existing API key and generate
+        a new one for you. This action is <b>not reversible</b>.
+      </>,
+      'Rotate key',
+      { variant: 'danger' },
+    );
+    if (!confirmed) {
+      return;
+    }
+
     rotateTeamApiKey.mutate(undefined, {
       onSuccess: () => {
         notifications.show({
@@ -139,13 +78,23 @@ export default function ApiKeysSection() {
     });
   };
 
-  const onConfirmUpdateTeamApiKey = () => {
-    rotateTeamApiKeyAction();
-    setRotateApiKeyConfirmationModalShow(false);
-  };
+  const onRotateAccessKey = async () => {
+    const confirmed = await confirm(
+      <>
+        Rotating your personal access key immediately revokes the current one
+        and generates a new one. This action is <b>not reversible</b>. Anything
+        still using the old key will start failing with 401 until you update it,
+        including MCP / AI agent configs (Claude Code, Cursor, VS Code, Codex),
+        external API v2 clients, Terraform / IaC providers, and CI scripts. Your
+        browser session is not affected; you will stay signed in.
+      </>,
+      'Rotate key',
+      { variant: 'danger' },
+    );
+    if (!confirmed) {
+      return;
+    }
 
-  const onConfirmRotateAccessKey = () => {
-    setRotateAccessKeyConfirmationModalShow(false);
     rotatePersonalAccessKey.mutate(undefined, {
       onSuccess: () => {
         notifications.show({
@@ -181,25 +130,12 @@ export default function ApiKeysSection() {
             <Button
               data-testid="rotate-api-key-button"
               variant="danger"
-              onClick={() => setRotateApiKeyConfirmationModalShow(true)}
+              onClick={onRotateTeamApiKey}
             >
               Rotate API key
             </Button>
           )}
         </Group>
-        <RotateKeyConfirmModal
-          opened={rotateApiKeyConfirmationModalShow}
-          onClose={() => setRotateApiKeyConfirmationModalShow(false)}
-          onConfirm={onConfirmUpdateTeamApiKey}
-          title="Rotate API key"
-          testIdPrefix="rotate-api-key"
-          confirmDisabled={rotateTeamApiKey.isPending}
-        >
-          <Text size="md">
-            Rotating the API key will invalidate your existing API key and
-            generate a new one for you. This action is <b>not reversible</b>.
-          </Text>
-        </RotateKeyConfirmModal>
       </Card>
       {!isLoadingMe && me != null && (
         <Card>
@@ -213,32 +149,11 @@ export default function ApiKeysSection() {
               <Button
                 data-testid="rotate-access-key-button"
                 variant="danger"
-                onClick={() => setRotateAccessKeyConfirmationModalShow(true)}
+                onClick={onRotateAccessKey}
               >
                 Rotate access key
               </Button>
             </Group>
-            <RotateKeyConfirmModal
-              opened={rotateAccessKeyConfirmationModalShow}
-              onClose={() => setRotateAccessKeyConfirmationModalShow(false)}
-              onConfirm={onConfirmRotateAccessKey}
-              title="Rotate personal API access key"
-              testIdPrefix="rotate-access-key"
-              confirmDisabled={rotatePersonalAccessKey.isPending}
-            >
-              <Text size="md">
-                Rotating your personal access key immediately revokes the
-                current one and generates a new one. This action is{' '}
-                <b>not reversible</b>.
-              </Text>
-              <Text size="md" mt="sm">
-                Anything still using the old key will start failing with 401
-                until you update it — MCP / AI agent configs (Claude Code,
-                Cursor, VS Code, Codex), external API v2 clients, Terraform /
-                IaC providers, and CI scripts. Your browser session is not
-                affected; you will stay signed in.
-              </Text>
-            </RotateKeyConfirmModal>
           </Card.Section>
         </Card>
       )}
