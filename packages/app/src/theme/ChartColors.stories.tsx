@@ -55,7 +55,7 @@ const SEMANTIC_CHART_COLORS = [
 ];
 
 const story = {
-  title: 'Design Tokens/Chart Colors',
+  title: 'Design tokens/Chart colors',
 };
 export default story;
 

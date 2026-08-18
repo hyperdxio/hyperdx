@@ -30,7 +30,7 @@ export const parameters = {
         'Guidelines',
         'Brand',
         'Icons',
-        'Design Tokens',
+        'Design tokens',
         'Components',
         '*',
       ],

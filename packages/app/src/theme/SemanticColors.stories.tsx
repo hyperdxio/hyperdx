@@ -3,7 +3,7 @@ import React from 'react';
 import { semanticColorsGrouped } from './semanticColorsGrouped';
 
 const story = {
-  title: 'Design Tokens/Semantic Colors',
+  title: 'Design tokens/Semantic colors',
 };
 export default story;
 
