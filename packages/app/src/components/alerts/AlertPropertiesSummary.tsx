@@ -65,8 +65,8 @@ export function AlertPropertiesSummary({
       )}
       <span>&middot;</span>
       <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)}{' '}
-        {webhookName ?? 'Webhook'}
+        Notify via {getWebhookChannelIcon(alert.channel.type)}
+        <span>{webhookName ?? 'Webhook'}</span>
       </Group>
       {alert.createdBy && (
         <>

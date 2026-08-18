@@ -18,8 +18,8 @@ function PropertyRow({
   testId?: string;
 }) {
   return (
-    <Group gap="sm" align="baseline" wrap="nowrap" data-testid={testId}>
-      <Text size="xs" c="dimmed" miw={110} style={{ flexShrink: 0 }}>
+    <Group gap="xs" align="baseline" wrap="nowrap" data-testid={testId}>
+      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
         {label}
       </Text>
       <Text size="xs" component="div" style={{ minWidth: 0 }}>
