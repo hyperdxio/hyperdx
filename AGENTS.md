@@ -61,8 +61,12 @@ directory:
 - `agent_docs/architecture.md` - Detailed architecture patterns and data models
 - `agent_docs/tech_stack.md` - Technology stack details and component patterns
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
-- `agent_docs/code_style.md` - Code patterns and best practices (read only when
-  actively coding)
+- `agent_docs/code_style.md` - Code patterns and best practices. **Read this
+  before writing or planning any `packages/app` UI change**, not just while
+  typing code. It carries required patterns that are invisible from the
+  surrounding file (sentence-case UI text, mandated Button/ActionIcon variants,
+  `useConfirm` for confirmation dialogs, `EmptyState`), so copying the
+  conventions of the component you are editing is not sufficient.
 - `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
   context) and the shared helpers (read when adding or changing a feature)
 
@@ -87,7 +91,9 @@ before stopping.
    similar files before implementing
 4. **Component size**: Keep files under 300 lines; break down large components
 5. **UI Components**: Use custom Button/ActionIcon variants (`primary`,
-   `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
+   `secondary`, `danger`), `useConfirm` for "are you sure?" dialogs rather than
+   a hand-rolled `Modal`, and sentence case for all user-facing text - see
+   `agent_docs/code_style.md` for required patterns
 6. **Testing**: Tests live in `__tests__/` directories; use Jest for
    unit/integration tests
 7. **Observability**: This is an observability product - instrument new code as

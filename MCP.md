@@ -9,8 +9,8 @@ data sources directly.
 
 - A running HyperDX instance (see [CONTRIBUTING.md](/CONTRIBUTING.md) for local
   development setup, or [DEPLOY.md](/DEPLOY.md) for self-hosted deployment)
-- A **Personal API Access Key** — find yours in the HyperDX UI under **Team
-  Settings > API Keys > Personal API Access Key**
+- A **Personal API access key** — find yours in the HyperDX UI under **Team
+  Settings > API keys > Personal API access key**
 
 > **Note:** HyperDX v1 ([hyperdx.io](https://hyperdx.io)) does not yet support
 > the MCP server. The documentation below applies to self-hosted HyperDX v2

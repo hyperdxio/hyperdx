@@ -483,6 +483,64 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
   });
 });
 
+describe('DBEditTimeChartForm - Alert variable warning', () => {
+  const SVC = { name: 'svc', expression: 'ServiceName', values: [] };
+
+  const renderWithAlert = async (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) => {
+    renderComponent({
+      chartConfig: { ...defaultChartConfig, displayType: DisplayType.Number },
+      dashboardId: 'test-dashboard-id',
+      ...props,
+    });
+    await userEvent.click(screen.getByTestId('alert-button'));
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('warns that an alerting tile referencing a variable runs on its empty state', async () => {
+    await renderWithAlert({
+      chartConfig: {
+        ...defaultChartConfig,
+        displayType: DisplayType.Number,
+        where: 'ServiceName:$svc',
+      },
+      variables: [SVC],
+    });
+
+    const warning = await screen.findByText('Warning');
+    await userEvent.hover(warning);
+    expect(
+      await screen.findByText(
+        'This tile references $svc. Alerts run with every dashboard variable in its empty state, not the values selected here.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing when the tile references no variable', async () => {
+    await renderWithAlert({ variables: [SVC] });
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(screen.queryByText('Warning')).not.toBeInTheDocument();
+  });
+
+  it('says nothing where no variables are in scope', async () => {
+    await renderWithAlert({
+      chartConfig: {
+        ...defaultChartConfig,
+        displayType: DisplayType.Number,
+        where: 'ServiceName:$svc',
+      },
+    });
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(screen.queryByText('Warning')).not.toBeInTheDocument();
+  });
+});
+
 describe('DBEditTimeChartForm - Duplicate series', () => {
   beforeEach(() => {
     jest.clearAllMocks();
