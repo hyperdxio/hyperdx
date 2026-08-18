@@ -462,11 +462,15 @@ export async function getRecentAlertHistoriesBatch(
 
 /**
  * Returns alert firing/recovery transitions (ALERT-boundary crossings) within
- * [startTime, endTime] for one alert, for drawing chart annotations. One window
- * before startTime is fetched to know the state on entry: if the alert is
- * already firing then, a firing marker is pinned to startTime so a later
- * in-range recovery isn't orphaned. PENDING/INSUFFICIENT_DATA count as
- * non-firing, so only ALERT crossings are reported.
+ * [startTime, endTime] for one alert, for drawing chart annotations. Each
+ * transition carries `bucketStart` — the start of the newest bucket the
+ * transitioning evaluation covered — so markers land on the data point that
+ * produced the transition (charts plot buckets at their start, while the
+ * evaluation runs at the bucket end). One window before startTime is fetched
+ * to know the state on entry: if the alert is already firing then, a firing
+ * marker is pinned to startTime so a later in-range recovery isn't orphaned.
+ * PENDING/INSUFFICIENT_DATA count as non-firing, so only ALERT crossings are
+ * reported.
  */
 export async function getAlertTransitionsInRange({
   alertId,
@@ -482,22 +486,51 @@ export async function getAlertTransitionsInRange({
   const intervalMs = intervalToMs(interval);
   const lookbackStart = new Date(startTime.getTime() - intervalMs);
 
-  // Only the per-window state is needed to detect crossings. ERROR rows are
-  // failed evaluations, not state observations — excluding them prevents a
+  // Per-window state detects crossings; the newest evaluated bucket start
+  // positions the marker where the chart plots that bucket's value. ERROR rows
+  // are failed evaluations, not state observations — excluding them prevents a
   // query failure mid-firing from drawing a false recovery annotation.
-  const windows = await AlertHistory.aggregate<{ _id: Date; states: string[] }>(
-    [
-      {
-        $match: {
-          alert: new ObjectId(alertId),
-          createdAt: { $gte: lookbackStart, $lte: endTime },
-          state: { $ne: AlertState.ERROR },
-        },
+  const windows = await AlertHistory.aggregate<{
+    _id: Date;
+    states: string[];
+    // One array of bucket-start dates per row in the window (one row per
+    // group for group-by alerts). Push only the dates via a plain field path
+    // and derive the newest in JS — the file's DocumentDB-safe pattern (see
+    // mapGroupedHistories) avoids expression operators inside accumulators,
+    // and pushing dates instead of whole lastValues rows keeps the buffered
+    // payload small. The router caps the scanned span (MAX_HISTORY_SPAN_MS).
+    bucketStarts: Date[][];
+  }>([
+    {
+      $match: {
+        alert: new ObjectId(alertId),
+        createdAt: { $gte: lookbackStart, $lte: endTime },
+        state: { $ne: AlertState.ERROR },
       },
-      { $group: { _id: '$createdAt', states: { $push: '$state' } } },
-      { $sort: { _id: 1 } },
-    ],
-  );
+    },
+    {
+      $group: {
+        _id: '$createdAt',
+        states: { $push: '$state' },
+        bucketStarts: { $push: '$lastValues.startTime' },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  // Newest bucket start across the window's rows; null when no row carries
+  // lastValues. Be defensive about missing arrays/fields in case of engine
+  // differences (e.g. DocumentDB).
+  const newestBucketStart = (bucketStarts: Date[][] | undefined): Date | null =>
+    (bucketStarts ?? [])
+      .flat()
+      .reduce<Date | null>(
+        (max, startedAt) =>
+          startedAt != null && (max == null || startedAt > max)
+            ? startedAt
+            : max,
+        null,
+      );
 
   const transitions: AlertTransition[] = [];
   // Assume "not firing" before the earliest known window, so an alert whose
@@ -506,12 +539,14 @@ export async function getAlertTransitionsInRange({
   let enteredRange = false;
 
   // Pin a firing marker to the range start if the alert was already firing on
-  // entry (carried in from before startTime).
+  // entry (carried in from before startTime). The marker is synthetic ("firing
+  // when the window opens"), so it carries no bucketStart of its own.
   const pinCarryInIfFiring = () => {
     if (prevIsAlert) {
       transitions.push({
         createdAt: startTime.toISOString(),
         state: AlertState.ALERT,
+        bucketStart: startTime.toISOString(),
       });
     }
   };
@@ -527,9 +562,20 @@ export async function getAlertTransitionsInRange({
     }
 
     if (inRange && isAlert !== prevIsAlert) {
+      // Fall back to createdAt − interval when the window has no lastValues
+      // (mirrors the evaluation table's fallback for failed evaluations).
+      const derived =
+        newestBucketStart(evalWindow.bucketStarts) ??
+        new Date(evalWindow._id.getTime() - intervalMs);
+      // Floor at startTime: a derived bucket start one bucket earlier than an
+      // edge crossing's createdAt can precede the range start, and a marker
+      // before startTime would render at or left of a carry-in pin (which is
+      // pinned to startTime) — inverting the firing→recovery order.
+      const bucketStart = derived >= startTime ? derived : startTime;
       transitions.push({
         createdAt: evalWindow._id.toISOString(),
         state: isAlert ? AlertState.ALERT : AlertState.OK,
+        bucketStart: bucketStart.toISOString(),
       });
     }
 
