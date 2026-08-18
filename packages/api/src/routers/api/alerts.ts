@@ -50,7 +50,10 @@ const formatAlertResponse = (
     createdBy: alert.createdBy
       ? pick(alert.createdBy, ['email', 'name'])
       : undefined,
-    channel: pick(alert.channel, ['type']),
+    // webhookId is included so edit surfaces (e.g. the alert detail page) can
+    // prefill the notification channel; webhook ids are already visible to
+    // team members via GET /webhooks.
+    channel: pick(alert.channel, ['type', 'webhookId']),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
       dashboard: {
@@ -83,6 +86,8 @@ const formatAlertResponse = (
       'thresholdType',
       'state',
       'source',
+      'name',
+      'message',
       'note',
       'createdAt',
       'updatedAt',

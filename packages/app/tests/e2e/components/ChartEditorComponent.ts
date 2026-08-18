@@ -670,6 +670,24 @@ export class ChartEditorComponent {
     await this.save();
   }
 
+  /** The badge the alert block shows when the tile's query has a warning. */
+  alertWarningBadge(): Locator {
+    return this.page
+      .getByTestId('alert-details')
+      .getByText('Warning', { exact: true });
+  }
+
+  /**
+   * What the alert block's warning badge says, or '' when it shows none. The
+   * message only exists as a tooltip, so this hovers the badge to read it.
+   */
+  async getAlertWarning(): Promise<string> {
+    const badge = this.alertWarningBadge();
+    if ((await badge.count()) === 0) return '';
+    await badge.hover();
+    return (await this.page.getByRole('tooltip').innerText()).trim();
+  }
+
   /**
    * Select a threshold type in the tile alert editor.
    * Pass the option value (e.g. 'between', 'above', 'below').

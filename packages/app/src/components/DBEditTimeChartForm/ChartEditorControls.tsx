@@ -63,6 +63,7 @@ type ChartEditorControlsProps = {
   seriesReturnType: ChartEditorFormState['seriesReturnType'];
   ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
+  additionalWarnings?: string[];
   isRawSqlInput: boolean;
   dashboardId?: string;
   parentRef: HTMLElement | null;
@@ -93,6 +94,7 @@ export function ChartEditorControls({
   seriesReturnType,
   ratioMode,
   alert,
+  additionalWarnings,
   isRawSqlInput,
   dashboardId,
   parentRef,
@@ -458,6 +460,11 @@ export function ChartEditorControls({
             setValue={setValue}
             alert={alert}
             onRemove={() => setValue('alert', undefined)}
+            warning={
+              additionalWarnings?.length
+                ? additionalWarnings.join(' ')
+                : undefined
+            }
           />
         </Box>
       )}

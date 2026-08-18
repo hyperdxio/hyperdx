@@ -2,6 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { pick } from 'lodash';
 import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
+import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -137,6 +138,14 @@ function TileAlertChart({
       return undefined;
     }
 
+    // The alert (and its preview) runs with every dashboard variable in its empty state
+    const variables = getDashboardVariableDeclarations(dashboard?.filters).map(
+      declaration => ({
+        ...declaration,
+        values: [],
+      }),
+    );
+
     // Raw SQL tiles: only time-series display types can be charted over the
     // alert window (mirrors what the alert task evaluates as a time series).
     if (isRawSqlSavedChartConfig(tile.config)) {
@@ -144,13 +153,14 @@ function TileAlertChart({
         return undefined;
       }
       if (!tile.config.source) {
-        return { ...tile.config, dateRange, granularity };
+        return { ...tile.config, dateRange, granularity, variables };
       }
       if (!source) {
         return undefined;
       }
       return {
         ...tile.config,
+        variables,
         ...pick(source, [
           'implicitColumnExpression',
           'useTextIndexForImplicitColumn',
@@ -181,6 +191,7 @@ function TileAlertChart({
     const tableName = getMetricTableName(source, metricType);
     return {
       ...tile.config,
+      variables,
       displayType:
         tile.config.displayType === DisplayType.Number
           ? DisplayType.Line
@@ -205,7 +216,7 @@ function TileAlertChart({
       sampleWeightExpression: getSampleWeightExpression(source),
       metricTables: isMetricSource ? source.metricTables : undefined,
     };
-  }, [tile, source, dateRange, granularity]);
+  }, [tile, source, dashboard?.filters, dateRange, granularity]);
 
   const referenceLines = React.useMemo(
     () =>
