@@ -129,6 +129,38 @@ jobs:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
+          # Keep the base repo's GITHUB_TOKEN out of `.git/config`, where the
+          # reviewer's `Bash(git:*)` grant can read it back via
+          # `git config --get http.<url>.extraheader`. Nothing downstream needs
+          # git credentials: the base fetch below uses a public HTTPS URL, and
+          # every `gh` call takes its token from the environment rather than
+          # from git config.
+          persist-credentials: false
+
+      # The author of the reviewed branch controls its `.gitattributes`, and
+      # `* -diff` makes git render chosen paths as "Binary files ... differ".
+      # A diff-driven reviewer then reports clean on code it never saw --
+      # verified locally: a planted change renders as `Binary files ... differ`
+      # under `* -diff`, and becomes visible again once this override is in
+      # place. `.git/info/attributes` has higher precedence than any in-tree
+      # `.gitattributes` and is not part of the checked-out tree, so the branch
+      # being reviewed cannot reach it.
+      #
+      # "Verify diff file list matches PR" below does NOT cover this: it
+      # compares file NAMES against the API, and a blinded file still appears
+      # in the list under its real name with its real path.
+      - name: Force text diffs so the reviewed branch cannot hide content
+        run: |
+          set -euo pipefail
+          mkdir -p .git/info
+          printf '* diff\n' > .git/info/attributes
+          # Assert the override actually took, rather than trusting the write.
+          ATTR=$(git check-attr diff -- .gitattributes | awk '{print $NF}')
+          if [ "$ATTR" != "set" ]; then
+            echo "::error::Could not force text diffs via .git/info/attributes (git reports diff='$ATTR'). Refusing to review a diff the branch can blind."
+            exit 1
+          fi
+          echo "Forced text diffs for all paths; in-tree .gitattributes cannot suppress diff content."
 
       # Make the PR base SHA reachable AND fetch enough history that
       # `git merge-base HEAD <base_sha>` succeeds. The ce-code-review skill
@@ -260,6 +292,15 @@ jobs:
           repository: EveryInc/compound-engineering-plugin
           ref: ${{ env.PLUGIN_REF }}
           path: ce-plugin
+          # Same reason as the PR-head checkout above, and it matters even
+          # though this repo is not the one under review: `ce-plugin` is a
+          # subdirectory of the same workspace, so a credential left in
+          # `ce-plugin/.git/config` is reachable from the same reviewer that
+          # reads the branch's code. Nothing here needs it -- the plugin is
+          # consumed only as a local marketplace path
+          # (`plugin_marketplaces: ./ce-plugin`) and the repo is public, so even
+          # a re-fetch would not need auth.
+          persist-credentials: false
 
       # --- CLI pin (TEMPORARY) ----------------------------------------------
       # claude-code-action hardcodes the Claude Code CLI version it installs
@@ -516,13 +557,18 @@ jobs:
       # by id, and (b) carry the bwrap signature at the start of a line, as
       # real bwrap stderr does (quoted occurrences are diff-/comment-prefixed).
       #
+      # The step also asserts the multi-agent fan-out actually happened -- see
+      # the comment at that check below. Both belong here because they are the
+      # same failure shape: a review that looks complete and is not, with
+      # nothing in the job status to say so.
+      #
       # This step only DETECTS and records the verdict. The job is failed by
       # "Fail if reviewer sandbox was unhealthy" below, AFTER the review
       # comment is posted -- so a completed review is never discarded, and the
       # state marker is omitted for unhealthy runs so the gate fail-opens and
       # the next run re-reviews.
       # https://github.com/anthropics/claude-code-action/issues/1547
-      - name: Check reviewer sandbox health
+      - name: Check reviewer sandbox health and fan-out
         id: sandbox
         if: steps.gate.outputs.should_review == 'true'
         env:
@@ -585,8 +631,38 @@ jobs:
           if [ "$BROKEN_COUNT" -gt 0 ]; then
             broken "Deep review ran in a broken sandbox ($BROKEN_COUNT bwrap Bash failures). The CLI pin is not taking effect or the regression changed shape. See https://github.com/anthropics/claude-code-action/issues/1547"
           fi
+
+          # Fan-out assertion. The orchestrator has been observed to skip
+          # dispatch entirely and "review" in-context instead -- reproduced
+          # locally against this pinned CLI and plugin ref: the run exits 0 with
+          # zero tool errors and posts a plausible single-pass review that reads
+          # like the real thing. Nothing above catches it (there is no bwrap
+          # error and no failed tool call), so the only signal is the absence of
+          # sub-agent dispatch in the transcript. The skill's contract is 4
+          # always-on personas plus 2 CE always-on agents, so fewer than 4
+          # sub-agents means the fan-out did not happen and the posted review is
+          # a single pass wearing a multi-agent label.
+          #
+          # Matches both `Task` and `Agent`: the CLI advertises the tool as
+          # `Task` but records `Agent` as the tool_use name in the transcript,
+          # and that naming has moved between versions.
+          AGENT_COUNT=$(jq '[ .[]
+              | select(.type == "assistant")
+              | .message.content[]?
+              | select(.type == "tool_use" and (.name == "Task" or .name == "Agent"))
+            ] | length' "$EXECUTION_FILE")
+          echo "reviewer sub-agents dispatched: ${AGENT_COUNT:-<empty>}"
+          case "$AGENT_COUNT" in
+            '' | *[!0-9]*)
+              broken "Sandbox check could not derive a sub-agent count from the execution transcript (got: '${AGENT_COUNT:-<empty>}')."
+              ;;
+          esac
+          if [ "$AGENT_COUNT" -lt 4 ]; then
+            broken "Deep review dispatched only $AGENT_COUNT reviewer sub-agent(s); expected at least the 4 always-on personas. The orchestrator reviewed in-context instead of fanning out, so this review is a single pass, not the multi-agent review it claims to be."
+          fi
+
           echo "broken=false" >> "$GITHUB_OUTPUT"
-          echo "Sandbox smoke check passed -- no bwrap failures in the reviewer transcript."
+          echo "Reviewer health check passed -- no bwrap failures, and $AGENT_COUNT sub-agents were dispatched."
 
       # fromJSON() in `with:` has been observed to leave structured_output JSON
       # unparsed for the sibling claude-code-review workflow. Extract via jq.
