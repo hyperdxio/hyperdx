@@ -1,5 +1,6 @@
 import { Group, Paper, Stack, Text } from '@mantine/core';
 
+import { CopySnippet } from '@/components/ClickStackOnboarding/CopySnippet';
 import {
   useBrandDisplayName,
   useLogomark,
@@ -124,22 +125,7 @@ export const Logos = () => {
         <Text size="sm" fw={600} mb="sm">
           Usage
         </Text>
-        <Paper
-          p="md"
-          withBorder
-          radius="md"
-          bg="var(--color-bg-code)"
-          style={{ overflow: 'auto' }}
-        >
-          <Text
-            component="pre"
-            size="xs"
-            ff="monospace"
-            style={{ margin: 0, whiteSpace: 'pre' }}
-          >
-            {USAGE}
-          </Text>
-        </Paper>
+        <CopySnippet snippet={USAGE} />
       </div>
     </Stack>
   );

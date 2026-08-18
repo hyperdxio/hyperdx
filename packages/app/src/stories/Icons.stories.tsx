@@ -1,13 +1,6 @@
-import {
-  ActionIcon,
-  Button,
-  Group,
-  Paper,
-  Stack,
-  Table,
-  Text,
-} from '@mantine/core';
+import { ActionIcon, Button, Group, Stack, Table, Text } from '@mantine/core';
 
+import { CopySnippet } from '@/components/ClickStackOnboarding/CopySnippet';
 import { SOURCE_KIND_ICONS } from '@/components/sourceSelectUtils';
 import { IconAiNotebook, IncidentIOIcon } from '@/SVGIcons';
 
@@ -127,22 +120,7 @@ export const Gallery = () => (
           <IconAiNotebook size={16} />
         </ActionIcon>
       </Group>
-      <Paper
-        p="md"
-        withBorder
-        radius="md"
-        bg="var(--color-bg-code)"
-        style={{ overflow: 'auto' }}
-      >
-        <Text
-          component="pre"
-          size="xs"
-          ff="monospace"
-          style={{ margin: 0, whiteSpace: 'pre' }}
-        >
-          {TABLER_USAGE}
-        </Text>
-      </Paper>
+      <CopySnippet snippet={TABLER_USAGE} />
     </div>
 
     <div>
@@ -168,22 +146,7 @@ export const Gallery = () => (
         </Text>
         .
       </Text>
-      <Paper
-        p="md"
-        withBorder
-        radius="md"
-        bg="var(--color-bg-code)"
-        style={{ overflow: 'auto' }}
-      >
-        <Text
-          component="pre"
-          size="xs"
-          ff="monospace"
-          style={{ margin: 0, whiteSpace: 'pre' }}
-        >
-          {BRAND_USAGE}
-        </Text>
-      </Paper>
+      <CopySnippet snippet={BRAND_USAGE} />
     </div>
 
     <div>

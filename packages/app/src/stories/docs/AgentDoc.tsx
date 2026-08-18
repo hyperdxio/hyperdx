@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Code } from '@mantine/core';
+
+import { CopySnippet } from '@/components/ClickStackOnboarding/CopySnippet';
 
 import styles from './AgentDoc.module.scss';
 
@@ -42,8 +45,26 @@ function DocLink({ href, children }: { href?: string; children?: ReactNode }) {
   );
 }
 
+function fencedSnippet(children: ReactNode): string {
+  return String(children).replace(/\n$/, '');
+}
+
 const markdownComponents: Components = {
   a: ({ href, children }) => <DocLink href={href}>{children}</DocLink>,
+  // react-markdown wraps fenced blocks in <pre><code>; CopySnippet is the
+  // in-product <Code block> + copy button (Terraform, onboarding, etc.).
+  pre: ({ children }) => <>{children}</>,
+  code: ({ className, children }) => {
+    const isBlock = Boolean(className);
+    if (isBlock) {
+      return (
+        <div className={styles.snippet}>
+          <CopySnippet snippet={fencedSnippet(children)} />
+        </div>
+      );
+    }
+    return <Code>{children}</Code>;
+  },
 };
 
 export function AgentDoc({ markdown }: { markdown: string }) {

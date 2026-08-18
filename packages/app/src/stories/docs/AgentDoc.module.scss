@@ -25,17 +25,14 @@
     background: var(--color-bg-muted);
   }
 
-  pre {
-    background: var(--color-bg-code);
-    border: 1px solid var(--color-border-code);
-    border-radius: 6px;
-    padding: 0.75rem 1rem;
-    overflow: auto;
-    margin-bottom: 1rem;
+  // Override `.hdx-markdown code { color: var(--color-json-string) }` so
+  // Mantine Code / CopySnippet keep theme text instead of JSON-green.
+  :global(.mantine-Code-root) {
+    color: inherit;
   }
 
-  pre code {
-    color: inherit;
+  .snippet {
+    margin-bottom: 1rem;
   }
 
   blockquote {
