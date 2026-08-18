@@ -208,7 +208,7 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
     expect(sql).toMatchSnapshot();
   });
 
-  describe('metric charts (single-series only)', () => {
+  describe('metric charts', () => {
     const metricTables = {
       gauge: 'otel_metrics_gauge',
       histogram: 'otel_metrics_histogram',
@@ -348,25 +348,135 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
       },
     );
 
-    it('returns null for a multi-series metric chart', async () => {
-      const config = metricLineConfig(MetricsDataType.Gauge);
-      const sql = await renderBuilderConfigAsSqlTemplate(
-        {
+    // Multi-series (and formula/ratio) metric charts render as one composed
+    // UNION ALL + pivot statement whose branches each carry their own
+    // $__sourceTable(metricType) and time macros, so they convert to a
+    // raw-SQL template like any other metric chart.
+    describe('multi-series and formula metric charts', () => {
+      const secondSelect = (
+        metricType: MetricsDataType,
+        aggFn = 'avg',
+      ): any => ({
+        aggFn,
+        aggCondition: '',
+        valueExpression: 'Value',
+        metricType,
+        metricName: 'my.other.metric',
+      });
+
+      const multiSeriesConfig = (
+        secondType: MetricsDataType,
+        secondAggFn = 'avg',
+      ): ChartConfigWithOptDateRange => {
+        const config = metricLineConfig(MetricsDataType.Gauge);
+        return {
           ...config,
           select: [
             ...((config as any).select as any[]),
-            {
-              aggFn: 'sum',
-              aggCondition: '',
-              valueExpression: 'Value',
-              metricType: MetricsDataType.Gauge,
-              metricName: 'my.other.metric',
-            },
+            secondSelect(secondType, secondAggFn),
           ],
-        },
-        mockMetadata,
-      );
-      expect(sql).toBeNull();
+        };
+      };
+
+      it('generates a composed macro-based template for a two-gauge line chart', async () => {
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          multiSeriesConfig(MetricsDataType.Gauge),
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+        // Branches compose via UNION ALL and pivot on the series index.
+        expect(sql).toContain('UNION ALL');
+        expect(sql).toContain('anyOrNullIf');
+        // Each branch emits its own typed source-table macro, no hardcoding.
+        expect(sql!.match(/\$__sourceTable\(gauge\)/g)).toHaveLength(2);
+        expect(sql).not.toContain('otel_metrics_gauge');
+        // Still wired to the dashboard time range and granularity.
+        expect(sql).toContain('$__fromTime_ms');
+        expect(sql).toContain('$__toTime_ms');
+        expect(sql).toContain('$__timeInterval');
+        expect(sql).not.toContain('HYPERDX_PARAM_');
+        expect(sql).not.toMatch(/INTERVAL 1 minute/i);
+        expect(sql).toMatchSnapshot();
+      });
+
+      it('emits a typed source-table macro per branch for mixed metric types', async () => {
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          multiSeriesConfig(MetricsDataType.Sum, 'sum'),
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+        expect(sql).toContain('$__sourceTable(gauge)');
+        expect(sql).toContain('$__sourceTable(sum)');
+        expect(sql).not.toContain('otel_metrics_gauge');
+        expect(sql).not.toContain('otel_metrics_sum');
+        expect(sql).not.toContain('HYPERDX_PARAM_');
+      });
+
+      it('compiles formulas into the composed template projection', async () => {
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          {
+            ...multiSeriesConfig(MetricsDataType.Gauge),
+            formulas: [{ expression: 'A / (A + B) * 100', alias: 'pct' }],
+          },
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+        // The compiled formula projects over the pivot expressions with the
+        // ratio-consistent coalesce/nullif semantics.
+        expect(sql).toContain('AS "pct"');
+        expect(sql).toContain('coalesce');
+        expect(sql).toContain('nullif');
+        expect(sql).not.toContain('HYPERDX_PARAM_');
+        expect(sql).toMatchSnapshot();
+      });
+
+      it('renders a ratio chart as a SQL-side division in the template', async () => {
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          {
+            ...multiSeriesConfig(MetricsDataType.Gauge),
+            seriesReturnType: 'ratio',
+          },
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+        expect(sql).toContain('AS "avg(my.metric)/avg(my.other.metric)"');
+        expect(sql).toContain('nullif');
+        expect(sql).not.toContain('HYPERDX_PARAM_');
+      });
+
+      it('emits $__filters once per branch source CTE, never in the outer pivot', async () => {
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          multiSeriesConfig(MetricsDataType.Gauge),
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+        // One per branch: each branch filters at its own source.
+        expect(sql!.match(/\$__filters/g)).toHaveLength(2);
+        // The outer pivot projection (everything before the first branch's
+        // source CTE) and the trailing GROUP BY/ORDER BY carry no filters —
+        // they read internal columns the dashboard filters don't know.
+        expect(sql!.slice(0, sql!.indexOf('WITH'))).not.toContain('$__filters');
+        expect(sql!.slice(sql!.lastIndexOf('GROUP BY ALL'))).not.toContain(
+          '$__filters',
+        );
+      });
+
+      it('resolves each branch source-table macro through replaceMacros', async () => {
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          multiSeriesConfig(MetricsDataType.Sum, 'sum'),
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+
+        const expanded = replaceMacros({
+          sqlTemplate: sql!,
+          from: { databaseName: 'default', tableName: '' },
+          metricTables,
+        });
+        expect(expanded).not.toContain('$__');
+        expect(expanded).toContain('`default`.`otel_metrics_gauge`');
+        expect(expanded).toContain('`default`.`otel_metrics_sum`');
+      });
     });
 
     it('returns null for a non-time-series metric chart', async () => {
@@ -453,10 +563,12 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
       granularity: '1 minute',
     };
 
-    it('reports a specific reason for a multi-series metric chart', async () => {
+    it('reports the time-series-only reason for a multi-series metric table chart', async () => {
       const result = await renderBuilderConfigAsSqlTemplateResult(
         {
           ...metricConfig,
+          displayType: DisplayType.Table,
+          granularity: undefined,
           select: [
             ...(metricConfig.select as any[]),
             {
@@ -472,7 +584,8 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
       );
       expect(result).toEqual({
         isError: true,
-        error: 'Multi-series metric charts cannot be auto-converted to SQL.',
+        error:
+          'Metric charts can only be auto-converted to SQL for time series display types.',
       });
     });
 

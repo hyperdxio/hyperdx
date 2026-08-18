@@ -13,7 +13,7 @@ import {
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  isRawSqlChartConfig,
+  isPromqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -374,7 +374,7 @@ export default function EditTimeChartForm({
 
   // Attach variables so that variable references can be validated and expanded in the preview
   const previewConfig = useMemo(() => {
-    if (queriedConfig == null || !isRawSqlChartConfig(queriedConfig)) {
+    if (queriedConfig == null || isPromqlChartConfig(queriedConfig)) {
       return queriedConfig;
     }
     return {

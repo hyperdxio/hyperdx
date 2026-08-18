@@ -283,7 +283,7 @@ function ServiceMapPresentation({
 
   return (
     <div className={styles.container}>
-      <ServiceMapMetricContext.Provider value={{ metric, metricMax }}>
+      <ServiceMapMetricContext value={{ metric, metricMax }}>
         <ReactFlow
           style={{ backgroundColor: 'var(--color-bg-body)' }}
           nodes={nodes}
@@ -322,7 +322,7 @@ function ServiceMapPresentation({
           </Panel>
           <Controls showInteractive={false} />
         </ReactFlow>
-      </ServiceMapMetricContext.Provider>
+      </ServiceMapMetricContext>
     </div>
   );
 }

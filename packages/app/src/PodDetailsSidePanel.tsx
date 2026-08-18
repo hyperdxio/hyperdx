@@ -345,7 +345,7 @@ export default function PodDetailsSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel} data-testid="k8s-pod-details-panel">
             <DrawerHeader
@@ -464,7 +464,7 @@ export default function PodDetailsSidePanel({
             )}
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }
