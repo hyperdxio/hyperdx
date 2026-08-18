@@ -273,7 +273,7 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
 const makeNotificationAlertError = (
   failure: NotificationFailure,
 ): IAlertError => {
-  const target = `webhook "${failure.target}"`;
+  const target = `${failure.type} "${failure.target}"`;
   const timestamp = new Date();
   if (failure.error instanceof UnsupportedMentionError) {
     return {

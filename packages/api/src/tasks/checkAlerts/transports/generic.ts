@@ -81,9 +81,11 @@ export const createHandlebarsWithHelpers = () => {
  * Bounds a single attempt so a black-holed receiver releases its socket. Read
  * lazily, not as a module const, so integration tests can override per suite.
  *
- * Wired into the `fetch()` call below as an `AbortSignal.timeout()`, combined
- * per-attempt with any caller-supplied signal (see `ChannelTransport`'s
- * `signal` field) via `AbortSignal.any()`.
+ * Wired into the `fetch()` call below as an `AbortSignal.timeout()`. No caller
+ * supplies a signal today -- `deliverNotification` only passes `{ group }` --
+ * so the `AbortSignal.any()` combination is dead in practice. The `signal`
+ * parameter (see `ChannelTransport`) stays for a future queued dispatcher that
+ * needs to cancel in-flight deliveries, e.g. on shutdown.
  */
 export const getWebhookFetchTimeoutMs = () => {
   const parsed = Number(process.env.ALERT_NOTIFICATION_FETCH_TIMEOUT_MS);

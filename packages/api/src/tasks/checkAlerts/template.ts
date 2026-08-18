@@ -258,6 +258,20 @@ export const buildAlertMessageTemplateTitle = ({
   throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
+/**
+ * Fans each channel out to an `@webhook-<id>` mention string, which
+ * `getPopulatedChannel` later parses back into a channel. This round-trip is
+ * lossy: only `type` and `webhookId` survive it, because the mention string
+ * has no room for anything else. This predates multi-channel support and is
+ * not being fixed here.
+ *
+ * Anything that needs a channel's other fields (e.g. a fork's
+ * `emailRecipients`) at delivery time must thread them through separately --
+ * they will not come back out of this string. In particular, a consumer that
+ * reads `alert.channel` to recover them will get `channels[0]`'s values for
+ * every channel, since `channel` is a single mirrored value, not one per
+ * `channels` entry.
+ */
 export const getDefaultExternalActions = (
   alert: AlertMessageTemplateDefaultView['alert'],
 ): string[] =>
@@ -331,6 +345,8 @@ const getPopulatedChannel = (
 export type NotificationFailure = {
   /** The webhook id/name prefix, or the raw @mention, that failed. */
   target: string;
+  /** The channel type the target belongs to, or 'unknown' when it couldn't be determined (e.g. an unparseable @mention). */
+  type: string;
   error: unknown;
 };
 
@@ -436,8 +452,8 @@ export const renderAlertTemplate = async ({
 
   // A target that failed before dispatch still needs to surface as its own
   // result, so the alert reports which channel missed out.
-  const recordPreFailure = (target: string, error: unknown) => {
-    failures.push({ target, error });
+  const recordPreFailure = (target: string, type: string, error: unknown) => {
+    failures.push({ target, type, error });
   };
 
   const registerHelpers = (rawTemplateBody: string) => {
@@ -465,6 +481,7 @@ export const renderAlertTemplate = async ({
         );
         recordPreFailure(
           mention,
+          'unknown',
           new UnsupportedMentionError(
             'Alert message contains a mention that is not a webhook channel.',
           ),
@@ -490,7 +507,7 @@ export const renderAlertTemplate = async ({
       } catch (e) {
         // A missing webhook must not abort the render: the other channels
         // still fire, and this one is reported per-target.
-        recordPreFailure(renderedIdOrNamePrefix, e);
+        recordPreFailure(renderedIdOrNamePrefix, channelType, e);
         return;
       }
 
@@ -513,6 +530,7 @@ export const renderAlertTemplate = async ({
         // operator, who never learns some targets were never notified.
         recordPreFailure(
           renderedIdOrNamePrefix,
+          channelType,
           new NotificationCapExceededError(MAX_NOTIFICATIONS_PER_EVENT),
         );
         return;
@@ -696,6 +714,7 @@ ${targetTemplate}`;
           );
           failures.push({
             target: channelLabel(job.populatedChannel),
+            type: job.populatedChannel.type,
             error: e,
           });
         }
