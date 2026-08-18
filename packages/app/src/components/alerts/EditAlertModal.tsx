@@ -74,7 +74,7 @@ const EditAlertFormSchema = z
  * the fields this form does not edit (name, message) so a save round-trips
  * them instead of clearing them server-side.
  */
-export function alertToFormValues(alert: AlertsPageItem): Alert {
+function alertToFormValues(alert: AlertsPageItem): Alert {
   const base = {
     id: alert._id,
     interval: alert.interval,
