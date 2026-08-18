@@ -55,6 +55,41 @@ describe('alert channel schemas', () => {
     expect(refine({ channels: [wh('a'), wh('a')] })).toHaveLength(1);
     expect(refine({ channels: [wh('a'), wh('b')] })).toHaveLength(0);
   });
+
+  // This repo only defines a webhook channel, but a downstream fork's wider
+  // union (e.g. an `email` variant with `emailRecipients`, no `webhookId`)
+  // must not collapse to the same key just because it's not webhook-shaped.
+  it('keys non-webhook-shaped channels on their full contents, not webhookId', () => {
+    const email = (recipients: string[]) => ({
+      type: 'email',
+      emailRecipients: recipients,
+    });
+
+    // Two distinct email channels both have `webhookId: undefined` -- a
+    // webhookId-based key would collide them as duplicates.
+    expect(
+      refine({ channels: [email(['a@x.com']), email(['b@x.com'])] }),
+    ).toHaveLength(0);
+    // A real duplicate (same recipients) is still caught.
+    expect(
+      refine({ channels: [email(['a@x.com']), email(['a@x.com'])] }),
+    ).toHaveLength(1);
+
+    // A genuine disagreement between `channel` and `channels[0]` must not
+    // read as agreement just because both are webhookId-less.
+    expect(
+      refine({
+        channel: email(['a@x.com']),
+        channels: [email(['b@x.com'])],
+      }),
+    ).toHaveLength(1);
+    expect(
+      refine({
+        channel: email(['a@x.com']),
+        channels: [email(['a@x.com'])],
+      }),
+    ).toHaveLength(0);
+  });
 });
 
 // Tile alerts are validated through the saved-chart-config schema, not the

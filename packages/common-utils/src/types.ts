@@ -1,3 +1,4 @@
+import objectHash from 'object-hash';
 import { z } from 'zod';
 
 // Basic Enums
@@ -710,13 +711,23 @@ export const zAlertChannels = z
     `An alert supports at most ${MAX_ALERT_CHANNELS} notification channels`,
   );
 
-const alertChannelKey = (channel: { type?: unknown; webhookId?: unknown }) =>
-  `${String(channel.type)}:${String(channel.webhookId)}`;
+/**
+ * Identifies a channel by its full contents, not just `type` + `webhookId`.
+ * Two channels of a type this repo doesn't define (e.g. a downstream fork's
+ * `email` channel) both key as `"email:undefined"` under a webhook-shaped
+ * key, so a legitimate pair reads as a duplicate and a genuine disagreement
+ * reads as agreement. Hashing the whole object avoids assuming any particular
+ * field set.
+ */
+export const alertChannelKey = (channel: Record<string, unknown>) =>
+  objectHash(channel);
 
 /**
- * Cross-field rule shared by every alert input schema (internal API, external
- * v2 API): at least one of the legacy singular `channel` or the plural
- * `channels` must be provided, and `channels` must not contain duplicates.
+ * Cross-field rule shared by every alert input schema in this repo (internal
+ * API, external v2 API) — the MCP tool schema has its own hand-rolled copy of
+ * this check, not this one: at least one of the legacy singular `channel` or
+ * the plural `channels` must be provided, and `channels` must not contain
+ * duplicates.
  *
  * Both may be sent together only when they agree — `channel` must equal
  * `channels[0]`. Responses carry both fields, so read-modify-write clients
@@ -726,8 +737,8 @@ const alertChannelKey = (channel: { type?: unknown; webhookId?: unknown }) =>
  */
 export const validateAlertChannelSelection = (
   alert: {
-    channel?: { type?: unknown; webhookId?: unknown } | null;
-    channels?: { type: string; webhookId: string }[];
+    channel?: Record<string, unknown> | null;
+    channels?: Record<string, unknown>[];
   },
   ctx: z.RefinementCtx,
 ) => {
@@ -756,7 +767,7 @@ export const validateAlertChannelSelection = (
       return;
     }
   }
-  const keys = (alert.channels ?? []).map(c => `${c.type}:${c.webhookId}`);
+  const keys = (alert.channels ?? []).map(alertChannelKey);
   if (new Set(keys).size !== keys.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
