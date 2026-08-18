@@ -19,9 +19,9 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
+import { AlertDetailProperties } from '@/components/alerts/AlertDetailProperties';
 import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
-import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import { EditAlertModal } from '@/components/alerts/EditAlertModal';
 import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
@@ -75,7 +75,7 @@ const TIMELINE_ITEMS = 60;
 function AlertProperties({ alert }: { alert: AlertsPageItem }) {
   return (
     <Stack gap={2}>
-      <AlertPropertiesSummary alert={alert} showSchedule />
+      <AlertDetailProperties alert={alert} />
       {alert.note && <AlertNote note={alert.note} />}
     </Stack>
   );
