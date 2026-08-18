@@ -130,6 +130,42 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('returns channel.webhookId, name, and message in GET list and GET single', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        name: 'My alert',
+        message: 'My message template',
+      })
+      .expect(200);
+
+    // Edit surfaces (e.g. the alert detail page) prefill from these
+    // responses, so the notification channel and message template fields must
+    // be present — a PUT that omits name/message clears them.
+    const expected = {
+      channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      name: 'My alert',
+      message: 'My message template',
+    };
+
+    const list = await agent.get('/alerts').expect(200);
+    expect(list.body.data[0]).toMatchObject(expected);
+
+    const single = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(single.body.data).toMatchObject(expected);
+  });
+
   it('returns 404 when updating an alert that does not exist', async () => {
     const dashboard = await agent
       .post('/dashboards')
