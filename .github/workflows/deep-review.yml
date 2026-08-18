@@ -277,9 +277,11 @@ jobs:
           #
           # This runs BEFORE the scope is materialized (the materialize step is
           # gated on this one), so it cannot hash that file directly. It differs
-          # from the materialized diff only in context-line count (-U3 here,
-          # -U10 there), which does not change what the hash detects: any edit
-          # to the reviewed content changes both.
+          # from the materialized diff in context-line count (-U3 here, -U10
+          # there) and in not passing --text, neither of which changes what the
+          # hash detects: any edit to the reviewed content changes both. (--text
+          # is a no-op anyway while the `.git/info/attributes` override above is
+          # in place.)
           MB=$(git merge-base HEAD "$BASE_SHA")
           CUR_HASH=$(git diff --no-color --no-renames "$MB" HEAD | sha256sum | cut -d' ' -f1)
           echo "diff_hash=$CUR_HASH" >> "$GITHUB_OUTPUT"
@@ -347,9 +349,26 @@ jobs:
           # the orchestrator derives `hasPriorComments` the same way. Without a
           # shell it can do neither, so that persona would silently drop off the
           # roster. Materialize the threads instead of losing the reviewer.
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
-            --jq '[.[] | {path, line: (.line // .original_line), user: .user.login, body: (.body[0:2000])}]' \
-            > "$DIR/prior-review-comments.json" || echo '[]' > "$DIR/prior-review-comments.json"
+          # `--paginate` with `--jq` applies the filter PER PAGE and concatenates
+          # the results, so a PR with 30+ review comments would emit several
+          # back-to-back `[...]` documents instead of one array. `--slurp` fixes
+          # that but cannot be combined with `--jq` ("the `--slurp` option is not
+          # supported with `--jq`"), and it wraps pages rather than flattening
+          # them -- hence the separate jq with `.[][]`.
+          if gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
+               | jq '[.[][] | {path, line: (.line // .original_line), user: .user.login, body: (.body[0:2000])}]' \
+               > "$DIR/prior-review-comments.json"; then
+            :
+          else
+            echo "::warning::Could not fetch prior review comments; ce-previous-comments-reviewer will see an empty set."
+            echo '[]' > "$DIR/prior-review-comments.json"
+          fi
+          # A malformed file is worse than an empty one -- the prompt tells the
+          # reviewer to treat it as authoritative.
+          if ! jq -e 'type == "array"' "$DIR/prior-review-comments.json" >/dev/null 2>&1; then
+            echo "::warning::prior-review-comments.json was not a single JSON array; replacing with an empty set."
+            echo '[]' > "$DIR/prior-review-comments.json"
+          fi
 
           # An empty diff here means the reviewers would get nothing while the
           # job still reported success -- fail loud instead.
@@ -357,6 +376,15 @@ jobs:
             echo "::error::Materialized diff is empty for merge-base $MB. Refusing to dispatch reviewers with no scope."
             exit 1
           fi
+          # The prompt hardcodes these six names. Assert every one exists, so
+          # renaming a file here surfaces as a failed step rather than as a
+          # reviewer silently pointed at a missing path.
+          for f in base.txt branch.txt files.txt diff.patch commits.txt prior-review-comments.json; do
+            if [ ! -f "$DIR/$f" ]; then
+              echo "::error::Expected scope file $f is missing. The reviewer prompt references it by name."
+              exit 1
+            fi
+          done
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
           echo "Materialized scope in $DIR:"
           wc -l "$DIR"/files.txt "$DIR"/diff.patch "$DIR"/commits.txt
@@ -675,14 +703,29 @@ jobs:
           #
           # --disallowedTools DENIES, and deny beats allow. /proc/self/environ
           # carries the whole environment including ANTHROPIC_API_KEY, and the
-          # review body is published to a public PR. /home is NOT denied here
-          # (unlike release.yml, which works out of /tmp) because the checkout
-          # this reviewer must read lives under /home/runner/work.
+          # review body is published to a public PR.
+          #
+          # A `Read(<path>)` deny also constrains Grep -- verified directly: with
+          # `Read(//tmp/secretdir/**)` denied, a Grep at that path returns
+          # "Permission to read /tmp/secretdir has been denied." So these rules
+          # cover both read primitives, not just the Read tool. (Allow rules are
+          # different: a Read allow does NOT scope Grep, which is why confining
+          # reads by allow-listing the workspace would not close this.)
+          #
+          # This is a denylist, so treat it as raising cost, not as a boundary:
+          # it enumerates the credential-bearing trees on a GitHub-hosted Ubuntu
+          # runner rather than proving nothing else is reachable. Paths assume
+          # `runs-on: ubuntu-latest` ($HOME=/home/runner). Note /home/runner/work
+          # as a whole must stay readable -- both the checkout and RUNNER_TEMP
+          # (/home/runner/work/_temp, where the scope files live) are under it,
+          # which is why release.yml's blanket `Read(//home/**)` deny is not
+          # usable here. The real backstop for this control is the tool-set
+          # assertion in the health check below.
           claude_args: |
             --setting-sources user
             --tools "Read" "Grep" "Glob" "Task" "Skill"
             --allowedTools "Read" "Grep" "Glob" "Task" "Skill"
-            --disallowedTools "Read(//proc/**)" "Read(//sys/**)"
+            --disallowedTools "Read(//proc/**)" "Read(//sys/**)" "Read(//etc/**)" "Read(//home/runner/runners/**)" "Read(//home/runner/.ssh/**)" "Read(//home/runner/.docker/**)" "Read(//home/runner/.git-credentials)" "Read(//home/runner/.npmrc)"
             --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- deep-review --> on the first line and ## Deep Review on the second line"}},"required":["review"]}'
 
       # --- Sandbox smoke check ----------------------------------------------
@@ -796,9 +839,17 @@ jobs:
           # like the real thing. Nothing above catches it (there is no bwrap
           # error and no failed tool call), so the only signal is the absence of
           # sub-agent dispatch in the transcript. The skill's contract is 4
-          # always-on personas plus 2 CE always-on agents, so fewer than 4
-          # sub-agents means the fan-out did not happen and the posted review is
-          # a single pass wearing a multi-agent label.
+          # always-on personas plus 2 CE always-on agents, so the floor is 6 --
+          # matching the stated roster rather than sitting under it, otherwise a
+          # run missing an always-on persona passes and gets a valid state marker
+          # cached, and the gap is never re-reviewed. A false positive here is
+          # cheap: the review still posts, the marker is omitted, and the next
+          # run re-reviews.
+          #
+          # This counts dispatches, not identities. A run that swaps one persona
+          # for another still passes; catching that needs the `subagent_type`
+          # inputs, which is a tighter coupling to plugin-internal agent names
+          # than the pinned ref already implies.
           #
           # Matches both `Task` and `Agent`: the CLI advertises the tool as
           # `Task` but records `Agent` as the tool_use name in the transcript,
@@ -814,12 +865,30 @@ jobs:
               broken "Sandbox check could not derive a sub-agent count from the execution transcript (got: '${AGENT_COUNT:-<empty>}')."
               ;;
           esac
-          if [ "$AGENT_COUNT" -lt 4 ]; then
-            broken "Deep review dispatched only $AGENT_COUNT reviewer sub-agent(s); expected at least the 4 always-on personas. The orchestrator reviewed in-context instead of fanning out, so this review is a single pass, not the multi-agent review it claims to be."
+          if [ "$AGENT_COUNT" -lt 6 ]; then
+            broken "Deep review dispatched only $AGENT_COUNT reviewer sub-agent(s); the always-on roster is 6 (4 personas + 2 CE agents). Either the orchestrator reviewed in-context instead of fanning out, or part of the always-on set did not run -- either way this is not the multi-agent review it claims to be."
           fi
 
+          # Tool-set assertion. Running with no Bash is the control that makes
+          # reviewing fork code in this credentialed job defensible, and it rests
+          # entirely on `--tools` -- a flag that does not validate names and does
+          # not honour `""` the way its help claims. So verify the invariant from
+          # the transcript rather than trusting the flag: fail if any tool outside
+          # the intended set was ever called.
+          UNEXPECTED=$(jq -r '[ .[]
+              | select(.type == "assistant")
+              | .message.content[]?
+              | select(.type == "tool_use")
+              | .name
+            ] | unique | map(select(. as $n | ["Read","Grep","Glob","Task","Agent","Skill"] | index($n) | not)) | join(", ")
+          ' "$EXECUTION_FILE")
+          if [ -n "$UNEXPECTED" ]; then
+            broken "Reviewer called tools outside the intended read-only set: $UNEXPECTED. The --tools restriction is not taking effect, so fork code ran next to this job's credentials. Treat as a security regression, not a flake."
+          fi
+          echo "tool set held: no calls outside Read/Grep/Glob/Task/Skill."
+
           echo "broken=false" >> "$GITHUB_OUTPUT"
-          echo "Reviewer health check passed -- no bwrap failures, and $AGENT_COUNT sub-agents were dispatched."
+          echo "Reviewer health check passed -- no bwrap failures, $AGENT_COUNT sub-agents dispatched, tool set intact."
 
       # fromJSON() in `with:` has been observed to leave structured_output JSON
       # unparsed for the sibling claude-code-review workflow. Extract via jq.
