@@ -3,6 +3,11 @@ import { initialize, mswLoader } from 'msw-storybook-addon';
 import type { Preview } from '@storybook/nextjs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import {
+  DEFAULT_FONT_VAR,
+  FONT_VAR_MAP,
+  MANTINE_FONT_MAP,
+} from '../src/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '../src/fonts';
 import { meHandler } from '../src/mocks/handlers';
 import { AppThemeProvider } from '../src/theme/ThemeProvider';
@@ -20,8 +25,16 @@ export const parameters = {
   layout: 'fullscreen',
   options: {
     showPanel: false,
-    storySort: (a, b) =>
-      a.title.localeCompare(b.title, undefined, { numeric: true }),
+    storySort: {
+      order: [
+        'Guidelines',
+        'Brand',
+        'Icons',
+        'Design Tokens',
+        'Components',
+        '*',
+      ],
+    },
   },
 };
 
@@ -72,11 +85,42 @@ export const globalTypes = {
 initialize();
 
 const fontMap = {
-  inter: inter,
-  roboto: roboto,
-  'ibm-plex-mono': ibmPlexMono,
-  'roboto-mono': robotoMono,
-};
+  inter: { nextFont: inter, name: 'Inter' },
+  roboto: { nextFont: roboto, name: 'Roboto' },
+  'ibm-plex-mono': { nextFont: ibmPlexMono, name: 'IBM Plex Mono' },
+  'roboto-mono': { nextFont: robotoMono, name: 'Roboto Mono' },
+} as const;
+
+const NEXT_FONT_VARIABLE_CLASSES = [
+  inter.variable,
+  roboto.variable,
+  ibmPlexMono.variable,
+  robotoMono.variable,
+];
+
+/** Mirror `_document.tsx` + `_app.tsx`: font CSS vars live on <html> so body
+ * and portaled overlays (Popover, Tooltip, Modal) inherit the same family. */
+function StorybookFontSync({
+  fontName,
+  fontClassName,
+}: {
+  fontName: string;
+  fontClassName: string;
+}) {
+  React.useEffect(() => {
+    const html = document.documentElement;
+    html.classList.add(...NEXT_FONT_VARIABLE_CLASSES);
+    html.classList.add(fontClassName);
+    html.style.setProperty(
+      '--app-font-family',
+      FONT_VAR_MAP[fontName] ?? DEFAULT_FONT_VAR,
+    );
+    return () => {
+      html.classList.remove(fontClassName);
+    };
+  }, [fontName, fontClassName]);
+  return null;
+}
 
 // Create a new QueryClient for each story to avoid cache pollution between stories
 const createQueryClient = () =>
@@ -95,12 +139,17 @@ const preview: Preview = {
       const [queryClient] = React.useState(() => createQueryClient());
 
       const selectedFont = context.globals.font || 'inter';
-      const font = fontMap[selectedFont as keyof typeof fontMap] || inter;
-      const fontFamily = font.style.fontFamily;
+      const font =
+        fontMap[selectedFont as keyof typeof fontMap] ?? fontMap.inter;
+      const fontFamily = MANTINE_FONT_MAP[font.name] ?? MANTINE_FONT_MAP.Inter;
       const brandTheme = (context.globals.brand || 'hyperdx') as ThemeName;
 
       return (
-        <div className={font.className}>
+        <div className={font.nextFont.className}>
+          <StorybookFontSync
+            fontName={font.name}
+            fontClassName={font.nextFont.className}
+          />
           <QueryClientProvider client={queryClient}>
             <AppThemeProvider themeName={brandTheme}>
               <ThemeWrapper

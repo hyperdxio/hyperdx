@@ -1,0 +1,54 @@
+.doc {
+  max-width: 52rem;
+  color: var(--color-text);
+
+  a {
+    color: var(--color-text-primary);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+  }
+
+  th,
+  td {
+    border: 1px solid var(--color-border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: var(--color-bg-muted);
+  }
+
+  pre {
+    background: var(--color-bg-code);
+    border: 1px solid var(--color-border-code);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    overflow: auto;
+    margin-bottom: 1rem;
+  }
+
+  pre code {
+    color: inherit;
+  }
+
+  blockquote {
+    margin: 0 0 1rem;
+    padding: 0.5rem 1rem;
+    border-left: 3px solid var(--color-border-emphasis);
+    color: var(--color-text-muted);
+    background: var(--color-bg-muted);
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 1.5rem 0;
+  }
+}

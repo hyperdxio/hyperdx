@@ -3,7 +3,7 @@ import type { Meta } from '@storybook/nextjs';
 import HyperJson from './HyperJson';
 
 const meta: Meta = {
-  title: 'HyperJson',
+  title: 'Components/HyperJson',
   component: HyperJson,
 };
 
