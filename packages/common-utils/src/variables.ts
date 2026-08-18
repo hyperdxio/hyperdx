@@ -880,3 +880,20 @@ export function filterReferencedVariables(
   const referenced = new Set(names);
   return variables.filter(variable => referenced.has(variable.name));
 }
+
+/** The warning an alerting tile shows when its query references dashboard variables. */
+export function getAlertVariableWarning(
+  config: ChartConfigWithOptDateRange | SavedChartConfig,
+  variables: ChartVariable[] | undefined,
+): string | undefined {
+  if (!variables?.length) return undefined;
+
+  const referenced = filterReferencedVariables(config, variables);
+  if (referenced.length === 0) return undefined;
+
+  const names = referenced.map(variable => `$${variable.name}`).join(', ');
+  return (
+    `This tile references ${names}. Alerts run with every dashboard variable ` +
+    `in its empty state, not the values selected here.`
+  );
+}

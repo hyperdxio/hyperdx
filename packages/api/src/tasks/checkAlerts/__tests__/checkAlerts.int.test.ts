@@ -4705,6 +4705,355 @@ describe('checkAlerts', () => {
       expect(alertHistories[1].state).toBe('OK');
     });
 
+    describe('dashboard variables', () => {
+      const NOW = new Date('2023-11-16T22:12:00.000Z');
+      // Inside the last alert window, 22:05 - 22:10.
+      const EVENT_AT = new Date(NOW.getTime() - ms('5m'));
+
+      const seedLogs = (serviceNames: string[]) =>
+        bulkInsertLogs(
+          serviceNames.map((ServiceName, i) => ({
+            ServiceName,
+            Timestamp: EVENT_AT,
+            SeverityText: 'error',
+            Body: `variable alert test event ${i}`,
+          })),
+        );
+
+      /** A dashboard filter on `ServiceName`, exposed as `$svc` by default. */
+      const serviceFilter = (overrides: Record<string, unknown> = {}) => ({
+        id: 'service-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        source: 'unused-by-the-alert-task',
+        whereLanguage: 'sql',
+        isVariableEnabled: true,
+        variableName: 'svc',
+        ...overrides,
+      });
+
+      const tileAlertConfig = (
+        webhookId: string,
+        dashboardId: string,
+        tileId: string,
+      ) => ({
+        source: AlertSource.TILE as const,
+        channel: { type: 'webhook' as const, webhookId },
+        interval: '5m' as const,
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        dashboardId,
+        tileId,
+      });
+
+      const lastValue = async (alertId: string) => {
+        const histories = await AlertHistory.find({ alert: alertId }).sort({
+          createdAt: 1,
+        });
+        expect(histories.length).toBe(1);
+        return histories[0].lastValues[0]?.count;
+      };
+
+      it('expands a Lucene reference to its empty state, and does not broadcast the filter', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          // The filter's own `where` would exclude every row if it were
+          // broadcast onto the tile — alerts only take the variable.
+          filters: [
+            serviceFilter({
+              source: source.id,
+              where: "ServiceName = 'nothing-matches-this'",
+            }),
+          ],
+          tiles: [
+            {
+              id: 'lucene-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: 'ServiceName:$svc',
+                whereLanguage: 'lucene',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'lucene-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'lucene-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The empty Lucene selection renders as `("")`, which drops out of the
+        // predicate — so both rows are counted. Left unsubstituted, the literal
+        // `$svc` would match nothing and the alert would stay OK.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+        expect(
+          (await Alert.findById(details.alert.id))!.executionErrors ?? [],
+        ).toHaveLength(0);
+      });
+
+      it('expands $__conditionalAll in a SQL where to its no-op form', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          filters: [serviceFilter({ source: source.id })],
+          tiles: [
+            {
+              id: 'macro-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: "$__conditionalAll(ServiceName = 'api', svc)",
+                whereLanguage: 'sql',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'macro-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'macro-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Nothing is selected, so the guarded condition drops out and both rows
+        // are counted. Left unexpanded, `$__conditionalAll(...)` is not valid
+        // SQL and the query would fail outright.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+
+      it('leaves references the dashboard does not declare exactly as written', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['$abc', '$hidden', 'api']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          filters: [
+            serviceFilter({ source: source.id }),
+            // Collects a value but does not expose it as a variable, so
+            // `$hidden` names nothing.
+            serviceFilter({
+              id: 'hidden-filter',
+              name: 'Hidden',
+              variableName: 'hidden',
+              isVariableEnabled: false,
+              source: source.id,
+            }),
+          ],
+          tiles: [
+            {
+              id: 'unknown-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: "ServiceName = '$abc' OR ServiceName = '$hidden'",
+                whereLanguage: 'sql',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'unknown-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'unknown-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Both literals survived substitution and matched their rows; the
+        // `api` row did not.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+
+      it('expands $__filter in a raw SQL tile while leaving an undeclared literal alone', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web', '$abc']);
+
+        const sqlTemplate = [
+          'SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,',
+          ' count() AS cnt',
+          ' FROM default.otel_logs',
+          ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+          ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+          ' AND $__filter(svc)',
+          " AND ServiceName != '$abc'",
+          ' GROUP BY ts ORDER BY ts',
+        ].join('');
+
+        const dashboard = await new Dashboard({
+          name: 'Raw SQL Variables Dashboard',
+          team: team._id,
+          filters: [serviceFilter()],
+          tiles: [
+            {
+              id: 'rawsql-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                sqlTemplate,
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          undefined, // No source for raw SQL tiles
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'rawsql-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // `$__filter(svc)` expanded to its empty-selection no-op, so it matched
+        // everything; `'$abc'` was left as a literal and excluded its own row.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+    });
+
     it('TILE alert (raw SQL) - multiple rows per time bucket from GROUP BY', async () => {
       const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
         await setupSavedSearchAlertTest();
