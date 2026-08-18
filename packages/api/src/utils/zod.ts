@@ -321,14 +321,8 @@ const externalDashboardTableRawSqlChartConfigSchema =
 const externalDashboardNumberRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('number'),
-    // Raw SQL number tiles expose the same static tile color as builder
-    // number tiles: the editor gates the picker on displayType, not
-    // configType (`ChartDisplaySettingsDrawer`). `colorRules` is
-    // intentionally omitted here because the editor's save path
-    // (`convertFormStateToSavedChartConfig`) picks `color` but not
-    // `colorRules` for raw SQL configs, so persisted raw SQL number tiles
-    // never carry rules.
     color: ChartPaletteTokenSchema.optional(),
+    colorRules: z.array(NumberTileColorConditionSchema).max(10).optional(),
   });
 
 const externalDashboardPieRawSqlChartConfigSchema =
@@ -368,9 +362,9 @@ const externalDashboardNumberChartConfigSchema = z.object({
   // `configType === 'sql'`). The save path
   // (`convertFormStateToSavedChartConfig`) persists `backgroundChart` only on
   // the builder branch (the raw SQL / promql picks omit it), so it lives on
-  // the builder number schema only, like `colorRules`. `BackgroundChartSchema`
-  // is imported from common-utils so the external surface cannot drift from
-  // what the UI persists.
+  // the builder number schema only. `BackgroundChartSchema` is imported from
+  // common-utils so the external surface cannot drift from what the UI
+  // persists.
   backgroundChart: BackgroundChartSchema.optional(),
 });
 

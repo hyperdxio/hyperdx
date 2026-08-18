@@ -5455,21 +5455,52 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
-    it('strips colorRules from a raw SQL number tile, keeping color', async () => {
+    it('round-trips colorRules for a raw SQL number tile', async () => {
+      const colorRules = [
+        { operator: 'gt', value: 1, color: 'chart-red' },
+        { operator: 'lte', value: 1, color: 'chart-green' },
+      ];
+
       const create = await authRequest('post', BASE_URL)
         .send({
           name: 'Raw SQL colorRules',
           tiles: [
             rawSqlNumberTile({
               color: 'chart-blue',
-              colorRules: [{ operator: 'gt', value: 1, color: 'chart-red' }],
+              colorRules,
             }),
           ],
           tags: [],
         })
         .expect(200);
-      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
-      expect(create.body.data.tiles[0].config.colorRules).toBeUndefined();
+
+      expect(create.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
+
+      const dashboardId = create.body.data.id;
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+
+      expect(get.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
+
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: get.body.data.name,
+          tiles: get.body.data.tiles,
+          tags: get.body.data.tags,
+        })
+        .expect(200);
+
+      expect(update.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
     });
 
     // ── Negative: one per schema rejection rule ─────────────────────────
