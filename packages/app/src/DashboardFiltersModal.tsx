@@ -363,6 +363,7 @@ const DashboardFilterEditForm = ({
             >
               <SearchWhereInput
                 tableConnection={tableConnection}
+                sourceId={sourceId}
                 control={control}
                 name="where"
                 languageName="whereLanguage"

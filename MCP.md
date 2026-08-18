@@ -9,8 +9,8 @@ data sources directly.
 
 - A running HyperDX instance (see [CONTRIBUTING.md](/CONTRIBUTING.md) for local
   development setup, or [DEPLOY.md](/DEPLOY.md) for self-hosted deployment)
-- A **Personal API Access Key** — find yours in the HyperDX UI under **Team
-  Settings > API Keys > Personal API Access Key**
+- A **Personal API access key** — find yours in the HyperDX UI under **Team
+  Settings > API keys > Personal API access key**
 
 > **Note:** HyperDX v1 ([hyperdx.io](https://hyperdx.io)) does not yet support
 > the MCP server. The documentation below applies to self-hosted HyperDX v2
@@ -137,6 +137,7 @@ with:
 | `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
 | `clickstack_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |
 | `clickstack_query_tile`          | Execute the query for a specific dashboard tile to validate results                          |
+| `clickstack_query_tiles`         | Batch-validate many dashboard tiles in one call, returning a per-tile success/failure summary |
 | `clickstack_get_saved_search`    | List all saved searches or get full detail for a specific saved search                       |
 | `clickstack_save_saved_search`   | Create or update a saved search (reusable query against a data source)                       |
 | `clickstack_get_alert`           | List alerts (summary) or get full detail with evaluation history; filter by state             |

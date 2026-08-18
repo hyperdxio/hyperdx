@@ -2765,7 +2765,7 @@ export function DBSearchPage() {
 
 const DBSearchPageDynamic = dynamic(async () => DBSearchPage, { ssr: false });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 DBSearchPageDynamic.getLayout = withAppNav;
 
 export default DBSearchPageDynamic;

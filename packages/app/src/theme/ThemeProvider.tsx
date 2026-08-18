@@ -1,7 +1,7 @@
 import React, {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -178,15 +178,11 @@ export function AppThemeProvider({
     };
   }, [theme, setTheme, toggleTheme, clearThemeOverride]);
 
-  return (
-    <ThemeContext.Provider value={contextValue}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext value={contextValue}>{children}</ThemeContext>;
 }
 
 export function useAppTheme(): ThemeContextValue {
-  const context = useContext(ThemeContext);
+  const context = use(ThemeContext);
   if (!context) {
     // Fallback for when used outside provider - always use default to avoid hydration issues
     const theme = getTheme(DEFAULT_THEME);

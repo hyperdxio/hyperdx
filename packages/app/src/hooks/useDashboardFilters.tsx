@@ -3,9 +3,14 @@ import { useQueryState } from 'nuqs';
 import {
   FilterState,
   filtersToQuery,
+  getDashboardVariableDeclarations,
   isFilterBroadcastEnabled,
 } from '@hyperdx/common-utils/dist/filters';
-import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartVariable,
+  DashboardFilter,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
 
 import { parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
@@ -59,6 +64,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     queriesForExistingFilters,
     ignoredExpressions,
     filtersByExpression,
+    variables,
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
@@ -98,8 +104,23 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       }
     }
 
+    const variables: ChartVariable[] = getDashboardVariableDeclarations(
+      filters,
+    ).map(definition => {
+      const selection = definition.expression
+        ? valuesForExistingFilters[definition.expression]
+        : undefined;
+      return {
+        ...definition,
+        values: selection
+          ? Array.from(selection.included).map(String).sort() // Sorted for deterministic react-query keys
+          : [],
+      };
+    });
+
     return {
       valuesForExistingFilters,
+      variables,
       queriesForExistingFilters: filtersToQuery(
         broadcastValues,
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
@@ -163,6 +184,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * apply to no tiles at all.
      */
     getFilterQueriesForSource,
+    /** The dashboard's variable-enabled filters and their currently selected values. */
+    variables,
   };
 };
 

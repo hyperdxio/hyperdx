@@ -333,7 +333,15 @@ const numericOrderedColorCondition = z.object({
 
 const betweenColorCondition = z.object({
   operator: z.literal('between'),
-  value: z.tuple([z.number().finite(), z.number().finite()]),
+  // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
+  // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
+  // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
+  // draft-07 form (`items: [ ... ]`). In JSON Schema draft 2020-12 `items` must
+  // be a schema, not an array, so a tuple here makes the whole tool schema
+  // invalid and any strict draft-2020-12 client (e.g. the Anthropic API) rejects
+  // the tool list outright. The wire format — `[min, max]` — is identical either
+  // way, and matches the published `BetweenColorCondition` external-API schema.
+  value: z.array(z.number().finite()).length(2),
   color: ChartPaletteTokenSchema,
   label: z.string().max(40).optional(),
 });
@@ -415,6 +423,32 @@ export const DerivedColumnSchema = z.intersection(
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
+
+/**
+ * A derived series computed from other series in the chart's `select` list
+ * via a letter-ref arithmetic expression (metric charts only for v1).
+ *
+ * `expression` references select entries by position using single uppercase
+ * letters — `A` is `select[0]`, `B` is `select[1]`, ... (Grafana/Datadog
+ * convention; stable against alias edits). Example: `A / (A + B + C) * 100`.
+ *
+ * The grammar is arithmetic only (`+ - * /`, parentheses, numeric constants)
+ * and is parsed to a validated AST by `core/formula.ts` before any query
+ * rendering — expressions are never passed through as raw SQL.
+ */
+export const MetricFormulaSchema = z.object({
+  // Length-capped at the validation boundary so persisted configs can never
+  // carry an expression large enough to matter for the recursive parser
+  // (mirrors MAX_FORMULA_EXPRESSION_LENGTH in `core/formula.ts`, which
+  // guards the parser itself for arbitrary caller input).
+  expression: z.string().max(1024),
+  // Legend / column name for the formula series. Falls back to the raw
+  // expression when unset (mirrors DerivedColumnSchema.alias semantics).
+  alias: z.string().optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+export type MetricFormula = z.infer<typeof MetricFormulaSchema>;
+
 export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -848,8 +882,16 @@ export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
 // emitted: ALERT = fired, OK = recovered.
 export const AlertTransitionSchema = z.object({
-  createdAt: z.string(),
+  createdAt: z.string().datetime(),
   state: z.nativeEnum(AlertState),
+  // Start of the newest bucket evaluated by the transitioning window. Charts
+  // plot each bucket's value at its *start*, while the evaluation runs at the
+  // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
+  // data point that produced the transition. Optional for compatibility with
+  // older API responses; consumers fall back to createdAt. Floored at the
+  // requested range start so an edge crossing's marker never precedes a
+  // carry-in pin; charts clamp edge markers into their rendered domain.
+  bucketStart: z.string().datetime().optional(),
 });
 
 export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
@@ -1319,6 +1361,19 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Only meaningful for grouped ratios (seriesReturnType === 'ratio' + a Group
   // By). Defaults to per-group when unset. See RatioModeSchema.
   ratioMode: RatioModeSchema.optional(),
+  // Derived series computed from the `select` entries via letter-ref
+  // arithmetic expressions (`A` = select[0], ...). Metric sources only for
+  // v1; enforced by the editor and query renderer rather than this
+  // (deliberately permissive) schema, mirroring how `seriesReturnType:
+  // 'ratio'` is gated. Formulas are additive — the ratio toggle is untouched
+  // and the two are mutually exclusive in the editor. See
+  // MetricFormulaSchema and `core/formula.ts` for the grammar/validation.
+  formulas: z.array(MetricFormulaSchema).optional(),
+  // Whether the raw operand series referenced by `formulas` are emitted
+  // alongside the formula column(s) (true / unset) or only the formula
+  // column(s) are returned (false). Only meaningful when `formulas` is
+  // non-empty; ignored otherwise.
+  showOperandSeries: z.boolean().optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
@@ -1327,6 +1382,17 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // keys, so unlike `alternateRowBackground` this stays on the builder config.
   groupByColumnsOnLeft: z.boolean().optional(),
 });
+
+/** A dashboard variable as seen by a tile's query. */
+export const ChartVariableSchema = z.object({
+  name: z.string(),
+  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  expression: z.string().optional(),
+  /** Empty means nothing is selected. */
+  values: z.array(z.string()),
+});
+
+export type ChartVariable = z.infer<typeof ChartVariableSchema>;
 
 // This is a ChartConfig type without the `with` CTE clause included.
 // It needs to be a separate, named schema to avoid use of z.lazy(...),
@@ -1361,7 +1427,12 @@ export const WithClauseSchema = z.object({
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z.object({ with: z.array(WithClauseSchema) }).partial(),
+  z
+    .object({
+      with: z.array(WithClauseSchema),
+      variables: z.array(ChartVariableSchema),
+    })
+    .partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
@@ -1385,6 +1456,7 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -1600,7 +1672,10 @@ export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
-export const DASHBOARD_VARIABLE_NAME_REGEX = /^[a-zA-Z][A-Za-z0-9_]*$/;
+export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
+export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
+  `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
+);
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
 
 export const DashboardFilterSchema = z.object({
@@ -1636,7 +1711,7 @@ export const DashboardFilterSchema = z.object({
   variableName: z
     .string()
     .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
-    .regex(DASHBOARD_VARIABLE_NAME_REGEX)
+    .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
     .optional(),
 });
 
@@ -1878,6 +1953,13 @@ export const LogSourceSchema = BaseSourceSchema.extend({
     .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
+  /**
+   * Expression identifying the running release of a service. Defaults to the
+   * OpenTelemetry `service.version` resource attribute when unset; teams whose
+   * version lives elsewhere - a container image tag under GitOps, a custom
+   * attribute - point it there instead of changing instrumentation.
+   */
+  serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
@@ -1935,6 +2017,8 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   serviceNameExpression: z.string().optional(),
+  /** See `serviceVersionExpression` on `LogSourceSchema`. */
+  serviceVersionExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
@@ -2174,7 +2258,10 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({ type: z.string().optional().nullable() }),
+  channel: z.object({
+    type: z.string().optional().nullable(),
+    webhookId: z.string().optional(),
+  }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
@@ -2421,6 +2508,20 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Response for `PATCH /me/accessKey`.
+//
+// Deliberately not RotateApiKeyApiResponseSchema (`{ newApiKey }`): `team.apiKey`
+// is the shared ingestion key, while `user.accessKey` is the per-user bearer
+// token for the external API v2 and the MCP server. The two are rendered side by
+// side in Team Settings, so the wire names must not blur together.
+export const RotateAccessKeyApiResponseSchema = z.object({
+  newAccessKey: z.string(),
+});
+
+export type RotateAccessKeyApiResponse = z.infer<
+  typeof RotateAccessKeyApiResponseSchema
+>;
 
 // IaC (Terraform) export
 //

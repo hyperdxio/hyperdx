@@ -1,10 +1,11 @@
 import * as SQLParser from 'node-sql-parser';
 
-import { replaceJsonExpressions } from '@/core/utils';
+import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
+  ChartVariable,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
-  DASHBOARD_VARIABLE_NAME_REGEX,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
   Filter,
 } from '@/types';
@@ -15,10 +16,6 @@ export type FilterState = {
     excluded: Set<string | boolean>;
     range?: { min: number; max: number }; // For BETWEEN conditions
   };
-};
-
-const escapeString = (s: string) => {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
 };
 
 // Wrap a quoted string literal in a ClickHouse expression whose result type
@@ -76,8 +73,8 @@ export const filtersToQuery = (
         typeof v !== 'string'
           ? v
           : chType != null
-            ? dateTimeValueExpr(chType, `'${escapeString(v)}'`)
-            : `'${escapeString(v)}'`;
+            ? dateTimeValueExpr(chType, `'${escapeSqlString(v)}'`)
+            : `'${escapeSqlString(v)}'`;
 
       if (values.included.size > 0) {
         conditions.push({
@@ -170,7 +167,7 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
   }
 
   // Remove surrounding quotes and reverse the escape sequences produced by
-  // filtersToQuery's escapeString. Order matters: collapse \\ → \ first so
+  // filtersToQuery's escapeSqlString. Order matters: collapse \\ → \ first so
   // that the following '' → ' pass doesn't mistake content for an escape.
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1).replace(/\\\\/g, '\\').replace(/''/g, "'");
@@ -782,6 +779,33 @@ export function getFilterVariableName(filter: {
   );
 }
 
+/** A dashboard variable's identity, before any selection is attached. */
+export type DashboardVariableDeclaration = Pick<
+  ChartVariable,
+  'name' | 'expression'
+>;
+
+/** The variables a dashboard declares, in filter order. */
+export function getDashboardVariableDeclarations(
+  filters: DashboardFilter[] | undefined,
+): DashboardVariableDeclaration[] {
+  const declarations: DashboardVariableDeclaration[] = [];
+  const takenNames = new Set<string>();
+
+  for (const filter of filters ?? []) {
+    if (!isFilterVariableEnabled(filter)) continue;
+
+    // There shouldn't be any duplicate names, but if there are then the first one wins.
+    const name = getFilterVariableName(filter);
+    if (!name || takenNames.has(name)) continue;
+    takenNames.add(name);
+
+    declarations.push({ name, expression: filter.expression });
+  }
+
+  return declarations;
+}
+
 /**
  * Validate a variable name against the token grammar and against the names
  * already taken by other variable-enabled filters on the same dashboard.
@@ -806,7 +830,7 @@ export function validateVariableName({
   if (trimmed.length > DASHBOARD_VARIABLE_NAME_MAX_LENGTH) {
     return `Variable name must be ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters or fewer`;
   }
-  if (!DASHBOARD_VARIABLE_NAME_REGEX.test(trimmed)) {
+  if (!DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(trimmed)) {
     return 'Variable names must start with a letter and may contain only letters, numbers, and underscores';
   }
   const clash = otherFilters.find(

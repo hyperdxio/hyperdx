@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { escapeRegExp } from 'lodash';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
@@ -267,6 +266,18 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     [metricSource, facetWhere, dateRange],
   );
 
+  // A metric source's `from.tableName` is empty — the rows live in the
+  // per-type tables — so `tcFromSource` would give autocomplete nothing to
+  // query. Point it at the same gauge table `chartConfig` reads.
+  const gaugeTableConnection = useMemo(
+    () => ({
+      databaseName: metricSource.from.databaseName,
+      tableName: metricSource.metricTables?.gauge || '',
+      connectionId: metricSource.connection,
+    }),
+    [metricSource],
+  );
+
   const { data, isLoading } = useGetKeyValues({
     chartConfig,
     keys,
@@ -326,7 +337,9 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
       />
       <Box style={{ flex: 1, minWidth: 200 }}>
         <SearchInputV2
-          tableConnection={tcFromSource(metricSource)}
+          tableConnection={gaugeTableConnection}
+          sourceId={metricSource.id}
+          dateRange={dateRange}
           placeholder="Search your events w/ Lucene ex. column:foo"
           language="lucene"
           name="searchQuery"

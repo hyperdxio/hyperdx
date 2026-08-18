@@ -3,9 +3,10 @@
  * Used for creating and configuring dashboard tiles and chart explorer
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -52,12 +53,15 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line and StackedBar share the "Time Series" tab; other display types
-    // match their tab label by name (case-insensitive substring).
+    // Line and StackedBar share the "Time Series" tab, and EventPatterns' tab
+    // is labelled just "Patterns"; the rest match their tab label by name
+    // (case-insensitive substring).
     const tabName =
       name === DisplayType.Line || name === DisplayType.StackedBar
         ? 'Time Series'
-        : name;
+        : name === DisplayType.EventPatterns
+          ? 'Patterns'
+          : name;
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
@@ -73,6 +77,147 @@ export class ChartEditorComponent {
     // actionability check and times out. Uses blur (not Escape) so it can't
     // close a surrounding modal (the dashboard tile editor). See the helper.
     await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * The chart editor's root, in either place it renders: the dashboard's tile
+   * editor modal or the chart explorer page. Inputs that also exist outside it
+   * — most notably the dashboard's own search WHERE input, sitting behind the
+   * modal where the overlay swallows every click — must stay out of reach.
+   */
+  private editorForm(): Locator {
+    return this.page.locator(
+      '[data-testid="tile-editor-form"], [data-testid="chart-explorer-form"]',
+    );
+  }
+
+  /**
+   * The editor renders one WHERE input per series (the series' agg condition)
+   * followed by the chart-level WHERE, and they share a placeholder and testid.
+   * `'series'` takes the first, `'chart'` the last — so `'series'` only
+   * addresses the first series, which is all the tests need so far.
+   */
+  private whereInput(locator: Locator, scope: 'chart' | 'series'): Locator {
+    return scope === 'series' ? locator.first() : locator.last();
+  }
+
+  /**
+   * A whole WHERE input — its language switch, the SQL or Lucene editor, and
+   * anything the input renders beside them. Located from the language switch,
+   * which is the one part present in both languages and whichever state the
+   * editor is in.
+   */
+  private whereRow(scope: 'chart' | 'series' = 'chart'): Locator {
+    return this.whereInput(
+      this.editorForm().getByTestId('where-language-switch'),
+      scope,
+    ).locator('xpath=..');
+  }
+
+  /** The warning icon a WHERE input shows about the variables it references. */
+  whereVariableWarning(scope: 'chart' | 'series' = 'chart'): Locator {
+    return this.whereRow(scope).getByTestId('variable-validation');
+  }
+
+  /**
+   * What a WHERE input says about the dashboard variables its expression
+   * references, or '' when it flags nothing.
+   */
+  async getWhereVariableWarning(
+    scope: 'chart' | 'series' = 'chart',
+  ): Promise<string> {
+    const messages = await this.whereVariableWarning(scope).evaluateAll(
+      elements =>
+        elements.map(element => element.getAttribute('aria-label') ?? ''),
+    );
+    return messages.join(' ');
+  }
+
+  /**
+   * Select SQL or Lucene on a WHERE input. Both inputs default to Lucene.
+   */
+  async setWhereLanguage(
+    language: 'SQL' | 'Lucene',
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    // A completion popup left open by a prior editor can overlay the switch.
+    await dismissSqlAutocomplete(this.page);
+    const select = this.whereInput(
+      this.editorForm().getByTestId('where-language-switch'),
+      scope,
+    ).getByLabel('Query language');
+    await select.click();
+    await this.page
+      .getByRole('option', { name: language, exact: true })
+      .click();
+  }
+
+  /** Focus a WHERE input and replace its contents with `expression`. */
+  private async fillWhereEditor(expression: string, scope: 'chart' | 'series') {
+    // Located through the row rather than the placeholder, which CodeMirror
+    // drops as soon as there is content — so this can refill an input it has
+    // already filled once.
+    const editor = this.whereRow(scope).locator('.cm-content');
+    await editor.click();
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Delete');
+    await this.page.keyboard.type(expression);
+  }
+
+  /**
+   * Type a SQL WHERE clause into a WHERE input, replacing any existing
+   * contents. Switches the input to SQL first.
+   */
+  async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
+    await this.setWhereLanguage('SQL', scope);
+    await this.fillWhereEditor(expression, scope);
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * Type into a WHERE input while it is in Lucene mode, where it renders as a
+   * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
+   */
+  async typeLuceneWhere(text: string, scope: 'chart' | 'series' = 'chart') {
+    const input = this.whereInput(
+      this.editorForm().getByPlaceholder(/Search your events w\/ Lucene/i),
+      scope,
+    );
+    await input.click();
+    await input.fill(text);
+  }
+
+  /**
+   * Type `prefix` into a SQL WHERE input to open its autocomplete popup, and
+   * report what it offers plus the help panel of the highlighted suggestion.
+   *
+   * Empties the input and closes the popup before returning: the tooltip sits
+   * over the editor and would intercept the next interaction.
+   */
+  async readWhereCompletions(
+    prefix: string,
+    scope: 'chart' | 'series' = 'chart',
+  ): Promise<{ labels: string[]; info: string }> {
+    await this.setWhereLanguage('SQL', scope);
+    await this.fillWhereEditor(prefix, scope);
+
+    const popup = this.page.locator('.cm-tooltip-autocomplete');
+    await popup.waitFor({ state: 'visible', timeout: 10000 });
+    const labels = await this.sqlCompletionOptions().allInnerTexts();
+
+    const infoPanel = this.page.locator('.cm-completionInfo');
+    const info =
+      (await infoPanel.count()) > 0
+        ? (await infoPanel.innerText()).replace(/\s+/g, ' ').trim()
+        : '';
+
+    // The editor still has focus, so clear it from the keyboard rather than
+    // re-locating it: a non-empty editor no longer shows its placeholder.
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Backspace');
+    await popup.waitFor({ state: 'hidden', timeout: 10000 });
+
+    return { labels, info };
   }
 
   /**
@@ -95,6 +240,39 @@ export class ChartEditorComponent {
     await this.page.keyboard.type(expression);
     // Dismiss the autocomplete dropdown so it doesn't intercept the next click.
     await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * The tile-editor modal. Series-level lookups have to be scoped to it: the
+   * dashboard behind it renders its own WHERE input with identical markup.
+   * Only meaningful on a dashboard — the chart explorer has no modal.
+   */
+  private get tileEditor() {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('chart-name-input') });
+  }
+
+  /**
+   * Set the tile's own filter, which a time chart stores as its series'
+   * `aggCondition` rather than in the config's statement-level `where`.
+   *
+   * Switches to Lucene first for two reasons: the mode is sticky (it is kept in
+   * localStorage, so a previous spec can leave it on SQL), and
+   * `series-where-input` exists only on the Lucene branch of SearchWhereInput —
+   * the SQL branch renders a CodeMirror that carries no test id.
+   */
+  async setSeriesWhere(condition: string) {
+    const editor = this.tileEditor;
+    await switchWhereToLucene(editor.getByTestId('where-language-switch'));
+
+    const input = editor.getByTestId('series-where-input');
+    await expect(input).toBeVisible();
+    await input.fill(condition);
+    // Blur to close the suggestion dropdown, which otherwise overlays the
+    // Run/Save buttons and fails their actionability check. Escape would bubble
+    // to the tile-editor modal and close it.
+    await input.blur();
   }
 
   /**
@@ -247,6 +425,155 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Expand the "Generated SQL" accordion in the preview panel. Safe to call
+   * when it is already open.
+   */
+  async openGeneratedSql() {
+    const control = this.page.getByRole('button', { name: 'Generated SQL' });
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+    await this.generatedSqlContent().waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * Expand the "Sample Matched Events" accordion in the preview panel. Safe to
+   * call when it is already open. The table only queries once expanded.
+   */
+  async openSampleMatchedEvents() {
+    const control = this.page.getByRole('button', {
+      name: 'Sample Matched Events',
+    });
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+  }
+
+  /** CodeMirror content of the rendered "Generated SQL" preview. */
+  generatedSqlContent(): Locator {
+    return this.page.getByTestId('chart-sql-preview').locator('.cm-content');
+  }
+
+  /**
+   * The generated SQL as a single whitespace-collapsed line, so assertions
+   * don't depend on how sql-formatter happened to wrap the query.
+   */
+  async getGeneratedSqlText(): Promise<string> {
+    const text = await this.generatedSqlContent().innerText();
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * The raw SQL validation banner. Absent from the DOM entirely when the
+   * template raises neither an error nor a warning.
+   */
+  sqlValidationBanner(): Locator {
+    return this.page.getByTestId('raw-sql-validation');
+  }
+
+  /**
+   * The validation banner's messages as one whitespace-collapsed string.
+   * Validation is debounced by 300ms, so assert with `toPass`.
+   */
+  async getSqlValidationText(): Promise<string> {
+    const banner = this.sqlValidationBanner();
+    if ((await banner.count()) === 0) return '';
+    return (await banner.innerText()).replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Type `prefix` into the SQL editor to open the autocomplete popup, and
+   * report the info panel of the highlighted suggestion.
+   *
+   * Dismisses the popup and clears the editor before returning: the tooltip
+   * sits over the editor and would intercept the next caller's click.
+   *
+   * `overflowX` is how far the content extends past the panel's own box, so a
+   * caller can assert the help text stays inside its background.
+   */
+  async readSqlCompletionInfo(
+    prefix: string,
+  ): Promise<{ text: string; overflowX: number }> {
+    await this.replaceSqlQuery(prefix);
+
+    const info = this.page.locator('.cm-completionInfo');
+    await info.waitFor({ state: 'visible', timeout: 10000 });
+
+    const text = await info.innerText();
+    const overflowX = await info.evaluate(
+      el => el.scrollWidth - el.clientWidth,
+    );
+
+    await this.dismissSqlCompletion();
+
+    return { text, overflowX };
+  }
+
+  /**
+   * Close the autocomplete popup by emptying the editor, leaving it clean for
+   * the next interaction.
+   *
+   * The popup sits over the editor and intercepts clicks, so anything that
+   * opens one has to close it. Emptying the document is the way to do that:
+   * Escape also closes it, but it bubbles to the tile modal and pops the
+   * discard-changes dialog.
+   */
+  async dismissSqlCompletion() {
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    await this.page
+      .locator('.cm-tooltip-autocomplete')
+      .waitFor({ state: 'hidden', timeout: 10000 });
+  }
+
+  /** Labels currently offered by the SQL autocomplete popup. */
+  sqlCompletionOptions(): Locator {
+    return this.page.locator(
+      '.cm-tooltip-autocomplete > ul > li .cm-completionLabel',
+    );
+  }
+
+  /**
+   * Type `prefix` into the SQL editor, accept the suggestion labelled `label`,
+   * and return the resulting document text.
+   *
+   * Verifies that what a completion inserts is actually well-formed — the
+   * replace range extends over trailing identifier characters, so a bracket
+   * auto-inserted by the editor is inside it and `apply` has to supply its own.
+   */
+  async acceptSqlCompletion(prefix: string, label: string): Promise<string> {
+    await this.replaceSqlQuery(prefix);
+
+    const option = this.page
+      .locator('.cm-tooltip-autocomplete > ul > li')
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+
+    const text = await this.getSqlEditorText();
+    // Accepting can immediately re-open the popup on the inserted text, which
+    // would intercept the next caller's click.
+    await this.dismissSqlCompletion();
+    return text;
+  }
+
+  /** The "SQL Chart Instructions" panel, which documents params and macros. */
+  sqlInstructions(): Locator {
+    return this.page
+      .locator('div')
+      .filter({ hasText: /^SQL Chart Instructions/ })
+      .first();
+  }
+
+  /**
    * Type a SQL query into the CodeMirror SQL editor, replacing any existing
    * contents first. Call switchToSqlMode() first to make the editor visible.
    *
@@ -341,6 +668,24 @@ export class ChartEditorComponent {
     await this.selectSource(sourceName);
     if (groupBy) await this.setGroupBy(groupBy);
     await this.save();
+  }
+
+  /** The badge the alert block shows when the tile's query has a warning. */
+  alertWarningBadge(): Locator {
+    return this.page
+      .getByTestId('alert-details')
+      .getByText('Warning', { exact: true });
+  }
+
+  /**
+   * What the alert block's warning badge says, or '' when it shows none. The
+   * message only exists as a tooltip, so this hovers the badge to read it.
+   */
+  async getAlertWarning(): Promise<string> {
+    const badge = this.alertWarningBadge();
+    if ((await badge.count()) === 0) return '';
+    await badge.hover();
+    return (await this.page.getByRole('tooltip').innerText()).trim();
   }
 
   /**

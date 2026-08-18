@@ -17,6 +17,7 @@ export type SQLCompletion = {
   label: string;
   apply?: string;
   detail?: string;
+  info?: string | (() => Node);
   type?: string;
 };
 
@@ -159,6 +160,20 @@ export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
       borderRadius: '4px',
       padding: '8px',
       color: 'var(--color-text)',
+      // Override the `nowrap` from the autocomplete list, so that the info
+      // text (longer, only one shown at a time) wraps instead of overflowing.
+      whiteSpace: 'normal',
+      overflowWrap: 'break-word',
+      width: 'max-content',
+      maxWidth: '320px',
+      maxHeight: '300px',
+      overflowY: 'auto',
+    },
+    // Trailing detail on a completion's help — the variable's current
+    // selection — set apart from the prose above it.
+    '& .cm-tooltip-autocomplete .cm-completionInfo-footnote': {
+      marginTop: '6px',
+      color: 'var(--color-text-muted)',
     },
     '& .cm-completionIcon': {
       width: '16px',

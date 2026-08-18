@@ -398,6 +398,11 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract the service name from log rows.
  *           nullable: true
  *           example: ServiceName
+ *         serviceVersionExpression:
+ *           type: string
+ *           description: Expression identifying the running release of a service. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
+ *           nullable: true
+ *           example: ResourceAttributes['service.version']
  *         severityTextExpression:
  *           type: string
  *           description: Expression to extract the severity/log level text.
@@ -616,6 +621,11 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract the service name from trace rows.
  *           nullable: true
  *           example: ServiceName
+ *         serviceVersionExpression:
+ *           type: string
+ *           description: Expression identifying the running release of a service. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
+ *           nullable: true
+ *           example: ResourceAttributes['service.version']
  *         resourceAttributesExpression:
  *           type: string
  *           description: Expression to extract resource-level attributes.

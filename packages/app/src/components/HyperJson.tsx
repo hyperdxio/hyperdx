@@ -52,7 +52,7 @@ const hyperJsonAtom = atom<HyperJsonAtom>({
 });
 
 const ValueRenderer = React.memo(
-  React.forwardRef<HTMLSpanElement, { value: any }>(({ value }, ref) => {
+  ({ value, ref }: { value: any; ref?: React.Ref<HTMLSpanElement> }) => {
     if (isNull(value)) {
       return (
         <span ref={ref} className={styles.null}>
@@ -96,7 +96,7 @@ const ValueRenderer = React.memo(
       );
     }
     return null;
-  }),
+  },
 );
 
 const LineMenu = React.memo(

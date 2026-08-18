@@ -8,6 +8,7 @@ import {
 import { ActionIcon, Popover, Tooltip } from '@mantine/core';
 import { IconBrandTerraform } from '@tabler/icons-react';
 
+import api from '@/api';
 import { BASE_PATH, IS_IAC_EXPORT_ENABLED } from '@/config';
 
 import {
@@ -33,7 +34,7 @@ import {
  * Everything here is derived synchronously from the ref — no fetch.
  *
  * Feature and local-mode gating lives here rather than at each call site, so
- * the four surfaces that render this cannot drift on when it appears. Callers
+ * the surfaces that render this cannot drift on when it appears. Callers
  * still own per-resource eligibility: the provider models only saved-search
  * alerts, so an alert call site must not render this for a tile alert.
  */
@@ -47,6 +48,11 @@ export default function ResourceTerraformPopover({
   // inline in JSX, so depending on the object itself would re-run this on
   // every render.
   const { type, id, name } = resource;
+  // Import ids are team-scoped. Read here rather than taken as a prop so the
+  // call sites don't each have to know that. `me` is fetched once for the app
+  // shell, so this is a cache read; it is only null in local mode, where
+  // IS_IAC_EXPORT_ENABLED is false and this component never renders.
+  const teamId = api.useMe().data?.team.id;
 
   const snippets = useMemo<TerraformSnippet[]>(() => {
     // Nothing is built until the popover is opened, which can only happen
@@ -57,7 +63,7 @@ export default function ResourceTerraformPopover({
     // The dropdown is unmounted while closed, so there is nothing to show
     // anyway. (`McpServerSection` dodges the same hazard by returning early
     // before it touches `window`.)
-    if (!opened) return [];
+    if (!opened || !teamId) return [];
     return [
       {
         // An `import {}` block, not the CLI `terraform import` one-liner: the
@@ -68,7 +74,7 @@ export default function ResourceTerraformPopover({
         // bulk export writes, so both surfaces produce the same artefact.
         label: 'Import block',
         hint: 'Add to your Terraform project, then run `terraform plan -generate-config-out=generated.tf` and review before applying. The address is derived from this resource’s id, so it survives a rename in HyperDX.',
-        snippet: buildImportBlock({ type, id, name }),
+        snippet: buildImportBlock({ type, id, name }, teamId),
       },
       {
         // Terraform permits one `required_providers` and one default provider
@@ -82,7 +88,7 @@ export default function ResourceTerraformPopover({
         ),
       },
     ];
-  }, [opened, type, id, name]);
+  }, [opened, type, id, name, teamId]);
 
   // After the hooks, so the early return cannot change hook order.
   if (!IS_IAC_EXPORT_ENABLED) return null;

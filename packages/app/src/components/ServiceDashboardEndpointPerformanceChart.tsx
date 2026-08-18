@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import DBListBarChart from '@/components/DBListBarChart';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import {
@@ -89,7 +89,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
   }
 
   return (
-    <ChartBox style={{ height: 350, overflow: 'auto' }}>
+    <ChartCard style={{ height: 350, overflow: 'auto' }}>
       {source && (
         <DBListBarChart
           title="20 Top Most Time Consuming Operations"
@@ -184,6 +184,6 @@ export default function ServiceDashboardEndpointPerformanceChart({
           }}
         />
       )}
-    </ChartBox>
+    </ChartCard>
   );
 }

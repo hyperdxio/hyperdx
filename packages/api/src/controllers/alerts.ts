@@ -3,9 +3,7 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
-import ms from 'ms';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
@@ -15,7 +13,6 @@ import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
 import Webhook from '@/models/webhook';
 import { Api400Error } from '@/utils/errors';
-import logger from '@/utils/logger';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 export type AlertInput = Omit<
@@ -332,66 +329,4 @@ export const deleteAlert = async (id: string, teamId: ObjectId) => {
     _id: id,
     team: teamId,
   });
-};
-
-export const generateAlertSilenceToken = async (
-  alertId: ObjectId | string,
-  teamId: ObjectId | string,
-) => {
-  const secret = process.env.EXPRESS_SESSION_SECRET;
-
-  if (!secret) {
-    logger.error(
-      'EXPRESS_SESSION_SECRET is not set for signing token, skipping alert silence JWT generation',
-    );
-    return '';
-  }
-
-  const alert = await getAlertById(alertId, teamId);
-  if (alert == null) {
-    throw new Error('Alert not found');
-  }
-
-  const token = sign(
-    { alertId: alert._id.toString(), teamId: teamId.toString() },
-    secret,
-    { expiresIn: '1h' },
-  );
-
-  // Slack does not accept ids longer than 255 characters
-  if (token.length > 255) {
-    logger.error(
-      'Alert silence JWT length is greater than 255 characters, this may cause issues with some clients.',
-    );
-  }
-
-  return token;
-};
-
-export const silenceAlertByToken = async (token: string) => {
-  const secret = process.env.EXPRESS_SESSION_SECRET;
-
-  if (!secret) {
-    throw new Error('EXPRESS_SESSION_SECRET is not set for verifying token');
-  }
-
-  const decoded = verify(token, secret, {
-    algorithms: ['HS256'],
-  }) as { alertId: string; teamId: string };
-
-  if (!decoded?.alertId || !decoded?.teamId) {
-    throw new Error('Invalid token');
-  }
-
-  const alert = await getAlertById(decoded.alertId, decoded.teamId);
-  if (alert == null) {
-    throw new Error('Alert not found');
-  }
-
-  alert.silenced = {
-    at: new Date(),
-    until: new Date(Date.now() + ms('30m')),
-  };
-
-  return alert.save();
 };

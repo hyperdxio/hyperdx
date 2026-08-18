@@ -5,6 +5,7 @@ import { registerGetDashboard } from './getDashboard';
 import { registerGetDashboardTile } from './getDashboardTile';
 import { registerPatchDashboard } from './patchDashboard';
 import { registerQueryTile } from './queryTile';
+import { registerQueryTiles } from './queryTiles';
 import { registerSaveDashboard } from './saveDashboard';
 import { registerSearchDashboards } from './searchDashboards';
 
@@ -18,6 +19,7 @@ const dashboardsTools: ToolDefinition = (registrar: ToolRegistrar) => {
   registerDeleteDashboard(registrar);
   registerSearchDashboards(registrar);
   registerQueryTile(registrar);
+  registerQueryTiles(registrar);
 };
 
 export default dashboardsTools;
