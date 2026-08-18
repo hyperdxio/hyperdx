@@ -1184,9 +1184,20 @@ export class Metadata {
         for (const [columnName, info] of queryOptions.entries()) {
           const orChain = concatChSql(
             ' OR ',
+            // Inline each key prefix as a SQL-escaped literal instead of a
+            // bound query parameter: a filter batch can carry ~100 keys, and
+            // per-key bind params blow past the web client's URL parameter
+            // budget (MAX_URL_BIND_PARAM_LENGTH), silently promoting the
+            // request to a multipart/form-data body that HTTP intermediaries
+            // (e.g. managed query gateways) reject. Inlined literals ride the
+            // POST body with the rest of the SQL. Keys are ingest-controlled
+            // data, so they must be SQL-escaped — `SqlString.escape` returns a
+            // fully-quoted, safely-escaped ClickHouse string literal.
             info.keys.map(
               k =>
-                chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
+                chSql`startsWith(token, ${{
+                  UNSAFE_RAW_SQL: SqlString.escape(`${k}${info.separator}`),
+                }})`,
             ),
           );
           const partsFilter = await this.partsOverlapFilter({
@@ -1358,17 +1369,29 @@ export class Metadata {
         // this should only be one mv... but we have a for loop in case
         const branch: ChSql[] = [];
         for (const [columnName, keys] of entry) {
-          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${concatChSql(
-            ',',
-            keys.map(key => chSql`${{ String: key }}`),
-          )}))`;
+          // Inline the keys as SQL-escaped literals instead of one bound
+          // query parameter per key: a filter batch can carry ~100 keys, and
+          // per-key bind params blow past the web client's URL parameter
+          // budget (MAX_URL_BIND_PARAM_LENGTH), silently promoting the
+          // request to a multipart/form-data body that HTTP intermediaries
+          // (e.g. managed query gateways) reject. Inlined literals ride the
+          // POST body with the rest of the SQL. Keys are ingest-controlled
+          // data, so they must be SQL-escaped — `SqlString.escape` returns a
+          // fully-quoted, safely-escaped ClickHouse string literal.
+          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${{
+            UNSAFE_RAW_SQL: keys.map(key => SqlString.escape(key)).join(','),
+          }}))`;
           branch.push(sql);
         }
+        // The OR chain must be parenthesized as a whole: without the outer
+        // parens, `a OR b AND timeFilter` parses as `a OR (b AND timeFilter)`,
+        // silently dropping the time bound (and notEmpty) from every branch
+        // but the last.
         const sql = chSql`
           SELECT * FROM (
             SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) as Values
             FROM ${tableExpr({ database: databaseName, table: mvName })}
-            WHERE ${concatChSql(' OR ', branch)}
+            WHERE (${concatChSql(' OR ', branch)})
               AND ${timeFilter}
               AND notEmpty(Value)
             GROUP BY ColumnIdentifier, Key

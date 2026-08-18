@@ -261,21 +261,71 @@ const proxyMiddleware: RequestHandler =
           return res.sendStatus(405);
         }
 
-        let body = _req.body;
-        if (_req.headers['content-type'] === 'application/json') {
+        // Re-inject the body only when an express body parser consumed the
+        // request stream (json / text / urlencoded). Any other content type —
+        // notably the multipart/form-data bodies @clickhouse/client-web emits
+        // when query params exceed its URL budget (use_multipart_params_auto)
+        // — leaves the stream unconsumed, and the proxy pipes it upstream
+        // verbatim; writing the unparsed `req.body` placeholder here would
+        // corrupt (or previously, error out of) that forwarding.
+        const contentType = _req.headers['content-type'] ?? '';
+        const body = _req.body;
+        let payload: string | Buffer | undefined;
+        if (typeof body === 'string' || Buffer.isBuffer(body)) {
+          // express.text() output (the common case for ClickHouse SQL bodies).
+          payload = body;
+        } else if (contentType.startsWith('application/json')) {
+          // express.json() parsed the stream — re-serialize. startsWith, not
+          // strict equality: clients commonly append `; charset=utf-8`.
           try {
-            body = JSON.stringify(body);
+            payload = JSON.stringify(body);
           } catch (e) {
-            console.error(e);
+            console.error('clickhouseProxy failed to serialize JSON body', e);
           }
+        } else if (
+          contentType.startsWith('application/x-www-form-urlencoded') &&
+          body != null &&
+          typeof body === 'object'
+        ) {
+          // express.urlencoded() parsed the stream — re-serialize.
+          const params = new URLSearchParams();
+          for (const [key, value] of Object.entries(body)) {
+            if (Array.isArray(value)) {
+              for (const item of value) params.append(key, String(item));
+            } else {
+              params.append(key, String(value));
+            }
+          }
+          payload = params.toString();
+        } else {
+          // Stream was not consumed by any parser — let it pipe through.
+          return;
+        }
+
+        if (payload == null) {
+          // The stream was consumed but we couldn't reconstruct the body.
+          // Abort loudly instead of forwarding a body-less query upstream,
+          // which surfaces as an opaque 400 from ClickHouse.
+          proxyReq.destroy(new Error('Failed to reconstruct request body'));
+          return;
         }
 
         try {
-          proxyReq.write(body);
-        } catch {
+          // Re-serialization can change the byte length relative to the
+          // original Content-Length header the proxy forwards; keep them in
+          // sync so the upstream doesn't read a truncated/over-long body.
+          if (!_req.headers['transfer-encoding']) {
+            proxyReq.setHeader('content-length', Buffer.byteLength(payload));
+          }
+          proxyReq.write(payload);
+        } catch (e) {
           console.error(
             `clickhouseProxy error writing body, body is type ${typeof body}`,
+            e,
           );
+          // Fail the proxied request rather than silently sending no body;
+          // the error handler below responds to the client.
+          proxyReq.destroy(e instanceof Error ? e : new Error(String(e)));
         }
       },
       proxyRes: (proxyRes, _req, res) => {
@@ -318,10 +368,13 @@ const proxyMiddleware: RequestHandler =
             typeof startedAt === 'number' ? performance.now() - startedAt : 0,
         });
         console.error('Proxy error:', err);
-        (_res as Response).writeHead(500, {
-          'Content-Type': 'application/json',
-        });
-        _res.end(
+        const response = _res as Response;
+        if (!response.headersSent) {
+          response.writeHead(500, {
+            'Content-Type': 'application/json',
+          });
+        }
+        response.end(
           JSON.stringify({
             success: false,
             error: err.message || 'Failed to connect to ClickHouse server',
