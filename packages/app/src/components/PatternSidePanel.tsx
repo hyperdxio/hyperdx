@@ -127,7 +127,7 @@ export default function PatternSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel}>
             <DrawerHeader
@@ -182,7 +182,7 @@ export default function PatternSidePanel({
             )}
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

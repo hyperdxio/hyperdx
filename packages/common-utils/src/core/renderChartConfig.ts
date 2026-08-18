@@ -4,6 +4,7 @@ import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
 import { stripTypeWrappers } from '@/core/eventDeltas';
+import { compileFormulaAst, FormulaAst, validateFormula } from '@/core/formula';
 import {
   GROUP_ALIAS,
   translateExponentialHistogram,
@@ -53,6 +54,7 @@ import {
   SqlAstFilter,
   SQLInterval,
 } from '@/types';
+import { substituteChartConfigVariables } from '@/variables';
 
 /**
  * Helper function to create a MetricName filter condition.
@@ -119,6 +121,11 @@ export const isMetricChartConfig = (
   return chartConfig.metricTables != null;
 };
 
+/** Whether the config carries at least one metric formula. */
+export const hasMetricFormulas = (
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): boolean => (chartConfig.formulas?.length ?? 0) > 0;
+
 // TODO: apply this to all chart configs
 export const setChartSelectsAlias = (
   config: BuilderChartConfigWithOptDateRange,
@@ -149,6 +156,16 @@ export const setChartSelectsAlias = (
 // be reproduced node-side (see renderMultiSeriesMetricChartConfig).
 const MULTI_SERIES_VALUE_ALIAS = '__hdx_value';
 const MULTI_SERIES_IDX_ALIAS = '__hdx_series_idx';
+
+/**
+ * Render a user-facing output column name as a ClickHouse double-quoted
+ * identifier. User aliases (and metric names, which flow into the default
+ * aliases) can contain double quotes; ClickHouse escapes them by doubling,
+ * so `bad"name` becomes "bad""name" instead of terminating the identifier
+ * early. Escaping happens only at SQL-emission time — collision dedup and
+ * the meta column names consumers see keep the raw name.
+ */
+const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
 // Histogram translations bake the group-by dimensions into a single Array
 // column named GROUP_ALIAS instead of projecting them as individual columns
@@ -2264,6 +2281,14 @@ export async function renderRawSqlChartConfig(
  *   columns with a single "<num>/<denom>" column: a missing numerator counts
  *   as 0, a missing or zero denominator yields NULL (a gap), and ratioMode
  *   'share_of_total' divides by the per-bucket denominator total;
+ * - `formulas` append one derived column per formula after the
+ *   operand value columns, compiled from the validated letter-ref AST over
+ *   the pivot expressions with the same missing-data semantics as the ratio
+ *   projection (see compileFormulaAst). `showOperandSeries: false` drops the
+ *   raw operand columns so only the formula column(s) remain (still first,
+ *   ahead of the group/bucket passthrough columns). When formulas are
+ *   present they take precedence over `seriesReturnType: 'ratio'` (the two
+ *   are mutually exclusive in the editor);
  * - gauge/sum series project group-by dimensions as individual columns while
  *   histogram series keep their single Array GROUP_ALIAS column, so grouped
  *   histogram rows never join with grouped gauge/sum rows (each branch class
@@ -2283,17 +2308,45 @@ async function renderMultiSeriesMetricChartConfig(
     throw new Error('multi-series metric charts require an array select');
   }
 
-  // User-facing output column names in select order. Two series can resolve
-  // to the same alias (e.g. the same aggregation filtered vs unfiltered);
-  // suffix collisions with the split index so the operands stay distinct.
+  // User-facing output column names in select order, followed by formula
+  // column names in formulas order. Two columns can resolve to the same name
+  // (e.g. the same aggregation filtered vs unfiltered, or a formula aliased
+  // like an operand); suffix collisions with the column index so they stay
+  // distinct.
+  const formulas = chartConfig.formulas ?? [];
   const outputNames: string[] = [];
+  const formulaColumns: { name: string; ast: FormulaAst }[] = [];
   {
     const seen = new Set<string>();
-    select.forEach((s, splitIdx) => {
-      const base = s.alias ?? '';
-      const name = seen.has(base) ? `${base}__${splitIdx}` : base;
+    const uniqueName = (base: string, columnIdx: number) => {
+      const name = seen.has(base) ? `${base}__${columnIdx}` : base;
       seen.add(name);
-      outputNames.push(name);
+      return name;
+    };
+    select.forEach((s, splitIdx) => {
+      outputNames.push(uniqueName(s.alias ?? '', splitIdx));
+    });
+    formulas.forEach((f, formulaIdx) => {
+      // Parse + validate against the chart's series before rendering any
+      // SQL. Persisted configs should already be valid (the editor validates
+      // on save); this is a render-time guard so a stale or hand-built
+      // config fails with a structured message instead of a ClickHouse error.
+      const parsed = validateFormula(f.expression, {
+        seriesCount: select.length,
+      });
+      if (!parsed.ok) {
+        throw new Error(
+          `Invalid formula "${f.expression}": ${parsed.errors
+            .map(e => e.message)
+            .join('; ')}`,
+        );
+      }
+      formulaColumns.push({
+        // A formula column is named by its alias, falling back to the raw
+        // expression text (mirrors DerivedColumnSchema.alias semantics).
+        name: uniqueName(f.alias || f.expression, select.length + formulaIdx),
+        ast: parsed.ast,
+      });
     });
   }
 
@@ -2324,9 +2377,13 @@ async function renderMultiSeriesMetricChartConfig(
   // a non-final UNION branch).
   const branches = await Promise.all(
     select.map(async (s, splitIdx) => {
+      // Formulas belong to the composed outer projection only — a branch
+      // carrying them would recurse back into this function.
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
         select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
+        formulas: undefined,
+        showOperandSeries: undefined,
       };
       const rendered = await renderChartConfig(
         branchConfig,
@@ -2411,11 +2468,34 @@ async function renderMultiSeriesMetricChartConfig(
   const valueExprFor = (splitIdx: number) =>
     `anyOrNullIf(\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\` = ${splitIdx})`;
 
+  // Formulas supersede the ratio toggle (mutually exclusive in the editor;
+  // rendering stays deterministic if a hand-built config carries both).
+  const hasFormulas = formulaColumns.length > 0;
   const isRatio =
-    chartConfig.seriesReturnType === 'ratio' && select.length === 2;
+    !hasFormulas &&
+    chartConfig.seriesReturnType === 'ratio' &&
+    select.length === 2;
 
   const projection: string[] = [];
-  if (isRatio) {
+  if (hasFormulas) {
+    // Value columns first, in select order, then the formula column(s) —
+    // the positional contract of useChartNumberFormats. showOperandSeries:
+    // false drops the raw operand columns from the projection (the union
+    // still computes every branch; the formula references them via the
+    // pivot expressions).
+    if (chartConfig.showOperandSeries !== false) {
+      outputNames.forEach((outputName, splitIdx) => {
+        projection.push(
+          `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+        );
+      });
+    }
+    formulaColumns.forEach(({ name, ast }) => {
+      projection.push(
+        `${compileFormulaAst(ast, valueExprFor)} AS ${quotedColumnName(name)}`,
+      );
+    });
+  } else if (isRatio) {
     // A group absent from the (filtered) numerator contributes zero, not
     // "no data" — so a zero-error group reads 0%, not N/A. A missing or zero
     // denominator makes the quotient NULL, which renders as a gap.
@@ -2436,19 +2516,21 @@ async function renderMultiSeriesMetricChartConfig(
     // same-alias ratio reads "avg(x)/avg(x)", not "avg(x)/avg(x)__1".
     const ratioName = `${outputNames[0]}/${outputNames[1].replace(/__\d+$/, '')}`;
     projection.push(
-      `${numerator} / nullif(${denominator}, 0) AS "${ratioName}"`,
+      `${numerator} / nullif(${denominator}, 0) AS ${quotedColumnName(ratioName)}`,
     );
   } else {
     outputNames.forEach((outputName, splitIdx) => {
-      projection.push(`${valueExprFor(splitIdx)} AS "${outputName}"`);
+      projection.push(
+        `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+      );
     });
   }
 
   // Pass the group and bucket columns through under their original names
   // (which are not knowable node-side for expression group-bys), and group
   // by exactly those columns. GROUP BY ALL expands to every non-aggregate
-  // SELECT expression, i.e. the * EXCEPT list; the pivot/ratio expressions
-  // contain aggregate functions and are excluded. With no passthrough
+  // SELECT expression, i.e. the * EXCEPT list; the pivot/ratio/formula
+  // expressions contain aggregate functions and are excluded. With no passthrough
   // columns at all (a number chart) the implicit global aggregation merges
   // everything into one row.
   const hasPassthroughColumns =
@@ -2486,17 +2568,26 @@ export async function renderChartConfig(
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
+  // Expand dashboard variables before anything reads the config's expressions,
+  // so metric translation and the CTEs it builds all see final SQL fragments.
+  const substitutedChartConfig = substituteChartConfigVariables(rawChartConfig);
+
   // A metric chart with multiple series composes one query per series into a
   // single UNION ALL + pivot statement (each metric type needs its own CTE
   // scaffolding, and different types read different physical tables). The
-  // per-series branches recurse through this function with a single select.
+  // per-series branches recurse through this function with a single select
+  // (and without formulas). A single-series chart with a formula (e.g.
+  // `A * 100`) also takes the composed path — the formula projects over the
+  // pivoted value columns, which only the composed shape produces.
   if (
-    isMetricChartConfig(rawChartConfig) &&
-    Array.isArray(rawChartConfig.select) &&
-    rawChartConfig.select.length > 1
+    isMetricChartConfig(substitutedChartConfig) &&
+    Array.isArray(substitutedChartConfig.select) &&
+    (substitutedChartConfig.select.length > 1 ||
+      (substitutedChartConfig.select.length === 1 &&
+        hasMetricFormulas(substitutedChartConfig)))
   ) {
     return renderMultiSeriesMetricChartConfig(
-      rawChartConfig,
+      substitutedChartConfig,
       metadata,
       querySettings,
     );
@@ -2504,9 +2595,9 @@ export async function renderChartConfig(
 
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
-  const translatedChartConfig = isMetricChartConfig(rawChartConfig)
-    ? await translateMetricChartConfig(rawChartConfig, metadata)
-    : rawChartConfig;
+  const translatedChartConfig = isMetricChartConfig(substitutedChartConfig)
+    ? await translateMetricChartConfig(substitutedChartConfig, metadata)
+    : substitutedChartConfig;
 
   // Resolve the bucket column once for the whole render. A source with
   // `timestampValueExpression = "EventDate, EventTime"` should bucket on
