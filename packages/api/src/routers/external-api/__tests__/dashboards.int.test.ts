@@ -3073,7 +3073,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
-          // Raw SQL number tiles carry the static tile color (no colorRules).
+          // This fixture exercises the static color; raw SQL number tiles also support colorRules.
           color: 'chart-purple',
         },
       };
@@ -4783,7 +4783,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
-          // Raw SQL number tiles carry the static tile color (no colorRules).
+          // This fixture exercises the static color; raw SQL number tiles also support colorRules.
           color: 'chart-purple',
         },
       };
@@ -5360,6 +5360,13 @@ describe('External API v2 Dashboards - new format', () => {
       },
     });
 
+    const postRawSqlTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Raw SQL number color dashboard',
+        tiles: [rawSqlNumberTile(config)],
+        tags: [],
+      });
+
     // ── Positive: one per UI input ──────────────────────────────────────
 
     it('round-trips a builder number tile with a static color', async () => {
@@ -5530,6 +5537,16 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('tiles.0.config.colorRules');
     });
 
+    it('rejects more than 10 colorRules for a raw SQL number tile', async () => {
+      const colorRules = Array.from({ length: 11 }, (_, i) => ({
+        operator: 'gt',
+        value: i,
+        color: 'chart-blue',
+      }));
+      const res = await postRawSqlTile({ colorRules }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+    });
+
     it('rejects a between rule whose value is not a two-number tuple', async () => {
       await postTile({
         colorRules: [{ operator: 'between', value: 100, color: 'chart-blue' }],
@@ -5551,6 +5568,15 @@ describe('External API v2 Dashboards - new format', () => {
       }
     });
 
+    it('rejects unsupported colorRule operators for a raw SQL number tile', async () => {
+      for (const operator of ['contains', 'startsWith', 'endsWith', 'regex']) {
+        const res = await postRawSqlTile({
+          colorRules: [{ operator, value: 'error', color: 'chart-blue' }],
+        }).expect(400);
+        expect(res.body.message).toContain('tiles.0.config.colorRules');
+      }
+    });
+
     it('rejects a per-rule color that is not a palette token', async () => {
       const res = await postTile({
         colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
@@ -5558,6 +5584,17 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('tiles.0.config.colorRules');
       // Legacy numeric tokens are normalized on read, never accepted on write.
       await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
+      }).expect(400);
+    });
+
+    it('rejects a per-rule color that is not a palette token for a raw SQL number tile', async () => {
+      const res = await postRawSqlTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+
+      await postRawSqlTile({
         colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
       }).expect(400);
     });
@@ -5660,13 +5697,7 @@ describe('External API v2 Dashboards - new format', () => {
     });
 
     it('normalizes a legacy numeric token on a raw SQL number tile to its hue name on read', async () => {
-      const create = await authRequest('post', BASE_URL)
-        .send({
-          name: 'Raw SQL legacy color',
-          tiles: [rawSqlNumberTile({ color: 'chart-blue' })],
-          tags: [],
-        })
-        .expect(200);
+      const create = await postRawSqlTile({ color: 'chart-blue' }).expect(200);
       const dashboardId = create.body.data.id;
 
       await Dashboard.updateOne(
@@ -5679,6 +5710,32 @@ describe('External API v2 Dashboards - new format', () => {
       );
       // chart-4 maps to chart-red.
       expect(get.body.data.tiles[0].config.color).toBe('chart-red');
+    });
+
+    it('normalizes legacy raw SQL colorRule colors and drops unresolvable ones on read', async () => {
+      const create = await postRawSqlTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-green' }],
+      }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.config.colorRules': [
+              { operator: 'gt', value: 1, color: 'chart-1' },
+              { operator: 'gt', value: 2, color: 'not-a-token' },
+            ],
+          },
+        },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.colorRules).toEqual([
+        { operator: 'gt', value: 1, color: 'chart-green' },
+      ]);
     });
   });
 
