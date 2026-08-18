@@ -3,9 +3,8 @@ import http from 'http';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Connection from '@/models/connection';
 
-// jest.setup.ts blanket-mocks http-proxy-middleware (ESM-only) for suites that
-// don't touch it; this suite exercises the real proxy, which the int jest
-// config makes loadable by transpiling it (see jest.int.config.js).
+// Use the real proxy instead of the blanket mock in jest.setup.ts; the int
+// jest config transpiles it (see jest.int.config.js).
 jest.unmock('http-proxy-middleware');
 
 type CapturedRequest = {
@@ -16,22 +15,13 @@ type CapturedRequest = {
 };
 
 /**
- * Verifies the /clickhouse-proxy route forwards request bodies to the upstream
- * ClickHouse host byte-for-byte for the content types the web client emits.
+ * Pins /clickhouse-proxy body forwarding: text/plain re-injection and the
+ * raw-stream passthrough of multipart/form-data bodies, which
+ * `@clickhouse/client-web` emits when query params exceed its URL budget
+ * (regression context: ClickHouse support-escalation #8482).
  *
- * Regression context (ClickHouse support-escalation #8482): when
- * `@clickhouse/client-web` promotes oversized query params to a
- * multipart/form-data body (`use_multipart_params_auto`), no express body
- * parser consumes the stream; the proxy's manual `proxyReq.write(req.body)`
- * throws on the unparsed `{}` placeholder (swallowed), and forwarding works
- * only because the proxy core then pipes the still-unconsumed raw stream.
- * These tests pin that load-bearing passthrough plus the parsed text/plain
- * re-injection path.
- *
- * Known-latent cases NOT covered here — `application/json; charset=utf-8` and
- * `application/x-www-form-urlencoded` bodies are parsed (stream consumed) but
- * never re-serialized, so the upstream request hangs or arrives body-less.
- * Tracked in https://github.com/hyperdxio/hyperdx/issues/2942.
+ * Known-latent cases (charset-suffixed JSON, urlencoded) are not covered;
+ * tracked in https://github.com/hyperdxio/hyperdx/issues/2942.
  */
 describe('clickhouse-proxy body forwarding', () => {
   const server = getServer();
@@ -113,9 +103,8 @@ describe('clickhouse-proxy body forwarding', () => {
     const { agent, team } = await getLoggedInAgent(server);
     const connectionId = await createConnection(team._id.toString());
 
-    // Mirror @clickhouse/client-web's use_multipart_params_auto output: a
-    // `query` part plus one `param_*` part per bound parameter, well past the
-    // 4096-byte URL budget that triggers the multipart promotion.
+    // Mirror the client's multipart output: a `query` part plus one
+    // `param_*` part per bound parameter, past the 4096-byte URL budget.
     const boundary = '----clickhouse-js-test-boundary';
     const parts: string[] = [
       `--${boundary}\r\n` +

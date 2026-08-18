@@ -2,12 +2,10 @@ const { createJsWithTsPreset } = require('ts-jest');
 
 const base = require('./jest.config.js');
 
-// http-proxy-middleware v4 (and its proxy core, httpxy) ship ESM-only builds
-// that Jest's CJS loader cannot parse. The unit config blanket-mocks the
-// package (see jest.setup.ts), but the clickhouse-proxy integration tests
-// exercise the real proxy, so the int config transpiles those two packages to
-// CJS via ts-jest instead. `allowJs` lets ts-jest compile their plain-JS ESM
-// sources; the extra `.mjs` transform covers httpxy's `dist/index.mjs` entry.
+// http-proxy-middleware v4 and its deps ship ESM-only builds Jest's CJS
+// loader can't parse. jest.setup.ts blanket-mocks the package; the
+// clickhouse-proxy int tests need the real thing, so transpile it here
+// (`allowJs` for the plain-JS sources, `.mjs` for httpxy's entry).
 const esmDepsTransformCfg = createJsWithTsPreset({
   tsconfig: {
     rootDir: './src',

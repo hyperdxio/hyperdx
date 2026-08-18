@@ -960,8 +960,7 @@ describe('Metadata', () => {
           );
         });
 
-      // Returned so individual tests can widen/replace the MV-aggregation
-      // answer without re-spying on the private method.
+      // Returned so tests can override the MV-aggregation answer.
       return { doMVsAggregateSpy };
     };
 
@@ -1024,10 +1023,8 @@ describe('Metadata', () => {
       expect(sql).toContain('BY ColumnIdentifier, Key');
       expect(sql).not.toContain('mergeTreeTextIndex(');
       expect(Object.values(params)).toContain('otel_logs_kv_rollup_15m');
-      // Keys are inlined as SQL-escaped literals (NOT bound as query
-      // parameters): one bind param per key blows past the web client's URL
-      // parameter budget for large filter batches, silently promoting the
-      // request to a multipart/form-data body that query gateways reject.
+      // Keys are inlined as escaped literals, not bound as params — per-key
+      // params would push large batches into multipart bodies (see #8482).
       expect(sql).toContain("Key IN ('ServiceName','SeverityText')");
       expect(Object.values(params)).not.toContain('ServiceName');
       expect(Object.values(params)).not.toContain('SeverityText');
@@ -1057,8 +1054,7 @@ describe('Metadata', () => {
       );
       expect(mvCall).toBeDefined();
       const params = mvCall![0].query_params as Record<string, string>;
-      // MV table + ColumnIdentifier + limit + 2 timestamps — but never one
-      // param per key.
+      // A handful of fixed params — never one per key.
       expect(Object.keys(params).length).toBeLessThan(10);
       const sql = mvCall![0].query as string;
       expect(sql).toContain("'some.rather.long.attribute.key.0'");
@@ -1082,8 +1078,7 @@ describe('Metadata', () => {
       );
       expect(mvCall).toBeDefined();
       const sql = mvCall![0].query as string;
-      // The embedded quote must be escaped, never spliced raw into the IN
-      // list (`'it's a key'` would be an injection / syntax error).
+      // The embedded quote must be escaped, never spliced raw.
       expect(sql).toContain("Key IN ('it\\'s a key')");
       expect(sql).not.toContain("Key IN ('it's a key')");
     });
@@ -1101,9 +1096,8 @@ describe('Metadata', () => {
       );
       expect(mvCall).toBeDefined();
       const sql = (mvCall![0].query as string).replace(/\s+/g, ' ');
-      // The whole OR chain is wrapped in parens before ANDing the time filter,
-      // otherwise `a OR b AND time` binds the time filter (and notEmpty) to
-      // the last branch only.
+      // Without parens, `a OR b AND time` binds the time filter to the
+      // last branch only.
       expect(sql).toMatch(/WHERE \(\(ColumnIdentifier = /);
       expect(sql).toMatch(/\)\) AND Timestamp >= /);
     });
@@ -1314,9 +1308,7 @@ describe('Metadata', () => {
 
       expect(mapTextIndexCalls.length).toBeGreaterThanOrEqual(2);
 
-      // Key prefixes are inlined into the SQL as escaped literals (never as
-      // per-key query params — see the inlining rationale in
-      // getMapTextIndexKeyValues).
+      // Key prefixes are inlined as escaped literals, not per-key params.
       const allQueries = mapTextIndexCalls
         .map((c: any[]) => c[0].query as string)
         .join('\n');

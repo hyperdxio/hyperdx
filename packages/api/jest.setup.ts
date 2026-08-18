@@ -11,9 +11,8 @@ jest.retryTimes(
 );
 
 // http-proxy-middleware v4 is ESM-only and Jest's CJS module loader cannot
-// load ESM packages. Auto-mock it for suites that don't exercise the proxy.
-// The clickhouse-proxy integration tests need the real thing: they opt out
-// via jest.unmock(), and jest.int.config.js transpiles the package to CJS.
+// load ESM packages. Auto-mock it; the clickhouse-proxy int tests opt out via
+// jest.unmock() (jest.int.config.js transpiles the package for them).
 jest.mock('http-proxy-middleware', () => ({
   createProxyMiddleware: jest.fn(() => jest.fn()),
 }));
