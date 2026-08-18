@@ -67,6 +67,21 @@ describe('formatAttributeClause', () => {
       'data.user-id:"say \\"hello\\""',
     );
   });
+
+  it('escapes backslashes so a trailing backslash cannot escape the closing quote', () => {
+    expect(
+      formatAttributeClause('ResourceAttributes', 'path', 'C:\\logs\\', true),
+    ).toBe("ResourceAttributes['path']='C:\\\\logs\\\\'");
+
+    expect(
+      formatAttributeClause('ResourceAttributes', 'path', 'C:\\logs\\', false),
+    ).toBe('ResourceAttributes.path:"C:\\\\logs\\\\"');
+
+    // A value crafted to break out of the SQL literal stays inside it
+    expect(formatAttributeClause('attrs', 'k', "\\' OR 1=1 --", true)).toBe(
+      "attrs['k']='\\\\'' OR 1=1 --'",
+    );
+  });
 });
 
 describe('formatColumnEquals', () => {
@@ -85,6 +100,15 @@ describe('formatColumnEquals', () => {
     );
     expect(formatColumnEquals('Name', 'say "hello"', false)).toBe(
       'Name:"say \\"hello\\""',
+    );
+  });
+
+  it('escapes backslashes in both languages', () => {
+    expect(formatColumnEquals('Path', 'C:\\logs\\', true)).toBe(
+      "Path = 'C:\\\\logs\\\\'",
+    );
+    expect(formatColumnEquals('Path', 'C:\\logs\\', false)).toBe(
+      'Path:"C:\\\\logs\\\\"',
     );
   });
 });

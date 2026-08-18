@@ -188,6 +188,15 @@ export function extractQuickFilters(
   return filters;
 }
 
+// Filter out pills whose `generateWhere` produces nothing for the active search language,
+// to avoid presenting pills which represent no-ops.
+export function getUsableFilters(
+  filters: QuickFilterItem[],
+  isSql: boolean,
+): QuickFilterItem[] {
+  return filters.filter(f => f.generateWhere(isSql).trim() !== '');
+}
+
 const MATCH_PRESET_IDS: Record<string, string[]> = {
   service: ['svc', 'ra:service.name'],
   host: ['svc', 'ra:service.name', 'ra:host.name'],

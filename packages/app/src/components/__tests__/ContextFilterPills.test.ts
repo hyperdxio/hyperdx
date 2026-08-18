@@ -5,6 +5,7 @@ import {
   extractQuickFilters,
   getAvailablePresets,
   getPresetFilterIds,
+  getUsableFilters,
   QuickFilterItem,
 } from '@/components/ContextFilterPills';
 import { ROW_DATA_ALIASES } from '@/components/DBRowDataPanel';
@@ -243,6 +244,25 @@ describe('extractQuickFilters', () => {
     );
   });
 
+  it('produces no Lucene clause for an unsafe service expression with no resource fallback', () => {
+    const rowData = {
+      [ROW_DATA_ALIASES.SERVICE_NAME]: 'my-svc',
+      [ROW_DATA_ALIASES.TIMESTAMP]: '2024-01-01T00:00:00Z',
+      [ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES]: {},
+      [ROW_DATA_ALIASES.EVENT_ATTRIBUTES]: {},
+    };
+    const source = makeLogSource({
+      serviceNameExpression: "ResourceAttributes['service.name']",
+    });
+    const filters = extractQuickFilters(rowData, source);
+
+    const svcFilter = filters.find(f => f.id === 'svc')!;
+    expect(svcFilter.generateWhere(false)).toBe('');
+    expect(svcFilter.generateWhere(true)).toBe(
+      "ResourceAttributes['service.name'] = 'my-svc'",
+    );
+  });
+
   it('skips unsafe keys that cannot be represented in Lucene', () => {
     const rowData = {
       [ROW_DATA_ALIASES.TIMESTAMP]: '2024-01-01T00:00:00Z',
@@ -260,6 +280,44 @@ describe('extractQuickFilters', () => {
     expect(filters.find(f => f.label === 'bad key')).toBeUndefined();
     expect(filters.find(f => f.label === 'bad/event')).toBeUndefined();
     expect(filters.find(f => f.label === 'bad column')).toBeUndefined();
+  });
+});
+
+describe('getUsableFilters', () => {
+  const rowData = {
+    [ROW_DATA_ALIASES.SERVICE_NAME]: 'my-svc',
+    [ROW_DATA_ALIASES.TIMESTAMP]: '2024-01-01T00:00:00Z',
+    [ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES]: { 'host.name': 'host-1' },
+    [ROW_DATA_ALIASES.EVENT_ATTRIBUTES]: {},
+  };
+  const source = makeLogSource({
+    serviceNameExpression: "ResourceAttributes['service.name']",
+  });
+
+  it('drops the service pill in Lucene mode when it would be a no-op', () => {
+    const filters = getUsableFilters(
+      extractQuickFilters(rowData, source),
+      false,
+    );
+
+    expect(filters.find(f => f.id === 'svc')).toBeUndefined();
+    expect(filters.find(f => f.id === 'ra:host.name')).toBeDefined();
+  });
+
+  it('keeps the service pill in SQL mode, where the expression is valid', () => {
+    const filters = getUsableFilters(
+      extractQuickFilters(rowData, source),
+      true,
+    );
+
+    expect(filters.find(f => f.id === 'svc')).toBeDefined();
+  });
+
+  it('keeps pills that generate a clause in both languages', () => {
+    const filters = extractQuickFilters(rowData, makeLogSource());
+
+    expect(getUsableFilters(filters, false).map(f => f.id)).toContain('svc');
+    expect(getUsableFilters(filters, true).map(f => f.id)).toContain('svc');
   });
 });
 

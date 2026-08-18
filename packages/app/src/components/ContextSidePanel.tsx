@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import ms from 'ms';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useForm, useWatch } from 'react-hook-form';
@@ -25,6 +25,7 @@ import {
   FilterPill,
   getAvailablePresets,
   getPresetFilterIds,
+  getUsableFilters,
 } from './ContextFilterPills';
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -112,9 +113,23 @@ export default function ContextSubpanel({
     });
   }, [originalLanguage, reset, rowId]);
 
+  const isSqlWhereLanguage = effectiveWhereLanguage === 'sql';
+
   const availableFilters = useMemo(
-    () => extractQuickFilters(rowData, source),
-    [rowData, source],
+    () =>
+      getUsableFilters(
+        extractQuickFilters(rowData, source),
+        isSqlWhereLanguage,
+      ),
+    [rowData, source, isSqlWhereLanguage],
+  );
+
+  // Switching languages can drop a pill that is still in `selectedFilterIds`;
+  // only count and apply the ones that survive.
+  const activeFilterIds = useMemo(
+    () =>
+      selectedFilterIds.filter(id => availableFilters.some(f => f.id === id)),
+    [selectedFilterIds, availableFilters],
   );
 
   const presetOptions = useMemo(
@@ -144,14 +159,14 @@ export default function ContextSubpanel({
 
   const getWhereClause = useCallback((): string => {
     return buildContextWhereClause({
-      selectedFilterIds,
+      selectedFilterIds: activeFilterIds,
       availableFilters,
-      isSql: effectiveWhereLanguage === 'sql',
+      isSql: isSqlWhereLanguage,
       customWhere: showCustomSearch ? debouncedWhere : '',
     });
   }, [
-    effectiveWhereLanguage,
-    selectedFilterIds,
+    isSqlWhereLanguage,
+    activeFilterIds,
     availableFilters,
     showCustomSearch,
     debouncedWhere,
@@ -191,7 +206,7 @@ export default function ContextSubpanel({
   ]);
 
   const displayedPreset =
-    selectedFilterIds.length === 0 && activePreset !== 'custom'
+    activeFilterIds.length === 0 && activePreset !== 'custom'
       ? 'all'
       : activePreset;
 
@@ -260,11 +275,11 @@ export default function ContextSubpanel({
                   <Text size="xs">
                     Matching on{' '}
                     <Text span fw={700}>
-                      {selectedFilterIds.length}
+                      {activeFilterIds.length}
                     </Text>{' '}
                     attributes
                   </Text>
-                  {selectedFilterIds.length > 0 && (
+                  {activeFilterIds.length > 0 && (
                     <Text
                       size="xs"
                       c="dimmed"
@@ -284,7 +299,7 @@ export default function ContextSubpanel({
                       <FilterPill
                         key={filter.id}
                         filter={filter}
-                        isSelected={selectedFilterIds.includes(filter.id)}
+                        isSelected={activeFilterIds.includes(filter.id)}
                         onToggle={() => toggleFilter(filter.id)}
                       />
                     ))}

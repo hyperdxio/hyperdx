@@ -1209,11 +1209,11 @@ export const optionsToSelectData = (options: Record<string, string>) =>
 
 // Helper function to format attribute clause
 function escapeSqlValueSingleQuoted(value: string): string {
-  return value.replace(/'/g, "''");
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "''");
 }
 
 function escapeLuceneDoubleQuoted(value: string): string {
-  return value.replace(/"/g, '\\"');
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 export function formatAttributeClause(
