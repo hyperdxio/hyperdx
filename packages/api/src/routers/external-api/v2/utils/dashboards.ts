@@ -4,6 +4,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
+  validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
   validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
@@ -1419,6 +1420,7 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // with pre-`isBroadcastEnabled` payloads.
       validateDashboardFilterVariableNames(data.filters ?? [], ctx);
       validateDashboardFilterModes(data.filters ?? [], ctx);
+      validateDashboardFilterFieldGating(data.filters ?? [], ctx);
     });
 }
 
