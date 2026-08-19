@@ -100,7 +100,15 @@ function normalizeChartConfig<
         : config.select,
     metricTables: isMetricSource ? config.metricTables : undefined,
     formulas: keepFormulas ? config.formulas : undefined,
-    showOperandSeries: keepFormulas ? config.showOperandSeries : undefined,
+    // Number charts display the first value column, so the operand series
+    // are always hidden there (persisted explicitly so the saved tile config
+    // is self-describing; convertToNumberChartConfig enforces the same at
+    // render time). Other display types keep the tile's own toggle value.
+    showOperandSeries: keepFormulas
+      ? config.displayType === DisplayType.Number
+        ? false
+        : config.showOperandSeries
+      : undefined,
     // Order By and Having can only be set by the user for table charts
     having:
       config.displayType === DisplayType.Table ? config.having : undefined,
@@ -488,6 +496,17 @@ export const validateChartForm = (
         });
       }
     });
+
+    // A number chart displays a single value — its one formula. Multiple
+    // formulas can only get here by switching an existing multi-formula
+    // chart to the Number display type (the editor hides "Add Formula" once
+    // a Number tile has one); block rather than silently dropping one.
+    if (form.displayType === DisplayType.Number && form.formulas.length > 1) {
+      errors.push({
+        path: `formulas`,
+        message: 'Number charts support a single formula',
+      });
+    }
   }
 
   // Validate raw SQL alert has required time filters and interval parameters

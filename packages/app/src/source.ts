@@ -570,6 +570,15 @@ export function useSingleSeriesNumberFormat(
   const { data: source } = useSource({ id: config.source });
 
   return useMemo(() => {
+    // Metric formula configs display the formula — number charts always
+    // hide the operand series (see convertToNumberChartConfig), so the
+    // first (only) value column is formulas[0], not select[0]. Resolve the
+    // format from the formula, not from an operand that isn't rendered.
+    const formulaConfig = getFormulaConfig(config);
+    if (formulaConfig) {
+      return formulaConfig.formulas[0]?.numberFormat ?? config.numberFormat;
+    }
+
     if (
       isBuilderChartConfig(config) &&
       Array.isArray(config.select) &&

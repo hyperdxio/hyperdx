@@ -344,6 +344,33 @@ describe('useSingleSeriesNumberFormat', () => {
       }),
       expected: undefined,
     },
+    // Metric formula configs display the formula column (number charts hide
+    // the operand series), so the format resolves from the formula — not
+    // from an operand that isn't rendered.
+    {
+      name: 'formula config: prefers the formula numberFormat over select[0]',
+      config: makeBuilderConfig({
+        metricTables: METRIC_TABLES,
+        select: [
+          { valueExpression: 'Value', numberFormat: NUMBER_FORMAT },
+          { valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B', numberFormat: PERCENT_FORMAT }],
+        showOperandSeries: false,
+      }),
+      expected: PERCENT_FORMAT,
+    },
+    {
+      name: 'formula config: falls back to config.numberFormat when the formula has none',
+      config: makeBuilderConfig({
+        metricTables: METRIC_TABLES,
+        select: [{ valueExpression: 'Value', numberFormat: NUMBER_FORMAT }],
+        formulas: [{ expression: 'A * 100' }],
+        numberFormat: CURRENCY_FORMAT,
+        showOperandSeries: false,
+      }),
+      expected: CURRENCY_FORMAT,
+    },
   ])('$name', ({ config, expected }) => {
     const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
     expect(result.current).toEqual(expected);

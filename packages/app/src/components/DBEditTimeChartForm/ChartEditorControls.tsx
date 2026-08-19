@@ -125,18 +125,16 @@ export function ChartEditorControls({
     tableSource?.kind === SourceKind.Metric &&
     isFormulaDisplayType(displayType);
   // Formulas and the ratio toggle are mutually exclusive (formulas supersede
-  // ratio in the renderer, so the editor never lets both be set).
-  const canAddFormula = sourceSupportsFormulas && seriesReturnType !== 'ratio';
+  // ratio in the renderer, so the editor never lets both be set). Number
+  // tiles display a single value, so they take exactly one formula.
+  const canAddFormula =
+    sourceSupportsFormulas &&
+    seriesReturnType !== 'ratio' &&
+    !(displayType === DisplayType.Number && hasFormulas);
 
   const handleAddFormula = useCallback(() => {
-    // On a Number tile the chart displays the first value column, so hide
-    // the operand series by default — the formula is what the user wants to
-    // see. (The "Show input series" toggle can bring them back.)
-    if (displayType === DisplayType.Number && formulaFields.length === 0) {
-      setValue('showOperandSeries', false);
-    }
     appendFormula({ expression: '', alias: '' });
-  }, [appendFormula, displayType, formulaFields.length, setValue]);
+  }, [appendFormula]);
 
   const handleRemoveFormula = useCallback(
     (index: number) => {
@@ -408,23 +406,28 @@ export function ChartEditorControls({
                 </Button>
               )}
               {/* Only the formula column(s) vs formula + raw operand series
-                  (renderer: showOperandSeries, default shown). */}
-              {sourceSupportsFormulas && hasFormulas && (
-                <Switch
-                  label="Show input series"
-                  size="sm"
-                  color="gray"
-                  variant="subtle"
-                  onClick={() => {
-                    setValue(
-                      'showOperandSeries',
-                      showOperandSeries === false ? undefined : false,
-                    );
-                    onSubmit();
-                  }}
-                  checked={showOperandSeries !== false}
-                />
-              )}
+                  (renderer: showOperandSeries, default shown). Not offered on
+                  Number tiles: they display the first value column, so the
+                  operand series are always hidden there (hardcoded in
+                  normalizeChartConfig / convertToNumberChartConfig). */}
+              {sourceSupportsFormulas &&
+                hasFormulas &&
+                displayType !== DisplayType.Number && (
+                  <Switch
+                    label="Show input series"
+                    size="sm"
+                    color="gray"
+                    variant="subtle"
+                    onClick={() => {
+                      setValue(
+                        'showOperandSeries',
+                        showOperandSeries === false ? undefined : false,
+                      );
+                      onSubmit();
+                    }}
+                    checked={showOperandSeries !== false}
+                  />
+                )}
               {/* Ratio merges exactly two series via divide(); only
                   Line/StackedBar/Table/Number can reach two series, so gating
                   on the count alone covers them all (Number included).

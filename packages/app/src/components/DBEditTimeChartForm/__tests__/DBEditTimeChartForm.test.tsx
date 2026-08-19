@@ -881,6 +881,32 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
     expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
   });
 
+  it('Number tiles take a single formula and always hide input series', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        displayType: DisplayType.Number,
+        // A formula defined before switching the display type to Number,
+        // with the operand series still shown.
+        formulas: [{ expression: 'A / (A + B) * 100' }],
+      },
+      onSave,
+    });
+
+    // One formula is the cap on Number tiles, and the operand series are
+    // hidden unconditionally, so neither control is offered.
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Show input series'),
+    ).not.toBeInTheDocument();
+
+    // Saving hardcodes hidden operand series onto the config.
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
+  });
+
   it('does not show formula controls for non-metric sources', () => {
     mockUseSourceData({
       id: 'log-source',

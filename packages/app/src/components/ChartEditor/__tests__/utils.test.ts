@@ -1742,6 +1742,49 @@ describe('metric formulas (HDX-5080)', () => {
       expect(errors).toHaveLength(0);
     });
 
+    it('rejects multiple formulas on a Number chart', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          formulas: [{ expression: 'A + B' }, { expression: 'A / B' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({
+          path: 'formulas',
+          message: 'Number charts support a single formula',
+        }),
+      ]);
+    });
+
+    it('allows a single formula on a Number chart and multiple elsewhere', () => {
+      const setError = jest.fn();
+      expect(
+        validateChartForm(
+          makeMetricForm({
+            displayType: DisplayType.Number,
+            formulas: [{ expression: 'A + B' }],
+            showOperandSeries: false,
+          }),
+          metricSource,
+          setError,
+        ),
+      ).toHaveLength(0);
+      expect(
+        validateChartForm(
+          makeMetricForm({
+            formulas: [{ expression: 'A + B' }, { expression: 'A / B' }],
+          }),
+          metricSource,
+          setError,
+        ),
+      ).toHaveLength(0);
+    });
+
     it('lifts the Number chart series cap when formulas are present', () => {
       const setError = jest.fn();
       const errors = validateChartForm(
@@ -1795,6 +1838,31 @@ describe('metric formulas (HDX-5080)', () => {
       );
       expect(saved.formulas).toEqual([{ expression: 'A / B', alias: 'Ratio' }]);
       expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('always persists hidden operand series for Number charts with a formula', () => {
+      // A Number chart displays the first value column, so the formula must
+      // be the only projection — even when the tile showed its operand
+      // series on another display type before the switch.
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          formulas: [{ expression: 'A / B' }],
+          // Unset (operands shown) — e.g. a Line chart switched to Number.
+        }),
+        metricSource,
+      );
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('keeps the tile showOperandSeries choice on non-Number display types', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          formulas: [{ expression: 'A / B' }],
+        }),
+        metricSource,
+      );
+      expect(saved.showOperandSeries).toBeUndefined();
     });
 
     it('strips formulas for non-metric sources', () => {
