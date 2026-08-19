@@ -146,11 +146,16 @@ const convertToExternalSelectItem = (
   // both, so the GET body could not be PUT back and an imported dashboard
   // failed `terraform plan` with "Level can only be used with quantile
   // aggregation function". Same read-path heal as the container refs below.
+  //
+  // Scoped to exactly what that schema rejects: an *empty* valueExpression on a
+  // count is what the editor writes for every count tile and validates fine, so
+  // it stays. Only a leftover value is dropped.
   const level =
     aggFn === 'quantile' && parsedLevel?.success ? parsedLevel.data : undefined;
+  const staleValueExpression = aggFn === 'count' && !!item.valueExpression;
   return {
     ...pick(item, ['alias', 'metricType', 'metricName', 'numberFormat']),
-    ...(aggFn === 'count' ? {} : pick(item, ['valueExpression'])),
+    ...(staleValueExpression ? {} : pick(item, ['valueExpression'])),
     aggFn,
     where: item.aggCondition ?? '',
     whereLanguage: item.aggConditionLanguage ?? 'lucene',
