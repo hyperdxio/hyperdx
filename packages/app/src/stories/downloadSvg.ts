@@ -1,7 +1,10 @@
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 function serializeSvg(svg: SVGSVGElement): string {
-  const clone = svg.cloneNode(true) as SVGSVGElement;
+  const clone = svg.cloneNode(true);
+  if (!(clone instanceof SVGSVGElement)) {
+    throw new Error('Expected an SVG element');
+  }
   clone.setAttribute('xmlns', SVG_NS);
   return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;
 }

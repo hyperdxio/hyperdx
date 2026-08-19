@@ -27,6 +27,7 @@
 
   // Override `.hdx-markdown code { color: var(--color-json-string) }` so
   // Mantine Code / CopySnippet keep theme text instead of JSON-green.
+  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global(.mantine-Code-root) {
     color: inherit;
   }
