@@ -889,11 +889,18 @@ export class DashboardPage {
     if (variableOptions?.isBroadcastEnabled === false) {
       await this.broadcastFilterCheckbox.uncheck();
     }
+    // New filters default to broadcast-only, so the variable box is opt-in here:
+    // asking for a variable name, or for the mode outright, checks it.
     if (variableOptions?.isVariableEnabled === false) {
       await this.variableEnabledCheckbox.uncheck();
-    } else if (variableOptions?.variableName !== undefined) {
+    } else if (
+      variableOptions?.isVariableEnabled === true ||
+      variableOptions?.variableName !== undefined
+    ) {
       await this.variableEnabledCheckbox.check();
-      await this.variableNameInput.fill(variableOptions.variableName);
+      if (variableOptions.variableName !== undefined) {
+        await this.variableNameInput.fill(variableOptions.variableName);
+      }
     }
 
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
@@ -1036,6 +1043,14 @@ export class DashboardPage {
     await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
     await this.broadcastFilterCheckbox.setChecked(enabled);
     await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /**
+   * The warning shown in the filter edit form when a filter both broadcasts and
+   * is a variable, with no "Applies to sources" scope to limit the broadcast.
+   */
+  get unscopedBroadcastWarning() {
+    return this.page.getByTestId('filter-unscoped-broadcast-warning');
   }
 
   /** The warning icon shown when a filter neither broadcasts nor is a variable. */

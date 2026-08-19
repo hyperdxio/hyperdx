@@ -172,7 +172,11 @@ interface DashboardFilterProps {
   filterValues: FilterState;
   onSetFilterValue: (expression: string, values: string[]) => void;
   dateRange: [Date, Date];
-  /** The dashboard's variables and their current selections, if any */
+  /**
+   * The dashboard's variables and their current selections. Defined only when
+   * filters on this dashboard can be exposed as variables at all, so it doubles
+   * as the gate for variable-specific copy.
+   */
   variables?: ChartVariable[];
 }
 
@@ -242,6 +246,7 @@ const DashboardFilters = ({
           <FilterLinkToggle
             linked={linked}
             onChange={setLinked}
+            showVariableNote={variables !== undefined}
             data-testid="dashboard-filters-link-toggle"
           />
         </Stack>
