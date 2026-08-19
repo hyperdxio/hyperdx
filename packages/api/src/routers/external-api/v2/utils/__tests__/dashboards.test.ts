@@ -14,6 +14,7 @@ import {
   convertToExternalDashboard,
   convertToInternalTileConfig,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { externalDashboardSelectItemSchema } from '@/utils/zod';
 
 function makeMarkdownTile(
   markdown?: string,
@@ -445,4 +446,113 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
       });
     },
   );
+});
+
+describe('convertToExternalDashboard stale aggregation params', () => {
+  // Switching a tile's aggregation in the editor leaves the previous agg's
+  // parameter behind in the stored config. It is inert for rendering, but the
+  // external input schema rejects it, so emitting it on read produced a GET
+  // body that could not be PUT back — and broke `terraform plan` on an
+  // imported dashboard.
+  function makeDoc(select: Record<string, unknown>[]): DashboardDocument {
+    return {
+      _id: new mongoose.Types.ObjectId(),
+      name: 'Test',
+      tiles: [
+        {
+          id: 't1',
+          x: 0,
+          y: 0,
+          w: 12,
+          h: 4,
+          config: {
+            displayType: DisplayType.Line,
+            source: new mongoose.Types.ObjectId().toString(),
+            where: '',
+            select,
+            name: 'Tile',
+          },
+        },
+      ],
+      tags: [],
+      filters: [],
+      savedQuery: null,
+      savedQueryLanguage: null,
+      savedFilterValues: [],
+    } as unknown as DashboardDocument;
+  }
+
+  function firstSelect(doc: DashboardDocument) {
+    const config = convertToExternalDashboard(doc).tiles[0].config;
+    if (config == null || !('select' in config) || config.select == null) {
+      throw new Error('expected a select on the converted tile');
+    }
+    return config.select[0];
+  }
+
+  it('drops level left over from a quantile agg on a count', () => {
+    const select = firstSelect(
+      makeDoc([{ aggFn: 'count', level: 0.9, aggCondition: '' }]),
+    );
+    expect(select).not.toHaveProperty('level');
+  });
+
+  it('keeps level on a quantile agg', () => {
+    const select = firstSelect(
+      makeDoc([
+        {
+          aggFn: 'quantile',
+          level: 0.95,
+          valueExpression: 'Duration',
+          aggCondition: '',
+        },
+      ]),
+    );
+    expect(select).toMatchObject({ aggFn: 'quantile', level: 0.95 });
+  });
+
+  it('drops valueExpression left over from a value agg on a count', () => {
+    const select = firstSelect(
+      makeDoc([
+        { aggFn: 'count', valueExpression: 'Duration', aggCondition: '' },
+      ]),
+    );
+    expect(select).not.toHaveProperty('valueExpression');
+  });
+
+  it('keeps valueExpression on a non-count agg', () => {
+    const select = firstSelect(
+      makeDoc([
+        { aggFn: 'avg', valueExpression: 'Duration', aggCondition: '' },
+      ]),
+    );
+    expect(select).toMatchObject({
+      aggFn: 'avg',
+      valueExpression: 'Duration',
+    });
+  });
+
+  it('emits a select the input schema accepts', () => {
+    // The point of the heal: what GET returns must survive a PUT. Both stale
+    // fields at once, on a tile that also carries a real alias.
+    const select = firstSelect(
+      makeDoc([
+        {
+          aggFn: 'count',
+          level: 0.99,
+          valueExpression: 'Duration',
+          alias: 'errors',
+          aggCondition: "ServiceName = 'api'",
+        },
+      ]),
+    );
+    expect(externalDashboardSelectItemSchema.safeParse(select).success).toBe(
+      true,
+    );
+    expect(select).toMatchObject({
+      aggFn: 'count',
+      alias: 'errors',
+      where: "ServiceName = 'api'",
+    });
+  });
 });
