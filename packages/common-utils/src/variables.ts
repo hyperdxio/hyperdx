@@ -479,6 +479,22 @@ export function substituteVariables(
   });
 }
 
+/**
+ * Expand a template for the language its renderer will parse it as.
+ * A Lucene expression renders values in the `lucene` format and gets no macros.
+ */
+export function substituteVariablesForLanguage(
+  input: string,
+  variables: ChartVariable[],
+  language: SearchConditionLanguage,
+): string {
+  const isLucene = language === 'lucene';
+  return substituteVariables(input, variables, {
+    defaultFormat: isLucene ? 'lucene' : 'sqlstring',
+    disableMacros: isLucene,
+  });
+}
+
 // -- Chart builder configs --------------------------------------------------
 
 /**
@@ -584,13 +600,8 @@ export function substituteChartConfigVariables<
 
   const substituted = mapBuilderVariableTemplates(
     config,
-    (template, language) => {
-      const isLucene = language === 'lucene';
-      return substituteVariables(template, variables, {
-        defaultFormat: isLucene ? 'lucene' : 'sqlstring',
-        disableMacros: isLucene,
-      });
-    },
+    (template, language) =>
+      substituteVariablesForLanguage(template, variables, language),
   );
 
   return { ...substituted, variables: undefined };
@@ -879,4 +890,21 @@ export function filterReferencedVariables(
 
   const referenced = new Set(names);
   return variables.filter(variable => referenced.has(variable.name));
+}
+
+/** The warning an alerting tile shows when its query references dashboard variables. */
+export function getAlertVariableWarning(
+  config: ChartConfigWithOptDateRange | SavedChartConfig,
+  variables: ChartVariable[] | undefined,
+): string | undefined {
+  if (!variables?.length) return undefined;
+
+  const referenced = filterReferencedVariables(config, variables);
+  if (referenced.length === 0) return undefined;
+
+  const names = referenced.map(variable => `$${variable.name}`).join(', ');
+  return (
+    `This tile references ${names}. Alerts run with every dashboard variable ` +
+    `in its empty state, not the values selected here.`
+  );
 }

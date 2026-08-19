@@ -118,6 +118,7 @@ export default function RawSqlChartEditor({
   onSubmit,
   isDashboardForm,
   alert,
+  additionalWarnings,
   dashboardId,
   variables,
 }: {
@@ -127,6 +128,7 @@ export default function RawSqlChartEditor({
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
+  additionalWarnings?: string[];
   dashboardId?: string;
   variables?: ChartVariable[];
 }) {
@@ -161,11 +163,13 @@ export default function RawSqlChartEditor({
 
   const { alertErrorMessage, alertWarningMessage } = useMemo(() => {
     const { errors, warnings } = validateRawSqlForAlert(debouncedRawSqlConfig);
+    const allWarnings = [...warnings, ...(additionalWarnings ?? [])];
     return {
       alertErrorMessage: errors.length > 0 ? errors.join(' ') : undefined,
-      alertWarningMessage: warnings.length > 0 ? warnings.join(' ') : undefined,
+      alertWarningMessage:
+        allWarnings.length > 0 ? allWarnings.join(' ') : undefined,
     };
-  }, [debouncedRawSqlConfig]);
+  }, [additionalWarnings, debouncedRawSqlConfig]);
 
   const { chartErrors, chartWarnings, sqlValidationAlertVariant } =
     useMemo(() => {

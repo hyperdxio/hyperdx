@@ -72,7 +72,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
     await test.step('Verify API & Agents tab headings exist', async () => {
       await expect(
-        teamPage.apiKeys.getByText('API Keys', { exact: true }),
+        teamPage.apiKeys.getByText('API keys', { exact: true }),
       ).toBeVisible();
       await expect(
         teamPage.mcpServer.getByText('Connect your AI Agents', { exact: true }),
@@ -160,31 +160,64 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
     await test.step('Verify API key labels are visible', async () => {
       await expect(
-        teamPage.apiKeys.getByText('Ingestion API Key'),
+        teamPage.apiKeys.getByText('Ingestion API key'),
       ).toBeVisible();
       await expect(
-        teamPage.apiKeys.getByText('Personal API Access Key'),
+        teamPage.apiKeys.getByText('Personal API access key'),
       ).toBeVisible();
     });
 
-    await test.step('Verify rotate button is visible', async () => {
+    await test.step('Verify rotate buttons are visible', async () => {
       await expect(teamPage.rotateButton).toBeVisible();
+      await expect(teamPage.rotateAccessKeyTrigger).toBeVisible();
     });
   });
 
+  // Both rotate flows are only opened and cancelled here, never confirmed.
+  // Every spec shares one account via a single storageState, and
+  // dashboard-external-api-*.spec.ts read the personal access key then fire
+  // bearer requests — a confirmed rotation in a parallel worker would 401 them.
+  // The confirm path is covered by packages/api me.int.test.ts.
   test('should open and cancel rotate API key modal', async () => {
     await test.step('Open rotate API key modal', async () => {
       await teamPage.openApiAndAgentsTab();
       await teamPage.clickRotateApiKey();
     });
 
-    await test.step('Verify modal shows irreversible warning', async () => {
-      await expect(teamPage.page.getByText('not reversible')).toBeVisible();
+    await test.step('Verify dialog shows irreversible warning', async () => {
+      await expect(
+        teamPage.confirmDialogBox.getByText(/invalidate your existing API key/),
+      ).toBeVisible();
     });
 
-    await test.step('Cancel and verify modal closes', async () => {
-      await teamPage.cancelRotateApiKey();
-      await expect(teamPage.page.getByText('not reversible')).toBeHidden();
+    await test.step('Cancel and verify dialog closes', async () => {
+      await teamPage.cancelConfirmDialog();
+      await expect(
+        teamPage.confirmDialogBox.getByText(/invalidate your existing API key/),
+      ).toBeHidden();
+    });
+  });
+
+  test('should open and cancel rotate personal access key dialog', async () => {
+    await test.step('Open rotate personal access key dialog', async () => {
+      await teamPage.openApiAndAgentsTab();
+      await teamPage.clickRotateAccessKey();
+    });
+
+    await test.step('Verify dialog warns about irreversibility and agent configs', async () => {
+      await expect(
+        teamPage.confirmDialogBox.getByText(/not reversible/),
+      ).toBeVisible();
+      await expect(
+        teamPage.confirmDialogBox.getByText(/MCP \/ AI agent configs/),
+      ).toBeVisible();
+    });
+
+    await test.step('Cancel and verify dialog closes', async () => {
+      await teamPage.cancelConfirmDialog();
+      await expect(
+        teamPage.confirmDialogBox.getByText(/MCP \/ AI agent configs/),
+      ).toBeHidden();
     });
   });
 

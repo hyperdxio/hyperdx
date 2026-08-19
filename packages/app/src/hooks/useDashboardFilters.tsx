@@ -3,9 +3,8 @@ import { useQueryState } from 'nuqs';
 import {
   FilterState,
   filtersToQuery,
-  getFilterVariableName,
+  getDashboardVariableDeclarations,
   isFilterBroadcastEnabled,
-  isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
@@ -105,25 +104,19 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       }
     }
 
-    const variables: ChartVariable[] = [];
-    const takenNames = new Set<string>();
-    for (const definition of filters) {
-      if (!isFilterVariableEnabled(definition)) continue;
-
-      // There shouldn't be any duplicate names, but if there are then the first one wins.
-      const name = getFilterVariableName(definition);
-      if (!name || takenNames.has(name)) continue;
-      takenNames.add(name);
-
-      const selection = valuesForExistingFilters[definition.expression];
-      variables.push({
-        name,
-        expression: definition.expression,
+    const variables: ChartVariable[] = getDashboardVariableDeclarations(
+      filters,
+    ).map(definition => {
+      const selection = definition.expression
+        ? valuesForExistingFilters[definition.expression]
+        : undefined;
+      return {
+        ...definition,
         values: selection
           ? Array.from(selection.included).map(String).sort() // Sorted for deterministic react-query keys
           : [],
-      });
-    }
+      };
+    });
 
     return {
       valuesForExistingFilters,

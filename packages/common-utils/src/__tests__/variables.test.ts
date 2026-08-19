@@ -3,11 +3,13 @@ import type { BuilderChartConfig, ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
   formatVariableValues,
+  getAlertVariableWarning,
   getReferencedVariableNames,
   getVariableReferences,
   hasVariableMacro,
   substituteChartConfigVariables,
   substituteVariables,
+  substituteVariablesForLanguage,
   validateVariableReferencesInTemplate,
 } from '@/variables';
 
@@ -350,6 +352,55 @@ describe('substituteVariables', () => {
 
   it('does not treat $__filters as the $__filter macro', () => {
     expect(substituteVariables('$__filters', [SERVICE])).toBe('$__filters');
+  });
+});
+
+describe('substituteVariablesForLanguage', () => {
+  it('expands references as SQL strings and macros as predicates for sql', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName IN ($service) AND $__filter(ServiceName, service)',
+        [SERVICE],
+        'sql',
+      ),
+    ).toBe("ServiceName IN ('api', 'web') AND (ServiceName IN ('api', 'web'))");
+  });
+
+  it('expands references in the lucene format for lucene', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName:$service',
+        [SERVICE],
+        'lucene',
+      ),
+    ).toBe('ServiceName:("api" OR "web")');
+  });
+
+  it('leaves macros as written in a lucene expression', () => {
+    expect(
+      substituteVariablesForLanguage(
+        '$__filter(ServiceName, service)',
+        [SERVICE],
+        'lucene',
+      ),
+    ).toBe('$__filter(ServiceName, service)');
+  });
+
+  it('renders an empty selection in each language', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName IN ($service)',
+        [EMPTY_SERVICE],
+        'sql',
+      ),
+    ).toBe('ServiceName IN (NULL)');
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName:$service',
+        [EMPTY_SERVICE],
+        'lucene',
+      ),
+    ).toBe('ServiceName:("")');
   });
 });
 
@@ -711,6 +762,70 @@ describe('filterReferencedVariables', () => {
         variables,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('getAlertVariableWarning', () => {
+  const variables = [SERVICE, variable('env', ['prod'])];
+
+  const rawSqlConfig = (sqlTemplate: string) =>
+    ({ configType: 'sql', sqlTemplate, connection: 'local' }) as const;
+
+  it('says nothing when no variables are in scope', () => {
+    const config = rawSqlConfig('WHERE ServiceName = $service');
+    expect(getAlertVariableWarning(config, undefined)).toBeUndefined();
+    expect(getAlertVariableWarning(config, [])).toBeUndefined();
+  });
+
+  it('says nothing when the query references none of them', () => {
+    expect(
+      getAlertVariableWarning(rawSqlConfig('SELECT 1'), variables),
+    ).toBeUndefined();
+    expect(
+      getAlertVariableWarning(builderConfig({ where: '' }), variables),
+    ).toBeUndefined();
+  });
+
+  it('says nothing for a PromQL config, which cannot use variables', () => {
+    expect(
+      getAlertVariableWarning(
+        {
+          configType: 'promql',
+          promqlExpression: 'up{service="$service"}',
+          connection: 'local',
+        },
+        variables,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('names only the variables the raw SQL references', () => {
+    expect(
+      getAlertVariableWarning(
+        rawSqlConfig('WHERE ServiceName = $service AND $nope'),
+        variables,
+      ),
+    ).toBe(
+      'This tile references $service. Alerts run with every dashboard variable ' +
+        'in its empty state, not the values selected here.',
+    );
+  });
+
+  it('names every variable a builder config references, across its expressions', () => {
+    expect(
+      getAlertVariableWarning(
+        builderConfig({
+          select: [
+            { aggFn: 'count', valueExpression: '', aggCondition: '$env' },
+          ],
+          where: '$__filter(ServiceName, service)',
+        }),
+        variables,
+      ),
+    ).toBe(
+      'This tile references $service, $env. Alerts run with every dashboard ' +
+        'variable in its empty state, not the values selected here.',
+    );
   });
 });
 

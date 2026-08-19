@@ -669,12 +669,10 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         const label = dashboardPage.getFilterLabel('SpanName');
         await expect(label).toBeVisible();
         await label.hover();
-        // New filters are variable-enabled by default while the feature is on,
-        // so both effects are described.
+        // New filters are broadcast-only by default, so only the broadcast
+        // effect is described.
         await expect(
-          dashboardPage.page.getByText(
-            'Filters 1 source, available as variable ($SpanName)',
-          ),
+          dashboardPage.page.getByText('Filters 1 source'),
         ).toBeVisible();
       });
 
@@ -725,9 +723,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const label = dashboardPage.getFilterLabel('Service');
       await label.hover();
       await expect(
-        dashboardPage.page.getByText(
-          'Filters all sources, available as variable ($Service)',
-        ),
+        dashboardPage.page.getByText('Filters all sources'),
       ).toBeVisible();
     },
   );
@@ -745,18 +741,53 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     });
 
-    await test.step('Variable name is derived from the filter name', async () => {
+    await test.step('New filters default to broadcast only', async () => {
       await dashboardPage.openEditFiltersModal();
       await dashboardPage.addFiltersButton.click();
 
-      // Enabled by default for new filters while the feature is on.
       await expect(dashboardPage.broadcastFilterCheckbox).toBeChecked();
-      await expect(dashboardPage.variableEnabledCheckbox).toBeChecked();
+      await expect(dashboardPage.variableEnabledCheckbox).not.toBeChecked();
+      // The variable name only appears once the mode is turned on.
+      await expect(dashboardPage.variableNameInput).toBeHidden();
+      await expect(dashboardPage.unscopedBroadcastWarning).toBeHidden();
+    });
+
+    await test.step('Variable name is derived from the filter name', async () => {
+      await dashboardPage.variableEnabledCheckbox.check();
 
       await dashboardPage.page
         .getByTestId('filter-name-input')
         .fill('Service Name');
       await expect(dashboardPage.variableNameInput).toHaveValue('Service_Name');
+    });
+
+    await test.step('Both modes with an unscoped broadcast warns', async () => {
+      // Broadcast reaches every tile, so the variable is redundant until the
+      // broadcast is scoped or turned off.
+      await expect(dashboardPage.unscopedBroadcastWarning).toBeVisible();
+
+      await dashboardPage.appliesToSourceSelector.click();
+      await dashboardPage.page
+        .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+        .click();
+      await dashboardPage.page.keyboard.press('Escape');
+      await expect(dashboardPage.unscopedBroadcastWarning).toBeHidden();
+
+      // Clearing the scope brings it back — re-picking a selected source in the
+      // multi-select toggles it back off.
+      await dashboardPage.appliesToSourceSelector.click();
+      await dashboardPage.page
+        .getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME, exact: true })
+        .click();
+      await dashboardPage.page.keyboard.press('Escape');
+      await expect(dashboardPage.unscopedBroadcastWarning).toBeVisible();
+
+      // ...and so does turning broadcast off entirely, since then only the
+      // tiles that reference the variable are affected.
+      await dashboardPage.broadcastFilterCheckbox.uncheck();
+      await expect(dashboardPage.unscopedBroadcastWarning).toBeHidden();
+      await dashboardPage.broadcastFilterCheckbox.check();
+      await expect(dashboardPage.unscopedBroadcastWarning).toBeVisible();
     });
 
     await test.step('Editing the variable name stops the auto-derivation', async () => {
@@ -828,6 +859,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const editor = getSqlEditor(dashboardPage.page, 'expression');
       await editor.click();
       await dashboardPage.page.keyboard.type('ServiceName');
+      await dashboardPage.variableEnabledCheckbox.check();
       await dashboardPage.variableNameInput.fill('svc');
       await dashboardPage.page.getByTestId('save-filter-button').click();
 
@@ -874,11 +906,12 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await editor.click();
         await dashboardPage.page.keyboard.type('ServiceName');
 
-        // Both modes are on by default, so nothing is wrong yet.
+        // Broadcast-only by default, so nothing is wrong yet.
         await expect(dashboardPage.page.getByText(modeError)).toHaveCount(0);
       });
 
-      await test.step('Turning off only one mode is fine', async () => {
+      await test.step('Either mode on its own is fine', async () => {
+        await dashboardPage.variableEnabledCheckbox.check();
         await dashboardPage.broadcastFilterCheckbox.uncheck();
         await expect(dashboardPage.page.getByText(modeError)).toHaveCount(0);
 
@@ -963,13 +996,15 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await dashboardPage.openEditFiltersModal();
         await expect(dashboardPage.emptyFiltersList).toBeVisible();
 
+        // Variable-only: a filter has to do one of the two, so turning off
+        // broadcast means turning on the variable.
         await dashboardPage.addFilterToDashboard(
           'Service',
           DEFAULT_LOGS_SOURCE_NAME,
           'ServiceName',
           undefined,
           undefined,
-          { isBroadcastEnabled: false },
+          { isBroadcastEnabled: false, isVariableEnabled: true },
         );
 
         await expect(
@@ -985,8 +1020,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       await test.step('Filter label tooltip drops the broadcast half', async () => {
-        // Broadcast off, variable still on (the default for a new filter while
-        // the feature is enabled), so only the variable effect is described.
+        // Broadcast off, variable on, so only the variable effect is described.
         const label = dashboardPage.getFilterLabel('Service');
         await expect(label).toBeVisible();
         await label.hover();
@@ -1613,6 +1647,14 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           }).toPass({ timeout: 15000 });
         });
 
+        await test.step('The alert says which variables it will empty', async () => {
+          await expect(async () => {
+            expect(await dashboardPage.chartEditor.getAlertWarning()).toContain(
+              'This tile references $svc.',
+            );
+          }).toPass({ timeout: 15000 });
+        });
+
         await test.step('Removing the alert restores the selected value', async () => {
           await dashboardPage.chartEditor.clickRemoveAlert();
           await expect(async () => {
@@ -1908,6 +1950,73 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await expect(
             tile.getByTitle('accounting', { exact: true }),
           ).toHaveCount(0);
+        });
+      },
+    );
+
+    test(
+      'empties every variable in an alerting builder tile, and says so',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+        });
+
+        await test.step('Add a builder line tile whose WHERE references the variable', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+          await dashboardPage.chartEditor.setChartName(
+            `E2E Builder Alert Variable Tile ${Date.now()}`,
+          );
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setSqlWhere(
+            '$__filter(ServiceName, svc)',
+          );
+          await dashboardPage.chartEditor.runQuery();
+        });
+
+        await test.step('Without an alert the preview uses the selected value', async () => {
+          await dashboardPage.chartEditor.openGeneratedSql();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).toContain("IN ('accounting')");
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Adding an alert empties the variable in the preview', async () => {
+          // An alert runs on a schedule with no dashboard filter selection, so
+          // the preview must show what the alert will actually evaluate.
+          await dashboardPage.chartEditor.clickAddAlert();
+          await expect(async () => {
+            const sql = await dashboardPage.chartEditor.getGeneratedSqlText();
+            expect(sql).not.toContain('accounting');
+            expect(sql).toMatch(/1\s*=\s*1/);
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('The alert says which variables it will empty', async () => {
+          await expect(async () => {
+            expect(await dashboardPage.chartEditor.getAlertWarning()).toContain(
+              'This tile references $svc. Alerts run with every dashboard ' +
+                'variable in its empty state, not the values selected here.',
+            );
+          }).toPass({ timeout: 15000 });
+        });
+
+        await test.step('Dropping the reference clears the warning', async () => {
+          await dashboardPage.chartEditor.setSqlWhere("ServiceName = 'ad'");
+          await expect(
+            dashboardPage.chartEditor.alertWarningBadge(),
+          ).toHaveCount(0, { timeout: 15000 });
         });
       },
     );
