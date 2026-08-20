@@ -24,8 +24,7 @@ import {
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
 import {
-  createRrwebChunkAssembler,
-  RRWebChunkAssembler,
+  createRrwebAssemblerRegistry,
   RRWebStreamRow,
 } from '@/utils/rrwebChunkAssembler';
 
@@ -184,25 +183,16 @@ export default function DOMPlayer({
     lastEventTsLoadedRef.current = parsedEvent.timestamp;
   };
 
-  // Reassembles chunked rrweb events; recreated (and dropped-event count
-  // reset) whenever the underlying event stream restarts.
+  // Reassembles chunked rrweb events, one assembler per stream. A replaced
+  // stream isn't reliably cancelled, so its callbacks can interleave with
+  // the new stream's — the registry keeps their buffers isolated.
   const streamKey = `${serviceName}|${sessionId}|${sourceId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
-  const assemblerRef = useRef<{
-    key: string;
-    assembler: RRWebChunkAssembler;
-  } | null>(null);
-  const getAssembler = useCallback((key: string) => {
-    if (assemblerRef.current?.key !== key) {
-      assemblerRef.current = {
-        key,
-        assembler: createRrwebChunkAssembler({
-          onEvent: parsedEvent => handleParsedEventRef.current(parsedEvent),
-          onError: (error, info) => handleDroppedEventRef.current(error, info),
-        }),
-      };
-    }
-    return assemblerRef.current.assembler;
-  }, []);
+  const [assemblerRegistry] = useState(() =>
+    createRrwebAssemblerRegistry({
+      onEvent: parsedEvent => handleParsedEventRef.current(parsedEvent),
+      onError: (error, info) => handleDroppedEventRef.current(error, info),
+    }),
+  );
   useEffect(() => {
     setDroppedEventCount(0);
   }, [streamKey]);
@@ -216,14 +206,14 @@ export default function DOMPlayer({
       endDate: dateRange[1],
       limit: 1000000, // large enough to get all events
       onEvent: (event: RRWebStreamRow) => {
-        getAssembler(streamKey).push(event);
+        assemblerRegistry.get(streamKey).push(event);
 
         if (initialEventsRef.current.length > 5) {
           setIsInitialEventsLoaded(true);
         }
       },
       onEnd: () => {
-        getAssembler(streamKey).end();
+        assemblerRegistry.end(streamKey);
         setIsInitialEventsLoaded(true);
         setIsReplayFullyLoaded(true);
 
@@ -491,9 +481,10 @@ export default function DOMPlayer({
         replayerRef.current?.destroy();
         replayerRef.current = null;
       }
+      assemblerRegistry.clear();
       abort();
     };
-  }, [abort]);
+  }, [abort, assemblerRegistry]);
 
   const isLoading = isInitialEventsLoaded === false && isSearchResultsFetching;
   // TODO: Handle when ts is set to a value that's outside of this session
