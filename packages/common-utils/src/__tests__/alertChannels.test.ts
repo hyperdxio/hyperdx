@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   AlertSchema,
+  checkAlertChannelSelection,
   MAX_ALERT_CHANNELS,
   SavedChartConfigSchema,
   validateAlertChannelSelection,
@@ -17,6 +18,51 @@ const refine = (input: Parameters<typeof validateAlertChannelSelection>[0]) => {
   validateAlertChannelSelection(input, ctx);
   return issues;
 };
+
+// checkAlertChannelSelection is the Zod-independent rule that
+// validateAlertChannelSelection (below) wraps, and that the MCP tool's
+// hand-rolled validator (packages/api/src/mcp/tools/alerts/schemas.ts) calls
+// directly. Covering it here pins the classification both callers depend on.
+describe('checkAlertChannelSelection', () => {
+  const wh = (id: string) => ({ type: 'webhook' as const, webhookId: id });
+
+  it('returns ok when exactly one of channel / channels is provided', () => {
+    expect(checkAlertChannelSelection({ channel: wh('a') })).toEqual({
+      ok: true,
+    });
+    expect(checkAlertChannelSelection({ channels: [wh('a')] })).toEqual({
+      ok: true,
+    });
+  });
+
+  it('returns "missing" when neither is provided', () => {
+    expect(checkAlertChannelSelection({})).toEqual({
+      ok: false,
+      code: 'missing',
+    });
+  });
+
+  it('returns "mismatch" when channel disagrees with channels[0]', () => {
+    expect(
+      checkAlertChannelSelection({ channel: wh('a'), channels: [wh('b')] }),
+    ).toEqual({ ok: false, code: 'mismatch' });
+  });
+
+  it('returns ok when channel agrees with channels[0]', () => {
+    expect(
+      checkAlertChannelSelection({
+        channel: wh('a'),
+        channels: [wh('a'), wh('b')],
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('returns "duplicate" when channels contains a repeated entry', () => {
+    expect(
+      checkAlertChannelSelection({ channels: [wh('a'), wh('a')] }),
+    ).toEqual({ ok: false, code: 'duplicate' });
+  });
+});
 
 describe('alert channel schemas', () => {
   const wh = (id: string) => ({ type: 'webhook' as const, webhookId: id });

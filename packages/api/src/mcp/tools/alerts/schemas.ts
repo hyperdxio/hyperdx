@@ -1,7 +1,7 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
-  alertChannelKey,
   type AlertInterval,
+  checkAlertChannelSelection,
   isRangeThresholdType,
   MAX_ALERT_CHANNELS,
 } from '@hyperdx/common-utils/dist/types';
@@ -132,25 +132,19 @@ export type McpSaveAlertInput = z.infer<typeof mcpSaveAlertSchema>;
 // Returns a human-readable error string, or null when valid.
 // ---------------------------------------------------------------------------
 export function validateSaveAlertInput(data: McpSaveAlertInput): string | null {
-  // Channel selection. Mirrors validateAlertChannelSelection in common-utils:
-  // both fields may be sent when they agree, so a response can be echoed back.
-  const hasChannel = data.channel != null;
-  const hasChannels = data.channels != null;
-  if (!hasChannel && !hasChannels) {
-    return 'Provide either "channel" or "channels"';
-  }
-  if (hasChannel && hasChannels) {
-    const first = data.channels?.[0];
-    if (
-      first == null ||
-      alertChannelKey(first) !== alertChannelKey(data.channel!)
-    ) {
-      return 'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"';
+  // Channel selection rule shared with every other alert input schema in this
+  // repo (see checkAlertChannelSelection in common-utils); reported here as a
+  // plain string since this validator has no ZodIssueCode to add to.
+  const channelSelection = checkAlertChannelSelection(data);
+  if (!channelSelection.ok) {
+    switch (channelSelection.code) {
+      case 'missing':
+        return 'Provide either "channel" or "channels"';
+      case 'mismatch':
+        return 'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"';
+      case 'duplicate':
+        return 'Duplicate notification channels are not allowed';
     }
-  }
-  const keys = (data.channels ?? []).map(alertChannelKey);
-  if (new Set(keys).size !== keys.length) {
-    return 'Duplicate notification channels are not allowed';
   }
 
   // Source-specific required fields
