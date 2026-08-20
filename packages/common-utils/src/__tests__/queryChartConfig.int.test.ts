@@ -2028,5 +2028,192 @@ describe('queryChartConfig Integration Tests', () => {
         expect(Number(col(byService.get('svc-b'), 'ratio'))).toBe(0);
       });
     });
+
+    // HAVING / ORDER BY / LIMIT apply to the final joined result and
+    // reference its output columns (HDX-5126) — not each per-series branch,
+    // where the output names don't exist and each series would be
+    // filtered/ordered/truncated independently.
+    //
+    // Fixture recap (grpratio.* grouped by ServiceName, table shape):
+    //   avg(grpratio.err):   svc-a 1.5, svc-b 6, svc-d 5,   svc-c gap
+    //   avg(grpratio.total): svc-a 4.5, svc-b 12, svc-c 8,  svc-d gap
+    describe('outer HAVING / ORDER BY / LIMIT (HDX-5126)', () => {
+      const grpRatioTable = (overrides: Partial<ChartConfigWithOptDateRange>) =>
+        baseConfig({
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          select: [gaugeSelect('grpratio.err'), gaugeSelect('grpratio.total')],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          ...overrides,
+        });
+
+      const services = (data: unknown) =>
+        (data as Row[]).map(r => col(r, 'ServiceName'));
+
+      it('filters the joined rows with HAVING on an operand output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            having: '"avg(grpratio.total)" > 5',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // svc-a (4.5) fails the predicate; svc-d has err data but a NULL
+        // total, and NULL > 5 filters out. A per-branch HAVING could never
+        // drop svc-d — its err branch has no total column to inspect.
+        expect(services(result.data).sort()).toEqual(['svc-b', 'svc-c']);
+      });
+
+      it('filters with HAVING on a formula output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            having: '"err rate" >= 0.5',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // Rates: svc-a 1.5/4.5≈0.33, svc-b 0.5, svc-c 0/8=0, svc-d gap.
+        expect(services(result.data)).toEqual(['svc-b']);
+        expect(Number(col((result.data as Row[])[0], 'err rate'))).toBeCloseTo(
+          0.5,
+          5,
+        );
+      });
+
+      it('orders by a plain group column across the joined result', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
+          }),
+        );
+
+        expect(services(result.data)).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+      });
+
+      it('orders by an output value column and paginates the joined result with LIMIT/OFFSET', async () => {
+        const orderBy = [
+          {
+            valueExpression: '"avg(grpratio.total)"',
+            ordering: 'DESC' as const,
+          },
+        ];
+
+        // Full order: svc-b (12), svc-c (8), svc-a (4.5), svc-d (NULL —
+        // ClickHouse sorts NULLS LAST by default).
+        const page1 = await runConfig(
+          grpRatioTable({ orderBy, limit: { limit: 2 } }),
+        );
+        expect(services(page1.data)).toEqual(['svc-b', 'svc-c']);
+
+        // The second page continues the SAME joined ordering — page windows
+        // are disjoint and the group universe is consistent across series.
+        // (A per-branch LIMIT truncated each series to its own arbitrary
+        // groups before the join, so pages neither aligned nor partitioned.)
+        const page2 = await runConfig(
+          grpRatioTable({ orderBy, limit: { limit: 2, offset: 2 } }),
+        );
+        expect(services(page2.data)).toEqual(['svc-a', 'svc-d']);
+
+        // The joined row is intact on every page: svc-d keeps its err value
+        // and its total gap.
+        const svcD = (page2.data as Row[])[1];
+        expect(Number(col(svcD, 'avg(grpratio.err)'))).toBe(5);
+        expectGap(col(svcD, 'avg(grpratio.total)'));
+      });
+
+      it('orders time-series rows by bucket first, user sort second', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
+          }),
+        );
+
+        // All rows share bucket 0; the user sort breaks the tie in reverse
+        // service order.
+        expect(services(result.data)).toEqual(['svc-c', 'svc-b', 'svc-a']);
+      });
+
+      it('resolves an expression group-by in ORDER BY via its derived output name', async () => {
+        // The passthrough column for an expression group-by keeps its
+        // ClickHouse-derived name. The contract for referencing it from
+        // ORDER BY/HAVING is the (quoted) output name — the raw map-access
+        // expression is not resolvable in the outer scope, where the source
+        // columns no longer exist.
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: `"arrayElement(ResourceAttributes, 'service.name')"`,
+                ordering: 'DESC',
+              },
+            ],
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+      });
+
+      it('orders by an aliased expression group-by through the alias', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+                alias: 'service',
+              },
+            ],
+            orderBy: [{ valueExpression: 'service', ordering: 'ASC' }],
+          }),
+        );
+
+        expect((result.data as Row[]).map(r => col(r, 'service'))).toEqual([
+          'svc-a',
+          'svc-b',
+          'svc-c',
+          'svc-d',
+        ]);
+      });
+
+      it('filters and orders the ratio output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            seriesReturnType: 'ratio',
+            having: '"avg(grpratio.err)/avg(grpratio.total)" >= 0.3',
+            havingLanguage: 'sql',
+            orderBy: [
+              {
+                valueExpression: '"avg(grpratio.err)/avg(grpratio.total)"',
+                ordering: 'DESC',
+              },
+            ],
+          }),
+        );
+
+        // Rates: svc-a ≈0.33, svc-b 0.5, svc-c 0, svc-d gap (NULL fails the
+        // predicate).
+        expect(services(result.data)).toEqual(['svc-b', 'svc-a']);
+      });
+    });
   });
 });

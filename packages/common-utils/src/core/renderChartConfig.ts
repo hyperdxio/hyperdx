@@ -2378,12 +2378,20 @@ async function renderMultiSeriesMetricChartConfig(
   const branches = await Promise.all(
     select.map(async (s, splitIdx) => {
       // Formulas belong to the composed outer projection only — a branch
-      // carrying them would recurse back into this function.
+      // carrying them would recurse back into this function. HAVING,
+      // ORDER BY and LIMIT apply to the final joined result (HDX-5126):
+      // in a branch they would filter/order/truncate each series
+      // independently — in a scope where the user-facing output names don't
+      // even exist — producing mismatched group sets across series. Only
+      // row-level filters (where/filters/aggCondition) stay per-branch.
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
         select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
         formulas: undefined,
         showOperandSeries: undefined,
+        having: undefined,
+        orderBy: undefined,
+        limit: undefined,
       };
       const rendered = await renderChartConfig(
         branchConfig,
@@ -2543,13 +2551,35 @@ async function renderMultiSeriesMetricChartConfig(
 
   const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
 
+  // HAVING / ORDER BY / LIMIT apply to the final joined result (HDX-5126),
+  // so they reference the output columns: operand aliases (when shown),
+  // formula names/aliases, the ratio column, group passthroughs and the
+  // time bucket. HAVING is valid even without GROUP BY ALL (the no-group
+  // number-chart shape is an implicit global aggregation).
+  const having = await renderHaving(chartConfig, metadata);
+
+  // Time charts stay bucket-ordered first (the renderer's contract), with
+  // the user's sort as a tiebreaker within each bucket. renderOrderBy is
+  // deliberately not reused: it re-renders the bucket expression over raw
+  // timestamp columns, which don't exist in this outer scope — only the
+  // fixed bucket alias does.
+  const orderBy = concatChSql(
+    ',',
+    hasGranularity ? chSql`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : chSql``,
+    chartConfig.orderBy != null
+      ? renderSortSpecificationList(chartConfig.orderBy)
+      : [],
+  );
+
+  const limit = renderLimit(chartConfig);
+
   return concatChSql(' ', [
     chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
     chSql`FROM (${unionSql})`,
     hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
-    hasGranularity
-      ? chSql`ORDER BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
-      : chSql``,
+    having?.sql ? chSql`HAVING ${having}` : chSql``,
+    orderBy.sql ? chSql`ORDER BY ${orderBy}` : chSql``,
+    limit?.sql ? chSql`LIMIT ${limit}` : chSql``,
     settings !== '' ? chSql`SETTINGS ${{ UNSAFE_RAW_SQL: settings }}` : chSql``,
   ]);
 }
