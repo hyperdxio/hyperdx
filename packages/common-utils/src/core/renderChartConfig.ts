@@ -2379,10 +2379,8 @@ async function renderMultiSeriesMetricChartConfig(
     select.map(async (s, splitIdx) => {
       // Formulas belong to the composed outer projection only — a branch
       // carrying them would recurse back into this function. HAVING,
-      // ORDER BY and LIMIT apply to the final joined result (HDX-5126):
-      // in a branch they would filter/order/truncate each series
-      // independently — in a scope where the user-facing output names don't
-      // even exist — producing mismatched group sets across series. Only
+      // ORDER BY and LIMIT apply to the final joined result, not to each
+      // series independently, so they render on the outer statement. Only
       // row-level filters (where/filters/aggCondition) stay per-branch.
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
@@ -2551,18 +2549,17 @@ async function renderMultiSeriesMetricChartConfig(
 
   const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
 
-  // HAVING / ORDER BY / LIMIT apply to the final joined result (HDX-5126),
-  // so they reference the output columns: operand aliases (when shown),
-  // formula names/aliases, the ratio column, group passthroughs and the
-  // time bucket. HAVING is valid even without GROUP BY ALL (the no-group
-  // number-chart shape is an implicit global aggregation).
+  // HAVING / ORDER BY / LIMIT apply to the final joined result and
+  // reference its output columns (operand aliases, formula names, the ratio
+  // column, group passthroughs, the time bucket). HAVING is valid even
+  // without GROUP BY ALL (the no-group number-chart shape is an implicit
+  // global aggregation).
   const having = await renderHaving(chartConfig, metadata);
 
-  // Time charts stay bucket-ordered first (the renderer's contract), with
-  // the user's sort as a tiebreaker within each bucket. renderOrderBy is
-  // deliberately not reused: it re-renders the bucket expression over raw
-  // timestamp columns, which don't exist in this outer scope — only the
-  // fixed bucket alias does.
+  // Time charts stay bucket-ordered first, with the user's sort as a
+  // tiebreaker within each bucket. renderOrderBy is not reusable here: it
+  // re-renders the bucket expression over raw timestamp columns, which
+  // don't exist in this outer scope — only the fixed bucket alias does.
   const orderBy = concatChSql(
     ',',
     hasGranularity ? chSql`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : chSql``,
@@ -2580,13 +2577,10 @@ async function renderMultiSeriesMetricChartConfig(
   ]);
 
   // The share_of_total ratio is the one projection built on a window
-  // function, and ClickHouse prohibits window functions in HAVING (they are
-  // computed after it) — alias substitution would pull the OVER() expression
-  // straight into the clause. Filter through a wrapper instead: WHERE on the
-  // wrapped result evaluates after the window, with identical "filter the
-  // output rows" semantics. ORDER BY/LIMIT follow on the outermost statement
-  // either way (filter, then order, then limit; SELECT * passes every output
-  // column through).
+  // function, which ClickHouse prohibits in HAVING — so filter it through
+  // a wrapper instead: WHERE on the wrapped result evaluates after the
+  // window, with the same filter-the-output-rows semantics. ORDER BY/LIMIT
+  // follow on the outermost statement either way.
   const usesWindowProjection =
     isRatio && chartConfig.ratioMode === 'share_of_total';
   const filtered = !having?.sql

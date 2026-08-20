@@ -3967,8 +3967,7 @@ describe('renderChartConfig', () => {
     });
 
     // HAVING / ORDER BY / LIMIT apply to the final joined result, where the
-    // user-facing output columns exist — never inside a per-series branch,
-    // which would filter/order/truncate each series independently (HDX-5126).
+    // user-facing output columns exist — never inside a per-series branch.
     describe('outer HAVING / ORDER BY / LIMIT', () => {
       it('renders having, orderBy and limit once, on the outer joined statement only', async () => {
         const generatedSql = await renderChartConfig(

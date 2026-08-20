@@ -2030,14 +2030,15 @@ describe('queryChartConfig Integration Tests', () => {
     });
 
     // HAVING / ORDER BY / LIMIT apply to the final joined result and
-    // reference its output columns (HDX-5126) — not each per-series branch,
-    // where the output names don't exist and each series would be
+    // reference its output columns — not each per-series branch, where the
+    // output names don't exist and each series would be
     // filtered/ordered/truncated independently.
     //
-    // Fixture recap (grpratio.* grouped by ServiceName, table shape):
-    //   avg(grpratio.err):   svc-a 1.5, svc-b 6, svc-d 5,   svc-c gap
-    //   avg(grpratio.total): svc-a 4.5, svc-b 12, svc-c 8,  svc-d gap
-    describe('outer HAVING / ORDER BY / LIMIT (HDX-5126)', () => {
+    // Fixture recap (grpratio.* grouped by ServiceName, table shape — gauge
+    // reads the last value per series when time is ungrouped):
+    //   avg(grpratio.err):   svc-a 2, svc-b 6,  svc-d 5,  svc-c gap
+    //   avg(grpratio.total): svc-a 5, svc-b 12, svc-c 8,  svc-d gap
+    describe('outer HAVING / ORDER BY / LIMIT', () => {
       const grpRatioTable = (overrides: Partial<ChartConfigWithOptDateRange>) =>
         baseConfig({
           displayType: DisplayType.Table,
@@ -2073,7 +2074,7 @@ describe('queryChartConfig Integration Tests', () => {
           }),
         );
 
-        // Rates: svc-a 1.5/4.5≈0.33, svc-b 0.5, svc-c 0/8=0, svc-d gap.
+        // Rates: svc-a 2/5=0.4, svc-b 0.5, svc-c 0/8=0, svc-d gap.
         expect(services(result.data)).toEqual(['svc-b']);
         expect(Number(col((result.data as Row[])[0], 'err rate'))).toBeCloseTo(
           0.5,
@@ -2210,7 +2211,7 @@ describe('queryChartConfig Integration Tests', () => {
           }),
         );
 
-        // Rates: svc-a ≈0.33, svc-b 0.5, svc-c 0, svc-d gap (NULL fails the
+        // Rates: svc-a 0.4, svc-b 0.5, svc-c 0, svc-d gap (NULL fails the
         // predicate).
         expect(services(result.data)).toEqual(['svc-b', 'svc-a']);
       });
