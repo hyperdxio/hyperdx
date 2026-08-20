@@ -716,6 +716,17 @@ const getChartConfigFromAlert = (
         where: tile.config.where,
         whereLanguage: tile.config.whereLanguage,
         seriesReturnType: tile.config.seriesReturnType,
+        // Grouped ratios can divide per-group or share-of-total; without this
+        // the alert would silently evaluate the default (per-group) mode.
+        ratioMode: tile.config.ratioMode,
+        // Metric formulas (HDX-5080): the alert must evaluate the derived
+        // formula column, not a raw operand series. Operand columns are
+        // always dropped from the alert query — regardless of the tile's
+        // "Show input series" display toggle — so the formula is the value
+        // column parseAlertData picks (the last one wins, consistent with
+        // the multi-series "last series drives the alert" semantics).
+        formulas: tile.config.formulas,
+        ...(tile.config.formulas?.length ? { showOperandSeries: false } : {}),
         variables,
       };
     }
