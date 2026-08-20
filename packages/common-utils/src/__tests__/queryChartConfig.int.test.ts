@@ -2241,6 +2241,143 @@ describe('queryChartConfig Integration Tests', () => {
         expect(Number(col(rows[0], RATIO))).toBeCloseTo(6 / 25, 5);
         expect(Number(col(rows[1], RATIO))).toBeCloseTo(5 / 25, 5);
       });
+
+      it('partitions the share_of_total window per bucket on a time series, then filters', async () => {
+        const RATIO = 'avg(grpratio.err)/avg(grpratio.total)';
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('grpratio.err'),
+              gaugeSelect('grpratio.total'),
+            ],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            having: `"${RATIO}" >= 0.2`,
+            havingLanguage: 'sql',
+            orderBy: [{ valueExpression: `"${RATIO}"`, ordering: 'DESC' }],
+          }),
+        );
+
+        // Per-bucket totals: bucket 0 = 4 + 12 + 8 = 24 (shares a 1/24,
+        // b 0.25, c 0, d 5/24); bucket 1 = 5 (share a 2/5 = 0.4). The
+        // >= 0.2 filter keeps (b0, b), (b0, d) and (b1, a); rows stay
+        // bucket-ordered first (outermost ORDER BY, outside the wrapper),
+        // share-descending within the bucket.
+        const rows = result.data as Row[];
+        expect(
+          rows.map(r => [
+            String(col(r, '__hdx_time_bucket')),
+            col(r, 'ServiceName'),
+          ]),
+        ).toEqual([
+          [bucket(0), 'svc-b'],
+          [bucket(0), 'svc-d'],
+          [bucket(1), 'svc-a'],
+        ]);
+        expect(Number(col(rows[0], RATIO))).toBeCloseTo(6 / 24, 5);
+        expect(Number(col(rows[1], RATIO))).toBeCloseTo(5 / 24, 5);
+        expect(Number(col(rows[2], RATIO))).toBeCloseTo(2 / 5, 5);
+      });
+
+      it('filters number-shape results with HAVING (no GROUP BY)', async () => {
+        const numberConfig = (having: string) =>
+          baseConfig({
+            displayType: DisplayType.Number,
+            granularity: undefined,
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            having,
+            havingLanguage: 'sql',
+          });
+
+        // The number shape has no passthrough columns, so the outer query is
+        // one implicit global aggregation — HAVING filters its single row.
+        // Values: avg(tbl.one) = 15, avg(tbl.two) = 100.
+        const kept = await runConfig(numberConfig('"avg(tbl.two)" > 50'));
+        expect(kept.data as Row[]).toHaveLength(1);
+        expect(col((kept.data as Row[])[0], 'avg(tbl.one)')).toBe(15);
+
+        const dropped = await runConfig(numberConfig('"avg(tbl.two)" > 200'));
+        expect(dropped.data as Row[]).toHaveLength(0);
+      });
+
+      it('filters time-series (bucket, group) rows with HAVING', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            having: '"avg(grp.one)" >= 2',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // Joined bucket-0 rows: svc-a (grp.one 1), svc-b (grp.one 2),
+        // svc-c (grp.one NULL — grp.two only). Only svc-b passes; NULL fails
+        // the predicate like any SQL comparison.
+        const rows = result.data as Row[];
+        expect(rows).toHaveLength(1);
+        expect(col(rows[0], 'ServiceName')).toBe('svc-b');
+        expect(String(col(rows[0], '__hdx_time_bucket'))).toBe(bucket(0));
+        expect(col(rows[0], 'avg(grp.one)')).toBe(2);
+      });
+
+      it('applies HAVING across heterogeneous branch classes (gauge + histogram)', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('grpmix.gauge'),
+              histQuantileSelect('grpmix.latency', 0.5),
+            ],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            having: '"avg(grpmix.gauge)" >= 0',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // Gauge and histogram rows never share a merge key (plain vs Array
+        // group columns), so the histogram row carries a NULL gauge value
+        // and the HAVING on the gauge column drops it.
+        const rows = result.data as Row[];
+        expect(rows).toHaveLength(1);
+        expect(col(rows[0], 'ServiceName')).toBe('svc-a');
+        expect(col(rows[0], 'avg(grpmix.gauge)')).toBe(42);
+        expectGap(col(rows[0], 'quantile(grpmix.latency)'));
+      });
+
+      it('orders by a formula output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            orderBy: [{ valueExpression: '"err rate"', ordering: 'DESC' }],
+            limit: { limit: 2 },
+          }),
+        );
+
+        // Rates (last-value gauge semantics on the table shape): svc-a
+        // 2/5 = 0.4, svc-b 0.5, svc-c 0, svc-d gap (NULL sorts last).
+        expect(services(result.data)).toEqual(['svc-b', 'svc-a']);
+        expect(Number(col((result.data as Row[])[0], 'err rate'))).toBeCloseTo(
+          0.5,
+          5,
+        );
+      });
+
+      it('rejects HAVING on an operand hidden by showOperandSeries: false', async () => {
+        // The contract is "reference what the result outputs": with the
+        // operand series dropped from the projection, their names are not
+        // resolvable — the query fails instead of silently filtering on a
+        // column the chart doesn't show.
+        await expect(
+          runConfig(
+            grpRatioTable({
+              formulas: [{ expression: 'A / B', alias: 'err rate' }],
+              showOperandSeries: false,
+              having: '"avg(grpratio.err)" > 1',
+              havingLanguage: 'sql',
+            }),
+          ),
+        ).rejects.toThrow();
+      });
     });
   });
 });

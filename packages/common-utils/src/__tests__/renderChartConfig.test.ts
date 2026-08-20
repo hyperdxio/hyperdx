@@ -4065,6 +4065,48 @@ describe('renderChartConfig', () => {
         expect(sql.indexOf('LIMIT 2')).toBeGreaterThan(orderByIdx);
       });
 
+      it('renders a string-form orderBy on the outer statement', async () => {
+        // SortSpecificationList also accepts a raw SQL string (saved configs
+        // may carry one), not just the structured array form.
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: '"avg(metric.alpha)" DESC',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        const count = (needle: string) => sql.split(needle).length - 1;
+        expect(count('ORDER BY "avg(metric.alpha)" DESC')).toBe(1);
+        expect(
+          sql.indexOf('ORDER BY "avg(metric.alpha)" DESC'),
+        ).toBeGreaterThan(sql.lastIndexOf('GROUP BY ALL'));
+      });
+
+      it('renders HAVING on the number shape without a GROUP BY ALL', async () => {
+        // With no passthrough columns the outer query is one implicit global
+        // aggregation — HAVING is valid there without any GROUP BY.
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Number,
+            granularity: undefined,
+            having: '"avg(metric.alpha)" > 10',
+            havingLanguage: 'sql',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).not.toContain('GROUP BY ALL');
+        const count = (needle: string) => sql.split(needle).length - 1;
+        expect(count('HAVING "avg(metric.alpha)" > 10')).toBe(1);
+      });
+
       it('lets HAVING reference a formula output column', async () => {
         const generatedSql = await renderChartConfig(
           {
