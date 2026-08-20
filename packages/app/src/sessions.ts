@@ -303,6 +303,87 @@ async function* streamToAsyncIterator<T = any>(
 // 2. When slider advances, use the timestamp to determine which chunk you are in
 // 3. Fetch data associated with that chunk
 // 4. Probably do some prefetching for future times
+/**
+ * Builds the chart config used to stream rrweb events for a session replay.
+ *
+ * Large rrweb events are split by the recorder into multiple log records
+ * ("chunks") that all share the same event timestamp, so ordering by the
+ * timestamp alone lets ClickHouse return chunks of one event in arbitrary
+ * order, scrambling reassembly. `rr-web.offset` is a monotonically increasing
+ * counter stamped on every record, and `rr-web.chunk` is the 1-based chunk
+ * index within an event — ordering by both (numerically — the attributes are
+ * stored as strings) makes the stream order deterministic.
+ * https://github.com/hyperdxio/hyperdx/issues/2569
+ */
+export function buildRRWebStreamChartConfig({
+  source,
+  serviceName,
+  sessionId,
+  startDate,
+  endDate,
+  limit,
+  offset,
+  getSessionSourceFieldExpression,
+}: {
+  source: {
+    from: TSessionSource['from'];
+    timestampValueExpression: string;
+    connection: string;
+  };
+  serviceName: string;
+  sessionId: string;
+  startDate: Date;
+  endDate: Date;
+  limit: number;
+  offset: number;
+  getSessionSourceFieldExpression: FieldExpressionGenerator;
+}) {
+  const eventAttributeExpression = (key: string) =>
+    getSessionSourceFieldExpression(
+      SESSION_TABLE_EXPRESSIONS.eventAttributesExpression,
+      key,
+    );
+
+  return {
+    // FIXME: add mappings to session source
+    select: [
+      {
+        valueExpression: SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
+        alias: 'b',
+      },
+      {
+        valueExpression: `simpleJSONExtractInt(${SESSION_TABLE_EXPRESSIONS.implicitColumnExpression}, 'type')`,
+        alias: 't',
+      },
+      {
+        valueExpression: `${eventAttributeExpression('rr-web.chunk')}`,
+        alias: 'ck',
+      },
+      {
+        valueExpression: `${eventAttributeExpression('rr-web.total-chunks')}`,
+        alias: 'tcks',
+      },
+      {
+        valueExpression: `${eventAttributeExpression('rr-web.event')}`,
+        alias: 'ev',
+      },
+    ],
+    dateRange: [startDate, endDate] as [Date, Date],
+    from: source.from,
+    whereLanguage: 'lucene' as const,
+    where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
+    timestampValueExpression: source.timestampValueExpression,
+    implicitColumnExpression:
+      SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
+    connection: source.connection,
+    orderBy: `${source.timestampValueExpression} ASC, toUInt64OrZero(${eventAttributeExpression('rr-web.offset')}) ASC, toUInt64OrZero(${eventAttributeExpression('rr-web.chunk')}) ASC`,
+    limit: {
+      limit,
+      offset,
+    },
+  };
+}
+
 export function useRRWebEventStream(
   {
     serviceName,
@@ -376,44 +457,16 @@ export function useRRWebEventStream(
       const MAX_LIMIT = 1e6;
 
       const query = await renderChartConfig(
-        {
-          // FIXME: add mappings to session source
-          select: [
-            {
-              valueExpression:
-                SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
-              alias: 'b',
-            },
-            {
-              valueExpression: `simpleJSONExtractInt(${SESSION_TABLE_EXPRESSIONS.implicitColumnExpression}, 'type')`,
-              alias: 't',
-            },
-            {
-              valueExpression: `${getSessionSourceFieldExpression(SESSION_TABLE_EXPRESSIONS.eventAttributesExpression, 'rr-web.chunk')}`,
-              alias: 'ck',
-            },
-            {
-              valueExpression: `${getSessionSourceFieldExpression(SESSION_TABLE_EXPRESSIONS.eventAttributesExpression, 'rr-web.total-chunks')}`,
-              alias: 'tcks',
-            },
-          ],
-          dateRange: [
-            new Date(parseInt(startTime)),
-            new Date(parseInt(endTime)),
-          ],
-          from: source.from,
-          whereLanguage: 'lucene',
-          where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
-          timestampValueExpression: source.timestampValueExpression,
-          implicitColumnExpression:
-            SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
-          connection: source.connection,
-          orderBy: `${source.timestampValueExpression} ASC`,
-          limit: {
-            limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
-            offset: parseInt(offset),
-          },
-        },
+        buildRRWebStreamChartConfig({
+          source,
+          serviceName,
+          sessionId,
+          startDate: new Date(parseInt(startTime)),
+          endDate: new Date(parseInt(endTime)),
+          limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
+          offset: parseInt(offset),
+          getSessionSourceFieldExpression,
+        }),
         metadata,
         source.querySettings,
       );

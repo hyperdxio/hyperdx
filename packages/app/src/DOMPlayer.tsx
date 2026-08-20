@@ -3,8 +3,15 @@ import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
-import { ActionIcon, CopyButton, Group, HoverCard } from '@mantine/core';
 import {
+  ActionIcon,
+  CopyButton,
+  Group,
+  HoverCard,
+  Tooltip,
+} from '@mantine/core';
+import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconCheck,
   IconCopy,
@@ -16,6 +23,11 @@ import {
 
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
+import {
+  createRrwebChunkAssembler,
+  RRWebChunkAssembler,
+  RRWebStreamRow,
+} from '@/utils/rrwebChunkAssembler';
 
 import { FieldExpressionGenerator } from './hooks/useFieldExpressionGenerator';
 
@@ -128,8 +140,72 @@ export default function DOMPlayer({
   );
   const [isInitialEventsLoaded, setIsInitialEventsLoaded] = useState(false);
   const [isReplayFullyLoaded, setIsReplayFullyLoaded] = useState(false);
+  const [droppedEventCount, setDroppedEventCount] = useState(0);
 
-  let currentRrwebEvent = '';
+  const handleDroppedEventRef = useRef<
+    (error: unknown, context: unknown) => void
+  >(() => {});
+  handleDroppedEventRef.current = (error, context) => {
+    // Surfaced unconditionally: dropped events (e.g. a dropped full snapshot)
+    // can render the replay empty/unstyled with no other signal.
+    // https://github.com/hyperdxio/hyperdx/issues/2569
+    console.error('Failed to load session replay event', context, error);
+    setDroppedEventCount(count => count + 1);
+  };
+
+  const handleParsedEventRef = useRef<(parsedEvent: any) => void>(() => {});
+  handleParsedEventRef.current = (parsedEvent: any) => {
+    if (replayerRef.current != null) {
+      try {
+        replayerRef.current.addEvent(parsedEvent);
+      } catch (error) {
+        handleDroppedEventRef.current(error, {
+          reason: 'add-event-error',
+          eventType: parsedEvent?.type,
+        });
+        return;
+      }
+    } else {
+      if (
+        setPlayerStartTimestamp != null &&
+        initialEventsRef.current.length === 0
+      ) {
+        setPlayerStartTimestamp(parsedEvent.timestamp);
+      }
+
+      initialEventsRef.current.push(parsedEvent);
+    }
+
+    setLastEventTsLoadedRef.current(parsedEvent.timestamp);
+    // Used for setting the player end timestamp on onEnd
+    // we can't use state since the onEnd function is declared
+    // at the beginning of the component lifecylce.
+    // We can't use the rrweb metadata as it's not updated fast enough
+    lastEventTsLoadedRef.current = parsedEvent.timestamp;
+  };
+
+  // Reassembles chunked rrweb events; recreated (and dropped-event count
+  // reset) whenever the underlying event stream restarts.
+  const streamKey = `${serviceName}|${sessionId}|${sourceId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
+  const assemblerRef = useRef<{
+    key: string;
+    assembler: RRWebChunkAssembler;
+  } | null>(null);
+  const getAssembler = useCallback((key: string) => {
+    if (assemblerRef.current?.key !== key) {
+      assemblerRef.current = {
+        key,
+        assembler: createRrwebChunkAssembler({
+          onEvent: parsedEvent => handleParsedEventRef.current(parsedEvent),
+          onError: (error, info) => handleDroppedEventRef.current(error, info),
+        }),
+      };
+    }
+    return assemblerRef.current.assembler;
+  }, []);
+  useEffect(() => {
+    setDroppedEventCount(0);
+  }, [streamKey]);
 
   const { isFetching: isSearchResultsFetching, abort } = useRRWebEventStream(
     {
@@ -139,48 +215,15 @@ export default function DOMPlayer({
       startDate: dateRange[0],
       endDate: dateRange[1],
       limit: 1000000, // large enough to get all events
-      onEvent: (event: { b: string; ck: number; tcks: number; t: number }) => {
-        try {
-          const { b: body, ck: chunk, tcks: totalChunks } = event;
-          currentRrwebEvent += body;
-          if (!chunk || chunk === totalChunks) {
-            const parsedEvent = JSON.parse(currentRrwebEvent);
-
-            if (replayerRef.current != null) {
-              replayerRef.current.addEvent(parsedEvent);
-            } else {
-              if (
-                setPlayerStartTimestamp != null &&
-                initialEventsRef.current.length === 0
-              ) {
-                setPlayerStartTimestamp(parsedEvent.timestamp);
-              }
-
-              initialEventsRef.current.push(parsedEvent);
-            }
-
-            setLastEventTsLoadedRef.current(parsedEvent.timestamp);
-            // Used for setting the player end timestamp on onEnd
-            // we can't use state since the onEnd function is declared
-            // at the beginning of the component lifecylce.
-            // We can't use the rrweb metadata as it's not updated fast enough
-            lastEventTsLoadedRef.current = parsedEvent.timestamp;
-
-            currentRrwebEvent = '';
-          }
-        } catch (e) {
-          if (debug) {
-            console.error(e);
-          }
-
-          currentRrwebEvent = '';
-        }
+      onEvent: (event: RRWebStreamRow) => {
+        getAssembler(streamKey).push(event);
 
         if (initialEventsRef.current.length > 5) {
           setIsInitialEventsLoaded(true);
         }
       },
       onEnd: () => {
+        getAssembler(streamKey).end();
         setIsInitialEventsLoaded(true);
         setIsReplayFullyLoaded(true);
 
@@ -503,6 +546,20 @@ export default function DOMPlayer({
             </>
           )}
         </CopyButton>
+        {droppedEventCount > 0 && (
+          <Tooltip
+            label={`${droppedEventCount} replay ${
+              droppedEventCount === 1 ? 'event' : 'events'
+            } could not be decoded — replay may be incomplete`}
+            withArrow
+          >
+            <IconAlertTriangle
+              size={14}
+              color="var(--mantine-color-yellow-6)"
+              data-testid="replay-dropped-events-warning"
+            />
+          </Tooltip>
+        )}
       </div>
 
       <div className={styles.playerContainer}>
