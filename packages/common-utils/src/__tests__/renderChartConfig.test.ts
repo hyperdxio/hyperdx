@@ -4024,6 +4024,47 @@ describe('renderChartConfig', () => {
         expect(sql).toContain('ORDER BY `__hdx_time_bucket`,ServiceName ASC');
       });
 
+      it('filters a share_of_total ratio through a wrapper, not HAVING (window function)', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            having: '"avg(metric.alpha)/avg(metric.beta)" >= 0.2',
+            havingLanguage: 'sql',
+            orderBy: [
+              {
+                valueExpression: '"avg(metric.alpha)/avg(metric.beta)"',
+                ordering: 'DESC',
+              },
+            ],
+            limit: { limit: 2 },
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+
+        // The share_of_total projection is a window function, which
+        // ClickHouse rejects inside HAVING — the filter runs as WHERE on a
+        // wrapper around the joined result instead.
+        expect(sql).not.toContain('HAVING');
+        const whereIdx = sql.indexOf(
+          'WHERE "avg(metric.alpha)/avg(metric.beta)" >= 0.2',
+        );
+        expect(whereIdx).toBeGreaterThan(sql.lastIndexOf('GROUP BY ALL'));
+        // Filter, then order, then limit — on the outermost statement.
+        const orderByIdx = sql.indexOf(
+          'ORDER BY "avg(metric.alpha)/avg(metric.beta)" DESC',
+        );
+        expect(orderByIdx).toBeGreaterThan(whereIdx);
+        expect(sql.indexOf('LIMIT 2')).toBeGreaterThan(orderByIdx);
+      });
+
       it('lets HAVING reference a formula output column', async () => {
         const generatedSql = await renderChartConfig(
           {

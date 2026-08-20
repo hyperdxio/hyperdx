@@ -2573,11 +2573,30 @@ async function renderMultiSeriesMetricChartConfig(
 
   const limit = renderLimit(chartConfig);
 
-  return concatChSql(' ', [
+  const core = concatChSql(' ', [
     chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
     chSql`FROM (${unionSql})`,
     hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
-    having?.sql ? chSql`HAVING ${having}` : chSql``,
+  ]);
+
+  // The share_of_total ratio is the one projection built on a window
+  // function, and ClickHouse prohibits window functions in HAVING (they are
+  // computed after it) — alias substitution would pull the OVER() expression
+  // straight into the clause. Filter through a wrapper instead: WHERE on the
+  // wrapped result evaluates after the window, with identical "filter the
+  // output rows" semantics. ORDER BY/LIMIT follow on the outermost statement
+  // either way (filter, then order, then limit; SELECT * passes every output
+  // column through).
+  const usesWindowProjection =
+    isRatio && chartConfig.ratioMode === 'share_of_total';
+  const filtered = !having?.sql
+    ? core
+    : usesWindowProjection
+      ? chSql`SELECT * FROM (${core}) WHERE ${having}`
+      : concatChSql(' ', [core, chSql`HAVING ${having}`]);
+
+  return concatChSql(' ', [
+    filtered,
     orderBy.sql ? chSql`ORDER BY ${orderBy}` : chSql``,
     limit?.sql ? chSql`LIMIT ${limit}` : chSql``,
     settings !== '' ? chSql`SETTINGS ${{ UNSAFE_RAW_SQL: settings }}` : chSql``,

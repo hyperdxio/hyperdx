@@ -2214,6 +2214,33 @@ describe('queryChartConfig Integration Tests', () => {
         // predicate).
         expect(services(result.data)).toEqual(['svc-b', 'svc-a']);
       });
+
+      it('filters a share_of_total ratio after its window function evaluates', async () => {
+        // share_of_total is built on sum(...) OVER (...), which ClickHouse
+        // prohibits inside HAVING — the filter runs as WHERE on a wrapper
+        // around the joined result instead.
+        const RATIO = 'avg(grpratio.err)/avg(grpratio.total)';
+        const result = await runConfig(
+          grpRatioTable({
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            having: `"${RATIO}" >= 0.15`,
+            havingLanguage: 'sql',
+            orderBy: [{ valueExpression: `"${RATIO}"`, ordering: 'DESC' }],
+          }),
+        );
+
+        // Denominator total across ALL groups (gauge reads the last value
+        // per series on the ungrouped-time table shape, so svc-a's total is
+        // 5): 5 + 12 + 8 = 25. Shares: svc-a 2/25 = 0.08, svc-b 6/25 = 0.24,
+        // svc-c 0, svc-d 5/25 = 0.2 — so >= 0.15 keeps b and d.
+        expect(services(result.data)).toEqual(['svc-b', 'svc-d']);
+        // The share divides by the pre-filter total (25), proving the window
+        // evaluated over the full joined result before the filter.
+        const rows = result.data as Row[];
+        expect(Number(col(rows[0], RATIO))).toBeCloseTo(6 / 25, 5);
+        expect(Number(col(rows[1], RATIO))).toBeCloseTo(5 / 25, 5);
+      });
     });
   });
 });
