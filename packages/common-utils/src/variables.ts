@@ -479,6 +479,22 @@ export function substituteVariables(
   });
 }
 
+/**
+ * Expand a template for the language its renderer will parse it as.
+ * A Lucene expression renders values in the `lucene` format and gets no macros.
+ */
+export function substituteVariablesForLanguage(
+  input: string,
+  variables: ChartVariable[],
+  language: SearchConditionLanguage,
+): string {
+  const isLucene = language === 'lucene';
+  return substituteVariables(input, variables, {
+    defaultFormat: isLucene ? 'lucene' : 'sqlstring',
+    disableMacros: isLucene,
+  });
+}
+
 // -- Chart builder configs --------------------------------------------------
 
 /**
@@ -584,13 +600,8 @@ export function substituteChartConfigVariables<
 
   const substituted = mapBuilderVariableTemplates(
     config,
-    (template, language) => {
-      const isLucene = language === 'lucene';
-      return substituteVariables(template, variables, {
-        defaultFormat: isLucene ? 'lucene' : 'sqlstring',
-        disableMacros: isLucene,
-      });
-    },
+    (template, language) =>
+      substituteVariablesForLanguage(template, variables, language),
   );
 
   return { ...substituted, variables: undefined };

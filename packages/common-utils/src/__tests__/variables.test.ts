@@ -9,6 +9,7 @@ import {
   hasVariableMacro,
   substituteChartConfigVariables,
   substituteVariables,
+  substituteVariablesForLanguage,
   validateVariableReferencesInTemplate,
 } from '@/variables';
 
@@ -351,6 +352,55 @@ describe('substituteVariables', () => {
 
   it('does not treat $__filters as the $__filter macro', () => {
     expect(substituteVariables('$__filters', [SERVICE])).toBe('$__filters');
+  });
+});
+
+describe('substituteVariablesForLanguage', () => {
+  it('expands references as SQL strings and macros as predicates for sql', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName IN ($service) AND $__filter(ServiceName, service)',
+        [SERVICE],
+        'sql',
+      ),
+    ).toBe("ServiceName IN ('api', 'web') AND (ServiceName IN ('api', 'web'))");
+  });
+
+  it('expands references in the lucene format for lucene', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName:$service',
+        [SERVICE],
+        'lucene',
+      ),
+    ).toBe('ServiceName:("api" OR "web")');
+  });
+
+  it('leaves macros as written in a lucene expression', () => {
+    expect(
+      substituteVariablesForLanguage(
+        '$__filter(ServiceName, service)',
+        [SERVICE],
+        'lucene',
+      ),
+    ).toBe('$__filter(ServiceName, service)');
+  });
+
+  it('renders an empty selection in each language', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName IN ($service)',
+        [EMPTY_SERVICE],
+        'sql',
+      ),
+    ).toBe('ServiceName IN (NULL)');
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName:$service',
+        [EMPTY_SERVICE],
+        'lucene',
+      ),
+    ).toBe('ServiceName:("")');
   });
 });
 
