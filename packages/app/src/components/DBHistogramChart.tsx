@@ -1,5 +1,4 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -48,13 +47,7 @@ export function resolvePinnedBarIndex(
   return Number.isInteger(idx) && idx >= 0 ? idx : undefined;
 }
 
-function HistogramChart({
-  graphResults,
-  generateSearchUrl,
-}: {
-  graphResults: any[];
-  generateSearchUrl?: (lower: string, upper: string) => string;
-}) {
+function HistogramChart({ graphResults }: { graphResults: any[] }) {
   const data = useMemo(() => {
     return (
       graphResults?.map((result: any) => {
@@ -134,9 +127,7 @@ function HistogramChart({
           // Remount when the pinned bar changes so `defaultIndex` re-seeds on a
           // fresh instance rather than relying on it being reactive after mount.
           key={pinnedIndex ?? 'hover'}
-          content={
-            <HistogramChartTooltip generateSearchUrl={generateSearchUrl} />
-          }
+          content={<HistogramChartTooltip />}
           // When a bar is pinned, lock the tooltip to that bar: `trigger:
           // 'click'` makes the tooltip ignore hover (which would otherwise let
           // the tooltip drift to whatever bar the cursor grazes), and
@@ -156,7 +147,6 @@ export const HistogramChartTooltip = memo(
   ({
     active,
     payload,
-    generateSearchUrl,
   }: {
     active?: boolean;
     payload?: {
@@ -165,7 +155,6 @@ export const HistogramChartTooltip = memo(
       color?: string;
       payload: { lower: number; upper: number; height: number };
     }[];
-    generateSearchUrl?: (lower: string, upper: string) => string;
   }) => {
     if (!active || !payload?.length) {
       return null;
@@ -183,20 +172,9 @@ export const HistogramChartTooltip = memo(
           </span>
         }
         footer={
-          <>
-            {generateSearchUrl && (
-              <Link
-                href={generateSearchUrl(lower, upper)}
-                className="text-muted-hover cursor-pointer"
-                onClick={e => e.stopPropagation()}
-              >
-                View events
-              </Link>
-            )}
-            <Text size="xs" c="dimmed">
-              Click to pin tooltip • Approx value via SPDT algorithm
-            </Text>
-          </>
+          <Text size="xs" c="dimmed">
+            Click to pin tooltip • Approx value via SPDT algorithm
+          </Text>
         }
       >
         {payload.map((p, index) => (
