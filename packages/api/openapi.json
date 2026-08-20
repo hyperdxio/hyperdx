@@ -2908,7 +2908,7 @@
       },
       "FilterInput": {
         "type": "object",
-        "description": "Dashboard filter key that can be added to a dashboard",
+        "description": "A drop-down filter on a dashboard. Every filter can either broadcast its\nselected value(s) to every tile (isBroadcastEnabled), expose its selected\nvalue as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things.\n",
         "required": [
           "type",
           "name",
@@ -2933,7 +2933,7 @@
           "expression": {
             "type": "string",
             "minLength": 1,
-            "description": "Key expression used when applying this dashboard filter key",
+            "description": "SQL expression used when querying values for this filter, and when applying this dashboard filter to tiles.",
             "example": "environment"
           },
           "sourceId": {
@@ -2973,10 +2973,29 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s).\n",
+            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s). Scopes the broadcast condition only, so a\nnon-empty array is rejected when isBroadcastEnabled is false, and is\nomitted from responses for such a filter.\n",
             "example": [
               "65f5e4a3b9e77c001a111111"
             ]
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "description": "Whether the selected value is applied as a filter condition on every\nbuilder tile this filter applies to (see appliesToSourceIds), and every\nraw sql tile using the $__filters macro. Omitting the field means enabled.\n",
+            "default": true,
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter($<variableName>)` and\n`$__conditionalAll(<condition>, $<variableName>)` macros.\n",
+            "default": false,
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
+            "example": "environment"
           }
         }
       },
@@ -3036,7 +3055,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys added to the dashboard and applied to all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
@@ -3106,7 +3125,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys to add to the dashboard and apply across all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/FilterInput"
             }
@@ -3177,7 +3196,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys on the dashboard, applied across all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/Filter"
             }

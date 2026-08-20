@@ -233,7 +233,7 @@ export const ChartTooltipContainer = ({
   /** Extra class on the content wrapper (e.g. the hover tooltip's height clamp). */
   contentClassName?: string;
 }) => (
-  <div className={styles.chartTooltip}>
+  <div className={styles.chartTooltip} data-testid="chart-tooltip">
     {header != null && (
       <div className={styles.chartTooltipHeader}>{header}</div>
     )}

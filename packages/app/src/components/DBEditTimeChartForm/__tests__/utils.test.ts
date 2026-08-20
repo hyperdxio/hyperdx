@@ -402,7 +402,7 @@ describe('buildSampleEventsConfig', () => {
 
     it('expands $__filter in a SQL agg condition to the selected values', () => {
       const result = buildSampleEventsConfig(
-        configWithAggCondition('$__filter(ServiceName, svc)', 'sql', [
+        configWithAggCondition('$__filter(ServiceName, $svc)', 'sql', [
           'accounting',
         ]),
         logSource,
@@ -417,7 +417,7 @@ describe('buildSampleEventsConfig', () => {
 
     it('expands $__filter to its no-op form when nothing is selected', () => {
       const result = buildSampleEventsConfig(
-        configWithAggCondition('$__filter(ServiceName, svc)', 'sql', []),
+        configWithAggCondition('$__filter(ServiceName, $svc)', 'sql', []),
         logSource,
         dateRange,
         true,
@@ -452,7 +452,7 @@ describe('buildSampleEventsConfig', () => {
     it('leaves the condition as written when a macro names an unknown variable', () => {
       const build = () =>
         buildSampleEventsConfig(
-          configWithAggCondition('$__filter(ServiceName, nope)', 'sql', [
+          configWithAggCondition('$__filter(ServiceName, $nope)', 'sql', [
             'accounting',
           ]),
           logSource,
@@ -462,7 +462,7 @@ describe('buildSampleEventsConfig', () => {
 
       expect(build).not.toThrow();
       expect(build()!.filters).toEqual([
-        { type: 'sql', condition: '$__filter(ServiceName, nope)' },
+        { type: 'sql', condition: '$__filter(ServiceName, $nope)' },
       ]);
     });
   });

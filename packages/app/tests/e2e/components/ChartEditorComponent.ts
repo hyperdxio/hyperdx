@@ -936,6 +936,73 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Select a metric by name on the series at zero-based `index`. Like
+   * selectMetric, but disambiguates between the metric selectors of a
+   * multi-series metric chart.
+   */
+  async selectMetricForSeries(
+    index: number,
+    metricName: string,
+    metricValue?: string,
+  ) {
+    const selector = this.page.getByTestId('metric-name-selector').nth(index);
+    await selector.waitFor({ state: 'visible', timeout: 5000 });
+    await selector.click();
+    await selector.fill(metricName);
+    if (metricValue) {
+      // Every series' select keeps its (hidden) option list mounted, so
+      // scope to the visible one — the dropdown just opened for this series.
+      const targetMetricOption = this.page
+        .locator(`[data-combobox-option="true"][value="${metricValue}"]`)
+        .filter({ visible: true });
+      await targetMetricOption.waitFor({ state: 'visible', timeout: 5000 });
+      await targetMetricOption.click({ timeout: 5000 });
+    } else {
+      await this.page.keyboard.press('Enter');
+    }
+  }
+
+  /**
+   * Click the "Add Formula" button (metric sources only) to append a formula
+   * row, and fill its expression (and optional alias). Targets the last
+   * formula row so multiple formulas can be added in sequence.
+   */
+  async addFormula(expression: string, alias?: string) {
+    await this.page.getByTestId('add-formula-button').click();
+    const expressionInput = this.page
+      .getByTestId('formula-expression-input')
+      .last();
+    await expressionInput.fill(expression);
+    if (alias !== undefined) {
+      await this.page.getByTestId('formula-alias-input').last().fill(alias);
+    }
+    await expressionInput.blur();
+  }
+
+  /**
+   * Read the inline validation error of the formula row at zero-based
+   * `index`, or null when the expression is valid.
+   */
+  async getFormulaError(index: number): Promise<string | null> {
+    const input = this.page.getByTestId('formula-expression-input').nth(index);
+    // Mantine renders the error node as a sibling within the input wrapper.
+    const wrapper = input.locator('..').locator('..');
+    const error = wrapper.locator('.mantine-InputWrapper-error');
+    if ((await error.count()) === 0) {
+      return null;
+    }
+    return error.textContent();
+  }
+
+  /**
+   * Toggle the "Show input series" switch (visible while a metric formula
+   * exists) between formula-only and formula + operand series output.
+   */
+  async toggleShowInputSeries() {
+    await this.page.getByRole('switch', { name: 'Show input series' }).click();
+  }
+
+  /**
    * Toggle the "As Ratio" switch. Only visible when the chart has exactly
    * two series.
    */

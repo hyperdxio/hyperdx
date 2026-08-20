@@ -7,10 +7,10 @@ import {
   RawSqlChartConfig,
 } from './types';
 import {
+  expandTemplate,
   expandVariableToken,
   findBalancedParens,
   hasVariableMacro,
-  scanTemplateTokens,
   VARIABLE_MACRO_NAMES,
   VariableContext,
   VariableMacroName,
@@ -239,14 +239,14 @@ export const VARIABLE_MACRO_SUGGESTIONS: MacroSuggestion[] = [
     minArgs: 1,
     maxArgs: 2,
     description:
-      "$__filter(<expression>, <variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
+      "$__filter(<expression>, $<variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
   },
   {
     name: 'conditionalAll',
     minArgs: 2,
     maxArgs: 2,
     description:
-      '$__conditionalAll(<condition>, <variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
+      '$__conditionalAll(<condition>, $<variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
   },
 ];
 
@@ -382,9 +382,14 @@ const NO_FILTERS = '(1=1 /** no filters applied */)';
  * Expand every macro and (when a variable context is present) every dashboard
  * variable reference in a raw SQL template.
  *
- * The template is scanned once, left to right, and each token is expanded into
- * an output buffer — an expansion is never re-scanned, so neither `$__filters`
- * output nor a selected variable value can trigger further substitution.
+ * The template is scanned left to right and each token is expanded into an
+ * output buffer. A macro's arguments are expanded first, recursively, so a
+ * variable or macro nested in an argument resolves before the enclosing macro
+ * sees it — `$__timeFilter(${TsColumn:csv})` filters on the selected column, and
+ * `$__conditionalAll($__timeFilter(ts), $env)` expands the inner macro. Only
+ * template source is recursed into: an expansion is never re-scanned, so neither
+ * `$__filters` output nor a selected variable value can trigger further
+ * substitution.
  *
  * `chartConfig.variables` being undefined means variable references and
  * the variable macros are left exactly as written; an empty array means the
@@ -483,21 +488,16 @@ export function replaceMacros(
     ...(variableContext ? VARIABLE_MACRO_NAMES : []),
   ];
 
-  return scanTemplateTokens(chartConfig.sqlTemplate, macroNames)
-    .map(token => {
-      if (token.kind === 'text') return token.text;
-
-      if (token.kind === 'macro') {
-        const macro = macrosByName.get(token.name);
-        return macro
-          ? macro.replace(token.args) // Non-variable-referencing macro
-          : expandVariableToken(token, variableContext!); // Variable-referencing macro
-      }
-
-      // Braced and bare variable references ($var, ${var}, or ${var:format})
-      return variableContext
-        ? expandVariableToken(token, variableContext)
-        : token.raw;
-    })
-    .join('');
+  return expandTemplate(chartConfig.sqlTemplate, {
+    macroNames,
+    expandMacro: token => {
+      const macro = macrosByName.get(token.name);
+      return macro
+        ? macro.replace(token.args) // Non-variable-referencing macro
+        : expandVariableToken(token, variableContext!); // Variable-referencing macro
+    },
+    // Braced and bare variable references ($var, ${var}, or ${var:format})
+    expandReference: token =>
+      variableContext ? expandVariableToken(token, variableContext) : token.raw,
+  });
 }
