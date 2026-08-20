@@ -2,8 +2,8 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Replayer } from 'rrweb';
 import { ActionIcon, CopyButton, Group, HoverCard } from '@mantine/core';
+import { Replayer } from '@rrweb/replay';
 import {
   IconArrowsMaximize,
   IconCheck,
