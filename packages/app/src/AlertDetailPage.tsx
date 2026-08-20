@@ -13,14 +13,18 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { IconExternalLink } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import { IconExternalLink, IconPencil } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
+import { AlertDetailProperties } from '@/components/alerts/AlertDetailProperties';
 import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
-import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
+import { EditAlertModal } from '@/components/alerts/EditAlertModal';
+import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
@@ -71,7 +75,7 @@ const TIMELINE_ITEMS = 60;
 function AlertProperties({ alert }: { alert: AlertsPageItem }) {
   return (
     <Stack gap={2}>
-      <AlertPropertiesSummary alert={alert} showSchedule />
+      <AlertDetailProperties alert={alert} />
       {alert.note && <AlertNote note={alert.note} />}
     </Stack>
   );
@@ -79,6 +83,35 @@ function AlertProperties({ alert }: { alert: AlertsPageItem }) {
 
 function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   const alertUrl = getAlertSourceUrl(alert);
+  const brandName = useBrandDisplayName();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const deleteAlert = api.useDeleteAlert();
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
+
+  const onDeleteAlert = React.useCallback(async () => {
+    try {
+      await deleteAlert.mutateAsync(alert._id);
+      notifications.show({
+        color: 'green',
+        message: 'Alert deleted!',
+        autoClose: 5000,
+      });
+      // The alerts list and the source-bound edit surfaces (saved search
+      // modal / dashboard tile editor) all render this alert.
+      queryClient.invalidateQueries({ queryKey: api.getAlertsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: ['saved-search'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      router.push('/alerts');
+    } catch (error) {
+      console.error('Failed to delete alert:', error);
+      notifications.show({
+        color: 'red',
+        message: `Something went wrong. Please contact ${brandName} team.`,
+        autoClose: 5000,
+      });
+    }
+  }, [alert._id, brandName, deleteAlert, queryClient, router]);
 
   // Interval-dependent, but fixed for the page lifetime: the body only
   // mounts once the alert has loaded, and useNewTimeQuery reads the initial
@@ -144,6 +177,16 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
         actions={
           <Group gap="sm" wrap="nowrap">
             <AckAlert alert={alert} />
+            <Button
+              data-testid="edit-alert-button"
+              variant="secondary"
+              size="compact-sm"
+              leftSection={<IconPencil size={14} />}
+              onClick={() => setIsEditModalOpen(true)}
+            >
+              Edit alert
+            </Button>
+            <ConfirmDeleteMenu onDelete={onDeleteAlert} />
             {alertUrl && (
               <Button
                 component={Link}
@@ -164,6 +207,12 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
             />
           </Group>
         }
+      />
+      <EditAlertModal
+        alert={alert}
+        opened={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        dateRange={searchedTimeRange}
       />
       <div style={{ overflow: 'auto', flexGrow: 1 }}>
         <Container size="xl" py="md">

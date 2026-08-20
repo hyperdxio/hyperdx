@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { indexToSeriesRef } from '@hyperdx/common-utils/dist/core/formula';
 import {
   DateRange,
   isChartPaletteToken,
@@ -15,6 +16,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Badge,
   Button,
   Divider,
   Flex,
@@ -254,6 +256,23 @@ export function ChartSeriesEditor({
       <Divider
         label={
           <Group gap="xs">
+            {/* Formula series reference (HDX-5080): formulas address series
+                positionally by letter (`A` = series 1, ...), so surface the
+                letter on each row. Metric sources only — formulas are only
+                supported there. */}
+            {tableSource?.kind === SourceKind.Metric && (
+              <Tooltip label="Reference this series in a formula by this letter">
+                <Badge
+                  size="sm"
+                  radius="sm"
+                  variant="light"
+                  color="gray"
+                  data-testid="series-ref-badge"
+                >
+                  {indexToSeriesRef(index) ?? index + 1}
+                </Badge>
+              </Tooltip>
+            )}
             <Text size="xxs">Alias</Text>
 
             <div style={{ width: 150 }}>
@@ -409,6 +428,7 @@ export function ChartSeriesEditor({
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
               onSubmit={onSubmit}
+              enableVariables
             />
           </div>
         )}
@@ -439,6 +459,7 @@ export function ChartSeriesEditor({
                     showLabel={false}
                     additionalSuggestions={attributeSuggestions}
                     data-testid="series-where-input"
+                    enableVariables
                   />
                 </div>
               </>
@@ -464,6 +485,7 @@ export function ChartSeriesEditor({
                     placeholder="SQL Columns"
                     disableKeywordAutocomplete
                     onSubmit={onSubmit}
+                    enableVariables
                   />
                 </div>
                 {showHaving && (
@@ -479,6 +501,7 @@ export function ChartSeriesEditor({
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>

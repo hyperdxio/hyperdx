@@ -1,16 +1,13 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
+import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
 import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
-import {
-  MACRO_SUGGESTIONS,
-  MacroSuggestion,
-  VARIABLE_MACRO_SUGGESTIONS,
-} from '@hyperdx/common-utils/dist/macros';
+import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
 import {
   BuilderSavedChartConfig,
@@ -30,75 +27,15 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  substituteVariables,
-  VARIABLE_FORMATS,
-  VariableFormat,
-} from '@hyperdx/common-utils/dist/variables';
 
 import { getStoredLanguage } from '@/components/SearchInput';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
+import {
+  buildVariableCompletions,
+  toMacroCompletion,
+} from '@/components/SQLEditor/variableCompletions';
 
 import { ChartEditorFormState } from './types';
-
-/** What each `${name:format}` renders, for the completion's help text. */
-const VARIABLE_FORMAT_DESCRIPTIONS: Record<VariableFormat, string> = {
-  sqlstring: "Quoted and comma-separated, escaped for SQL. e.g. 'a', 'b', 'c'",
-  csv: 'Comma-separated and unquoted. Not SQL-escaped. e.g. a,b,c',
-  regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
-  lucene: 'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c")',
-};
-
-/** What `snippet` expands to against the variable's current selection. */
-function describeVariableExpansion(
-  snippet: string,
-  variable: ChartVariable,
-): string | undefined {
-  let expansion: string;
-  try {
-    expansion = substituteVariables(snippet, [variable]);
-  } catch {
-    return undefined;
-  }
-  return `Expands to: ${expansion === '' ? '(empty string)' : expansion}`;
-}
-
-/**
- * Completion help built as markup rather than a string, so `footnote` sits on
- * its own line.
- *
- * CodeMirror turns a string `info` into a single text node, where a `\n` is
- * subject to the inherited `white-space` and generally collapses to a space.
- * A `Node` is rendered as given, so the break is structural.
- */
-function completionInfo(description: string, footnote: string) {
-  return () => {
-    const dom = document.createElement('div');
-
-    const main = document.createElement('div');
-    main.textContent = description;
-    dom.appendChild(main);
-
-    const sub = document.createElement('div');
-    sub.className = 'cm-completionInfo-footnote';
-    sub.textContent = footnote;
-    dom.appendChild(sub);
-
-    return dom;
-  };
-}
-
-const toMacroCompletion = ({
-  name,
-  minArgs,
-  description,
-}: MacroSuggestion): SQLCompletion => ({
-  label: `$__${name}`,
-  apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
-  detail: 'macro',
-  info: description,
-  type: 'function',
-});
 
 /**
  * Autocomplete entries offered on top of columns/keywords in the raw SQL
@@ -124,90 +61,36 @@ export function buildRawSqlCompletions({
     }),
   );
 
-  const macroCompletions = MACRO_SUGGESTIONS.map(toMacroCompletion);
-
-  if (!variables?.length) {
-    return [...paramCompletions, ...macroCompletions];
-  }
-
-  const variableMacroCompletions =
-    VARIABLE_MACRO_SUGGESTIONS.map(toMacroCompletion);
-
-  const variableCompletions = variables.flatMap((variable): SQLCompletion[] => {
-    const { name } = variable;
-
-    /** A static description and an expansion preview given the current variable selections */
-    const help = (snippet: string | undefined, description: string) => {
-      const expansion =
-        snippet == null
-          ? undefined
-          : describeVariableExpansion(snippet, variable);
-      return expansion ? completionInfo(description, expansion) : description;
-    };
-
-    return [
-      ...(variable.expression
-        ? [
-            {
-              label: `$__filter(${name})`,
-              apply: `$__filter(${name})`,
-              detail: 'variable filter',
-              info: help(
-                `$__filter(${name})`,
-                `Filters by the ${name} variable using its defined expression. Matches every row when no values are selected for the variable.`,
-              ),
-              type: 'function',
-            },
-          ]
-        : []),
-      {
-        label: `$${name}`,
-        apply: `$${name}`,
-        detail: 'variable',
-        info: help(
-          `$${name}`,
-          `The selected values of ${name}, in the default sqlstring format. Has no valid empty state — prefer $__filter(<expression>, ${name}).`,
-        ),
-        type: 'variable',
-      },
-      {
-        label: `\${${name}}`,
-        apply: `\${${name}}`,
-        detail: 'variable',
-        info: help(
-          `\${${name}}`,
-          `The same as $${name}, but delimited — use it when the reference runs into following word characters, as in \${${name}}_total.`,
-        ),
-        type: 'variable',
-      },
-      ...VARIABLE_FORMATS.map((format): SQLCompletion => {
-        const reference = `\${${name}:${format}}`;
-        return {
-          label: reference,
-          apply: reference,
-          detail: 'variable',
-          info: help(reference, VARIABLE_FORMAT_DESCRIPTIONS[format]),
-          type: 'variable',
-        };
-      }),
-    ];
-  });
-
   return [
     ...paramCompletions,
-    ...macroCompletions,
-    ...variableMacroCompletions,
-    ...variableCompletions,
+    ...MACRO_SUGGESTIONS.map(toMacroCompletion),
+    ...buildVariableCompletions(variables),
   ];
 }
 
 function normalizeChartConfig<
   C extends Pick<
     BuilderSavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables' | 'onClick'
+    | 'select'
+    | 'having'
+    | 'orderBy'
+    | 'displayType'
+    | 'metricTables'
+    | 'onClick'
+    | 'formulas'
+    | 'showOperandSeries'
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
+  // Formulas (HDX-5080) only render on metric sources, and only through the
+  // composed multi-series metric query shapes (time series / table / number).
+  // Strip them elsewhere so a source or display-type switch can't persist a
+  // config the renderer would reject. The form state keeps them, so switching
+  // back restores the formula rows.
+  const keepFormulas =
+    isMetricSource &&
+    (config.formulas?.length ?? 0) > 0 &&
+    isFormulaDisplayType(config.displayType);
   return {
     ...config,
     // Strip out metric-specific fields for non-metric sources
@@ -216,6 +99,16 @@ function normalizeChartConfig<
         ? config.select.map(s => omit(s, ['metricName', 'metricType']))
         : config.select,
     metricTables: isMetricSource ? config.metricTables : undefined,
+    formulas: keepFormulas ? config.formulas : undefined,
+    // Number charts display the first value column, so the operand series
+    // are always hidden there (persisted explicitly so the saved tile config
+    // is self-describing; convertToNumberChartConfig enforces the same at
+    // render time). Other display types keep the tile's own toggle value.
+    showOperandSeries: keepFormulas
+      ? config.displayType === DisplayType.Number
+        ? false
+        : config.showOperandSeries
+      : undefined,
     // Order By and Having can only be set by the user for table charts
     having:
       config.displayType === DisplayType.Table ? config.having : undefined,
@@ -278,6 +171,23 @@ const isCustomOrderByDisplayType = (
   displayType === DisplayType.Table ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Pie;
+
+/**
+ * Display types that can carry metric formulas (HDX-5080) — the shapes the
+ * composed multi-series metric query renders. Mirrors the "Add Formula"
+ * gating in ChartEditorControls.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
@@ -564,6 +474,41 @@ export const validateChartForm = (
     });
   }
 
+  // Validate metric formulas (HDX-5080) with the structured validator the
+  // query renderer uses, so a bad expression is caught here rather than at
+  // render time. Only applies where formulas survive normalization (metric
+  // source + formula-capable display type).
+  if (
+    !isRawSqlChart &&
+    source?.kind === SourceKind.Metric &&
+    isFormulaDisplayType(form.displayType) &&
+    Array.isArray(form.formulas)
+  ) {
+    const seriesCount = Array.isArray(form.series) ? form.series.length : 0;
+    form.formulas.forEach((formula, index) => {
+      const result = validateFormula(formula.expression ?? '', {
+        seriesCount,
+      });
+      if (!result.ok) {
+        errors.push({
+          path: `formulas.${index}.expression`,
+          message: result.errors.map(e => e.message).join('; '),
+        });
+      }
+    });
+
+    // A number chart displays a single value — its one formula. Multiple
+    // formulas can only get here by switching an existing multi-formula
+    // chart to the Number display type (the editor hides "Add Formula" once
+    // a Number tile has one); block rather than silently dropping one.
+    if (form.displayType === DisplayType.Number && form.formulas.length > 1) {
+      errors.push({
+        path: `formulas`,
+        message: 'Number charts support a single formula',
+      });
+    }
+  }
+
   // Validate raw SQL alert has required time filters and interval parameters
   if (isRawSqlChart && form.alert) {
     const config = {
@@ -616,11 +561,13 @@ export const validateChartForm = (
 
   // Number charts allow a second series only for ratio mode (numerator /
   // denominator, which can be shown as a percentage via the number format);
-  // otherwise they show a single value.
+  // otherwise they show a single value. With formulas the extra series are
+  // operands (e.g. A / (A + B + C)), so the cap doesn't apply.
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     form.displayType === DisplayType.Number &&
+    !(form.formulas?.length && source?.kind === SourceKind.Metric) &&
     form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
   ) {
     errors.push({

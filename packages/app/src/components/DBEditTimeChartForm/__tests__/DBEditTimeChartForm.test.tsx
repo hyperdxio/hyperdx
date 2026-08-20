@@ -483,6 +483,64 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
   });
 });
 
+describe('DBEditTimeChartForm - Alert variable warning', () => {
+  const SVC = { name: 'svc', expression: 'ServiceName', values: [] };
+
+  const renderWithAlert = async (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) => {
+    renderComponent({
+      chartConfig: { ...defaultChartConfig, displayType: DisplayType.Number },
+      dashboardId: 'test-dashboard-id',
+      ...props,
+    });
+    await userEvent.click(screen.getByTestId('alert-button'));
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('warns that an alerting tile referencing a variable runs on its empty state', async () => {
+    await renderWithAlert({
+      chartConfig: {
+        ...defaultChartConfig,
+        displayType: DisplayType.Number,
+        where: 'ServiceName:$svc',
+      },
+      variables: [SVC],
+    });
+
+    const warning = await screen.findByText('Warning');
+    await userEvent.hover(warning);
+    expect(
+      await screen.findByText(
+        'This tile references $svc. Alerts run with every dashboard variable in its empty state, not the values selected here.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing when the tile references no variable', async () => {
+    await renderWithAlert({ variables: [SVC] });
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(screen.queryByText('Warning')).not.toBeInTheDocument();
+  });
+
+  it('says nothing where no variables are in scope', async () => {
+    await renderWithAlert({
+      chartConfig: {
+        ...defaultChartConfig,
+        displayType: DisplayType.Number,
+        where: 'ServiceName:$svc',
+      },
+    });
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(screen.queryByText('Warning')).not.toBeInTheDocument();
+  });
+});
+
 describe('DBEditTimeChartForm - Duplicate series', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -618,5 +676,263 @@ describe('DBEditTimeChartForm - Column color', () => {
       await screen.findByTestId('color-swatch-input-trigger'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('series-color-apply')).toBeInTheDocument();
+  });
+});
+
+describe('DBEditTimeChartForm - Metric formulas', () => {
+  const mockUseSourceData = (data: unknown) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mocked = { data } as ReturnType<typeof useSource>;
+    jest.mocked(useSource).mockReturnValue(mocked);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Earlier describes override the useSource mock with mockReturnValue
+    // (which survives clearAllMocks), so pin the metric source back.
+    mockUseSourceData({
+      id: 'metric-source',
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      from: { databaseName: 'default', tableName: '' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      metricTables: {
+        gauge: 'metrics.gauge',
+        sum: 'metrics.sum',
+        histogram: 'metrics.histogram',
+      },
+    });
+  });
+
+  const gaugeSeries = {
+    aggFn: 'avg' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'lucene' as const,
+    valueExpression: 'Value',
+    metricType: MetricsDataType.Gauge,
+    metricName: 'test.metric.gauge',
+  };
+
+  const twoSeriesConfig: SavedChartConfig = {
+    ...defaultChartConfig,
+    select: [gaugeSeries, { ...gaugeSeries, metricName: 'test.metric.sum' }],
+  };
+
+  it('shows the Add Formula button and series letter badges for metric sources', () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    expect(screen.getByTestId('add-formula-button')).toBeInTheDocument();
+    const badges = screen.getAllByTestId('series-ref-badge');
+    expect(badges.map(b => b.textContent)).toEqual(['A', 'B']);
+  });
+
+  it('adds a formula row with an expression input when Add Formula is clicked', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+
+    expect(screen.getByTestId('formula-expression-input')).toBeInTheDocument();
+    expect(screen.getByTestId('formula-alias-input')).toBeInTheDocument();
+  });
+
+  it('shows an inline validation error for a malformed expression', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(screen.getByTestId('formula-expression-input'), 'A +');
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Unexpected end of expression/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows an inline validation error for an unknown series reference', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(screen.getByTestId('formula-expression-input'), 'C');
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unknown series "C"/)).toBeInTheDocument();
+    });
+  });
+
+  it('clears the inline error once the expression becomes valid', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    const input = screen.getByTestId('formula-expression-input');
+    await userEvent.type(input, 'C');
+    await waitFor(() => {
+      expect(screen.getByText(/Unknown series "C"/)).toBeInTheDocument();
+    });
+
+    await userEvent.clear(input);
+    await userEvent.type(input, 'A / (A + B) * 100');
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Unknown series/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('saves formulas on the chart config', async () => {
+    const onSave = jest.fn();
+    renderComponent({ chartConfig: twoSeriesConfig, onSave });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(
+      screen.getByTestId('formula-expression-input'),
+      'A / (A + B) * 100',
+    );
+    await userEvent.type(
+      screen.getByTestId('formula-alias-input'),
+      'Share of gauge',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.formulas).toEqual([
+      { expression: 'A / (A + B) * 100', alias: 'Share of gauge' },
+    ]);
+  });
+
+  it('blocks save when the formula expression is invalid', async () => {
+    const onSave = jest.fn();
+    renderComponent({ chartConfig: twoSeriesConfig, onSave });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(screen.getByTestId('formula-expression-input'), 'Z');
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    // Save is rejected by validateChartForm; onSave never fires.
+    await waitFor(() => {
+      expect(screen.getAllByText(/Unknown series "Z"/).length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('removes the formula row and clears formulas from the saved config', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        formulas: [{ expression: 'A + B' }],
+        showOperandSeries: false,
+      },
+      onSave,
+    });
+
+    expect(screen.getByTestId('formula-expression-input')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('formula-remove-button'));
+    expect(
+      screen.queryByTestId('formula-expression-input'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.formulas).toBeUndefined();
+    expect(saved.showOperandSeries).toBeUndefined();
+  });
+
+  it('hides the As Ratio toggle while a formula exists', () => {
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        formulas: [{ expression: 'A + B' }],
+      },
+    });
+
+    expect(screen.queryByLabelText('As Ratio')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Show input series')).toBeInTheDocument();
+  });
+
+  it('hides the Add Formula button while ratio mode is enabled', () => {
+    renderComponent({
+      chartConfig: { ...twoSeriesConfig, seriesReturnType: 'ratio' },
+    });
+
+    expect(screen.getByLabelText('As Ratio')).toBeInTheDocument();
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+  });
+
+  it('toggles showOperandSeries via the Show input series switch', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        formulas: [{ expression: 'A + B' }],
+      },
+      onSave,
+    });
+
+    const toggle = screen.getByLabelText('Show input series');
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
+  });
+
+  it('Number tiles take a single formula and always hide input series', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        displayType: DisplayType.Number,
+        // A formula defined before switching the display type to Number,
+        // with the operand series still shown.
+        formulas: [{ expression: 'A / (A + B) * 100' }],
+      },
+      onSave,
+    });
+
+    // One formula is the cap on Number tiles, and the operand series are
+    // hidden unconditionally, so neither control is offered.
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Show input series'),
+    ).not.toBeInTheDocument();
+
+    // Saving hardcodes hidden operand series onto the config.
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
+  });
+
+  it('does not show formula controls for non-metric sources', () => {
+    mockUseSourceData({
+      id: 'log-source',
+      kind: SourceKind.Log,
+      name: 'Logs',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+    });
+
+    renderComponent({
+      chartConfig: {
+        ...defaultChartConfig,
+        source: 'log-source',
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene' as const,
+            valueExpression: '',
+          },
+        ],
+      },
+    });
+
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('series-ref-badge')).not.toBeInTheDocument();
   });
 });

@@ -56,6 +56,24 @@ describe('ColorConditionSchema', () => {
       });
       expect(result.success).toBe(true);
     });
+
+    // `value` is a fixed-length array rather than a tuple so the MCP tools can
+    // publish a draft-2020-12-valid JSON Schema. These guard that the looser
+    // container still pins arity and element type exactly as a tuple did.
+    it.each([
+      ['too few bounds', [10]],
+      ['too many bounds', [10, 100, 1000]],
+      ['a non-numeric bound', [10, '100']],
+      ['a non-finite bound', [10, Infinity]],
+      ['a bare number', 10],
+    ])('rejects %s', (_label, value) => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'between',
+        value,
+        color: 'chart-blue',
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('eq / neq operators', () => {

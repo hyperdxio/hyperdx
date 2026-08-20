@@ -36,7 +36,7 @@ const mockNuqs: {
 
 jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
+
   const noop = () => {};
   return {
     ...actual,

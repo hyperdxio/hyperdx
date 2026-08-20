@@ -1,12 +1,16 @@
 import { MalformedMacroArgsError } from '@/macroErrors';
-import type { ChartVariable } from '@/types';
+import type { BuilderChartConfig, ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
   formatVariableValues,
+  getAlertVariableWarning,
   getReferencedVariableNames,
   getVariableReferences,
   hasVariableMacro,
+  substituteChartConfigVariables,
   substituteVariables,
+  substituteVariablesForLanguage,
+  validateVariableReferencesInTemplate,
 } from '@/variables';
 
 const variable = (
@@ -17,6 +21,18 @@ const variable = (
 
 const SERVICE = variable('service', ['api', 'web'], 'ServiceName');
 const EMPTY_SERVICE = variable('service', [], 'ServiceName');
+
+const builderConfig = (
+  overrides: Partial<BuilderChartConfig> = {},
+): BuilderChartConfig => ({
+  select: 'count()',
+  from: { databaseName: 'default', tableName: 'logs' },
+  where: '',
+  whereLanguage: 'sql',
+  timestampValueExpression: 'Timestamp',
+  connection: 'local',
+  ...overrides,
+});
 
 describe('formatVariableValues', () => {
   describe('sqlstring', () => {
@@ -72,8 +88,10 @@ describe('formatVariableValues', () => {
   });
 
   describe('lucene', () => {
-    it('renders a match-all wildcard when nothing is selected', () => {
-      expect(formatVariableValues([], 'lucene')).toBe('*');
+    it('renders an empty term when nothing is selected', () => {
+      // Parenthesized so it stays a no-op in a field-scoped position; see the
+      // queryParser test that pins `ServiceName:("")` to `1=1`.
+      expect(formatVariableValues([], 'lucene')).toBe('("")');
     });
 
     it('renders a single quoted term', () => {
@@ -334,6 +352,55 @@ describe('substituteVariables', () => {
 
   it('does not treat $__filters as the $__filter macro', () => {
     expect(substituteVariables('$__filters', [SERVICE])).toBe('$__filters');
+  });
+});
+
+describe('substituteVariablesForLanguage', () => {
+  it('expands references as SQL strings and macros as predicates for sql', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName IN ($service) AND $__filter(ServiceName, service)',
+        [SERVICE],
+        'sql',
+      ),
+    ).toBe("ServiceName IN ('api', 'web') AND (ServiceName IN ('api', 'web'))");
+  });
+
+  it('expands references in the lucene format for lucene', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName:$service',
+        [SERVICE],
+        'lucene',
+      ),
+    ).toBe('ServiceName:("api" OR "web")');
+  });
+
+  it('leaves macros as written in a lucene expression', () => {
+    expect(
+      substituteVariablesForLanguage(
+        '$__filter(ServiceName, service)',
+        [SERVICE],
+        'lucene',
+      ),
+    ).toBe('$__filter(ServiceName, service)');
+  });
+
+  it('renders an empty selection in each language', () => {
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName IN ($service)',
+        [EMPTY_SERVICE],
+        'sql',
+      ),
+    ).toBe('ServiceName IN (NULL)');
+    expect(
+      substituteVariablesForLanguage(
+        'ServiceName:$service',
+        [EMPTY_SERVICE],
+        'lucene',
+      ),
+    ).toBe('ServiceName:("")');
   });
 });
 
@@ -671,19 +738,398 @@ describe('filterReferencedVariables', () => {
     ).toEqual([]);
   });
 
-  it('returns an empty array for a builder config even when its fields mention a variable', () => {
+  it('keeps the variables a builder config references, across every expression field', () => {
     expect(
       filterReferencedVariables(
+        builderConfig({
+          select: [
+            { aggFn: 'count', valueExpression: '', aggCondition: '$service' },
+          ],
+          where: '',
+          having: 'count() > 0',
+          groupBy: [{ valueExpression: '$__filter(RegionName, region)' }],
+          orderBy: [{ valueExpression: '$env', ordering: 'DESC' }],
+        }),
+        variables,
+      ),
+    ).toEqual(variables);
+  });
+
+  it('returns an empty array when a builder config references none of them', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({ where: 'ServiceName = $nope' }),
+        variables,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('getAlertVariableWarning', () => {
+  const variables = [SERVICE, variable('env', ['prod'])];
+
+  const rawSqlConfig = (sqlTemplate: string) =>
+    ({ configType: 'sql', sqlTemplate, connection: 'local' }) as const;
+
+  it('says nothing when no variables are in scope', () => {
+    const config = rawSqlConfig('WHERE ServiceName = $service');
+    expect(getAlertVariableWarning(config, undefined)).toBeUndefined();
+    expect(getAlertVariableWarning(config, [])).toBeUndefined();
+  });
+
+  it('says nothing when the query references none of them', () => {
+    expect(
+      getAlertVariableWarning(rawSqlConfig('SELECT 1'), variables),
+    ).toBeUndefined();
+    expect(
+      getAlertVariableWarning(builderConfig({ where: '' }), variables),
+    ).toBeUndefined();
+  });
+
+  it('says nothing for a PromQL config, which cannot use variables', () => {
+    expect(
+      getAlertVariableWarning(
         {
-          select: 'count()',
-          from: { databaseName: 'default', tableName: 'logs' },
-          where: 'ServiceName = $service',
-          whereLanguage: 'sql',
-          timestampValueExpression: 'Timestamp',
+          configType: 'promql',
+          promqlExpression: 'up{service="$service"}',
           connection: 'local',
         },
         variables,
       ),
-    ).toEqual([]);
+    ).toBeUndefined();
+  });
+
+  it('names only the variables the raw SQL references', () => {
+    expect(
+      getAlertVariableWarning(
+        rawSqlConfig('WHERE ServiceName = $service AND $nope'),
+        variables,
+      ),
+    ).toBe(
+      'This tile references $service. Alerts run with every dashboard variable ' +
+        'in its empty state, not the values selected here.',
+    );
+  });
+
+  it('names every variable a builder config references, across its expressions', () => {
+    expect(
+      getAlertVariableWarning(
+        builderConfig({
+          select: [
+            { aggFn: 'count', valueExpression: '', aggCondition: '$env' },
+          ],
+          where: '$__filter(ServiceName, service)',
+        }),
+        variables,
+      ),
+    ).toBe(
+      'This tile references $service, $env. Alerts run with every dashboard ' +
+        'variable in its empty state, not the values selected here.',
+    );
+  });
+});
+
+describe('substituteChartConfigVariables', () => {
+  it('returns the config untouched when there is no variable context', () => {
+    const config = builderConfig({ where: 'ServiceName = $service' });
+    expect(substituteChartConfigVariables(config)).toBe(config);
+  });
+
+  it('expands references in where and having, and consumes the variables', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName IN ($service)',
+          having: 'anyLast(Env) = $env',
+          variables: [SERVICE, variable('env', ['prod'])],
+        }),
+      ),
+    ).toMatchObject({
+      where: "ServiceName IN ('api', 'web')",
+      having: "anyLast(Env) = 'prod'",
+      variables: undefined,
+    });
+  });
+
+  it('expands a lucene where clause using the lucene format', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName:$service',
+          whereLanguage: 'lucene',
+          variables: [SERVICE],
+        }),
+      ).where,
+    ).toBe('ServiceName:("api" OR "web")');
+  });
+
+  it('renders an empty lucene selection as a term that drops out', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName:$service',
+          whereLanguage: 'lucene',
+          variables: [EMPTY_SERVICE],
+        }),
+      ).where,
+    ).toBe('ServiceName:("")');
+  });
+
+  it('leaves the variable macros alone in a lucene expression', () => {
+    // They expand to SQL, which a Lucene parser cannot read, so they are not
+    // supported there — and an unknown variable must not throw either.
+    const template =
+      '$__filter(ServiceName, service) $__conditionalAll(a, foo)';
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: template,
+          whereLanguage: 'lucene',
+          variables: [SERVICE],
+        }),
+      ).where,
+    ).toBe(template);
+  });
+
+  it('still expands the macros in a lucene chart’s SQL-language fields', () => {
+    // whereLanguage only governs `where`; `having` is SQL regardless.
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '',
+          whereLanguage: 'lucene',
+          having: '$__filter(ServiceName, service)',
+          variables: [SERVICE],
+        }),
+      ).having,
+    ).toBe("(ServiceName IN ('api', 'web'))");
+  });
+
+  it('expands select value expressions and agg conditions', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          select: [
+            {
+              aggFn: 'count',
+              valueExpression: '',
+              // aggCondition defaults to lucene, like the renderer
+              aggCondition: 'ServiceName:$service',
+            },
+            {
+              valueExpression: 'countIf(ServiceName IN ($service))',
+            },
+          ],
+          variables: [SERVICE],
+        }),
+      ).select,
+    ).toEqual([
+      {
+        aggFn: 'count',
+        valueExpression: '',
+        aggCondition: 'ServiceName:("api" OR "web")',
+      },
+      { valueExpression: "countIf(ServiceName IN ('api', 'web'))" },
+    ]);
+  });
+
+  it('expands group by and order by, in both their string and list forms', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          groupBy: '$__conditionalAll(ServiceName, service)',
+          orderBy: [{ valueExpression: '$service', ordering: 'ASC' }],
+          variables: [SERVICE],
+        }),
+      ),
+    ).toMatchObject({
+      groupBy: '(ServiceName)',
+      orderBy: [{ valueExpression: "'api', 'web'", ordering: 'ASC' }],
+    });
+  });
+
+  it('leaves the non-variable macros alone', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '$__timeFilter(Timestamp) AND ServiceName IN ($service)',
+          variables: [SERVICE],
+        }),
+      ).where,
+    ).toBe("$__timeFilter(Timestamp) AND ServiceName IN ('api', 'web')");
+  });
+
+  it('never re-scans an expansion, so a selected value cannot inject a reference', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: 'ServiceName IN ($service)',
+          variables: [variable('service', ['$env']), variable('env', ['prod'])],
+        }),
+      ).where,
+    ).toBe("ServiceName IN ('$env')");
+  });
+
+  it('renders an empty selection so the query stays valid', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '$__filter(ServiceName, service)',
+          variables: [EMPTY_SERVICE],
+        }),
+      ).where,
+    ).toBe("(1=1 /** no values selected for variable 'service' */)");
+  });
+});
+
+describe('validateVariableReferencesInTemplate', () => {
+  const validate = validateVariableReferencesInTemplate;
+
+  it('says nothing about an expression with no references', () => {
+    expect(validate("ServiceName = 'api'", [SERVICE])).toEqual({
+      errors: [],
+      warnings: [],
+    });
+  });
+
+  it('warns about a reference to a variable that does not exist', () => {
+    const { errors, warnings } = validate('ServiceName IN ($srvice)', [
+      SERVICE,
+      variable('env', ['prod']),
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([
+      'SQL references unknown variable $srvice. Available variables: service, env.',
+    ]);
+  });
+
+  it('lists the available variables as (none) when a dashboard declares none', () => {
+    expect(validate('ServiceName IN ($service)', []).warnings).toEqual([
+      'SQL references unknown variable $service. Available variables: (none).',
+    ]);
+  });
+
+  it('names each unknown reference once, as written', () => {
+    expect(validate('$a = ${a} AND ${b:csv} = 1', [SERVICE]).warnings).toEqual([
+      'SQL references unknown variable $a, ${a}, ${b:csv}. Available variables: service.',
+    ]);
+  });
+
+  it('takes the sentence subject from the caller', () => {
+    expect(
+      validate('ServiceName IN ($srvice)', [SERVICE], {
+        subject: 'This expression',
+      }).warnings,
+    ).toEqual([
+      'This expression references unknown variable $srvice. Available variables: service.',
+    ]);
+  });
+
+  it('errors when a sqlstring reference is wrapped in quotes', () => {
+    const { errors } = validate("ServiceName = '$service'", [SERVICE]);
+
+    expect(errors).toEqual([
+      '$service is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, service) or ${service:csv} instead?',
+    ]);
+  });
+
+  it('warns that a bare reference renders as NULL before anything is selected', () => {
+    const { errors, warnings } = validate('ServiceName IN ($service)', [
+      SERVICE,
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([
+      '$service has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, service) or $__conditionalAll(<condition>, service) so the query stays valid when no values are selected.',
+    ]);
+  });
+
+  it('accepts a reference guarded by its own variable macro', () => {
+    expect(
+      validate('$__filter(ServiceName IN ($service), service)', [SERVICE]),
+    ).toEqual({ errors: [], warnings: [] });
+  });
+
+  it('accepts a format that has a valid empty state', () => {
+    expect(validate('match(ServiceName, ${service:regex})', [SERVICE])).toEqual(
+      { errors: [], warnings: [] },
+    );
+  });
+
+  describe('with no variable context at all', () => {
+    it('errors on a macro, which can only have been meant as one', () => {
+      expect(validate('$__filter(ServiceName, service)', undefined)).toEqual({
+        errors: ['SQL uses $__filter, but no variables are available here.'],
+        warnings: [],
+      });
+    });
+
+    it('only warns on a value reference, which may be literal text', () => {
+      expect(validate('ServiceName IN ($service)', undefined)).toEqual({
+        errors: [],
+        warnings: [
+          'SQL references $service, but no variables are available here.',
+        ],
+      });
+    });
+  });
+
+  describe('a Lucene expression', () => {
+    it('still warns about a reference to a variable that does not exist', () => {
+      expect(
+        validate('ServiceName:$srvice', [SERVICE], { language: 'lucene' })
+          .warnings,
+      ).toEqual([
+        'SQL references unknown variable $srvice. Available variables: service.',
+      ]);
+    });
+
+    it('accepts a bare reference: the lucene format has a valid empty state', () => {
+      expect(
+        validate('ServiceName:$service', [SERVICE], { language: 'lucene' }),
+      ).toEqual({ errors: [], warnings: [] });
+    });
+
+    it('accepts a quoted reference: the lucene format quotes each value', () => {
+      expect(
+        validate('ServiceName:"$service"', [SERVICE], { language: 'lucene' }),
+      ).toEqual({ errors: [], warnings: [] });
+    });
+
+    // The macros are never expanded here, so nothing downstream would say so.
+    it.each([
+      '$__filter(ServiceName, service)',
+      '$__conditionalAll(ServiceName = 1, service)',
+    ])('errors on the macro %s, which is left as literal text', template => {
+      expect(validate(template, [SERVICE], { language: 'lucene' })).toEqual({
+        errors: [
+          `${template.slice(0, template.indexOf('('))} has no meaning in a Lucene expression — ` +
+            'it is left as written and matched as literal text. Switch this input to SQL, ' +
+            'or reference the variable directly, as in <field>:$service.',
+        ],
+        warnings: [],
+      });
+    });
+
+    it('reports a macro naming an unknown variable the same way', () => {
+      expect(
+        validate('$__filter(ServiceName, srvice)', [SERVICE], {
+          language: 'lucene',
+        }).errors,
+      ).toEqual([
+        '$__filter has no meaning in a Lucene expression — it is left as written ' +
+          'and matched as literal text. Switch this input to SQL, or reference the ' +
+          'variable directly, as in <field>:$srvice.',
+      ]);
+    });
+
+    it('leaves the same macro alone in a SQL expression, where it expands', () => {
+      expect(
+        validate('$__filter(ServiceName, service)', [SERVICE], {
+          language: 'sql',
+        }),
+      ).toEqual({ errors: [], warnings: [] });
+    });
   });
 });

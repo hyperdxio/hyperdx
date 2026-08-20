@@ -1,7 +1,7 @@
 import React, {
   memo,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -1559,7 +1559,7 @@ function DBSqlRowTableComponent({
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
-    useContext(RowSidePanelContext);
+    use(RowSidePanelContext);
 
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
     initialSortBy?.[0] ?? null,

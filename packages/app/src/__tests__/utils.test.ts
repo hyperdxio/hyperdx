@@ -13,6 +13,7 @@ import {
   COLORS,
   evaluateColorCondition,
   formatAttributeClause,
+  formatColumnEquals,
   formatDistanceToNowStrictShort,
   formatDurationMs,
   formatDurationMsCompact,
@@ -43,6 +44,10 @@ describe('formatAttributeClause', () => {
     expect(formatAttributeClause('data', 'user-id', 'abc-123', true)).toBe(
       "data['user-id']='abc-123'",
     );
+
+    expect(formatAttributeClause('data', 'user-id', "O'Brien", true)).toBe(
+      "data['user-id']='O''Brien'",
+    );
   });
 
   it('should format lucene attribute clause correctly', () => {
@@ -56,6 +61,54 @@ describe('formatAttributeClause', () => {
 
     expect(formatAttributeClause('data', 'user-id', 'abc-123', false)).toBe(
       'data.user-id:"abc-123"',
+    );
+
+    expect(formatAttributeClause('data', 'user-id', 'say "hello"', false)).toBe(
+      'data.user-id:"say \\"hello\\""',
+    );
+  });
+
+  it('escapes backslashes so a trailing backslash cannot escape the closing quote', () => {
+    expect(
+      formatAttributeClause('ResourceAttributes', 'path', 'C:\\logs\\', true),
+    ).toBe("ResourceAttributes['path']='C:\\\\logs\\\\'");
+
+    expect(
+      formatAttributeClause('ResourceAttributes', 'path', 'C:\\logs\\', false),
+    ).toBe('ResourceAttributes.path:"C:\\\\logs\\\\"');
+
+    // A value crafted to break out of the SQL literal stays inside it
+    expect(formatAttributeClause('attrs', 'k', "\\' OR 1=1 --", true)).toBe(
+      "attrs['k']='\\\\'' OR 1=1 --'",
+    );
+  });
+});
+
+describe('formatColumnEquals', () => {
+  it('formats SQL column equality with quote escaping', () => {
+    expect(formatColumnEquals('ServiceName', 'my-svc', true)).toBe(
+      "ServiceName = 'my-svc'",
+    );
+    expect(formatColumnEquals('Name', "O'Brien", true)).toBe(
+      "Name = 'O''Brien'",
+    );
+  });
+
+  it('formats Lucene column equality with quote escaping', () => {
+    expect(formatColumnEquals('ServiceName', 'my-svc', false)).toBe(
+      'ServiceName:"my-svc"',
+    );
+    expect(formatColumnEquals('Name', 'say "hello"', false)).toBe(
+      'Name:"say \\"hello\\""',
+    );
+  });
+
+  it('escapes backslashes in both languages', () => {
+    expect(formatColumnEquals('Path', 'C:\\logs\\', true)).toBe(
+      "Path = 'C:\\\\logs\\\\'",
+    );
+    expect(formatColumnEquals('Path', 'C:\\logs\\', false)).toBe(
+      'Path:"C:\\\\logs\\\\"',
     );
   });
 });

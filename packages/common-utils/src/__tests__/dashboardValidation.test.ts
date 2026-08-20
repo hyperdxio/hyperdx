@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
   validateDashboardFilterVariableNames,
 } from '@/dashboardValidation';
@@ -275,5 +276,146 @@ describe('validateDashboardFilterModes', () => {
       0,
       'isBroadcastEnabled',
     ]);
+  });
+});
+
+type GatingFilter = ModeFilter & {
+  variableName?: string;
+  appliesToSourceIds?: string[];
+};
+
+const collectGatingIssues = (
+  filters: GatingFilter[],
+  paths?: { filtersPath?: (string | number)[] },
+) => {
+  const schema = z
+    .object({})
+    .superRefine((_, ctx) =>
+      validateDashboardFilterFieldGating(filters, ctx, paths),
+    );
+  const result = schema.safeParse({});
+  return result.success ? [] : result.error.issues;
+};
+
+describe('validateDashboardFilterFieldGating', () => {
+  it('accepts an empty filter list', () => {
+    expect(collectGatingIssues([])).toEqual([]);
+  });
+
+  it('accepts a filter that carries neither field', () => {
+    expect(collectGatingIssues([{ name: 'Service' }])).toEqual([]);
+  });
+
+  it('accepts each field in the mode that uses it', () => {
+    expect(
+      collectGatingIssues([
+        {
+          name: 'Variable',
+          isVariableEnabled: true,
+          variableName: 'service',
+        },
+        {
+          name: 'Broadcast',
+          isBroadcastEnabled: true,
+          appliesToSourceIds: ['source-1'],
+        },
+        {
+          name: 'Both',
+          isVariableEnabled: true,
+          variableName: 'environment',
+          appliesToSourceIds: ['source-1'],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('rejects a variableName on a filter that is not variable-enabled', () => {
+    const issues = collectGatingIssues([
+      { name: 'Service', variableName: 'service' },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'variableName']);
+    expect(issues[0].message).toBe(
+      'Filter "Service" sets variableName but is not available as a variable; set isVariableEnabled to true or drop variableName',
+    );
+  });
+
+  it('rejects a variableName when the variable is explicitly disabled', () => {
+    expect(
+      collectGatingIssues([
+        { name: 'Service', isVariableEnabled: false, variableName: 'service' },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('rejects appliesToSourceIds on a filter that does not broadcast', () => {
+    const issues = collectGatingIssues([
+      {
+        name: 'Service',
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        appliesToSourceIds: ['source-1'],
+      },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'appliesToSourceIds']);
+    expect(issues[0].message).toBe(
+      'Filter "Service" sets appliesToSourceIds but does not broadcast its value; set isBroadcastEnabled to true or drop appliesToSourceIds',
+    );
+  });
+
+  // An empty array is what "applies to all tiles" looks like, so it restricts
+  // nothing and cannot contradict a disabled broadcast.
+  it('accepts an empty appliesToSourceIds on a non-broadcasting filter', () => {
+    expect(
+      collectGatingIssues([
+        {
+          name: 'Service',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          appliesToSourceIds: [],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  // Missing means broadcasting, so a filter that predates the flag keeps its
+  // scope.
+  it('accepts appliesToSourceIds when the broadcast flag is omitted', () => {
+    expect(
+      collectGatingIssues([
+        { name: 'Service', appliesToSourceIds: ['source-1'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reports both fields on one filter, and every offending filter', () => {
+    const issues = collectGatingIssues([
+      { name: 'Fine', isVariableEnabled: true, variableName: 'service' },
+      {
+        name: 'Both wrong',
+        isBroadcastEnabled: false,
+        variableName: 'environment',
+        appliesToSourceIds: ['source-1'],
+      },
+      { name: 'Stray name', variableName: 'region' },
+    ]);
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['filters', 1, 'variableName'],
+      ['filters', 1, 'appliesToSourceIds'],
+      ['filters', 2, 'variableName'],
+    ]);
+  });
+
+  it('honors a custom filters path', () => {
+    const issues = collectGatingIssues(
+      [{ name: 'Service', variableName: 'service' }],
+      { filtersPath: ['body', 'filters'] },
+    );
+
+    expect(issues[0].path).toEqual(['body', 'filters', 0, 'variableName']);
   });
 });
