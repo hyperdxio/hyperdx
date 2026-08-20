@@ -1629,7 +1629,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *
  *     FilterInput:
  *       type: object
- *       description: Dashboard filter key that can be added to a dashboard
+ *       description: |
+ *         A drop-down filter on a dashboard. Every filter can either broadcast its
+ *         selected value(s) to every tile (isBroadcastEnabled), expose its selected
+ *         value as a variable (isVariableEnabled) or both. Typically a filter should
+ *         do just one of these things.
  *       required:
  *         - type
  *         - name
@@ -1649,7 +1653,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         expression:
  *           type: string
  *           minLength: 1
- *           description: Key expression used when applying this dashboard filter key
+ *           description: SQL expression used when querying values for this filter, and when applying this dashboard filter to tiles.
  *           example: "environment"
  *         sourceId:
  *           type: string
@@ -1679,8 +1683,42 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             an empty array to apply the filter to ALL tiles regardless of source.
  *             A non-empty array restricts the filter to only tiles whose source ID
  *             is in the list; tiles using other sources are not affected by the
- *             selected filter value(s).
+ *             selected filter value(s). Scopes the broadcast condition only, so a
+ *             non-empty array is rejected when isBroadcastEnabled is false, and is
+ *             omitted from responses for such a filter.
  *           example: ["65f5e4a3b9e77c001a111111"]
+ *         isBroadcastEnabled:
+ *           type: boolean
+ *           description: |
+ *             Whether the selected value is applied as a filter condition on every
+ *             builder tile this filter applies to (see appliesToSourceIds), and every
+ *             raw sql tile using the $__filters macro. Omitting the field means enabled.
+ *           default: true
+ *           example: false
+ *         isVariableEnabled:
+ *           type: boolean
+ *           description: |
+ *             Whether the selected value is exposed to tile queries as a dashboard
+ *             variable named by variableName. Tiles may reference it as `$variableName`
+ *             or using the (preferred) `$__filter(<variableName>)` and
+ *             `$__conditionalAll(<condition>, <variableName>)` macros.
+ *           default: false
+ *           example: true
+ *         variableName:
+ *           type: string
+ *           maxLength: 64
+ *           pattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+ *           description: |
+ *             Token tiles reference this filter's selected value by, as
+ *             `$variableName`. Must start with a letter and may contain only
+ *             letters, numbers, and underscores. Defaults to the display name with
+ *             whitespace replaced by underscores and remaining illegal characters
+ *             removed, so a variable-enabled filter whose name derives nothing
+ *             usable must send this field explicitly. Variable names must be unique
+ *             across a dashboard's variable-enabled filters. Names the variable
+ *             only, so the field is rejected when isVariableEnabled is not true, and
+ *             is omitted from responses for such a filter.
+ *           example: "environment"
  *
  *     Filter:
  *       allOf:
@@ -1721,7 +1759,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: ["production", "monitoring"]
  *         filters:
  *           type: array
- *           description: Dashboard filter keys added to the dashboard and applied to all tiles
+ *           description: |
+ *             Dropdown filters added to the dashboard. Each one broadcasts
+ *             its selected value as a condition, acts as a variable which
+ *             can be referenced in tile queries, or both.
  *           items:
  *             $ref: '#/components/schemas/Filter'
  *         savedQuery:
@@ -1774,7 +1815,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: ["development"]
  *         filters:
  *           type: array
- *           description: Dashboard filter keys to add to the dashboard and apply across all tiles
+ *           description: |
+ *             Dropdown filters added to the dashboard. Each one broadcasts
+ *             its selected value as a condition, acts as a variable which
+ *             can be referenced in tile queries, or both.
  *           items:
  *             $ref: '#/components/schemas/FilterInput'
  *         savedQuery:
@@ -1827,7 +1871,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: ["production", "updated"]
  *         filters:
  *           type: array
- *           description: Dashboard filter keys on the dashboard, applied across all tiles
+ *           description: |
+ *             Dropdown filters added to the dashboard. Each one broadcasts
+ *             its selected value as a condition, acts as a variable which
+ *             can be referenced in tile queries, or both.
  *           items:
  *             $ref: '#/components/schemas/Filter'
  *         savedQuery:

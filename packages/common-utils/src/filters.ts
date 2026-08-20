@@ -9,6 +9,10 @@ import {
   DashboardFilter,
   Filter,
 } from '@/types';
+import {
+  getVariableReferences,
+  substituteVariablesForLanguage,
+} from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -687,6 +691,8 @@ export type DashboardFilterQueryIssue = {
   language: 'lucene' | 'sql';
   /** The raw `where` clause that failed to parse */
   where: string;
+  /** Why it failed, when the clause itself parses but its variables don't resolve. */
+  detail?: string;
 };
 
 /**
@@ -698,6 +704,8 @@ export type DashboardFilterQueryIssue = {
  * after opening the dashboard. Returns one issue per filter whose `where`
  * fails to parse as its declared language.
  *
+ * Variable references are expanded before the parse validation.
+ *
  * Note: this only checks that the `where` clause *parses*. It cannot catch a
  * `where`/`expression` that references a non-existent column — that only fails
  * when the query runs against ClickHouse.
@@ -706,12 +714,27 @@ export function validateDashboardFilterQueries(
   filters: DashboardFilter[],
 ): DashboardFilterQueryIssue[] {
   const issues: DashboardFilterQueryIssue[] = [];
+
+  // Variables are expanded with an empty selection.
+  const variables: ChartVariable[] = getDashboardVariableDeclarations(
+    filters,
+  ).map(declaration => ({ ...declaration, values: [] }));
+
   for (const filter of filters) {
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
     if (language !== 'lucene' && language !== 'sql') continue;
-    if (!isValidFilterCondition(where, language)) {
+    const resolved = resolveFilterValuesWhere(filter, variables);
+    if (resolved.error) {
+      issues.push({
+        filterId: filter.id,
+        filterName: filter.name,
+        language,
+        where,
+        detail: resolved.error,
+      });
+    } else if (!isValidFilterCondition(resolved.where, language)) {
       issues.push({
         filterId: filter.id,
         filterName: filter.name,
@@ -804,6 +827,82 @@ export function getDashboardVariableDeclarations(
   }
 
   return declarations;
+}
+
+export type ResolvedFilterValuesQuery = {
+  /** The clause the values lookup actually runs. */
+  where: string;
+  whereLanguage: 'lucene' | 'sql';
+  /** Set when expansion failed; `where` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a filter's dropdown-values query references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the clause as written, so
+ * downstream lookup still runs and reports an `error`.
+ */
+export function resolveFilterValuesWhere(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): ResolvedFilterValuesQuery {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim()) {
+    return { where, whereLanguage };
+  }
+
+  try {
+    return {
+      where: substituteVariablesForLanguage(where, variables, whereLanguage),
+      whereLanguage,
+    };
+  } catch (e) {
+    return {
+      where,
+      whereLanguage,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/**
+ * Variables whose selection a filter's dropdown-values query needs before it can
+ * match anything.
+ *
+ * Only bare and braced SQL references qualify. `$__filter` /
+ * `$__conditionalAll` expand to `(1=1)`, the `regex` format to `.*`, and a
+ * Lucene reference to `("")` (rendered as `(1=1)`), so all of those list every
+ * value while their variable is empty. A `sqlstring` reference renders as
+ * `NULL` and a `csv` one as nothing at all, which match no rows.
+ */
+export function getPendingFilterValuesVariables(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): string[] {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim() || whereLanguage !== 'sql') return [];
+
+  const emptyVariableNames = new Set(
+    variables.filter(v => v.values.length === 0).map(v => v.name),
+  );
+  if (emptyVariableNames.size === 0) return [];
+
+  const pending = getVariableReferences(where)
+    .filter(
+      reference =>
+        reference.kind !== 'macro' &&
+        // A reference inside the macro that guards it is only emitted once the
+        // variable has values, so it needs no empty-state rendering of its own.
+        reference.guardedBy !== reference.name &&
+        (reference.format ?? 'sqlstring') !== 'regex' &&
+        emptyVariableNames.has(reference.name),
+    )
+    .map(reference => reference.name);
+
+  return Array.from(new Set(pending));
 }
 
 /**

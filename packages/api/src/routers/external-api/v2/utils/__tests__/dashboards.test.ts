@@ -14,6 +14,7 @@ import {
   convertToExternalDashboard,
   convertToInternalTileConfig,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { externalDashboardSelectItemSchema } from '@/utils/zod';
 
 function makeMarkdownTile(
   markdown?: string,
@@ -282,49 +283,51 @@ describe('collectTileContainerRefIssues', () => {
   });
 });
 
-describe('convertToExternalDashboard orphan-ref heal', () => {
-  // `tiles` is `Mixed` in Mongoose, so the model layer can't enforce
-  // ref consistency. These tests cover the read-path heal: a doc that
-  // somehow ends up with a tile pointing at a missing container or
-  // tab must round-trip on read as if the ref were absent. Without
-  // this, the next PUT body schema rejects the round-tripped tile
-  // and the dashboard becomes uneditable from the external API.
-  function makeDoc(
-    overrides: Partial<DashboardDocument> = {},
-  ): DashboardDocument {
-    return {
-      _id: new mongoose.Types.ObjectId(),
-      name: 'Test',
-      tiles: [],
-      tags: [],
-      filters: [],
-      savedQuery: null,
-      savedQueryLanguage: null,
-      savedFilterValues: [],
-      ...overrides,
-    } as unknown as DashboardDocument;
-  }
+// `tiles` is `Mixed` in Mongoose, so the model layer enforces nothing and a
+// stored doc can hold shapes the TS types do not describe — an orphan container
+// ref, a select entry carrying a field its aggregation cannot use. Overrides are
+// loosely typed so a fixture can model that; the read-path heal is what these
+// tests are about.
+function makeDoc(overrides: Record<string, unknown> = {}): DashboardDocument {
+  return {
+    _id: new mongoose.Types.ObjectId(),
+    name: 'Test',
+    tiles: [],
+    tags: [],
+    filters: [],
+    savedQuery: null,
+    savedQueryLanguage: null,
+    savedFilterValues: [],
+    ...overrides,
+  } as unknown as DashboardDocument;
+}
 
-  function makeTile(
-    overrides: Partial<DashboardDocument['tiles'][number]> = {},
-  ): DashboardDocument['tiles'][number] {
-    return {
-      id: 't1',
-      x: 0,
-      y: 0,
-      w: 1,
-      h: 1,
-      config: {
-        displayType: DisplayType.Markdown,
-        markdown: '',
-        source: '',
-        where: '',
-        select: [],
-        name: '',
-      },
-      ...overrides,
-    };
-  }
+function makeTile(
+  overrides: Record<string, unknown> = {},
+): DashboardDocument['tiles'][number] {
+  return {
+    id: 't1',
+    x: 0,
+    y: 0,
+    w: 1,
+    h: 1,
+    config: {
+      displayType: DisplayType.Markdown,
+      markdown: '',
+      source: '',
+      where: '',
+      select: [],
+      name: '',
+    },
+    ...overrides,
+  } as DashboardDocument['tiles'][number];
+}
+
+describe('convertToExternalDashboard orphan-ref heal', () => {
+  // A tile pointing at a missing container or tab must round-trip on read as if
+  // the ref were absent. Without this, the next PUT body schema rejects the
+  // round-tripped tile and the dashboard becomes uneditable from the external
+  // API.
 
   it('drops containerId on read when no container matches', () => {
     const doc = makeDoc({
@@ -445,4 +448,96 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
       });
     },
   );
+});
+
+describe('convertToExternalDashboard stale aggregation params', () => {
+  // Switching a tile's aggregation in the editor leaves the previous agg's
+  // parameter behind in the stored config. It is inert for rendering, but the
+  // external input schema rejects it, so emitting it on read produced a GET
+  // body that could not be PUT back — and broke `terraform plan` on an
+  // imported dashboard.
+  function firstSelect(select: Record<string, unknown>[]) {
+    const doc = makeDoc({
+      tiles: [
+        makeTile({
+          config: {
+            displayType: DisplayType.Line,
+            source: new mongoose.Types.ObjectId().toString(),
+            where: '',
+            select,
+            name: 'Tile',
+          },
+        }),
+      ],
+    });
+    const config = convertToExternalDashboard(doc).tiles[0].config;
+    if (config == null || !('select' in config) || config.select == null) {
+      throw new Error('expected a select on the converted tile');
+    }
+    return config.select[0];
+  }
+
+  it('drops level left over from a quantile agg on a count', () => {
+    const select = firstSelect([
+      { aggFn: 'count', level: 0.9, aggCondition: '' },
+    ]);
+    expect(select).not.toHaveProperty('level');
+  });
+
+  it('keeps level on a quantile agg', () => {
+    const select = firstSelect([
+      {
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: '',
+      },
+    ]);
+    expect(select).toMatchObject({ aggFn: 'quantile', level: 0.95 });
+  });
+
+  it('drops valueExpression left over from a value agg on a count', () => {
+    const select = firstSelect([
+      { aggFn: 'count', valueExpression: 'Duration', aggCondition: '' },
+    ]);
+    expect(select).not.toHaveProperty('valueExpression');
+  });
+
+  it('keeps an empty valueExpression on a count', () => {
+    // What the editor writes for every count tile. The input schema accepts it,
+    // so healing it would change the response shape for no reason.
+    const select = firstSelect([
+      { aggFn: 'count', valueExpression: '', aggCondition: '' },
+    ]);
+    expect(select).toMatchObject({ aggFn: 'count', valueExpression: '' });
+  });
+
+  it('keeps valueExpression on a non-count agg', () => {
+    const select = firstSelect([
+      { aggFn: 'avg', valueExpression: 'Duration', aggCondition: '' },
+    ]);
+    expect(select).toMatchObject({ aggFn: 'avg', valueExpression: 'Duration' });
+  });
+
+  it('emits a select the input schema accepts', () => {
+    // The point of the heal: what GET returns must survive a PUT. Both stale
+    // fields at once, on a tile that also carries a real alias.
+    const select = firstSelect([
+      {
+        aggFn: 'count',
+        level: 0.99,
+        valueExpression: 'Duration',
+        alias: 'errors',
+        aggCondition: "ServiceName = 'api'",
+      },
+    ]);
+    expect(externalDashboardSelectItemSchema.safeParse(select).success).toBe(
+      true,
+    );
+    expect(select).toMatchObject({
+      aggFn: 'count',
+      alias: 'errors',
+      where: "ServiceName = 'api'",
+    });
+  });
 });
