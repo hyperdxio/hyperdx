@@ -1,13 +1,17 @@
 import React from 'react';
+import { screen } from '@testing-library/react';
 
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DBHistogramChart, {
+  HISTOGRAM_BAR_COLOR,
+  HistogramChartTooltip,
   resolvePinnedBarIndex,
 } from '@/components/DBHistogramChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { COLORS, getColorFromCSSToken } from '@/utils';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -152,6 +156,66 @@ describe('DBHistogramChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+});
+
+describe('HISTOGRAM_BAR_COLOR', () => {
+  it('uses the first categorical series hue, not a hardcoded neon green', () => {
+    expect(HISTOGRAM_BAR_COLOR).toBe(COLORS[0]);
+    expect(HISTOGRAM_BAR_COLOR).toBe(getColorFromCSSToken('chart-blue'));
+    expect(HISTOGRAM_BAR_COLOR.toLowerCase()).not.toBe('#50fa7b');
+  });
+});
+
+describe('HistogramChartTooltip', () => {
+  const payload = [
+    {
+      name: 'height',
+      value: 1084431.375,
+      color: HISTOGRAM_BAR_COLOR,
+      payload: { lower: 0.01081, upper: 33669.79207, height: 1084431.375 },
+    },
+  ];
+
+  it('renders the shared chart tooltip with a categorical series color', () => {
+    renderWithMantine(<HistogramChartTooltip active payload={payload} />);
+
+    expect(
+      screen.getByText(/Bucket: 0.01081 - 33669.79207/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Number of events')).toHaveStyle({
+      color: HISTOGRAM_BAR_COLOR,
+    });
+    expect(screen.getByText(/1,084,431/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Click to pin tooltip • Approx value via SPDT algorithm/,
+      ),
+    ).toBeInTheDocument();
+    expect(document.querySelector('.bg-muted')).toBeNull();
+  });
+
+  it('renders a view-events link when generateSearchUrl is provided', () => {
+    renderWithMantine(
+      <HistogramChartTooltip
+        active
+        payload={payload}
+        generateSearchUrl={(lower, upper) =>
+          `/search?from=${lower}&to=${upper}`
+        }
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'View events' });
+    expect(link).toHaveAttribute('href', '/search?from=0.01081&to=33669.79207');
+  });
+
+  it('renders nothing when inactive', () => {
+    renderWithMantine(
+      <HistogramChartTooltip active={false} payload={payload} />,
+    );
+
+    expect(screen.queryByText(/Bucket:/)).toBeNull();
   });
 });
 
