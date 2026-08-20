@@ -7095,6 +7095,108 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('savedFilterValues', () => {
+    const sqlValue = { type: 'sql', condition: "Env IN ('prod')" };
+    const variableValue = {
+      type: 'variable',
+      name: 'svc',
+      values: ['accounting', 'frontend'],
+    };
+
+    it('should persist and return a variable-keyed value verbatim', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [variableValue],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([variableValue]);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb?.savedFilterValues).toEqual([variableValue]);
+    });
+
+    it('should accept a variable-keyed value with no values selected', async () => {
+      const emptySelection = { type: 'variable', name: 'svc', values: [] };
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [emptySelection],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([emptySelection]);
+    });
+
+    // The regression this format change exists to prevent: GET returns whatever
+    // is stored, so a write schema that only accepted the sql shape would make a
+    // dashboard holding a variable value un-updatable by echoing its own body.
+    it('should accept a mixed array echoed straight back from GET', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboardWithIds(traceSource._id.toString(), {
+            savedFilterValues: [sqlValue, variableValue],
+          }),
+        )
+        .expect(200);
+
+      const fetched = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+
+      const echoed = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send(fetched.body.data)
+        .expect(200);
+      expect(echoed.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+    });
+
+    it('should return 400 for a variable-keyed value missing name', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', values: ['a'] }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for a variable-keyed value missing values', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', name: 'svc' }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for an unknown saved filter value type', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'nonsense', name: 'svc', values: [] }],
+          }),
+        )
+        .expect(400);
+    });
+  });
+
   describe('DELETE /:id', () => {
     it('should delete a dashboard', async () => {
       const dashboard = await createTestDashboard();

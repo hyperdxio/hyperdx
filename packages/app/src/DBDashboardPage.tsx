@@ -179,7 +179,9 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
 import { Tags } from './components/Tags';
-import useDashboardFilters from './hooks/useDashboardFilters';
+import useDashboardFilters, {
+  filterQueriesParser,
+} from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
@@ -1829,10 +1831,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     whereLanguageParser,
   );
   // Get raw filter queries from URL (not processed by hook)
-  const [rawFilterQueries] = useQueryState(
-    'filters',
-    parseAsJsonEncoded<Filter[]>(),
-  );
+  const [rawFilterQueries] = useQueryState('filters', filterQueriesParser);
+
   // Toggle for overlaying alert firing/recovery markers on tile charts.
   // Ephemeral view state (URL param), not persisted on the dashboard.
   const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
