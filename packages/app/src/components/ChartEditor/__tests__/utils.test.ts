@@ -70,6 +70,16 @@ const traceSource: TSource = {
   durationPrecision: 9,
 };
 
+const sessionSource: TSource = {
+  id: 'source-session',
+  name: 'Session Source',
+  kind: SourceKind.Session,
+  connection: 'conn-1',
+  from: { databaseName: 'db', tableName: 'sessions' },
+  timestampValueExpression: 'Timestamp',
+  traceSourceId: 'source-trace',
+};
+
 const seriesItem = {
   aggFn: 'count' as const,
   valueExpression: '*',
@@ -1746,7 +1756,7 @@ describe('metric formulas (HDX-5080)', () => {
       ]);
     });
 
-    it('skips formula validation for non-metric sources (formulas are stripped on save)', () => {
+    it('validates formulas for log event sources', () => {
       const setError = jest.fn();
       const errors = validateChartForm(
         makeMetricForm({
@@ -1755,6 +1765,36 @@ describe('metric formulas (HDX-5080)', () => {
           formulas: [{ expression: 'A +' }],
         }),
         logSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+    });
+
+    it('accepts a valid formula on a trace source', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-trace',
+          series: [seriesItem, seriesItem],
+          formulas: [{ expression: 'A / B * 100' }],
+        }),
+        traceSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('skips formula validation for formula-incapable source kinds (formulas are stripped on save)', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-session',
+          series: [seriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        sessionSource,
         setError,
       );
       expect(errors).toHaveLength(0);
@@ -1897,7 +1937,7 @@ describe('metric formulas (HDX-5080)', () => {
       expect(saved.showOperandSeries).toBeUndefined();
     });
 
-    it('strips formulas for non-metric sources', () => {
+    it('retains formulas for a log event source', () => {
       const saved = savedBuilderConfig(
         makeMetricForm({
           source: 'source-log',
@@ -1906,6 +1946,20 @@ describe('metric formulas (HDX-5080)', () => {
           showOperandSeries: false,
         }),
         logSource,
+      );
+      expect(saved.formulas).toEqual([{ expression: 'A * 100' }]);
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('strips formulas for formula-incapable source kinds', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          source: 'source-session',
+          series: [seriesItem],
+          formulas: [{ expression: 'A * 100' }],
+          showOperandSeries: false,
+        }),
+        sessionSource,
       );
       expect(saved.formulas).toBeUndefined();
       expect(saved.showOperandSeries).toBeUndefined();

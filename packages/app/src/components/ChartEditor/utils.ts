@@ -83,13 +83,13 @@ function normalizeChartConfig<
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
-  // Formulas (HDX-5080) only render on metric sources, and only through the
-  // composed multi-series metric query shapes (time series / table / number).
-  // Strip them elsewhere so a source or display-type switch can't persist a
-  // config the renderer would reject. The form state keeps them, so switching
-  // back restores the formula rows.
+  // Formulas (HDX-5080) render on metric and event (log/trace) sources, and
+  // only on the display types the formula query paths support (time series /
+  // table / number). Strip them elsewhere so a source or display-type switch
+  // can't persist a config the renderer would reject. The form state keeps
+  // them, so switching back restores the formula rows.
   const keepFormulas =
-    isMetricSource &&
+    isFormulaSourceKind(source.kind) &&
     (config.formulas?.length ?? 0) > 0 &&
     isFormulaDisplayType(config.displayType);
   return {
@@ -174,9 +174,9 @@ const isCustomOrderByDisplayType = (
   displayType === DisplayType.Pie;
 
 /**
- * Display types that can carry metric formulas (HDX-5080) — the shapes the
- * composed multi-series metric query renders. Mirrors the "Add Formula"
- * gating in ChartEditorControls.
+ * Display types that can carry formulas (HDX-5080) — the shapes the formula
+ * query paths render (composed multi-series for metrics, inline single-scan
+ * for events). Mirrors the "Add Formula" gating in ChartEditorControls.
  */
 export const isFormulaDisplayType = (
   displayType: DisplayType | undefined,
@@ -189,6 +189,19 @@ export const isFormulaDisplayType = (
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Table ||
   displayType === DisplayType.Number;
+
+/**
+ * Source kinds that can carry formulas: metric sources (rendered via the
+ * composed multi-series metric query) and event sources (log/trace, compiled
+ * inline in the single-scan SELECT — see renderSelectListWithFormulas in
+ * common-utils).
+ */
+export const isFormulaSourceKind = (
+  kind: SourceKind | undefined,
+): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
+  kind === SourceKind.Metric ||
+  kind === SourceKind.Log ||
+  kind === SourceKind.Trace;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
@@ -485,13 +498,13 @@ export const validateChartForm = (
     });
   }
 
-  // Validate metric formulas (HDX-5080) with the structured validator the
-  // query renderer uses, so a bad expression is caught here rather than at
-  // render time. Only applies where formulas survive normalization (metric
-  // source + formula-capable display type).
+  // Validate formulas (HDX-5080) with the structured validator the query
+  // renderer uses, so a bad expression is caught here rather than at render
+  // time. Only applies where formulas survive normalization (formula-capable
+  // source kind + display type).
   if (
     !isRawSqlChart &&
-    source?.kind === SourceKind.Metric &&
+    isFormulaSourceKind(source?.kind) &&
     isFormulaDisplayType(form.displayType) &&
     Array.isArray(form.formulas)
   ) {
@@ -578,7 +591,7 @@ export const validateChartForm = (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     form.displayType === DisplayType.Number &&
-    !(form.formulas?.length && source?.kind === SourceKind.Metric) &&
+    !(form.formulas?.length && isFormulaSourceKind(source?.kind)) &&
     form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
   ) {
     errors.push({

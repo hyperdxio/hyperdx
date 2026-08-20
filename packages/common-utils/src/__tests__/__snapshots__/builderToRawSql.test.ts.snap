@@ -1,5 +1,30 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
+exports[`renderBuilderConfigAsSqlTemplate compiles event formulas into the single-scan template projection 1`] = `
+"SELECT
+  countIf(ServiceName = 'api') AS "api",
+  count() AS "total",
+  (
+    (
+      coalesce(countIf(ServiceName = 'api'), 0) / nullif(coalesce(count(), 0), 0)
+    ) * 100
+  ) AS "pct",
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+GROUP BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
 exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a line chart 1`] = `
 "WITH
   \`__hdx_series_limit\` AS (
