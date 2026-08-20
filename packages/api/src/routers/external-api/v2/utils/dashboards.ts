@@ -138,15 +138,24 @@ const convertToExternalSelectItem = (
     'level' in item
       ? externalQuantileLevelSchema.safeParse(item.level)
       : undefined;
-  const level = parsedLevel?.success ? parsedLevel.data : undefined;
+  // Drop aggregation parameters the emitted aggFn cannot carry. Changing a
+  // tile's aggregation in the editor leaves the previous agg's field behind in
+  // the stored config, where it is inert: renderChartConfig reads `level` only
+  // for a quantile or histogram agg, and ignores `valueExpression` for a count.
+  // On the way out it is not inert — externalDashboardSelectItemSchema rejects
+  // both, so the GET body could not be PUT back and an imported dashboard
+  // failed `terraform plan` with "Level can only be used with quantile
+  // aggregation function". Same read-path heal as the container refs below.
+  //
+  // Scoped to exactly what that schema rejects: an *empty* valueExpression on a
+  // count is what the editor writes for every count tile and validates fine, so
+  // it stays. Only a leftover value is dropped.
+  const level =
+    aggFn === 'quantile' && parsedLevel?.success ? parsedLevel.data : undefined;
+  const staleValueExpression = aggFn === 'count' && !!item.valueExpression;
   return {
-    ...pick(item, [
-      'valueExpression',
-      'alias',
-      'metricType',
-      'metricName',
-      'numberFormat',
-    ]),
+    ...pick(item, ['alias', 'metricType', 'metricName', 'numberFormat']),
+    ...(staleValueExpression ? {} : pick(item, ['valueExpression'])),
     aggFn,
     where: item.aggCondition ?? '',
     whereLanguage: item.aggConditionLanguage ?? 'lucene',

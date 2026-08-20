@@ -194,7 +194,7 @@ const externalOnClickSchema = z.discriminatedUnion('type', [
   externalOnClickExternalSchema,
 ]);
 
-const externalDashboardSelectItemSchema = z
+export const externalDashboardSelectItemSchema = z
   .object({
     // For logs, traces, and metrics
     valueExpression: z.string().max(10000).optional(),
