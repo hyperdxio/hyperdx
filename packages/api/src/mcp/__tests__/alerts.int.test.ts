@@ -1,4 +1,7 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  MAX_ALERT_CHANNELS,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
@@ -603,6 +606,34 @@ describe('MCP Alert Tools', () => {
 
         expect(result.isError).toBe(true);
       });
+
+      // The MCP surface enforces the channel cap through the MCP SDK's own
+      // Zod .max() parsing of the tool's inputSchema -- a protocol-level check
+      // that runs before validateSaveAlertInput ever sees the payload. That is
+      // a different enforcement path from the HTTP routers' superRefine (see
+      // the "over the cap" case in routers/external-api/__tests__/alerts.int.test.ts),
+      // so it needs its own coverage.
+      it('should reject more than MAX_ALERT_CHANNELS channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const many = Array.from({ length: MAX_ALERT_CHANNELS + 1 }, (_, i) => ({
+          type: 'webhook' as const,
+          webhookId: `fake-webhook-id-${i}`,
+        }));
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: many,
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toContain('channels');
+        expect(text).toContain(String(MAX_ALERT_CHANNELS));
+      });
     });
 
     describe('update', () => {
@@ -647,6 +678,77 @@ describe('MCP Alert Tools', () => {
         expect(output.name).toBe('Updated Name');
         expect(output.threshold).toBe(200);
         expect(output.interval).toBe('15m');
+      });
+
+      // The update path above only exercises the legacy singular `channel`;
+      // full-replace semantics on the agent surface are otherwise unverified.
+      it('replaces the full channels array on update, keeping the legacy channel mirror in sync', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const [w1, w2, w3, w4] = await Promise.all([
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-1',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-2',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-3',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-4',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+        ]);
+
+        const created = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+          name: 'Multi Channel Alert For Update',
+        });
+        expect(created.isError).toBeFalsy();
+        const createdOutput = JSON.parse(getFirstText(created));
+
+        const newChannels = [
+          { type: 'webhook', webhookId: w3._id.toString() },
+          { type: 'webhook', webhookId: w4._id.toString() },
+        ];
+        const updated = await callTool(client, 'clickstack_save_alert', {
+          id: createdOutput.id,
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: newChannels,
+          name: 'Multi Channel Alert For Update',
+        });
+
+        expect(updated.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(updated));
+        expect(output.channels).toEqual(newChannels);
+        expect(output.channel).toEqual(newChannels[0]);
+
+        const persisted = await Alert.findById(createdOutput.id);
+        expect(persisted?.channels).toEqual(newChannels);
+        expect(persisted?.channel).toEqual(newChannels[0]);
       });
 
       it('should clear source-specific fields when both source field groups are provided', async () => {
