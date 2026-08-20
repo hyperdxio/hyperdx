@@ -1,5 +1,6 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
+import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
 import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
@@ -70,10 +71,26 @@ export function buildRawSqlCompletions({
 function normalizeChartConfig<
   C extends Pick<
     BuilderSavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables' | 'onClick'
+    | 'select'
+    | 'having'
+    | 'orderBy'
+    | 'displayType'
+    | 'metricTables'
+    | 'onClick'
+    | 'formulas'
+    | 'showOperandSeries'
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
+  // Formulas (HDX-5080) only render on metric sources, and only through the
+  // composed multi-series metric query shapes (time series / table / number).
+  // Strip them elsewhere so a source or display-type switch can't persist a
+  // config the renderer would reject. The form state keeps them, so switching
+  // back restores the formula rows.
+  const keepFormulas =
+    isMetricSource &&
+    (config.formulas?.length ?? 0) > 0 &&
+    isFormulaDisplayType(config.displayType);
   return {
     ...config,
     // Strip out metric-specific fields for non-metric sources
@@ -82,6 +99,16 @@ function normalizeChartConfig<
         ? config.select.map(s => omit(s, ['metricName', 'metricType']))
         : config.select,
     metricTables: isMetricSource ? config.metricTables : undefined,
+    formulas: keepFormulas ? config.formulas : undefined,
+    // Number charts display the first value column, so the operand series
+    // are always hidden there (persisted explicitly so the saved tile config
+    // is self-describing; convertToNumberChartConfig enforces the same at
+    // render time). Other display types keep the tile's own toggle value.
+    showOperandSeries: keepFormulas
+      ? config.displayType === DisplayType.Number
+        ? false
+        : config.showOperandSeries
+      : undefined,
     // Order By and Having can only be set by the user for table charts
     having:
       config.displayType === DisplayType.Table ? config.having : undefined,
@@ -144,6 +171,23 @@ const isCustomOrderByDisplayType = (
   displayType === DisplayType.Table ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Pie;
+
+/**
+ * Display types that can carry metric formulas (HDX-5080) — the shapes the
+ * composed multi-series metric query renders. Mirrors the "Add Formula"
+ * gating in ChartEditorControls.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
@@ -430,6 +474,41 @@ export const validateChartForm = (
     });
   }
 
+  // Validate metric formulas (HDX-5080) with the structured validator the
+  // query renderer uses, so a bad expression is caught here rather than at
+  // render time. Only applies where formulas survive normalization (metric
+  // source + formula-capable display type).
+  if (
+    !isRawSqlChart &&
+    source?.kind === SourceKind.Metric &&
+    isFormulaDisplayType(form.displayType) &&
+    Array.isArray(form.formulas)
+  ) {
+    const seriesCount = Array.isArray(form.series) ? form.series.length : 0;
+    form.formulas.forEach((formula, index) => {
+      const result = validateFormula(formula.expression ?? '', {
+        seriesCount,
+      });
+      if (!result.ok) {
+        errors.push({
+          path: `formulas.${index}.expression`,
+          message: result.errors.map(e => e.message).join('; '),
+        });
+      }
+    });
+
+    // A number chart displays a single value — its one formula. Multiple
+    // formulas can only get here by switching an existing multi-formula
+    // chart to the Number display type (the editor hides "Add Formula" once
+    // a Number tile has one); block rather than silently dropping one.
+    if (form.displayType === DisplayType.Number && form.formulas.length > 1) {
+      errors.push({
+        path: `formulas`,
+        message: 'Number charts support a single formula',
+      });
+    }
+  }
+
   // Validate raw SQL alert has required time filters and interval parameters
   if (isRawSqlChart && form.alert) {
     const config = {
@@ -482,11 +561,13 @@ export const validateChartForm = (
 
   // Number charts allow a second series only for ratio mode (numerator /
   // denominator, which can be shown as a percentage via the number format);
-  // otherwise they show a single value.
+  // otherwise they show a single value. With formulas the extra series are
+  // operands (e.g. A / (A + B + C)), so the cap doesn't apply.
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     form.displayType === DisplayType.Number &&
+    !(form.formulas?.length && source?.kind === SourceKind.Metric) &&
     form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
   ) {
     errors.push({
