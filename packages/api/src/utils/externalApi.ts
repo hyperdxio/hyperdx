@@ -1,4 +1,8 @@
 import {
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   AlertErrorType,
   AlertThresholdType,
   BuilderSavedChartConfig,
@@ -211,8 +215,15 @@ export function translateExternalChartToTileConfig(
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
+  // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
+  const ignoredKeys = [
+    ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
+    ...(isFilterBroadcastEnabled(filter)
+      ? []
+      : (['appliesToSourceIds'] as const)),
+  ];
   return {
-    ...omit(filter, 'source'),
+    ...omit(filter, 'source', ...ignoredKeys),
     sourceId: filter.source.toString(),
   };
 }
