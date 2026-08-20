@@ -205,7 +205,3 @@ export function createRrwebAssemblerRegistry(callbacks: {
     },
   };
 }
-
-export type RRWebAssemblerRegistry = ReturnType<
-  typeof createRrwebAssemblerRegistry
->;
