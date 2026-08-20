@@ -1163,6 +1163,181 @@ describe('filters', () => {
     });
   });
 
+  // Dashboard filters can be defined by an arbitrary expression, not just a
+  // bare column. The parser must treat the whole expression as the key and
+  // ignore operators/keywords nested inside its parentheses, rather than
+  // dropping the clause or splitting on a nested operator. These cases exercise
+  // the parenthesis-depth awareness of parseQuery (and, transitively,
+  // countTopLevelAnd via isRenderablePinnedFilter).
+  describe('complex expression keys (nested parentheses)', () => {
+    const ifOrExpr = `if(SeverityText = 'error' or SeverityText = 'fatal', 'Errors', 'Non-errors')`;
+    const ifInExpr = `if(SeverityText IN ('error', 'fatal'), 'Errors', 'Non-errors')`;
+    const ifBetweenExpr = `if(Duration BETWEEN 1 AND 2, 'fast', 'slow')`;
+
+    describe('parseQuery', () => {
+      it('keeps the whole expression as the key when it nests OR and = inside parens', () => {
+        expect(
+          parseQuery([{ type: 'sql', condition: `${ifOrExpr} IN ('Errors')` }])
+            .filters,
+        ).toEqual({
+          [ifOrExpr]: { included: new Set(['Errors']), excluded: new Set() },
+        });
+      });
+
+      it('splits on the outer IN, not the IN nested inside the expression', () => {
+        expect(
+          parseQuery([{ type: 'sql', condition: `${ifInExpr} IN ('Errors')` }])
+            .filters,
+        ).toEqual({
+          [ifInExpr]: { included: new Set(['Errors']), excluded: new Set() },
+        });
+      });
+
+      it('parses multiple selected values on an expression key', () => {
+        expect(
+          parseQuery([
+            {
+              type: 'sql',
+              condition: `${ifOrExpr} IN ('Errors', 'Non-errors')`,
+            },
+          ]).filters,
+        ).toEqual({
+          [ifOrExpr]: {
+            included: new Set(['Errors', 'Non-errors']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('parses NOT IN on an expression key without splitting on nested IN', () => {
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifInExpr} NOT IN ('Errors')` },
+          ]).filters,
+        ).toEqual({
+          [ifInExpr]: { included: new Set(), excluded: new Set(['Errors']) },
+        });
+      });
+
+      it('merges included and excluded selections on the same expression key', () => {
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifOrExpr} IN ('Errors')` },
+            { type: 'sql', condition: `${ifOrExpr} NOT IN ('Non-errors')` },
+          ]).filters,
+        ).toEqual({
+          [ifOrExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(['Non-errors']),
+          },
+        });
+      });
+
+      it('extracts an expression clause from an AND-joined compound condition', () => {
+        expect(
+          parseQuery([
+            {
+              type: 'sql',
+              condition: `ServiceName IN ('api') AND ${ifOrExpr} IN ('Errors')`,
+            },
+          ]).filters,
+        ).toEqual({
+          ServiceName: { included: new Set(['api']), excluded: new Set() },
+          [ifOrExpr]: { included: new Set(['Errors']), excluded: new Set() },
+        });
+      });
+
+      it('does not split on AND nested inside an expression key', () => {
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifBetweenExpr} IN ('fast')` },
+          ]).filters,
+        ).toEqual({
+          [ifBetweenExpr]: { included: new Set(['fast']), excluded: new Set() },
+        });
+      });
+
+      it('does not treat a BETWEEN nested inside an expression key as a range', () => {
+        // toEqual asserts the exact shape: an unexpected `range` key would fail
+        // this, so it doubles as the "no range was extracted" check.
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifBetweenExpr} NOT IN ('slow')` },
+          ]).filters,
+        ).toEqual({
+          [ifBetweenExpr]: { included: new Set(), excluded: new Set(['slow']) },
+        });
+      });
+
+      it('handles a nested function expression key', () => {
+        const key = `toString(multiIf(Status >= 500, 'error', Status >= 400, 'warn', 'ok'))`;
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${key} IN ('error', 'warn')` },
+          ]).filters,
+        ).toEqual({
+          [key]: { included: new Set(['error', 'warn']), excluded: new Set() },
+        });
+      });
+
+      it('round-trips an expression key through filtersToQuery', () => {
+        const originalFilters: FilterState = {
+          [ifOrExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(['Non-errors']),
+          },
+        };
+        expect(parseQuery(filtersToQuery(originalFilters)).filters).toEqual(
+          originalFilters,
+        );
+      });
+    });
+
+    describe('isRenderablePinnedFilter', () => {
+      const sql = (condition: string): Filter => ({ type: 'sql', condition });
+
+      // A nested IN carries no bare AND/OR/NOT keyword, so an expression key
+      // built only from it round-trips to a single renderable facet. Before the
+      // parser tracked parenthesis depth this same input parsed to the garbage
+      // key `if(SeverityText` — accepted for the wrong reason; now it is
+      // accepted with the correct, whole-expression key.
+      it('accepts an expression key whose only nested keyword is IN', () => {
+        expect(isRenderablePinnedFilter(sql(`${ifInExpr} IN ('Errors')`))).toBe(
+          true,
+        );
+      });
+
+      it('accepts a nested-function expression key', () => {
+        const key = `toString(multiIf(Status >= 500, 'error', 'ok'))`;
+        expect(isRenderablePinnedFilter(sql(`${key} IN ('error')`))).toBe(true);
+      });
+
+      // A key that nests OR/AND (including the AND of a nested BETWEEN) still
+      // carries that keyword as bare text, so it is rejected: the sidebar can't
+      // render it as a plain column facet even though the value list parses.
+      it('rejects an expression key that nests OR', () => {
+        expect(isRenderablePinnedFilter(sql(`${ifOrExpr} IN ('Errors')`))).toBe(
+          false,
+        );
+      });
+
+      it('rejects an expression key that nests a BETWEEN ... AND', () => {
+        expect(
+          isRenderablePinnedFilter(sql(`${ifBetweenExpr} IN ('fast')`)),
+        ).toBe(false);
+      });
+
+      // countTopLevelAnd counts a BETWEEN's own bounds AND (exactly one
+      // top-level conjunct) while the parentheses of the function key are
+      // tracked without disturbing that count, so the filter stays renderable.
+      it('accepts a numeric BETWEEN on a parenthesized (function) key', () => {
+        expect(
+          isRenderablePinnedFilter(sql('length(Body) BETWEEN 1 AND 5')),
+        ).toBe(true);
+      });
+    });
+  });
+
   describe('deriveVariableName', () => {
     it.each([
       ['Total Requests', 'Total_Requests'],

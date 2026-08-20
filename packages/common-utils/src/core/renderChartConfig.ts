@@ -2378,12 +2378,18 @@ async function renderMultiSeriesMetricChartConfig(
   const branches = await Promise.all(
     select.map(async (s, splitIdx) => {
       // Formulas belong to the composed outer projection only — a branch
-      // carrying them would recurse back into this function.
+      // carrying them would recurse back into this function. HAVING,
+      // ORDER BY and LIMIT apply to the final joined result, not to each
+      // series independently, so they render on the outer statement. Only
+      // row-level filters (where/filters/aggCondition) stay per-branch.
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
         select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
         formulas: undefined,
         showOperandSeries: undefined,
+        having: undefined,
+        orderBy: undefined,
+        limit: undefined,
       };
       const rendered = await renderChartConfig(
         branchConfig,
@@ -2543,13 +2549,50 @@ async function renderMultiSeriesMetricChartConfig(
 
   const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
 
-  return concatChSql(' ', [
+  // HAVING / ORDER BY / LIMIT apply to the final joined result and
+  // reference its output columns (operand aliases, formula names, the ratio
+  // column, group passthroughs, the time bucket). HAVING is valid even
+  // without GROUP BY ALL (the no-group number-chart shape is an implicit
+  // global aggregation).
+  const having = await renderHaving(chartConfig, metadata);
+
+  // Time charts stay bucket-ordered first, with the user's sort as a
+  // tiebreaker within each bucket. renderOrderBy is not reusable here: it
+  // re-renders the bucket expression over raw timestamp columns, which
+  // don't exist in this outer scope — only the fixed bucket alias does.
+  const orderBy = concatChSql(
+    ',',
+    hasGranularity ? chSql`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : chSql``,
+    chartConfig.orderBy != null
+      ? renderSortSpecificationList(chartConfig.orderBy)
+      : [],
+  );
+
+  const limit = renderLimit(chartConfig);
+
+  const core = concatChSql(' ', [
     chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
     chSql`FROM (${unionSql})`,
     hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
-    hasGranularity
-      ? chSql`ORDER BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
-      : chSql``,
+  ]);
+
+  // The share_of_total ratio is the one projection built on a window
+  // function, which ClickHouse prohibits in HAVING — so filter it through
+  // a wrapper instead: WHERE on the wrapped result evaluates after the
+  // window, with the same filter-the-output-rows semantics. ORDER BY/LIMIT
+  // follow on the outermost statement either way.
+  const usesWindowProjection =
+    isRatio && chartConfig.ratioMode === 'share_of_total';
+  const filtered = !having?.sql
+    ? core
+    : usesWindowProjection
+      ? chSql`SELECT * FROM (${core}) WHERE ${having}`
+      : concatChSql(' ', [core, chSql`HAVING ${having}`]);
+
+  return concatChSql(' ', [
+    filtered,
+    orderBy.sql ? chSql`ORDER BY ${orderBy}` : chSql``,
+    limit?.sql ? chSql`LIMIT ${limit}` : chSql``,
     settings !== '' ? chSql`SETTINGS ${{ UNSAFE_RAW_SQL: settings }}` : chSql``,
   ]);
 }
