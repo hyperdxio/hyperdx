@@ -3,9 +3,10 @@ name: Vouch
 # Trust gate for outside contributions, built on https://github.com/mitchellh/vouch.
 #
 # Anyone with write access (org members, collaborators) and bots are always
-# allowed. Everyone else must appear in .github/VOUCHED.td or their PR is
-# closed with a comment explaining how to get vouched. Issues are NOT gated —
-# opening one is how a new contributor introduces themselves.
+# allowed. A PR from anyone else who is not in .github/VOUCHED.td stays open,
+# gets a `needs-vouch` label and a comment asking them to introduce themselves.
+# Only authors explicitly denounced in the list are auto-closed. Issues are NOT
+# gated — opening one is how a new contributor introduces themselves.
 #
 # Maintainers manage the list from any issue or PR comment. The keyword has to
 # be first on the first line:
@@ -36,23 +37,64 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
-      # Pinned to the default branch, not the PR's base: a PR against `v1`
-      # would otherwise check out a branch with no template file and the step
-      # would error, leaving the gate open. Never checks out the PR's own code.
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - uses: mitchellh/vouch/action/check-pr@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+      # require-vouch: false means only denounced authors are blocked. Everyone
+      # unvouched comes back as `allowed`, which the next step picks up. No
+      # checkout needed — the action reads VOUCHED.td from the default branch
+      # over the API, and the denounce message is upstream's, not a file here.
+      - id: vouch
+        uses: mitchellh/vouch/action/check-pr@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
         with:
           pr-number: ${{ github.event.pull_request.number }}
+          require-vouch: false
           auto-close: true
-          template-file: .github/vouch-unvouched-pr.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: steps.vouch.outputs.status == 'allowed'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const LABEL = 'needs-vouch';
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+
+            // The label doubles as the "already asked" marker so a reopen or a
+            // ready_for_review doesn't post the same comment a second time.
+            if (pr.labels?.some(l => l.name === LABEL)) {
+              core.info(`#${pr.number} already labelled; not commenting again.`);
+              return;
+            }
+
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo, name: LABEL, color: 'FBCA04',
+                description: 'Author needs a maintainer to vouch for them',
+              });
+            } catch (e) {
+              if (e.status !== 422) throw e; // 422 = already exists
+            }
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number: pr.number, labels: [LABEL],
+            });
+
+            const body = [
+              `Hi @${pr.user.login}, thanks for the pull request!`,
+              ``,
+              `Before we review code from a first-time contributor we ask that a maintainer vouches for you, and you're not on our list yet. **This PR stays open** — it just isn't in the review queue until someone vouches.`,
+              ``,
+              `To get vouched, open an issue saying hello and what you're working on:`,
+              ``,
+              `https://github.com/${owner}/${repo}/issues/new?template=introduce-yourself.md`,
+              ``,
+              `A maintainer will usually reply within a day or two, and then this PR gets picked up as normal. More detail in [our contributing guide](https://github.com/${owner}/${repo}/blob/${pr.base.repo.default_branch}/CONTRIBUTING.md#getting-vouched).`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: pr.number, body,
+            });
+            core.info(`Labelled and commented on #${pr.number}.`);
 
   manage:
     # Role-gated before the runner starts. The action re-checks the commenter's

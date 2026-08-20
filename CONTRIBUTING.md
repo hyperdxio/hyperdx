@@ -2,10 +2,11 @@
 
 ## Getting vouched
 
-Issues, bug reports and discussion are open to everyone. Pull requests are not:
-a maintainer has to vouch for you before your first PR gets reviewed. Open one
-without being vouched and a bot closes it with a link back here. Your branch is
-untouched — reopen the PR once you're vouched.
+Issues, bug reports and discussion are open to everyone. Pull requests are a
+little different: a maintainer has to vouch for you before we review your first
+one. Open a PR without being vouched and it stays open — a bot adds a
+`needs-vouch` label and a comment pointing you back here. Nothing gets closed,
+you just aren't in the review queue yet.
 
 To get vouched, [open an issue saying
 hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
@@ -34,6 +35,10 @@ Comment on any issue or PR with the keyword first on the first line:
 ```
 
 On a PR, a bare `/vouch` with no handle vouches that PR's author.
+
+`/denounce` is the only thing that closes PRs — a denounced author's pull
+requests are closed automatically from then on. Keep it for repeat spam and
+bad-faith behaviour; `/unvouch` quietly removes someone without blocking them.
 
 The bot opens a PR updating `.github/VOUCHED.td`. **Nothing takes effect until
 you merge it.** That PR needs an approval rather than a green CI run — GitHub
