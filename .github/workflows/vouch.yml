@@ -1,0 +1,106 @@
+name: Vouch
+
+# Trust gate for outside contributions, built on https://github.com/mitchellh/vouch.
+#
+# Anyone with write access (org members, collaborators) and bots are always
+# allowed. Everyone else must appear in .github/VOUCHED.td or their PR is
+# closed with a comment explaining how to get vouched. Issues are NOT gated —
+# opening one is how a new contributor introduces themselves.
+#
+# Maintainers manage the list from any issue or PR comment. The keyword has to
+# be first on the first line:
+#   /vouch @user [reason]     /denounce @user [reason]     /unvouch @user
+#
+# The list edit arrives as a pull request because `main` is protected and
+# GITHUB_TOKEN cannot bypass that. Note the bot's PR does not trigger `Main` —
+# GitHub does not start workflow runs for events raised by GITHUB_TOKEN — so it
+# needs a maintainer approval rather than a green CI run. This is the same path
+# the changesets release PR already takes.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  check-pr:
+    # Drafts are skipped and re-checked on ready_for_review, matching
+    # external-contributor-alerts.yml so the two agree on what counts.
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Pinned to the default branch, not the PR's base: a PR against `v1`
+      # would otherwise check out a branch with no template file and the step
+      # would error, leaving the gate open. Never checks out the PR's own code.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: mitchellh/vouch/action/check-pr@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          auto-close: true
+          template-file: .github/vouch-unvouched-pr.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  manage:
+    # Role-gated before the runner starts. The action re-checks the commenter's
+    # permission authoritatively; this only stops anyone on the internet from
+    # spinning up a write-token runner by typing /vouch. `contains` rather than
+    # `startsWith` so a leading space doesn't silently drop a real command.
+    if: >-
+      github.event_name == 'issue_comment' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+      github.event.comment.author_association) &&
+      (contains(github.event.comment.body, '/vouch') ||
+       contains(github.event.comment.body, '/unvouch') ||
+       contains(github.event.comment.body, '/denounce'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Keyed per comment. A shared group would let a newly queued run cancel a
+    # pending one, silently dropping a vouch; each run cuts its own branch, so
+    # there is nothing to serialise.
+    concurrency:
+      group: vouch-manage-${{ github.event.comment.id }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: mitchellh/vouch/action/manage-by-issue@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+        with:
+          issue-id: ${{ github.event.issue.number }}
+          comment-id: ${{ github.event.comment.id }}
+          vouch-keyword: /vouch
+          denounce-keyword: /denounce
+          unvouch-keyword: /unvouch
+          pull-request: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The action is silent on every failure path — no comment, no reaction —
+      # and issue_comment runs are not surfaced on the issue timeline, so a
+      # maintainer would otherwise assume a failed /vouch worked.
+      - if: failure()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.payload.issue.number,
+              body: `The vouch command failed. [See the run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) — the list was not changed.`,
+            });

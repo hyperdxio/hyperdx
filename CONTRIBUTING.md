@@ -1,5 +1,45 @@
 # Contributing
 
+## Getting vouched
+
+Issues, bug reports and discussion are open to everyone. Pull requests are not:
+a maintainer has to vouch for you before your first PR gets reviewed. Open one
+without being vouched and a bot closes it with a link back here. Your branch is
+untouched — reopen the PR once you're vouched.
+
+To get vouched, [open an issue saying
+hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
+who you are and what you want to work on. A maintainer replies, usually within a
+day or two. Use the same issue to ask which issue to pick up, or to check an
+approach before you write code.
+
+Good places to start: the [good first
+issue](https://github.com/hyperdxio/hyperdx/labels/good%20first%20issue) label,
+and [Discord](https://discord.gg/FErRRKU78j) if the dev setup gives you trouble.
+
+Why we do this: AI tools make it cheap to open a plausible-looking PR with no
+understanding behind it, and reviewing those crowds out the contributions we
+want to spend time on. Vouching is a short introduction, not a skill test. We
+use [Vouch](https://github.com/mitchellh/vouch); the list is
+[`.github/VOUCHED.td`](./.github/VOUCHED.td).
+
+### Vouching someone (maintainers)
+
+Comment on any issue or PR with the keyword first on the first line:
+
+```
+/vouch @username optional reason
+/unvouch @username
+/denounce @username optional reason
+```
+
+On a PR, a bare `/vouch` with no handle vouches that PR's author.
+
+The bot opens a PR updating `.github/VOUCHED.td`. **Nothing takes effect until
+you merge it.** That PR needs an approval rather than a green CI run — GitHub
+does not run workflows on PRs the bot creates. Merge them one at a time; two
+open at once will conflict on the same sorted list.
+
 ## Architecture Overview
 
 ![architecture](./.github/images/architecture.png)
