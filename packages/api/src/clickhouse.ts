@@ -21,6 +21,6 @@ const customLogger: ClickhouseLogger = {
 
 export class ClickhouseClient extends BaseClickhouseClient {
   constructor(options: ClickhouseClientOptions) {
-    super({ customLogger, ...options });
+    super({ ...options, customLogger: options.customLogger ?? customLogger });
   }
 }

@@ -7,21 +7,39 @@ import type {
 } from '@clickhouse/client-web';
 import { createClient } from '@clickhouse/client-web';
 
+import { format } from '@/sqlFormatter';
+
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
   QueryInputs,
 } from './index';
 
+const tryFormatSql = (sql: string): string => {
+  try {
+    return format(sql);
+  } catch {
+    return sql;
+  }
+};
+
 const writeLog = (
   write: (...data: unknown[]) => void,
   { module, message, args, err }: WarnLogParams,
-): void =>
+): void => {
+  const { sql, ...rest } = args ?? {};
+
+  if (typeof sql === 'string') {
+    write(`${message}:\n${tryFormatSql(sql)}`);
+    return;
+  }
+
   write(
     `[${module}] ${message}`,
-    ...Object.values(args ?? {}),
+    ...Object.values(rest),
     ...(err ? [err] : []),
   );
+};
 
 export const consoleLogger: Logger = {
   trace: params => writeLog(console.debug, params),
@@ -90,7 +108,7 @@ export const testLocalConnection = async ({
 export class ClickhouseClient extends BaseClickhouseClient {
   constructor(options: ClickhouseClientOptions) {
     // Log queries to devtools by default so SQL stays inspectable in all builds
-    super({ customLogger: consoleLogger, ...options });
+    super({ ...options, customLogger: options.customLogger ?? consoleLogger });
   }
 
   // This subclass always builds a web client, so narrow the base class's
