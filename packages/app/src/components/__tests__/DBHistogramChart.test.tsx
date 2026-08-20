@@ -11,7 +11,7 @@ import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizati
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { COLORS, getColorFromCSSToken } from '@/utils';
+import { getColorFromCSSToken } from '@/utils';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -161,7 +161,6 @@ describe('DBHistogramChart', () => {
 
 describe('HISTOGRAM_BAR_COLOR', () => {
   it('uses the first categorical series hue, not a hardcoded neon green', () => {
-    expect(HISTOGRAM_BAR_COLOR).toBe(COLORS[0]);
     expect(HISTOGRAM_BAR_COLOR).toBe(getColorFromCSSToken('chart-blue'));
     expect(HISTOGRAM_BAR_COLOR.toLowerCase()).not.toBe('#50fa7b');
   });

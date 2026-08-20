@@ -17,7 +17,7 @@ import { buildMVDateRangeIndicator, INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { COLORS } from '@/utils';
+import { getColorFromCSSToken } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -27,7 +27,7 @@ import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 /** First categorical series hue (`chart-blue`). Exported for unit tests. */
-export const HISTOGRAM_BAR_COLOR = COLORS[0];
+export const HISTOGRAM_BAR_COLOR = getColorFromCSSToken('chart-blue');
 
 /**
  * Normalize a chart click's `activeIndex` to a real, in-range bar index.
