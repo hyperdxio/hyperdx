@@ -43,9 +43,14 @@ Comment on any issue or PR with the keyword first on the first line:
 
 On a PR, a bare `/vouch` with no handle vouches that PR's author.
 
-`/denounce` is the only thing that closes PRs — a denounced author's pull
-requests are closed automatically from then on. Keep it for repeat spam and
-bad-faith behaviour; `/unvouch` quietly removes someone without blocking them.
+`/denounce` closes a PR outright and keeps closing that author's PRs from then
+on. Keep it for repeat spam and bad-faith behaviour; `/unvouch` quietly removes
+someone without blocking them.
+
+Vouching also lifts someone's open-PR allowance from one to three, which is the
+only way to let a contributor run more than one at a time. Reopening a PR that
+was closed for hitting the cap won't work on its own — the check runs again on
+reopen and closes it again.
 
 The bot opens a PR updating `.github/VOUCHED.td`. **Nothing takes effect until
 you merge it.** That PR needs an approval rather than a green CI run — GitHub
