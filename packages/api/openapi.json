@@ -2986,7 +2986,7 @@
           },
           "isVariableEnabled": {
             "type": "boolean",
-            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter(<variableName>)` and\n`$__conditionalAll(<condition>, <variableName>)` macros.\n",
+            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter($<variableName>)` and\n`$__conditionalAll(<condition>, $<variableName>)` macros.\n",
             "default": false,
             "example": true
           },
