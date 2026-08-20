@@ -874,9 +874,16 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = Pick<
+  DashboardFilter,
+  'name' | 'expression'
+> &
+  Partial<Pick<DashboardFilter, 'variableName' | 'isVariableEnabled'>>;
+
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(
-  filters: DashboardFilter[] | undefined,
+  filters: FilterForVariableDeclaration[] | undefined,
 ): DashboardVariableDeclaration[] {
   const declarations: DashboardVariableDeclaration[] = [];
   const takenNames = new Set<string>();

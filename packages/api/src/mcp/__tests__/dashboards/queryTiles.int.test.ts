@@ -398,4 +398,157 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
 
     expect(result.isError).toBe(true);
   });
+
+  describe('dashboard variables', () => {
+    it('runs a $__filter tile in the batch', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Batch variable test',
+          tiles: [
+            {
+              name: 'Rows',
+              config: {
+                configType: 'sql',
+                displayType: 'table',
+                connectionId: ctx.connection._id.toString(),
+                sourceId,
+                sqlTemplate:
+                  'SELECT count() AS c FROM $__sourceTable ' +
+                  'WHERE $__timeFilter(Timestamp) AND $__filters ' +
+                  'AND $__filter(ServiceName, service) LIMIT 1',
+              },
+            },
+          ],
+          filters: [
+            {
+              type: 'QUERY_EXPRESSION',
+              name: 'Service',
+              expression: 'ServiceName',
+              sourceId,
+              whereLanguage: 'sql',
+              isBroadcastEnabled: false,
+              isVariableEnabled: true,
+              variableName: 'service',
+            },
+          ],
+        },
+      );
+      expect(createResult.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(createResult));
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+        dashboardId: dashboard.id,
+        ...wideRange(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = JSON.parse(getFirstText(result));
+      // Before variables were threaded in, the macro text reached ClickHouse
+      // verbatim and this came back as a syntax error.
+      expect(parsed.summary).toMatchObject({ total: 1, ok: 1, error: 0 });
+    });
+
+    it('runs an event_patterns tile with a variable macro in the batch', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: ctx.team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: ctx.connection._id,
+        name: 'Batch Pattern Logs',
+        bodyExpression: 'Body',
+        severityTextExpression: 'SeverityText',
+      });
+      const sourceId = logSource._id.toString();
+      await bulkInsertLogs([
+        {
+          Body: 'checkout one',
+          ServiceName: 'checkout',
+          SeverityText: 'INFO',
+          Timestamp: new Date(Date.now() - 10 * 60 * 1000),
+        },
+        {
+          Body: 'payments one',
+          ServiceName: 'payments',
+          SeverityText: 'INFO',
+          Timestamp: new Date(Date.now() - 10 * 60 * 1000 + 10),
+        },
+      ]);
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Batch pattern variable test',
+          tiles: [
+            {
+              name: 'Log patterns',
+              config: {
+                displayType: 'event_patterns',
+                sourceId,
+                select: 'Body',
+                where: '$__filter(ServiceName, service)',
+                whereLanguage: 'sql',
+              },
+            },
+          ],
+          filters: [
+            {
+              type: 'QUERY_EXPRESSION',
+              name: 'Service',
+              expression: 'ServiceName',
+              sourceId,
+              whereLanguage: 'sql',
+              isBroadcastEnabled: false,
+              isVariableEnabled: true,
+              variableName: 'service',
+            },
+          ],
+        },
+      );
+      expect(createResult.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(createResult));
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+        dashboardId: dashboard.id,
+        ...wideRange(),
+        variableValues: [{ name: 'service', values: ['checkout'] }],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = JSON.parse(getFirstText(result));
+      // The batch path threads variables into the mining pipeline too — before
+      // it did, this tile came back as an error entry.
+      expect(parsed.summary).toMatchObject({ total: 1, ok: 1, error: 0 });
+    });
+
+    it('rejects a variableValues name the dashboard does not declare', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const dashboard = await saveDashboard([
+        {
+          name: 'Count',
+          config: {
+            displayType: 'number',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+      ]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+        dashboardId: dashboard.id,
+        ...wideRange(),
+        variableValues: [{ name: 'service', values: ['checkout'] }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Available variables: (none)');
+    });
+  });
 });

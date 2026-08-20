@@ -1504,6 +1504,22 @@ describe('filters', () => {
       expect(getDashboardVariableDeclarations([])).toEqual([]);
     });
 
+    it('accepts the external filter shape, which has sourceId not source', () => {
+      // The external API and MCP hold filters with `sourceId`; only the name,
+      // expression and the two variable fields decide what a filter declares,
+      // so the signature is structural rather than tied to DashboardFilter.
+      expect(
+        getDashboardVariableDeclarations([
+          {
+            name: 'Service',
+            expression: 'ServiceName',
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+        ]),
+      ).toEqual([{ name: 'service', expression: 'ServiceName' }]);
+    });
+
     it('skips filters that do not expose a variable', () => {
       expect(
         getDashboardVariableDeclarations([

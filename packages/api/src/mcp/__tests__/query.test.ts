@@ -7,6 +7,10 @@ jest.mock('@/utils/trimToolResponse', () => ({
 }));
 
 import { ClickHouseError } from '@clickhouse/client-common';
+import {
+  MacroExpansionError,
+  UnknownVariableError,
+} from '@hyperdx/common-utils/dist/macroErrors';
 
 import {
   annotateIncreaseTopNHint,
@@ -229,6 +233,49 @@ describe('errorHint', () => {
       'Syntax error: cannot cast as Float64 near token...',
     );
     expect(hint).toBeNull();
+  });
+
+  describe('unknown dashboard variable', () => {
+    // Matched on the error's type, not its wording, so rephrasing the
+    // expansion message cannot silently drop the hint.
+    it('points at the filter config', () => {
+      const hint = errorHint(
+        'some message the hint does not read',
+        new UnknownVariableError('filter', 'tenant', ['service', 'env'], 'x'),
+      );
+
+      expect(hint).toContain('isVariableEnabled');
+      expect(hint).toContain('clickstack_get_dashboard');
+    });
+
+    it('finds the error through a wrapper that keeps it as a cause', () => {
+      const hint = errorHint(
+        'x',
+        new Error('Query failed', {
+          cause: new UnknownVariableError('filter', 'tenant', ['service'], 'x'),
+        }),
+      );
+
+      expect(hint).toContain('isVariableEnabled');
+    });
+
+    it('does not fire on a different expansion failure for the same macro', () => {
+      // This message already says exactly what to do, so the
+      // declare-a-variable hint would be misleading noise on top of it. The
+      // old string match could not tell the two apart.
+      const message =
+        "Macro '$__filter(service)' requires the variable's filter " +
+        'expression, which is not available - pass it explicitly, e.g. ' +
+        '$__filter(<expression>, service).';
+
+      expect(
+        errorHint(message, new MacroExpansionError('filter', message)),
+      ).toBeNull();
+    });
+
+    it('does not fire on a message that merely mentions an unknown variable', () => {
+      expect(errorHint("references unknown variable 'tenant'")).toBeNull();
+    });
   });
 
   it('should match V8 string length overflow', () => {

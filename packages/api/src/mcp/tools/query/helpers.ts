@@ -7,8 +7,10 @@ import {
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { UnknownVariableError } from '@hyperdx/common-utils/dist/macroErrors';
 import type {
   ChartConfigWithDateRange,
+  ChartVariable,
   MetricTable,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -400,6 +402,8 @@ export async function runConfigTile(
     maxResults?: number;
     granularity?: string;
     abortSignal?: AbortSignal;
+    /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
+    variables?: ChartVariable[];
   },
 ) {
   if (!isConfigTile(tile)) {
@@ -442,6 +446,7 @@ export async function runConfigTile(
           whereLanguage:
             (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
           bodyExpression: selectStr || undefined,
+          variables: options?.variables,
           // Forward the batch deadline's abort signal so an event-patterns
           // tile that overruns is cancelled server-side alongside the generic
           // chart-config path, rather than escaping cancellation and letting
@@ -570,6 +575,7 @@ export async function runConfigTile(
       implicitColumnExpression: implicitColumn,
       useTextIndexForImplicitColumn,
       dateRange: [startDate, endDate] as [Date, Date],
+      variables: options?.variables,
     } satisfies ChartConfigWithDateRange;
 
     // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
@@ -647,6 +653,7 @@ export async function runConfigTile(
     ...savedConfig,
     ...sourceFields,
     dateRange: [startDate, endDate] as [Date, Date],
+    variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
@@ -832,7 +839,7 @@ export function clickHouseErrorResult(
         (e.cause instanceof Error ? e.cause.message : '') ||
         String(e)
       : String(e);
-  const hint = errorHint(raw);
+  const hint = errorHint(raw, e);
   const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
   const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
 
@@ -842,8 +849,34 @@ export function clickHouseErrorResult(
   return isServerError(e) ? mcpServerError(text) : mcpUserError(text);
 }
 
+/** Walk the cause chain looking for an error of the given class. */
+function findCause<T>(
+  error: unknown,
+  is: (e: unknown) => e is T,
+  depth = 5,
+): T | undefined {
+  let current = error;
+  for (let i = 0; i <= depth; i++) {
+    if (is(current)) return current;
+    if (!(current instanceof Error)) return undefined;
+    current = current.cause;
+  }
+  return undefined;
+}
+
 /** @internal Exported for testing only. */
-export function errorHint(msg: string): string | null {
+export function errorHint(msg: string, error?: unknown): string | null {
+  const unknownVariableError = findCause(
+    error,
+    (e): e is UnknownVariableError => e instanceof UnknownVariableError,
+  );
+  if (unknownVariableError) {
+    return (
+      "A variable exists only when one of the dashboard's filters sets " +
+      'isVariableEnabled. Call clickstack_get_dashboard to see the declared ' +
+      'filters and the names they can be referenced by.'
+    );
+  }
   if (
     /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
   ) {

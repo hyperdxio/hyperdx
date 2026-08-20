@@ -724,6 +724,33 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Invalid');
     });
+
+    it.each(['$__filter(ServiceName, service)', '$__conditionalAll(1=1, svc)'])(
+      'rejects %s, which needs a dashboard to resolve against',
+      async macro => {
+        // Rejected up front rather than sent on: an unrecognized macro passes
+        // through as literal text, so ClickHouse would answer with an opaque
+        // syntax error pointing at a '$'.
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `SELECT 1 AS value WHERE ${macro}`,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'only resolve for a tile on a dashboard',
+        );
+      },
+    );
+
+    it('still allows $__filters, which needs no variable context', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql: 'SELECT 1 AS value WHERE $__filters',
+      });
+
+      expect(result.isError).toBeFalsy();
+    });
   });
 
   // ─── ClickHouse query errors ──────────────────────────────────────────────────
