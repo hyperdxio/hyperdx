@@ -572,6 +572,36 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             Per-series number formatting options. When set, takes precedence
  *             over the chart-level numberFormat for this select item only.
  *
+ *     Formula:
+ *       type: object
+ *       required:
+ *         - expression
+ *       description: >
+ *         A derived series computed from the chart's select items via a
+ *         letter-ref arithmetic expression (metric sources only). "A" refers
+ *         to select[0], "B" to select[1], and so on. The grammar supports
+ *         + - * /, parentheses, and numeric constants; expressions are parsed
+ *         and validated, never passed through as raw SQL. Division by zero or
+ *         a missing operand yields NULL (rendered as a gap).
+ *       properties:
+ *         expression:
+ *           type: string
+ *           maxLength: 1024
+ *           description: >
+ *             Arithmetic expression over the select items by position, e.g.
+ *             "A / (A + B) * 100" for a success-rate percentage.
+ *           example: "A / (A + B) * 100"
+ *         alias:
+ *           type: string
+ *           description: >
+ *             Display label for the formula series in chart legends and column
+ *             headers. Falls back to the raw expression text when unset.
+ *           example: "Success rate %"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: >
+ *             Per-series number formatting options for the formula series.
+ *
  *     LineBuilderChartConfig:
  *       type: object
  *       required:
@@ -637,6 +667,21 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             the default render cap, set 0 for unlimited, or a positive N to
  *             keep the top N series.
  *           example: 5
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived series computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric
+ *             sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             series are returned; the raw operand series are hidden.
+ *           default: true
  *
  *     BarBuilderChartConfig:
  *       type: object
@@ -692,6 +737,21 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             the default render cap, set 0 for unlimited, or a positive N to
  *             keep the top N series.
  *           example: 5
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived series computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric
+ *             sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             series are returned; the raw operand series are hidden.
+ *           default: true
  *
  *     TableBuilderChartConfig:
  *       type: object
@@ -751,6 +811,21 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         onClick:
  *           $ref: '#/components/schemas/OnClick'
  *           description: Optional link-out configuration applied when a user clicks a row.
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived columns computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric
+ *             sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             columns are returned; the raw operand columns are hidden.
+ *           default: true
  *
  *     NumberBuilderChartConfig:
  *       type: object
@@ -772,10 +847,24 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         select:
  *           type: array
  *           minItems: 1
- *           maxItems: 1
- *           description: Exactly one aggregated value to display as a single number.
+ *           maxItems: 20
+ *           description: >
+ *             Exactly one aggregated value to display as a single number —
+ *             unless "formulas" is set, in which case the select items are
+ *             the formula's operands and the (single) formula value is
+ *             displayed instead.
  *           items:
  *             $ref: '#/components/schemas/SelectItem'
+ *         formulas:
+ *           type: array
+ *           maxItems: 1
+ *           description: >
+ *             A single derived value computed from the select items via
+ *             letter-ref arithmetic ("A" = select[0], "B" = select[1], ...).
+ *             Metric sources only. Number tiles display the formula value and
+ *             always hide the operand series.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.

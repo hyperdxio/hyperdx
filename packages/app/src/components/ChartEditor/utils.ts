@@ -1,7 +1,10 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
-import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isFormulaDisplayType,
+  validateRawSqlForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
@@ -173,22 +176,10 @@ const isCustomOrderByDisplayType = (
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Pie;
 
-/**
- * Display types that can carry formulas (HDX-5080) — the shapes the formula
- * query paths render (composed multi-series for metrics, inline single-scan
- * for events). Mirrors the "Add Formula" gating in ChartEditorControls.
- */
-export const isFormulaDisplayType = (
-  displayType: DisplayType | undefined,
-): displayType is
-  | DisplayType.Line
-  | DisplayType.StackedBar
-  | DisplayType.Table
-  | DisplayType.Number =>
-  displayType === DisplayType.Line ||
-  displayType === DisplayType.StackedBar ||
-  displayType === DisplayType.Table ||
-  displayType === DisplayType.Number;
+// Re-exported from common-utils (single source of truth shared with the
+// external API / MCP tile validation) so the "Add Formula" gating in
+// ChartEditorControls and the server-side surfaces cannot drift.
+export { isFormulaDisplayType };
 
 /**
  * Source kinds that can carry formulas: metric sources (rendered via the

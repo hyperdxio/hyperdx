@@ -1,12 +1,13 @@
 import { z } from 'zod';
 
+import { validateFormula } from './core/formula';
 import {
   getFilterVariableName,
   hasFilterEffect,
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
 } from './filters';
-import { DashboardContainerSchema } from './types';
+import { DashboardContainerSchema, DisplayType } from './types';
 
 // Inputs shared by the internal `DashboardSchema` refinement and the
 // external API body schema: the validation only depends on the
@@ -268,4 +269,78 @@ export function validateDashboardFilterFieldGating<
       });
     }
   });
+}
+
+// Structural because the internal and external chart-config shapes differ
+// (internal `seriesReturnType: 'ratio'` vs external `asRatio: true`); only
+// these fields decide formula validity. `select` stays loosely typed — a
+// string select (search tiles) simply has zero letter-referenceable series.
+type ChartConfigForFormulaValidation = {
+  displayType?: DisplayType | string;
+  select?: unknown;
+  formulas?: { expression: string }[];
+  asRatio?: boolean;
+};
+
+/**
+ * Structural validation for a chart config's metric formulas (HDX-5081),
+ * mirroring the chart editor's save-time rules (`validateChartForm` in
+ * `packages/app/src/components/ChartEditor/utils.ts`) so the API cannot
+ * persist a config the editor refuses:
+ *
+ * - Every formula expression must parse and only reference existing series
+ *   (`A` = select[0], ...), via the same `validateFormula` the editor and
+ *   the query renderer use.
+ * - Formulas are mutually exclusive with the ratio toggle (`asRatio`); the
+ *   renderer resolves the combination deterministically (formulas win) but
+ *   persisting both would be a lie in the saved config.
+ * - Number charts display a single value, so they support at most one
+ *   formula.
+ *
+ * The metric-source-only gate deliberately lives with the callers that can
+ * see the tile's source (`validateDashboardTiles` in the external API) —
+ * this helper only sees the config.
+ *
+ * Issues raised:
+ * - Invalid expression (path `<configPath>.formulas[i].expression`).
+ * - `asRatio` combined with formulas (path `<configPath>.formulas`).
+ * - More than one formula on a number chart (path `<configPath>.formulas`).
+ */
+export function validateChartConfigFormulas(
+  config: ChartConfigForFormulaValidation,
+  ctx: z.RefinementCtx,
+  paths?: { configPath?: (string | number)[] },
+): void {
+  const formulas = config.formulas;
+  if (!formulas || formulas.length === 0) return;
+  const configPath = paths?.configPath ?? [];
+
+  const seriesCount = Array.isArray(config.select) ? config.select.length : 0;
+  formulas.forEach((formula, formulaIdx) => {
+    const result = validateFormula(formula.expression ?? '', { seriesCount });
+    if (!result.ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.errors.map(e => e.message).join('; '),
+        path: [...configPath, 'formulas', formulaIdx, 'expression'],
+      });
+    }
+  });
+
+  if (config.asRatio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'formulas cannot be combined with asRatio; express the ratio as a formula instead (e.g. "A / B")',
+      path: [...configPath, 'formulas'],
+    });
+  }
+
+  if (config.displayType === DisplayType.Number && formulas.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Number charts support a single formula',
+      path: [...configPath, 'formulas'],
+    });
+  }
 }

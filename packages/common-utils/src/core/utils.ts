@@ -1391,6 +1391,25 @@ export function displayTypeSupportsBuilderAlerts(
   );
 }
 
+/**
+ * Display types that can carry formulas (HDX-5080) — the shapes the formula
+ * query paths render (composed multi-series for metrics, inline single-scan
+ * for events). Shared by the chart editor's "Add Formula" gating
+ * (`packages/app/src/components/ChartEditor/utils.ts`) and the external API /
+ * MCP tile validation, so the surfaces cannot drift.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
+
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,
 ): boolean {

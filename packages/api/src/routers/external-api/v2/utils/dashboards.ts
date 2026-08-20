@@ -32,6 +32,7 @@ import {
   RawSqlSavedChartConfig,
   resolveChartPaletteToken,
   SavedChartConfig,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
@@ -299,6 +300,18 @@ const convertToExternalTileChartConfig = (
     return typeof value === 'string' ? value : defaultValue;
   };
 
+  // Round-trip metric formulas (HDX-5081): emitted only when present so
+  // formula-less tiles keep their pre-formula response shape. Number tiles
+  // never emit `showOperandSeries` — operands are always hidden there, and
+  // the internal converter re-persists the explicit `false` on the way in.
+  const externalFormulaFields = config.formulas?.length
+    ? { formulas: config.formulas }
+    : {};
+  const externalShowOperandSeriesField =
+    config.formulas?.length && config.showOperandSeries !== undefined
+      ? { showOperandSeries: config.showOperandSeries }
+      : {};
+
   switch (config.displayType) {
     case DisplayType.Line:
       return {
@@ -320,6 +333,8 @@ const convertToExternalTileChartConfig = (
         // Three-state passthrough: 0 (unlimited) and positive N round-trip;
         // null/undefined map to absent (the default-cap state).
         seriesLimit: config.seriesLimit ?? undefined,
+        ...externalFormulaFields,
+        ...externalShowOperandSeriesField,
       };
     case DisplayType.StackedBar:
       return {
@@ -339,15 +354,23 @@ const convertToExternalTileChartConfig = (
         // Three-state passthrough: 0 (unlimited) and positive N round-trip;
         // null/undefined map to absent (the default-cap state).
         seriesLimit: config.seriesLimit ?? undefined,
+        ...externalFormulaFields,
+        ...externalShowOperandSeriesField,
       };
     case DisplayType.Number:
       return {
         displayType: config.displayType,
         sourceId,
+        // A formula number tile carries every operand select item (the
+        // formula references them by position), so emit them all; a
+        // formula-less tile keeps its single-item response shape.
         select: Array.isArray(config.select)
-          ? [convertToExternalSelectItem(config.select[0])]
+          ? config.formulas?.length
+            ? config.select.map(convertToExternalSelectItem)
+            : [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        ...externalFormulaFields,
         // Normalize stored palette tokens on the way out. A static `color`
         // saved before the hue rename holds a legacy `chart-1`..`chart-10`
         // token in Mongo (the `tiles` field is `Mixed`), so map it to the
@@ -412,6 +435,8 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         orderBy: stringValueOrDefault(config.orderBy, undefined),
+        ...externalFormulaFields,
+        ...externalShowOperandSeriesField,
       };
     case DisplayType.Search:
       return {
@@ -722,6 +747,10 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            // Metric formulas (HDX-5081) round-trip as-is; the input schema
+            // has already parsed/validated the expressions against `select`.
+            'formulas',
+            'showOperandSeries',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -745,6 +774,10 @@ export function convertToInternalTileConfig(
             'orderBy',
             'groupByColumnsOnLeft',
             'onClick',
+            // Metric formulas (HDX-5081) round-trip as-is; the input schema
+            // has already parsed/validated the expressions against `select`.
+            'formulas',
+            'showOperandSeries',
           ]),
           displayType: DisplayType.Table,
           select: externalConfig.select.map(convertToInternalSelectItem),
@@ -757,10 +790,23 @@ export function convertToInternalTileConfig(
       case 'number':
         internalConfig = {
           displayType: DisplayType.Number,
-          select: [convertToInternalSelectItem(externalConfig.select[0])],
+          // A formula number tile keeps every operand select item (formulas
+          // reference them by position); a formula-less tile persists its
+          // single item, preserving the pre-formula shape.
+          select: externalConfig.formulas?.length
+            ? externalConfig.select.map(convertToInternalSelectItem)
+            : [convertToInternalSelectItem(externalConfig.select[0])],
           source: externalConfig.sourceId,
           where: '',
           numberFormat: externalConfig.numberFormat,
+          // Number charts display the first value column, so operand series
+          // are always hidden — persist the explicit `false` so the saved
+          // config is self-describing, mirroring the chart editor's
+          // `convertFormStateToSavedChartConfig`.
+          formulas: externalConfig.formulas,
+          showOperandSeries: externalConfig.formulas?.length
+            ? false
+            : undefined,
           // The input schema validates these as hue-only palette tokens,
           // so pass them through directly; `_.omitBy(_.isNil)` below drops
           // them when absent.
@@ -1016,6 +1062,41 @@ function getHeatmapTilesWithIncompatibleSources(
   return [...heatmapSourceIds].filter(id => {
     const source = sourceById.get(id);
     return source !== undefined && !isHeatmapCompatibleSource(source);
+  });
+}
+
+/**
+ * Returns source IDs referenced by formula tiles that exist but are not
+ * metric sources. Metric formulas (HDX-5081) only render through the
+ * composed multi-series metric query — on any other source kind the
+ * renderer silently ignores them, so accepting the config would persist
+ * a tile that quietly doesn't do what the caller asked. Mirrors the
+ * editor's normalization, which strips formulas on non-metric sources
+ * (`convertFormStateToSavedChartConfig`).
+ */
+function getFormulaTilesWithNonMetricSources(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const formulaSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      !isRawSqlExternalTileConfig(tile.config) &&
+      'formulas' in tile.config &&
+      (tile.config.formulas?.length ?? 0) > 0 &&
+      'sourceId' in tile.config &&
+      tile.config.sourceId
+    ) {
+      formulaSourceIds.add(tile.config.sourceId);
+    }
+  }
+  if (formulaSourceIds.size === 0) return [];
+
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  return [...formulaSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    return source !== undefined && source.kind !== SourceKind.Metric;
   });
 }
 
@@ -1329,6 +1410,16 @@ export async function validateDashboardTiles(
   );
   if (heatmapNonTraceSources.length > 0) {
     return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
+  }
+
+  // Metric-formula source-kind gate: the renderer only applies formulas on
+  // metric sources, so reject rather than persist a silently-inert config.
+  const formulaNonMetricSources = getFormulaTilesWithNonMetricSources(
+    sources,
+    tiles,
+  );
+  if (formulaNonMetricSources.length > 0) {
+    return `Tiles with formulas require a Metric source. The following source IDs are not Metric sources: ${formulaNonMetricSources.join(', ')}`;
   }
 
   if (missingOnClickDashboards.length > 0) {
