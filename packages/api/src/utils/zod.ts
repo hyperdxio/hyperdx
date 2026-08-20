@@ -24,6 +24,7 @@ import {
   validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
+  VariableFilterValueSchema,
   WebhookService,
   zAlertChannel,
   zAlertChannels,
@@ -155,10 +156,17 @@ export type ExternalDashboardFilter = z.infer<
   typeof externalDashboardFilterSchema
 >;
 
-export const externalDashboardSavedFilterValueSchema = z.object({
-  type: z.literal('sql').optional().default('sql'),
-  condition: z.string().max(10000),
-});
+/**
+ * One entry in a dashboard's `savedFilterValues`: either a rendered SQL
+ * predicate, or a selection addressed by the dashboard variable it belongs to.
+ */
+export const externalDashboardSavedFilterValueSchema = z.union([
+  z.object({
+    type: z.literal('sql').optional().default('sql'),
+    condition: z.string().max(10000),
+  }),
+  VariableFilterValueSchema.strict(),
+]);
 
 // ================================
 // Dashboards (new format)

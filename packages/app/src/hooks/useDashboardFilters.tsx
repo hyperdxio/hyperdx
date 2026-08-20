@@ -9,13 +9,23 @@ import {
 import {
   ChartVariable,
   DashboardFilter,
+  DashboardFilterValue,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
 
 import { parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
-const filterQueriesParser = parseAsJsonEncoded<Filter[]>();
+export const filterQueriesParser = parseAsJsonEncoded<DashboardFilterValue[]>();
+
+/**
+ * Narrow the persisted entries to the ones the expression-keyed reader
+ * understands. Variable-keyed entries are not read or written here yet.
+ */
+const expressionKeyedEntries = (
+  entries: DashboardFilterValue[] | null | undefined,
+): Filter[] =>
+  (entries ?? []).filter((entry): entry is Filter => entry.type !== 'variable');
 
 /**
  * Whether a filter definition broadcasts its selected value onto a tile
@@ -40,7 +50,9 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
   const setFilterValue = useCallback(
     (expression: string, values: string[]) => {
       setFilterQueries(prev => {
-        const { filters: filterValues } = parseQuery(prev ?? []);
+        const { filters: filterValues } = parseQuery(
+          expressionKeyedEntries(prev),
+        );
         if (values.length === 0) {
           delete filterValues[expression];
         } else {
@@ -66,7 +78,9 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     filtersByExpression,
     variables,
   } = useMemo(() => {
-    const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
+    const { filters: parsedFilters } = parseQuery(
+      expressionKeyedEntries(filterQueries),
+    );
     const valuesForExistingFilters: FilterState = {};
     const knownExpressions = new Set(filters.map(f => f.expression));
     const ignored: string[] = [];
