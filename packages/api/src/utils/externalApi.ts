@@ -253,8 +253,8 @@ export type ExternalAlert = {
   thresholdType: AlertThresholdType;
   source?: string;
   state: AlertState;
-  channel: AlertChannel;
-  channels: AlertChannel[];
+  channel?: AlertChannel;
+  channels?: AlertChannel[];
   teamId: string;
   tileId?: string;
   dashboardId?: string;
@@ -358,8 +358,12 @@ export function translateAlertDocumentToExternalAlert(
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,
-    channel: channels[0] ?? { type: null },
-    channels,
+    // Omit both fields when no channel resolves (e.g. a legacy `{type: null}`
+    // channel) instead of emitting `channels: []` alongside a null-typed
+    // `channel` -- that shape violates this API's own OpenAPI contract
+    // (`AlertChannels` requires minItems: 1, and `AlertChannel`'s oneOf has no
+    // branch for `{type: null}`).
+    ...(channels.length > 0 && { channel: channels[0], channels }),
     teamId: alertObj.team.toString(),
     tileId: alertObj.tileId ?? undefined,
     dashboardId: alertObj.dashboard?.toString(),

@@ -125,5 +125,24 @@ describe('utils/externalApi', () => {
       expect(translated.channel).toEqual(exotic);
       expect(translated.channels).toEqual([exotic]);
     });
+
+    // A legacy `{type: null}` channel is a real, persistable state older
+    // fixtures exercise, but it satisfies neither the `AlertChannels`
+    // (minItems: 1) nor the `AlertChannel` oneOf in openapi.json. Omit both
+    // fields rather than emit a shape that contradicts this API's own
+    // contract.
+    it('omits channel and channels when no channel resolves', () => {
+      const alert = createAlertDocument({
+        channel: { type: null },
+        channels: undefined,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.channel).toBeUndefined();
+      expect(translated.channels).toBeUndefined();
+      expect('channel' in translated).toBe(false);
+      expect('channels' in translated).toBe(false);
+    });
   });
 });
