@@ -294,12 +294,12 @@ const mcpFormulaSchema = z.object({
 });
 
 const tileFormulasDescription =
-  'METRIC SOURCES ONLY. Derived series computed from the select items via ' +
-  'letter-ref arithmetic ("A" = select[0], "B" = select[1], ...). Example: ' +
-  '[{ expression: "A / B * 100", alias: "Error rate %" }] with select = ' +
-  '[errors count, total count]. Each formula adds one series computed in ' +
-  'ClickHouse. Cannot be combined with asRatio (express the ratio as a ' +
-  'formula instead). Rejected on non-metric sources.';
+  'METRIC, LOG, AND TRACE SOURCES. Derived series computed from the select ' +
+  'items via letter-ref arithmetic ("A" = select[0], "B" = select[1], ...). ' +
+  'Example: [{ expression: "A / B * 100", alias: "Error rate %" }] with ' +
+  'select = [errors count, total count]. Each formula adds one series ' +
+  'computed in ClickHouse. Cannot be combined with asRatio (express the ' +
+  'ratio as a formula instead). Rejected on other source kinds (e.g. session).';
 
 const mcpTileFormulasSchema = z
   .array(mcpFormulaSchema)

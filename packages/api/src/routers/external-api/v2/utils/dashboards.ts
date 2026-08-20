@@ -1,6 +1,7 @@
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isFormulaSourceKind,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
@@ -32,7 +33,6 @@ import {
   RawSqlSavedChartConfig,
   resolveChartPaletteToken,
   SavedChartConfig,
-  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
@@ -1067,14 +1067,14 @@ function getHeatmapTilesWithIncompatibleSources(
 
 /**
  * Returns source IDs referenced by formula tiles that exist but are not
- * metric sources. Metric formulas (HDX-5081) only render through the
- * composed multi-series metric query — on any other source kind the
- * renderer silently ignores them, so accepting the config would persist
- * a tile that quietly doesn't do what the caller asked. Mirrors the
- * editor's normalization, which strips formulas on non-metric sources
- * (`convertFormStateToSavedChartConfig`).
+ * formula-capable. Formulas render on metric sources (via the composed
+ * multi-series metric query, HDX-5081) and log/trace event sources (inline
+ * in the single-scan SELECT, HDX-5132); other kinds (e.g. session) are
+ * deliberately gated off, mirroring the editor's "Add Formula" gating and
+ * save-time normalization via the shared `isFormulaSourceKind` predicate,
+ * so the API cannot persist a config the editor refuses.
  */
-function getFormulaTilesWithNonMetricSources(
+function getFormulaTilesWithIncompatibleSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
 ): string[] {
@@ -1096,7 +1096,7 @@ function getFormulaTilesWithNonMetricSources(
   const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
   return [...formulaSourceIds].filter(id => {
     const source = sourceById.get(id);
-    return source !== undefined && source.kind !== SourceKind.Metric;
+    return source !== undefined && !isFormulaSourceKind(source.kind);
   });
 }
 
@@ -1462,21 +1462,22 @@ export async function validateDashboardTiles(
     return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
   }
 
-  // Metric-formula source-kind gate: the renderer only applies formulas on
-  // metric sources, so reject rather than persist a silently-inert config.
-  // On create (no existingTiles), validate all tiles. On update, scope to
-  // tiles whose formulas/sourceId changed — mirroring the heatmap gate —
-  // so a source whose kind changed after acceptance doesn't block
-  // unrelated dashboard edits.
+  // Formula source-kind gate: formulas are supported on metric and
+  // log/trace sources (see isFormulaSourceKind); other kinds are rejected
+  // rather than persisting a config the editor refuses. On create (no
+  // existingTiles), validate all tiles. On update, scope to tiles whose
+  // formulas/sourceId changed — mirroring the heatmap gate — so a source
+  // whose kind changed after acceptance doesn't block unrelated dashboard
+  // edits.
   const formulaTilesToCheck = existingTiles
     ? filterChangedFormulaTiles(tiles, existingTiles)
     : tiles;
-  const formulaNonMetricSources = getFormulaTilesWithNonMetricSources(
+  const formulaIncompatibleSources = getFormulaTilesWithIncompatibleSources(
     sources,
     formulaTilesToCheck,
   );
-  if (formulaNonMetricSources.length > 0) {
-    return `Tiles with formulas require a Metric source. The following source IDs are not Metric sources: ${formulaNonMetricSources.join(', ')}`;
+  if (formulaIncompatibleSources.length > 0) {
+    return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
   }
 
   if (missingOnClickDashboards.length > 0) {

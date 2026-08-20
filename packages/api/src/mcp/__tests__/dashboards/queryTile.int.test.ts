@@ -213,15 +213,113 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     expect(rows[0]).not.toHaveProperty('Requests');
   });
 
-  it('should reject a formula tile on a non-metric source (HDX-5081)', async () => {
+  it('should save and query a log-source formula tile (HDX-5132)', async () => {
+    // Event (log/trace) formulas compile inline in the single-scan SELECT
+    // (renderSelectListWithFormulas) rather than the composed metric path —
+    // prove the whole surface end-to-end: MCP save → internal persistence →
+    // external round-trip → query_tile computes the derived column.
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: ctx.team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: ctx.connection._id,
+      name: 'Formula Logs',
+      bodyExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    });
+    const now = new Date();
+    await bulkInsertLogs([
+      ...Array.from({ length: 3 }, (_, i) => ({
+        Body: `formula error log ${i}`,
+        ServiceName: 'api',
+        SeverityText: 'error',
+        Timestamp: now,
+      })),
+      ...Array.from({ length: 9 }, (_, i) => ({
+        Body: `formula info log ${i}`,
+        ServiceName: 'api',
+        SeverityText: 'info',
+        Timestamp: now,
+      })),
+    ]);
+
+    const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Log Formula Dashboard',
+        tiles: [
+          {
+            name: 'Log error rate',
+            config: {
+              displayType: 'number',
+              sourceId: logSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  where: 'SeverityText:error',
+                  alias: 'Errors',
+                },
+                { aggFn: 'count', alias: 'Total' },
+              ],
+              formulas,
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+    expect(dashboard.tiles[0].config.formulas).toEqual(formulas);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 60_000).toISOString(),
+      endTime: new Date(now.getTime() + 60_000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed: {
+      result: { data: Array<Record<string, unknown>> };
+    } = JSON.parse(getFirstText(result));
+    const rows = parsed.result.data;
+    expect(rows.length).toBeGreaterThan(0);
+    // 3 errors / 12 total * 100 = 25; number tiles always hide operands.
+    expect(Number(rows[0]['Error rate %'])).toBe(25);
+    expect(rows[0]).not.toHaveProperty('Errors');
+    expect(rows[0]).not.toHaveProperty('Total');
+  });
+
+  it('should reject a formula tile on a formula-incapable source kind (HDX-5081)', async () => {
+    const sessionSource = await Source.create({
+      kind: SourceKind.Session,
+      team: ctx.team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'rrweb_events',
+      },
+      timestampValueExpression: 'Timestamp',
+      traceSourceId: ctx.traceSource._id.toString(),
+      connection: ctx.connection._id,
+      name: 'Sessions',
+    });
+
     const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
       name: 'Bad Formula Dashboard',
       tiles: [
         {
-          name: 'Formula on traces',
+          name: 'Formula on sessions',
           config: {
             displayType: 'line',
-            sourceId: ctx.traceSource._id.toString(),
+            sourceId: sessionSource._id.toString(),
             select: [
               { aggFn: 'count', alias: 'A' },
               { aggFn: 'count', alias: 'B' },
@@ -233,7 +331,9 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(getFirstText(result)).toContain('require a Metric source');
+    expect(getFirstText(result)).toContain(
+      'require a Metric, Log, or Trace source',
+    );
   });
 
   it('should reject a formula referencing an unknown series (HDX-5081)', async () => {

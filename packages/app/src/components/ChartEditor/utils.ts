@@ -3,6 +3,7 @@ import { Path, UseFormSetError } from 'react-hook-form';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
 import {
   isFormulaDisplayType,
+  isFormulaSourceKind,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -179,20 +180,7 @@ const isCustomOrderByDisplayType = (
 // Re-exported from common-utils (single source of truth shared with the
 // external API / MCP tile validation) so the "Add Formula" gating in
 // ChartEditorControls and the server-side surfaces cannot drift.
-export { isFormulaDisplayType };
-
-/**
- * Source kinds that can carry formulas: metric sources (rendered via the
- * composed multi-series metric query) and event sources (log/trace, compiled
- * inline in the single-scan SELECT — see renderSelectListWithFormulas in
- * common-utils).
- */
-export const isFormulaSourceKind = (
-  kind: SourceKind | undefined,
-): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
-  kind === SourceKind.Metric ||
-  kind === SourceKind.Log ||
-  kind === SourceKind.Trace;
+export { isFormulaDisplayType, isFormulaSourceKind };
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,

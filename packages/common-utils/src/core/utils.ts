@@ -32,6 +32,7 @@ import {
   RawSqlChartConfig,
   SavedChartConfig,
   SortSpecificationList,
+  SourceKind,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -1409,6 +1410,21 @@ export const isFormulaDisplayType = (
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Table ||
   displayType === DisplayType.Number;
+
+/**
+ * Source kinds that can carry formulas (HDX-5132): metric sources (rendered
+ * via the composed multi-series metric query) and event sources (log/trace,
+ * compiled inline in the single-scan SELECT — see
+ * renderSelectListWithFormulas in renderChartConfig). Shared by the chart
+ * editor's "Add Formula" gating and the external API / MCP tile validation,
+ * so the surfaces cannot drift. Session (and other) sources stay gated off.
+ */
+export const isFormulaSourceKind = (
+  kind: SourceKind | undefined,
+): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
+  kind === SourceKind.Metric ||
+  kind === SourceKind.Log ||
+  kind === SourceKind.Trace;
 
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,

@@ -1596,7 +1596,7 @@
         "required": [
           "expression"
         ],
-        "description": "A derived series computed from the chart's select items via a letter-ref arithmetic expression (metric sources only). \"A\" refers to select[0], \"B\" to select[1], and so on. The grammar supports + - * /, parentheses, and numeric constants; expressions are parsed and validated, never passed through as raw SQL. Division by zero or a missing operand yields NULL (rendered as a gap).\n",
+        "description": "A derived series computed from the chart's select items via a letter-ref arithmetic expression (metric, log, and trace sources only). \"A\" refers to select[0], \"B\" to select[1], and so on. The grammar supports + - * /, parentheses, and numeric constants; expressions are parsed and validated, never passed through as raw SQL. Division by zero or a missing operand yields NULL (rendered as a gap).\n",
         "properties": {
           "expression": {
             "type": "string",
@@ -1690,7 +1690,7 @@
           "formulas": {
             "type": "array",
             "maxItems": 10,
-            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric sources only. Cannot be combined with asRatio.\n",
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
             "items": {
               "$ref": "#/components/schemas/Formula"
             }
@@ -1767,7 +1767,7 @@
           "formulas": {
             "type": "array",
             "maxItems": 10,
-            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric sources only. Cannot be combined with asRatio.\n",
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
             "items": {
               "$ref": "#/components/schemas/Formula"
             }
@@ -1850,7 +1850,7 @@
           "formulas": {
             "type": "array",
             "maxItems": 10,
-            "description": "Derived columns computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric sources only. Cannot be combined with asRatio.\n",
+            "description": "Derived columns computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
             "items": {
               "$ref": "#/components/schemas/Formula"
             }
@@ -1896,7 +1896,7 @@
           "formulas": {
             "type": "array",
             "maxItems": 1,
-            "description": "A single derived value computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric sources only. Number tiles display the formula value and always hide the operand series.\n",
+            "description": "A single derived value computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Number tiles display the formula value and always hide the operand series.\n",
             "items": {
               "$ref": "#/components/schemas/Formula"
             }

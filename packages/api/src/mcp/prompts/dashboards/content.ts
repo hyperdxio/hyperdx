@@ -1063,13 +1063,14 @@ to plot the first as a ratio of the second. Useful for error rates:
   ],
   asRatio: true
 
-== FORMULAS (metric sources only) ==
+== FORMULAS (metric + log/trace sources) ==
 
-line / stacked_bar / table / number tiles on a METRIC source can add derived
-series computed from the select items via letter-ref arithmetic: "A" is
-select[0], "B" is select[1], and so on. The grammar is + - * /, parentheses,
-and numeric constants; division by zero or a missing operand renders as a gap
-(NULL). Example: a success-rate percentage over three counters:
+line / stacked_bar / table / number tiles on a METRIC, LOG, or TRACE source
+can add derived series computed from the select items via letter-ref
+arithmetic: "A" is select[0], "B" is select[1], and so on. The grammar is
++ - * /, parentheses, and numeric constants; division by zero or a missing
+operand renders as a gap. Example: a success-rate percentage over three
+metric counters:
   select: [
     { aggFn: "sum", metricType: "sum", metricName: "requests.success", alias: "Success" },
     { aggFn: "sum", metricType: "sum", metricName: "requests.error", alias: "Error" },
@@ -1079,8 +1080,19 @@ and numeric constants; division by zero or a missing operand renders as a gap
     { expression: "A / (A + B + C) * 100", alias: "Success rate %", numberFormat: { output: "percent", mantissa: 1 } }
   ]
 
+Example: an error-rate percentage on a log/trace source, from two filtered
+counts over the same rows:
+  select: [
+    { aggFn: "count", where: "SeverityText:error", alias: "Errors" },
+    { aggFn: "count", alias: "Total" }
+  ],
+  formulas: [
+    { expression: "A / B * 100", alias: "Error rate %" }
+  ]
+
 Rules:
-  - Metric sources only; the server rejects formulas on log/trace sources.
+  - Metric, log, and trace sources only; the server rejects formulas on other
+    source kinds (e.g. session).
   - Each formula adds one series after the operand series. Set
     showOperandSeries: false to return only the formula series.
   - Cannot be combined with asRatio: express the ratio as a formula ("A / B").

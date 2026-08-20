@@ -578,7 +578,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         - expression
  *       description: >
  *         A derived series computed from the chart's select items via a
- *         letter-ref arithmetic expression (metric sources only). "A" refers
+ *         letter-ref arithmetic expression (metric, log, and trace sources
+ *         only). "A" refers
  *         to select[0], "B" to select[1], and so on. The grammar supports
  *         + - * /, parentheses, and numeric constants; expressions are parsed
  *         and validated, never passed through as raw SQL. Division by zero or
@@ -672,8 +673,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxItems: 10
  *           description: >
  *             Derived series computed from the select items via letter-ref
- *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric
- *             sources only. Cannot be combined with asRatio.
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
  *           items:
  *             $ref: '#/components/schemas/Formula'
  *         showOperandSeries:
@@ -742,8 +743,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxItems: 10
  *           description: >
  *             Derived series computed from the select items via letter-ref
- *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric
- *             sources only. Cannot be combined with asRatio.
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
  *           items:
  *             $ref: '#/components/schemas/Formula'
  *         showOperandSeries:
@@ -816,8 +817,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxItems: 10
  *           description: >
  *             Derived columns computed from the select items via letter-ref
- *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric
- *             sources only. Cannot be combined with asRatio.
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
  *           items:
  *             $ref: '#/components/schemas/Formula'
  *         showOperandSeries:
@@ -861,7 +862,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: >
  *             A single derived value computed from the select items via
  *             letter-ref arithmetic ("A" = select[0], "B" = select[1], ...).
- *             Metric sources only. Number tiles display the formula value and
+ *             Metric, log, and trace sources only. Number tiles display the
+ *             formula value and
  *             always hide the operand series.
  *           items:
  *             $ref: '#/components/schemas/Formula'

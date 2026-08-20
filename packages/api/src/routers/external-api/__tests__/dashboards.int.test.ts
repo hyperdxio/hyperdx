@@ -6232,24 +6232,65 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
-    it('rejects formulas on a non-metric source', async () => {
-      const res = await postTile({
+    it('round-trips formulas on a log/trace event source (HDX-5132)', async () => {
+      // Event sources compile formulas inline in the single-scan SELECT
+      // (renderSelectListWithFormulas) — the API accepts and round-trips
+      // them just like metric formulas.
+      const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+      const create = await postTile({
         sourceId: traceSource._id.toString(),
+        select: [
+          { aggFn: 'count', where: 'StatusCode:Error', alias: 'Errors' },
+          { aggFn: 'count', where: '', alias: 'Total' },
+        ],
+        formulas,
+        showOperandSeries: false,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(create.body.data.tiles[0].config.showOperandSeries).toBe(false);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.showOperandSeries).toBe(false);
+    });
+
+    it('rejects formulas on a formula-incapable source kind (session)', async () => {
+      const sessionSource = await Source.create({
+        kind: SourceKind.Session,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: 'rrweb_events',
+        },
+        timestampValueExpression: 'Timestamp',
+        traceSourceId: traceSource._id.toString(),
+        connection: connection._id,
+        name: 'Sessions',
+      });
+
+      const res = await postTile({
+        sourceId: sessionSource._id.toString(),
         select: [
           { aggFn: 'count', where: '', alias: 'A' },
           { aggFn: 'count', where: '', alias: 'B' },
         ],
         formulas: [{ expression: 'A / B' }],
       }).expect(400);
-      expect(res.body.message).toContain('require a Metric source');
+      expect(res.body.message).toContain(
+        'require a Metric, Log, or Trace source',
+      );
     });
 
     it('does not block updates over an unchanged formula tile whose source kind changed', async () => {
       // Accept a formula tile while the source is a metric source, then
-      // flip the source's kind out from under it (a full-replace source
-      // update can do this). Mirroring the heatmap gate, an update that
-      // leaves the formula tile untouched must not be rejected — only
-      // changes to the tile's formulas/source re-enter the gate.
+      // flip the source's kind to a formula-incapable one out from under it
+      // (a full-replace source update can do this). Mirroring the heatmap
+      // gate, an update that leaves the formula tile untouched must not be
+      // rejected — only changes to the tile's formulas/source re-enter the
+      // gate.
       const created = await postTile({
         formulas: [{ expression: 'A / B', alias: 'Rate' }],
       }).expect(200);
@@ -6261,7 +6302,7 @@ describe('External API v2 Dashboards - new format', () => {
       // same way a source-replace API call would leave the doc.
       await Source.collection.updateOne(
         { _id: metricSource._id },
-        { $set: { kind: SourceKind.Log } },
+        { $set: { kind: SourceKind.Session } },
       );
 
       // Unrelated edit (rename) resubmitting the unchanged tile: accepted.
@@ -6285,7 +6326,9 @@ describe('External API v2 Dashboards - new format', () => {
           tags: [],
         })
         .expect(400);
-      expect(res.body.message).toContain('require a Metric source');
+      expect(res.body.message).toContain(
+        'require a Metric, Log, or Trace source',
+      );
     });
 
     // ── Backward compatibility: formulas are opt-in ─────────────────────
