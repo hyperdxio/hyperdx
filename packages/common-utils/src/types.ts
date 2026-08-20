@@ -882,8 +882,16 @@ export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
 // emitted: ALERT = fired, OK = recovered.
 export const AlertTransitionSchema = z.object({
-  createdAt: z.string(),
+  createdAt: z.string().datetime(),
   state: z.nativeEnum(AlertState),
+  // Start of the newest bucket evaluated by the transitioning window. Charts
+  // plot each bucket's value at its *start*, while the evaluation runs at the
+  // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
+  // data point that produced the transition. Optional for compatibility with
+  // older API responses; consumers fall back to createdAt. Floored at the
+  // requested range start so an edge crossing's marker never precedes a
+  // carry-in pin; charts clamp edge markers into their rendered domain.
+  bucketStart: z.string().datetime().optional(),
 });
 
 export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
@@ -1378,7 +1386,7 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
 /** A dashboard variable as seen by a tile's query. */
 export const ChartVariableSchema = z.object({
   name: z.string(),
-  /** The filter's target expression; enables the 1-arg `$__filter(name)` form. */
+  /** The filter's target expression; enables the 1-arg `$__filter($name)` form. */
   expression: z.string().optional(),
   /** Empty means nothing is selected. */
   values: z.array(z.string()),
@@ -2250,7 +2258,10 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({ type: z.string().optional().nullable() }),
+  channel: z.object({
+    type: z.string().optional().nullable(),
+    webhookId: z.string().optional(),
+  }),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
@@ -2497,6 +2508,20 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Response for `PATCH /me/accessKey`.
+//
+// Deliberately not RotateApiKeyApiResponseSchema (`{ newApiKey }`): `team.apiKey`
+// is the shared ingestion key, while `user.accessKey` is the per-user bearer
+// token for the external API v2 and the MCP server. The two are rendered side by
+// side in Team Settings, so the wire names must not blur together.
+export const RotateAccessKeyApiResponseSchema = z.object({
+  newAccessKey: z.string(),
+});
+
+export type RotateAccessKeyApiResponse = z.infer<
+  typeof RotateAccessKeyApiResponseSchema
+>;
 
 // IaC (Terraform) export
 //

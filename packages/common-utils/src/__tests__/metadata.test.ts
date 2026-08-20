@@ -951,7 +951,7 @@ describe('Metadata', () => {
         ]),
       );
 
-      jest
+      const doMVsAggregateSpy = jest
         .spyOn(metadata as any, 'doMetadataMVsAggregateColumn')
         .mockImplementation((...args: any[]) => {
           const columnName = args[1] as string;
@@ -959,6 +959,9 @@ describe('Metadata', () => {
             columnName === 'ServiceName' || columnName === 'SeverityText',
           );
         });
+
+      // Returned so tests can override the MV-aggregation answer.
+      return { doMVsAggregateSpy };
     };
 
     afterEach(() => {
@@ -1020,8 +1023,101 @@ describe('Metadata', () => {
       expect(sql).toContain('BY ColumnIdentifier, Key');
       expect(sql).not.toContain('mergeTreeTextIndex(');
       expect(Object.values(params)).toContain('otel_logs_kv_rollup_15m');
-      expect(Object.values(params)).toContain('ServiceName');
-      expect(Object.values(params)).toContain('SeverityText');
+      // Keys are inlined as escaped literals, not bound as params — per-key
+      // params would push large batches into multipart bodies (see #8482).
+      expect(sql).toContain("Key IN ('ServiceName','SeverityText')");
+      expect(Object.values(params)).not.toContain('ServiceName');
+      expect(Object.values(params)).not.toContain('SeverityText');
+    });
+
+    it('keeps the KV rollup MV query parameter count independent of the number of keys', async () => {
+      const { doMVsAggregateSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+
+      const manyKeys = Array.from(
+        { length: 80 },
+        (_, i) => `LogAttributes['some.rather.long.attribute.key.${i}']`,
+      );
+      // Route map keys through the MV (not the text index) so they all land in
+      // one batched rollup query.
+      jest
+        .spyOn(metadata, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map());
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: manyKeys,
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const params = mvCall![0].query_params as Record<string, string>;
+      // A handful of fixed params — never one per key.
+      expect(Object.keys(params).length).toBeLessThan(10);
+      const sql = mvCall![0].query as string;
+      expect(sql).toContain("'some.rather.long.attribute.key.0'");
+      expect(sql).toContain("'some.rather.long.attribute.key.79'");
+    });
+
+    it('SQL-escapes inlined rollup keys containing quotes and backslashes', async () => {
+      const { doMVsAggregateSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+      jest
+        .spyOn(metadata, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map());
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['it's a key']"],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const sql = mvCall![0].query as string;
+      // The embedded quote must be escaped, never spliced raw.
+      expect(sql).toContain("Key IN ('it\\'s a key')");
+      expect(sql).not.toContain("Key IN ('it's a key')");
+    });
+
+    it('applies the time filter to every branch of the KV rollup OR chain', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['ServiceName', 'SeverityText'],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const sql = (mvCall![0].query as string).replace(/\s+/g, ' ');
+      // Without parens, `a OR b AND time` binds the time filter to the
+      // last branch only.
+      expect(sql).toMatch(/WHERE \(\(ColumnIdentifier = /);
+      expect(sql).toMatch(/\)\) AND Timestamp >= /);
+    });
+
+    it('inlines map text index key prefixes as escaped literals, not params', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['requestId']"],
+      });
+
+      const idxCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('startsWith(token,'),
+      );
+      expect(idxCall).toBeDefined();
+      const sql = idxCall![0].query as string;
+      const params = idxCall![0].query_params as Record<string, string>;
+      expect(sql).toContain("startsWith(token, 'requestId=')");
+      expect(Object.values(params)).not.toContain('requestId=');
     });
 
     it('routes columns without any index or MV entry through the getKeyValues fallback (raw table scan)', async () => {
@@ -1212,11 +1308,12 @@ describe('Metadata', () => {
 
       expect(mapTextIndexCalls.length).toBeGreaterThanOrEqual(2);
 
-      const allParamValues = mapTextIndexCalls.flatMap((c: any[]) =>
-        Object.values(c[0].query_params ?? {}),
-      );
+      // Key prefixes are inlined as escaped literals, not per-key params.
+      const allQueries = mapTextIndexCalls
+        .map((c: any[]) => c[0].query as string)
+        .join('\n');
       for (let i = 0; i < keyCount; i++) {
-        expect(allParamValues).toContain(`k${i}=`);
+        expect(allQueries).toContain(`startsWith(token, 'k${i}=')`);
       }
     });
 

@@ -24,6 +24,7 @@ import {
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
+import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -625,6 +626,14 @@ const getChartConfigFromAlert = (
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
 
+    // Substitute empty selections for each variable the dashboard defines
+    const variables = getDashboardVariableDeclarations(
+      details.dashboard.filters,
+    ).map(declaration => ({
+      ...declaration,
+      values: [],
+    }));
+
     // Raw SQL tiles: build a RawSqlChartConfig
     if (isRawSqlSavedChartConfig(tile.config)) {
       if (displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
@@ -637,6 +646,7 @@ const getChartConfigFromAlert = (
           ]),
           connection,
           dateRange,
+          variables,
           // Only time-series charts use interval bucketing
           ...(isTimeSeriesDisplayType(tile.config.displayType) && {
             granularity: `${windowSizeInMins} minute`,
@@ -706,6 +716,18 @@ const getChartConfigFromAlert = (
         where: tile.config.where,
         whereLanguage: tile.config.whereLanguage,
         seriesReturnType: tile.config.seriesReturnType,
+        // Grouped ratios can divide per-group or share-of-total; without this
+        // the alert would silently evaluate the default (per-group) mode.
+        ratioMode: tile.config.ratioMode,
+        // Metric formulas (HDX-5080): the alert must evaluate the derived
+        // formula column, not a raw operand series. Operand columns are
+        // always dropped from the alert query — regardless of the tile's
+        // "Show input series" display toggle — so the formula is the value
+        // column parseAlertData picks (the last one wins, consistent with
+        // the multi-series "last series drives the alert" semantics).
+        formulas: tile.config.formulas,
+        ...(tile.config.formulas?.length ? { showOperandSeries: false } : {}),
+        variables,
       };
     }
   }
