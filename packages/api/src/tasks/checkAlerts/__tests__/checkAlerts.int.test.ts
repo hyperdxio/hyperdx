@@ -4868,7 +4868,7 @@ describe('checkAlerts', () => {
                     aggConditionLanguage: 'lucene',
                   },
                 ],
-                where: "$__conditionalAll(ServiceName = 'api', svc)",
+                where: "$__conditionalAll(ServiceName = 'api', $svc)",
                 whereLanguage: 'sql',
                 displayType: 'line',
                 granularity: 'auto',
@@ -5002,7 +5002,7 @@ describe('checkAlerts', () => {
           ' FROM default.otel_logs',
           ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
           ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
-          ' AND $__filter(svc)',
+          ' AND $__filter($svc)',
           " AND ServiceName != '$abc'",
           ' GROUP BY ts ORDER BY ts',
         ].join('');
@@ -5047,7 +5047,7 @@ describe('checkAlerts', () => {
           teamWebhooksById,
         );
 
-        // `$__filter(svc)` expanded to its empty-selection no-op, so it matched
+        // `$__filter($svc)` expanded to its empty-selection no-op, so it matched
         // everything; `'$abc'` was left as a literal and excluded its own row.
         expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
         expect(await lastValue(details.alert.id)).toBe(2);
