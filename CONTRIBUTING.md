@@ -8,6 +8,13 @@ one. Open a PR without being vouched and it stays open — a bot adds a
 `needs-vouch` label and a comment pointing you back here. Nothing gets closed,
 you just aren't in the review queue yet.
 
+**One at a time.** Outside contributors can have one pull request open at once,
+or three once vouched. Open more than that and the newest is closed with a note
+asking you to finish the others first; reopen it once one of them lands. Drafts
+don't count towards the limit. This isn't about the quality of your work — a
+handful of parallel changes from one author is more than we can review properly,
+and in practice it means none of them get merged.
+
 To get vouched, [open an issue saying
 hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
 who you are and what you want to work on. A maintainer replies, usually within a

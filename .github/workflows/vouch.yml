@@ -3,9 +3,16 @@ name: Vouch
 # Trust gate for outside contributions, built on https://github.com/mitchellh/vouch.
 #
 # Anyone with write access (org members, collaborators) and bots are always
-# allowed. A PR from anyone else who is not in .github/VOUCHED.td stays open,
-# gets a `needs-vouch` label and a comment asking them to introduce themselves.
-# Only authors explicitly denounced in the list are auto-closed. Issues are NOT
+# allowed. For everyone else this does two things:
+#
+#   1. Volume. Outside contributors get one open PR at a time, three once they
+#      are on the vouch list. Anything over that is closed, asking them to
+#      finish what they have open first. Drafts don't count.
+#   2. Authenticity. A PR from someone not in .github/VOUCHED.td stays open but
+#      gets a `needs-vouch` label and a comment asking them to introduce
+#      themselves.
+#
+# Authors explicitly denounced in the list are always closed. Issues are NOT
 # gated — opening one is how a new contributor introduces themselves.
 #
 # Maintainers manage the list from any issue or PR comment. The keyword has to
@@ -53,13 +60,68 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - if: steps.vouch.outputs.status == 'allowed'
-        uses: actions/github-script@v9
+      # One step covers both checks so an author who is unvouched *and* over
+      # the PR limit gets a single comment rather than two.
+      - uses: actions/github-script@v9
+        env:
+          VOUCH_STATUS: ${{ steps.vouch.outputs.status }}
         with:
           script: |
             const LABEL = 'needs-vouch';
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
+            const status = process.env.VOUCH_STATUS;
+
+            // skipped = bot. closed = denounced, already handled upstream.
+            if (status === 'skipped' || status === 'closed') return;
+
+            // `vouched` covers both collaborators and listed outsiders, so it
+            // cannot tell us who is internal. Same check as
+            // external-contributor-alerts.yml, including the slow path that
+            // catches org members with concealed membership.
+            let internal = ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(pr.author_association);
+            if (!internal) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner, repo, username: pr.user.login,
+                });
+                const p = data.user?.permissions ?? {};
+                internal = !!(p.admin || p.maintain || p.push || p.triage);
+              } catch (e) {
+                if (e.status !== 404) throw e; // 404 = not a collaborator => external
+              }
+            }
+            if (internal) { core.info(`#${pr.number} is internal; nothing to do.`); return; }
+
+            // Volume cap, per Jaeger's model: contributing more earns more
+            // concurrent PRs. Being on the vouch list is the reputation signal.
+            const allowance = status === 'vouched' ? 3 : 1;
+            const open = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+            // Drafts do not count — they are not asking for review yet, which
+            // is the queue we are actually protecting.
+            const theirs = open.filter(p =>
+              p.user?.login === pr.user.login && p.number !== pr.number && !p.draft);
+
+            if (theirs.length >= allowance) {
+              const list = theirs.map(p => `#${p.number}`).join(', ');
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number,
+                body: [
+                  `Hi @${pr.user.login}, thanks for this.`,
+                  ``,
+                  `We limit outside contributors to ${allowance} open pull request${allowance === 1 ? '' : 's'} at a time, and you already have ${list} open. Reviewing several changes from one author at once is more than we can give proper attention to, and it tends to mean none of them land.`,
+                  ``,
+                  `I have closed this one to keep the queue honest — **your branch and your work are untouched**. Once ${theirs.length === 1 ? 'that PR' : 'one of those'} is merged or closed, reopen this and it will go through.`,
+                ].join('\n'),
+              });
+              await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' });
+              core.info(`Closed #${pr.number}: ${theirs.length} already open, allowance ${allowance}.`);
+              return;
+            }
+
+            if (status !== 'allowed') return; // vouched and within the limit
 
             // The label doubles as the "already asked" marker so a reopen or a
             // ready_for_review doesn't post the same comment a second time.
