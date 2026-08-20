@@ -1101,6 +1101,56 @@ function getFormulaTilesWithNonMetricSources(
 }
 
 /**
+ * For a PUT (update) request, return only the formula tiles that need to
+ * be re-validated against the metric-source gate. Mirrors
+ * `filterChangedHeatmapTiles` below: a tile that already carried the same
+ * formulas on the same source in the existing dashboard is kept as
+ * "unchanged" so the user can edit other parts of the dashboard without
+ * being blocked when the underlying source's `kind` was changed after the
+ * formulas were originally accepted. New formula tiles, tiles that newly
+ * gained or edited formulas, and tiles whose `sourceId` changed all flow
+ * through the check.
+ */
+function filterChangedFormulaTiles(
+  requestTiles: ExternalDashboardTileWithId[],
+  existingTiles: DashboardDocument['tiles'],
+): ExternalDashboardTileWithId[] {
+  const existingTilesById = new Map<string, DashboardDocument['tiles'][number]>(
+    existingTiles.map(t => [t.id, t]),
+  );
+  return requestTiles.filter(tile => {
+    if (
+      !isConfigTile(tile) ||
+      isRawSqlExternalTileConfig(tile.config) ||
+      !('formulas' in tile.config) ||
+      (tile.config.formulas?.length ?? 0) === 0
+    ) {
+      return false;
+    }
+    const existing = tile.id ? existingTilesById.get(tile.id) : undefined;
+    if (existing === undefined) {
+      // New formula tile: validate.
+      return true;
+    }
+    const existingConfig = existing.config;
+    if (!isBuilderSavedChartConfig(existingConfig)) {
+      // Existing tile was raw-SQL/PromQL; user is converting to a builder
+      // tile with formulas.
+      return true;
+    }
+    if (!_.isEqual(existingConfig.formulas, tile.config.formulas)) {
+      // Formulas newly added or edited: the user is actively touching the
+      // gated feature, so surface the source-kind error rather than
+      // persisting another silently-inert formula.
+      return true;
+    }
+    // Existing tile already carried these exact formulas. Re-check only
+    // when the source changed.
+    return existingConfig.source?.toString() !== tile.config.sourceId;
+  });
+}
+
+/**
  * For a PUT (update) request, return only the heatmap tiles that need
  * to be re-validated against the source-kind gate. A heatmap tile that
  * was already on the same source in the existing dashboard is kept as
@@ -1414,9 +1464,16 @@ export async function validateDashboardTiles(
 
   // Metric-formula source-kind gate: the renderer only applies formulas on
   // metric sources, so reject rather than persist a silently-inert config.
+  // On create (no existingTiles), validate all tiles. On update, scope to
+  // tiles whose formulas/sourceId changed — mirroring the heatmap gate —
+  // so a source whose kind changed after acceptance doesn't block
+  // unrelated dashboard edits.
+  const formulaTilesToCheck = existingTiles
+    ? filterChangedFormulaTiles(tiles, existingTiles)
+    : tiles;
   const formulaNonMetricSources = getFormulaTilesWithNonMetricSources(
     sources,
-    tiles,
+    formulaTilesToCheck,
   );
   if (formulaNonMetricSources.length > 0) {
     return `Tiles with formulas require a Metric source. The following source IDs are not Metric sources: ${formulaNonMetricSources.join(', ')}`;

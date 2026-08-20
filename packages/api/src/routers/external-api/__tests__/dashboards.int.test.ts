@@ -6244,6 +6244,50 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('require a Metric source');
     });
 
+    it('does not block updates over an unchanged formula tile whose source kind changed', async () => {
+      // Accept a formula tile while the source is a metric source, then
+      // flip the source's kind out from under it (a full-replace source
+      // update can do this). Mirroring the heatmap gate, an update that
+      // leaves the formula tile untouched must not be rejected — only
+      // changes to the tile's formulas/source re-enter the gate.
+      const created = await postTile({
+        formulas: [{ expression: 'A / B', alias: 'Rate' }],
+      }).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      // `kind` is the Mongoose discriminator key, which updateOne silently
+      // strips from $set — write through the raw collection instead, the
+      // same way a source-replace API call would leave the doc.
+      await Source.collection.updateOne(
+        { _id: metricSource._id },
+        { $set: { kind: SourceKind.Log } },
+      );
+
+      // Unrelated edit (rename) resubmitting the unchanged tile: accepted.
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({ name: 'Renamed formula dashboard', tiles: [tile], tags: [] })
+        .expect(200);
+
+      // Changing the tile's formulas re-enters the gate: rejected.
+      const res = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Renamed formula dashboard',
+          tiles: [
+            {
+              ...tile,
+              config: {
+                ...tile.config,
+                formulas: [{ expression: 'B / A', alias: 'Inverse' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+      expect(res.body.message).toContain('require a Metric source');
+    });
+
     // ── Backward compatibility: formulas are opt-in ─────────────────────
 
     it('round-trips a multi-series metric tile with no formulas', async () => {

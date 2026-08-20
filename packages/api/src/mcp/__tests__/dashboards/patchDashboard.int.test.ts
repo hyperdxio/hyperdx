@@ -1,5 +1,9 @@
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+
+import { DEFAULT_DATABASE, DEFAULT_METRICS_TABLE } from '@/fixtures';
 import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
 import Dashboard from '@/models/dashboard';
+import { Source } from '@/models/source';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 import { setupDashboardTests } from './setup';
@@ -868,6 +872,181 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       expect(patchResult.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(patchResult));
       expect(output.warnings).toBeUndefined();
+    });
+  });
+
+  // Patches replace a single tile without going through the save_dashboard
+  // body schemas, so the handler must re-run the external tile schema's
+  // cross-field refinements itself — otherwise a patch could persist a
+  // config that an equivalent create or full update rejects (HDX-5081).
+  describe('metric formula validation (HDX-5081)', () => {
+    const metricSelect = () => [
+      {
+        aggFn: 'max',
+        metricType: 'gauge',
+        metricName: 'patch.errors',
+        alias: 'Errors',
+      },
+      {
+        aggFn: 'max',
+        metricType: 'gauge',
+        metricName: 'patch.requests',
+        alias: 'Requests',
+      },
+    ];
+
+    const createMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: ctx.connection._id,
+        name: 'Gauge Metrics (patch)',
+      });
+
+    const createFormulaDashboard = async (sourceId: string) => {
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch Formula Dashboard',
+          tiles: [
+            {
+              name: 'Error rate',
+              config: {
+                displayType: 'line',
+                sourceId,
+                select: metricSelect(),
+                formulas: [{ expression: 'A / B * 100', alias: 'Rate %' }],
+              },
+            },
+          ],
+        },
+      );
+      if (createResult.isError) {
+        throw new Error(getFirstText(createResult));
+      }
+      return JSON.parse(getFirstText(createResult));
+    };
+
+    it('rejects a patch whose formula references an unknown series', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: metricSelect(),
+              formulas: [{ expression: 'A / C' }],
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain('Unknown series');
+    });
+
+    it('rejects a patch combining formulas with asRatio', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: metricSelect(),
+              formulas: [{ expression: 'A / B' }],
+              asRatio: true,
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain('asRatio');
+    });
+
+    it('rejects a patch making a number tile multi-select without formulas', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: metricSelect(),
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain(
+        'Number tiles support a single select item',
+      );
+    });
+
+    it('round-trips a valid formula patch', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const formulas = [{ expression: 'B / A', alias: 'Inverse' }];
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: metricSelect(),
+              formulas,
+              showOperandSeries: false,
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBeFalsy();
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard_tile',
+        { dashboardId: dashboard.id, tileId: dashboard.tiles[0].id },
+      );
+      const tile = JSON.parse(getFirstText(getResult));
+      expect(tile.config.formulas).toEqual(formulas);
+      expect(tile.config.showOperandSeries).toBe(false);
     });
   });
 });
