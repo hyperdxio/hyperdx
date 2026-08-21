@@ -173,21 +173,23 @@ function getConfig(
     SpanId: source.spanIdExpression ?? '',
     ParentSpanId:
       source.kind === SourceKind.Trace
-        ? (source.parentSpanIdExpression ?? '')
+        ? source.parentSpanIdExpression ?? ''
         : '',
     StatusCode:
-      source.kind === SourceKind.Trace
-        ? (source.statusCodeExpression ?? '')
-        : '',
+      source.kind === SourceKind.Trace ? source.statusCodeExpression ?? '' : '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText:
-      source.kind === SourceKind.Log
-        ? (source.severityTextExpression ?? '')
-        : '',
+      source.kind === SourceKind.Log ? source.severityTextExpression ?? '' : '',
     SpanAttributes: source.eventAttributesExpression ?? '',
     SpanEvents:
       source.kind === SourceKind.Trace
-        ? (source.spanEventsValueExpression ?? '')
+        ? source.spanEventsValueExpression ?? ''
+        : '',
+    SpanKind:
+      source.kind === SourceKind.Trace ? source.spanKindExpression ?? '' : '',
+    SpanLinks:
+      source.kind === SourceKind.Trace
+        ? source.spanLinksValueExpression ?? ''
         : '',
   };
 
@@ -216,6 +218,10 @@ function getConfig(
     },
     ...(alias.ServiceName
       ? [
+          {
+            valueExpression: alias.TraceId,
+            alias: 'TraceId',
+          },
           {
             valueExpression: alias.ServiceName,
             alias: 'ServiceName',
@@ -278,6 +284,25 @@ function getConfig(
               {
                 valueExpression: alias.SpanEvents,
                 alias: 'SpanEvents',
+              },
+            ]
+          : []),
+        ...(alias.SpanKind
+          ? [
+              {
+                valueExpression: alias.SpanKind,
+                alias: 'SpanKind',
+              },
+            ]
+          : []),
+        ...(alias.SpanLinks
+          ? [
+              {
+                // matches ROW_DATA_ALIASES.SPAN_LINKS ('__hdx_span_links')
+                // used by useRowData, so getReverseSpanLinks can read the
+                // same field name regardless of which hook produced the row.
+                valueExpression: alias.SpanLinks,
+                alias: '__hdx_span_links',
               },
             ]
           : []),
@@ -424,7 +449,7 @@ export function useEventsAroundFocus({
   };
 }
 
-function useFilteredEventsAroundFocus(
+export function useFilteredEventsAroundFocus(
   args: Parameters<typeof useEventsAroundFocus>[0],
 ) {
   const filtered = useEventsAroundFocus(args);
@@ -572,6 +597,7 @@ export function DBTraceWaterfallChartContainer({
   initialRowHighlightHint,
   emptyState,
   controlsExtra,
+  onTraceRowsChange,
 }: {
   traceTableSource: TTraceSource;
   logTableSource: TLogSource | null;
@@ -592,6 +618,7 @@ export function DBTraceWaterfallChartContainer({
   emptyState?: ReactNode;
   /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
   controlsExtra?: ReactNode;
+  onTraceRowsChange?: (rows: Record<string, unknown>[] | undefined) => void;
 }) {
   const formatTime = useFormatTime();
 
@@ -625,11 +652,11 @@ export function DBTraceWaterfallChartContainer({
       traceWhereLanguage:
         traceWhereLanguage === 'sql' || traceWhereLanguage === 'lucene'
           ? traceWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
+          : getStoredLanguage() ?? 'lucene',
       logWhereLanguage:
         logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
           ? logWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
+          : getStoredLanguage() ?? 'lucene',
     },
   });
 
@@ -675,6 +702,10 @@ export function DBTraceWaterfallChartContainer({
     hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
   });
+  useEffect(() => {
+    onTraceRowsChange?.(traceRowsData);
+  }, [traceRowsData, onTraceRowsChange]);
+
   const {
     rows: logRowsData,
     isFetching: logIsFetching,
@@ -1093,7 +1124,7 @@ export function DBTraceWaterfallChartContainer({
           type === SourceKind.Log
             ? getChartColorSuccess()
             : serviceName
-              ? (serviceColorMap.get(serviceName) ?? '#6A7077')
+              ? serviceColorMap.get(serviceName) ?? '#6A7077'
               : '#6A7077';
 
         return {
@@ -1520,9 +1551,9 @@ export function DBTraceWaterfallChartContainer({
           flattenedNodes.length > 0 ? (
             <div className="my-3">All items are hidden by filters</div>
           ) : (
-            (emptyState ?? (
+            emptyState ?? (
               <div className="my-3">No matching spans or logs found</div>
-            ))
+            )
           )
         ) : (
           <TimelineChart

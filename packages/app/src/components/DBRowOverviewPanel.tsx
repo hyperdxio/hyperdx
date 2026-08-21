@@ -21,17 +21,11 @@ import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
+import { SpansReverseLinksSubpanel } from './SpansReverseLinksSubpanel';
 
 const EMPTY_OBJ = {};
-export function RowOverviewPanel({
-  source,
-  rowId,
-  aliasWith,
-  dateRange,
-  hideHeader = false,
-  flush = false,
-  'data-testid': dataTestId,
-}: {
+
+interface DBRowOverviewPanelProps {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
@@ -41,7 +35,22 @@ export function RowOverviewPanel({
   // surrounding chrome (e.g. the tab bar in the trace span detail panel).
   flush?: boolean;
   'data-testid'?: string;
-}) {
+  // All spans belonging to the current trace, used to find spans that
+  // reference the currently selected span (reverse span links). This must
+  // be the full trace's span list, NOT just the single selected row.
+  allTraceRows?: Array<Record<string, any>>;
+}
+
+export function RowOverviewPanel({
+  source,
+  rowId,
+  aliasWith,
+  dateRange,
+  hideHeader = false,
+  flush = false,
+  'data-testid': dataTestId,
+  allTraceRows,
+}: DBRowOverviewPanelProps) {
   const contentPx = flush ? 0 : 'md';
   const { data } = useRowData({ source, rowId, aliasWith, dateRange });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
@@ -50,7 +59,7 @@ export function RowOverviewPanel({
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =
       source.kind === SourceKind.Trace || source.kind === SourceKind.Log
-        ? (source.highlightedRowAttributeExpressions ?? [])
+        ? source.highlightedRowAttributeExpressions ?? []
         : [];
 
     return data
@@ -195,6 +204,31 @@ export function RowOverviewPanel({
     return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
   }, [firstRow?.__hdx_span_links]);
 
+  // P1 fix: scan the FULL trace's spans (allTraceRows), not data.data,
+  // which only ever contains the single selected row from useRowData.
+  const hasReverseSpanLinks = useMemo(() => {
+    if (!firstRow?.SpanId || !Array.isArray(allTraceRows)) {
+      return false;
+    }
+    const currentSpanId = String(firstRow.SpanId);
+    for (const row of allTraceRows) {
+      if (!row || typeof row !== 'object') continue;
+      const sl = row.__hdx_span_links;
+      if (!Array.isArray(sl)) continue;
+      for (const link of sl) {
+        if (
+          link &&
+          typeof link === 'object' &&
+          'SpanId' in link &&
+          link.SpanId === currentSpanId
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [allTraceRows, firstRow?.SpanId]);
+
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -226,6 +260,7 @@ export function RowOverviewPanel({
           'exception',
           'spanEvents',
           'spanLinks',
+          'reverseSpanLinks',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -336,6 +371,24 @@ export function RowOverviewPanel({
               <Box px="md">
                 <SpanLinksSubpanel
                   spanLinks={firstRow?.__hdx_span_links}
+                  onOpenTrace={onOpenLinkedTrace}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+        {hasReverseSpanLinks && (
+          <Accordion.Item value="reverseSpanLinks">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Referenced By
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <SpansReverseLinksSubpanel
+                  rows={allTraceRows}
+                  currentSpanId={firstRow?.SpanId as string | undefined}
                   onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>
