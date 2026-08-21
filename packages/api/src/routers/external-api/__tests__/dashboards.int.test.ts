@@ -6056,7 +6056,7 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
-  describe('Metric formulas (HDX-5081)', () => {
+  describe('Chart formulas', () => {
     // Two metric operand series (A, B) — the shape the formula grammar
     // references by position. Payloads go through `.send()` (untyped) so
     // negative tests can post intentionally invalid values.
@@ -6232,10 +6232,9 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
-    it('round-trips formulas on a log/trace event source (HDX-5132)', async () => {
-      // Event sources compile formulas inline in the single-scan SELECT
-      // (renderSelectListWithFormulas) — the API accepts and round-trips
-      // them just like metric formulas.
+    it('round-trips formulas on a log/trace event source', async () => {
+      // Event-source formulas are accepted and round-trip just like
+      // metric formulas.
       const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
       const create = await postTile({
         sourceId: traceSource._id.toString(),
@@ -6285,10 +6284,9 @@ describe('External API v2 Dashboards - new format', () => {
     });
 
     it('does not block updates over an unchanged formula tile whose source kind changed', async () => {
-      // Accept a formula tile while the source is a metric source, then
-      // flip the source's kind to a formula-incapable one out from under it
-      // (a full-replace source update can do this). Mirroring the heatmap
-      // gate, an update that leaves the formula tile untouched must not be
+      // Accept a formula tile on a metric source, then flip the source's
+      // kind to a formula-incapable one out from under it. Mirroring the
+      // heatmap gate, an update that leaves the tile untouched must not be
       // rejected — only changes to the tile's formulas/source re-enter the
       // gate.
       const created = await postTile({

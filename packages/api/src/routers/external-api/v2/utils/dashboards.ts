@@ -300,10 +300,10 @@ const convertToExternalTileChartConfig = (
     return typeof value === 'string' ? value : defaultValue;
   };
 
-  // Round-trip metric formulas (HDX-5081): emitted only when present so
-  // formula-less tiles keep their pre-formula response shape. Number tiles
-  // never emit `showOperandSeries` — operands are always hidden there, and
-  // the internal converter re-persists the explicit `false` on the way in.
+  // Formulas are emitted only when present so formula-less tiles keep
+  // their pre-formula response shape. Number tiles never emit
+  // `showOperandSeries` — operands are always hidden there, and the
+  // internal converter re-persists the explicit `false` on the way in.
   const externalFormulaFields = config.formulas?.length
     ? { formulas: config.formulas }
     : {};
@@ -747,8 +747,8 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
-            // Metric formulas (HDX-5081) round-trip as-is; the input schema
-            // has already parsed/validated the expressions against `select`.
+            // Formulas round-trip as-is; the input schema has already
+            // validated the expressions against `select`.
             'formulas',
             'showOperandSeries',
           ]),
@@ -774,8 +774,8 @@ export function convertToInternalTileConfig(
             'orderBy',
             'groupByColumnsOnLeft',
             'onClick',
-            // Metric formulas (HDX-5081) round-trip as-is; the input schema
-            // has already parsed/validated the expressions against `select`.
+            // Formulas round-trip as-is; the input schema has already
+            // validated the expressions against `select`.
             'formulas',
             'showOperandSeries',
           ]),
@@ -1067,12 +1067,11 @@ function getHeatmapTilesWithIncompatibleSources(
 
 /**
  * Returns source IDs referenced by formula tiles that exist but are not
- * formula-capable. Formulas render on metric sources (via the composed
- * multi-series metric query, HDX-5081) and log/trace event sources (inline
- * in the single-scan SELECT, HDX-5132); other kinds (e.g. session) are
- * deliberately gated off, mirroring the editor's "Add Formula" gating and
- * save-time normalization via the shared `isFormulaSourceKind` predicate,
- * so the API cannot persist a config the editor refuses.
+ * formula-capable. Formulas render on metric and log/trace sources; other
+ * kinds (e.g. session) are deliberately gated off via the shared
+ * `isFormulaSourceKind` predicate — the same gate as the editor's
+ * "Add Formula" button — so the API cannot persist a config the editor
+ * refuses.
  */
 function getFormulaTilesWithIncompatibleSources(
   sources: SourceForValidation[],
@@ -1102,14 +1101,13 @@ function getFormulaTilesWithIncompatibleSources(
 
 /**
  * For a PUT (update) request, return only the formula tiles that need to
- * be re-validated against the metric-source gate. Mirrors
+ * be re-validated against the source-kind gate. Mirrors
  * `filterChangedHeatmapTiles` below: a tile that already carried the same
- * formulas on the same source in the existing dashboard is kept as
- * "unchanged" so the user can edit other parts of the dashboard without
- * being blocked when the underlying source's `kind` was changed after the
- * formulas were originally accepted. New formula tiles, tiles that newly
- * gained or edited formulas, and tiles whose `sourceId` changed all flow
- * through the check.
+ * formulas on the same source is kept as "unchanged" so the user can edit
+ * other parts of the dashboard without being blocked when the source's
+ * `kind` was changed after the formulas were originally accepted. New
+ * formula tiles, tiles with new or edited formulas, and tiles whose
+ * `sourceId` changed all flow through the check.
  */
 function filterChangedFormulaTiles(
   requestTiles: ExternalDashboardTileWithId[],
@@ -1139,9 +1137,8 @@ function filterChangedFormulaTiles(
       return true;
     }
     if (!_.isEqual(existingConfig.formulas, tile.config.formulas)) {
-      // Formulas newly added or edited: the user is actively touching the
-      // gated feature, so surface the source-kind error rather than
-      // persisting another silently-inert formula.
+      // Formulas newly added or edited: the user is actively touching
+      // the gated feature, so surface the source-kind error.
       return true;
     }
     // Existing tile already carried these exact formulas. Re-check only
@@ -1462,13 +1459,10 @@ export async function validateDashboardTiles(
     return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
   }
 
-  // Formula source-kind gate: formulas are supported on metric and
-  // log/trace sources (see isFormulaSourceKind); other kinds are rejected
-  // rather than persisting a config the editor refuses. On create (no
-  // existingTiles), validate all tiles. On update, scope to tiles whose
-  // formulas/sourceId changed — mirroring the heatmap gate — so a source
-  // whose kind changed after acceptance doesn't block unrelated dashboard
-  // edits.
+  // Formula source-kind gate. On create (no existingTiles), validate all
+  // tiles. On update, scope to tiles whose formulas/sourceId changed —
+  // mirroring the heatmap gate — so a source whose kind changed after
+  // acceptance doesn't block unrelated dashboard edits.
   const formulaTilesToCheck = existingTiles
     ? filterChangedFormulaTiles(tiles, existingTiles)
     : tiles;

@@ -876,10 +876,10 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
   });
 
   // Patches replace a single tile without going through the save_dashboard
-  // body schemas, so the handler must re-run the external tile schema's
+  // body schemas, so the handler re-runs the external tile schema's
   // cross-field refinements itself — otherwise a patch could persist a
-  // config that an equivalent create or full update rejects (HDX-5081).
-  describe('metric formula validation (HDX-5081)', () => {
+  // config that an equivalent create or full update rejects.
+  describe('metric formula validation', () => {
     const metricSelect = () => [
       {
         aggFn: 'max',

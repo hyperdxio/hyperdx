@@ -283,23 +283,21 @@ type ChartConfigForFormulaValidation = {
 };
 
 /**
- * Structural validation for a chart config's metric formulas (HDX-5081),
- * mirroring the chart editor's save-time rules (`validateChartForm` in
+ * Structural validation for a chart config's formulas, mirroring the chart
+ * editor's save-time rules (`validateChartForm` in
  * `packages/app/src/components/ChartEditor/utils.ts`) so the API cannot
  * persist a config the editor refuses:
  *
  * - Every formula expression must parse and only reference existing series
  *   (`A` = select[0], ...), via the same `validateFormula` the editor and
  *   the query renderer use.
- * - Formulas are mutually exclusive with the ratio toggle (`asRatio`); the
- *   renderer resolves the combination deterministically (formulas win) but
- *   persisting both would be a lie in the saved config.
+ * - Formulas are mutually exclusive with the ratio toggle (`asRatio`).
  * - Number charts display a single value, so they support at most one
  *   formula.
  *
- * The metric-source-only gate deliberately lives with the callers that can
- * see the tile's source (`validateDashboardTiles` in the external API) —
- * this helper only sees the config.
+ * The source-kind gate deliberately lives with the callers that can see the
+ * tile's source (`validateDashboardTiles` in the external API) — this
+ * helper only sees the config.
  *
  * Issues raised:
  * - Invalid expression (path `<configPath>.formulas[i].expression`).

@@ -268,7 +268,7 @@ const mcpTileSelectItemSchema = z
       : data,
   );
 
-// ─── Metric formulas (HDX-5081) ──────────────────────────────────────────────
+// ─── Chart formulas ──────────────────────────────────────────────────────────
 
 const mcpFormulaSchema = z.object({
   expression: z

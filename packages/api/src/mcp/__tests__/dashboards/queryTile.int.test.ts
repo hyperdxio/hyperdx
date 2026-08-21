@@ -122,7 +122,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     expect(result.content).toHaveLength(1);
   });
 
-  it('should save and query a metric formula tile (HDX-5081)', async () => {
+  it('should save and query a metric formula tile', async () => {
     const metricSource = await Source.create({
       kind: SourceKind.Metric,
       team: ctx.team._id,
@@ -213,11 +213,10 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     expect(rows[0]).not.toHaveProperty('Requests');
   });
 
-  it('should save and query a log-source formula tile (HDX-5132)', async () => {
-    // Event (log/trace) formulas compile inline in the single-scan SELECT
-    // (renderSelectListWithFormulas) rather than the composed metric path —
-    // prove the whole surface end-to-end: MCP save → internal persistence →
-    // external round-trip → query_tile computes the derived column.
+  it('should save and query a log-source formula tile', async () => {
+    // Event (log/trace) formulas render through a different path than
+    // metric formulas (inline single-scan SELECT vs the composed query),
+    // so cover them end-to-end: save → round-trip → query_tile.
     const logSource = await Source.create({
       kind: SourceKind.Log,
       team: ctx.team._id,
@@ -298,7 +297,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     expect(rows[0]).not.toHaveProperty('Total');
   });
 
-  it('should reject a formula tile on a formula-incapable source kind (HDX-5081)', async () => {
+  it('should reject a formula tile on a formula-incapable source kind', async () => {
     const sessionSource = await Source.create({
       kind: SourceKind.Session,
       team: ctx.team._id,
@@ -336,7 +335,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     );
   });
 
-  it('should reject a formula referencing an unknown series (HDX-5081)', async () => {
+  it('should reject a formula referencing an unknown series', async () => {
     const metricSource = await Source.create({
       kind: SourceKind.Metric,
       team: ctx.team._id,

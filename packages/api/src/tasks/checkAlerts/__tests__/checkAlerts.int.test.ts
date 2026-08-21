@@ -7542,12 +7542,12 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
     });
 
-    // ── Event (log/trace) formula tiles (HDX-5132) ──
-    // Event formulas compile inline in the single-scan SELECT
-    // (renderSelectListWithFormulas) rather than the composed metric path.
-    // The alert path is source-kind agnostic — it passes `formulas` through
-    // and forces showOperandSeries: false — so the formula value drives the
-    // threshold here too.
+    // ── Event (log/trace) formula tiles ──
+    // Event formulas render through a different path than metric formulas
+    // (inline single-scan SELECT vs the composed query). The alert path is
+    // source-kind agnostic — it passes `formulas` through and forces
+    // showOperandSeries: false — so the formula value drives the threshold
+    // here too.
 
     it('TILE alert (events, formula) - threshold compares the formula value, not an operand', async () => {
       const {
