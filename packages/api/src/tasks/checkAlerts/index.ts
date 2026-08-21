@@ -76,9 +76,9 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
-  handleSendGenericWebhook,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
+import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
 import { tasksTracer } from '@/tasks/tracer';
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import {
