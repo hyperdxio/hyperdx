@@ -588,7 +588,7 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {getWebhookChannelIcon(alert.channel.type)}
+                  {getWebhookChannelIcon(alert.channel?.type)}
                   Alert {index + 1}
                   <AlertStatusIcon alerts={[alert]} />
                 </Group>

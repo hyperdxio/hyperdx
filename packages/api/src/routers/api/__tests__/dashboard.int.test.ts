@@ -263,6 +263,65 @@ describe('dashboard router', () => {
     expect(storedAlert?.groupBy).toBeNull();
   });
 
+  // A tile alert must always end up with a resolvable notification target.
+  // Making `channel` optional briefly let a channels-only tile alert through
+  // this path and persist with nothing to notify.
+  it('persists a resolvable target for a channels-only tile alert', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          makeTile({
+            alert: {
+              channels: [
+                { type: 'webhook' as const, webhookId: webhook._id.toString() },
+              ],
+              interval: '12h' as const,
+              threshold: 1,
+              thresholdType: AlertThresholdType.ABOVE,
+            },
+          }),
+        ],
+        tags: [],
+      })
+      .expect(200);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert).not.toBeNull();
+    expect(storedAlert?.channels).toEqual([
+      { type: 'webhook', webhookId: webhook._id.toString() },
+    ]);
+    // The legacy mirror is what pre-multi-channel readers dispatch from.
+    expect(storedAlert?.channel).toEqual({
+      type: 'webhook',
+      webhookId: webhook._id.toString(),
+    });
+  });
+
+  it('rejects a tile alert with no notification channel', async () => {
+    await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          makeTile({
+            alert: {
+              interval: '12h' as const,
+              threshold: 1,
+              thresholdType: AlertThresholdType.ABOVE,
+            },
+          }),
+        ],
+        tags: [],
+      })
+      .expect(400);
+  });
+
   it('alerts are created when updating dashboard (adding alert to tile)', async () => {
     const mockAlert = makeMockAlert(webhook._id.toString());
     const dashboard = await agent
