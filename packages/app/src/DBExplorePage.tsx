@@ -44,7 +44,6 @@ import {
   isLogSource,
   isMetricSource as isMetricSourceGuard,
   isTraceSource,
-  MetricsDataType,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -143,15 +142,15 @@ import { DBTreemapChart } from './components/DBTreemapChart';
 import { ExploreContextBand } from './components/Explore/ExploreContextBand';
 import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
+import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
 import { type QueryConfigMode } from './components/Explore/QueryEditor';
 import { SeveritySummary } from './components/Explore/SeveritySummary';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import {
-  aggFnToSelectFields,
   type AggSortField,
-  SearchAggControls,
+  exploreSeriesHaveMetricNames,
   useSearchAggConfig,
 } from './components/Search/SearchAggControls';
 import { SearchColumnPicker } from './components/Search/SearchColumnPicker';
@@ -2056,59 +2055,62 @@ function DBExplorePage() {
       return undefined;
     }
     // Metric queries require a chosen metric name — the renderer has no query
-    // path for an empty metric. Hold off until the user picks one.
-    if (searchedMetricSource && !aggConfig.metricName) {
+    // path for an empty metric. Hold off until every series has one.
+    if (
+      searchedMetricSource &&
+      !exploreSeriesHaveMetricNames(aggConfig.series)
+    ) {
       return undefined;
     }
-    const valueExpression =
-      aggConfig.aggFn === 'count' ? '' : aggConfig.aggExpr.trim();
     const groupBy =
       view === 'number'
         ? undefined
         : aggConfig.groupBy.trim() || defaultAggGroupBy || undefined;
     // Categorical + summary-table views support the structured Sort menu
-    // (Value = the metric, Name = the group key). Alias the aggregate as
+    // (Value = the metric, Name = the group key). Alias a single aggregate as
     // "Value" so ordering by it is stable regardless of the expression.
     const isCategoricalLike =
       view === 'table' ||
       view === 'bar' ||
       view === 'pie' ||
       view === 'treemap';
+
+    const select = aggConfig.series.map(series => {
+      const isCount = series.aggFn === 'count';
+      const alias =
+        series.alias ||
+        (isCategoricalLike && aggConfig.series.length === 1
+          ? 'Value'
+          : undefined);
+      return {
+        ...series,
+        aggCondition: series.aggCondition ?? '',
+        aggConditionLanguage: series.aggConditionLanguage ?? 'lucene',
+        valueExpression: searchedMetricSource
+          ? 'Value'
+          : isCount
+            ? ''
+            : (series.valueExpression ?? ''),
+        ...(alias != null ? { alias } : {}),
+      };
+    });
+
     let orderBy: string | undefined;
     if (isCategoricalLike) {
       const dir = aggConfig.sortDir.toUpperCase();
-      orderBy =
-        aggConfig.sort === 'name' && groupBy
-          ? `${groupBy} ${dir}`
-          : `"Value" ${dir}`;
+      if (aggConfig.sort === 'name' && groupBy) {
+        orderBy = `${groupBy} ${dir}`;
+      } else if (select[0]?.alias) {
+        orderBy = `"${select[0].alias}" ${dir}`;
+      }
     }
-
-    // Metric sources aggregate the `Value` column of the metric-type table and
-    // carry `metricTables` + `metricName`/`metricType` so the renderer can pick
-    // the right table and filter by metric name.
-    const selectItem = searchedMetricSource
-      ? {
-          ...aggFnToSelectFields(aggConfig.aggFn),
-          aggCondition: '',
-          valueExpression: 'Value',
-          metricName: aggConfig.metricName,
-          metricType:
-            (aggConfig.metricType as MetricsDataType) || MetricsDataType.Gauge,
-          ...(isCategoricalLike ? { alias: 'Value' } : {}),
-        }
-      : {
-          ...aggFnToSelectFields(aggConfig.aggFn),
-          aggCondition: '',
-          valueExpression,
-          ...(isCategoricalLike ? { alias: 'Value' } : {}),
-        };
 
     return {
       ...chartConfig,
       ...(searchedMetricSource
         ? { metricTables: searchedMetricSource.metricTables }
         : {}),
-      select: [selectItem],
+      select,
       groupBy,
       orderBy,
       granularity: view === 'timeseries' ? 'auto' : undefined,
@@ -2916,13 +2918,14 @@ function DBExplorePage() {
                       }
                       shapeControls={
                         !isSqlUiMode && isAggregatedSearchView(view) ? (
-                          <SearchAggControls
+                          <ExploreSeriesList
                             view={view}
                             config={aggConfig}
                             onChange={setAggConfig}
                             defaultGroupBy={defaultAggGroupBy}
                             onSubmit={onSubmit}
-                            metricSource={searchedMetricSource}
+                            tableSource={searchedSource}
+                            dateRange={searchedTimeRange}
                           />
                         ) : undefined
                       }
@@ -3268,22 +3271,23 @@ function DBExplorePage() {
                     )
                   ) : isAggregatedSearchView(view) ? (
                     <Box flex="1" mih="0" px="sm" py="xs">
-                      {isMetricSource && !aggConfig.metricName && (
-                        <Flex
-                          h="100%"
-                          align="center"
-                          justify="center"
-                          direction="column"
-                          gap="xs"
-                        >
-                          <Text size="sm" c="dimmed">
-                            Select a metric to visualize
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            Choose a metric name from the aggregation bar above.
-                          </Text>
-                        </Flex>
-                      )}
+                      {isMetricSource &&
+                        !exploreSeriesHaveMetricNames(aggConfig.series) && (
+                          <Flex
+                            h="100%"
+                            align="center"
+                            justify="center"
+                            direction="column"
+                            gap="xs"
+                          >
+                            <Text size="sm" c="dimmed">
+                              Select a metric to visualize
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              Choose a metric name from the series cards above.
+                            </Text>
+                          </Flex>
+                        )}
                       {view === 'timeseries' && aggViewChartConfig && (
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
@@ -3395,7 +3399,7 @@ const DBExplorePageDynamic = dynamic(async () => DBExplorePage, {
   ssr: false,
 });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 DBExplorePageDynamic.getLayout = withAppNav;
 
 export default DBExplorePageDynamic;

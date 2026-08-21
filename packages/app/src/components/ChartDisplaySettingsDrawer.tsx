@@ -76,6 +76,8 @@ interface ChartDisplaySettingsDrawerProps {
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
+  /** Persistent tile-editor rail vs the original slide-over drawer. */
+  variant?: 'drawer' | 'panel';
 }
 
 function applyDefaultSettings(
@@ -115,6 +117,7 @@ export default function ChartDisplaySettingsDrawer({
   onClose,
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
+  variant = 'drawer',
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -166,8 +169,17 @@ export default function ChartDisplaySettingsDrawer({
         hasDirtyFields,
       );
     })();
-    onClose();
-  }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
+    if (variant === 'drawer') {
+      onClose();
+    }
+  }, [
+    onChange,
+    handleSubmit,
+    onClose,
+    settings.numberFormat,
+    dirtyFields,
+    variant,
+  ]);
 
   const resetToDefaults = useCallback(() => {
     reset(
@@ -216,87 +228,50 @@ export default function ChartDisplaySettingsDrawer({
   const showBackgroundChart = displayType === DisplayType.Number;
   const isBackgroundChartDisabled = configType === 'sql';
 
-  return (
-    <Drawer
-      title="Display Settings"
-      opened={opened}
-      onClose={handleClose}
-      position="right"
-    >
-      <Stack>
-        {isTimeChart && (
-          <>
-            <CheckBoxControlled
-              control={control}
-              name="alignDateRangeToGranularity"
+  const body = (
+    <Stack>
+      {isTimeChart && (
+        <>
+          <CheckBoxControlled
+            control={control}
+            name="alignDateRangeToGranularity"
+            size="xs"
+            label="Show Complete Intervals"
+          />
+          <Box>
+            <Checkbox
               size="xs"
-              label="Show Complete Intervals"
+              label="Fill Missing Intervals with Zero"
+              checked={isFillNullsEnabled}
+              onChange={e => {
+                setValue('fillNulls', e.currentTarget.checked ? 0 : false);
+              }}
             />
-            <Box>
-              <Checkbox
-                size="xs"
-                label="Fill Missing Intervals with Zero"
-                checked={isFillNullsEnabled}
-                onChange={e => {
-                  setValue('fillNulls', e.currentTarget.checked ? 0 : false);
-                }}
-              />
-            </Box>
-            <CheckBoxControlled
-              control={control}
-              name="compareToPreviousPeriod"
-              size="xs"
-              label="Compare to Previous Period"
-              description={
-                previousDateRange && (
-                  <>
-                    (
-                    <FormatTime value={previousDateRange[0]} format="short" />
-                    {' - '}
-                    <FormatTime value={previousDateRange[1]} format="short" />)
-                  </>
-                )
-              }
-            />
-            <CheckBoxControlled
-              control={control}
-              name="fitYAxisToData"
-              size="xs"
-              label="Fit Y-Axis to Data"
-              description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
-            />
-            {showSeriesLimit && (
-              <Box>
-                <Controller
-                  control={control}
-                  name="seriesLimit"
-                  render={({ field: { onChange, value } }) => (
-                    <NumberInput
-                      size="xs"
-                      label="Series Limit"
-                      description={
-                        isRawSqlTimeChart
-                          ? `Maximum number of series rendered, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
-                          : `Maximum number of series fetched for a group-by chart, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
-                      }
-                      placeholder={`Default (${MAX_RENDERED_TIME_CHART_SERIES})`}
-                      min={0}
-                      allowDecimal={false}
-                      value={value ?? ''}
-                      onChange={v =>
-                        onChange(v === '' || v == null ? null : Number(v))
-                      }
-                    />
-                  )}
-                />
-              </Box>
-            )}
-            <Divider />
-          </>
-        )}
-
-        {showCategoricalLimit && (
-          <>
+          </Box>
+          <CheckBoxControlled
+            control={control}
+            name="compareToPreviousPeriod"
+            size="xs"
+            label="Compare to Previous Period"
+            description={
+              previousDateRange && (
+                <>
+                  (
+                  <FormatTime value={previousDateRange[0]} format="short" />
+                  {' - '}
+                  <FormatTime value={previousDateRange[1]} format="short" />)
+                </>
+              )
+            }
+          />
+          <CheckBoxControlled
+            control={control}
+            name="fitYAxisToData"
+            size="xs"
+            label="Fit Y-Axis to Data"
+            description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
+          />
+          {showSeriesLimit && (
             <Box>
               <Controller
                 control={control}
@@ -305,9 +280,13 @@ export default function ChartDisplaySettingsDrawer({
                   <NumberInput
                     size="xs"
                     label="Series Limit"
-                    description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
-                    placeholder="Disabled (e.g. 10)"
-                    min={1}
+                    description={
+                      isRawSqlTimeChart
+                        ? `Maximum number of series rendered, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                        : `Maximum number of series fetched for a group-by chart, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                    }
+                    placeholder={`Default (${MAX_RENDERED_TIME_CHART_SERIES})`}
+                    min={0}
                     allowDecimal={false}
                     value={value ?? ''}
                     onChange={v =>
@@ -317,106 +296,162 @@ export default function ChartDisplaySettingsDrawer({
                 )}
               />
             </Box>
-            <Divider />
-          </>
-        )}
+          )}
+          <Divider />
+        </>
+      )}
 
-        {showTableOptions && (
-          <>
-            {showGroupByColumnsOnLeft && (
-              <CheckBoxControlled
-                control={control}
-                name="groupByColumnsOnLeft"
-                size="xs"
-                label="Display Group By Columns on Left"
-              />
-            )}
-            <CheckBoxControlled
-              control={control}
-              name="alternateRowBackground"
-              size="xs"
-              label="Alternate Row Background"
-            />
-            <Divider />
-          </>
-        )}
-
-        {showTileColor && (
-          <>
-            <Box>
-              <Text size="xs" c="dimmed" mb={4}>
-                Color
-              </Text>
-              <Controller
-                control={control}
-                name="color"
-                render={({ field: { onChange, value } }) => (
-                  <ColorSwatchInput
-                    value={value}
-                    onChange={onChange}
-                    ariaLabel="Number tile color"
-                  />
-                )}
-              />
-            </Box>
-            <Box>
-              <Controller
-                control={control}
-                name="colorRules"
-                render={({ field: { onChange, value } }) => (
-                  <ColorRulesEditor value={value ?? []} onChange={onChange} />
-                )}
-              />
-            </Box>
-            <Divider />
-          </>
-        )}
-
-        {showBackgroundChart && (
-          <>
+      {showCategoricalLimit && (
+        <>
+          <Box>
             <Controller
               control={control}
-              name="backgroundChart"
+              name="seriesLimit"
               render={({ field: { onChange, value } }) => (
-                <BackgroundChartInput
-                  value={value}
-                  onChange={onChange}
-                  disabled={isBackgroundChartDisabled}
+                <NumberInput
+                  size="xs"
+                  label="Series Limit"
+                  description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
+                  placeholder="Disabled (e.g. 10)"
+                  min={1}
+                  allowDecimal={false}
+                  value={value ?? ''}
+                  onChange={v =>
+                    onChange(v === '' || v == null ? null : Number(v))
+                  }
                 />
               )}
             />
-            <Divider />
-          </>
-        )}
+          </Box>
+          <Divider />
+        </>
+      )}
 
-        <NumberFormatForm
-          control={control}
-          setValue={setValue}
-          disclaimer={
-            isPerSeriesNumberFormatAllowed ? (
-              <Alert variant="outline" color="yellow" p="xs">
-                <Text size="xs" m={0}>
-                  Format may be overridden on individual series.
-                </Text>
-              </Alert>
-            ) : undefined
-          }
-        />
-        <Divider />
-        <Group gap="xs" mt="xs" justify="space-between">
-          <Button type="submit" variant="secondary" onClick={resetToDefaults}>
-            Reset to Defaults
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            onClick={applyChanges}
-            data-testid="display-settings-apply-button"
-          >
-            Apply
-          </Button>
-        </Group>
-      </Stack>
+      {showTableOptions && (
+        <>
+          {showGroupByColumnsOnLeft && (
+            <CheckBoxControlled
+              control={control}
+              name="groupByColumnsOnLeft"
+              size="xs"
+              label="Display Group By Columns on Left"
+            />
+          )}
+          <CheckBoxControlled
+            control={control}
+            name="alternateRowBackground"
+            size="xs"
+            label="Alternate Row Background"
+          />
+          <Divider />
+        </>
+      )}
+
+      {showTileColor && (
+        <>
+          <Box>
+            <Text size="xs" c="dimmed" mb={4}>
+              Color
+            </Text>
+            <Controller
+              control={control}
+              name="color"
+              render={({ field: { onChange, value } }) => (
+                <ColorSwatchInput
+                  value={value}
+                  onChange={onChange}
+                  ariaLabel="Number tile color"
+                />
+              )}
+            />
+          </Box>
+          <Box>
+            <Controller
+              control={control}
+              name="colorRules"
+              render={({ field: { onChange, value } }) => (
+                <ColorRulesEditor value={value ?? []} onChange={onChange} />
+              )}
+            />
+          </Box>
+          <Divider />
+        </>
+      )}
+
+      {showBackgroundChart && (
+        <>
+          <Controller
+            control={control}
+            name="backgroundChart"
+            render={({ field: { onChange, value } }) => (
+              <BackgroundChartInput
+                value={value}
+                onChange={onChange}
+                disabled={isBackgroundChartDisabled}
+              />
+            )}
+          />
+          <Divider />
+        </>
+      )}
+
+      <NumberFormatForm
+        control={control}
+        setValue={setValue}
+        disclaimer={
+          isPerSeriesNumberFormatAllowed ? (
+            <Alert variant="outline" color="yellow" p="xs">
+              <Text size="xs" m={0}>
+                Format may be overridden on individual series.
+              </Text>
+            </Alert>
+          ) : undefined
+        }
+      />
+      <Divider />
+      <Group gap="xs" mt="xs" justify="space-between">
+        <Button type="submit" variant="secondary" onClick={resetToDefaults}>
+          Reset to Defaults
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          onClick={applyChanges}
+          data-testid="display-settings-apply-button"
+        >
+          Apply
+        </Button>
+      </Group>
+    </Stack>
+  );
+
+  if (variant === 'panel') {
+    return (
+      <Box
+        p="sm"
+        data-testid="tile-settings-rail"
+        style={{
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--mantine-radius-default)',
+          background: 'var(--color-bg-surface, transparent)',
+        }}
+      >
+        <Text size="sm" fw={500} mb="sm">
+          Tile settings
+        </Text>
+        {body}
+      </Box>
+    );
+  }
+
+  return (
+    <Drawer
+      title="Display Settings"
+      opened={opened}
+      onClose={handleClose}
+      position="right"
+    >
+      {body}
     </Drawer>
   );
 }

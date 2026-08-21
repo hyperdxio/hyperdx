@@ -27,11 +27,10 @@ import {
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
 import {
   Box,
-  Divider,
+  Button,
   Flex,
   SegmentedControl,
   Tabs,
-  Text,
   Textarea,
 } from '@mantine/core';
 import { useDebouncedValue, useDisclosure, usePrevious } from '@mantine/hooks';
@@ -346,10 +345,8 @@ export default function EditTimeChartForm({
     ],
   );
 
-  const [
-    displaySettingsOpened,
-    { open: openDisplaySettings, close: closeDisplaySettings },
-  ] = useDisclosure(false);
+  const [, { open: openDisplaySettings, close: closeDisplaySettings }] =
+    useDisclosure(false);
 
   const [
     heatmapSettingsOpened,
@@ -753,236 +750,262 @@ export default function EditTimeChartForm({
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
       <ErrorBoundary>
-        <Controller
-          control={control}
-          name="displayType"
-          render={({ field: { onChange, value } }) => (
-            <Tabs
-              value={value}
-              onChange={onChange}
-              radius={'xs'}
-              mb="md"
-              data-testid="chart-type-input"
-            >
-              <Tabs.List>
-                <Tabs.Tab
-                  value={DisplayType.Line}
-                  leftSection={<IconChartLine size={16} />}
-                >
-                  Time Series
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Table}
-                  leftSection={<IconTable size={16} />}
-                >
-                  Table
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Number}
-                  leftSection={<IconNumbers size={16} />}
-                >
-                  Number
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Bar}
-                  leftSection={<IconChartBar size={16} />}
-                >
-                  Bar
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Pie}
-                  leftSection={<IconChartPie size={16} />}
-                >
-                  Pie
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Treemap}
-                  leftSection={<IconChartTreemap size={16} />}
-                >
-                  Treemap
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Search}
-                  leftSection={<IconList size={16} />}
-                >
-                  Search
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Heatmap}
-                  leftSection={<IconGrid3x3 size={16} />}
-                >
-                  Heatmap
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.EventPatterns}
-                  leftSection={<IconBracketsContain size={16} />}
-                >
-                  Patterns
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Markdown}
-                  leftSection={<IconMarkdown size={16} />}
-                >
-                  Markdown
-                </Tabs.Tab>
-              </Tabs.List>
-            </Tabs>
-          )}
-        />
         <Flex align="center" gap="sm" mb="sm">
-          <Text size="sm" className="text-nowrap">
-            Chart Name
-          </Text>
           <InputControlled
             name="name"
             control={control}
             flex={1}
             type="text"
-            placeholder="My Chart Name"
+            placeholder="Untitled"
             data-testid="chart-name-input"
           />
-          {isRawSqlDisplayType(displayType) && (
-            <Controller
-              control={control}
-              name="configType"
-              render={({ field: { onChange, value } }) => (
-                <SegmentedControl
-                  value={value ?? 'builder'}
-                  onChange={onChange}
-                  data={[
-                    { label: 'Builder', value: 'builder' },
-                    { label: 'SQL', value: 'sql' },
-                    ...(IS_PROMQL_ENABLED
-                      ? [{ label: 'PromQL', value: 'promql' }]
-                      : []),
-                  ]}
-                />
-              )}
-            />
+          {onSave != null && (
+            <Button
+              data-testid="chart-save-button"
+              loading={isSaving}
+              variant="primary"
+              onClick={handleSubmit(handleSave)}
+            >
+              Save
+            </Button>
+          )}
+          {onClose != null && (
+            <Button variant="subtle" onClick={onClose} disabled={isSaving}>
+              Cancel
+            </Button>
           )}
         </Flex>
-        <Divider my="md" />
-        {activeTab === 'markdown' ? (
-          <div>
-            <Textarea
-              {...register('markdown')}
-              label="Markdown content"
-              placeholder="Markdown"
-              mb="md"
-              styles={{
-                input: {
-                  minHeight: 200,
-                },
-              }}
+        <Flex gap="md" align="flex-start">
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            <Controller
+              control={control}
+              name="displayType"
+              render={({ field: { onChange, value } }) => (
+                <Tabs
+                  value={value}
+                  onChange={onChange}
+                  radius={'xs'}
+                  mb="md"
+                  data-testid="chart-type-input"
+                >
+                  <Tabs.List>
+                    <Tabs.Tab
+                      value={DisplayType.Line}
+                      leftSection={<IconChartLine size={16} />}
+                    >
+                      Time series
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Table}
+                      leftSection={<IconTable size={16} />}
+                    >
+                      Table
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Number}
+                      leftSection={<IconNumbers size={16} />}
+                    >
+                      Number
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Bar}
+                      leftSection={<IconChartBar size={16} />}
+                    >
+                      Bar
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Pie}
+                      leftSection={<IconChartPie size={16} />}
+                    >
+                      Pie
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Treemap}
+                      leftSection={<IconChartTreemap size={16} />}
+                    >
+                      Treemap
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Search}
+                      leftSection={<IconList size={16} />}
+                    >
+                      Search
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Heatmap}
+                      leftSection={<IconGrid3x3 size={16} />}
+                    >
+                      Heatmap
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.EventPatterns}
+                      leftSection={<IconBracketsContain size={16} />}
+                    >
+                      Patterns
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Markdown}
+                      leftSection={<IconMarkdown size={16} />}
+                    >
+                      Markdown
+                    </Tabs.Tab>
+                  </Tabs.List>
+                </Tabs>
+              )}
             />
-            <Box p="md" mb="md">
-              <HDXMarkdownChart
-                config={{
-                  markdown: markdown || 'Preview',
-                }}
+            {isRawSqlDisplayType(displayType) && (
+              <Flex align="center" gap="sm" mb="sm">
+                <Controller
+                  control={control}
+                  name="configType"
+                  render={({ field: { onChange, value } }) => (
+                    <SegmentedControl
+                      value={value ?? 'builder'}
+                      onChange={onChange}
+                      data={[
+                        { label: 'Builder', value: 'builder' },
+                        { label: 'SQL', value: 'sql' },
+                        ...(IS_PROMQL_ENABLED
+                          ? [{ label: 'PromQL', value: 'promql' }]
+                          : []),
+                      ]}
+                    />
+                  )}
+                />
+              </Flex>
+            )}
+            {activeTab === 'markdown' ? (
+              <div>
+                <Textarea
+                  {...register('markdown')}
+                  label="Markdown content"
+                  placeholder="Markdown"
+                  mb="md"
+                  styles={{
+                    input: {
+                      minHeight: 200,
+                    },
+                  }}
+                />
+                <Box p="md" mb="md">
+                  <HDXMarkdownChart
+                    config={{
+                      markdown: markdown || 'Preview',
+                    }}
+                  />
+                </Box>
+              </div>
+            ) : isPromqlInput ? (
+              <PromqlChartEditor
+                control={control}
+                onSubmit={onSubmit}
+                onOpenDisplaySettings={openDisplaySettings}
+                hideDisplaySettings
+              />
+            ) : isRawSqlInput ? (
+              <RawSqlChartEditor
+                control={control}
+                setValue={setValue}
+                onOpenDisplaySettings={openDisplaySettings}
+                onSubmit={onSubmit}
+                isDashboardForm={isDashboardForm}
+                alert={alert}
+                additionalWarnings={additionalAlertWarnings}
+                dashboardId={dashboardId}
+                variables={variables}
+                hideDisplaySettings
+              />
+            ) : (
+              <ChartEditorControls
+                control={control}
+                setValue={setValue}
+                clearErrors={clearErrors}
+                errors={errors}
+                fields={fields}
+                append={append}
+                removeSeries={removeSeries}
+                swapSeries={swapSeries}
+                duplicateSeries={duplicateSeries}
+                tableSource={tableSource}
+                tableConnection={tableConnection}
+                databaseName={databaseName}
+                tableName={tableName}
+                dateRange={dateRange}
+                select={select}
+                displayType={displayType}
+                activeTab={activeTab}
+                seriesReturnType={seriesReturnType}
+                ratioMode={ratioMode}
+                alert={alert}
+                additionalWarnings={additionalAlertWarnings}
+                isRawSqlInput={isRawSqlInput}
+                dashboardId={dashboardId}
+                parentRef={parentRef}
+                chartConfigForExplanations={chartConfigForExplanations}
+                onSubmit={onSubmit}
+                openDisplaySettings={openDisplaySettings}
+                openHeatmapSettings={openHeatmapSettings}
+                hideDisplaySettingsButton
+              />
+            )}
+            <ChartActionBar
+              control={control}
+              handleSubmit={handleSubmit}
+              tableConnection={tableConnection}
+              activeTab={activeTab}
+              isRawSqlInput={isRawSqlInput}
+              dashboardId={dashboardId}
+              parentRef={parentRef}
+              groupBy={groupBy}
+              onSubmit={onSubmit}
+              handleSave={handleSave}
+              onSave={onSave}
+              onClose={onClose}
+              isSaving={isSaving}
+              displayedTimeInputValue={displayedTimeInputValue}
+              setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+              onTimeRangeSearch={onTimeRangeSearch}
+              setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
+              hidePrimaryActions
+            />
+            <ChartPreviewPanel
+              queriedConfig={previewConfig}
+              tableSource={tableSource}
+              dateRange={dateRange}
+              activeTab={activeTab}
+              alert={alert}
+              sourceId={sourceId}
+              onTimeRangeSelect={onTimeRangeSelect}
+              chartConfigForExplanations={chartConfigForExplanations}
+              showGeneratedSql={showGeneratedSql}
+              showSampleEvents={showSampleEvents}
+              dbTimeChartConfig={dbTimeChartConfig}
+              setValue={(name, value) => setValue(name, value)}
+              onSubmit={onSubmit}
+            />
+          </Box>
+          {activeTab !== 'markdown' && (
+            <Box w={300} style={{ flexShrink: 0, position: 'sticky', top: 0 }}>
+              <ChartDisplaySettingsDrawer
+                variant="panel"
+                opened
+                settings={displaySettings}
+                defaultNumberFormat={autoDetectedNumberFormat}
+                previousDateRange={!dashboardId ? previousDateRange : undefined}
+                displayType={displayType}
+                configType={configType}
+                onChange={handleUpdateDisplaySettings}
+                onClose={closeDisplaySettings}
+                isPerSeriesNumberFormatAllowed={configType !== 'sql'}
               />
             </Box>
-          </div>
-        ) : isPromqlInput ? (
-          <PromqlChartEditor
-            control={control}
-            onSubmit={onSubmit}
-            onOpenDisplaySettings={openDisplaySettings}
-          />
-        ) : isRawSqlInput ? (
-          <RawSqlChartEditor
-            control={control}
-            setValue={setValue}
-            onOpenDisplaySettings={openDisplaySettings}
-            onSubmit={onSubmit}
-            isDashboardForm={isDashboardForm}
-            alert={alert}
-            additionalWarnings={additionalAlertWarnings}
-            dashboardId={dashboardId}
-            variables={variables}
-          />
-        ) : (
-          <ChartEditorControls
-            control={control}
-            setValue={setValue}
-            clearErrors={clearErrors}
-            errors={errors}
-            fields={fields}
-            append={append}
-            removeSeries={removeSeries}
-            swapSeries={swapSeries}
-            duplicateSeries={duplicateSeries}
-            tableSource={tableSource}
-            tableConnection={tableConnection}
-            databaseName={databaseName}
-            tableName={tableName}
-            dateRange={dateRange}
-            select={select}
-            displayType={displayType}
-            activeTab={activeTab}
-            seriesReturnType={seriesReturnType}
-            ratioMode={ratioMode}
-            alert={alert}
-            additionalWarnings={additionalAlertWarnings}
-            isRawSqlInput={isRawSqlInput}
-            dashboardId={dashboardId}
-            parentRef={parentRef}
-            chartConfigForExplanations={chartConfigForExplanations}
-            onSubmit={onSubmit}
-            openDisplaySettings={openDisplaySettings}
-            openHeatmapSettings={openHeatmapSettings}
-          />
-        )}
-        <ChartActionBar
-          control={control}
-          handleSubmit={handleSubmit}
-          tableConnection={tableConnection}
-          activeTab={activeTab}
-          isRawSqlInput={isRawSqlInput}
-          dashboardId={dashboardId}
-          parentRef={parentRef}
-          groupBy={groupBy}
-          onSubmit={onSubmit}
-          handleSave={handleSave}
-          onSave={onSave}
-          onClose={onClose}
-          isSaving={isSaving}
-          displayedTimeInputValue={displayedTimeInputValue}
-          setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-          onTimeRangeSearch={onTimeRangeSearch}
-          setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
-        />
+          )}
+        </Flex>
       </ErrorBoundary>
-      <ChartPreviewPanel
-        queriedConfig={previewConfig}
-        tableSource={tableSource}
-        dateRange={dateRange}
-        activeTab={activeTab}
-        alert={alert}
-        sourceId={sourceId}
-        onTimeRangeSelect={onTimeRangeSelect}
-        chartConfigForExplanations={chartConfigForExplanations}
-        showGeneratedSql={showGeneratedSql}
-        showSampleEvents={showSampleEvents}
-        dbTimeChartConfig={dbTimeChartConfig}
-        setValue={(name, value) => setValue(name, value)}
-        onSubmit={onSubmit}
-      />
       <SaveToDashboardModal
         chartConfig={chartConfig}
         opened={saveToDashboardModalOpen}
         onClose={() => setSaveToDashboardModalOpen(false)}
-      />
-      <ChartDisplaySettingsDrawer
-        opened={displaySettingsOpened}
-        settings={displaySettings}
-        defaultNumberFormat={autoDetectedNumberFormat}
-        previousDateRange={!dashboardId ? previousDateRange : undefined}
-        displayType={displayType}
-        configType={configType}
-        onChange={handleUpdateDisplaySettings}
-        onClose={closeDisplaySettings}
-        isPerSeriesNumberFormatAllowed={configType !== 'sql'}
       />
       <HeatmapSettingsDrawer
         opened={heatmapSettingsOpened}

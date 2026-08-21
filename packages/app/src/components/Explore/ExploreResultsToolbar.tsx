@@ -27,7 +27,7 @@ export function ExploreResultsToolbar({
   addToDashboard?: React.ReactNode;
   /** Overflow (3-dots) menu holding secondary actions (SQL, export). */
   overflowMenu?: React.ReactNode;
-  /** Left side of the shape-the-view row: the aggregation sentence. */
+  /** Left side of the shape-the-view row: series cards / aggregation. */
   shapeControls?: React.ReactNode;
   /** Right side of the shape-the-view row: sort / columns adjustments. */
   shapeActions?: React.ReactNode;
@@ -56,14 +56,14 @@ export function ExploreResultsToolbar({
         </Group>
       </Group>
       {(shapeControls != null || shapeActions != null) && (
-        <Group justify="space-between" align="center" w="100%" wrap="wrap">
-          <Group gap="xs" align="center" wrap="wrap">
-            {shapeControls}
-          </Group>
-          <Group gap="sm" align="center" wrap="nowrap">
-            {shapeActions}
-          </Group>
-        </Group>
+        <Stack gap="xs" w="100%">
+          {shapeControls}
+          {shapeActions != null && (
+            <Group justify="flex-end" gap="sm" wrap="nowrap">
+              {shapeActions}
+            </Group>
+          )}
+        </Stack>
       )}
     </Stack>
   );

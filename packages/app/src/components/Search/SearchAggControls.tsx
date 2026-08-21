@@ -1,45 +1,24 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
-import {
-  MetricsDataType,
-  TMetricSource,
-} from '@hyperdx/common-utils/dist/types';
-import { Group, NumberInput, Select, Text, TextInput } from '@mantine/core';
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 
-import { MetricNameSelect } from '@/components/MetricNameSelect';
+import { SavedChartConfigWithSelectArray } from '@/components/ChartEditor/types';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import type { SearchView } from './searchViews';
 
-type AggFn =
-  | 'count'
-  | 'count_distinct'
-  | 'sum'
-  | 'avg'
-  | 'min'
-  | 'max'
-  | 'p50'
-  | 'p90'
-  | 'p95'
-  | 'p99';
-
-const AGG_FN_OPTIONS: { value: AggFn; label: string }[] = [
-  { value: 'count', label: 'Count' },
-  { value: 'count_distinct', label: 'Count distinct' },
-  { value: 'sum', label: 'Sum' },
-  { value: 'avg', label: 'Avg' },
-  { value: 'min', label: 'Min' },
-  { value: 'max', label: 'Max' },
-  { value: 'p50', label: 'p50' },
-  { value: 'p90', label: 'p90' },
-  { value: 'p95', label: 'p95' },
-  { value: 'p99', label: 'p99' },
-];
-
-// Metric sources aggregate a numeric value column, so the count-style
-// aggregations don't apply — offer the value aggregations only.
-const METRIC_AGG_FN_OPTIONS = AGG_FN_OPTIONS.filter(
-  o => o.value !== 'count' && o.value !== 'count_distinct',
-);
+const LEGACY_AGG_FNS = new Set<string>([
+  'count',
+  'count_distinct',
+  'sum',
+  'avg',
+  'min',
+  'max',
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+]);
 
 /**
  * Translate a UI agg-fn (which includes percentile shorthands like `p95`)
@@ -47,7 +26,7 @@ const METRIC_AGG_FN_OPTIONS = AGG_FN_OPTIONS.filter(
  * percentile options map onto `{ aggFn: 'quantile', level }`.
  */
 export function aggFnToSelectFields(
-  aggFn: AggFn,
+  aggFn: string,
 ): { aggFn: string } | { aggFn: 'quantile'; level: number } {
   if (['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
     return {
@@ -64,75 +43,235 @@ export type AggSortField = 'value' | 'name';
 type AggSortDirection = 'asc' | 'desc';
 type TimeseriesChartType = 'line' | 'bar';
 
+export type ExploreSeries = SavedChartConfigWithSelectArray['select'][number];
+
+const DEFAULT_EXPLORE_SERIES: ExploreSeries = {
+  aggFn: 'count',
+  aggCondition: '',
+  aggConditionLanguage: 'lucene',
+  valueExpression: '',
+};
+
 export interface SearchAggConfig {
-  aggFn: AggFn;
-  aggExpr: string;
+  series: ExploreSeries[];
   groupBy: string;
   limit: number;
   sort: AggSortField;
   sortDir: AggSortDirection;
   /** Line vs. bar for the Time series view. */
   chartType: TimeseriesChartType;
-  /** Metric name (metric sources only). */
-  metricName: string;
-  /** Metric type: gauge / sum / histogram (metric sources only). */
-  metricType: string;
 }
 
-/** URL-backed aggregation config for the search view switcher. */
+export function createEmptyExploreSeries(
+  language: 'sql' | 'lucene' = 'lucene',
+): ExploreSeries {
+  return {
+    aggFn: 'count',
+    aggCondition: '',
+    aggConditionLanguage: language,
+    valueExpression: '',
+  };
+}
+
+/** True when every series on a metric source has a metric name to query. */
+export function exploreSeriesHaveMetricNames(series: ExploreSeries[]): boolean {
+  return series.length > 0 && series.every(s => Boolean(s.metricName));
+}
+
+export function canAddExploreSeries(
+  view: SearchView,
+  seriesCount: number,
+): boolean {
+  if (view === 'pie' || view === 'bar') return false;
+  if (view === 'number') return seriesCount < 2;
+  return true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value != null && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function optionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** Parse the `series` URL param into chart `select[]` items, or null if invalid. */
+export function parseExploreSeries(value: unknown): ExploreSeries[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
+    return null;
+  }
+  const series: ExploreSeries[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) return null;
+    const aggFn =
+      typeof item.aggFn === 'string' && item.aggFn.length > 0
+        ? item.aggFn
+        : 'count';
+    const valueExpression =
+      typeof item.valueExpression === 'string' ? item.valueExpression : '';
+    const aggCondition =
+      typeof item.aggCondition === 'string' ? item.aggCondition : '';
+    const aggConditionLanguage =
+      item.aggConditionLanguage === 'sql' ? 'sql' : 'lucene';
+    const alias = optionalString(item.alias);
+    const metricName = optionalString(item.metricName);
+    const metricType = optionalString(item.metricType);
+    const color = optionalString(item.color);
+    const isDelta = optionalBoolean(item.isDelta);
+
+    if (aggFn === 'quantile') {
+      series.push({
+        aggFn: 'quantile',
+        level: typeof item.level === 'number' ? item.level : 0.95,
+        valueExpression,
+        aggCondition,
+        aggConditionLanguage,
+        ...(alias != null ? { alias } : {}),
+        ...(metricName != null ? { metricName } : {}),
+        ...(metricType != null
+          ? { metricType: metricType as MetricsDataType }
+          : {}),
+        ...(color != null ? { color: color as ExploreSeries['color'] } : {}),
+        ...(isDelta != null ? { isDelta } : {}),
+      });
+      continue;
+    }
+
+    series.push({
+      aggFn,
+      valueExpression,
+      aggCondition,
+      aggConditionLanguage,
+      ...(typeof item.level === 'number' ? { level: item.level } : {}),
+      ...(alias != null ? { alias } : {}),
+      ...(metricName != null ? { metricName } : {}),
+      ...(metricType != null
+        ? { metricType: metricType as MetricsDataType }
+        : {}),
+      ...(color != null ? { color: color as ExploreSeries['color'] } : {}),
+      ...(isDelta != null ? { isDelta } : {}),
+    } as ExploreSeries);
+  }
+  return series;
+}
+
+/** Turn the old `agg` / `aggExpr` / `metric` URL scalars into one series. */
+export function migrateLegacyAggToSeries(params: {
+  agg?: string | null;
+  aggExpr?: string | null;
+  metric?: string | null;
+  metricType?: string | null;
+}): ExploreSeries {
+  const agg =
+    params.agg && LEGACY_AGG_FNS.has(params.agg) ? params.agg : 'count';
+  const selectFields = aggFnToSelectFields(agg);
+  const isMetric = Boolean(params.metric);
+  return {
+    ...selectFields,
+    aggCondition: '',
+    aggConditionLanguage: 'lucene',
+    valueExpression: isMetric ? 'Value' : (params.aggExpr ?? ''),
+    ...(isMetric
+      ? {
+          metricName: params.metric ?? undefined,
+          metricType: (params.metricType || MetricsDataType.Gauge) as
+            | MetricsDataType
+            | undefined,
+        }
+      : {}),
+  } as ExploreSeries;
+}
+
+function hasLegacyAggParams(state: {
+  agg: string | null;
+  aggExpr: string | null;
+  metric: string | null;
+  metricType: string | null;
+}): boolean {
+  return (
+    (state.agg != null && state.agg.length > 0) ||
+    (state.aggExpr != null && state.aggExpr.length > 0) ||
+    (state.metric != null && state.metric.length > 0) ||
+    (state.metricType != null && state.metricType.length > 0)
+  );
+}
+
+/** URL-backed aggregation config for Explore chart views. */
 export function useSearchAggConfig(): [
   SearchAggConfig,
   (patch: Partial<SearchAggConfig>) => void,
 ] {
   const [state, setState] = useQueryStates({
-    agg: parseAsString.withDefault('count'),
-    aggExpr: parseAsString.withDefault(''),
+    series: parseAsJsonEncoded(parseExploreSeries),
+    agg: parseAsString,
+    aggExpr: parseAsString,
+    metric: parseAsString,
+    metricType: parseAsString,
     groupBy: parseAsString.withDefault(''),
     limit: parseAsInteger.withDefault(DEFAULT_AGG_LIMIT),
     sort: parseAsString.withDefault('value'),
     sortDir: parseAsString.withDefault('desc'),
     ts: parseAsString.withDefault('bar'),
-    metric: parseAsString.withDefault(''),
-    metricType: parseAsString.withDefault(''),
   });
+
+  const {
+    series: seriesParam,
+    agg,
+    aggExpr,
+    metric,
+    metricType,
+    groupBy,
+    limit,
+    sort,
+    sortDir,
+    ts,
+  } = state;
+
+  const series = useMemo<ExploreSeries[]>(() => {
+    if (seriesParam != null && seriesParam.length > 0) {
+      return seriesParam;
+    }
+    if (hasLegacyAggParams({ agg, aggExpr, metric, metricType })) {
+      return [migrateLegacyAggToSeries({ agg, aggExpr, metric, metricType })];
+    }
+    return [DEFAULT_EXPLORE_SERIES];
+  }, [seriesParam, agg, aggExpr, metric, metricType]);
 
   const config = useMemo<SearchAggConfig>(
     () => ({
-      aggFn: state.agg as AggFn,
-      aggExpr: state.aggExpr,
-      groupBy: state.groupBy,
-      limit: state.limit,
-      sort: state.sort as AggSortField,
-      sortDir: state.sortDir as AggSortDirection,
-      chartType: state.ts as TimeseriesChartType,
-      metricName: state.metric,
-      metricType: state.metricType,
+      series,
+      groupBy,
+      limit,
+      sort: sort as AggSortField,
+      sortDir: sortDir as AggSortDirection,
+      chartType: ts as TimeseriesChartType,
     }),
-    [
-      state.agg,
-      state.aggExpr,
-      state.groupBy,
-      state.limit,
-      state.sort,
-      state.sortDir,
-      state.ts,
-      state.metric,
-      state.metricType,
-    ],
+    [series, groupBy, limit, sort, sortDir, ts],
   );
 
   const setConfig = useCallback(
     (patch: Partial<SearchAggConfig>) => {
       setState({
-        ...(patch.aggFn != null ? { agg: patch.aggFn } : {}),
-        ...(patch.aggExpr != null ? { aggExpr: patch.aggExpr } : {}),
+        ...(patch.series != null
+          ? {
+              series: patch.series,
+              // Drop the pre-series URL scalars so a migrated link doesn't
+              // fight the new `series` param on the next load.
+              agg: null,
+              aggExpr: null,
+              metric: null,
+              metricType: null,
+            }
+          : {}),
         ...(patch.groupBy != null ? { groupBy: patch.groupBy } : {}),
         ...(patch.limit != null ? { limit: patch.limit } : {}),
         ...(patch.sort != null ? { sort: patch.sort } : {}),
         ...(patch.sortDir != null ? { sortDir: patch.sortDir } : {}),
         ...(patch.chartType != null ? { ts: patch.chartType } : {}),
-        ...(patch.metricName != null ? { metric: patch.metricName } : {}),
-        ...(patch.metricType != null ? { metricType: patch.metricType } : {}),
       });
     },
     [setState],
@@ -141,139 +280,4 @@ export function useSearchAggConfig(): [
   return [config, setConfig];
 }
 
-export function SearchAggControls({
-  view,
-  config,
-  onChange,
-  defaultGroupBy,
-  onSubmit,
-  metricSource,
-}: {
-  view: SearchView;
-  config: SearchAggConfig;
-  onChange: (patch: Partial<SearchAggConfig>) => void;
-  defaultGroupBy?: string;
-  onSubmit: () => void;
-  /** When set, the source is a metric source and the value expression input is
-   * replaced by a metric name/type picker. */
-  metricSource?: TMetricSource;
-}) {
-  const isMetric = metricSource != null;
-  // For logs/traces, count needs no value expression; metrics always pick a
-  // metric name instead of a free-text expression.
-  const needsExpr = !isMetric && config.aggFn !== 'count';
-  // Number collapses to a single value: no group-by / limit.
-  const showGroupBy = view !== 'number';
-  const showLimit =
-    view === 'table' || view === 'bar' || view === 'pie' || view === 'treemap';
-
-  return (
-    <Group
-      gap="xs"
-      align="center"
-      wrap="wrap"
-      px="sm"
-      py={6}
-      data-testid="search-agg-controls"
-    >
-      <Text size="xs" c="dimmed">
-        Aggregate
-      </Text>
-      <Select
-        size="xs"
-        w={140}
-        data={isMetric ? METRIC_AGG_FN_OPTIONS : AGG_FN_OPTIONS}
-        value={config.aggFn}
-        allowDeselect={false}
-        onChange={value => {
-          if (value) {
-            onChange({ aggFn: value as AggFn });
-            onSubmit();
-          }
-        }}
-        comboboxProps={{ withinPortal: true }}
-      />
-      {isMetric && (
-        <div style={{ minWidth: 220 }}>
-          <MetricNameSelect
-            metricSource={metricSource}
-            metricName={config.metricName || null}
-            metricType={
-              (config.metricType as MetricsDataType) || MetricsDataType.Gauge
-            }
-            setMetricName={value => {
-              onChange({ metricName: value });
-              onSubmit();
-            }}
-            setMetricType={value => {
-              onChange({ metricType: value });
-              onSubmit();
-            }}
-            data-testid="search-metric-name-select"
-          />
-        </div>
-      )}
-      {needsExpr && (
-        <TextInput
-          size="xs"
-          w={200}
-          placeholder="value expression (e.g. Duration)"
-          defaultValue={config.aggExpr}
-          onBlur={e => {
-            onChange({ aggExpr: e.currentTarget.value });
-            onSubmit();
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              onChange({ aggExpr: e.currentTarget.value });
-              onSubmit();
-            }
-          }}
-        />
-      )}
-      {showGroupBy && (
-        <>
-          <Text size="xs" c="dimmed">
-            grouped by
-          </Text>
-          <TextInput
-            size="xs"
-            w={220}
-            placeholder={defaultGroupBy || 'SQL column'}
-            defaultValue={config.groupBy}
-            onBlur={e => {
-              onChange({ groupBy: e.currentTarget.value });
-              onSubmit();
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                onChange({ groupBy: e.currentTarget.value });
-                onSubmit();
-              }
-            }}
-          />
-        </>
-      )}
-      {showLimit && (
-        <>
-          <Text size="xs" c="dimmed">
-            top
-          </Text>
-          <NumberInput
-            size="xs"
-            w={90}
-            min={1}
-            max={1000}
-            value={config.limit}
-            onChange={value => {
-              onChange({
-                limit: typeof value === 'number' ? value : DEFAULT_AGG_LIMIT,
-              });
-              onSubmit();
-            }}
-          />
-        </>
-      )}
-    </Group>
-  );
-}
+export { DEFAULT_AGG_LIMIT };
