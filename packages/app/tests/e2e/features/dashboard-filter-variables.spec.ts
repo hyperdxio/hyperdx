@@ -97,7 +97,7 @@ test.describe(
 
       await test.step('Create a Severity filter that depends on $svc', async () => {
         await createDependentFilters({
-          value: '$__filter(ServiceName, svc)',
+          value: '$__filter(ServiceName, $svc)',
           language: 'sql',
         });
       });
@@ -244,7 +244,7 @@ test.describe(
 
       await test.step('A macro in a Lucene clause is flagged', async () => {
         await dashboardPage.fillFilterDropdownValuesWhere({
-          value: '$__filter(ServiceName, svc)',
+          value: '$__filter(ServiceName, $svc)',
           language: 'lucene',
         });
         const indicator = dashboardPage.getFilterWhereVariableWarning();

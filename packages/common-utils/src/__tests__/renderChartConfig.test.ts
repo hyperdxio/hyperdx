@@ -1489,6 +1489,139 @@ describe('renderChartConfig', () => {
       );
       expect(sql).toContain("SeverityText = 'error'");
     });
+
+    const buildWhereConfig = (where: string): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where,
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      granularity: '1 minute',
+    });
+
+    it('rewrites `Map[key] = value` in a SQL `where` (search box path)', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['service.name'] = 'api'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
+    });
+
+    it('rewrites `Map[key] IN (many)` in a SQL `where` to hasAny() on ClickHouse >= 26.5', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] IN ('a', 'b')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b')))",
+      );
+    });
+
+    it('leaves a SQL `where` unchanged when no KV items column exists', async () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+    });
+
+    it('leaves a SQL `where` unchanged when the server predates direct_read support (ALIAS items column)', async () => {
+      stubKvItemsMetadata();
+      // The stub's items column is MATERIALIZED (always eligible); switch it
+      // to ALIAS so the supportsDirectReadMap version gate applies.
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'ALIAS',
+          default_expression:
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+        },
+      ]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 1, 0, 0]);
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+    });
+
+    it('rewrites a SQL aggCondition in the WHERE clause but not in the aggregate', async () => {
+      stubKvItemsMetadata();
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: "LogAttributes['service.name'] = 'api'",
+            aggConditionLanguage: 'sql',
+            valueExpression: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        granularity: '1 minute',
+      };
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      // WHERE-clause copy is rewritten so the text index can prune granules...
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      // ...while the countIf(...) copy keeps the plain Map subscript, which is
+      // cheaper to evaluate per-row than has() over an ALIAS items column.
+      expect(sql).toContain("countIf(LogAttributes['service.name'] = 'api')");
+    });
   });
 
   describe('k8s semantic convention migrations', () => {
@@ -3414,7 +3547,7 @@ describe('renderChartConfig', () => {
         },
       ],
       groupBy: [{ valueExpression: 'ServiceName' }],
-      where: '$__filter(ServiceName, service)',
+      where: '$__filter(ServiceName, $service)',
       whereLanguage: 'sql',
       having: 'count() > 0',
       timestampValueExpression: 'timestamp',
@@ -3493,7 +3626,7 @@ describe('renderChartConfig', () => {
       from: { databaseName: 'default', tableName: '' },
       select: [gaugeSeriesWithVariable],
       groupBy: [{ valueExpression: 'ServiceName' }],
-      where: '$__filter(ServiceName, service)',
+      where: '$__filter(ServiceName, $service)',
       whereLanguage: 'sql',
       timestampValueExpression: 'TimeUnix',
       dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],

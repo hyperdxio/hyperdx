@@ -85,11 +85,11 @@ function referenceCompletions(variable: ChartVariable): SQLCompletion[] {
     ...(variable.expression
       ? [
           {
-            label: `$__filter(${name})`,
-            apply: `$__filter(${name})`,
+            label: `$__filter($${name})`,
+            apply: `$__filter($${name})`,
             detail: 'variable filter',
             info: help(
-              `$__filter(${name})`,
+              `$__filter($${name})`,
               `Filters by the ${name} variable using its defined expression. Matches every row when no values are selected for the variable.`,
             ),
             type: 'function',
@@ -102,7 +102,7 @@ function referenceCompletions(variable: ChartVariable): SQLCompletion[] {
       detail: 'variable',
       info: help(
         `$${name}`,
-        `The selected values of ${name}, in the default sqlstring format. Has no valid empty state — prefer $__filter(<expression>, ${name}).`,
+        `The selected values of ${name}, in the default sqlstring format. Has no valid empty state — prefer $__filter(<expression>, $${name}).`,
       ),
       type: 'variable',
     },

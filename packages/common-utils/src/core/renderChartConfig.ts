@@ -1167,11 +1167,54 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  // The aggCondition-to-WHERE optimization below only kicks in when every
+  // select has an aggCondition (otherwise all rows are scanned anyways).
+  const aggConditionsInWhere =
+    typeof chartConfig.select != 'string' &&
+    chartConfig.select.every(select =>
+      isNonEmptyWhereExpr(select.aggCondition),
+    );
+
+  // The Map-KV text-index rewrite (`Map['k'] = 'v'` ->
+  // `has(ItemsCol, concat('k', '=', 'v'))`, enabling ClickHouse's direct-read
+  // optimization) applies to every SQL predicate that lands in the WHERE
+  // clause: the top-level `where`, `sql`-type filters, and aggConditions
+  // copied into WHERE. Build the lookup once, up front, when any of them is
+  // present. The underlying metadata calls are cached, and
+  // rewriteSqlFilterWithKvItems is a no-op on an empty lookup.
+  const hasSqlPredicate =
+    (isNonEmptyWhereExpr(chartConfig.where) &&
+      (chartConfig.whereLanguage ?? 'sql') === 'sql') ||
+    (chartConfig.filters?.some(f => f.type === 'sql') ?? false) ||
+    (aggConditionsInWhere &&
+      typeof chartConfig.select != 'string' &&
+      chartConfig.select.some(
+        select => (select.aggConditionLanguage ?? 'sql') === 'sql',
+      ));
+  const textIndexInfoLookup: TextIndexInfoLookup =
+    hasSqlPredicate &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildTextIndexInfoLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
     whereSearchCondition = wrapChSqlIfNotEmpty(
       await renderWhereExpression({
-        condition: chartConfig.where,
+        condition:
+          (chartConfig.whereLanguage ?? 'sql') === 'sql'
+            ? rewriteSqlFilterWithKvItems(
+                chartConfig.where,
+                textIndexInfoLookup,
+              )
+            : chartConfig.where,
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1188,18 +1231,26 @@ async function renderWhere(
   }
 
   let selectSearchConditions: ChSql[] = [];
-  if (
-    typeof chartConfig.select != 'string' &&
-    // Only if every select has an aggCondition, add to where clause
-    // otherwise we'll scan all rows anyways
-    chartConfig.select.every(select => isNonEmptyWhereExpr(select.aggCondition))
-  ) {
+  if (aggConditionsInWhere && typeof chartConfig.select != 'string') {
     selectSearchConditions = (
       await Promise.all(
         chartConfig.select.map(async select => {
           if (isNonEmptyWhereExpr(select.aggCondition)) {
+            // Only this WHERE-clause copy of the aggCondition is rewritten to
+            // the `has(...)` form — the aggFnIf(...) copy in the SELECT clause
+            // (renderSelectList) is deliberately left as a Map subscript.
+            // Index-based granule pruning only happens in WHERE; inside the
+            // aggregate the predicate is evaluated per-row, where
+            // `has(<ALIAS items col>, ...)` would recompute the whole
+            // arrayMap per row and be slower than a plain Map subscript.
             return await renderWhereExpression({
-              condition: select.aggCondition,
+              condition:
+                (select.aggConditionLanguage ?? 'sql') === 'sql'
+                  ? rewriteSqlFilterWithKvItems(
+                      select.aggCondition,
+                      textIndexInfoLookup,
+                    )
+                  : select.aggCondition,
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1216,21 +1267,6 @@ async function renderWhere(
       )
     ).filter(v => v !== null) as ChSql[];
   }
-
-  const hasSqlFilter =
-    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const textIndexInfoLookup: TextIndexInfoLookup =
-    hasSqlFilter &&
-    chartConfig.from.databaseName &&
-    chartConfig.from.tableName &&
-    !hasSubqueryCte(chartConfig.with)
-      ? await buildTextIndexInfoLookup({
-          metadata,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-          connectionId: chartConfig.connection,
-        })
-      : new Map();
 
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {

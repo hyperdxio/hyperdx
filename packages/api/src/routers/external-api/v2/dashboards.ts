@@ -1700,8 +1700,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: |
  *             Whether the selected value is exposed to tile queries as a dashboard
  *             variable named by variableName. Tiles may reference it as `$variableName`
- *             or using the (preferred) `$__filter(<variableName>)` and
- *             `$__conditionalAll(<condition>, <variableName>)` macros.
+ *             or using the (preferred) `$__filter($<variableName>)` and
+ *             `$__conditionalAll(<condition>, $<variableName>)` macros.
  *           default: false
  *           example: true
  *         variableName:

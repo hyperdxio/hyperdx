@@ -1577,8 +1577,14 @@ export function validateRawSqlChartConfig(
 
       // Everything else — an unknown variable, a bad argument count, an
       // unrecognized `${v:format}`, an unconfigured metric type — is invisible
-      // to the user until the query fails, so it is reported verbatim.
-      if (!isStillTyping && !isAlreadyReported) {
+      // to the user until the query fails, so it is reported verbatim. A
+      // variable macro's message can already have come from the variable checks
+      // above, which expand the same template.
+      if (
+        !isStillTyping &&
+        !isAlreadyReported &&
+        !errors.includes(error.message)
+      ) {
         errors.push(error.message);
       }
     }

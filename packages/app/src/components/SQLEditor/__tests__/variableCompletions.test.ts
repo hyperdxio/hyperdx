@@ -42,7 +42,7 @@ describe('buildVariableCompletions', () => {
       expect.arrayContaining([
         '$__filter',
         '$__conditionalAll',
-        '$__filter(service)',
+        '$__filter($service)',
         '$service',
         '${service}',
         '${service:sqlstring}',
@@ -64,7 +64,7 @@ describe('buildVariableCompletions', () => {
 
   it('shows what each form expands to against the current selection', () => {
     expect(footnoteOf([SERVICE], '$service')).toBe("Expands to: 'api', 'web'");
-    expect(footnoteOf([SERVICE], '$__filter(service)')).toBe(
+    expect(footnoteOf([SERVICE], '$__filter($service)')).toBe(
       "Expands to: (toString(ServiceName) IN ('api', 'web'))",
     );
   });
@@ -72,7 +72,7 @@ describe('buildVariableCompletions', () => {
   it('shows the empty-selection expansion when nothing is selected', () => {
     const unselected: ChartVariable = { ...SERVICE, values: [] };
     expect(footnoteOf([unselected], '$service')).toBe('Expands to: NULL');
-    expect(footnoteOf([unselected], '$__filter(service)')).toContain(
+    expect(footnoteOf([unselected], '$__filter($service)')).toContain(
       'Expands to: (1=1',
     );
     // The lucene form's empty term is itself a no-op once rendered to SQL.
@@ -149,8 +149,8 @@ describe('expandLuceneVariablesForEnglishDisplay', () => {
   });
 
   it('leaves unknown references and the variable macros alone', () => {
-    expect(expand('$nope AND $__filter(ServiceName, service)', [SERVICE])).toBe(
-      '$nope AND $__filter(ServiceName, service)',
-    );
+    expect(
+      expand('$nope AND $__filter(ServiceName, $service)', [SERVICE]),
+    ).toBe('$nope AND $__filter(ServiceName, $service)');
   });
 });
