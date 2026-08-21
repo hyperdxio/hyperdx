@@ -748,6 +748,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             in the table. Defaults to false (Group By columns on the right).
  *           default: false
  *           example: false
+ *         alternateRowBackground:
+ *           type: boolean
+ *           description: >
+ *             When true, apply alternating row background colors (zebra striping)
+ *             to improve readability of wide tables. Defaults to false.
+ *           default: false
+ *           example: false
  *         onClick:
  *           $ref: '#/components/schemas/OnClick'
  *           description: Optional link-out configuration applied when a user clicks a row.
@@ -1155,6 +1162,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               enum: [table]
  *               description: Display as a table chart.
  *               example: "table"
+ *             alternateRowBackground:
+ *               type: boolean
+ *               description: >
+ *                 When true, apply alternating row background colors (zebra
+ *                 striping) to improve readability of wide tables. Defaults to false.
+ *               default: false
+ *               example: false
  *             onClick:
  *               $ref: '#/components/schemas/OnClick'
  *               description: Optional link-out configuration applied when a user clicks a row.

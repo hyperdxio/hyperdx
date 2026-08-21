@@ -601,7 +601,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpTableTileSchema = mcpTileLayoutSchema.extend({
+export const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z.literal('table').describe('Tabular aggregated data'),
@@ -639,6 +639,13 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Render Group By columns on the left side of the table, before the series columns. ' +
           'Default false (Group By columns on the right).',
+      ),
+    alternateRowBackground: z
+      .boolean()
+      .optional()
+      .describe(
+        'Zebra-stripe the table by tinting alternating rows, which aids scanning on wide tables. ' +
+          'Default false.',
       ),
     numberFormat: mcpNumberFormatSchema
       .optional()
@@ -871,7 +878,7 @@ const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
+export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     configType: z
       .literal('sql')
@@ -947,6 +954,13 @@ GROUP BY ServiceName, ts
     color: ChartPaletteTokenSchema.optional().describe(
       rawSqlNumberTileColorDescription,
     ),
+    alternateRowBackground: z
+      .boolean()
+      .optional()
+      .describe(
+        'Zebra-stripe the table by tinting alternating rows, which aids scanning on wide tables. ' +
+          'Valid only when displayType is "table", ignored otherwise. Default false.',
+      ),
     onClick: mcpOnClickSchema.optional(),
   }),
 });
