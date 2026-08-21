@@ -1021,6 +1021,114 @@ export async function timeFilterExpr({
   return concatChSql('AND', ...whereExprs);
 }
 
+/**
+ * Value (and derived formula) columns for a builder chart whose formulas
+ * render inline in the single-scan SELECT — i.e. event (log/trace) sources.
+ * Metric formula configs never reach this path: they route through
+ * renderMultiSeriesMetricChartConfig, whose UNION ALL branches strip
+ * `formulas` before recursing.
+ *
+ * Operand columns render first in select order (dropped from the projection
+ * when `showOperandSeries` is false — the aggregates still evaluate inside
+ * the formula expressions), followed by one column per formula compiled over
+ * the bare operand aggregate expressions. All event series aggregate over
+ * the same scanned rows, so — unlike the composed metric path, which pivots
+ * UNION ALL branches — the formula embeds each referenced operand expression
+ * directly. Missing-data semantics follow the existing events ratio
+ * (`divide(a, b)`): a countIf with no matching rows reads 0, while an
+ * avg-class aggregate reads nan (a rendered gap) — there is no per-series
+ * UNION here, so the composed path's NULL pivot never comes into play.
+ *
+ * Formulas supersede `seriesReturnType: 'ratio'` (mutually exclusive in the
+ * editor; rendering stays deterministic if a hand-built config carries both),
+ * so ratio merging is skipped on this path.
+ */
+async function renderSelectListWithFormulas(
+  select: Exclude<SelectList, string>,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql[]> {
+  const formulas = chartConfig.formulas ?? [];
+
+  // Bare operand expressions (no `AS "alias"` suffix) for embedding inside
+  // compiled formulas; mirrors the alias-stripping in renderSeriesLimitCte.
+  const operandExprs = await renderSelectList(
+    select.map(col => ({ ...col, alias: undefined })),
+    chartConfig,
+    metadata,
+    { mergeRatio: false },
+  );
+  const operandList = Array.isArray(operandExprs)
+    ? operandExprs
+    : [operandExprs];
+  const operandAt = (index: number): ChSql => {
+    const operand = operandList.at(index);
+    if (operand == null) {
+      // Unreachable: validateFormula bounds every ref to select.length.
+      throw new Error(`Formula references unknown series index ${index}`);
+    }
+    return operand;
+  };
+
+  const columns: ChSql[] = [];
+  if (chartConfig.showOperandSeries !== false) {
+    const rendered = await renderSelectList(select, chartConfig, metadata, {
+      mergeRatio: false,
+    });
+    columns.push(...(Array.isArray(rendered) ? rendered : [rendered]));
+  }
+
+  // Formula columns are named by their alias, falling back to the raw
+  // expression text. Dedupe against operand aliases and each other with the
+  // same column-index suffix the composed metric path uses.
+  const seen = new Set<string>(
+    select.flatMap(s =>
+      s.alias != null && s.alias.trim() !== '' ? [s.alias] : [],
+    ),
+  );
+  const uniqueName = (base: string, columnIdx: number) => {
+    const name = seen.has(base) ? `${base}__${columnIdx}` : base;
+    seen.add(name);
+    return name;
+  };
+
+  formulas.forEach((f, formulaIdx) => {
+    // Parse + validate against the chart's series before rendering any SQL.
+    // Persisted configs should already be valid (the editor validates on
+    // save); this is a render-time guard so a stale or hand-built config
+    // fails with a structured message instead of a ClickHouse error.
+    const parsed = validateFormula(f.expression, {
+      seriesCount: select.length,
+    });
+    if (!parsed.ok) {
+      throw new Error(
+        `Invalid formula "${f.expression}": ${parsed.errors
+          .map(e => e.message)
+          .join('; ')}`,
+      );
+    }
+    const name = uniqueName(
+      f.alias || f.expression,
+      select.length + formulaIdx,
+    );
+    // The compiler only walks the validated AST; the referenced operand
+    // fragments are the same rendered expressions projected above. Params
+    // are keyed by value hash, so re-embedding a fragment (even repeatedly,
+    // e.g. `A / (A + B)`) merges to identical entries.
+    const sql = `${compileFormulaAst(
+      parsed.ast,
+      index => operandAt(index).sql,
+    )} AS ${quotedColumnName(name)}`;
+    const params = Object.assign(
+      {},
+      ...parsed.referencedIndices.map(index => operandAt(index).params),
+    );
+    columns.push({ sql, params });
+  });
+
+  return columns;
+}
+
 async function renderSelect(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1034,12 +1142,25 @@ async function renderSelect(
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
   const isIncludingGroupBy = isUsingGroupBy(chartConfig);
 
+  // Formulas over an array select compile inline on this single-query path
+  // (event sources; see renderSelectListWithFormulas). Metric formula
+  // configs are intercepted upstream by the composed multi-series path.
+  const hasInlineFormulas =
+    Array.isArray(chartConfig.select) &&
+    (chartConfig.formulas?.length ?? 0) > 0;
+
   // TODO: clean up these await mess
   return concatChSql(
     ',',
-    await renderSelectList(chartConfig.select, chartConfig, metadata, {
-      mergeRatio: true,
-    }),
+    hasInlineFormulas && Array.isArray(chartConfig.select)
+      ? await renderSelectListWithFormulas(
+          chartConfig.select,
+          chartConfig,
+          metadata,
+        )
+      : await renderSelectList(chartConfig.select, chartConfig, metadata, {
+          mergeRatio: true,
+        }),
     isIncludingGroupBy && chartConfig.selectGroupBy !== false
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
           mergeRatio: false,
