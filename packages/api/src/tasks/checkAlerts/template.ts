@@ -19,7 +19,7 @@ import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertState } from '@/models/alert';
+import { AlertSource, AlertState, getAlertChannels } from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -28,6 +28,11 @@ import {
   computeAliasWithClauses,
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
+import {
+  NotificationCapExceededError,
+  UnsupportedMentionError,
+  WebhookNotFoundError,
+} from '@/tasks/checkAlerts/errors';
 import {
   inlineNotificationDispatcher,
   NotificationDispatcher,
@@ -40,6 +45,7 @@ import {
 import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import { unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 const describeThresholdViolation = (
@@ -97,6 +103,23 @@ const describeThreshold = (alert: AlertInput): string => {
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
+
+// Bounds how many targets one fire/resolve event can notify, counting
+// configured channels and @webhook- mentions together. Distinct from
+// MAX_ALERT_CHANNELS (packages/common-utils), which caps how many channels an
+// alert can be configured with; this caps the per-event fan-out, which also
+// includes ad hoc @mentions written into the message.
+const MAX_NOTIFICATIONS_PER_EVENT = 20;
+
+// A skipped target must be visible operationally even if nobody reads the
+// per-target execution error — see recordPreFailure below for the user-facing side.
+const notificationCapExceededCounter = getCounter(
+  'hyperdx.alerts.notification_cap_exceeded',
+  {
+    description:
+      'Count of alert notification targets dropped because MAX_NOTIFICATIONS_PER_EVENT was reached, labeled by channel_type.',
+  },
+);
 
 const zNotifyFnParams = z.object({
   hash: z.object({
@@ -235,14 +258,29 @@ export const buildAlertMessageTemplateTitle = ({
   throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
-export const getDefaultExternalAction = (
+/**
+ * Fans each channel out to an `@webhook-<id>` mention string, which
+ * `getPopulatedChannel` later parses back into a channel. This round-trip is
+ * lossy: only `type` and `webhookId` survive it, because the mention string
+ * has no room for anything else. This predates multi-channel support and is
+ * not being fixed here.
+ *
+ * Anything that needs a channel's other fields (e.g. a fork's
+ * `emailRecipients`) at delivery time must thread them through separately --
+ * they will not come back out of this string. In particular, a consumer that
+ * reads `alert.channel` to recover them will get `channels[0]`'s values for
+ * every channel, since `channel` is a single mirrored value, not one per
+ * `channels` entry.
+ */
+export const getDefaultExternalActions = (
   alert: AlertMessageTemplateDefaultView['alert'],
-) => {
-  if (alert.channel?.type === 'webhook' && alert.channel.webhookId != null) {
-    return `@${alert.channel.type}-${alert.channel.webhookId}`;
-  }
-  return null;
-};
+): string[] =>
+  getAlertChannels(alert)
+    .filter(
+      (c): c is { type: 'webhook'; webhookId: string } =>
+        c.type === 'webhook' && c.webhookId != null,
+    )
+    .map(c => `@${c.type}-${c.webhookId}`);
 
 export const translateExternalActionsToInternal = (template: string) => {
   // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
@@ -283,7 +321,7 @@ const getPopulatedChannel = (
           },
           'webhook not found',
         );
-        throw new Error(
+        throw new WebhookNotFoundError(
           `Webhook not found. The webhook may have been deleted — update the alert's notification channel.`,
         );
       }
@@ -296,6 +334,39 @@ const getPopulatedChannel = (
   }
 };
 
+/**
+ * A notification target that did not end up delivered: it never reached the
+ * dispatcher (unresolvable mention/webhook, the per-event cap), or it did
+ * reach the dispatcher and `dispatch()` rejected. The inline dispatcher
+ * resolves after delivery, so a real send failure rejects and is caught below
+ * — a queued dispatcher instead resolves after enqueue and reports delivery
+ * outcomes through its own logs/metrics, so this array simply won't see them.
+ */
+export type NotificationFailure = {
+  /** The webhook id/name prefix, or the raw @mention, that failed. */
+  target: string;
+  /** The channel type the target belongs to, or 'unknown' when it couldn't be determined (e.g. an unparseable @mention). */
+  type: string;
+  error: unknown;
+};
+
+// PopulatedAlertChannel only has a `webhook` variant in this repo, but a
+// downstream build adds more (e.g. `email`) without a `channel` field at all.
+// Narrowing here — rather than assuming `.channel` exists — keeps this
+// mechanical for that merge instead of a judgement call, and keeps an error
+// handler from throwing on an unrecognized channel type.
+const channelKey = (c: PopulatedAlertChannel) =>
+  c.type === 'webhook' ? c.channel._id.toString() : JSON.stringify(c);
+const channelLabel = (c: PopulatedAlertChannel) =>
+  c.type === 'webhook' ? c.channel.name : c.type;
+
+export type RenderedAlert = {
+  /** The rendered message body, as delivered to every target. */
+  body: string;
+  /** One entry per target that did not end up delivered — see NotificationFailure. */
+  results: NotificationFailure[];
+};
+
 // this method will build the body of the alert message and will be used to send the alert to the channel
 export const renderAlertTemplate = async ({
   alertProvider,
@@ -305,6 +376,7 @@ export const renderAlertTemplate = async ({
   template,
   title,
   view: inputView,
+  teamId,
   teamWebhooksById,
   dispatcher = inlineNotificationDispatcher,
 }: {
@@ -315,9 +387,10 @@ export const renderAlertTemplate = async ({
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
+  teamId: string;
   teamWebhooksById: Map<string, IWebhook>;
   dispatcher?: NotificationDispatcher;
-}) => {
+}): Promise<RenderedAlert> => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
   // Handlebars treats them as literal data, never as template syntax.
@@ -339,11 +412,13 @@ export const renderAlertTemplate = async ({
     value,
   } = view;
 
-  const defaultExternalAction = getDefaultExternalAction(alert);
+  const defaultExternalActions = getDefaultExternalActions(alert);
+  // Only trim when a default action was appended — an alert with no channel
+  // keeps the template's own leading/trailing whitespace, as it always has.
   const targetTemplate =
-    defaultExternalAction !== null
+    defaultExternalActions.length > 0
       ? translateExternalActionsToInternal(
-          `${template ?? ''} ${defaultExternalAction}`,
+          [template ?? '', ...defaultExternalActions].join(' '),
         ).trim()
       : translateExternalActionsToInternal(template ?? '');
 
@@ -366,14 +441,54 @@ export const renderAlertTemplate = async ({
   _hb.registerHelper(NOTIFY_FN_NAME, () => null);
   _hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(true));
   const hb = PromisedHandlebars(Handlebars);
+
+  // Rendering collects the notification jobs; dispatch happens once afterwards
+  // so every target goes out concurrently instead of serially mid-render.
+  const jobs: NotificationJob[] = [];
+  const failures: NotificationFailure[] = [];
+  // Webhook ids already queued this event, so a target configured as a channel
+  // and also named by an @mention is only notified once.
+  const queuedWebhookIds = new Set<string>();
+
+  // A target that failed before dispatch still needs to surface as its own
+  // result, so the alert reports which channel missed out.
+  const recordPreFailure = (target: string, type: string, error: unknown) => {
+    failures.push({ target, type, error });
+  };
+
   const registerHelpers = (rawTemplateBody: string) => {
     hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(false));
 
     // Register a custom helper which sends notifications to the specified channel
     // Usage: {{NOTIFY_FN_NAME channel="webhook" id="1234_5678"}}
     hb.registerHelper(NOTIFY_FN_NAME, async (options: unknown) => {
-      const { hash } = zNotifyFnParams.parse(options);
-      const { channel: channelType, id: idTemplate } = hash;
+      // Any `@word` in the message body is rewritten into this helper, so an
+      // ordinary mention like "@here" arrives with an unsupported channel type.
+      // Parsing inside the guard keeps that from rejecting the whole render and
+      // dropping every already-collected job.
+      const parsed = zNotifyFnParams.safeParse(options);
+      if (!parsed.success) {
+        const mention =
+          typeof options === 'object' &&
+          options !== null &&
+          'hash' in options &&
+          typeof (options as { hash?: unknown }).hash === 'object'
+            ? JSON.stringify((options as { hash: unknown }).hash)
+            : 'unknown';
+        logger.warn(
+          { alertId: alert.id, mention },
+          'Unsupported notification mention in alert message; skipping it',
+        );
+        recordPreFailure(
+          mention,
+          'unknown',
+          new UnsupportedMentionError(
+            'Alert message contains a mention that is not a webhook channel.',
+          ),
+        );
+        return;
+      }
+      const { channel: channelType, id: idTemplate } = parsed.data.hash;
 
       // The id field can also be a template itself, e.g. id="{{attributes.webhookId}}", so it must be compiled and rendered
       // The id might also be the prefix of the webhook name.
@@ -382,45 +497,76 @@ export const renderAlertTemplate = async ({
       // render body template
       const renderedBody = _hb.compile(rawTemplateBody)(view);
 
-      const channel = getPopulatedChannel(
-        channelType,
-        renderedIdOrNamePrefix,
-        teamWebhooksById,
-      );
-
-      if (channel) {
-        const startTime = view.startTime.getTime();
-        const endTime = view.endTime.getTime();
-
-        const eventId = objectHash({
-          alertId: alert.id,
-          channel: {
-            type: channel.type,
-            id: channel.channel._id.toString(),
-          },
-          // Explicitly track if this is a grouped alert
-          isGrouped: view.isGroupedAlert,
-          ...(view.isGroupedAlert && group ? { groupId: group } : {}),
-        });
-
-        const job: NotificationJob = {
-          eventId,
-          alertId: alert.id,
-          group,
-          populatedChannel: channel,
-          message: {
-            hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
-            title,
-            body: renderedBody,
-            state,
-            startTime,
-            endTime,
-            eventId,
-          },
-        };
-
-        await dispatcher.dispatch(job);
+      let channel: PopulatedAlertChannel;
+      try {
+        channel = getPopulatedChannel(
+          channelType,
+          renderedIdOrNamePrefix,
+          teamWebhooksById,
+        );
+      } catch (e) {
+        // A missing webhook must not abort the render: the other channels
+        // still fire, and this one is reported per-target.
+        recordPreFailure(renderedIdOrNamePrefix, channelType, e);
+        return;
       }
+
+      // Resolve and dedupe before the cap check: a channel and an @mention can
+      // name the same target by id and by name prefix, and a repeat of an
+      // already-queued target is a no-op, not a target the cap turned away.
+      const webhookId = channelKey(channel);
+      if (queuedWebhookIds.has(webhookId)) {
+        return;
+      }
+
+      if (jobs.length + failures.length >= MAX_NOTIFICATIONS_PER_EVENT) {
+        logger.warn(
+          { alertId: alert.id, cap: MAX_NOTIFICATIONS_PER_EVENT },
+          'Notification cap reached for this alert event; skipping channel',
+        );
+        notificationCapExceededCounter.add(1, { channel_type: channelType });
+        // Record it as a per-target failure too. A skipped channel that only
+        // shows up in a log line and a metric looks like a healthy alert to the
+        // operator, who never learns some targets were never notified.
+        recordPreFailure(
+          renderedIdOrNamePrefix,
+          channelType,
+          new NotificationCapExceededError(MAX_NOTIFICATIONS_PER_EVENT),
+        );
+        return;
+      }
+      queuedWebhookIds.add(webhookId);
+
+      const startTime = view.startTime.getTime();
+      const endTime = view.endTime.getTime();
+
+      const eventId = objectHash({
+        alertId: alert.id,
+        channel: {
+          type: channel.type,
+          id: channel.channel._id.toString(),
+        },
+        // Explicitly track if this is a grouped alert
+        isGrouped: view.isGroupedAlert,
+        ...(view.isGroupedAlert && group ? { groupId: group } : {}),
+      });
+
+      jobs.push({
+        eventId,
+        alertId: alert.id,
+        teamId,
+        group,
+        populatedChannel: channel,
+        message: {
+          hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
+          title,
+          body: renderedBody,
+          state,
+          startTime,
+          endTime,
+          eventId,
+        },
+      });
     });
   };
 
@@ -541,7 +687,41 @@ ${targetTemplate}`;
   if (rawTemplateBody) {
     registerHelpers(rawTemplateBody);
     const compiledTemplate = hb.compile(rawTemplateBody);
-    return compiledTemplate(view);
+    const body = await compiledTemplate(view);
+
+    // Dispatch every surviving channel concurrently, once the render (and
+    // therefore the message body) is complete. Each dispatch is isolated in
+    // its own try/catch so one failing channel can't stop the others.
+    //
+    // The inline dispatcher resolves *after* delivery, so a real send failure
+    // rejects here and is recorded exactly like a pre-dispatch failure — this
+    // preserves WEBHOOK_ERROR reporting for the default (only) dispatcher. A
+    // queued dispatcher resolves after enqueue and never rejects here; it
+    // reports delivery outcomes through its own logs/metrics instead (see
+    // agent_docs/observability.md).
+    await Promise.all(
+      jobs.map(async job => {
+        try {
+          await dispatcher.dispatch(job);
+        } catch (e) {
+          logger.error(
+            {
+              alertId: alert.id,
+              webhookId: channelKey(job.populatedChannel),
+              error: serializeError(e),
+            },
+            'Failed to deliver alert notification',
+          );
+          failures.push({
+            target: channelLabel(job.populatedChannel),
+            type: job.populatedChannel.type,
+            error: e,
+          });
+        }
+      }),
+    );
+
+    return { body, results: failures };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);

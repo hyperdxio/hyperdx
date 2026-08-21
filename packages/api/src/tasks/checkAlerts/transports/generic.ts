@@ -81,11 +81,11 @@ export const createHandlebarsWithHelpers = () => {
  * Bounds a single attempt so a black-holed receiver releases its socket. Read
  * lazily, not as a module const, so integration tests can override per suite.
  *
- * Not wired into the `fetch()` call below yet — a follow-up task threads it
- * through as an `AbortSignal`. Exported now as part of the transport
- * registry's public surface (see `ChannelTransport`'s `signal` field).
- *
- * @public
+ * Wired into the `fetch()` call below as an `AbortSignal.timeout()`. No caller
+ * supplies a signal today -- `deliverNotification` only passes `{ group }` --
+ * so the `AbortSignal.any()` combination is dead in practice. The `signal`
+ * parameter (see `ChannelTransport`) stays for a future queued dispatcher that
+ * needs to cancel in-flight deliveries, e.g. on shutdown.
  */
 export const getWebhookFetchTimeoutMs = () => {
   const parsed = Number(process.env.ALERT_NOTIFICATION_FETCH_TIMEOUT_MS);
@@ -95,13 +95,14 @@ export const getWebhookFetchTimeoutMs = () => {
 export const handleSendGenericWebhook = async (
   channel: WebhookChannel,
   message: Message,
+  signal?: AbortSignal,
 ) => {
   const webhook = channel.channel;
   const startedAt = performance.now();
   // webhook.service is an enum, so it is safe as a low-cardinality label.
   const service = webhook.service ?? WebhookService.Generic;
   try {
-    await sendGenericWebhook(webhook, message);
+    await sendGenericWebhook(webhook, message, signal);
     webhookDeliveryCounter.add(1, { service, outcome: 'success' });
   } catch (e) {
     logBlockedWebhookDelivery(e, webhook);
@@ -130,7 +131,11 @@ const toStringHeaderRecord = (value: unknown): Record<string, string> => {
   );
 };
 
-const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
+const sendGenericWebhook = async (
+  webhook: IWebhook,
+  message: Message,
+  signal?: AbortSignal,
+) => {
   validateWebhookUrl(webhook);
 
   let url: string;
@@ -199,11 +204,23 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
 
   try {
     await withRetry(async () => {
+      // Created fresh inside the retried callback: a signal built once outside
+      // withRetry would already be aborted by the time a later attempt runs,
+      // failing every retry after the first timeout instead of bounding each
+      // attempt independently.
+      const attemptSignal = signal
+        ? AbortSignal.any([
+            signal,
+            AbortSignal.timeout(getWebhookFetchTimeoutMs()),
+          ])
+        : AbortSignal.timeout(getWebhookFetchTimeoutMs());
+
       const res = await fetch(url, {
         method: 'POST',
         redirect: 'manual',
         headers,
         body,
+        signal: attemptSignal,
       });
 
       // Disallow redirects to avoid redirect-based SSRF.
