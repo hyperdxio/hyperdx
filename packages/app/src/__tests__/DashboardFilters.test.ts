@@ -1,16 +1,19 @@
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 
-import { getFilterEffect } from '@/DashboardFilters';
+import {
+  getFilterEffect,
+  getPendingVariablesTooltip,
+} from '@/DashboardFilters';
+
+const baseFilter: DashboardFilter = {
+  id: 'filter1',
+  type: 'QUERY_EXPRESSION',
+  name: 'Service Name',
+  expression: 'ServiceName',
+  source: 'logs',
+};
 
 describe('getFilterEffect', () => {
-  const baseFilter: DashboardFilter = {
-    id: 'filter1',
-    type: 'QUERY_EXPRESSION',
-    name: 'Service Name',
-    expression: 'ServiceName',
-    source: 'logs',
-  };
-
   it('describes both effects when broadcast and variable are on', () => {
     expect(
       getFilterEffect({
@@ -95,5 +98,19 @@ describe('getFilterEffect', () => {
         variableName: 'svc',
       }).tooltip,
     ).toEqual('Available as variable ($svc)');
+  });
+});
+
+describe('getPendingVariablesTooltip', () => {
+  it('names the variable that has no selected value', () => {
+    expect(getPendingVariablesTooltip(['svc'])).toBe(
+      'Filter depends on $svc, which has no selected value.',
+    );
+  });
+
+  it('agrees with more than one pending variable', () => {
+    expect(getPendingVariablesTooltip(['svc', 'env'])).toContain(
+      '$svc, $env, which have no selected value',
+    );
   });
 });

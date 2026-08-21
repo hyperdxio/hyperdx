@@ -3178,6 +3178,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           filterValues={filterValues}
           onSetFilterValue={setFilterValue}
           dateRange={searchedTimeRange}
+          variables={showFilterVariableOptions ? variables : undefined}
         />
       )}
       {/* Selection indicator */}
@@ -3354,6 +3355,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
           showVariableOptions={showFilterVariableOptions}
+          variables={showFilterVariableOptions ? variables : undefined}
         />
       )}
     </>
