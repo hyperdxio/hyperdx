@@ -1,7 +1,10 @@
 import React from 'react';
+import { screen } from '@testing-library/react';
 
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DBHistogramChart, {
+  HISTOGRAM_BAR_COLOR,
+  HistogramChartTooltip,
   resolvePinnedBarIndex,
 } from '@/components/DBHistogramChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
@@ -152,6 +155,84 @@ describe('DBHistogramChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+});
+
+describe('HISTOGRAM_BAR_COLOR', () => {
+  it('uses the first categorical series hue, not a hardcoded neon green', () => {
+    expect(HISTOGRAM_BAR_COLOR.toLowerCase()).toBe('#437eef');
+  });
+});
+
+describe('HistogramChartTooltip', () => {
+  const payload = [
+    {
+      name: 'height',
+      value: 1084431.375,
+      color: HISTOGRAM_BAR_COLOR,
+      payload: { lower: 0.01081, upper: 33669.79207, height: 1084431.375 },
+    },
+  ];
+
+  it('renders the shared chart tooltip with a categorical series color', () => {
+    renderWithMantine(<HistogramChartTooltip active payload={payload} />);
+
+    expect(screen.getByTestId('chart-tooltip')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Bucket: 0.01081 - 33669.79207/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Number of events')).toHaveStyle({
+      color: HISTOGRAM_BAR_COLOR,
+    });
+    expect(screen.getByText(/1,084,431/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Click to pin tooltip • Approx value via SPDT algorithm/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to HISTOGRAM_BAR_COLOR when the payload item has no color', () => {
+    renderWithMantine(
+      <HistogramChartTooltip
+        active
+        payload={[
+          {
+            name: 'height',
+            value: 1084431.375,
+            payload: {
+              lower: 0.01081,
+              upper: 33669.79207,
+              height: 1084431.375,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Number of events')).toHaveStyle({
+      color: HISTOGRAM_BAR_COLOR,
+    });
+  });
+
+  it('renders nothing when inactive', () => {
+    renderWithMantine(
+      <HistogramChartTooltip active={false} payload={payload} />,
+    );
+
+    expect(screen.queryByText(/Bucket:/)).toBeNull();
+  });
+
+  it('renders nothing when active with an empty payload', () => {
+    renderWithMantine(<HistogramChartTooltip active payload={[]} />);
+
+    expect(screen.queryByTestId('chart-tooltip')).toBeNull();
+  });
+
+  it('renders nothing when active with an undefined payload', () => {
+    renderWithMantine(<HistogramChartTooltip active />);
+
+    expect(screen.queryByTestId('chart-tooltip')).toBeNull();
   });
 });
 

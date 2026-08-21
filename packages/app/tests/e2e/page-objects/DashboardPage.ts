@@ -7,7 +7,14 @@ import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { getSqlEditor } from '../utils/locators';
+import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import { switchWhereLanguage } from '../utils/lucene-autocomplete';
+
+/** The "Dropdown values filter" on a dashboard filter, and its language. */
+export type FilterWhereOptions = {
+  value: string;
+  language?: 'sql' | 'lucene';
+};
 
 /**
  * Config format tile config, as accepted by the external dashboard API.
@@ -102,6 +109,7 @@ export class DashboardPage {
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
   private readonly enterKioskModeMenuItem: Locator;
+  private readonly toggleReleaseAnnotationsMenuItem: Locator;
   private readonly exitKioskModeBtn: Locator;
   private readonly kioskHeaderContainer: Locator;
   private readonly kioskLiveStatusBadge: Locator;
@@ -177,6 +185,9 @@ export class DashboardPage {
     );
     this.enterKioskModeMenuItem = page.getByTestId(
       'enter-kiosk-mode-menu-item',
+    );
+    this.toggleReleaseAnnotationsMenuItem = page.getByTestId(
+      'toggle-release-annotations-menu-item',
     );
     this.exitKioskModeBtn = page.getByTestId('exit-kiosk-mode-button');
     this.kioskHeaderContainer = page.getByTestId('kiosk-header');
@@ -585,13 +596,24 @@ export class DashboardPage {
    * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
    * relies on the editor's default source), this selects a known source so the
    * exported tile carries a deterministic source name that auto-maps on import.
+   *
+   * `seriesWhere` sets the tile's own filter, which a time chart stores as its
+   * series' `aggCondition` — a different field from the dashboard-wide filter
+   * that `setGlobalFilter` drives.
    */
-  async addTileWithSource(chartName: string, sourceName: string) {
+  async addTileWithSource(
+    chartName: string,
+    sourceName: string,
+    seriesWhere?: string,
+  ) {
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartName(chartName);
     await this.chartEditor.selectSource(sourceName);
+    if (seriesWhere != null) {
+      await this.chartEditor.setSeriesWhere(seriesWhere);
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
     await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
@@ -675,6 +697,10 @@ export class DashboardPage {
    */
   async setGlobalFilter(filter: string) {
     await this.searchInput.fill(filter);
+    // Dismiss the suggestion popover, which otherwise overlays the submit
+    // button and fails its actionability check. Blur (not Escape) so it can't
+    // close a surrounding modal — same reasoning as `dismissSqlAutocomplete`.
+    await this.searchInput.blur();
     await this.searchSubmitButton.click();
   }
 
@@ -809,6 +835,23 @@ export class DashboardPage {
     await this.closeFiltersModalButton.click();
   }
 
+  /**
+   * Open the "Add filter" form inside the Edit Filters Modal, without filling
+   * it in. Use when a test needs to interact with the form's inputs; use
+   * `addFilterToDashboard` to fill and save one in a single step.
+   */
+  async openAddFilterForm() {
+    await this.addFiltersButton.click();
+  }
+
+  /** Pick the data source in the filter edit form. */
+  async selectFilterSource(sourceName: string) {
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
   async fillFilterForm(
     name: string,
     sourceName: string,
@@ -820,14 +863,12 @@ export class DashboardPage {
       isVariableEnabled?: boolean;
       variableName?: string;
     },
+    whereOptions?: FilterWhereOptions,
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
 
-    await this.filtersSourceSelector.click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
+    await this.selectFilterSource(sourceName);
 
     const editor = getSqlEditor(this.page, 'expression');
     await editor.click();
@@ -839,16 +880,27 @@ export class DashboardPage {
         .click();
     }
 
+    if (whereOptions) {
+      await this.fillFilterDropdownValuesWhere(whereOptions);
+    }
+
     // Applied before the applies-to selector below, because unchecking broadcast
     // hides that control.
     if (variableOptions?.isBroadcastEnabled === false) {
       await this.broadcastFilterCheckbox.uncheck();
     }
+    // New filters default to broadcast-only, so the variable box is opt-in here:
+    // asking for a variable name, or for the mode outright, checks it.
     if (variableOptions?.isVariableEnabled === false) {
       await this.variableEnabledCheckbox.uncheck();
-    } else if (variableOptions?.variableName !== undefined) {
+    } else if (
+      variableOptions?.isVariableEnabled === true ||
+      variableOptions?.variableName !== undefined
+    ) {
       await this.variableEnabledCheckbox.check();
-      await this.variableNameInput.fill(variableOptions.variableName);
+      if (variableOptions.variableName !== undefined) {
+        await this.variableNameInput.fill(variableOptions.variableName);
+      }
     }
 
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
@@ -877,6 +929,7 @@ export class DashboardPage {
       isVariableEnabled?: boolean;
       variableName?: string;
     },
+    whereOptions?: FilterWhereOptions,
   ) {
     await this.addFiltersButton.click();
 
@@ -887,7 +940,75 @@ export class DashboardPage {
       metricType,
       appliesToSourceNames,
       variableOptions,
+      whereOptions,
     );
+  }
+
+  /** The filter edit form's dialog, scoped so page-level locators stay unambiguous. */
+  getFilterForm(): Locator {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('filter-name-input') });
+  }
+
+  /**
+   * The "Dropdown values filter" input's root, reached from its language switch.
+   *
+   * Located this way because the input itself carries no test id, and matching
+   * it by placeholder only works while it is empty.
+   */
+  getFilterWhereRoot(): Locator {
+    return this.getFilterForm()
+      .getByTestId('where-language-switch')
+      .locator('xpath=..');
+  }
+
+  /** The CodeMirror editor behind the SQL form of the dropdown values filter. */
+  getFilterWhereSqlEditor(): Locator {
+    return this.getFilterWhereRoot().locator('div.cm-editor');
+  }
+
+  /** What the dropdown values filter flags about the variables it references. */
+  getFilterWhereVariableWarning(): Locator {
+    return this.getFilterWhereRoot().getByTestId('variable-validation');
+  }
+
+  /**
+   * Fill the "Dropdown values filter" (the filter's `where`) in the open filter
+   * edit form, replacing whatever is there.
+   *
+   * The language is always set explicitly: the form seeds it from the
+   * `hdx-search-where-language` localStorage key, which other specs write, so
+   * "it defaults to SQL" is not safe to assume.
+   */
+  async fillFilterDropdownValuesWhere({
+    value,
+    language = 'sql',
+  }: FilterWhereOptions) {
+    await switchWhereLanguage(
+      this.getFilterForm().getByTestId('where-language-switch'),
+      language === 'sql' ? 'SQL' : 'Lucene',
+    );
+
+    if (language === 'lucene') {
+      const input = this.getFilterWhereRoot().getByRole('textbox');
+      await input.click();
+      await input.fill(value);
+      // Blur so the Lucene suggestion dropdown can't cover the save button.
+      await this.page.getByTestId('filter-name-input').click();
+      return;
+    }
+
+    const editor = this.getFilterWhereSqlEditor();
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    // insertText, not type: CodeMirror's bracket auto-closing would corrupt a
+    // clause containing `(`, as every macro reference does.
+    await this.page.keyboard.insertText(value);
+    await dismissSqlAutocomplete(this.page);
   }
 
   getFilterLabel(name: string) {
@@ -922,6 +1043,14 @@ export class DashboardPage {
     await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
     await this.broadcastFilterCheckbox.setChecked(enabled);
     await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /**
+   * The warning shown in the filter edit form when a filter both broadcasts and
+   * is a variable, with no "Applies to sources" scope to limit the broadcast.
+   */
+  get unscopedBroadcastWarning() {
+    return this.page.getByTestId('filter-unscoped-broadcast-warning');
   }
 
   /** The warning icon shown when a filter neither broadcasts nor is a variable. */
@@ -967,6 +1096,37 @@ export class DashboardPage {
    */
   getFilterEmptyDropdownState(): Locator {
     return this.page.getByText('Nothing found...').first();
+  }
+
+  /**
+   * Open a dashboard filter's dropdown, leaving it open so the caller can
+   * assert on the options it offers.
+   */
+  async openFilterDropdown(filterName: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.waitFor({ state: 'visible', timeout: 15000 });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+  }
+
+  /**
+   * Locator for one option in a dashboard filter's (open) dropdown. The
+   * dropdown is portaled out of the select, so this is located at page level.
+   */
+  getFilterOption(value: string): Locator {
+    return this.page.getByRole('option', { name: value, exact: true });
+  }
+
+  /** The warning shown when a filter's dropdown query awaits a variable's value. */
+  getFilterPendingVariableWarning(filterName: string): Locator {
+    return this.page.getByTestId(
+      `dashboard-filter-pending-variable-${filterName}`,
+    );
+  }
+
+  /** The error shown when a filter's dropdown values query failed. */
+  getFilterErrorIcon(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-error-${filterName}`);
   }
 
   /**
@@ -1387,6 +1547,46 @@ export class DashboardPage {
     await this.ignoredUrlFiltersBanner
       .getByRole('button', { name: 'Dismiss' })
       .click();
+  }
+
+  // ---- Chart annotation helpers ----
+
+  /**
+   * Open the dashboard overflow menu and toggle deployment markers on tile
+   * charts. Expects the menu item with
+   * data-testid="toggle-release-annotations-menu-item", which only renders once
+   * the dashboard has at least one tile.
+   */
+  async toggleReleaseAnnotations() {
+    await this.dashboardMenuButton.click();
+    await this.toggleReleaseAnnotationsMenuItem.click();
+  }
+
+  /**
+   * Annotation markers (deployments, alerts) drawn on a tile's time chart as
+   * dashed vertical Recharts reference lines.
+   */
+  getAnnotationMarkers(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('.recharts-reference-line');
+  }
+
+  /**
+   * Transparent hover targets over the annotation markers, one per cluster.
+   * Hovering one opens a tooltip naming the services that released.
+   */
+  getAnnotationHitTargets(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator(
+      '.recharts-annotation-hit-layer rect',
+    );
+  }
+
+  /**
+   * Text labels for the annotation markers. Recharts hoists reference-line
+   * labels into a separate z-index layer, so they are NOT descendants of the
+   * `.recharts-reference-line` group and cannot be matched by filtering it.
+   */
+  getAnnotationLabels(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('text.recharts-label');
   }
 
   // ---- Kiosk mode helpers ----

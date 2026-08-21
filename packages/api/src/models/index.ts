@@ -51,7 +51,7 @@ mongoose.connection.on('reconnectFailed', () => {
   logger.error('Failed to reconnect to MongoDB');
 });
 
-export const connectDB = async () => {
+export const connectDB = async (options?: mongoose.ConnectOptions) => {
   // breadcrumbs for future greppers: aws4 is included as a dependency of the api so that
   // users can use AWS auth in their mongo connection string here, e.g.
   // mongodb+srv://blahblah...mongodb.net/hyperdx?authSource=%24external&authMechanism=MONGODB-AWS
@@ -61,6 +61,7 @@ export const connectDB = async () => {
   await mongoose.connect(config.MONGO_URI, {
     heartbeatFrequencyMS: 10000, // retry failed heartbeats
     maxPoolSize: 100, // 5 nodes -> max 1000 connections
+    ...options,
   });
 };
 

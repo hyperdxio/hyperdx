@@ -734,8 +734,20 @@ function DBTimeChartComponent({
           }
         | undefined;
 
+      // Metric formula configs with hidden operand series project only the
+      // formula column(s), so value columns no longer map positionally onto
+      // `select` — skip the value-range filter rather than misattributing a
+      // formula value to an operand's expression. (With operands shown, the
+      // operand columns still map by index and formula columns fall past the
+      // `< config.select.length` bound below.)
+      const operandsHidden =
+        isBuilderChartConfig(config) &&
+        (config.formulas?.length ?? 0) > 0 &&
+        config.showOperandSeries === false;
+
       if (
         seriesValue &&
+        !operandsHidden &&
         Array.isArray(config.select) &&
         config.select.length > 0
       ) {

@@ -15,7 +15,7 @@ function usePyodide(options: { enabled: boolean }) {
   return useQuery({
     queryKey: ['pyodide'],
     queryFn: async () => {
-      // @ts-ignore
+      // @ts-expect-error loadPyodide is injected by the pyodide script and not on the Window type
       const pyodide = await window.loadPyodide();
       await pyodide.loadPackage('micropip');
       const micropip = pyodide.pyimport('micropip');

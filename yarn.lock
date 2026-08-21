@@ -4616,7 +4616,7 @@ __metadata:
     "@braintree/sanitize-url": "npm:^7.1.1"
     "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.25.0"
+    "@hyperdx/common-utils": "npm:^0.26.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -4640,6 +4640,7 @@ __metadata:
     "@types/swagger-jsdoc": "npm:^6"
     "@types/uuid": "npm:^8.3.4"
     ai: "npm:^6.0.116"
+    ajv: "npm:^8.20.0"
     aws4: "npm:^1.13.2"
     chrono-node: "npm:^2.9.0"
     compression: "npm:^1.7.4"
@@ -4656,7 +4657,6 @@ __metadata:
     http-proxy-middleware: "npm:^4.0.0"
     ip-address: "npm:^10.3.1"
     jest: "npm:^30.2.0"
-    jsonwebtoken: "npm:^9.0.0"
     lodash: "npm:^4.18.1"
     migrate-mongo: "npm:^11.0.0"
     minimist: "npm:^1.2.7"
@@ -4708,7 +4708,7 @@ __metadata:
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/api": "workspace:*"
     "@hyperdx/browser": "npm:^0.22.1"
-    "@hyperdx/common-utils": "npm:^0.25.0"
+    "@hyperdx/common-utils": "npm:^0.26.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@mantine/core": "npm:^9.0.0"
     "@mantine/dates": "npm:^9.0.0"
@@ -4799,7 +4799,7 @@ __metadata:
     react-resizable: "npm:^3.0.4"
     recharts: "npm:^3.2.1"
     rimraf: "npm:^4.4.1"
-    rrweb: "npm:2.0.0-alpha.8"
+    rrweb: "npm:2.1.1"
     sass: "npm:^1.54.8"
     serve: "npm:^14.0.0"
     sql-formatter: "npm:^15.7.2"
@@ -4834,7 +4834,7 @@ __metadata:
   resolution: "@hyperdx/cli@workspace:packages/cli"
   dependencies:
     "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
-    "@hyperdx/common-utils": "npm:^0.25.0"
+    "@hyperdx/common-utils": "npm:^0.26.0"
     "@jest/globals": "npm:^30.2.0"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/jest": "npm:^29.5.14"
@@ -4861,7 +4861,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/common-utils@npm:^0.25.0, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.26.0, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -8963,12 +8963,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rrweb/types@npm:^2.0.0-alpha.8":
-  version: 2.0.0-alpha.8
-  resolution: "@rrweb/types@npm:2.0.0-alpha.8"
-  dependencies:
-    rrweb-snapshot: "npm:^2.0.0-alpha.8"
-  checksum: 10c0/d2d5b73bfc4cedde7a90f92a1be79200718344db027006d74b32cd8247dfb2d3a53c4314b09b056593826d3572227df45c327e2b98f123c54cec73631a71ef76
+"@rrweb/types@npm:^2.1.1":
+  version: 2.1.1
+  resolution: "@rrweb/types@npm:2.1.1"
+  checksum: 10c0/86715c8c664399cccc11f7dbcff86592756aefcd7a29aaf8b9eb6457230b564e387ea003362d1cae2402f9511f73ba39bb341d29aba7ac14d0c3b8d52e2fb433
+  languageName: node
+  linkType: hard
+
+"@rrweb/utils@npm:^2.1.1":
+  version: 2.1.1
+  resolution: "@rrweb/utils@npm:2.1.1"
+  checksum: 10c0/1a6aba8663628807df60fe1f2b5cd218584446d4cb988dbac464a59c4a9c3e5d3790ebc9f7a43cefbc52c9685c7c0d6134fcb38b89faf7e38df6c41fb6079af8
   languageName: node
   linkType: hard
 
@@ -12013,7 +12018,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ajv@npm:^8.0.0, ajv@npm:^8.0.1, ajv@npm:^8.17.1, ajv@npm:^8.9.0":
+"ajv@npm:^8.0.0, ajv@npm:^8.0.1, ajv@npm:^8.17.1, ajv@npm:^8.20.0, ajv@npm:^8.9.0":
   version: 8.20.0
   resolution: "ajv@npm:8.20.0"
   dependencies:
@@ -13069,13 +13074,6 @@ __metadata:
   version: 6.10.3
   resolution: "bson@npm:6.10.3"
   checksum: 10c0/15ad7a9b3bf8090add5fea1761b1ba7d75e5256efcfbb8c9ca448ca98e59c3b079c37c36c7aca0cc916236bd2d4684a5525c68f3d76da8a13d55dc230abbdd21
-  languageName: node
-  linkType: hard
-
-"buffer-equal-constant-time@npm:^1.0.1":
-  version: 1.0.1
-  resolution: "buffer-equal-constant-time@npm:1.0.1"
-  checksum: 10c0/fb2294e64d23c573d0dd1f1e7a466c3e978fe94a4e0f8183937912ca374619773bef8e2aceb854129d2efecbbc515bbd0cc78d2734a3e3031edb0888531bbc8e
   languageName: node
   linkType: hard
 
@@ -15285,15 +15283,6 @@ __metadata:
   version: 0.2.0
   resolution: "eastasianwidth@npm:0.2.0"
   checksum: 10c0/26f364ebcdb6395f95124fda411f63137a4bfb5d3a06453f7f23dfe52502905bd84e0488172e0f9ec295fdc45f05c23d5d91baf16bd26f0fe9acd777a188dc39
-  languageName: node
-  linkType: hard
-
-"ecdsa-sig-formatter@npm:1.0.11":
-  version: 1.0.11
-  resolution: "ecdsa-sig-formatter@npm:1.0.11"
-  dependencies:
-    safe-buffer: "npm:^5.0.1"
-  checksum: 10c0/ebfbf19d4b8be938f4dd4a83b8788385da353d63307ede301a9252f9f7f88672e76f2191618fd8edfc2f24679236064176fab0b78131b161ee73daa37125408c
   languageName: node
   linkType: hard
 
@@ -20699,18 +20688,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"jsonwebtoken@npm:^9.0.0":
-  version: 9.0.0
-  resolution: "jsonwebtoken@npm:9.0.0"
-  dependencies:
-    jws: "npm:^3.2.2"
-    lodash: "npm:^4.17.21"
-    ms: "npm:^2.1.1"
-    semver: "npm:^7.3.8"
-  checksum: 10c0/60c30d90d8a69b8e7148306e0c299ac120dbde9c032add48d26df928fe349e952cf4b09f12d7942257681a936e3374e4d49280ab20f8a4578688c7f08d87f9bc
-  languageName: node
-  linkType: hard
-
 "jsx-ast-utils@npm:^2.4.1 || ^3.0.0, jsx-ast-utils@npm:^3.3.5":
   version: 3.3.5
   resolution: "jsx-ast-utils@npm:3.3.5"
@@ -20720,27 +20697,6 @@ __metadata:
     object.assign: "npm:^4.1.4"
     object.values: "npm:^1.1.6"
   checksum: 10c0/a32679e9cb55469cb6d8bbc863f7d631b2c98b7fc7bf172629261751a6e7bc8da6ae374ddb74d5fbd8b06cf0eb4572287b259813d92b36e384024ed35e4c13e1
-  languageName: node
-  linkType: hard
-
-"jwa@npm:^1.4.2":
-  version: 1.4.2
-  resolution: "jwa@npm:1.4.2"
-  dependencies:
-    buffer-equal-constant-time: "npm:^1.0.1"
-    ecdsa-sig-formatter: "npm:1.0.11"
-    safe-buffer: "npm:^5.0.1"
-  checksum: 10c0/210a544a42ca22203e8fc538835205155ba3af6a027753109f9258bdead33086bac3c25295af48ac1981f87f9c5f941bc8f70303670f54ea7dcaafb53993d92c
-  languageName: node
-  linkType: hard
-
-"jws@npm:^3.2.2":
-  version: 3.2.3
-  resolution: "jws@npm:3.2.3"
-  dependencies:
-    jwa: "npm:^1.4.2"
-    safe-buffer: "npm:^5.0.1"
-  checksum: 10c0/9fdf9d6783b1892ef413ef373cd351eacc847ba01deec6fbfea96830e93241863ccbee66f3b749fc2310c59b6db2209d3f4b52931c0c259b52b17de20715917f
   languageName: node
   linkType: hard
 
@@ -26039,12 +25995,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rrdom@npm:^2.0.0-alpha.8":
-  version: 2.0.0-alpha.8
-  resolution: "rrdom@npm:2.0.0-alpha.8"
+"rrdom@npm:^2.1.1":
+  version: 2.1.1
+  resolution: "rrdom@npm:2.1.1"
   dependencies:
-    rrweb-snapshot: "npm:^2.0.0-alpha.8"
-  checksum: 10c0/bd5ae544687e678dd3bfa81072185c427601fa8dc1e4e94cc3b17a4ed627df66cbf8b29399482af9bc46b3050d9464a6e629ef99101d199ddeed9e2f8103c499
+    rrweb-snapshot: "npm:^2.1.1"
+  checksum: 10c0/8b52d7c91b30275e56f61bd14f54cb6ccb68d5b48c721d06de4f355ff4872b74ee03838fb19b525da97468cde3064ac36f700a0f983bcff1466a4c2cc8f9e47e
   languageName: node
   linkType: hard
 
@@ -26062,10 +26018,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rrweb-snapshot@npm:^2.0.0-alpha.8":
-  version: 2.0.0-alpha.8
-  resolution: "rrweb-snapshot@npm:2.0.0-alpha.8"
-  checksum: 10c0/6d9a71f7928331f615530ee423f588733d2d2f02c039cda4ad0f42d62dca1d2dded6c169fd3c4a7e74d610d3a7c3fb3431fca267f092428f0885ebff3265e9ee
+"rrweb-snapshot@npm:^2.1.1":
+  version: 2.1.1
+  resolution: "rrweb-snapshot@npm:2.1.1"
+  dependencies:
+    postcss: "npm:^8.4.38"
+  checksum: 10c0/1253b4f6229e9ba140ed1887980b06037379fb99ddccb188f6840216fa9b6149610818daaa46e936a49eab48bac95d3f8ccd40aae251e6292f7c3074e5669f92
   languageName: node
   linkType: hard
 
@@ -26083,19 +26041,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rrweb@npm:2.0.0-alpha.8":
-  version: 2.0.0-alpha.8
-  resolution: "rrweb@npm:2.0.0-alpha.8"
+"rrweb@npm:2.1.1":
+  version: 2.1.1
+  resolution: "rrweb@npm:2.1.1"
   dependencies:
-    "@rrweb/types": "npm:^2.0.0-alpha.8"
+    "@rrweb/types": "npm:^2.1.1"
+    "@rrweb/utils": "npm:^2.1.1"
     "@types/css-font-loading-module": "npm:0.0.7"
     "@xstate/fsm": "npm:^1.4.0"
     base64-arraybuffer: "npm:^1.0.1"
-    fflate: "npm:^0.4.4"
     mitt: "npm:^3.0.0"
-    rrdom: "npm:^2.0.0-alpha.8"
-    rrweb-snapshot: "npm:^2.0.0-alpha.8"
-  checksum: 10c0/ad36f2c000abf69a3b6fea2de29d5ae43dee3c9a8b918a79ba35cc359288e11bf5fbf36186580c8d6afce5087997abd1642a3f442e8ed26cb1d56732a9a1d838
+    rrdom: "npm:^2.1.1"
+    rrweb-snapshot: "npm:^2.1.1"
+  checksum: 10c0/cb49a1381055643bf69906f20d7d9e3bc05494dbfff677f6d516142a46857fad3ba60115d19c262287f4e90ad9f9c4482fa1cf2adf1c57b1a01f14df1ebe94f7
   languageName: node
   linkType: hard
 

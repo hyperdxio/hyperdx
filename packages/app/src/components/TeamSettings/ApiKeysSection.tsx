@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { Box, Button, Card, Divider, Group, Modal, Text } from '@mantine/core';
+import { Box, Button, Card, Divider, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconClipboard } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useConfirm } from '@/useConfirm';
 
 function APIKeyCopyButton({
   value,
@@ -28,7 +29,7 @@ function APIKeyCopyButton({
           </Group>
         }
       >
-        <div data-test-id={dataTestId} className="text-wrap text-break">
+        <div data-testid={dataTestId} className="text-wrap text-break">
           {value}
         </div>
       </Button>
@@ -40,13 +41,25 @@ export default function ApiKeysSection() {
   const { data: team, refetch: refetchTeam } = api.useTeam();
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
+  const rotatePersonalAccessKey = api.useRotatePersonalAccessKey();
+  const confirm = useConfirm();
   const hasAdminAccess = true;
-  const [
-    rotateApiKeyConfirmationModalShow,
-    setRotateApiKeyConfirmationModalShow,
-  ] = useState(false);
 
-  const rotateTeamApiKeyAction = () => {
+  // `confirm` resolves exactly once, so a double click on its Confirm button
+  // during the modal's exit transition cannot fire a second rotation.
+  const onRotateTeamApiKey = async () => {
+    const confirmed = await confirm(
+      <>
+        Rotating the API key will invalidate your existing API key and generate
+        a new one for you. This action is <b>not reversible</b>.
+      </>,
+      'Rotate key',
+      { variant: 'danger' },
+    );
+    if (!confirmed) {
+      return;
+    }
+
     rotateTeamApiKey.mutate(undefined, {
       onSuccess: () => {
         notifications.show({
@@ -65,76 +78,82 @@ export default function ApiKeysSection() {
     });
   };
 
-  const onConfirmUpdateTeamApiKey = () => {
-    rotateTeamApiKeyAction();
-    setRotateApiKeyConfirmationModalShow(false);
+  const onRotateAccessKey = async () => {
+    const confirmed = await confirm(
+      <>
+        Rotating your personal access key immediately revokes the current one
+        and generates a new one. This action is <b>not reversible</b>. Anything
+        still using the old key will start failing with 401 until you update it,
+        including MCP / AI agent configs (Claude Code, Cursor, VS Code, Codex),
+        external API v2 clients, Terraform / IaC providers, and CI scripts. Your
+        browser session is not affected; you will stay signed in.
+      </>,
+      'Rotate key',
+      { variant: 'danger' },
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    rotatePersonalAccessKey.mutate(undefined, {
+      onSuccess: () => {
+        notifications.show({
+          color: 'green',
+          message:
+            'Revoked your old personal access key and generated a new one.',
+        });
+      },
+      onError: e => {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+          autoClose: 5000,
+        });
+      },
+    });
   };
 
   return (
     <Box id="api_keys" data-testid="api-keys-section">
-      <Text size="md">API Keys</Text>
+      <Text size="md">API keys</Text>
       <Divider my="md" />
       <Card mb="md">
-        <Text mb="md">Ingestion API Key</Text>
+        <Text mb="md">Ingestion API key</Text>
         <Group gap="xs">
           {team?.apiKey && (
-            <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
+            <APIKeyCopyButton
+              value={team.apiKey}
+              dataTestId="ingestion-api-key"
+            />
           )}
           {hasAdminAccess && (
             <Button
               data-testid="rotate-api-key-button"
               variant="danger"
-              onClick={() => setRotateApiKeyConfirmationModalShow(true)}
+              onClick={onRotateTeamApiKey}
             >
-              Rotate API Key
+              Rotate API key
             </Button>
           )}
         </Group>
-        <Modal
-          aria-labelledby="contained-modal-title-vcenter"
-          centered
-          onClose={() => setRotateApiKeyConfirmationModalShow(false)}
-          opened={rotateApiKeyConfirmationModalShow}
-          size="lg"
-          title={
-            <Text size="xl">
-              <b>Rotate API Key</b>
-            </Text>
-          }
-        >
-          <Modal.Body>
-            <Text size="md">
-              Rotating the API key will invalidate your existing API key and
-              generate a new one for you. This action is <b>not reversible</b>.
-            </Text>
-            <Group justify="end">
-              <Button
-                data-testid="rotate-api-key-cancel"
-                variant="secondary"
-                className="mt-2 px-4 ms-2 float-end"
-                size="sm"
-                onClick={() => setRotateApiKeyConfirmationModalShow(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                data-testid="rotate-api-key-confirm"
-                variant="danger"
-                className="mt-2 px-4 float-end"
-                size="sm"
-                onClick={onConfirmUpdateTeamApiKey}
-              >
-                Confirm
-              </Button>
-            </Group>
-          </Modal.Body>
-        </Modal>
       </Card>
       {!isLoadingMe && me != null && (
         <Card>
           <Card.Section p="md">
-            <Text mb="md">Personal API Access Key</Text>
-            <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
+            <Text mb="md">Personal API access key</Text>
+            <Group gap="xs">
+              <APIKeyCopyButton
+                value={me.accessKey}
+                dataTestId="personal-access-key"
+              />
+              <Button
+                data-testid="rotate-access-key-button"
+                variant="danger"
+                onClick={onRotateAccessKey}
+              >
+                Rotate access key
+              </Button>
+            </Group>
           </Card.Section>
         </Card>
       )}

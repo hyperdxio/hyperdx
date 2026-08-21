@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   getFilterVariableName,
   hasFilterEffect,
+  isFilterBroadcastEnabled,
   isFilterVariableEnabled,
 } from './filters';
 import { DashboardContainerSchema } from './types';
@@ -24,6 +25,10 @@ type FilterForModeValidation = {
   name: string;
   isBroadcastEnabled?: boolean;
   isVariableEnabled?: boolean;
+};
+type FilterForGatingValidation = FilterForModeValidation & {
+  variableName?: string;
+  appliesToSourceIds?: string[];
 };
 
 /**
@@ -222,5 +227,45 @@ export function validateDashboardFilterModes<T extends FilterForModeValidation>(
       message: `Filter "${filter.name}" must broadcast its value, be available as a variable, or both`,
       path: [...filtersPath, filterIdx, 'isBroadcastEnabled'],
     });
+  });
+}
+
+/**
+ * Validate that the `variableName` and `appliesToSourceIds` fields are only set
+ * on filters with the appropriate modes enabled.
+ *
+ * Issues raised:
+ * - `variableName` on a filter that is not variable-enabled (path `<filtersPath>[i].variableName`).
+ * - A non-empty `appliesToSourceIds` on a filter that does not broadcast (path `<filtersPath>[i].appliesToSourceIds`).
+ */
+export function validateDashboardFilterFieldGating<
+  T extends FilterForGatingValidation,
+>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (filter.variableName !== undefined && !isFilterVariableEnabled(filter)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Filter "${filter.name}" sets variableName but is not available as a variable; set isVariableEnabled to true or drop variableName`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+    }
+
+    if (
+      filter.appliesToSourceIds !== undefined &&
+      filter.appliesToSourceIds.length > 0 &&
+      !isFilterBroadcastEnabled(filter)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Filter "${filter.name}" sets appliesToSourceIds but does not broadcast its value; set isBroadcastEnabled to true or drop appliesToSourceIds`,
+        path: [...filtersPath, filterIdx, 'appliesToSourceIds'],
+      });
+    }
   });
 }

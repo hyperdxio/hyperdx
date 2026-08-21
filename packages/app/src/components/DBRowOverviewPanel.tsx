@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo } from 'react';
+import { use, useCallback, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -45,7 +45,7 @@ export function RowOverviewPanel({
   const contentPx = flush ? 0 : 'md';
   const { data } = useRowData({ source, rowId, aliasWith, dateRange });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
-    useContext(RowSidePanelContext);
+    use(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =

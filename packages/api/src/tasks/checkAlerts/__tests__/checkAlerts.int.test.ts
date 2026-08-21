@@ -54,7 +54,7 @@ import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   formatValueToMatchThreshold,
-  getDefaultExternalAction,
+  getDefaultExternalActions,
   isAlertResolved,
   renderAlertTemplate,
   translateExternalActionsToInternal,
@@ -1535,22 +1535,42 @@ describe('checkAlerts', () => {
       expect(isAlertResolved(AlertState.DISABLED)).toBe(false);
     });
 
-    it('getDefaultExternalAction', () => {
+    it('getDefaultExternalActions', () => {
+      // Test fixtures only need the channel/channels fields, not a full
+      // AlertInput — a single narrowing point instead of one `as any` per case.
+      const partialAlert = (
+        over: Record<string, unknown>,
+      ): AlertMessageTemplateDefaultView['alert'] => over as any;
+
       expect(
-        getDefaultExternalAction({
-          channel: {
-            type: 'webhook',
-            webhookId: '123',
-          },
-        } as any),
-      ).toBe('@webhook-123');
+        getDefaultExternalActions(
+          partialAlert({
+            channel: {
+              type: 'webhook',
+              webhookId: '123',
+            },
+          }),
+        ),
+      ).toEqual(['@webhook-123']);
       expect(
-        getDefaultExternalAction({
-          channel: {
-            type: 'foo',
-          },
-        } as any),
-      ).toBeNull();
+        getDefaultExternalActions(
+          partialAlert({
+            channels: [
+              { type: 'webhook', webhookId: '123' },
+              { type: 'webhook', webhookId: '456' },
+            ],
+          }),
+        ),
+      ).toEqual(['@webhook-123', '@webhook-456']);
+      expect(
+        getDefaultExternalActions(
+          partialAlert({
+            channel: {
+              type: 'foo',
+            },
+          }),
+        ),
+      ).toEqual([]);
     });
 
     it('translateExternalActionsToInternal', () => {
@@ -1635,12 +1655,15 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
       });
 
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      // The message names the webhook by name prefix and the alert also has it
+      // configured as a channel; it is one target, so it is notified once.
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       // TODO: test call arguments
     });
 
@@ -1669,6 +1692,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -1729,6 +1753,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -1814,6 +1839,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById,
       });
 
@@ -1838,6 +1864,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById,
       });
 
@@ -1927,6 +1954,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '✅ Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -3636,8 +3664,10 @@ describe('checkAlerts', () => {
           status: 500,
           responseBody: 'webhook exploded',
           expectedRequestCount: 3,
+          // Per-target message: names the failing webhook so a multi-channel
+          // alert's errors are attributable. Raw upstream detail stays hidden.
           expectedErrorMessage:
-            'Failed to send webhook notification. Check the webhook configuration and destination.',
+            'Failed to send notification to webhook "Generic Webhook". Check the webhook configuration and destination.',
         },
         {
           responseDescription: 'a redirect response',
@@ -3645,7 +3675,7 @@ describe('checkAlerts', () => {
           responseBody: 'redirecting',
           expectedRequestCount: 1,
           expectedErrorMessage:
-            'Webhook destination responded with a redirect. Redirects are not supported.',
+            'Webhook destination responded with a redirect. Redirects are not supported. (webhook "Generic Webhook")',
         },
       ])(
         'sets state to ALERT and records a WEBHOOK_ERROR when the generic webhook returns $responseDescription',
@@ -4175,10 +4205,10 @@ describe('checkAlerts', () => {
           ),
         ).toBe(true);
         expect(
-          updated!.executionErrors!.every(
-            e =>
-              e.message ===
-              'Failed to send webhook notification. Check the webhook configuration and destination.',
+          updated!.executionErrors!.every(e =>
+            /^Failed to send notification to webhook ".+"\. Check the webhook configuration and destination\.$/.test(
+              e.message,
+            ),
           ),
         ).toBe(true);
       });
@@ -4265,8 +4295,11 @@ describe('checkAlerts', () => {
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        expect(updated!.executionErrors![0].message).toBe(
-          'Failed to send webhook notification. Check the webhook configuration and destination.',
+        // A deleted webhook now reports what actually went wrong instead of the
+        // generic transport message, and names the target so a multi-channel
+        // alert says which webhook is missing. Authored by us, not upstream.
+        expect(updated!.executionErrors![0].message).toMatch(
+          /^Webhook not found\. The webhook may have been deleted \u2014 update the alert's notification channel\. \(webhook ".+"\)$/,
         );
 
         // No actual network call should have been attempted
@@ -4516,6 +4549,7 @@ describe('checkAlerts', () => {
           Authorization: 'Bearer test-token',
           'Idempotency-Key': expect.any(String),
         }),
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -4703,6 +4737,355 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].lastValues[0].count).toBeGreaterThanOrEqual(1);
       expect(alertHistories[1].state).toBe('OK');
+    });
+
+    describe('dashboard variables', () => {
+      const NOW = new Date('2023-11-16T22:12:00.000Z');
+      // Inside the last alert window, 22:05 - 22:10.
+      const EVENT_AT = new Date(NOW.getTime() - ms('5m'));
+
+      const seedLogs = (serviceNames: string[]) =>
+        bulkInsertLogs(
+          serviceNames.map((ServiceName, i) => ({
+            ServiceName,
+            Timestamp: EVENT_AT,
+            SeverityText: 'error',
+            Body: `variable alert test event ${i}`,
+          })),
+        );
+
+      /** A dashboard filter on `ServiceName`, exposed as `$svc` by default. */
+      const serviceFilter = (overrides: Record<string, unknown> = {}) => ({
+        id: 'service-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        source: 'unused-by-the-alert-task',
+        whereLanguage: 'sql',
+        isVariableEnabled: true,
+        variableName: 'svc',
+        ...overrides,
+      });
+
+      const tileAlertConfig = (
+        webhookId: string,
+        dashboardId: string,
+        tileId: string,
+      ) => ({
+        source: AlertSource.TILE as const,
+        channel: { type: 'webhook' as const, webhookId },
+        interval: '5m' as const,
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        dashboardId,
+        tileId,
+      });
+
+      const lastValue = async (alertId: string) => {
+        const histories = await AlertHistory.find({ alert: alertId }).sort({
+          createdAt: 1,
+        });
+        expect(histories.length).toBe(1);
+        return histories[0].lastValues[0]?.count;
+      };
+
+      it('expands a Lucene reference to its empty state, and does not broadcast the filter', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          // The filter's own `where` would exclude every row if it were
+          // broadcast onto the tile — alerts only take the variable.
+          filters: [
+            serviceFilter({
+              source: source.id,
+              where: "ServiceName = 'nothing-matches-this'",
+            }),
+          ],
+          tiles: [
+            {
+              id: 'lucene-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: 'ServiceName:$svc',
+                whereLanguage: 'lucene',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'lucene-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'lucene-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The empty Lucene selection renders as `("")`, which drops out of the
+        // predicate — so both rows are counted. Left unsubstituted, the literal
+        // `$svc` would match nothing and the alert would stay OK.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+        expect(
+          (await Alert.findById(details.alert.id))!.executionErrors ?? [],
+        ).toHaveLength(0);
+      });
+
+      it('expands $__conditionalAll in a SQL where to its no-op form', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          filters: [serviceFilter({ source: source.id })],
+          tiles: [
+            {
+              id: 'macro-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: "$__conditionalAll(ServiceName = 'api', $svc)",
+                whereLanguage: 'sql',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'macro-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'macro-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Nothing is selected, so the guarded condition drops out and both rows
+        // are counted. Left unexpanded, `$__conditionalAll(...)` is not valid
+        // SQL and the query would fail outright.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+
+      it('leaves references the dashboard does not declare exactly as written', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['$abc', '$hidden', 'api']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          filters: [
+            serviceFilter({ source: source.id }),
+            // Collects a value but does not expose it as a variable, so
+            // `$hidden` names nothing.
+            serviceFilter({
+              id: 'hidden-filter',
+              name: 'Hidden',
+              variableName: 'hidden',
+              isVariableEnabled: false,
+              source: source.id,
+            }),
+          ],
+          tiles: [
+            {
+              id: 'unknown-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: "ServiceName = '$abc' OR ServiceName = '$hidden'",
+                whereLanguage: 'sql',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'unknown-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'unknown-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Both literals survived substitution and matched their rows; the
+        // `api` row did not.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+
+      it('expands $__filter in a raw SQL tile while leaving an undeclared literal alone', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web', '$abc']);
+
+        const sqlTemplate = [
+          'SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,',
+          ' count() AS cnt',
+          ' FROM default.otel_logs',
+          ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+          ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+          ' AND $__filter($svc)',
+          " AND ServiceName != '$abc'",
+          ' GROUP BY ts ORDER BY ts',
+        ].join('');
+
+        const dashboard = await new Dashboard({
+          name: 'Raw SQL Variables Dashboard',
+          team: team._id,
+          filters: [serviceFilter()],
+          tiles: [
+            {
+              id: 'rawsql-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                sqlTemplate,
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          undefined, // No source for raw SQL tiles
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'rawsql-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // `$__filter($svc)` expanded to its empty-selection no-op, so it matched
+        // everything; `'$abc'` was left as a literal and excluded its own row.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
     });
 
     it('TILE alert (raw SQL) - multiple rows per time bucket from GROUP BY', async () => {
@@ -6688,6 +7071,547 @@ describe('checkAlerts', () => {
           (b: string) => b.includes('Group:') && b.includes('service-b'),
         ),
       ).toBe(true);
+    });
+
+    // ── Multi-series metric tiles ──
+    // A multi-series metric chart is one ClickHouse query with a value column
+    // per series. The alert compares the threshold against the LAST series'
+    // value, and a series with no row at a bucket yields NULL, which
+    // processAlert skips.
+
+    const gaugePoint = (
+      metricName: string,
+      value: number,
+      timestampMs: number,
+      serviceName = 'api',
+    ) => ({
+      MetricName: metricName,
+      ServiceName: serviceName,
+      // Include the service in ResourceAttributes so grouped tests get
+      // distinct AttributesHash values per service (see the groupBy test
+      // above); harmless for ungrouped tests.
+      ResourceAttributes: { host: 'host1', 'service.name': serviceName },
+      Value: value,
+      TimeUnix: new Date(timestampMs),
+    });
+
+    const setupMetricTileAlert = async ({
+      select,
+      seriesReturnType,
+      ratioMode,
+      formulas,
+      showOperandSeries,
+      groupBy,
+      threshold,
+    }: {
+      select: Array<Record<string, string>>;
+      seriesReturnType?: 'ratio' | 'column';
+      ratioMode?: 'per_group' | 'share_of_total';
+      formulas?: Array<{ expression: string; alias?: string }>;
+      showOperandSeries?: boolean;
+      groupBy?: string;
+      threshold: number;
+    }) => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      // Persistent mock: the beforeEach mockResolvedValueOnce only covers the
+      // first call, and resolve notifications can trigger a second one.
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValue({ text: 'ok' });
+
+      const source = await Source.create({
+        kind: 'metric',
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          gauge: DEFAULT_METRICS_TABLE.GAUGE,
+          histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          sum: DEFAULT_METRICS_TABLE.SUM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection.id,
+        name: 'Metrics',
+      });
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'multi1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Errors vs Requests',
+              select,
+              ...(seriesReturnType ? { seriesReturnType } : {}),
+              ...(ratioMode ? { ratioMode } : {}),
+              ...(formulas ? { formulas } : {}),
+              ...(showOperandSeries !== undefined ? { showOperandSeries } : {}),
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: groupBy ?? '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'multi1');
+      if (!tile) {
+        throw new Error('tile not found for multi-series metric test');
+      }
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold,
+          dashboardId: dashboard.id,
+          tileId: 'multi1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      return { details, connection, teamWebhooksById, clickhouseClient };
+    };
+
+    it('TILE alert (metrics, multi-series) - threshold compares the last series value', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Both series exceed the threshold; only the LAST one may drive the
+        // alert value.
+        gaugePoint('test.requests', 100, eventMs),
+        gaugePoint('test.errors', 6, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          threshold: 5,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // The evaluated value is the last series' 6, not the first series' 100.
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      expect(history.lastValues[0].count).toBe(6);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('6 meets or exceeds 5');
+
+      // Next window has no data -> resolves to OK.
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert (metrics, multi-series) - a gap in the last series is skipped, not backfilled from an earlier series', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // The first series exceeds the threshold inside the window.
+        gaugePoint('test.requests', 100, eventMs),
+        // The last series exists but has no data points inside the window.
+        gaugePoint('test.errors', 999, now.getTime() - ms('2h')),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          threshold: 5,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // The last series is NULL for the bucket, so the row is skipped: no
+      // alert fires from the first series' 100, and the run records a single
+      // default OK history with no values.
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories.length).toBe(1);
+      expect(histories[0].state).toBe('OK');
+      expect(histories[0].counts).toBe(0);
+      expect(histories[0].lastValues.length).toBe(0);
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    it('TILE alert (metrics, ratio) - a zero denominator yields NULL and is skipped without NaN history', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Numerator present, denominator zero: the ratio is NULL.
+        gaugePoint('test.errors', 5, eventMs),
+        gaugePoint('test.requests', 0, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+          ],
+          seriesReturnType: 'ratio',
+          threshold: 0.1,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories.length).toBe(1);
+      expect(histories[0].state).toBe('OK');
+      expect(histories[0].counts).toBe(0);
+      expect(histories[0].lastValues.length).toBe(0);
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    // ── Metric formula tiles (HDX-5080) ──
+    // A tile with `formulas` derives its displayed series from the operand
+    // series (letter refs: A = select[0], ...). The alert must evaluate the
+    // FORMULA value — never a raw operand — regardless of the tile's
+    // "Show input series" display toggle (getChartConfigFromAlert always
+    // drops the operand columns from the alert query).
+
+    it('TILE alert (metrics, formula) - threshold compares the formula value, not an operand', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Both operands are far from the formula result (10 / 200 * 100 = 5),
+        // so a regression back to evaluating either operand fails loudly.
+        gaugePoint('test.requests', 200, eventMs),
+        gaugePoint('test.errors', 10, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          formulas: [{ expression: 'B / A * 100', alias: 'Error rate' }],
+          // Mirrors the editor default of hiding operands; the alert result
+          // must be identical either way (see the next test).
+          showOperandSeries: false,
+          threshold: 4,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      // The formula value (5) — not operand A (200) or operand B (10).
+      expect(history.lastValues[0].count).toBe(5);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('5 meets or exceeds 4');
+    });
+
+    it('TILE alert (metrics, formula) - evaluates the formula even when the tile shows its input series', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        gaugePoint('test.requests', 200, eventMs),
+        gaugePoint('test.errors', 10, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          formulas: [{ expression: 'B / A * 100' }],
+          // showOperandSeries left unset: the dashboard tile renders the raw
+          // operand series alongside the formula, but the alert still
+          // evaluates the formula value only.
+          threshold: 4,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.lastValues.length).toBe(1);
+      expect(history.lastValues[0].count).toBe(5);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('5 meets or exceeds 4');
+    });
+
+    it('TILE alert (metrics, formula) - a zero denominator yields NULL and is skipped without NaN history', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Numerator present, denominator zero: A / nullif(B, 0) is NULL.
+        gaugePoint('test.errors', 5, eventMs),
+        gaugePoint('test.requests', 0, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+          ],
+          formulas: [{ expression: 'A / B' }],
+          showOperandSeries: false,
+          threshold: 0.1,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories.length).toBe(1);
+      expect(histories[0].state).toBe('OK');
+      expect(histories[0].counts).toBe(0);
+      expect(histories[0].lastValues.length).toBe(0);
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    it('TILE alert (metrics, grouped ratio) - honors ratioMode share_of_total', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // share_of_total divides each group's numerator by the denominator
+        // total across ALL groups in the bucket:
+        //   service-a: 5 / (10 + 30) = 0.125
+        //   service-b: 3 / (10 + 30) = 0.075
+        // per_group (the default this config must NOT fall back to) would be
+        // 0.5 and 0.1 instead.
+        gaugePoint('test.errors', 5, eventMs, 'service-a'),
+        gaugePoint('test.requests', 10, eventMs, 'service-a'),
+        gaugePoint('test.errors', 3, eventMs, 'service-b'),
+        gaugePoint('test.requests', 30, eventMs, 'service-b'),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+          ],
+          seriesReturnType: 'ratio',
+          ratioMode: 'share_of_total',
+          groupBy: 'ServiceName',
+          // Only service-a's share (0.125) crosses; under per_group both
+          // values (0.5, 0.1) would differ and service-a would fire at 0.5.
+          threshold: 0.12,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertingHistories = await AlertHistory.find({
+        alert: details.alert.id,
+        state: 'ALERT',
+      });
+      expect(alertingHistories.length).toBe(1);
+      expect(alertingHistories[0].group).toContain('service-a');
+      expect(alertingHistories[0].lastValues.length).toBe(1);
+      // The share-of-total value — not service-a's per-group ratio (0.5).
+      expect(alertingHistories[0].lastValues[0].count).toBe(0.125);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      // The message value is rounded to the threshold's decimal places
+      // (0.125 -> "0.13"); the exact-value assertion above is the source of
+      // truth for which ratio mode was evaluated.
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('meets or exceeds 0.12');
     });
 
     // The auto-resolve logic ensures that if a subsequent bucket within the same tick drops below the threshold,

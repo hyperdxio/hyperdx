@@ -2,7 +2,6 @@ import { recordException } from '@hyperdx/node-opentelemetry';
 import { trace } from '@opentelemetry/api';
 import type { NextFunction, Request, Response } from 'express';
 
-import { IS_PROD } from '@/config';
 import { BaseError, isOperationalError, StatusCode } from '@/utils/errors';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
@@ -44,7 +43,7 @@ export const appErrorHandler = (
   err: BaseError,
   _: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ) => {
   const parserErrorType = bodyParserErrorType(err);
   const clientDisconnect = isClientDisconnect(err);
