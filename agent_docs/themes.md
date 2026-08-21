@@ -302,7 +302,7 @@ palette to its brand gold, so its warning tokens use Mantine `orange`
 (unremapped) for a true orange warning; HyperDX stays yellow-based.
 
 Storybook: `Components/Alert` (interactive `Playground`) and
-`Design Tokens/Semantic Variants` — use the Brand and Theme toolbar
+`Design tokens/Semantic variants` — use the Brand and Theme toolbar
 toggles to review all combinations.
 
 ## Per-brand differences
@@ -411,7 +411,7 @@ A few things that look like bugs but are intentional:
 If the token backs a **semantic component variant** (Alert / Text /
 danger control), wire it through `theme/themes/semanticVariants.ts`
 rather than referencing it directly in each brand's `mantineTheme.ts`,
-and verify it in the `Design Tokens/Semantic Variants` story across both
+and verify it in the `Design tokens/Semantic variants` story across both
 brands and schemes.
 
 For chart-specific vars (`--color-chart-*`) there are additional steps —
@@ -486,8 +486,8 @@ Why each is wrong:
       dev) — the change looks correct in both brands.
 - [ ] Toggled light ↔ dark via preferences modal — change looks correct
       in both modes.
-- [ ] Storybook `Design Tokens / Semantic Colors` and
-      `Design Tokens / Chart Colors` still render and look correct.
+- [ ] Storybook `Design tokens / Semantic colors` and
+      `Design tokens / Chart colors` still render and look correct.
 - [ ] No new `themeName === 'clickstack'` branches for *colors*; brand
       branches are only for *content*, *layout*, or *feature-locked
       preferences* (e.g. font picker).

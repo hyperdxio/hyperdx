@@ -5,6 +5,7 @@ import {
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
+  convertToNumberChartConfig,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
@@ -12,6 +13,7 @@ import {
   getDistributedTableArgs,
   getFirstOrderingItem,
   hasNonEmptyOrderBy,
+  hasPositiveSeriesLimit,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
@@ -290,6 +292,23 @@ describe('utils', () => {
     });
   });
 
+  describe('hasPositiveSeriesLimit', () => {
+    it('is true only for positive integers', () => {
+      expect(hasPositiveSeriesLimit(1)).toBe(true);
+      expect(hasPositiveSeriesLimit(250)).toBe(true);
+    });
+
+    it('is false for 0 (unlimited) and null/undefined (unset)', () => {
+      expect(hasPositiveSeriesLimit(0)).toBe(false);
+      expect(hasPositiveSeriesLimit(null)).toBe(false);
+      expect(hasPositiveSeriesLimit(undefined)).toBe(false);
+    });
+
+    it('is false for negative values', () => {
+      expect(hasPositiveSeriesLimit(-5)).toBe(false);
+    });
+  });
+
   describe('convertToCategoricalChartConfig', () => {
     const dateRange: [Date, Date] = [
       new Date('2025-11-26T00:00:00Z'),
@@ -490,6 +509,59 @@ describe('utils', () => {
       expect(config.select[0]).not.toHaveProperty('alias');
       expect(config.orderBy).toBeUndefined();
       expect(config.limit).toBeUndefined();
+    });
+  });
+
+  describe('convertToNumberChartConfig', () => {
+    const dateRange: [Date, Date] = [
+      new Date('2025-11-26T00:00:00Z'),
+      new Date('2025-11-27T00:00:00Z'),
+    ];
+
+    it('drops granularity and groupBy', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        granularity: '5 minute',
+        groupBy: 'ServiceName',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const converted = convertToNumberChartConfig(config);
+
+      expect(converted.granularity).toBeUndefined();
+      expect(converted.groupBy).toBeUndefined();
+    });
+
+    it('leaves showOperandSeries untouched without formulas', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(
+        undefined,
+      );
+    });
+
+    it('always hides operand series for formula configs (HDX-5080)', () => {
+      // A number chart displays the first value column of the result, so the
+      // formula column must be the only projection — even when the stored
+      // config shows operand series on other display types.
+      const config = {
+        select: [
+          { aggFn: 'max', valueExpression: 'Value' },
+          { aggFn: 'max', valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B * 100' }],
+        granularity: '5 minute',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(false);
+      expect(
+        convertToNumberChartConfig({ ...config, showOperandSeries: true })
+          .showOperandSeries,
+      ).toBe(false);
     });
   });
 
@@ -1197,6 +1269,59 @@ describe('utils', () => {
       ]);
       expect(template.filters?.[2].appliesToSourceIds).toBeUndefined();
       expect(template.filters?.[3].appliesToSourceIds).toBeUndefined();
+    });
+
+    // Variable settings are dashboard-local — unlike `source` and
+    // `appliesToSourceIds` they reference nothing in the workspace, so they need
+    // no name↔ID remapping and must survive export verbatim.
+    it('should export filter variable settings unchanged while still remapping sources', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Variables Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-variable',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service Name',
+            expression: 'ServiceName',
+            source: 'source1',
+            appliesToSourceIds: ['source1'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'Service_Name',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-variable',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service Name',
+          expression: 'ServiceName',
+          source: 'Logs',
+          appliesToSourceIds: ['Logs'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'Service_Name',
+        },
+      ]);
     });
 
     it('should convert a dashboard without filters to a dashboard template', () => {

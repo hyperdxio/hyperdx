@@ -21,6 +21,7 @@ import {
 } from '@mantine/core';
 import { IconDownload } from '@tabler/icons-react';
 
+import api from '@/api';
 import { useIacImportManifest } from '@/components/Iac/useIacImportManifest';
 import { BASE_PATH } from '@/config';
 import { downloadTextFile } from '@/utils/downloadFile';
@@ -89,6 +90,9 @@ export default function IacMigrationSection({
     isRefetching,
     refetch,
   } = useIacImportManifest({ enabled: active });
+  // Prefixes every import id — see buildImportBlock. Same team the manifest is
+  // scoped to; both come from the session.
+  const teamId = api.useMe().data?.team.id;
   const [selected, setSelected] = useState<IacResourceType[]>([
     'dashboard',
     'alert',
@@ -186,12 +190,13 @@ export default function IacMigrationSection({
       // a truthiness check would write exactly the stale file this refetch
       // exists to avoid. The failure surfaces through the isError banner below.
       const result = await refetch();
-      if (!result.isSuccess || !result.data) return;
+      if (!result.isSuccess || !result.data || !teamId) return;
       const freshSelection = collectImportableResources(result.data, selected);
 
       downloadTextFile(
         buildImportFile({
           endpoint: providerEndpoint(window.location.origin, BASE_PATH),
+          teamId,
           resources: freshSelection.resources,
           connectionLocals: freshSelection.connectionLocals,
           // From the refetched payload, not the banner's cached one: a listing
@@ -299,6 +304,7 @@ export default function IacMigrationSection({
           disabled={
             isLoading ||
             isError ||
+            !teamId ||
             (resources.length === 0 && connectionLocals.length === 0)
           }
           data-testid="iac-download-button"

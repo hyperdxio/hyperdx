@@ -1,13 +1,23 @@
 import { splitAndTrimWithBracket } from './core/utils';
+import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
 import { RawSqlQueryParam, renderQueryParam } from './rawSqlParams';
 import {
   MetricsDataType,
   MetricsDataTypeSchema,
   RawSqlChartConfig,
 } from './types';
+import {
+  expandTemplate,
+  expandVariableToken,
+  findBalancedParens,
+  hasVariableMacro,
+  VARIABLE_MACRO_NAMES,
+  VariableContext,
+  VariableMacroName,
+} from './variables';
 
 function expectArgs(
-  macroName: string,
+  macroName: MacroName,
   args: string[],
   minArgs: number,
   maxArgs: number,
@@ -15,7 +25,8 @@ function expectArgs(
   if (args.length < minArgs || args.length > maxArgs) {
     const expected =
       minArgs === maxArgs ? `${minArgs}` : `${minArgs}-${maxArgs}`;
-    throw new Error(
+    throw new MacroExpansionError(
+      macroName,
       `Macro '${macroName}' expects ${expected} argument(s), but got ${args.length}`,
     );
   }
@@ -39,38 +50,48 @@ type Macro = {
   name: string;
   minArgs: number;
   maxArgs: number;
+  /** One-line summary of what the macro expands to, shown in autocomplete. */
+  description: string;
   replace: (args: string[]) => string;
 };
 
-const MACROS: Macro[] = [
+const MACROS = [
   {
     name: 'fromTime',
     minArgs: 0,
     maxArgs: 0,
+    description: 'Start of the selected time range, as a DateTime.',
     replace: () => timeToDateTime(startMs()),
   },
   {
     name: 'toTime',
     minArgs: 0,
     maxArgs: 0,
+    description: 'End of the selected time range, as a DateTime.',
     replace: () => timeToDateTime(endMs()),
   },
   {
     name: 'fromTime_ms',
     minArgs: 0,
     maxArgs: 0,
+    description:
+      'Start of the selected time range, as a millisecond-precision DateTime64.',
     replace: () => timeToDateTime64(startMs()),
   },
   {
     name: 'toTime_ms',
     minArgs: 0,
     maxArgs: 0,
+    description:
+      'End of the selected time range, as a millisecond-precision DateTime64.',
     replace: () => timeToDateTime64(endMs()),
   },
   {
     name: 'timeFilter',
     minArgs: 1,
     maxArgs: 1,
+    description:
+      'Filters the given DateTime column to the selected time range (inclusive of both ends).',
     replace: (args: string[]) => {
       expectArgs('timeFilter', args, 1, 1);
       const [col] = args;
@@ -81,6 +102,8 @@ const MACROS: Macro[] = [
     name: 'timeFilter_ms',
     minArgs: 1,
     maxArgs: 1,
+    description:
+      'Filters the given millisecond-precision DateTime64 column to the selected time range.',
     replace: (args: string[]) => {
       expectArgs('timeFilter_ms', args, 1, 1);
       const [col] = args;
@@ -91,6 +114,7 @@ const MACROS: Macro[] = [
     name: 'dateFilter',
     minArgs: 1,
     maxArgs: 1,
+    description: 'Filters the given Date column to the selected time range.',
     replace: (args: string[]) => {
       expectArgs('dateFilter', args, 1, 1);
       const [col] = args;
@@ -101,6 +125,8 @@ const MACROS: Macro[] = [
     name: 'dateTimeFilter',
     minArgs: 2,
     maxArgs: 2,
+    description:
+      'Filters the given Date and DateTime columns to the selected time range, for tables partitioned on a date.',
     replace: (args: string[]) => {
       expectArgs('dateTimeFilter', args, 2, 2);
       const [dateCol, timeCol] = args;
@@ -113,6 +139,7 @@ const MACROS: Macro[] = [
     name: 'dt',
     minArgs: 2,
     maxArgs: 2,
+    description: 'Short alias for $__dateTimeFilter(dateCol, timeCol).',
     replace: (args: string[]) => {
       expectArgs('dt', args, 2, 2);
       const [dateCol, timeCol] = args;
@@ -125,6 +152,8 @@ const MACROS: Macro[] = [
     name: 'timeInterval',
     minArgs: 1,
     maxArgs: 1,
+    description:
+      'Buckets the provided DateTime column to the chart granularity, for the time axis of a time-series chart.',
     replace: (args: string[]) => {
       expectArgs('timeInterval', args, 1, 1);
       const [col] = args;
@@ -135,6 +164,8 @@ const MACROS: Macro[] = [
     name: 'timeInterval_ms',
     minArgs: 1,
     maxArgs: 1,
+    description:
+      'Buckets the provided millisecond-precision column to the chart granularity.',
     replace: (args: string[]) => {
       expectArgs('timeInterval_ms', args, 1, 1);
       const [col] = args;
@@ -145,20 +176,78 @@ const MACROS: Macro[] = [
     name: 'interval_s',
     minArgs: 0,
     maxArgs: 0,
+    description: 'The chart granularity, in seconds.',
     replace: () => intervalS(),
   },
-];
+] as const satisfies readonly Macro[];
+
+/**
+ * Every `$__<name>` a raw SQL template can use: the static macros above, the
+ * two built in `replaceMacros` from the chart's source, and the variable macros
+ * that only exist when a variable context is present.
+ */
+export type MacroName =
+  | (typeof MACROS)[number]['name']
+  | 'filters'
+  | 'sourceTable'
+  | VariableMacroName;
+
+const FILTERS_MACRO_DESCRIPTION =
+  'Applies all broadcasted dashboard filters to this tile, as a single predicate. Expands to 1=1 when none apply. Requires a source selection for the tile.';
+const SOURCE_TABLE_MACRO_DESCRIPTION =
+  "The selected source's table, fully qualified. Requires a source selection for the tile.";
+
+export type MacroSuggestion = {
+  name: string;
+  minArgs: number;
+  maxArgs: number;
+  description: string;
+};
 
 /** Macro metadata for autocomplete suggestions */
-export const MACRO_SUGGESTIONS = [
-  ...MACROS.map(({ name, minArgs, maxArgs }) => ({ name, minArgs, maxArgs })),
-  { name: 'filters', minArgs: 0, maxArgs: 0 },
-  { name: 'sourceTable', minArgs: 0, maxArgs: 1 },
+export const MACRO_SUGGESTIONS: MacroSuggestion[] = [
+  ...MACROS.map(({ name, minArgs, maxArgs, description }) => ({
+    name,
+    minArgs,
+    maxArgs,
+    description,
+  })),
+  {
+    name: 'filters',
+    minArgs: 0,
+    maxArgs: 0,
+    description: FILTERS_MACRO_DESCRIPTION,
+  },
+  {
+    name: 'sourceTable',
+    minArgs: 0,
+    maxArgs: 1,
+    description: SOURCE_TABLE_MACRO_DESCRIPTION,
+  },
   ...Object.values(MetricsDataType).map(type => ({
     name: `sourceTable(${type})`,
     minArgs: 0,
     maxArgs: 0,
+    description: `The selected metrics source's ${type} table, fully qualified.`,
   })),
+];
+
+/** Macros that only resolve when the chart is rendered with a variable context */
+export const VARIABLE_MACRO_SUGGESTIONS: MacroSuggestion[] = [
+  {
+    name: 'filter',
+    minArgs: 1,
+    maxArgs: 2,
+    description:
+      "$__filter(<expression>, $<variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
+  },
+  {
+    name: 'conditionalAll',
+    minArgs: 2,
+    maxArgs: 2,
+    description:
+      '$__conditionalAll(<condition>, $<variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
+  },
 ];
 
 /**
@@ -212,21 +301,8 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
     return { args: [], length: 0 };
   }
 
-  // Find the matching close paren
-  let unmatchedParens = 0;
-  let closeParenIndex = -1;
-  for (let i = 0; i < argString.length; i++) {
-    const c = argString.charAt(i);
-    if (c === '(') {
-      unmatchedParens++;
-    } else if (c === ')') {
-      unmatchedParens--;
-      if (unmatchedParens === 0) {
-        closeParenIndex = i;
-        break;
-      }
-    }
-  }
+  // Quote-aware, so a `)` inside a string literal doesn't end the argument list.
+  const closeParenIndex = findBalancedParens(argString, 0);
 
   if (closeParenIndex < 0) {
     return { args: [], length: -1 };
@@ -240,8 +316,25 @@ function parseMacroArgs(argString: string): { args: string[]; length: number } {
 /**
  * True if the SQL contains at least one occurrence of the `$__<name>` macro.
  */
-export function hasMacro(sql: string, name: string): boolean {
+export function hasMacro(sql: string, name: MacroName): boolean {
   return findMacros(sql, name).length > 0;
+}
+
+/**
+ * Whether a dashboard tile's SQL leaves dashboard filters unapplied: neither
+ * `$__filters` nor a variable macro (`$__filter`/`$__conditionalAll`) appears,
+ * so nothing in the template consumes the dashboard's filter state.
+ */
+export function isMissingFiltersMacro(sqlTemplate: string): boolean {
+  try {
+    return !hasMacro(sqlTemplate, 'filters') && !hasVariableMacro(sqlTemplate);
+  } catch (e) {
+    if (e instanceof MalformedMacroArgsError) {
+      return false;
+    }
+    console.log('unexpected error in isMissingFiltersMacro', e);
+    return false;
+  }
 }
 
 /**
@@ -263,7 +356,7 @@ export function getSourceTableMacroArgCounts(sqlTemplate: string): number[] {
   return findMacros(sqlTemplate, 'sourceTable').map(match => match.args.length);
 }
 
-function findMacros(input: string, name: string): MacroMatch[] {
+function findMacros(input: string, name: MacroName): MacroMatch[] {
   // eslint-disable-next-line security/detect-non-literal-regexp
   const pattern = new RegExp(`\\$__${name}\\b`, 'g');
   const matches: MacroMatch[] = [];
@@ -274,7 +367,7 @@ function findMacros(input: string, name: string): MacroMatch[] {
     const { args, length } = parseMacroArgs(input.slice(end));
 
     if (length < 0) {
-      throw new Error('Failed to parse macro arguments');
+      throw new MalformedMacroArgsError();
     }
 
     matches.push({ full: input.slice(start, end + length), args });
@@ -285,11 +378,32 @@ function findMacros(input: string, name: string): MacroMatch[] {
 
 const NO_FILTERS = '(1=1 /** no filters applied */)';
 
+/**
+ * Expand every macro and (when a variable context is present) every dashboard
+ * variable reference in a raw SQL template.
+ *
+ * The template is scanned left to right and each token is expanded into an
+ * output buffer. A macro's arguments are expanded first, recursively, so a
+ * variable or macro nested in an argument resolves before the enclosing macro
+ * sees it — `$__timeFilter(${TsColumn:csv})` filters on the selected column, and
+ * `$__conditionalAll($__timeFilter(ts), $env)` expands the inner macro. Only
+ * template source is recursed into: an expansion is never re-scanned, so neither
+ * `$__filters` output nor a selected variable value can trigger further
+ * substitution.
+ *
+ * `chartConfig.variables` being undefined means variable references and
+ * the variable macros are left exactly as written; an empty array means the
+ * dashboard has no variables, and references to unknown names still pass
+ * through verbatim while macros naming them error.
+ */
 export function replaceMacros(
-  chartConfig: Pick<RawSqlChartConfig, 'sqlTemplate' | 'from' | 'metricTables'>,
+  chartConfig: Pick<
+    RawSqlChartConfig,
+    'sqlTemplate' | 'from' | 'metricTables' | 'variables'
+  >,
   filtersSQL?: string,
 ): string {
-  const { from, metricTables } = chartConfig;
+  const { from, metricTables, variables } = chartConfig;
 
   const allMacros: Macro[] = [
     ...MACROS,
@@ -297,28 +411,33 @@ export function replaceMacros(
       name: 'filters',
       minArgs: 0,
       maxArgs: 0,
+      description: FILTERS_MACRO_DESCRIPTION,
       replace: () => filtersSQL || NO_FILTERS,
     },
     {
       name: 'sourceTable',
       minArgs: 0,
       maxArgs: 1,
+      description: SOURCE_TABLE_MACRO_DESCRIPTION,
       replace: (args: string[]) => {
         expectArgs('sourceTable', args, 0, 1);
         if (!from) {
-          throw new Error(
+          throw new MacroExpansionError(
+            'sourceTable',
             "Macro '$__sourceTable' requires a source to be selected",
           );
         }
 
         if (args.length === 0 && metricTables) {
-          throw new Error(
+          throw new MacroExpansionError(
+            'sourceTable',
             "Macro '$__sourceTable(metricType)' requires a metricType when a metrics source is selected",
           );
         }
 
         if (args.length === 0 && !from.tableName) {
-          throw new Error(
+          throw new MacroExpansionError(
+            'sourceTable',
             "Macro '$__sourceTable' requires a source with a table to be selected when no arguments are provided",
           );
         }
@@ -328,14 +447,16 @@ export function replaceMacros(
         }
 
         if (!metricTables) {
-          throw new Error(
+          throw new MacroExpansionError(
+            'sourceTable',
             "Macro '$__sourceTable(metricType)' with a metric type argument requires a metrics source to be selected",
           );
         }
 
         const metricsTypeParseResult = MetricsDataTypeSchema.safeParse(args[0]);
         if (!metricsTypeParseResult.success) {
-          throw new Error(
+          throw new MacroExpansionError(
+            'sourceTable',
             `Macro '$__sourceTable(metricType)' invalid argument '${args[0]}'. Expected a valid metrics data type (${Object.values(MetricsDataType).join(', ')}).`,
           );
         }
@@ -343,7 +464,8 @@ export function replaceMacros(
         const metricType = metricsTypeParseResult.data;
         const table = metricTables[metricType];
         if (!table) {
-          throw new Error(
+          throw new MacroExpansionError(
+            'sourceTable',
             `Macro '$__sourceTable(metricType)': No table configured for metric type '${metricType}'.`,
           );
         }
@@ -352,18 +474,30 @@ export function replaceMacros(
     },
   ];
 
-  const sortedMacros = allMacros.sort(
-    (m1, m2) => m2.name.length - m1.name.length,
-  );
+  const macrosByName = new Map(allMacros.map(macro => [macro.name, macro]));
 
-  let sql = chartConfig.sqlTemplate;
-  for (const macro of sortedMacros) {
-    const matches = findMacros(sql, macro.name);
+  const variableContext: VariableContext | undefined = variables && {
+    variables,
+    defaultFormat: 'sqlstring',
+  };
 
-    for (const match of matches) {
-      sql = sql.replaceAll(match.full, macro.replace(match.args));
-    }
-  }
+  const macroNames = [
+    ...macrosByName.keys(),
+    // Without a variable context the variable macros aren't macros at all —
+    // leaving them unregistered emits them verbatim, arguments and all.
+    ...(variableContext ? VARIABLE_MACRO_NAMES : []),
+  ];
 
-  return sql;
+  return expandTemplate(chartConfig.sqlTemplate, {
+    macroNames,
+    expandMacro: token => {
+      const macro = macrosByName.get(token.name);
+      return macro
+        ? macro.replace(token.args) // Non-variable-referencing macro
+        : expandVariableToken(token, variableContext!); // Variable-referencing macro
+    },
+    // Braced and bare variable references ($var, ${var}, or ${var:format})
+    expandReference: token =>
+      variableContext ? expandVariableToken(token, variableContext) : token.raw,
+  });
 }

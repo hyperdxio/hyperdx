@@ -45,8 +45,24 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
   # Build collector arguments with multiple config files
   COLLECTOR_ARGS="--config /etc/otelcol-contrib/config.yaml --config /etc/otelcol-contrib/standalone-config.yaml"
 
-  # Add bearer token auth config if OTLP_AUTH_TOKEN is specified (only used in standalone mode)
-  if [ -n "$OTLP_AUTH_TOKEN" ]; then
+  # Add OIDC-based bearer token auth config if OIDC_ISSUER_URL is specified,
+  # otherwise fall back to static bearer token auth if OTLP_AUTH_TOKEN is
+  # specified (only used in standalone mode). These are mutually exclusive:
+  # both configure the same receiver's auth.authenticator, so enabling both
+  # would just make whichever config file is loaded last win.
+  if [ -n "$OIDC_ISSUER_URL" ]; then
+    # oidcauthextension requires a non-empty audience unless ignore_audience
+    # is set (which we don't expose here, since silently skipping the
+    # audience check would weaken the auth rather than just fail loudly).
+    # Fail fast with a clear message instead of letting the collector crash
+    # on the extension's own less obvious "no audience provided" error.
+    if [ -z "$OIDC_AUDIENCE" ]; then
+      echo "ERROR: OIDC_ISSUER_URL is set but OIDC_AUDIENCE is not. Both are required to enable OIDC authentication." >&2
+      exit 1
+    fi
+    echo "OIDC_ISSUER_URL is configured, enabling OIDC-based bearer token authentication"
+    COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-oidc-config.yaml"
+  elif [ -n "$OTLP_AUTH_TOKEN" ]; then
     echo "OTLP_AUTH_TOKEN is configured, enabling bearer token authentication"
     COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-auth-config.yaml"
   fi
@@ -77,20 +93,10 @@ else
   # Supervisor mode - run with OpAMP supervisor
   echo "Running in supervisor mode (OPAMP_SERVER_URL: $OPAMP_SERVER_URL)"
 
-  if [ "$OTEL_SUPERVISOR_LOGS" = "true" ]; then
-   # Start log tailer process in background for agent.log
-    # Arguments: log_file_path [check_interval_seconds]
-    /log-tailer.sh /etc/otel/supervisor-data/agent.log 1 &
-
-    # Create a agent log file for the supervisor and collector child process. Normally
-    # this file would be created as a standard file but we just want a FIFO pipe that
-    # will pass data over to the tail process in the entrypoint script. This avoids
-    # the need to the supervisor to store and forward the logs in its memory while also
-    # eliminating the need for volume based storage.
-    if [ ! -e /etc/otel/supervisor-data/agent.log ]; then
-      mkfifo /etc/otel/supervisor-data/agent.log || echo "Failed to create FIFO" >&2
-    fi
-  fi
+  # OTEL_SUPERVISOR_LOGS=true is consumed by supervisor.yaml.tmpl, which sets
+  # the supervisor's native `agent::passthrough_logs`. With this the supervisor
+  # forwards the collector's stdout/stderr through its own logger, keeping a
+  # single writer on the container's stdout.
 
   # Render the supervisor config template using gomplate
   # Write to supervisor-data directory which has proper permissions for otel user

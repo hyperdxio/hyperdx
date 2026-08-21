@@ -123,4 +123,27 @@ describe('convertCHDataTypeToJSType', () => {
   it('should handle Nullable(Bool) as Bool', () => {
     expect(convertCHDataTypeToJSType('Nullable(Bool)')).toBe(JSDataType.Bool);
   });
+
+  // A UNION ALL over columns with no least supertype (e.g. Float64 and
+  // Int64) produces Variant(...) when the server runs with
+  // use_variant_as_common_type = 1. All-numeric variants chart as numbers.
+  it('should handle all-numeric Variant as Number', () => {
+    expect(convertCHDataTypeToJSType('Variant(Float64, Int64)')).toBe(
+      JSDataType.Number,
+    );
+    expect(convertCHDataTypeToJSType('Variant(Int64, UInt64)')).toBe(
+      JSDataType.Number,
+    );
+    expect(convertCHDataTypeToJSType('Variant(Float64, Nullable(Int32))')).toBe(
+      JSDataType.Number,
+    );
+  });
+
+  it('should not classify mixed or non-numeric Variant', () => {
+    expect(convertCHDataTypeToJSType('Variant(Float64, String)')).toBeNull();
+    expect(
+      convertCHDataTypeToJSType('Variant(String, Array(Int64))'),
+    ).toBeNull();
+    expect(convertCHDataTypeToJSType('Variant()')).toBeNull();
+  });
 });

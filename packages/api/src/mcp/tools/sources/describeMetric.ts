@@ -20,8 +20,8 @@ import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
-  QUERYABLE_METRIC_KINDS,
-  type QueryableMetricKind,
+  DISCOVERABLE_METRIC_KINDS,
+  type DiscoverableMetricKind,
 } from './metricKinds';
 
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
@@ -45,7 +45,7 @@ const MAX_ATTR_KEYS_TO_SAMPLE = 12;
 // Per-kind aggregation guidance baked into the response so the agent can
 // build a valid clickstack_timeseries / clickstack_table call without
 // re-reading the schemas.
-const KIND_USAGE: Record<QueryableMetricKind, string> = {
+const KIND_USAGE: Record<DiscoverableMetricKind, string> = {
   gauge:
     'Gauge: use aggFn:"last_value"|"avg"|"min"|"max" on Value. Set isDelta:true for Prometheus-style delta over each bucket.',
   sum: 'Sum (counter): use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum"/"avg" on the computed rate. increase+groupBy is capped at the top 20 groups.',
@@ -53,6 +53,10 @@ const KIND_USAGE: Record<QueryableMetricKind, string> = {
     'Histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
   'exponential histogram':
     'Exponential histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
+  summary:
+    'Summary: client-precomputed quantiles (e.g. Prometheus summaries). Not supported by ' +
+    'clickstack_timeseries / clickstack_table — query this table with clickstack_sql ' +
+    "using the source's connectionId.",
 };
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -71,9 +75,9 @@ const describeMetricSchema = z.object({
         'Discover via clickstack_list_metrics or clickstack_describe_source.',
     ),
   kind: z
-    .enum(QUERYABLE_METRIC_KINDS)
+    .enum(DISCOVERABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram". Required. ' +
+      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram" | "summary". Required. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -111,7 +115,7 @@ type AttributeValuesMeta = {
 };
 
 type KindDetail = {
-  kind: QueryableMetricKind;
+  kind: DiscoverableMetricKind;
   tableName: string;
   unit?: string;
   description?: string;
@@ -641,13 +645,33 @@ async function describeMetricImpl(
     !meta.unit &&
     !meta.description;
 
-  const queryExample = `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
-    kind === 'sum'
-      ? '"increase"'
-      : kind === 'histogram' || kind === 'exponential histogram'
-        ? '"quantile", level: 0.95'
-        : '"avg"'
-  }, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
+  const makeNextStepsQuery = () => {
+    if (kind === 'summary') {
+      // Summary metrics have no renderer support, so the next step is
+      // clickstack_sql rather than a builder-tool example.
+      // clickstack_sql runs with no source context, so qualify the table
+      // with the source's database — a bare table name would resolve
+      // against the connection user's default database.
+      const qualifiedTable = databaseName
+        ? `${databaseName}.${tableName}`
+        : tableName;
+      return (
+        'summary metrics cannot be queried with clickstack_timeseries / clickstack_table — ' +
+        `use clickstack_sql against the "${qualifiedTable}" table with this source's connectionId ` +
+        '(see clickstack_list_sources).'
+      );
+    }
+
+    let aggFn = '"avg"';
+
+    if (kind === 'sum') {
+      aggFn = '"increase"';
+    } else if (kind === 'histogram' || kind === 'exponential histogram') {
+      aggFn = '"quantile", level: 0.95';
+    }
+
+    return `Example: clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${aggFn}, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
+  };
 
   const responseObj: Record<string, unknown> = {
     metricName: input.metricName,
@@ -666,7 +690,7 @@ async function describeMetricImpl(
         'confirm the metric name + kind combination exists.',
     }),
     nextSteps: {
-      query: `Example: ${queryExample}`,
+      query: makeNextStepsQuery(),
     },
   };
 
@@ -702,15 +726,20 @@ export function registerDescribeMetric({
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
+      annotations: { readOnlyHint: true },
       description:
         'DRILL-DOWN: Use after clickstack_list_metrics (or after a clickstack_describe_source ' +
         'sample) to get attribute keys, sampled values, unit, and description for a ' +
         'specific (metricName, kind) pair. Attribute keys vary per metric — not per source — ' +
         "so always call this before clickstack_timeseries / clickstack_table for any metric you've never queried.\n\n" +
-        'REQUIRES `kind` — pass the gauge/sum/histogram/exponential histogram value emitted alongside the metric name by ' +
+        'REQUIRES `kind` — pass the gauge/sum/histogram/exponential histogram/summary value emitted alongside the metric name by ' +
         'clickstack_list_metrics or clickstack_describe_source. A metric name can legitimately ' +
         'live in more than one kind (e.g. "container.cpu.usage" appears in both gauge and sum); ' +
         'call this tool once per kind you care about.\n\n' +
+        'kind:"summary" is accepted for discovery (attribute keys, sampled values, unit, ' +
+        'description), but summary metrics cannot be queried with clickstack_timeseries / ' +
+        "clickstack_table — use clickstack_sql against the table in the source's " +
+        'metricTables.summary.\n\n' +
         'attributeValuesMeta on each kind reports sampledKeys (queried for values) and ' +
         'truncatedKeys (skipped by the per-call sampling cap) — a key in truncatedKeys was ' +
         'never queried, so query it directly if you need its values.\n\n' +

@@ -16,7 +16,12 @@ import {
   IconSearch,
 } from '@tabler/icons-react';
 
+import { MAX_EXPANDED_TOOLTIP_ROWS } from '@/defaults';
 import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
+import {
+  getVisibleTooltipRows,
+  MAX_TOOLTIP_ROWS,
+} from '@/HDXMultiSeriesTimeChart';
 import type { NumberFormat } from '@/types';
 
 import {
@@ -167,6 +172,36 @@ export type ChartSeriesTooltipProps = {
   onFocusSeries?: (payload: { dataKey?: string; name: string }) => void;
   /** Clear an active series focus; renders a "Show All Series" footer action when set. */
   onShowAllSeries?: () => void;
+  /**
+   * Series dropped by the chart's render cap (i.e. absent from activePayload
+   * entirely, not just beyond this tooltip's row cap). Added to the tooltip's
+   * own overflow to size the "+N more" affordance against the true total.
+   */
+  hiddenSeriesCount?: number;
+  /**
+   * Render every series on the chart, bypassing the cap. When provided, the
+   * "+N more" line becomes a button that triggers it (the same escape hatch as
+   * the chart's hidden-series warning). Omit to keep "+N more" passive.
+   */
+  onLoadAllSeries?: () => void;
+  /**
+   * When true, the caller has already loaded all series ("load all" is active),
+   * so the tooltip renders EVERY row (up to `expandedRowCap`) in its scrollable
+   * body instead of clamping to MAX_TOOLTIP_ROWS. This is what makes the pinned
+   * tooltip's "load all" actually reveal the extra rows: the container
+   * (.chartTooltipContent) already scrolls, so lifting the render cap lets the
+   * user scroll through the full set. Kept bounded by `expandedRowCap` so a
+   * runaway high-cardinality bucket can't mount thousands of row Tooltips.
+   */
+  expanded?: boolean;
+  /**
+   * Upper bound on rows rendered when `expanded`. Defaults to
+   * MAX_EXPANDED_TOOLTIP_ROWS. Each row mounts several Mantine Tooltips, so this
+   * is deliberately well below the chart's materialize ceiling — enough to make
+   * "load all" meaningfully bigger than the 20-row preview without mounting
+   * thousands of popovers. Series beyond it stay counted in the "+N more" line.
+   */
+  expandedRowCap?: number;
 };
 
 /**
@@ -185,6 +220,10 @@ export function ChartSeriesTooltip({
   onDismiss,
   onFocusSeries,
   onShowAllSeries,
+  hiddenSeriesCount = 0,
+  onLoadAllSeries,
+  expanded = false,
+  expandedRowCap = MAX_EXPANDED_TOOLTIP_ROWS,
 }: ChartSeriesTooltipProps) {
   // Called before any early return to keep hook order stable.
   const actionTooltipZIndex = useChartTooltipActionZIndex();
@@ -200,6 +239,20 @@ export function ChartSeriesTooltip({
   if (rows.length === 0) {
     return null;
   }
+
+  // Cap rendered rows (each mounts a Mantine Tooltip); rows is value-desc, so
+  // this keeps the largest. No cursor concept here — the pin is frozen. Once
+  // "load all" is active (`expanded`), render every row (up to expandedRowCap)
+  // so the user can scroll the full set instead of being stuck at the 20-row
+  // preview; the scrollable container bounds the height either way.
+  const rowCap = expanded ? expandedRowCap : MAX_TOOLTIP_ROWS;
+  const { rows: visibleRows, hiddenCount: tooltipHiddenCount } =
+    getVisibleTooltipRows(rows, undefined, rowCap);
+
+  // Rows not shown = those beyond this tooltip's cap PLUS series the chart's
+  // render cap dropped entirely (absent from activePayload). Clicking loads all
+  // series onto the chart — the same escape hatch as the hidden-series warning.
+  const totalHidden = tooltipHiddenCount + hiddenSeriesCount;
 
   // Per-series actions only make sense with more than one group (a single series
   // is covered by the header/footer).
@@ -263,8 +316,9 @@ export function ChartSeriesTooltip({
 
   return (
     <ChartTooltipContainer header={header} footer={footer}>
-      <Stack gap={2} style={{ maxHeight: 200, overflowY: 'auto' }}>
-        {rows.map((payload, idx) => {
+      {/* Height bounded by the shared .chartTooltipContent container. */}
+      <Stack gap={2}>
+        {visibleRows.map((payload, idx) => {
           const name = payload.name ?? payload.dataKey ?? '';
           const rowNumberFormat =
             (payload.valueColumnName != null
@@ -305,6 +359,21 @@ export function ChartSeriesTooltip({
             />
           );
         })}
+        {totalHidden > 0 &&
+          (onLoadAllSeries ? (
+            <UnstyledButton
+              onClick={onLoadAllSeries}
+              aria-label={`Load all ${totalHidden.toLocaleString()} more series`}
+            >
+              <Text size="xs" c="dimmed" fs="italic" pt={2}>
+                +{totalHidden.toLocaleString()} more (click to load all)
+              </Text>
+            </UnstyledButton>
+          ) : (
+            <Text size="xs" c="dimmed" fs="italic" pt={2}>
+              +{totalHidden.toLocaleString()} more
+            </Text>
+          ))}
       </Stack>
     </ChartTooltipContainer>
   );

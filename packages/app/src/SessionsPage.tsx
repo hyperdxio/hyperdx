@@ -450,6 +450,9 @@ function SessionsPage() {
                 />
                 <SearchWhereInput
                   tableConnection={tcFromSource(traceTrace)}
+                  // The WHERE runs against the trace source
+                  sourceId={traceTrace?.id}
+                  dateRange={searchedTimeRange}
                   control={control}
                   name="where"
                   onSubmit={onSubmit}

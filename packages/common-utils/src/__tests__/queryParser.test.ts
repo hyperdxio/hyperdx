@@ -495,6 +495,20 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     },
   );
 
+  // What the `lucene` variable format renders for an empty selection. It has
+  // to drop out of the predicate rather than match nothing, and it stays
+  // parenthesized for exactly that reason: the bare `ServiceName:""` below
+  // compares the column against the empty string instead.
+  it.each([
+    ['ServiceName:("")', '(((1=1)))'],
+    ['("")', '(((1=1)))'],
+    ['ServiceName:""', "((ServiceName = ''))"],
+  ])('renders the empty lucene term %s as %s', async (lucene, expected) => {
+    expect(await new SearchQueryBuilder(lucene, serializer).build()).toBe(
+      expected,
+    );
+  });
+
   it('correctly searches multi-column implicit field', async () => {
     const serializer = new CustomSchemaSQLSerializerV2({
       metadata,
@@ -791,6 +805,103 @@ describe('CustomSchemaSQLSerializerV2 - range bounds', () => {
         metadata,
       });
       expect(actualEnglish).toBe(english);
+    },
+  );
+});
+
+describe('CustomSchemaSQLSerializerV2 - numeric and Bool field searches', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'NumericAttributes') {
+      return { name: 'NumericAttributes', type: 'Map(String, Float64)' };
+    } else if (column === 'BoolAttributes') {
+      return { name: 'BoolAttributes', type: 'Map(String, Bool)' };
+    } else if (column === 'IsError') {
+      return { name: 'IsError', type: 'Bool' };
+    } else if (column === 'Duration') {
+      return { name: 'Duration', type: 'UInt64' };
+    } else if (column === 'MatIsError') {
+      return { name: 'MatIsError', type: 'Bool' };
+    } else if (column === 'MatDuration') {
+      return { name: 'MatDuration', type: 'UInt64' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest.fn().mockImplementation(
+    async () =>
+      new Map([
+        ["LogAttributes['is_error']", 'MatIsError'],
+        ["LogAttributes['duration']", 'MatDuration'],
+      ]),
+  );
+  metadata.getColumns = jest.fn().mockImplementation(async () => []);
+  metadata.getSkipIndices = jest.fn().mockImplementation(async () => []);
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  const mapCases = [
+    {
+      lucene: 'NumericAttributes.count:250',
+      sql: "((`NumericAttributes`['count'] = CAST('250', 'Float64') AND indexHint(mapContains(`NumericAttributes`, 'count'))))",
+    },
+    {
+      lucene: 'NumericAttributes.count:"250"',
+      sql: "((`NumericAttributes`['count'] = CAST('250', 'Float64') AND indexHint(mapContains(`NumericAttributes`, 'count'))))",
+    },
+    {
+      lucene: '-NumericAttributes.count:250',
+      sql: "((`NumericAttributes`['count'] != CAST('250', 'Float64')))",
+    },
+    {
+      lucene: 'BoolAttributes.cached:true',
+      sql: "((`BoolAttributes`['cached'] = 1 AND indexHint(mapContains(`BoolAttributes`, 'cached'))))",
+    },
+    {
+      lucene: 'BoolAttributes.cached:"false"',
+      sql: "((`BoolAttributes`['cached'] = 0 AND indexHint(mapContains(`BoolAttributes`, 'cached'))))",
+    },
+    {
+      lucene: '-BoolAttributes.cached:true',
+      sql: "((`BoolAttributes`['cached'] != 1))",
+    },
+    {
+      lucene: 'IsError:true',
+      sql: '((`IsError` = 1))',
+    },
+    {
+      lucene: 'Duration:250',
+      sql: "((`Duration` = CAST('250', 'Float64')))",
+    },
+    {
+      lucene: 'MatIsError:true',
+      sql: "((`MatIsError` = 1 AND indexHint(mapContains(`LogAttributes`, 'is_error'))))",
+    },
+    {
+      lucene: 'MatIsError:"true"',
+      sql: "((`MatIsError` = 1 AND indexHint(mapContains(`LogAttributes`, 'is_error'))))",
+    },
+    {
+      lucene: 'MatDuration:250',
+      sql: "((`MatDuration` = CAST('250', 'Float64') AND indexHint(mapContains(`LogAttributes`, 'duration'))))",
+    },
+  ];
+
+  it.each(mapCases)(
+    'converts "$lucene" to SQL "$sql"',
+    async ({ lucene, sql }) => {
+      const builder = new SearchQueryBuilder(lucene, serializer);
+      expect(await builder.build()).toBe(sql);
     },
   );
 });

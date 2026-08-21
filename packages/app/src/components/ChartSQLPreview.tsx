@@ -112,6 +112,7 @@ export default function ChartSQLPreview({
       radius="sm"
       style={{ overflow: 'hidden' }}
       p="xs"
+      data-testid="chart-sql-preview"
     >
       {data ? (
         // Prefer showing the (possibly placeholder) SQL over the loading state

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo } from 'react';
+import { use, useCallback, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -27,6 +27,7 @@ export function RowOverviewPanel({
   source,
   rowId,
   aliasWith,
+  dateRange,
   hideHeader = false,
   flush = false,
   'data-testid': dataTestId,
@@ -34,6 +35,7 @@ export function RowOverviewPanel({
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  dateRange?: [Date, Date];
   hideHeader?: boolean;
   // When true, drop the horizontal padding so content aligns flush with
   // surrounding chrome (e.g. the tab bar in the trace span detail panel).
@@ -41,9 +43,9 @@ export function RowOverviewPanel({
   'data-testid'?: string;
 }) {
   const contentPx = flush ? 0 : 'md';
-  const { data } = useRowData({ source, rowId, aliasWith });
+  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
-    useContext(RowSidePanelContext);
+    use(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =

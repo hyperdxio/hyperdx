@@ -12,6 +12,7 @@ import {
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { mcpPatchDashboardSchema } from './schemas';
 import {
@@ -30,6 +31,7 @@ export function registerPatchDashboard({
     'clickstack_patch_dashboard',
     {
       title: 'Patch Dashboard',
+      annotations: { destructiveHint: true },
       description:
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +
@@ -141,6 +143,22 @@ export function registerPatchDashboard({
           // The config comes from the incoming tile (validated by Zod).
           config: incoming.config,
         } as ExternalDashboardTileWithId;
+
+        // Re-validate the merged tile through the external tile schema —
+        // the same one the save_dashboard body schemas route every tile
+        // through. The MCP input schema only checks field shapes; the
+        // cross-field refinements (formula expression validation, the
+        // asRatio/two-select rule, the number-tile single-select rule)
+        // live on the external schema's superRefine, so skipping this
+        // parse would let a patch persist a config that an equivalent
+        // create or full update rejects.
+        const tileParse =
+          externalDashboardTileSchemaWithId.safeParse(mergedTile);
+        if (!tileParse.success) {
+          return mcpUserError(
+            `Validation error: ${JSON.stringify(tileParse.error.errors)}`,
+          );
+        }
 
         // Error on raw SQL tiles that have no source defined but which use
         // macros which require a source to be set

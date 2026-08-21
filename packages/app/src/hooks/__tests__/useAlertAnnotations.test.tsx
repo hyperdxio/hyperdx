@@ -11,7 +11,8 @@ import { getChartColorError, getChartColorSuccess } from '@/utils';
 const makeTransition = (
   createdAt: string,
   state: AlertState,
-): AlertTransition => ({ createdAt, state });
+  bucketStart?: string,
+): AlertTransition => ({ createdAt, state, bucketStart });
 
 describe('alertTransitionsToAnnotations', () => {
   it('returns no annotations for an empty list', () => {
@@ -39,6 +40,64 @@ describe('alertTransitionsToAnnotations', () => {
       color: getChartColorSuccess(),
     });
     // Distinct keys so React can reconcile the markers.
+    expect(annotations[0].key).not.toEqual(annotations[1].key);
+  });
+
+  it('draws the marker at bucketStart so it lines up with the plotted bucket', () => {
+    // Evaluation ran at 00:30 over buckets whose newest starts at 00:29 —
+    // the chart plots that bucket at 00:29, so the marker must sit there too.
+    const evaluatedAt = '2026-07-01T00:30:00.000Z';
+    const bucketStart = '2026-07-01T00:29:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition(evaluatedAt, AlertState.OK, bucketStart),
+    ]);
+
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toMatchObject({ time: bucketStart, label: 'OK' });
+  });
+
+  it('maps each transition to its own bucketStart', () => {
+    // Fire and recovery in one range, each evaluated over different buckets —
+    // every marker must land on its own transition's newest bucket.
+    const firedAt = '2026-07-01T00:10:00.000Z';
+    const firedBucket = '2026-07-01T00:09:00.000Z';
+    const recoveredAt = '2026-07-01T00:30:00.000Z';
+    const recoveredBucket = '2026-07-01T00:29:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition(firedAt, AlertState.ALERT, firedBucket),
+      makeTransition(recoveredAt, AlertState.OK, recoveredBucket),
+    ]);
+
+    expect(annotations).toHaveLength(2);
+    expect(annotations[0]).toMatchObject({ time: firedBucket, label: 'Alert' });
+    expect(annotations[1]).toMatchObject({
+      time: recoveredBucket,
+      label: 'OK',
+    });
+  });
+
+  it('falls back to createdAt when bucketStart is absent (older API)', () => {
+    const evaluatedAt = '2026-07-01T00:30:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition(evaluatedAt, AlertState.ALERT),
+    ]);
+
+    expect(annotations[0]).toMatchObject({ time: evaluatedAt });
+  });
+
+  it('keeps keys distinct for opposite-state transitions sharing a time', () => {
+    // Keys derive from the annotation time — the state must keep two markers
+    // at the same instant reconcilable as distinct React elements.
+    const bucketStart = '2026-07-01T00:29:00.000Z';
+
+    const annotations = alertTransitionsToAnnotations([
+      makeTransition('2026-07-01T00:30:00.000Z', AlertState.ALERT, bucketStart),
+      makeTransition('2026-07-01T00:35:00.000Z', AlertState.OK, bucketStart),
+    ]);
+
     expect(annotations[0].key).not.toEqual(annotations[1].key);
   });
 });

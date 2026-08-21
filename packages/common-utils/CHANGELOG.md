@@ -1,5 +1,127 @@
 # @hyperdx/common-utils
 
+## 0.26.0
+
+### Minor Changes
+
+- fd54ac78: Persist alert evaluation errors (query errors, timeouts, webhook failures) as
+  ERROR-state AlertHistory records instead of only a latest-only snapshot,
+  upserted per evaluation window so retries collapse into a single row. Query
+  timeouts are classified separately (QUERY_TIMEOUT, including timeouts wrapped
+  by the ClickHouse query client) with an actionable message. ERROR rows are
+  excluded from scheduling/backfill computations so failed windows are still
+  retried and backfilled, and once a failed window recovers (via a same-window
+  retry or a later tick's backfill) its stale ERROR row is removed. Evaluation
+  analytics (query/webhook durations, backfilled buckets) are recorded on every
+  history row.
+- 05a3fd81: Add the AlertHistory evaluations read model and GET /alerts/:id/evaluations
+  endpoint: per-window evaluation history scoped to a time range (clamped to the
+  retention window) with per-group breakdown for group-by alerts, evaluation
+  analytics fields, deduped error surfacing for ERROR-state windows, and
+  cursor-based pagination that always advances across gaps. Adds read-side
+  schema/type support for ERROR-state AlertHistory rows and evaluation analytics.
+- 8508b6c7: Terraform export now emits team-scoped import ids (`<team_id>/<resource_id>`),
+  so resources can be imported from a ClickStack deployment that backs more than
+  one team. Each imported resource gains a `team` attribute, which the provider
+  marks as forcing replacement — the generated file now says to keep it. The
+  provider floor moves to `>= 3.25.0`, which drops server-only dashboard ids when
+  importing, so the generated dashboard config no longer churns tile ids (and the
+  tile alerts attached to them) on apply.
+- 0ed72ddf: Add the metric formula expression model: a `formulas` entry on chart configs (letter-based series refs — `A`, `B`, `C` map to `select` positions) plus an arithmetic-only parser/validator (`core/formula.ts`) that produces a validated AST and structured validation errors (unknown series ref, empty expression, malformed syntax, invalid tokens). Groundwork for metric formulas like `A / (A + B + C) * 100`; no query rendering or UI changes yet.
+
+### Patch Changes
+
+- b9430a62: feat: Add broadcast and variable settings to dashboard filters
+- 546dd442: feat: Improve SQL Editor validations and autocomplete for variables
+- cab98c7c: feat: Substitute dashboard variables in raw SQL tiles
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+- 2d33b83b: Escape the Map subscript once in numeric and Bool field searches
+
+  The three equality branches for `Bool` and numeric value types escaped the
+  column expression as an identifier even when it was already a rendered map
+  subscript, so `Measures.latency_ms:250` wrapped `` `Measures`['latency_ms'] ``
+  in a second layer of backticks that ClickHouse reads as one identifier rather
+  than a map lookup. Quoting the term worked around it for numeric maps; for
+  `Map(String, Bool)` columns both spellings were affected.
+
+- aedb514f: Multi-series metric charts now run as a single composed ClickHouse query instead of one query per series joined client-side. The per-series queries are combined via UNION ALL and pivoted back into one row per (group, time bucket) in SQL, including ratio charts (`seriesReturnType: 'ratio'`) and both `ratioMode` variants, which previously divided the two result sets in the browser/node. Result shape, column naming (including same-alias `__{index}` disambiguation), gap semantics, and ratio semantics are unchanged; charts with many series render with fewer round trips, and "View SQL" for multi-series metric charts now shows the full query instead of only the first series.
+
+## 0.25.0
+
+### Minor Changes
+
+- 3d61cf92: Cap high-cardinality time-chart series to protect the browser from rendering
+  thousands of lines at once. Time charts now materialize and draw a bounded
+  number of series per tile, with escape hatches to reveal the rest on demand: a
+  "+N more" affordance in the hover and pinned tooltips, and a "load all series"
+  action that lifts the cap for a chart. Tooltips also cap how many rows they
+  render per frame so a wide bucket can't mount thousands of popovers. The
+  external dashboards API exposes the per-tile series limit as a three-state value
+  across tile types — omit for the default cap, 0 for unlimited, or a positive N
+  for the top N
+- 97ca34df: feat: Allow configuring a `series` table for accelerating metrics
+- 1af1998c: Add Terraform helpers for adopting existing HyperDX resources with the ClickHouse provider. An "Export to Terraform" button on dashboards, saved searches, and saved-search alerts shows a ready-to-paste `import {}` block plus collapsible provider setup, and a team settings section ("API & Agents") downloads an import file covering dashboards, alerts, saved searches, sources, connections, and webhooks.
+
+  Dashboards carrying a tile the provider cannot represent, and PromQL sources, are excluded from the export and reported as skipped — in the UI and in the generated file. The provider reads a dashboard back through the external API v2, which either drops such a tile or substitutes an empty line chart, and writes tiles back whole, so importing one would destroy that tile on the next apply.
+
+  Import-only by design: resource configuration is generated by `terraform plan -generate-config-out`, which reads through the provider, rather than by HyperDX — the external API's dashboard serialisation is a field allowlist, so generating `dashboard_json` from it could silently drop tile settings on apply. Tile alerts are excluded because the provider models only saved-search alerts.
+
+  Terraform addresses are derived from each resource's id, not its name, so renaming a resource in HyperDX and re-exporting does not produce a destroy-and-recreate plan. The generator lives in `@hyperdx/common-utils` so the API can produce the same artefact the UI does. The manifest endpoint caps each listing at 1000 rows and reports which types were capped, so a very large team is told its export is partial rather than silently receiving one.
+
+  Also redacts `Authorization` and `Cookie` headers from API request logs.
+
+### Patch Changes
+
+- ed9d9a67: Treat `_` and `%` in a search term as literal characters, not LIKE wildcards
+
+  Search terms were interpolated straight into the ILIKE pattern, so ClickHouse
+  read their `_` and `%` as wildcards. `ServiceName:user_service` also matched
+  `user-service` and `user.service`, and the negated `-ServiceName:user_service`
+  dropped those same rows. Token-index lookups still receive the raw term.
+
+- c97789a0: Correctly split SQL expressions containing backslash-escaped quotes.
+- 2468b256: fix: Encode every `http://`, `https://` and `localhost:<port>` in a search, not
+  just the first
+
+  A search naming two or more URLs left the later colons unescaped, so Lucene read
+  them as field queries. `http://a.com http://b.com` compiled the second URL to
+  `http ILIKE '%//b.com%'` — a predicate on a bare `http` identifier rather than a
+  search of the log body.
+
+- 6a35df06: Honor open (`*`), exclusive (`{}`) and non-numeric bounds in Lucene ranges
+
+  `Duration:[* TO 500]` compiled to `Duration BETWEEN '*' AND 500`, which
+  ClickHouse rejects with `TYPE_MISMATCH`. Exclusive and half-open ranges such as
+  `Duration:{100 TO 500}` were all serialized as an inclusive `BETWEEN`. Bounds
+  were parsed with `parseFloat`, so `Timestamp:[2024-01-01 TO 2024-06-01]` became
+  `BETWEEN 2024 AND 2024` and matched nothing. The plain-English explanation of a
+  search now marks excluded bounds too.
+
+- d1c669dc: fix: Use ratio value for series-limit ranking in ratio mode
+
+  Charts using "ratio" series return type together with a series limit ranked the
+  top-N series by the bare numerator instead of by the plotted ratio, so a
+  low-volume group with a high ratio could lose its slot to a high-volume group
+  with a much lower ratio. The ranking now uses the same `divide(a, b)` expression
+  the chart displays. Non-ratio charts generate identical SQL to before.
+
+- b082f700: Detect ClickHouse timestamp types that carry a timezone or a type wrapper
+
+  `DateTime('UTC')` was not classified as a DateTime, so a source whose timestamp
+  column listed both a `Date` partition column and a `DateTime` column bucketed
+  charts on the `Date` — collapsing a whole day into one bar at midnight. The time
+  filter also only wrapped bounds in `toDate()` for an exact `Date` type, so a
+  `Date32` or `Nullable(Date)` column was compared against a DateTime bound and
+  lost the whole start day.
+
+- 347f0a69: fix: Bound the side panel's row lookup after "View Trace" to a time window
+
 ## 0.24.1
 
 ### Patch Changes

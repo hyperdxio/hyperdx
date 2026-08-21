@@ -42,7 +42,7 @@ export type Facet = { key: string; value: string[] };
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
-  const settingsApplied = useRef(false);
+  const settingsAppliedRef = useRef(false);
   const queryClient = useQueryClient();
 
   // Create a listener that triggers when connections are updated in local mode
@@ -56,7 +56,7 @@ export function useMetadataWithSettings() {
         // Create a new metadata instance with a new ClickHouse client,
         // since the existing one will not have connection / auth info.
         setMetadata(getMetadata());
-        settingsApplied.current = false;
+        settingsAppliedRef.current = false;
         // Clear react-query cache so that metadata is refetched with
         // the new connection info, and error states are cleared.
         queryClient.resetQueries();
@@ -70,11 +70,11 @@ export function useMetadataWithSettings() {
   }, [queryClient]);
 
   useEffect(() => {
-    if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
+    if (me?.team?.metadataMaxRowsToRead && !settingsAppliedRef.current) {
       metadata.setClickHouseSettings({
         max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
-      settingsApplied.current = true;
+      settingsAppliedRef.current = true;
     }
   }, [me?.team?.metadataMaxRowsToRead, metadata]);
 

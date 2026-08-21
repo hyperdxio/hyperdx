@@ -4,6 +4,7 @@ import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
 import { stripTypeWrappers } from '@/core/eventDeltas';
+import { compileFormulaAst, FormulaAst, validateFormula } from '@/core/formula';
 import {
   GROUP_ALIAS,
   translateExponentialHistogram,
@@ -15,17 +16,14 @@ import {
   convertGranularityToSeconds,
   extractSettingsClauseFromEnd,
   getFirstTimestampValueExpression,
+  hasPositiveSeriesLimit,
   joinQuerySettings,
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
   pickBucketTimestampColumn,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import {
-  isBuilderChartConfig,
-  isPromqlChartConfig,
-  isRawSqlChartConfig,
-} from '@/guards';
+import { isPromqlChartConfig, isRawSqlChartConfig } from '@/guards';
 import { replaceMacros } from '@/macros';
 import {
   buildTextIndexInfoLookup,
@@ -41,7 +39,6 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfig,
   ChartConfigSchema,
-  ChartConfigWithOptDateRange,
   ChSqlSchema,
   CteChartConfig,
   DateRange,
@@ -57,6 +54,7 @@ import {
   SqlAstFilter,
   SQLInterval,
 } from '@/types';
+import { substituteChartConfigVariables } from '@/variables';
 
 /**
  * Helper function to create a MetricName filter condition.
@@ -123,6 +121,11 @@ export const isMetricChartConfig = (
   return chartConfig.metricTables != null;
 };
 
+/** Whether the config carries at least one metric formula. */
+export const hasMetricFormulas = (
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): boolean => (chartConfig.formulas?.length ?? 0) > 0;
+
 // TODO: apply this to all chart configs
 export const setChartSelectsAlias = (
   config: BuilderChartConfigWithOptDateRange,
@@ -145,36 +148,60 @@ export const setChartSelectsAlias = (
   return config;
 };
 
-export const splitChartConfigs = (
-  config: ChartConfigWithOptDateRange,
-): ChartConfigWithOptDateRangeEx[] => {
-  // only split metric queries for now
-  if (
-    isBuilderChartConfig(config) &&
-    isMetricChartConfig(config) &&
-    Array.isArray(config.select)
-  ) {
-    const _configs: BuilderChartConfigWithOptDateRange[] = [];
-    // split the query into multiple queries
-    for (const select of config.select) {
-      _configs.push({
-        ...config,
-        select: [select],
-      });
+// Internal aliases used to compose a multi-series metric query. Every
+// per-series branch projects its VALUE under this fixed name (and is tagged
+// with its series index) so the outer pivot can reference them. Group-by and
+// time-bucket columns deliberately keep their natural single-series names —
+// consumers look rows up by ClickHouse's derived column names, which can't
+// be reproduced node-side (see renderMultiSeriesMetricChartConfig).
+const MULTI_SERIES_VALUE_ALIAS = '__hdx_value';
+const MULTI_SERIES_IDX_ALIAS = '__hdx_series_idx';
+
+/**
+ * Render a user-facing output column name as a ClickHouse double-quoted
+ * identifier. User aliases (and metric names, which flow into the default
+ * aliases) can contain double quotes; ClickHouse escapes them by doubling,
+ * so `bad"name` becomes "bad""name" instead of terminating the identifier
+ * early. Escaping happens only at SQL-emission time — collision dedup and
+ * the meta column names consumers see keep the raw name.
+ */
+const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
+
+// Histogram translations bake the group-by dimensions into a single Array
+// column named GROUP_ALIAS instead of projecting them as individual columns
+// (see translateHistogram), so grouped histogram rows never share a merge key
+// with grouped gauge/sum rows.
+const isHistogramClassSelect = (select: {
+  metricType?: MetricsDataType;
+}): boolean =>
+  select.metricType === MetricsDataType.Histogram ||
+  select.metricType === MetricsDataType.ExponentialHistogram;
+
+/**
+ * Merge per-branch trailing SETTINGS clauses into one deduped item list for
+ * the composed query. ClickHouse rejects SETTINGS on a UNION ALL branch that
+ * is followed by further branches, so the clauses are stripped from each
+ * branch and hoisted here. Known settings (translate-injected internals plus
+ * source querySettings) are simple `key = value` pairs without commas.
+ */
+function mergeSettingsClauses(clauses: (string | undefined)[]): string {
+  const items: string[] = [];
+  const seen = new Set<string>();
+  for (const clause of clauses) {
+    if (!clause) {
+      continue;
     }
-    return _configs;
+    const body = clause.replace(/^settings\s*/i, '');
+    for (const rawItem of body.split(',')) {
+      const item = rawItem.trim();
+      if (item !== '' && !seen.has(item)) {
+        seen.add(item);
+        items.push(item);
+      }
+    }
   }
-
-  if (
-    isRawSqlChartConfig(config) ||
-    isPromqlChartConfig(config) ||
-    isBuilderChartConfig(config)
-  ) {
-    return [config];
-  }
-
-  throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
-};
+  return items.join(', ');
+}
 
 const INVERSE_OPERATOR_MAP = {
   '=': '!=',
@@ -244,9 +271,9 @@ const fastifySQL = ({
           // FIXME: handle 'Value' type?
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const _n = node as ColumnRef;
-          // @ts-ignore
+          // @ts-expect-error node-sql-parser column types don't model the object form
           if (typeof _n.column !== 'string') {
-            // @ts-ignore
+            // @ts-expect-error node-sql-parser column types don't model the object form
             colExpr = `${_n.column?.expr.value}['${_n.array_index?.[0]?.index.value}']`;
           }
           break;
@@ -312,14 +339,13 @@ const fastifySQL = ({
           for (const key in _n) {
             // eslint-disable-next-line no-prototype-builtins
             if (_n.hasOwnProperty(key)) {
-              // @ts-ignore
               delete _n[key];
             }
           }
           _n.type = 'column_ref';
-          // @ts-ignore
+          // @ts-expect-error reshaping AST node in place; node-sql-parser types are too narrow
           _n.table = null;
-          // @ts-ignore
+          // @ts-expect-error reshaping AST node in place; node-sql-parser types are too narrow
           _n.column = { expr: { type: 'default', value: materializedField } };
         }
       }
@@ -995,6 +1021,114 @@ export async function timeFilterExpr({
   return concatChSql('AND', ...whereExprs);
 }
 
+/**
+ * Value (and derived formula) columns for a builder chart whose formulas
+ * render inline in the single-scan SELECT — i.e. event (log/trace) sources.
+ * Metric formula configs never reach this path: they route through
+ * renderMultiSeriesMetricChartConfig, whose UNION ALL branches strip
+ * `formulas` before recursing.
+ *
+ * Operand columns render first in select order (dropped from the projection
+ * when `showOperandSeries` is false — the aggregates still evaluate inside
+ * the formula expressions), followed by one column per formula compiled over
+ * the bare operand aggregate expressions. All event series aggregate over
+ * the same scanned rows, so — unlike the composed metric path, which pivots
+ * UNION ALL branches — the formula embeds each referenced operand expression
+ * directly. Missing-data semantics follow the existing events ratio
+ * (`divide(a, b)`): a countIf with no matching rows reads 0, while an
+ * avg-class aggregate reads nan (a rendered gap) — there is no per-series
+ * UNION here, so the composed path's NULL pivot never comes into play.
+ *
+ * Formulas supersede `seriesReturnType: 'ratio'` (mutually exclusive in the
+ * editor; rendering stays deterministic if a hand-built config carries both),
+ * so ratio merging is skipped on this path.
+ */
+async function renderSelectListWithFormulas(
+  select: Exclude<SelectList, string>,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql[]> {
+  const formulas = chartConfig.formulas ?? [];
+
+  // Bare operand expressions (no `AS "alias"` suffix) for embedding inside
+  // compiled formulas; mirrors the alias-stripping in renderSeriesLimitCte.
+  const operandExprs = await renderSelectList(
+    select.map(col => ({ ...col, alias: undefined })),
+    chartConfig,
+    metadata,
+    { mergeRatio: false },
+  );
+  const operandList = Array.isArray(operandExprs)
+    ? operandExprs
+    : [operandExprs];
+  const operandAt = (index: number): ChSql => {
+    const operand = operandList.at(index);
+    if (operand == null) {
+      // Unreachable: validateFormula bounds every ref to select.length.
+      throw new Error(`Formula references unknown series index ${index}`);
+    }
+    return operand;
+  };
+
+  const columns: ChSql[] = [];
+  if (chartConfig.showOperandSeries !== false) {
+    const rendered = await renderSelectList(select, chartConfig, metadata, {
+      mergeRatio: false,
+    });
+    columns.push(...(Array.isArray(rendered) ? rendered : [rendered]));
+  }
+
+  // Formula columns are named by their alias, falling back to the raw
+  // expression text. Dedupe against operand aliases and each other with the
+  // same column-index suffix the composed metric path uses.
+  const seen = new Set<string>(
+    select.flatMap(s =>
+      s.alias != null && s.alias.trim() !== '' ? [s.alias] : [],
+    ),
+  );
+  const uniqueName = (base: string, columnIdx: number) => {
+    const name = seen.has(base) ? `${base}__${columnIdx}` : base;
+    seen.add(name);
+    return name;
+  };
+
+  formulas.forEach((f, formulaIdx) => {
+    // Parse + validate against the chart's series before rendering any SQL.
+    // Persisted configs should already be valid (the editor validates on
+    // save); this is a render-time guard so a stale or hand-built config
+    // fails with a structured message instead of a ClickHouse error.
+    const parsed = validateFormula(f.expression, {
+      seriesCount: select.length,
+    });
+    if (!parsed.ok) {
+      throw new Error(
+        `Invalid formula "${f.expression}": ${parsed.errors
+          .map(e => e.message)
+          .join('; ')}`,
+      );
+    }
+    const name = uniqueName(
+      f.alias || f.expression,
+      select.length + formulaIdx,
+    );
+    // The compiler only walks the validated AST; the referenced operand
+    // fragments are the same rendered expressions projected above. Params
+    // are keyed by value hash, so re-embedding a fragment (even repeatedly,
+    // e.g. `A / (A + B)`) merges to identical entries.
+    const sql = `${compileFormulaAst(
+      parsed.ast,
+      index => operandAt(index).sql,
+    )} AS ${quotedColumnName(name)}`;
+    const params = Object.assign(
+      {},
+      ...parsed.referencedIndices.map(index => operandAt(index).params),
+    );
+    columns.push({ sql, params });
+  });
+
+  return columns;
+}
+
 async function renderSelect(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1008,12 +1142,25 @@ async function renderSelect(
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
   const isIncludingGroupBy = isUsingGroupBy(chartConfig);
 
+  // Formulas over an array select compile inline on this single-query path
+  // (event sources; see renderSelectListWithFormulas). Metric formula
+  // configs are intercepted upstream by the composed multi-series path.
+  const hasInlineFormulas =
+    Array.isArray(chartConfig.select) &&
+    (chartConfig.formulas?.length ?? 0) > 0;
+
   // TODO: clean up these await mess
   return concatChSql(
     ',',
-    await renderSelectList(chartConfig.select, chartConfig, metadata, {
-      mergeRatio: true,
-    }),
+    hasInlineFormulas && Array.isArray(chartConfig.select)
+      ? await renderSelectListWithFormulas(
+          chartConfig.select,
+          chartConfig,
+          metadata,
+        )
+      : await renderSelectList(chartConfig.select, chartConfig, metadata, {
+          mergeRatio: true,
+        }),
     isIncludingGroupBy && chartConfig.selectGroupBy !== false
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
           mergeRatio: false,
@@ -1141,11 +1288,54 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  // The aggCondition-to-WHERE optimization below only kicks in when every
+  // select has an aggCondition (otherwise all rows are scanned anyways).
+  const aggConditionsInWhere =
+    typeof chartConfig.select != 'string' &&
+    chartConfig.select.every(select =>
+      isNonEmptyWhereExpr(select.aggCondition),
+    );
+
+  // The Map-KV text-index rewrite (`Map['k'] = 'v'` ->
+  // `has(ItemsCol, concat('k', '=', 'v'))`, enabling ClickHouse's direct-read
+  // optimization) applies to every SQL predicate that lands in the WHERE
+  // clause: the top-level `where`, `sql`-type filters, and aggConditions
+  // copied into WHERE. Build the lookup once, up front, when any of them is
+  // present. The underlying metadata calls are cached, and
+  // rewriteSqlFilterWithKvItems is a no-op on an empty lookup.
+  const hasSqlPredicate =
+    (isNonEmptyWhereExpr(chartConfig.where) &&
+      (chartConfig.whereLanguage ?? 'sql') === 'sql') ||
+    (chartConfig.filters?.some(f => f.type === 'sql') ?? false) ||
+    (aggConditionsInWhere &&
+      typeof chartConfig.select != 'string' &&
+      chartConfig.select.some(
+        select => (select.aggConditionLanguage ?? 'sql') === 'sql',
+      ));
+  const textIndexInfoLookup: TextIndexInfoLookup =
+    hasSqlPredicate &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildTextIndexInfoLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
     whereSearchCondition = wrapChSqlIfNotEmpty(
       await renderWhereExpression({
-        condition: chartConfig.where,
+        condition:
+          (chartConfig.whereLanguage ?? 'sql') === 'sql'
+            ? rewriteSqlFilterWithKvItems(
+                chartConfig.where,
+                textIndexInfoLookup,
+              )
+            : chartConfig.where,
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1162,18 +1352,26 @@ async function renderWhere(
   }
 
   let selectSearchConditions: ChSql[] = [];
-  if (
-    typeof chartConfig.select != 'string' &&
-    // Only if every select has an aggCondition, add to where clause
-    // otherwise we'll scan all rows anyways
-    chartConfig.select.every(select => isNonEmptyWhereExpr(select.aggCondition))
-  ) {
+  if (aggConditionsInWhere && typeof chartConfig.select != 'string') {
     selectSearchConditions = (
       await Promise.all(
         chartConfig.select.map(async select => {
           if (isNonEmptyWhereExpr(select.aggCondition)) {
+            // Only this WHERE-clause copy of the aggCondition is rewritten to
+            // the `has(...)` form — the aggFnIf(...) copy in the SELECT clause
+            // (renderSelectList) is deliberately left as a Map subscript.
+            // Index-based granule pruning only happens in WHERE; inside the
+            // aggregate the predicate is evaluated per-row, where
+            // `has(<ALIAS items col>, ...)` would recompute the whole
+            // arrayMap per row and be slower than a plain Map subscript.
             return await renderWhereExpression({
-              condition: select.aggCondition,
+              condition:
+                (select.aggConditionLanguage ?? 'sql') === 'sql'
+                  ? rewriteSqlFilterWithKvItems(
+                      select.aggCondition,
+                      textIndexInfoLookup,
+                    )
+                  : select.aggCondition,
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1190,21 +1388,6 @@ async function renderWhere(
       )
     ).filter(v => v !== null) as ChSql[];
   }
-
-  const hasSqlFilter =
-    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const textIndexInfoLookup: TextIndexInfoLookup =
-    hasSqlFilter &&
-    chartConfig.from.databaseName &&
-    chartConfig.from.tableName &&
-    !hasSubqueryCte(chartConfig.with)
-      ? await buildTextIndexInfoLookup({
-          metadata,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-          connectionId: chartConfig.connection,
-        })
-      : new Map();
 
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
@@ -1315,7 +1498,9 @@ async function renderSeriesLimitCte(
 ): Promise<{ cte: ChSql; predicate: ChSql } | undefined> {
   const { seriesLimit } = chartConfig;
   if (
-    seriesLimit == null ||
+    // 0 = unlimited and null/undefined = unset both skip the CTE (a bare
+    // seriesLimit==null check would let 0 through and emit `LIMIT 0`).
+    !hasPositiveSeriesLimit(seriesLimit) ||
     !isUsingGroupBy(chartConfig) ||
     !isUsingGranularity(chartConfig) ||
     chartConfig.selectGroupBy === false ||
@@ -1608,42 +1793,6 @@ async function renderWith(
         }),
       ),
     );
-  }
-
-  return undefined;
-}
-
-function intervalToSeconds(interval: SQLInterval): number {
-  // Parse interval string like "15 second" into number of seconds
-  const [amount, unit] = interval.split(' ');
-  const value = parseInt(amount, 10);
-  switch (unit) {
-    case 'second':
-      return value;
-    case 'minute':
-      return value * 60;
-    case 'hour':
-      return value * 60 * 60;
-    case 'day':
-      return value * 24 * 60 * 60;
-    default:
-      throw new Error(`Invalid interval unit ${unit} in interval ${interval}`);
-  }
-}
-
-function renderFill(
-  chartConfig: BuilderChartConfigWithOptDateRangeEx,
-): ChSql | undefined {
-  const { granularity, dateRange } = chartConfig;
-  if (dateRange && granularity && granularity !== 'auto') {
-    const [start, end] = dateRange;
-    const step = intervalToSeconds(granularity);
-
-    return concatChSql(' ', [
-      chSql`FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: start.getTime() }}), INTERVAL ${granularity}))
-      TO toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: end.getTime() }}), INTERVAL ${granularity}))
-      STEP ${{ Int32: step }}`,
-    ]);
   }
 
   return undefined;
@@ -1972,9 +2121,14 @@ async function translateMetricChartConfig(
 
     if (shouldApplyIncreaseGroupLimit) {
       // Render the user's groupBy against the Bucketed CTE so column
-      // references resolve to the CTE's projection.
+      // references resolve to the CTE's projection. Aliases are stripped:
+      // these expressions go inside tuple(...) in the ranking CTE and the
+      // outer IN predicate, where an `AS "alias"` suffix is a syntax error
+      // (mirrors the strip in renderSeriesLimitCte).
       const groupByForRank = await renderSelectList(
-        chartConfig.groupBy!,
+        typeof chartConfig.groupBy === 'string'
+          ? chartConfig.groupBy
+          : chartConfig.groupBy!.map(col => ({ ...col, alias: undefined })),
         {
           ...chartConfig,
           from: { databaseName: '', tableName: 'Bucketed' },
@@ -2241,6 +2395,365 @@ export async function renderRawSqlChartConfig(
   };
 }
 
+/**
+ * Render a multi-series metric chart as ONE composed ClickHouse query.
+ *
+ * A metric chart config with N select items used to fan out into N separate
+ * queries whose result sets were merged node-side (mergeResultSets). This
+ * renders the same N per-series queries (each metric type keeps its own CTE
+ * scaffolding and physical table) but composes them via UNION ALL and pivots
+ * the tagged rows back into one row per (group values, time bucket):
+ *
+ *   SELECT
+ *     anyOrNullIf(__hdx_value, __hdx_series_idx = 0) AS "avg(metric.alpha)",
+ *     anyOrNullIf(__hdx_value, __hdx_series_idx = 1) AS "avg(metric.beta)",
+ *     * EXCEPT (__hdx_value, __hdx_series_idx)
+ *   FROM (
+ *     SELECT *, 0 AS __hdx_series_idx FROM (<per-series query 0>)
+ *     UNION ALL
+ *     SELECT *, 1 AS __hdx_series_idx FROM (<per-series query 1>)
+ *   )
+ *   GROUP BY ALL
+ *   ORDER BY __hdx_time_bucket
+ *
+ * Only the per-series VALUE column gets an internal alias (__hdx_value);
+ * group-by columns keep whatever name the single-series query produces —
+ * the user's alias, a plain column name, or ClickHouse's derived name for
+ * an expression (e.g. arrayElement(ResourceAttributes, 'k8s.pod.name') for
+ * ResourceAttributes['k8s.pod.name']). Consumers such as the Kubernetes
+ * dashboard and external-API clients look rows up by those derived names,
+ * so they must survive the merge byte-for-byte. Since the names of
+ * un-aliased expression group-bys can't be reproduced node-side, the
+ * wrappers use SELECT * (position-matched by UNION ALL, which takes column
+ * names from its first branch) and the outer pivot uses * EXCEPT +
+ * GROUP BY ALL instead of naming them.
+ *
+ * Contract (pinned by the queryChartConfig integration tests):
+ * - meta lists all value columns first, in select order (the positional
+ *   contract of useChartNumberFormats);
+ * - group-by and time-bucket columns keep their single-series names;
+ * - a series with no data at a joined row reads NULL (a gap), never 0;
+ * - two series resolving to the same alias are suffixed "__{splitIndex}";
+ * - seriesReturnType 'ratio' (exactly two series) replaces the operand
+ *   columns with a single "<num>/<denom>" column: a missing numerator counts
+ *   as 0, a missing or zero denominator yields NULL (a gap), and ratioMode
+ *   'share_of_total' divides by the per-bucket denominator total;
+ * - `formulas` append one derived column per formula after the
+ *   operand value columns, compiled from the validated letter-ref AST over
+ *   the pivot expressions with the same missing-data semantics as the ratio
+ *   projection (see compileFormulaAst). `showOperandSeries: false` drops the
+ *   raw operand columns so only the formula column(s) remain (still first,
+ *   ahead of the group/bucket passthrough columns). When formulas are
+ *   present they take precedence over `seriesReturnType: 'ratio'` (the two
+ *   are mutually exclusive in the editor);
+ * - gauge/sum series project group-by dimensions as individual columns while
+ *   histogram series keep their single Array GROUP_ALIAS column, so grouped
+ *   histogram rows never join with grouped gauge/sum rows (each branch class
+ *   pads the other's group columns with NULL / []).
+ */
+async function renderMultiSeriesMetricChartConfig(
+  rawChartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+  querySettings: QuerySettings | undefined,
+): Promise<ChSql> {
+  // Callers usually apply setChartSelectsAlias before rendering; apply it
+  // again (idempotently) so direct renderChartConfig callers get the same
+  // user-facing value-column names.
+  const chartConfig = setChartSelectsAlias(rawChartConfig);
+  const select = chartConfig.select;
+  if (typeof select === 'string') {
+    throw new Error('multi-series metric charts require an array select');
+  }
+
+  // User-facing output column names in select order, followed by formula
+  // column names in formulas order. Two columns can resolve to the same name
+  // (e.g. the same aggregation filtered vs unfiltered, or a formula aliased
+  // like an operand); suffix collisions with the column index so they stay
+  // distinct.
+  const formulas = chartConfig.formulas ?? [];
+  const outputNames: string[] = [];
+  const formulaColumns: { name: string; ast: FormulaAst }[] = [];
+  {
+    const seen = new Set<string>();
+    const uniqueName = (base: string, columnIdx: number) => {
+      const name = seen.has(base) ? `${base}__${columnIdx}` : base;
+      seen.add(name);
+      return name;
+    };
+    select.forEach((s, splitIdx) => {
+      outputNames.push(uniqueName(s.alias ?? '', splitIdx));
+    });
+    formulas.forEach((f, formulaIdx) => {
+      // Parse + validate against the chart's series before rendering any
+      // SQL. Persisted configs should already be valid (the editor validates
+      // on save); this is a render-time guard so a stale or hand-built
+      // config fails with a structured message instead of a ClickHouse error.
+      const parsed = validateFormula(f.expression, {
+        seriesCount: select.length,
+      });
+      if (!parsed.ok) {
+        throw new Error(
+          `Invalid formula "${f.expression}": ${parsed.errors
+            .map(e => e.message)
+            .join('; ')}`,
+        );
+      }
+      formulaColumns.push({
+        // A formula column is named by its alias, falling back to the raw
+        // expression text (mirrors DerivedColumnSchema.alias semantics).
+        name: uniqueName(f.alias || f.expression, select.length + formulaIdx),
+        ast: parsed.ast,
+      });
+    });
+  }
+
+  const hasGranularity = isUsingGranularity(chartConfig);
+  const includeGroupBy =
+    isUsingGroupBy(chartConfig) && chartConfig.selectGroupBy !== false;
+
+  // How many individual group-by columns a gauge/sum branch projects. Needed
+  // only so histogram branches can pad the same number of NULL columns —
+  // their names are never referenced.
+  const scalarGroupCount = !includeGroupBy
+    ? 0
+    : typeof chartConfig.groupBy === 'string'
+      ? splitAndTrimWithBracket(chartConfig.groupBy).length
+      : chartConfig.groupBy.length;
+
+  const branchIsHistogram = select.map(isHistogramClassSelect);
+  const hasScalarGroups =
+    includeGroupBy &&
+    scalarGroupCount > 0 &&
+    branchIsHistogram.some(isHistogram => !isHistogram);
+  const hasHistogramGroup =
+    includeGroupBy && branchIsHistogram.some(isHistogram => isHistogram);
+
+  // Render each per-series branch exactly as the single-series path would —
+  // only the value column gets an internal alias. Trailing SETTINGS are
+  // stripped and hoisted to the outer query (ClickHouse rejects SETTINGS on
+  // a non-final UNION branch).
+  const branches = await Promise.all(
+    select.map(async (s, splitIdx) => {
+      // Formulas belong to the composed outer projection only — a branch
+      // carrying them would recurse back into this function. HAVING,
+      // ORDER BY and LIMIT apply to the final joined result, not to each
+      // series independently, so they render on the outer statement. Only
+      // row-level filters (where/filters/aggCondition) stay per-branch.
+      const branchConfig: ChartConfigWithOptDateRangeEx = {
+        ...chartConfig,
+        select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
+        formulas: undefined,
+        showOperandSeries: undefined,
+        having: undefined,
+        orderBy: undefined,
+        limit: undefined,
+      };
+      const rendered = await renderChartConfig(
+        branchConfig,
+        metadata,
+        querySettings,
+      );
+      const [sql, settingsClause] = extractSettingsClauseFromEnd(rendered.sql);
+      return {
+        sql,
+        params: rendered.params,
+        settingsClause,
+        isHistogram: isHistogramClassSelect(s),
+        splitIdx,
+      };
+    }),
+  );
+
+  // Wrap every branch so the UNION ALL column lists line up by position:
+  //   [value, <scalar group columns>, time bucket?, series index, group?]
+  //
+  // A gauge/sum branch naturally projects [value, groups..., bucket?]
+  // (renderSelect order), so SELECT * preserves that prefix — and, crucially,
+  // the original group column names. A histogram branch projects
+  // [bucket?, group, value] under fixed aliases, so it is re-projected
+  // explicitly, padding each scalar group slot with NULL (the pad names are
+  // irrelevant: UNION ALL takes names from its first branch). Scalar
+  // branches are ordered first so their names win; when every branch is a
+  // histogram there are no scalar group columns to preserve.
+  //
+  // Every wrapper normalizes the value column to Float64. Different
+  // aggregations produce different native types — quantile is Float64 while
+  // histogram count is Int64 and scalar count() is UInt64 — and Int64/UInt64
+  // have no least supertype with Float64, so a mixed-type UNION ALL either
+  // fails with NO_COMMON_TYPE (use_variant_as_common_type = 0) or silently
+  // unifies as Variant(Float64, Int64) (the modern default), which the
+  // anyOrNullIf pivot then propagates to every output column and no consumer
+  // classifies as numeric. toFloat64 makes the union type deterministic
+  // (Float64, or Nullable(Float64) when a branch value is Nullable) and
+  // matches the JS-number semantics of the old node-side merge.
+  const orderedBranches = [
+    ...branches.filter(branch => !branch.isHistogram),
+    ...branches.filter(branch => branch.isHistogram),
+  ];
+  const normalizedValueColumn = `toFloat64(\`${MULTI_SERIES_VALUE_ALIAS}\`) AS \`${MULTI_SERIES_VALUE_ALIAS}\``;
+  const branchSelects = orderedBranches.map(branch => {
+    const idxColumn = `${branch.splitIdx} AS \`${MULTI_SERIES_IDX_ALIAS}\``;
+    const columns: string[] = [];
+    if (branch.isHistogram) {
+      columns.push(normalizedValueColumn);
+      if (hasScalarGroups) {
+        for (let j = 0; j < scalarGroupCount; j++) {
+          columns.push(`NULL AS \`__hdx_group_pad_${j}\``);
+        }
+      }
+      if (hasGranularity) {
+        columns.push(`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``);
+      }
+      columns.push(idxColumn);
+      if (hasHistogramGroup) {
+        columns.push(`\`${GROUP_ALIAS}\``);
+      }
+    } else {
+      columns.push(`* REPLACE (${normalizedValueColumn})`);
+      columns.push(idxColumn);
+      if (hasHistogramGroup) {
+        // Empty-array pad ([] is Array(Nothing), the supertype-compatible
+        // empty array) so scalar rows never share a grouping key with
+        // histogram rows.
+        columns.push(`[] AS \`${GROUP_ALIAS}\``);
+      }
+    }
+    return chSql`SELECT ${{ UNSAFE_RAW_SQL: columns.join(', ') }} FROM (${{
+      sql: branch.sql,
+      params: branch.params,
+    }})`;
+  });
+  const unionSql = concatChSql(' UNION ALL ', branchSelects);
+
+  // Pivot the tagged rows back into one column per series. anyOrNullIf
+  // returns NULL (a rendered gap) when a series has no row at this
+  // (group, bucket) key — a plain anyIf would default to 0.
+  const valueExprFor = (splitIdx: number) =>
+    `anyOrNullIf(\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\` = ${splitIdx})`;
+
+  // Formulas supersede the ratio toggle (mutually exclusive in the editor;
+  // rendering stays deterministic if a hand-built config carries both).
+  const hasFormulas = formulaColumns.length > 0;
+  const isRatio =
+    !hasFormulas &&
+    chartConfig.seriesReturnType === 'ratio' &&
+    select.length === 2;
+
+  const projection: string[] = [];
+  if (hasFormulas) {
+    // Value columns first, in select order, then the formula column(s) —
+    // the positional contract of useChartNumberFormats. showOperandSeries:
+    // false drops the raw operand columns from the projection (the union
+    // still computes every branch; the formula references them via the
+    // pivot expressions).
+    if (chartConfig.showOperandSeries !== false) {
+      outputNames.forEach((outputName, splitIdx) => {
+        projection.push(
+          `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+        );
+      });
+    }
+    formulaColumns.forEach(({ name, ast }) => {
+      projection.push(
+        `${compileFormulaAst(ast, valueExprFor)} AS ${quotedColumnName(name)}`,
+      );
+    });
+  } else if (isRatio) {
+    // A group absent from the (filtered) numerator contributes zero, not
+    // "no data" — so a zero-error group reads 0%, not N/A. A missing or zero
+    // denominator makes the quotient NULL, which renders as a gap.
+    const numerator = `coalesce(${valueExprFor(0)}, 0)`;
+    // per_group: each row divides by its own denominator. share_of_total:
+    // each row divides by the denominator total across ALL groups in the
+    // same time bucket, so the grouped lines decompose the blended rate and
+    // sum to the ungrouped value.
+    const denominator =
+      chartConfig.ratioMode === 'share_of_total'
+        ? `sum(${valueExprFor(1)}) OVER (${
+            hasGranularity
+              ? `PARTITION BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
+              : ''
+          })`
+        : valueExprFor(1);
+    // Strip the collision-disambiguation suffix from the label so a
+    // same-alias ratio reads "avg(x)/avg(x)", not "avg(x)/avg(x)__1".
+    const ratioName = `${outputNames[0]}/${outputNames[1].replace(/__\d+$/, '')}`;
+    projection.push(
+      `${numerator} / nullif(${denominator}, 0) AS ${quotedColumnName(ratioName)}`,
+    );
+  } else {
+    outputNames.forEach((outputName, splitIdx) => {
+      projection.push(
+        `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+      );
+    });
+  }
+
+  // Pass the group and bucket columns through under their original names
+  // (which are not knowable node-side for expression group-bys), and group
+  // by exactly those columns. GROUP BY ALL expands to every non-aggregate
+  // SELECT expression, i.e. the * EXCEPT list; the pivot/ratio/formula
+  // expressions contain aggregate functions and are excluded. With no passthrough
+  // columns at all (a number chart) the implicit global aggregation merges
+  // everything into one row.
+  const hasPassthroughColumns =
+    hasScalarGroups || hasHistogramGroup || hasGranularity;
+  if (hasPassthroughColumns) {
+    projection.push(
+      `* EXCEPT (\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\`)`,
+    );
+  }
+
+  const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
+
+  // HAVING / ORDER BY / LIMIT apply to the final joined result and
+  // reference its output columns (operand aliases, formula names, the ratio
+  // column, group passthroughs, the time bucket). HAVING is valid even
+  // without GROUP BY ALL (the no-group number-chart shape is an implicit
+  // global aggregation).
+  const having = await renderHaving(chartConfig, metadata);
+
+  // Time charts stay bucket-ordered first, with the user's sort as a
+  // tiebreaker within each bucket. renderOrderBy is not reusable here: it
+  // re-renders the bucket expression over raw timestamp columns, which
+  // don't exist in this outer scope — only the fixed bucket alias does.
+  const orderBy = concatChSql(
+    ',',
+    hasGranularity ? chSql`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : chSql``,
+    chartConfig.orderBy != null
+      ? renderSortSpecificationList(chartConfig.orderBy)
+      : [],
+  );
+
+  const limit = renderLimit(chartConfig);
+
+  const core = concatChSql(' ', [
+    chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
+    chSql`FROM (${unionSql})`,
+    hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
+  ]);
+
+  // The share_of_total ratio is the one projection built on a window
+  // function, which ClickHouse prohibits in HAVING — so filter it through
+  // a wrapper instead: WHERE on the wrapped result evaluates after the
+  // window, with the same filter-the-output-rows semantics. ORDER BY/LIMIT
+  // follow on the outermost statement either way.
+  const usesWindowProjection =
+    isRatio && chartConfig.ratioMode === 'share_of_total';
+  const filtered = !having?.sql
+    ? core
+    : usesWindowProjection
+      ? chSql`SELECT * FROM (${core}) WHERE ${having}`
+      : concatChSql(' ', [core, chSql`HAVING ${having}`]);
+
+  return concatChSql(' ', [
+    filtered,
+    orderBy.sql ? chSql`ORDER BY ${orderBy}` : chSql``,
+    limit?.sql ? chSql`LIMIT ${limit}` : chSql``,
+    settings !== '' ? chSql`SETTINGS ${{ UNSAFE_RAW_SQL: settings }}` : chSql``,
+  ]);
+}
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -2255,11 +2768,36 @@ export async function renderChartConfig(
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }
 
+  // Expand dashboard variables before anything reads the config's expressions,
+  // so metric translation and the CTEs it builds all see final SQL fragments.
+  const substitutedChartConfig = substituteChartConfigVariables(rawChartConfig);
+
+  // A metric chart with multiple series composes one query per series into a
+  // single UNION ALL + pivot statement (each metric type needs its own CTE
+  // scaffolding, and different types read different physical tables). The
+  // per-series branches recurse through this function with a single select
+  // (and without formulas). A single-series chart with a formula (e.g.
+  // `A * 100`) also takes the composed path — the formula projects over the
+  // pivoted value columns, which only the composed shape produces.
+  if (
+    isMetricChartConfig(substitutedChartConfig) &&
+    Array.isArray(substitutedChartConfig.select) &&
+    (substitutedChartConfig.select.length > 1 ||
+      (substitutedChartConfig.select.length === 1 &&
+        hasMetricFormulas(substitutedChartConfig)))
+  ) {
+    return renderMultiSeriesMetricChartConfig(
+      substitutedChartConfig,
+      metadata,
+      querySettings,
+    );
+  }
+
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
-  const translatedChartConfig = isMetricChartConfig(rawChartConfig)
-    ? await translateMetricChartConfig(rawChartConfig, metadata)
-    : rawChartConfig;
+  const translatedChartConfig = isMetricChartConfig(substitutedChartConfig)
+    ? await translateMetricChartConfig(substitutedChartConfig, metadata)
+    : substitutedChartConfig;
 
   // Resolve the bucket column once for the whole render. A source with
   // `timestampValueExpression = "EventDate, EventTime"` should bucket on
@@ -2294,7 +2832,8 @@ export async function renderChartConfig(
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
-  //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
+  // TODO: WITH FILL (gap-filling for time buckets) was removed as dead code; it
+  // broke heatmaps and some charts. Reintroduce a fill renderer if we revisit this.
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
 

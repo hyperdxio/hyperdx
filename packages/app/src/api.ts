@@ -4,12 +4,14 @@ import ky from 'ky-universal';
 import type {
   Alert,
   AlertApiResponse,
+  AlertEvaluationsApiResponse,
   AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   InstallationApiResponse,
   MeApiResponse,
   PresetDashboard,
   PresetDashboardFilter,
+  RotateAccessKeyApiResponse,
   RotateApiKeyApiResponse,
   TeamApiResponse,
   TeamClickHouseSettingsUpdate,
@@ -22,7 +24,12 @@ import type {
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
 } from '@hyperdx/common-utils/dist/types';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import { getLocalDashboardTags } from './dashboard';
@@ -218,6 +225,39 @@ const api = {
       enabled: enabled && alertId != null,
     });
   },
+  getAlertEvaluationsQueryKey: (
+    alertId: string | undefined,
+    startTime: number,
+    endTime: number,
+  ) => ['alertEvaluations', alertId, startTime, endTime] as const,
+  // Paginated evaluation history for the alert detail page: one entry per
+  // evaluation window (newest first), scoped to the given date range and
+  // including errors recorded for each window. Older pages are keyed off the
+  // server-provided `nextBefore` cursor, which advances even across gaps with
+  // no evaluations. Bounds are quantized to the minute so live ticks don't
+  // produce a new query key on every render.
+  useAlertEvaluations(alertId: string | undefined, dateRange: [Date, Date]) {
+    const BUCKET_MS = 60_000;
+    const startTime =
+      Math.floor(dateRange[0].getTime() / BUCKET_MS) * BUCKET_MS;
+    const endTime = Math.floor(dateRange[1].getTime() / BUCKET_MS) * BUCKET_MS;
+    return useInfiniteQuery({
+      queryKey: api.getAlertEvaluationsQueryKey(alertId, startTime, endTime),
+      queryFn: ({ pageParam }) =>
+        hdxServer(`alerts/${alertId}/evaluations`, {
+          method: 'GET',
+          searchParams: {
+            startTime,
+            endTime,
+            ...(pageParam != null && { before: pageParam }),
+          },
+        }).json<AlertEvaluationsApiResponse>(),
+      initialPageParam: undefined as number | undefined,
+      getNextPageParam: lastPage =>
+        lastPage.hasMore ? lastPage.nextBefore : undefined,
+      enabled: alertId != null && startTime < endTime,
+    });
+  },
   useServices() {
     return useQuery({
       queryKey: [`services`],
@@ -233,6 +273,24 @@ const api = {
         hdxServer(`team/apiKey`, {
           method: 'PATCH',
         }).json<RotateApiKeyApiResponse>(),
+    });
+  },
+  useRotatePersonalAccessKey() {
+    const queryClient = useQueryClient();
+    return useMutation<RotateAccessKeyApiResponse, Error | HTTPError>({
+      mutationFn: async () =>
+        hdxServer(`me/accessKey`, {
+          method: 'PATCH',
+        }).json<RotateAccessKeyApiResponse>(),
+      // Seed the cache from the response rather than refetching `me`. The old
+      // key is already revoked by the time this runs, so a refetch that fails
+      // would leave every `useMe` consumer rendering a dead credential with no
+      // way to reach the new one short of a reload.
+      onSuccess: data => {
+        queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
+          prev == null ? prev : { ...prev, accessKey: data.newAccessKey },
+        );
+      },
     });
   },
   useDeleteTeamMember() {

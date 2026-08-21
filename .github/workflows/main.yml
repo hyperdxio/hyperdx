@@ -14,6 +14,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history so `nx affected` can diff against the PR base ref.
+          # Blobless, not treeless: `nx affected` runs `git diff --name-only`,
+          # which needs the trees. `tree:0` makes that diff pay a lazy fetch
+          # round trip and comes out slower than the bytes it saves.
+          fetch-depth: 0
+          filter: blob:none
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -21,13 +28,45 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
-      - name: Build dependencies
-        run: make ci-build
+        run: yarn install --immutable
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
-      - name: Run lint + type check
-        run: make ci-lint
+      # Restore-only on PRs: a PR-scoped cache entry can't be read by any other
+      # branch, so saving one buys nothing and just evicts other entries out of
+      # the repo's shared 10GB budget (including the integration job's buildx
+      # layer cache). Only push runs write, and PRs read main's entry.
+      - name: Restore nx computation cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+      # Upstream `ci:build` runs automatically via the `dependsOn` wiring in
+      # nx.json, so unchanged projects are served from the nx cache.
+      - name: Run lint + type check (affected)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npx nx affected -t ci:lint --base="origin/${BASE_REF}"
+      - name: Run lint + type check (full)
+        if: github.event_name != 'pull_request'
+        run: npx nx run-many -t ci:lint
+      # Whole-repo escape-hatch ratchet — runs unconditionally (not via `nx
+      # affected`, and not via `make ci-lint`, which this job no longer calls),
+      # so the gate can't be silently skipped for a PR that touches few projects.
+      - name: Escape-hatch ratchet tests
+        run: node --test scripts/ci/__tests__/ratchet.test.mjs
+      - name: Escape-hatch ratchet
+        run: node scripts/ci/ratchet.mjs
+      # Runs even when lint fails, so a red main still refreshes the cache that
+      # PR runs restore from.
+      - name: Save nx computation cache
+        if: always() && github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
   unit:
     timeout-minutes: 8
     runs-on: ubuntu-24.04

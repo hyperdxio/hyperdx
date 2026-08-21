@@ -3,24 +3,27 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
-import ms from 'ms';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
-import Alert, { AlertSource, IAlert } from '@/models/alert';
+import Alert, {
+  AlertChannel,
+  AlertSource,
+  getAlertChannels,
+  IAlert,
+} from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
 import Webhook from '@/models/webhook';
 import { Api400Error } from '@/utils/errors';
-import logger from '@/utils/logger';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 export type AlertInput = Omit<
   IAlert,
   | 'id'
+  | 'channel'
   | 'scheduleStartAt'
   | 'savedSearchId'
   | 'createdAt'
@@ -30,6 +33,9 @@ export type AlertInput = Omit<
   | 'state'
 > & {
   id?: string;
+  // Exactly one of channel/channels is provided (enforced by alertSchema);
+  // `channels` flows in optionally via IAlert.
+  channel?: AlertChannel;
   // Replace the Date-type fields from IAlert
   scheduleStartAt?: string | null;
   // Replace the ObjectId-type fields from IAlert
@@ -47,7 +53,12 @@ export const validateAlertInput = async (
   teamId: ObjectId,
   alertInput: Pick<
     AlertInput,
-    'source' | 'dashboardId' | 'tileId' | 'savedSearchId' | 'channel'
+    | 'source'
+    | 'dashboardId'
+    | 'tileId'
+    | 'savedSearchId'
+    | 'channel'
+    | 'channels'
   >,
 ) => {
   if (alertInput.source === AlertSource.TILE) {
@@ -97,21 +108,33 @@ export const validateAlertInput = async (
     }
   }
 
-  if (alertInput.channel.type === 'webhook') {
-    validateObjectId(alertInput.channel.webhookId, 'Invalid webhook ID');
+  const channels = getAlertChannels(alertInput);
+  if (channels.length === 0) {
+    throw new Api400Error('At least one notification channel is required');
+  }
 
-    if (
-      (await Webhook.findOne({
-        _id: alertInput.channel.webhookId,
-        team: teamId,
-      })) == null
-    ) {
-      throw new Api400Error('Webhook not found');
-    }
+  const webhookIds = channels
+    .filter(c => c.type === 'webhook')
+    .map(c => c.webhookId);
+  for (const webhookId of webhookIds) {
+    validateObjectId(webhookId, 'Invalid webhook ID');
+  }
+  const uniqueIds = [...new Set(webhookIds)];
+  const found = await Webhook.countDocuments({
+    _id: { $in: uniqueIds },
+    team: teamId,
+  });
+  if (found !== uniqueIds.length) {
+    throw new Api400Error('Webhook not found');
   }
 };
 
-const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+// Exported for unit testing the channel-mirroring invariant (see
+// controllers/__tests__/alerts.test.ts) -- otherwise only used internally.
+export const makeAlert = (
+  alert: AlertInput,
+  userId?: ObjectId,
+): Partial<IAlert> => {
   // Preserve existing DB value when scheduleStartAt is omitted from updates
   // (undefined), while still allowing explicit clears via null.
   const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
@@ -127,9 +150,14 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
         : alert.scheduleOffsetMinutes;
   const isSavedSearch = alert.source === AlertSource.SAVED_SEARCH;
   const isTile = alert.source === AlertSource.TILE;
+  const channels = getAlertChannels(alert);
 
   return {
-    channel: alert.channel,
+    // `channels` is canonical; `channel` mirrors channels[0] so readers that
+    // predate multi-channel support (older task runners mid-rollout) still
+    // notify the first target.
+    channel: channels[0] ?? { type: null },
+    channels,
     interval: alert.interval,
     ...(normalizedScheduleOffsetMinutes != null && {
       scheduleOffsetMinutes: normalizedScheduleOffsetMinutes,
@@ -332,66 +360,4 @@ export const deleteAlert = async (id: string, teamId: ObjectId) => {
     _id: id,
     team: teamId,
   });
-};
-
-export const generateAlertSilenceToken = async (
-  alertId: ObjectId | string,
-  teamId: ObjectId | string,
-) => {
-  const secret = process.env.EXPRESS_SESSION_SECRET;
-
-  if (!secret) {
-    logger.error(
-      'EXPRESS_SESSION_SECRET is not set for signing token, skipping alert silence JWT generation',
-    );
-    return '';
-  }
-
-  const alert = await getAlertById(alertId, teamId);
-  if (alert == null) {
-    throw new Error('Alert not found');
-  }
-
-  const token = sign(
-    { alertId: alert._id.toString(), teamId: teamId.toString() },
-    secret,
-    { expiresIn: '1h' },
-  );
-
-  // Slack does not accept ids longer than 255 characters
-  if (token.length > 255) {
-    logger.error(
-      'Alert silence JWT length is greater than 255 characters, this may cause issues with some clients.',
-    );
-  }
-
-  return token;
-};
-
-export const silenceAlertByToken = async (token: string) => {
-  const secret = process.env.EXPRESS_SESSION_SECRET;
-
-  if (!secret) {
-    throw new Error('EXPRESS_SESSION_SECRET is not set for verifying token');
-  }
-
-  const decoded = verify(token, secret, {
-    algorithms: ['HS256'],
-  }) as { alertId: string; teamId: string };
-
-  if (!decoded?.alertId || !decoded?.teamId) {
-    throw new Error('Invalid token');
-  }
-
-  const alert = await getAlertById(decoded.alertId, decoded.teamId);
-  if (alert == null) {
-    throw new Error('Alert not found');
-  }
-
-  alert.silenced = {
-    at: new Date(),
-    until: new Date(Date.now() + ms('30m')),
-  };
-
-  return alert.save();
 };

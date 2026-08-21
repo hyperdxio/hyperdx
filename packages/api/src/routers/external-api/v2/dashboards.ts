@@ -572,6 +572,37 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             Per-series number formatting options. When set, takes precedence
  *             over the chart-level numberFormat for this select item only.
  *
+ *     Formula:
+ *       type: object
+ *       required:
+ *         - expression
+ *       description: >
+ *         A derived series computed from the chart's select items via a
+ *         letter-ref arithmetic expression (metric, log, and trace sources
+ *         only). "A" refers
+ *         to select[0], "B" to select[1], and so on. The grammar supports
+ *         + - * /, parentheses, and numeric constants; expressions are parsed
+ *         and validated, never passed through as raw SQL. Division by zero or
+ *         a missing operand yields NULL (rendered as a gap).
+ *       properties:
+ *         expression:
+ *           type: string
+ *           maxLength: 1024
+ *           description: >
+ *             Arithmetic expression over the select items by position, e.g.
+ *             "A / (A + B) * 100" for a success-rate percentage.
+ *           example: "A / (A + B) * 100"
+ *         alias:
+ *           type: string
+ *           description: >
+ *             Display label for the formula series in chart legends and column
+ *             headers. Falls back to the raw expression text when unset.
+ *           example: "Success rate %"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: >
+ *             Per-series number formatting options for the formula series.
+ *
  *     LineBuilderChartConfig:
  *       type: object
  *       required:
@@ -631,9 +662,27 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           default: false
  *         seriesLimit:
  *           type: integer
- *           minimum: 1
- *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           minimum: 0
+ *           description: >
+ *             Maximum number of series rendered (top-N by value). Omit to use
+ *             the default render cap, set 0 for unlimited, or a positive N to
+ *             keep the top N series.
  *           example: 5
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived series computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             series are returned; the raw operand series are hidden.
+ *           default: true
  *
  *     BarBuilderChartConfig:
  *       type: object
@@ -683,9 +732,27 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         seriesLimit:
  *           type: integer
- *           minimum: 1
- *           description: Maximum number of series rendered (top-N by value). Omit for no limit.
+ *           minimum: 0
+ *           description: >-
+ *             Maximum number of series rendered (top-N by value). Omit to use
+ *             the default render cap, set 0 for unlimited, or a positive N to
+ *             keep the top N series.
  *           example: 5
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived series computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             series are returned; the raw operand series are hidden.
+ *           default: true
  *
  *     TableBuilderChartConfig:
  *       type: object
@@ -745,6 +812,21 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         onClick:
  *           $ref: '#/components/schemas/OnClick'
  *           description: Optional link-out configuration applied when a user clicks a row.
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived columns computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             columns are returned; the raw operand columns are hidden.
+ *           default: true
  *
  *     NumberBuilderChartConfig:
  *       type: object
@@ -766,10 +848,25 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         select:
  *           type: array
  *           minItems: 1
- *           maxItems: 1
- *           description: Exactly one aggregated value to display as a single number.
+ *           maxItems: 20
+ *           description: >
+ *             Exactly one aggregated value to display as a single number —
+ *             unless "formulas" is set, in which case the select items are
+ *             the formula's operands and the (single) formula value is
+ *             displayed instead.
  *           items:
  *             $ref: '#/components/schemas/SelectItem'
+ *         formulas:
+ *           type: array
+ *           maxItems: 1
+ *           description: >
+ *             A single derived value computed from the select items via
+ *             letter-ref arithmetic ("A" = select[0], "B" = select[1], ...).
+ *             Metric, log, and trace sources only. Number tiles display the
+ *             formula value and
+ *             always hide the operand series.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -832,12 +929,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         limit:
  *           type: integer
- *           minimum: 1
+ *           minimum: 0
  *           description: >
  *             Maximum number of slices (SQL LIMIT). Without a custom "orderBy"
  *             the query keeps the groups with the largest aggregated values;
  *             with an "orderBy" it keeps the first slices in that order. Omit
- *             to fetch all groups.
+ *             or set 0 to fetch all groups.
  *           example: 10
  *
  *     CategoricalBarBuilderChartConfig:
@@ -885,12 +982,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Number formatting options for displayed values.
  *         limit:
  *           type: integer
- *           minimum: 1
+ *           minimum: 0
  *           description: >
  *             Maximum number of bars (SQL LIMIT). Without a custom "orderBy"
  *             the query keeps the groups with the largest aggregated values;
- *             with an "orderBy" it keeps the first bars in that order. Omit to
- *             fetch all groups.
+ *             with an "orderBy" it keeps the first bars in that order. Omit or
+ *             set 0 to fetch all groups.
  *           example: 10
  *
  *     HeatmapSelectItem:
@@ -1623,7 +1720,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *
  *     FilterInput:
  *       type: object
- *       description: Dashboard filter key that can be added to a dashboard
+ *       description: |
+ *         A drop-down filter on a dashboard. Every filter can either broadcast its
+ *         selected value(s) to every tile (isBroadcastEnabled), expose its selected
+ *         value as a variable (isVariableEnabled) or both. Typically a filter should
+ *         do just one of these things.
  *       required:
  *         - type
  *         - name
@@ -1643,7 +1744,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         expression:
  *           type: string
  *           minLength: 1
- *           description: Key expression used when applying this dashboard filter key
+ *           description: SQL expression used when querying values for this filter, and when applying this dashboard filter to tiles.
  *           example: "environment"
  *         sourceId:
  *           type: string
@@ -1673,8 +1774,42 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             an empty array to apply the filter to ALL tiles regardless of source.
  *             A non-empty array restricts the filter to only tiles whose source ID
  *             is in the list; tiles using other sources are not affected by the
- *             selected filter value(s).
+ *             selected filter value(s). Scopes the broadcast condition only, so a
+ *             non-empty array is rejected when isBroadcastEnabled is false, and is
+ *             omitted from responses for such a filter.
  *           example: ["65f5e4a3b9e77c001a111111"]
+ *         isBroadcastEnabled:
+ *           type: boolean
+ *           description: |
+ *             Whether the selected value is applied as a filter condition on every
+ *             builder tile this filter applies to (see appliesToSourceIds), and every
+ *             raw sql tile using the $__filters macro. Omitting the field means enabled.
+ *           default: true
+ *           example: false
+ *         isVariableEnabled:
+ *           type: boolean
+ *           description: |
+ *             Whether the selected value is exposed to tile queries as a dashboard
+ *             variable named by variableName. Tiles may reference it as `$variableName`
+ *             or using the (preferred) `$__filter($<variableName>)` and
+ *             `$__conditionalAll(<condition>, $<variableName>)` macros.
+ *           default: false
+ *           example: true
+ *         variableName:
+ *           type: string
+ *           maxLength: 64
+ *           pattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+ *           description: |
+ *             Token tiles reference this filter's selected value by, as
+ *             `$variableName`. Must start with a letter and may contain only
+ *             letters, numbers, and underscores. Defaults to the display name with
+ *             whitespace replaced by underscores and remaining illegal characters
+ *             removed, so a variable-enabled filter whose name derives nothing
+ *             usable must send this field explicitly. Variable names must be unique
+ *             across a dashboard's variable-enabled filters. Names the variable
+ *             only, so the field is rejected when isVariableEnabled is not true, and
+ *             is omitted from responses for such a filter.
+ *           example: "environment"
  *
  *     Filter:
  *       allOf:
@@ -1715,7 +1850,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: ["production", "monitoring"]
  *         filters:
  *           type: array
- *           description: Dashboard filter keys added to the dashboard and applied to all tiles
+ *           description: |
+ *             Dropdown filters added to the dashboard. Each one broadcasts
+ *             its selected value as a condition, acts as a variable which
+ *             can be referenced in tile queries, or both.
  *           items:
  *             $ref: '#/components/schemas/Filter'
  *         savedQuery:
@@ -1768,7 +1906,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: ["development"]
  *         filters:
  *           type: array
- *           description: Dashboard filter keys to add to the dashboard and apply across all tiles
+ *           description: |
+ *             Dropdown filters added to the dashboard. Each one broadcasts
+ *             its selected value as a condition, acts as a variable which
+ *             can be referenced in tile queries, or both.
  *           items:
  *             $ref: '#/components/schemas/FilterInput'
  *         savedQuery:
@@ -1821,7 +1962,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: ["production", "updated"]
  *         filters:
  *           type: array
- *           description: Dashboard filter keys on the dashboard, applied across all tiles
+ *           description: |
+ *             Dropdown filters added to the dashboard. Each one broadcasts
+ *             its selected value as a condition, acts as a variable which
+ *             can be referenced in tile queries, or both.
  *           items:
  *             $ref: '#/components/schemas/Filter'
  *         savedQuery:

@@ -357,6 +357,8 @@ function ServicesDashboardPage() {
             />
             <SearchWhereInput
               tableConnection={tcFromSource(source)}
+              sourceId={sourceId}
+              dateRange={searchedTimeRange}
               control={control}
               name="where"
               onSubmit={onSubmit}
@@ -456,6 +458,7 @@ function ServicesDashboardPage() {
         onRemoveFilter={handleRemoveFilter}
         source={source}
         isLoading={isFetchingFilters || isFiltersMutationPending}
+        showVariableOptions={false}
       />
     </Box>
   );
