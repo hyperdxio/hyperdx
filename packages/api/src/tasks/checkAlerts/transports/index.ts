@@ -5,8 +5,6 @@ import { handleSendSlackWebhook } from './slack';
 import type { ChannelTransport, WebhookTransport } from './types';
 
 export { createHandlebarsWithHelpers } from './generic';
-/** @public */
-export { getWebhookFetchTimeoutMs } from './generic';
 export { handleSendGenericWebhook } from './generic';
 export { handleSendSlackWebhook } from './slack';
 export * from './types';
