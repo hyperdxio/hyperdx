@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -184,15 +192,17 @@ export default function DOMPlayer({
   };
 
   // Reassembles chunked rrweb events, one assembler instance per stream.
-  // A replaced stream isn't reliably cancelled, so its callbacks can
-  // interleave with the new stream's — even for identical query params
-  // (e.g. switching away from a session and back while the first stream is
-  // still loading). Isolation therefore can't be keyed on parameters; the
-  // assembler instance doubles as the stream's identity:
+  //
+  // A replaced or unmounted stream is cancelled at the source (the fetch is
+  // aborted, see useRRWebEventStream), but rows of an already-received chunk
+  // can still be delivered synchronously after the abort, so the assembler
+  // instance doubles as the stream's identity as a second line of defense:
   //  - buffer isolation: each stream's onEvent/onEnd closures are captured
   //    when the fetch starts, and useMemo hands every stream change a fresh
   //    instance (previous values aren't cached across dependency changes),
-  //    so a stream ends and flushes only the assembler it captured;
+  //    so a stream ends and flushes only the assembler it captured — even
+  //    when two streams have identical query params (switching away from a
+  //    session and back while the first stream is still loading);
   //  - delivery gating: only the active instance may feed the replayer or
   //    update player state, so a stale stream's events, errors, and
   //    completion can't pollute the replacement replay.
@@ -220,11 +230,13 @@ export default function DOMPlayer({
     return instance;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamKey]);
-  // Publish the active instance only after the render commits: a discarded
-  // render must never re-point the gate at an assembler no committed stream
-  // uses. Declared before useRRWebEventStream so it runs before the effect
-  // that starts a replacement fetch.
-  useEffect(() => {
+  // Publish the active instance from a layout effect: it never runs for a
+  // discarded render (so an uncommitted assembler can't take over the gate),
+  // and it runs synchronously within the commit task (so no stream delivery
+  // — a network callback — can observe a stale gate between the commit and
+  // the ref flip). Passive effects, including the one that starts a
+  // replacement fetch, run after it.
+  useLayoutEffect(() => {
     activeAssemblerRef.current = assembler;
   }, [assembler]);
   useEffect(() => {
