@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -24,7 +24,7 @@ import {
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
 import {
-  createRrwebAssemblerRegistry,
+  createRrwebChunkAssembler,
   RRWebStreamRow,
 } from '@/utils/rrwebChunkAssembler';
 
@@ -183,15 +183,24 @@ export default function DOMPlayer({
     lastEventTsLoadedRef.current = parsedEvent.timestamp;
   };
 
-  // Reassembles chunked rrweb events, one assembler per stream. A replaced
-  // stream isn't reliably cancelled, so its callbacks can interleave with
-  // the new stream's — the registry keeps their buffers isolated.
+  // Reassembles chunked rrweb events, one assembler instance per stream.
+  // A replaced stream isn't reliably cancelled, so its callbacks can
+  // interleave with the new stream's — even for identical query params
+  // (e.g. switching away from a session and back while the first stream is
+  // still loading). Isolation therefore can't be keyed on parameters: each
+  // stream's onEvent/onEnd closures are captured when the fetch starts, and
+  // useMemo hands every stream change a fresh instance (previous values
+  // aren't cached across dependency changes), so a stream ends and flushes
+  // only the assembler it captured.
   const streamKey = `${serviceName}|${sessionId}|${sourceId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
-  const [assemblerRegistry] = useState(() =>
-    createRrwebAssemblerRegistry({
-      onEvent: parsedEvent => handleParsedEventRef.current(parsedEvent),
-      onError: (error, info) => handleDroppedEventRef.current(error, info),
-    }),
+  const assembler = useMemo(
+    () =>
+      createRrwebChunkAssembler({
+        onEvent: parsedEvent => handleParsedEventRef.current(parsedEvent),
+        onError: (error, info) => handleDroppedEventRef.current(error, info),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [streamKey],
   );
   useEffect(() => {
     setDroppedEventCount(0);
@@ -206,14 +215,14 @@ export default function DOMPlayer({
       endDate: dateRange[1],
       limit: 1000000, // large enough to get all events
       onEvent: (event: RRWebStreamRow) => {
-        assemblerRegistry.get(streamKey).push(event);
+        assembler.push(event);
 
         if (initialEventsRef.current.length > 5) {
           setIsInitialEventsLoaded(true);
         }
       },
       onEnd: () => {
-        assemblerRegistry.end(streamKey);
+        assembler.end();
         setIsInitialEventsLoaded(true);
         setIsReplayFullyLoaded(true);
 
@@ -297,7 +306,6 @@ export default function DOMPlayer({
       );
     }
 
-    // eslint-disable-next-line react-hooks/immutability
     updatePlayerTimeRafRef.current = requestAnimationFrame(updatePlayerTime);
   }, []);
 
@@ -481,10 +489,9 @@ export default function DOMPlayer({
         replayerRef.current?.destroy();
         replayerRef.current = null;
       }
-      assemblerRegistry.clear();
       abort();
     };
-  }, [abort, assemblerRegistry]);
+  }, [abort]);
 
   const isLoading = isInitialEventsLoaded === false && isSearchResultsFetching;
   // TODO: Handle when ts is set to a value that's outside of this session

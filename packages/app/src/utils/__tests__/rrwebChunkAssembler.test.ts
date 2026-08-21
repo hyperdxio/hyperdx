@@ -1,5 +1,4 @@
 import {
-  createRrwebAssemblerRegistry,
   createRrwebChunkAssembler,
   RRWebAssemblerErrorInfo,
   RRWebStreamRow,
@@ -191,85 +190,37 @@ describe('createRrwebChunkAssembler', () => {
     expect(events).toEqual([event]);
     expect(errors).toEqual([]);
   });
-});
 
-describe('createRrwebAssemblerRegistry', () => {
-  function makeRegistry() {
+  it('keeps separate instances fully isolated (concurrent streams)', () => {
+    // DOMPlayer creates one assembler per stream. A replaced stream is not
+    // reliably cancelled, so an old stream's pushes and end() can interleave
+    // with the new stream's — including for identical query parameters
+    // (switching away from a session and back mid-load). Instance identity,
+    // not any shared key, is what isolates their buffers.
     const events: any[] = [];
     const errors: RRWebAssemblerErrorInfo[] = [];
-    const registry = createRrwebAssemblerRegistry({
-      onEvent: event => events.push(event),
-      onError: (_error, info) => errors.push(info),
-    });
-    return { registry, events, errors };
-  }
+    const callbacks = {
+      onEvent: (event: any) => events.push(event),
+      onError: (_error: unknown, info: RRWebAssemblerErrorInfo) =>
+        errors.push(info),
+    };
+    const oldStream = createRrwebChunkAssembler(callbacks);
+    const newStream = createRrwebChunkAssembler(callbacks);
 
-  it('isolates buffers of interleaved streams', () => {
-    // A replaced stream is not reliably cancelled, so its callbacks can
-    // interleave with the new stream's. Chunks buffered under one stream key
-    // must survive pushes under another key.
-    const { registry, events, errors } = makeRegistry();
-    const eventA = { type: 2, timestamp: 1, data: { text: 'a'.repeat(300) } };
-    const eventB = { type: 2, timestamp: 2, data: { text: 'b'.repeat(300) } };
-    const [a1, a2] = chunkRows(eventA, 2, 1);
-    // same rr-web.event id on purpose: distinct streams may reuse ids
-    const [b1, b2] = chunkRows(eventB, 2, 1);
+    const event = { type: 2, timestamp: 1, data: { text: 'e'.repeat(300) } };
+    const [c1, c2] = chunkRows(event, 2, 1);
 
-    registry.get('stream-a').push(a1);
-    registry.get('stream-b').push(b1);
-    registry.get('stream-a').push(a2);
-    registry.get('stream-b').push(b2);
-    registry.end('stream-a');
-    registry.end('stream-b');
-
-    expect(events).toEqual([eventA, eventB]);
-    expect(errors).toEqual([]);
-  });
-
-  it('ending one stream does not affect another', () => {
-    const { registry, events, errors } = makeRegistry();
-    const event = { type: 2, timestamp: 3, data: { text: 'c'.repeat(300) } };
-    const [c1, c2] = chunkRows(event, 2, 9);
-    const [stale] = chunkRows({ type: 3, timestamp: 4 }, 2, 9);
-
-    registry.get('old-stream').push(stale);
-    registry.get('new-stream').push(c1);
-    registry.end('old-stream');
-    registry.get('new-stream').push(c2);
-    registry.end('new-stream');
+    oldStream.push(c1);
+    newStream.push(c1);
+    // The old stream finishing must not flush or drop the new stream's
+    // partially assembled event.
+    oldStream.end();
+    newStream.push(c2);
+    newStream.end();
 
     expect(events).toEqual([event]);
     expect(errors).toEqual([
-      expect.objectContaining({ reason: 'incomplete-event', eventId: 9 }),
+      expect.objectContaining({ reason: 'incomplete-event', eventId: 1 }),
     ]);
-  });
-
-  it('creates a fresh assembler after a stream key is ended', () => {
-    const { registry, events, errors } = makeRegistry();
-    const event = { type: 3, timestamp: 5, data: { text: 'd'.repeat(300) } };
-    const [d1, d2] = chunkRows(event, 2, 1);
-
-    registry.get('stream').push(d1);
-    registry.end('stream'); // reports the incomplete event
-    registry.get('stream').push(d1);
-    registry.get('stream').push(d2);
-    registry.end('stream');
-
-    expect(events).toEqual([event]);
-    expect(errors).toEqual([
-      expect.objectContaining({ reason: 'incomplete-event' }),
-    ]);
-  });
-
-  it('clear() drops all pending streams without reporting', () => {
-    const { registry, events, errors } = makeRegistry();
-    const [first] = chunkRows({ type: 2, timestamp: 6 }, 2, 1);
-    registry.get('stream-a').push(first);
-    registry.get('stream-b').push(first);
-    registry.clear();
-    registry.end('stream-a');
-
-    expect(events).toEqual([]);
-    expect(errors).toEqual([]);
   });
 });
