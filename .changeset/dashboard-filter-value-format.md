@@ -4,4 +4,4 @@
 '@hyperdx/app': patch
 ---
 
-feat: Accept variable-keyed dashboard filter values
+feat: Persist variable-keyed dashboard filter value state
