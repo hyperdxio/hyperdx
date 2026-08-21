@@ -196,7 +196,13 @@ export default function DOMPlayer({
   //  - delivery gating: only the active instance may feed the replayer or
   //    update player state, so a stale stream's events, errors, and
   //    completion can't pollute the replacement replay.
-  const streamKey = `${serviceName}|${sessionId}|${sourceId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
+  //
+  // streamKey must mirror useRRWebEventStream's internal queryKey exactly:
+  // an assembler may only be replaced when the fetch is actually replaced,
+  // otherwise the still-running stream fails the identity gate and its
+  // remaining events are silently discarded. (The hook does not refetch on
+  // serviceName/sourceId changes, so they must not be part of this key.)
+  const streamKey = `${sessionId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
   const activeAssemblerRef = useRef<unknown>(null);
   const assembler = useMemo(() => {
     const instance = createRrwebChunkAssembler({
@@ -214,7 +220,13 @@ export default function DOMPlayer({
     return instance;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamKey]);
-  activeAssemblerRef.current = assembler;
+  // Publish the active instance only after the render commits: a discarded
+  // render must never re-point the gate at an assembler no committed stream
+  // uses. Declared before useRRWebEventStream so it runs before the effect
+  // that starts a replacement fetch.
+  useEffect(() => {
+    activeAssemblerRef.current = assembler;
+  }, [assembler]);
   useEffect(() => {
     setDroppedEventCount(0);
   }, [streamKey]);
