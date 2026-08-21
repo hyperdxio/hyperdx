@@ -26,6 +26,7 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import { getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { PreSerialized, sendJson } from '@/utils/serialization';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
@@ -54,6 +55,7 @@ const formatAlertResponse = (
     // prefill the notification channel; webhook ids are already visible to
     // team members via GET /webhooks.
     channel: pick(alert.channel, ['type', 'webhookId']),
+    channels: getAlertChannels(alert).map(c => pick(c, ['type', 'webhookId'])),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
       dashboard: {
