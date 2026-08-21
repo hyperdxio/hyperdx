@@ -134,8 +134,10 @@ describe('DBSearchPageAlertModal', () => {
     const alertTab = await screen.findByRole('tab', { name: /Alert 2/ });
     fireEvent.click(alertTab);
 
-    const saveButton = await screen.findByText('Save Alert');
-    fireEvent.click(saveButton.closest('button') as HTMLButtonElement);
+    const saveButton = await screen.findByRole('button', {
+      name: 'Save Alert',
+    });
+    fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(updateAlertMutateAsync).toHaveBeenCalledTimes(1);
@@ -150,5 +152,30 @@ describe('DBSearchPageAlertModal', () => {
       }),
     );
     expect(createAlertMutateAsync).not.toHaveBeenCalled();
+  });
+
+  // The submitted payload must not carry the legacy singular `channel`: the API
+  // rejects it when it disagrees with the edited channels list, and these
+  // fixtures are legacy channel-only alerts.
+  it('submits channels and drops the legacy channel field', async () => {
+    renderModal();
+
+    const alertTab = await screen.findByRole('tab', { name: /Alert 2/ });
+    fireEvent.click(alertTab);
+
+    const saveButton = await screen.findByRole('button', {
+      name: 'Save Alert',
+    });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(updateAlertMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
+    const payload = updateAlertMutateAsync.mock.calls[0][0];
+    expect(payload.channel).toBeUndefined();
+    expect(payload.channels).toEqual([
+      { type: 'webhook', webhookId: 'webhook-id' },
+    ]);
   });
 });
