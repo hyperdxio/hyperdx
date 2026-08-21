@@ -75,6 +75,22 @@ describe('connectDBWithRetry', () => {
     expect(mockCounterAdd).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['MongoParseError', 'MongoInvalidArgumentError'])(
+    'does not retry a malformed MONGO_URI (%s)',
+    async errName => {
+      const parseError = new Error('Invalid connection string');
+      parseError.name = errName;
+      connectSpy.mockRejectedValue(parseError);
+
+      await expect(connectDBWithRetry(undefined, fastRetry)).rejects.toThrow(
+        'Invalid connection string',
+      );
+
+      expect(connectSpy).toHaveBeenCalledTimes(1);
+      expect(mockCounterAdd).not.toHaveBeenCalled();
+    },
+  );
+
   it('does not retry when MONGO_URI is unset (config error)', async () => {
     mockConfig.MONGO_URI = undefined;
 

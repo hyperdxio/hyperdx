@@ -85,8 +85,8 @@ export type ConnectRetryOptions = {
  * process permanently unable to serve while still listening (see
  * https://github.com/hyperdxio/hyperdx/issues/2966).
  *
- * Configuration errors (missing MONGO_URI) are not retryable and are
- * rethrown immediately.
+ * Configuration errors (missing or malformed MONGO_URI) are not retryable
+ * and are rethrown immediately so startup fails fast.
  */
 export const connectDBWithRetry = async (
   options?: mongoose.ConnectOptions,
@@ -107,8 +107,20 @@ export const connectDBWithRetry = async (
       }
       return;
     } catch (err) {
-      // Missing config can never succeed on retry.
-      if (config.MONGO_URI == null || attempt >= maxAttempts) {
+      // Missing config can never succeed on retry, and neither can a
+      // malformed MONGO_URI: the driver's parse/argument errors are
+      // deterministic, so rethrow and let the entrypoint exit instead of
+      // retrying forever. Name-based check (not instanceof) so it survives
+      // duplicated mongodb driver copies in node_modules. Auth and server
+      // selection errors stay retryable — they are routinely transient while
+      // MongoDB bootstraps (e.g. operators provision users after startup).
+      const errName = err instanceof Error ? err.name : '';
+      if (
+        config.MONGO_URI == null ||
+        errName === 'MongoParseError' ||
+        errName === 'MongoInvalidArgumentError' ||
+        attempt >= maxAttempts
+      ) {
         throw err;
       }
       mongoConnectionEventsCounter.add(1, { event: 'initial_connect_retry' });
