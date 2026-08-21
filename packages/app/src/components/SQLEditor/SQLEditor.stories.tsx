@@ -6,6 +6,9 @@ import SQLEditor from './SQLEditor';
 const story = {
   title: 'Components/SQLEditor',
   component: SQLEditor,
+  parameters: {
+    layout: 'padded',
+  },
 };
 export default story;
 

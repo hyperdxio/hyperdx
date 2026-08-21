@@ -4,6 +4,18 @@
   crossorigin="anonymous"
 />
 <link
-  href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap"
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700&family=Roboto+Mono:wght@100;300;400;500;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap"
   rel="stylesheet"
 />
+<style>
+  /* next/font sets these on <html> in the app (_document.tsx). Storybook has
+     no custom document, so without this :root fallback `var(--font-inter)` is
+     invalid, `body { font-family: var(--app-font-family) }` is dropped, and
+     the iframe (and portaled popovers) render in Times. */
+  :root {
+    --font-inter: Inter, 'Helvetica Neue', sans-serif;
+    --font-roboto: Roboto, sans-serif;
+    --font-ibm-plex-mono: 'IBM Plex Mono', monospace;
+    --font-roboto-mono: 'Roboto Mono', monospace;
+  }
+</style>
