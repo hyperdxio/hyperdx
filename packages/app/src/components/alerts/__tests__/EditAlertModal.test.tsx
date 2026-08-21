@@ -151,7 +151,8 @@ describe('EditAlertModal', () => {
         groupBy: 'ServiceName',
         threshold: 3,
         interval: '5m',
-        channel: { type: 'webhook', webhookId: 'webhook-id' },
+        // A legacy single-channel alert saves as the plural list.
+        channels: [{ type: 'webhook', webhookId: 'webhook-id' }],
         // Fields the form doesn't edit must be carried through — the PUT
         // clears any that are omitted.
         name: 'My alert',
