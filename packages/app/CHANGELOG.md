@@ -1,5 +1,240 @@
 # @hyperdx/app
 
+## 2.35.0
+
+### Minor Changes
+
+- 88f62274: Add an alert detail page (/alerts/:id) with the alert's query charted against
+  its threshold, a widened evaluation-history strip, and a paginated evaluation
+  event stream (per-group breakdown for group-by alerts, evaluation analytics
+  columns, time-range-scoped cursor pagination). The alerts page history strip
+  renders errored evaluation windows with per-window error details. Gated behind
+  NEXT_PUBLIC_ENABLE_ALERT_DETAILS (default off).
+- 8508b6c7: Terraform export now emits team-scoped import ids (`<team_id>/<resource_id>`),
+  so resources can be imported from a ClickStack deployment that backs more than
+  one team. Each imported resource gains a `team` attribute, which the provider
+  marks as forcing replacement — the generated file now says to keep it. The
+  provider floor moves to `>= 3.25.0`, which drops server-only dashboard ids when
+  importing, so the generated dashboard config no longer churns tile ids (and the
+  tile alerts attached to them) on apply.
+- 72269ece: Hovering a release marker now lists every release in its cluster with the
+  service that shipped it, its version, and the time. Colour alone could not
+  identify a service once a chart had more series than the legend shows, and a
+  collapsed "N releases" cluster named none of them.
+- 08b8783b: Overlay release markers on dashboard tile charts, showing when each version of a
+  service first appeared so a deployment can be lined up against a change in the
+  data. Markers are scoped to the data each tile is charting and tinted to match
+  their service's series color, and are suppressed on charts where they can't be
+  tied to a visible line, so an aggregate line spanning many services isn't
+  annotated with releases you can't attribute to it.
+- d201b71f: Add an optional `serviceVersionExpression` to log and trace sources, identifying
+  the running release of a service. Defaults to the OpenTelemetry
+  `service.version` resource attribute; teams whose release identifier lives
+  elsewhere, such as a container image tag under GitOps, can point it there
+  instead of changing instrumentation.
+
+### Patch Changes
+
+- 05a3fd81: Add the AlertHistory evaluations read model and GET /alerts/:id/evaluations
+  endpoint: per-window evaluation history scoped to a time range (clamped to the
+  retention window) with per-group breakdown for group-by alerts, evaluation
+  analytics fields, deduped error surfacing for ERROR-state windows, and
+  cursor-based pagination that always advances across gaps. Adds read-side
+  schema/type support for ERROR-state AlertHistory rows and evaluation analytics.
+- c46ddaee: Require confirmation before deleting a dashboard from its detail page.
+- b9430a62: feat: Add broadcast and variable settings to dashboard filters
+- 546dd442: feat: Improve SQL Editor validations and autocomplete for variables
+- cab98c7c: feat: Substitute dashboard variables in raw SQL tiles
+- 90729734: Name `useRef` values consistently with a `Ref` suffix and enforce it via ESLint.
+  Renames the 10 flagged refs (in `DOMPlayer`, `EditTimeChartForm`, `useMetadata`,
+  `sessions`, and `utils`) to end in `Ref`, promotes
+  `@eslint-react/naming-convention/ref-name` to `error`, and lowers the app's
+  `--max-warnings` ceiling. Behavior is unchanged.
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+- 582f3940: Show password requirements on the Join Team page and align the checklist with the server policy. When a user accepts a team invite and sets their password, the same live password policy checklist used on the auth/register page is now displayed, so users no longer have to guess the required length, casing, number, and special-character rules. The checklist previously diverged from the server in two ways that could show all-green checks for a password the server rejects: its special-character rule used a broader pattern than the backend (so a password whose only special character was e.g. `~`, a backtick, or a space passed the checklist but failed on submit), and it never surfaced the 72-character maximum (so an over-long password passed the checklist but failed on submit). The length rule now enforces both the minimum and maximum, and the password policy checks (length bounds, casing, number, and the accepted special-character set) live in a single shared module in `@hyperdx/common-utils` used by both the frontend checklist and the backend `passwordSchema`, so they can no longer drift. Finally, when the server rejects a password the Join Team page now shows the specific reason(s) it failed (e.g. "Password must include at least one special character (!@#$%^&\*(),.?\":{}|<>;-+=)") instead of a generic "Password is invalid", so users are told exactly what to change — including which special characters are accepted.
+- 69a89aa9: fix: Restore Lucene autocomplete
+- aedb514f: Multi-series metric charts now run as a single composed ClickHouse query instead of one query per series joined client-side. The per-series queries are combined via UNION ALL and pivoted back into one row per (group, time bucket) in SQL, including ratio charts (`seriesReturnType: 'ratio'`) and both `ratioMode` variants, which previously divided the two result sets in the browser/node. Result shape, column naming (including same-alias `__{index}` disambiguation), gap semantics, and ratio semantics are unchanged; charts with many series render with fewer round trips, and "View SQL" for multi-series metric charts now shows the full query instead of only the first series.
+- 463fd6a1: Preserve literal percent sequences in legacy JSON URL parameters.
+- Updated dependencies [fd54ac78]
+- Updated dependencies [05a3fd81]
+- Updated dependencies [b9430a62]
+- Updated dependencies [546dd442]
+- Updated dependencies [cab98c7c]
+- Updated dependencies [b6196031]
+- Updated dependencies [de783063]
+- Updated dependencies [018a6486]
+- Updated dependencies [8508b6c7]
+- Updated dependencies [582f3940]
+- Updated dependencies [2d33b83b]
+- Updated dependencies [4fa4975a]
+- Updated dependencies [f891eb19]
+- Updated dependencies [4c5ccfc4]
+- Updated dependencies [6662379e]
+- Updated dependencies [0ed72ddf]
+- Updated dependencies [aedb514f]
+- Updated dependencies [f34cfaed]
+- Updated dependencies [d201b71f]
+- Updated dependencies [711b905d]
+- Updated dependencies [908b27ed]
+  - @hyperdx/common-utils@0.26.0
+  - @hyperdx/api@2.35.0
+
+## 2.34.0
+
+### Minor Changes
+
+- 3d61cf92: Cap high-cardinality time-chart series to protect the browser from rendering
+  thousands of lines at once. Time charts now materialize and draw a bounded
+  number of series per tile, with escape hatches to reveal the rest on demand: a
+  "+N more" affordance in the hover and pinned tooltips, and a "load all series"
+  action that lifts the cap for a chart. Tooltips also cap how many rows they
+  render per frame so a wide bucket can't mount thousands of popovers. The
+  external dashboards API exposes the per-tile series limit as a three-state value
+  across tile types — omit for the default cap, 0 for unlimited, or a positive N
+  for the top N
+- 97ca34df: feat: Allow configuring a `series` table for accelerating metrics
+- 329a6260: feat: the in-app "What's new" changelog now shows the cross-package release
+  summary from the root CHANGELOG.md instead of the app-only package changelog
+- 1af1998c: Add Terraform helpers for adopting existing HyperDX resources with the ClickHouse provider. An "Export to Terraform" button on dashboards, saved searches, and saved-search alerts shows a ready-to-paste `import {}` block plus collapsible provider setup, and a team settings section ("API & Agents") downloads an import file covering dashboards, alerts, saved searches, sources, connections, and webhooks.
+
+  Dashboards carrying a tile the provider cannot represent, and PromQL sources, are excluded from the export and reported as skipped — in the UI and in the generated file. The provider reads a dashboard back through the external API v2, which either drops such a tile or substitutes an empty line chart, and writes tiles back whole, so importing one would destroy that tile on the next apply.
+
+  Import-only by design: resource configuration is generated by `terraform plan -generate-config-out`, which reads through the provider, rather than by HyperDX — the external API's dashboard serialisation is a field allowlist, so generating `dashboard_json` from it could silently drop tile settings on apply. Tile alerts are excluded because the provider models only saved-search alerts.
+
+  Terraform addresses are derived from each resource's id, not its name, so renaming a resource in HyperDX and re-exporting does not produce a destroy-and-recreate plan. The generator lives in `@hyperdx/common-utils` so the API can produce the same artefact the UI does. The manifest endpoint caps each listing at 1000 rows and reports which types were capped, so a very large team is told its export is partial rather than silently receiving one.
+
+  Also redacts `Authorization` and `Cookie` headers from API request logs.
+
+### Patch Changes
+
+- 8f1f4e1d: - Added a "Show All Series" button to clear a focused chart series
+  - Fixed chart tooltip action buttons rendering behind the tooltip
+  - Added a max height and scroll to the legend "+N more" list
+- a379d502: fix: SQL error when clicking "Search" on a log attached to a trace while in the Traces view
+- ce23da27: feat(dashboards): add a Replay search action to log and trace dashboard tiles whose event query can be faithfully reconstructed. The action opens a new Search tab with the tile's source, query, filters, and dashboard time range preserved.
+- 78b4a250: fix: Prevent the search page from defaulting to an incompatible source kind
+- d059cb20: Preserve query result rows when streamed ClickHouse headers span chunks.
+- 1b76584c: fix: Prevent chart hover tooltips from rendering over the date range picker
+- 17408ef1: Show percentile context in the heatmap hover tooltip
+- cf9314be: fix: Hide unsupported aggregation functions for Histogram metrics in the chart builder
+- a42db648: Refine Mantine theme styling: a true 1px tab list line with matching 1px
+  non-active tab hover borders, code blocks (Mantine `Code`) use the
+  `--color-bg-code` token, and the SegmentedControl active indicator gets a border,
+  small radius, and a dedicated `--color-bg-option-active` background. Primary
+  HyperDX buttons are now more prominent, using the solid brand green background
+  instead of the subtle tinted fill.
+- 9ab1d901: fix: Only auto-detect metric tables when the database selection changes
+- de527bfa: Make the log side panel "View Trace" action more noticeable: it now uses an
+  outlined (secondary) button with the trace source icon, larger compact size, and
+  is right-aligned so it stands out from the dimmed metadata row instead of
+  blending in as subtle inline text. The first time a log with a correlated trace
+  is opened, a one-time popover points users to the button; it is dismissed by an
+  explicit acknowledgement ("Got it" or clicking View Trace) and then never shows
+  again (persisted per browser). It deliberately does not intercept Escape, which
+  keeps its normal side-panel behavior.
+- a15bf4f0: Remember the row side panel's last-used tab instead of resetting to Overview on
+  every open, so working through a list of rows in Column Values no longer means
+  re-clicking that tab on each one. Picking a neighbouring row out of Surrounding
+  Context also keeps you in your chosen view rather than dropping you back on
+  Overview. Navigations that target a specific tab (such as View Trace) still win,
+  and a remembered tab the row doesn't offer falls back to that row's default.
+- 5da600a8: fix: Improve the Distributed table `SELECT *` error state
+- d1c669dc: fix: Use ratio value for series-limit ranking in ratio mode
+
+  Charts using "ratio" series return type together with a series limit ranked the
+  top-N series by the bare numerator instead of by the plotted ratio, so a
+  low-volume group with a high ratio could lose its slot to a high-volume group
+  with a much lower ratio. The ranking now uses the same `divide(a, b)` expression
+  the chart displays. Non-ratio charts generate identical SQL to before.
+
+- 698cdc35: fix: Abbreviate every unit in relative timestamps
+
+  Plural months rendered as `3mo.s ago`, and `1 second`, `1 year` and `2 years`
+  were not abbreviated at all, so session lists and the row side panel mixed
+  `5m ago` with `2 years ago`.
+
+- 16bdb404: fix: Prevent long attribute values from painting over the key column in the JSON attributes viewer
+- 347f0a69: fix: Bound the side panel's row lookup after "View Trace" to a time window
+- Updated dependencies [3f87fe4b]
+- Updated dependencies [94d028c8]
+- Updated dependencies [a794562d]
+- Updated dependencies [3d61cf92]
+- Updated dependencies [fa73b84c]
+- Updated dependencies [ed9d9a67]
+- Updated dependencies [2d78083a]
+- Updated dependencies [c97789a0]
+- Updated dependencies [2468b256]
+- Updated dependencies [97ca34df]
+- Updated dependencies [f9c52445]
+- Updated dependencies [6a35df06]
+- Updated dependencies [1c3be6f0]
+- Updated dependencies [d1c669dc]
+- Updated dependencies [1af1998c]
+- Updated dependencies [1af1998c]
+- Updated dependencies [b082f700]
+- Updated dependencies [347f0a69]
+  - @hyperdx/api@2.34.0
+  - @hyperdx/common-utils@0.25.0
+
+## 2.33.0
+
+### Minor Changes
+
+- 8aeb2f32: Add a read-only kiosk mode for dashboards with a minimal header and automatic
+  live refresh for static displays.
+- b1e4e1d9: feat: Accept source names in addition to IDs in URL Params
+
+### Patch Changes
+
+- b1e4e1d9: fix: Disable invalid autocomplete query while source loads
+- b2165b41: feat(dashboards): opt-in linked (faceted) filter values
+
+  Dashboard and Kubernetes filter bars gain a "link filters" toggle (the
+  bidirectional-arrow button at the end of the bar). When enabled, each filter
+  dropdown only shows values that co-occur with the other current selections —
+  e.g. picking a `cluster` narrows the `namespace` dropdown to namespaces in that
+  cluster (the K8s bar also factors in the free-text search). A filter never
+  constrains its own options, so multi-select still works. It is off by default
+  because contingent value lookups can't use the cheap per-key rollups and are
+  more expensive at scale; when on, all of a source's facets are computed in a
+  single `groupUniqArrayIf` scan rather than one query per filter. Search-page
+  filters are unaffected.
+
+- cacdfe98: feat: Support source name deeplinks on additional pages
+- 7914ec09: Fix the time-chart tooltip: clicking outside the chart now unpins the pinned
+  tooltip, the pin always stacks above hover tooltips, and a many-series hover
+  tooltip is clamped to a bounded height instead of overflowing the chart (pin it
+  to scroll through every series).
+- 9327396c: Fix saved-search navigation so newly created searches reliably load their stored
+  configuration.
+- ab190d16: chore: move usage stats tracking to Reo.dev
+- e231d72e: fix: Stop requesting additional search pages while a query is in an error state.
+  A failed page (for example a ClickHouse query timeout on a slow time window)
+  previously kept `hasNextPage` true, so the table re-issued the failing query and
+  stayed in a loading state that hid the error and reported zero results.
+- ec161d70: feat: move the dashboard tile fullscreen action to a top-level toolbar icon
+
+  The View fullscreen action now sits directly in the tile toolbar as an icon instead of inside the "More actions" menu, so it is one click instead of two. Narrow tiles that collapse the toolbar keep it in the menu, and the `f` shortcut is unchanged.
+
+- 7b3e6d28: fix: draw an isolated dashboard series even when it ranks beyond the line cap
+
+  Isolating (or search/checkbox filtering) a time-chart series that sits beyond the per-chart line-render cap left the chart empty, because the cap was applied before the selection filter. The selection now wins over the cap, so an explicitly chosen series always renders, and an oversized manual selection is still bounded by the cap.
+
+- fa1a0687: feat: Warn on missing params/macros in SQL Editor
+- Updated dependencies [017c296e]
+- Updated dependencies [874a5e95]
+- Updated dependencies [0e280949]
+- Updated dependencies [1b658f3c]
+- Updated dependencies [fa1a0687]
+  - @hyperdx/api@2.33.0
+  - @hyperdx/common-utils@0.24.1
+
 ## 2.32.0
 
 ### Minor Changes

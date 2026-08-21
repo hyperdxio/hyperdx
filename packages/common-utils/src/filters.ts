@@ -1,8 +1,18 @@
 import * as SQLParser from 'node-sql-parser';
 
-import { replaceJsonExpressions } from '@/core/utils';
+import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
-import { DashboardFilter, Filter } from '@/types';
+import {
+  ChartVariable,
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  DashboardFilter,
+  Filter,
+} from '@/types';
+import {
+  getVariableReferences,
+  substituteVariablesForLanguage,
+} from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -10,10 +20,6 @@ export type FilterState = {
     excluded: Set<string | boolean>;
     range?: { min: number; max: number }; // For BETWEEN conditions
   };
-};
-
-const escapeString = (s: string) => {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
 };
 
 // Wrap a quoted string literal in a ClickHouse expression whose result type
@@ -71,8 +77,8 @@ export const filtersToQuery = (
         typeof v !== 'string'
           ? v
           : chType != null
-            ? dateTimeValueExpr(chType, `'${escapeString(v)}'`)
-            : `'${escapeString(v)}'`;
+            ? dateTimeValueExpr(chType, `'${escapeSqlString(v)}'`)
+            : `'${escapeSqlString(v)}'`;
 
       if (values.included.size > 0) {
         conditions.push({
@@ -100,6 +106,61 @@ export const filtersToQuery = (
     });
 };
 
+/**
+ * Render a FilterState as a single AND-joined SQL predicate, remapping every
+ * key through `renderKey` first.
+ *
+ * Callers that also emit the same keys elsewhere in the query (e.g. inside a
+ * SELECT aggregate) must render both halves the same way, or the predicate
+ * silently addresses a different expression than the one being aggregated.
+ * `stringifyKeys` is deliberately false: a rendered JSON path already carries
+ * the `.:String` type suffix, so it needs no `toString()` wrapper.
+ *
+ * Returns undefined when nothing is selected, so callers can branch on
+ * "constrained vs unconstrained" without inspecting the string.
+ */
+export const filterStateToPredicate = (
+  state: FilterState,
+  renderKey: (rawKey: string) => string,
+): string | undefined => {
+  const rendered: FilterState = {};
+  for (const [rawKey, selection] of Object.entries(state)) {
+    rendered[renderKey(rawKey)] = selection;
+  }
+  const conditions = filtersToQuery(rendered).flatMap(f =>
+    // filtersToQuery only emits `sql` filters (which carry `condition`); the
+    // `in` guard narrows away the `sql_ast` member of the Filter union.
+    'condition' in f ? [f.condition] : [],
+  );
+  return conditions.length
+    ? conditions.map(c => `(${c})`).join(' AND ')
+    : undefined;
+};
+
+/**
+ * Stable, JSON-safe projection of a FilterState, for use in react-query keys.
+ *
+ * A raw FilterState cannot be used as a query key: its selections are `Set`s,
+ * and TanStack Query hashes keys with JSON.stringify, which serializes any Set
+ * to `{}` — so every distinct selection would collide on one cache entry.
+ * Keys and members are sorted so that insertion order alone never produces a
+ * spurious cache miss.
+ */
+export const serializeFilterState = (state: FilterState): string => {
+  const sortMembers = (values: Set<string | boolean>) =>
+    Array.from(values).map(String).sort();
+  return JSON.stringify(
+    Object.entries(state)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, { included, excluded, range }]) => [
+        key,
+        sortMembers(included),
+        sortMembers(excluded),
+        range ?? null,
+      ]),
+  );
+};
+
 // Helper function to parse a string value as boolean if possible, or otherwise
 // return as string with surrounding quotes removed and SQL-escaped quotes unescaped.
 const getBooleanOrUnquotedString = (value: string): string | boolean => {
@@ -110,7 +171,7 @@ const getBooleanOrUnquotedString = (value: string): string | boolean => {
   }
 
   // Remove surrounding quotes and reverse the escape sequences produced by
-  // filtersToQuery's escapeString. Order matters: collapse \\ → \ first so
+  // filtersToQuery's escapeSqlString. Order matters: collapse \\ → \ first so
   // that the following '' → ' pass doesn't mistake content for an escape.
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1).replace(/\\\\/g, '\\').replace(/''/g, "'");
@@ -188,14 +249,22 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   return values;
 }
 
-// Check whether a SQL fragment contains a keyword or operator outside of
-// single-quoted strings.  Accepts either single characters (=, <, >) or
-// multi-character keywords (' OR ', ' BETWEEN ') to search for.
+// Check whether a SQL fragment contains a keyword or operator at the *top
+// level* — outside single-quoted strings and outside any parentheses.  Accepts
+// either single characters (=, <, >) or multi-character keywords (' OR ',
+// ' BETWEEN ') to search for.
+//
+// Parenthesis-depth awareness is what lets a complex expression key survive
+// parsing: in `if(SeverityText = 'error' OR SeverityText = 'fatal', ...) IN
+// ('Errors')` the `=` and ` OR ` live inside the `if(...)` sub-expression, so
+// they must not be mistaken for top-level operators that would disqualify the
+// clause. Parentheses inside quoted strings don't affect depth.
 function containsOutsideQuotes(
   text: string,
   targets: (string | { char: string })[],
 ): boolean {
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (isQuoteBoundary(text, i)) {
@@ -210,6 +279,16 @@ function containsOutsideQuotes(
       continue;
     }
     if (inString) continue;
+
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
 
     for (const target of targets) {
       if (typeof target === 'object') {
@@ -232,15 +311,24 @@ function containsOperatorOutsideQuotes(part: string): boolean {
   ]);
 }
 
-// Split a string on the first occurrence of `delimiter` that is outside
-// single-quoted strings.  Returns [before, after] or null if not found.
+// Split a string on the first occurrence of `delimiter` that is at the top
+// level — outside single-quoted strings and outside any parentheses.  Returns
+// [before, after] or null if not found.
+//
+// Depth awareness makes the split land on the separator between the key
+// expression and its value list rather than on an operator nested inside the
+// key: `if(SeverityText IN ('error','fatal'), ...) IN ('Errors')` must split on
+// the outer ` IN `, keeping the whole `if(...)` as the key, not on the ` IN `
+// inside the `if(...)`.
 function splitOnFirstOutsideQuotes(
   text: string,
   delimiter: string,
 ): [string, string] | null {
   let inString = false;
+  let depth = 0;
   const upper = delimiter.toUpperCase();
   for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
     if (isQuoteBoundary(text, i)) {
       if (inString) {
         const esc = handleQuoteEscape(text, i);
@@ -253,6 +341,15 @@ function splitOnFirstOutsideQuotes(
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (text.slice(i, i + upper.length).toUpperCase() === upper) {
       return [text.slice(0, i), text.slice(i + upper.length)];
     }
@@ -273,10 +370,15 @@ function extractInClauses(condition: string): Array<{
     isExclude: boolean;
   }> = [];
 
-  // Split on ' AND ' while respecting quoted strings (including SQL-escaped quotes)
+  // Split on ' AND ' while respecting quoted strings (including SQL-escaped
+  // quotes) and parenthesis depth. Only a *top-level* ` AND ` joins two
+  // separate predicates; an ` AND ` nested inside parentheses belongs to a key
+  // sub-expression (e.g. `if(x BETWEEN 1 AND 2, ...) IN (...)`) and must not
+  // split the clause.
   const parts: string[] = [];
   let currentPart = '';
   let inString = false;
+  let depth = 0;
 
   for (let i = 0; i < condition.length; i++) {
     const char = condition[i];
@@ -295,13 +397,22 @@ function extractInClauses(condition: string): Array<{
       continue;
     }
 
-    if (!inString && condition.slice(i, i + 5).toUpperCase() === ' AND ') {
-      if (currentPart.trim()) {
-        parts.push(currentPart.trim());
+    if (!inString) {
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        if (depth > 0) depth--;
+      } else if (
+        depth === 0 &&
+        condition.slice(i, i + 5).toUpperCase() === ' AND '
+      ) {
+        if (currentPart.trim()) {
+          parts.push(currentPart.trim());
+        }
+        currentPart = '';
+        i += 4; // Skip past ' AND '
+        continue;
       }
-      currentPart = '';
-      i += 4; // Skip past ' AND '
-      continue;
     }
 
     currentPart += char;
@@ -314,7 +425,10 @@ function extractInClauses(condition: string): Array<{
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
     // Skip parts that contain OR (not supported) or comparison operators,
-    // but only when those operators appear outside of quoted strings.
+    // but only when those operators appear at the top level — outside quoted
+    // strings and outside any parentheses. Operators nested inside a key
+    // expression's parentheses (e.g. `if(a = 'x' OR b = 'y', ...)`) are part of
+    // that expression and must not disqualify the clause.
     if (containsOperatorOutsideQuotes(part)) {
       continue;
     }
@@ -435,12 +549,16 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state) };
 };
 
-// Count top-level ` AND ` separators (outside quoted strings). Used to detect
-// conjuncts the pinned-filter parser silently drops.
+// Count top-level ` AND ` separators (outside quoted strings and outside any
+// parentheses). Used to detect conjuncts the pinned-filter parser silently
+// drops. An ` AND ` nested inside parentheses belongs to a key sub-expression
+// and is not a top-level conjunct.
 function countTopLevelAnd(condition: string): number {
   let count = 0;
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < condition.length; i++) {
+    const char = condition.charAt(i);
     if (isQuoteBoundary(condition, i)) {
       if (inString) {
         const esc = handleQuoteEscape(condition, i);
@@ -453,6 +571,15 @@ function countTopLevelAnd(condition: string): number {
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (condition.slice(i, i + 5).toUpperCase() === ' AND ') {
       count++;
       i += 4;
@@ -630,6 +757,8 @@ export type DashboardFilterQueryIssue = {
   language: 'lucene' | 'sql';
   /** The raw `where` clause that failed to parse */
   where: string;
+  /** Why it failed, when the clause itself parses but its variables don't resolve. */
+  detail?: string;
 };
 
 /**
@@ -641,6 +770,8 @@ export type DashboardFilterQueryIssue = {
  * after opening the dashboard. Returns one issue per filter whose `where`
  * fails to parse as its declared language.
  *
+ * Variable references are expanded before the parse validation.
+ *
  * Note: this only checks that the `where` clause *parses*. It cannot catch a
  * `where`/`expression` that references a non-existent column — that only fails
  * when the query runs against ClickHouse.
@@ -649,12 +780,27 @@ export function validateDashboardFilterQueries(
   filters: DashboardFilter[],
 ): DashboardFilterQueryIssue[] {
   const issues: DashboardFilterQueryIssue[] = [];
+
+  // Variables are expanded with an empty selection.
+  const variables: ChartVariable[] = getDashboardVariableDeclarations(
+    filters,
+  ).map(declaration => ({ ...declaration, values: [] }));
+
   for (const filter of filters) {
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
     if (language !== 'lucene' && language !== 'sql') continue;
-    if (!isValidFilterCondition(where, language)) {
+    const resolved = resolveFilterValuesWhere(filter, variables);
+    if (resolved.error) {
+      issues.push({
+        filterId: filter.id,
+        filterName: filter.name,
+        language,
+        where,
+        detail: resolved.error,
+      });
+    } else if (!isValidFilterCondition(resolved.where, language)) {
       issues.push({
         filterId: filter.id,
         filterName: filter.name,
@@ -664,4 +810,201 @@ export function validateDashboardFilterQueries(
     }
   }
   return issues;
+}
+
+/** Derive the default `variableName` for a filter from its display name. */
+export function deriveVariableName(filterName: string): string {
+  const sanitized = filterName
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]+/g, '');
+
+  // Add a `v` prefix if the sanitized name starts with a number or underscore,
+  // to ensure it is a valid variable name.
+  return /^[0-9_]/.test(sanitized) ? `v${sanitized}` : sanitized;
+}
+
+/**
+ * Whether a filter's selected value is applied as a condition on matching tiles.
+ *
+ * Missing means enabled: filters that predate the field must keep broadcasting.
+ * Compared against `false` rather than defaulted with `??` because filters are
+ * stored in an untyped Mongo array, so `null` is reachable.
+ */
+export function isFilterBroadcastEnabled(filter: {
+  isBroadcastEnabled?: boolean;
+}): boolean {
+  return filter.isBroadcastEnabled !== false;
+}
+
+/** Whether a filter's selected value is exposed to tiles as a variable. */
+export function isFilterVariableEnabled(filter: {
+  isVariableEnabled?: boolean;
+}): boolean {
+  return filter.isVariableEnabled === true;
+}
+
+/**
+ * Whether a filter does anything at all with the value it collects — broadcast
+ * it as a condition, expose it as `$variableName`, or both.
+ */
+export function hasFilterEffect(filter: {
+  isBroadcastEnabled?: boolean;
+  isVariableEnabled?: boolean;
+}): boolean {
+  return isFilterBroadcastEnabled(filter) || isFilterVariableEnabled(filter);
+}
+
+/**
+ * The token a filter is referenced by, falling back to the value derived
+ * from its display name.
+ */
+export function getFilterVariableName(filter: {
+  name: string;
+  variableName?: string;
+}): string | undefined {
+  return (
+    filter.variableName?.trim() || deriveVariableName(filter.name) || undefined
+  );
+}
+
+/** A dashboard variable's identity, before any selection is attached. */
+export type DashboardVariableDeclaration = Pick<
+  ChartVariable,
+  'name' | 'expression'
+>;
+
+/** The variables a dashboard declares, in filter order. */
+export function getDashboardVariableDeclarations(
+  filters: DashboardFilter[] | undefined,
+): DashboardVariableDeclaration[] {
+  const declarations: DashboardVariableDeclaration[] = [];
+  const takenNames = new Set<string>();
+
+  for (const filter of filters ?? []) {
+    if (!isFilterVariableEnabled(filter)) continue;
+
+    // There shouldn't be any duplicate names, but if there are then the first one wins.
+    const name = getFilterVariableName(filter);
+    if (!name || takenNames.has(name)) continue;
+    takenNames.add(name);
+
+    declarations.push({ name, expression: filter.expression });
+  }
+
+  return declarations;
+}
+
+export type ResolvedFilterValuesQuery = {
+  /** The clause the values lookup actually runs. */
+  where: string;
+  whereLanguage: 'lucene' | 'sql';
+  /** Set when expansion failed; `where` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a filter's dropdown-values query references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the clause as written, so
+ * downstream lookup still runs and reports an `error`.
+ */
+export function resolveFilterValuesWhere(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): ResolvedFilterValuesQuery {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim()) {
+    return { where, whereLanguage };
+  }
+
+  try {
+    return {
+      where: substituteVariablesForLanguage(where, variables, whereLanguage),
+      whereLanguage,
+    };
+  } catch (e) {
+    return {
+      where,
+      whereLanguage,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/**
+ * Variables whose selection a filter's dropdown-values query needs before it can
+ * match anything.
+ *
+ * Only bare and braced SQL references qualify. `$__filter` /
+ * `$__conditionalAll` expand to `(1=1)`, the `regex` format to `.*`, and a
+ * Lucene reference to `("")` (rendered as `(1=1)`), so all of those list every
+ * value while their variable is empty. A `sqlstring` reference renders as
+ * `NULL` and a `csv` one as nothing at all, which match no rows.
+ */
+export function getPendingFilterValuesVariables(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): string[] {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim() || whereLanguage !== 'sql') return [];
+
+  const emptyVariableNames = new Set(
+    variables.filter(v => v.values.length === 0).map(v => v.name),
+  );
+  if (emptyVariableNames.size === 0) return [];
+
+  const pending = getVariableReferences(where)
+    .filter(
+      reference =>
+        reference.kind !== 'macro' &&
+        // A reference inside the macro that guards it is only emitted once the
+        // variable has values, so it needs no empty-state rendering of its own.
+        reference.guardedBy !== reference.name &&
+        (reference.format ?? 'sqlstring') !== 'regex' &&
+        emptyVariableNames.has(reference.name),
+    )
+    .map(reference => reference.name);
+
+  return Array.from(new Set(pending));
+}
+
+/**
+ * Validate a variable name against the token grammar and against the names
+ * already taken by other variable-enabled filters on the same dashboard.
+ * Returns an error message, or undefined when the name is usable. Only
+ * variable-*enabled* siblings are considered.
+ */
+export function validateVariableName({
+  value,
+  otherFilters,
+}: {
+  value: string | undefined;
+  otherFilters: {
+    name: string;
+    variableName?: string;
+    isVariableEnabled?: boolean;
+  }[];
+}): string | undefined {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) {
+    return 'Variable name is required';
+  }
+  if (trimmed.length > DASHBOARD_VARIABLE_NAME_MAX_LENGTH) {
+    return `Variable name must be ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters or fewer`;
+  }
+  if (!DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED.test(trimmed)) {
+    return 'Variable names must start with a letter and may contain only letters, numbers, and underscores';
+  }
+  const clash = otherFilters.find(
+    other =>
+      isFilterVariableEnabled(other) &&
+      getFilterVariableName(other) === trimmed,
+  );
+  if (clash) {
+    return `This variable name is used by another filter on this dashboard (${clash.name})`;
+  }
+  return undefined;
 }

@@ -2,7 +2,8 @@ import { Button, Code, CopyButton, Group, Stack, Text } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 
 interface CopySnippetProps {
-  label: string;
+  /** Optional heading above the snippet (e.g. "Import block"). */
+  label?: string;
   snippet: string;
 }
 
@@ -14,9 +15,11 @@ interface CopySnippetProps {
 export function CopySnippet({ label, snippet }: CopySnippetProps) {
   return (
     <Stack gap="xs">
-      <Text size="sm" fw={500}>
-        {label}
-      </Text>
+      {label ? (
+        <Text size="sm" fw={500}>
+          {label}
+        </Text>
+      ) : null}
       <Group align="flex-start" w="100%" gap="xs">
         <Code
           block

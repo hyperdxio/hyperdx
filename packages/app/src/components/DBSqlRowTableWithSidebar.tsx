@@ -17,12 +17,13 @@ import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ChartErrorStateVariant } from './charts/ChartErrorState';
-import { RowDataPanel } from './DBRowDataPanel';
+import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBRowSidePanel, {
   RowSidePanelContext,
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
+import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
@@ -114,7 +115,7 @@ export default function DBSqlRowTableWithSideBar({
   );
 
   return (
-    <RowSidePanelContext.Provider value={context ?? {}}>
+    <RowSidePanelContext value={context ?? {}}>
       {sourceData && (rowSource === sourceId || !rowSource) && (
         <DBRowSidePanel
           source={sourceData}
@@ -147,7 +148,7 @@ export default function DBSqlRowTableWithSideBar({
         errorVariant={errorVariant}
         onResolvedColumnsChange={onResolvedColumnsChange}
       />
-    </RowSidePanelContext.Provider>
+    </RowSidePanelContext>
   );
 }
 
@@ -170,6 +171,22 @@ function RowOverviewPanelWrapper({
     'hdx-expanded-row-default-tab',
     InlineTab.ColumnValues,
   );
+
+  // Surface the same error state the row side panel shows (e.g. `SELECT *`
+  // failures on Distributed/Merge tables) rather than silently rendering an
+  // empty expanded row. Both tabs load the same row data, so a failure here
+  // affects the whole expanded row.
+  const { isError, error } = useRowData({ source, rowId, aliasWith });
+
+  if (isError && error) {
+    return (
+      <div className="position-relative">
+        <div className="px-3 py-3">
+          <DBRowSidePanelErrorState error={error} source={source} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="position-relative">

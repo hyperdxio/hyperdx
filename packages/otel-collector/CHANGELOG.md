@@ -1,5 +1,24 @@
 # @hyperdx/otel-collector
 
+## 2.35.0
+
+### Minor Changes
+
+- 8351d632: Add OIDC-based bearer token authentication for the OTLP receiver in standalone mode, as an alternative to the existing static `OTLP_AUTH_TOKEN`. Set `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` to validate incoming OTLP requests against an OIDC provider's published JWKS instead of a single long-lived shared secret.
+
+### Patch Changes
+
+- 58a467ae: Use the OpAMP supervisor's native `passthrough_logs` for collector log
+  forwarding instead of a background `tail` process. The old approach had
+  the supervisor and the tailer writing to the same stdout fd with no
+  synchronization, so log lines were getting mangled by the two streams
+  interleaving mid-line. The native approach has the supervisor re-emitting
+  the collector's output through its own logger to avoid this.
+
+## 2.34.0
+
+## 2.33.0
+
 ## 2.32.0
 
 ## 2.31.0

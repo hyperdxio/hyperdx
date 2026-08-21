@@ -3,15 +3,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import ReactMarkdown from 'react-markdown';
-import {
-  AlertSource,
-  AlertState,
-  isRangeThresholdType,
-} from '@hyperdx/common-utils/dist/types';
+import { isImportableAlert } from '@hyperdx/common-utils/dist/iac';
+import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Anchor,
   Badge,
+  Button,
   Collapse,
   Container,
   Flex,
@@ -39,19 +37,20 @@ import {
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import EmptyState from '@/components/EmptyState';
+import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
+import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
-import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
 
-function getAlertDisplayName(alert: AlertsPageItem): string {
+export function getAlertDisplayName(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
     const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
     const tileName = tile?.config.name || 'Tile';
@@ -59,6 +58,17 @@ function getAlertDisplayName(alert: AlertsPageItem): string {
   }
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
     return alert.savedSearch.name;
+  }
+  return '';
+}
+
+/** URL of the saved search / dashboard tile the alert is watching. */
+export function getAlertSourceUrl(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return `/search/${alert.savedSearchId}`;
   }
   return '';
 }
@@ -72,7 +82,7 @@ function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
   return alert.createdBy.name || alert.createdBy.email;
 }
 
-function AlertNote({ note }: { note: string }) {
+export function AlertNote({ note }: { note: string }) {
   const [opened, { toggle }] = useDisclosure(false);
 
   return (
@@ -147,15 +157,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
     return '–';
   }, [alert]);
 
-  const alertUrl = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return `/search/${alert.savedSearchId}`;
-    }
-    return '';
-  }, [alert]);
+  const alertUrl = React.useMemo(() => getAlertSourceUrl(alert), [alert]);
 
   const alertIcon = (() => {
     switch (alert.source) {
@@ -167,33 +169,6 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         return <IconHelpCircle size={14} />;
     }
   })();
-
-  const alertType = React.useMemo(() => {
-    const thresholdLabel =
-      TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
-      alert.thresholdType;
-    return (
-      <>
-        If value {thresholdLabel}{' '}
-        <span className="fw-bold">{alert.threshold}</span>
-        {isRangeThresholdType(alert.thresholdType) && (
-          <>
-            {' '}
-            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
-          </>
-        )}
-        <span>&middot;</span>
-      </>
-    );
-  }, [alert]);
-
-  const notificationMethod = React.useMemo(() => {
-    return (
-      <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
-      </Group>
-    );
-  }, [alert]);
 
   const linkTitle = React.useMemo(() => {
     switch (alert.source) {
@@ -228,11 +203,16 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
 
         <Stack gap={2}>
           <div>
+            {/* With alert details enabled, the alert name is the entry point
+                to its status page; the source tile / saved search moves to a
+                secondary link on the right. */}
             <Link
               data-testid={`alert-link-${alert._id}`}
-              href={alertUrl}
+              href={
+                IS_ALERT_DETAILS_ENABLED ? `/alerts/${alert._id}` : alertUrl
+              }
               className={styles.alertLink}
-              title={linkTitle}
+              title={IS_ALERT_DETAILS_ENABLED ? 'Alert details' : linkTitle}
             >
               <Group gap={2}>
                 {alertIcon}
@@ -240,18 +220,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               </Group>
             </Link>
           </div>
-          <div className="fs-8 d-flex gap-2">
-            {alertType}
-            {notificationMethod}
-            {alert.createdBy && (
-              <>
-                <span>&middot;</span>
-                <span>
-                  Created by {alert.createdBy.name || alert.createdBy.email}
-                </span>
-              </>
-            )}
-          </div>
+          <AlertPropertiesSummary alert={alert} />
           {getAlertTags(alert).length > 0 && (
             <Group gap={4}>
               {getAlertTags(alert).map(tag => (
@@ -266,8 +235,35 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       </Group>
 
       <Group>
+        {/* Eligibility comes from the shared predicate rather than an inline
+            source check, so this and the bulk export can't diverge on which
+            alerts the provider can actually model. */}
+        {isImportableAlert(alert) && (
+          <ResourceTerraformPopover
+            resource={{
+              type: 'alert',
+              id: alert._id,
+              // No fallback to the saved search's name: the name only labels
+              // the generated block, and the manifest the bulk export reads
+              // carries the alert's own name, so a fallback here would make
+              // the two surfaces disagree about what they call this alert.
+              name: alert.name ?? undefined,
+            }}
+          />
+        )}
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
         <AckAlert alert={alert} />
+        {IS_ALERT_DETAILS_ENABLED && alertUrl && (
+          <Button
+            component={Link}
+            href={alertUrl}
+            variant="link"
+            size="compact-sm"
+            data-testid={`alert-source-link-${alert._id}`}
+          >
+            {linkTitle}
+          </Button>
+        )}
       </Group>
     </div>
   );

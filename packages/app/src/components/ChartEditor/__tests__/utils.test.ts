@@ -70,6 +70,16 @@ const traceSource: TSource = {
   durationPrecision: 9,
 };
 
+const sessionSource: TSource = {
+  id: 'source-session',
+  name: 'Session Source',
+  kind: SourceKind.Session,
+  connection: 'conn-1',
+  from: { databaseName: 'db', tableName: 'sessions' },
+  timestampValueExpression: 'Timestamp',
+  traceSourceId: 'source-trace',
+};
+
 const seriesItem = {
   aggFn: 'count' as const,
   valueExpression: '*',
@@ -481,6 +491,38 @@ describe('convertSavedChartConfigToFormState', () => {
     };
     const result = convertSavedChartConfigToFormState(config);
     expect(result.configType).toBe('builder');
+  });
+
+  // Clearing the legacy singular `channel` on load is what stops a stale value
+  // being submitted alongside an edited channels list, which the API rejects.
+  it('normalises a legacy channel-only tile alert onto channels', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Line,
+      select: [seriesItem],
+      where: '',
+      alert: {
+        threshold: 1,
+        thresholdType: AlertThresholdType.ABOVE,
+        interval: '5m',
+        channel: { type: 'webhook', webhookId: 'w1' },
+      },
+    };
+    const result = convertSavedChartConfigToFormState(config);
+    expect(result.alert?.channel).toBeUndefined();
+    expect(result.alert?.channels).toEqual([
+      { type: 'webhook', webhookId: 'w1' },
+    ]);
+  });
+
+  it('leaves a config without an alert untouched', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Line,
+      select: [seriesItem],
+      where: '',
+    };
+    expect(convertSavedChartConfigToFormState(config).alert).toBeUndefined();
   });
 
   it('maps array select to series with aggConditionLanguage defaulted', () => {
@@ -1617,5 +1659,347 @@ describe('heatmap round-trip', () => {
         heatmapScaleType: 'linear',
       }),
     );
+  });
+});
+
+describe('metric formulas (HDX-5080)', () => {
+  const metricSeriesItem = {
+    aggFn: 'avg' as const,
+    valueExpression: 'Value',
+    aggCondition: '',
+    aggConditionLanguage: 'lucene' as const,
+    metricType: MetricsDataType.Gauge,
+    metricName: 'cpu.usage',
+  };
+
+  const makeMetricForm = (
+    overrides: Partial<ChartEditorFormState>,
+  ): ChartEditorFormState => ({
+    displayType: DisplayType.Line,
+    source: 'source-metric',
+    where: '',
+    series: [
+      metricSeriesItem,
+      { ...metricSeriesItem, metricName: 'cpu.limit' },
+    ],
+    ...overrides,
+  });
+
+  describe('validateChartForm', () => {
+    it('accepts a valid formula referencing existing series', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          formulas: [{ expression: 'A / (A + B) * 100' }],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+      expect(setError).not.toHaveBeenCalled();
+    });
+
+    it('reports a malformed formula expression at its field path', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({ formulas: [{ expression: 'A +' }] }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+      expect(setError).toHaveBeenCalledWith(
+        'formulas.0.expression',
+        expect.objectContaining({ type: 'manual' }),
+      );
+    });
+
+    it('reports an unknown series reference', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({ formulas: [{ expression: 'A + C' }] }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({
+          path: 'formulas.0.expression',
+          message: expect.stringContaining('Unknown series "C"'),
+        }),
+      ]);
+    });
+
+    it('reports an empty formula expression', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({ formulas: [{ expression: '' }] }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+    });
+
+    it('validates each formula independently', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          formulas: [{ expression: 'A + B' }, { expression: 'A *' }],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.1.expression' }),
+      ]);
+    });
+
+    it('validates formulas for log event sources', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-log',
+          series: [seriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        logSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+    });
+
+    it('accepts a valid formula on a trace source', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-trace',
+          series: [seriesItem, seriesItem],
+          formulas: [{ expression: 'A / B * 100' }],
+        }),
+        traceSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('skips formula validation for formula-incapable source kinds (formulas are stripped on save)', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-session',
+          series: [seriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        sessionSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('skips formula validation for non-formula display types (formulas are stripped on save)', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Pie,
+          series: [metricSeriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rejects multiple formulas on a Number chart', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          formulas: [{ expression: 'A + B' }, { expression: 'A / B' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({
+          path: 'formulas',
+          message: 'Number charts support a single formula',
+        }),
+      ]);
+    });
+
+    it('allows a single formula on a Number chart and multiple elsewhere', () => {
+      const setError = jest.fn();
+      expect(
+        validateChartForm(
+          makeMetricForm({
+            displayType: DisplayType.Number,
+            formulas: [{ expression: 'A + B' }],
+            showOperandSeries: false,
+          }),
+          metricSource,
+          setError,
+        ),
+      ).toHaveLength(0);
+      expect(
+        validateChartForm(
+          makeMetricForm({
+            formulas: [{ expression: 'A + B' }, { expression: 'A / B' }],
+          }),
+          metricSource,
+          setError,
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('lifts the Number chart series cap when formulas are present', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          series: [metricSeriesItem, metricSeriesItem, metricSeriesItem],
+          formulas: [{ expression: 'A / (A + B + C) * 100' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('keeps the Number chart series cap without formulas', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          series: [metricSeriesItem, metricSeriesItem, metricSeriesItem],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([expect.objectContaining({ path: 'series' })]);
+    });
+  });
+
+  describe('normalization (convertFormStateToSavedChartConfig)', () => {
+    // Narrow the SavedChartConfig union without an unsafe assertion — every
+    // form here is a builder config, so anything else is a test failure.
+    const savedBuilderConfig = (
+      form: ChartEditorFormState,
+      source: TSource,
+    ): BuilderSavedChartConfig => {
+      const saved = convertFormStateToSavedChartConfig(form, source);
+      if (!saved || 'configType' in saved) {
+        throw new Error('expected a builder saved chart config');
+      }
+      return saved;
+    };
+
+    it('retains formulas and showOperandSeries for a metric time series chart', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          formulas: [{ expression: 'A / B', alias: 'Ratio' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+      );
+      expect(saved.formulas).toEqual([{ expression: 'A / B', alias: 'Ratio' }]);
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('always persists hidden operand series for Number charts with a formula', () => {
+      // A Number chart displays the first value column, so the formula must
+      // be the only projection — even when the tile showed its operand
+      // series on another display type before the switch.
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          formulas: [{ expression: 'A / B' }],
+          // Unset (operands shown) — e.g. a Line chart switched to Number.
+        }),
+        metricSource,
+      );
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('keeps the tile showOperandSeries choice on non-Number display types', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          formulas: [{ expression: 'A / B' }],
+        }),
+        metricSource,
+      );
+      expect(saved.showOperandSeries).toBeUndefined();
+    });
+
+    it('retains formulas for a log event source', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          source: 'source-log',
+          series: [seriesItem],
+          formulas: [{ expression: 'A * 100' }],
+          showOperandSeries: false,
+        }),
+        logSource,
+      );
+      expect(saved.formulas).toEqual([{ expression: 'A * 100' }]);
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('strips formulas for formula-incapable source kinds', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          source: 'source-session',
+          series: [seriesItem],
+          formulas: [{ expression: 'A * 100' }],
+          showOperandSeries: false,
+        }),
+        sessionSource,
+      );
+      expect(saved.formulas).toBeUndefined();
+      expect(saved.showOperandSeries).toBeUndefined();
+    });
+
+    it('strips formulas for display types the composed metric query does not render', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          displayType: DisplayType.Pie,
+          series: [metricSeriesItem],
+          formulas: [{ expression: 'A * 100' }],
+        }),
+        metricSource,
+      );
+      expect(saved.formulas).toBeUndefined();
+      expect(saved.showOperandSeries).toBeUndefined();
+    });
+
+    it('round-trips formulas through saved config and form state', () => {
+      const saved = convertFormStateToSavedChartConfig(
+        makeMetricForm({
+          formulas: [
+            {
+              expression: 'A / (A + B) * 100',
+              alias: 'Error rate',
+              numberFormat: { output: 'percent' },
+            },
+          ],
+        }),
+        metricSource,
+      );
+      expect(saved).toBeDefined();
+      const restored = convertSavedChartConfigToFormState(saved!);
+      expect(restored.formulas).toEqual([
+        {
+          expression: 'A / (A + B) * 100',
+          alias: 'Error rate',
+          numberFormat: { output: 'percent' },
+        },
+      ]);
+    });
   });
 });

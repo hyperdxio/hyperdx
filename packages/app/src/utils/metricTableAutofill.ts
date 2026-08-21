@@ -25,6 +25,41 @@ const EXCLUSIONS: Partial<Record<MetricsDataType, string[]>> = {
   [MetricsDataType.Sum]: ['_summary', '-summary'],
 };
 
+const SERIES_SUFFIXES = ['_series', '-series'];
+
+// Prefer otel_metrics_ prefixed names first, then shortest match
+function pickBestMatch(candidates: string[]): string {
+  const sorted = [...candidates].sort((a, b) => {
+    const aOtel = a.toLowerCase().startsWith('otel_metrics_') ? 0 : 1;
+    const bOtel = b.toLowerCase().startsWith('otel_metrics_') ? 0 : 1;
+    if (aOtel !== bOtel) return aOtel - bOtel;
+    return a.length - b.length;
+  });
+  return sorted[0];
+}
+
+/**
+ * Given a list of table names from a ClickHouse database, returns the
+ * best-matching table name for the metrics `series` table,
+ * based on suffix conventions. Returns undefined if a value is already set
+ * or no candidate matches.
+ */
+export function matchSeriesTable(
+  tableNames: string[],
+  currentValue: string | undefined,
+): string | undefined {
+  if (currentValue) return undefined; // Don't overwrite user selections
+
+  const candidates = tableNames.filter(name => {
+    const lower = name.toLowerCase();
+    return SERIES_SUFFIXES.some(suffix => lower.endsWith(suffix));
+  });
+
+  if (candidates.length === 0) return undefined;
+
+  return pickBestMatch(candidates);
+}
+
 /**
  * Given a list of table names from a ClickHouse database, returns a map from
  * MetricsDataType to the best-matching table name based on suffix conventions.
@@ -57,15 +92,7 @@ export function matchMetricTables(
 
     if (candidates.length === 0) continue;
 
-    // Prefer otel_metrics_ prefixed names first, then shortest match
-    candidates.sort((a, b) => {
-      const aOtel = a.toLowerCase().startsWith('otel_metrics_') ? 0 : 1;
-      const bOtel = b.toLowerCase().startsWith('otel_metrics_') ? 0 : 1;
-      if (aOtel !== bOtel) return aOtel - bOtel;
-      return a.length - b.length;
-    });
-
-    result[metricType] = candidates[0];
+    result[metricType] = pickBestMatch(candidates);
   }
 
   return result;

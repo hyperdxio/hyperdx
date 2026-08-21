@@ -19,6 +19,7 @@ import { IconPencil } from '@tabler/icons-react';
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
+import IacMigrationSection from './components/TeamSettings/IacMigrationSection';
 import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
 import McpServerSection from './components/TeamSettings/McpServerSection';
 import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesSection';
@@ -27,6 +28,7 @@ import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
+import { IS_IAC_EXPORT_ENABLED } from './config';
 import { withAppNav } from './layout';
 
 type TeamTab = {
@@ -34,16 +36,27 @@ type TeamTab = {
   label: string;
   sections: {
     id: string;
-    content: ReactNode;
+    // Always a function of whether this tab is the visible one. Mantine `Tabs`
+    // keeps every panel mounted, so a section that fetches on mount would
+    // otherwise do so on every Team Settings visit. Uniform rather than a
+    // `ReactNode | fn` union: the union let a bare `<Section />` be passed where
+    // the closure form was needed, silently reinstating the eager fetch.
+    content: (active: boolean) => ReactNode;
   }[];
 };
 
-function TeamTabContent({ sections }: { sections: TeamTab['sections'] }) {
+function TeamTabContent({
+  sections,
+  active,
+}: {
+  sections: TeamTab['sections'];
+  active: boolean;
+}) {
   return (
     <Stack gap="lg" pt="lg">
       {sections.map(section => (
         <Box key={section.id} id={section.id}>
-          {section.content}
+          {section.content(active)}
         </Box>
       ))}
     </Stack>
@@ -96,11 +109,11 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-data-sources',
-          content: <SourcesSection />,
+          content: () => <SourcesSection />,
         },
         {
           id: 'team-data-connections',
-          content: <ConnectionsSection />,
+          content: () => <ConnectionsSection />,
         },
       ],
     },
@@ -110,7 +123,7 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-members',
-          content: <TeamMembersSection />,
+          content: () => <TeamMembersSection />,
         },
       ],
     },
@@ -122,7 +135,7 @@ export default function TeamPage() {
             sections: [
               {
                 id: 'team-access-security-policies',
-                content: (
+                content: () => (
                   <SecurityPoliciesSection
                     allowedAuthMethods={allowedAuthMethods}
                   />
@@ -138,12 +151,22 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-api-agents-api-keys',
-          content: <ApiKeysSection />,
+          content: () => <ApiKeysSection />,
         },
         {
           id: 'team-api-agents-mcp-server',
-          content: <McpServerSection />,
+          content: () => <McpServerSection />,
         },
+        ...(IS_IAC_EXPORT_ENABLED
+          ? [
+              {
+                id: 'team-api-agents-iac',
+                content: (active: boolean) => (
+                  <IacMigrationSection active={active} />
+                ),
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -152,7 +175,7 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-integrations-webhooks',
-          content: <IntegrationsSection />,
+          content: () => <IntegrationsSection />,
         },
       ],
     },
@@ -162,7 +185,7 @@ export default function TeamPage() {
       sections: [
         {
           id: 'team-advanced-query-settings',
-          content: <TeamQueryConfigSection />,
+          content: () => <TeamQueryConfigSection />,
         },
       ],
     },
@@ -317,7 +340,10 @@ export default function TeamPage() {
               </Tabs.List>
               {tabs.map(tab => (
                 <Tabs.Panel key={tab.value} value={tab.value}>
-                  <TeamTabContent sections={tab.sections} />
+                  <TeamTabContent
+                    sections={tab.sections}
+                    active={tab.value === activeTab}
+                  />
                 </Tabs.Panel>
               ))}
             </Tabs>

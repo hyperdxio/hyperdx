@@ -15,7 +15,10 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderSavedChartConfig,
+  ChartConfig,
+  ChartConfigWithOptDateRange,
   ChartConfigWithOptTimestamp,
+  MetricFormula,
   MetricsDataType,
   NumberFormat,
   SourceKind,
@@ -267,6 +270,17 @@ function hasAllColumns(columns: ColumnMeta[], requiredColumns: string[]) {
   );
 
   return missingColumns.length === 0;
+}
+
+// Metric tables need this optional column to join against the unified `series` table.
+const SERIES_HASH_COLUMN_NAME = 'SeriesHash';
+const SERIES_HASH_COLUMN_TYPE = 'UInt64';
+
+export function hasSeriesHashColumn(columns: ColumnMeta[]) {
+  return columns.some(
+    c =>
+      c.name === SERIES_HASH_COLUMN_NAME && c.type === SERIES_HASH_COLUMN_TYPE,
+  );
 }
 
 type TStrippedSource<T extends TSource> = Partial<
@@ -556,6 +570,15 @@ export function useSingleSeriesNumberFormat(
   const { data: source } = useSource({ id: config.source });
 
   return useMemo(() => {
+    // Metric formula configs display the formula — number charts always
+    // hide the operand series (see convertToNumberChartConfig), so the
+    // first (only) value column is formulas[0], not select[0]. Resolve the
+    // format from the formula, not from an operand that isn't rendered.
+    const formulaConfig = getFormulaConfig(config);
+    if (formulaConfig) {
+      return formulaConfig.formulas[0]?.numberFormat ?? config.numberFormat;
+    }
+
     if (
       isBuilderChartConfig(config) &&
       Array.isArray(config.select) &&
@@ -584,6 +607,52 @@ interface ResolvedNumberFormats {
 }
 
 /**
+ * The formula projection settings of a builder config, or undefined when
+ * formulas don't apply (non-builder configs or no formulas configured).
+ * Source-kind agnostic: metric formulas render through the composed
+ * multi-series query and event (log/trace) formulas compile inline, but both
+ * project the same column shape (operands unless hidden, then formulas).
+ */
+function getFormulaConfig(
+  config: ChartConfig | ChartConfigWithOptDateRange,
+): { formulas: MetricFormula[]; operandsHidden: boolean } | undefined {
+  if (!isBuilderChartConfig(config) || !config.formulas?.length) {
+    return undefined;
+  }
+  return {
+    formulas: config.formulas,
+    operandsHidden: config.showOperandSeries === false,
+  };
+}
+
+/**
+ * How many value (series) columns a builder chart config's query result
+ * carries, ahead of any group-by passthrough columns.
+ *
+ * Mirrors the projection built by the query renderer
+ * (renderMultiSeriesMetricChartConfig / ratio merging in common-utils):
+ *  - metric formula configs project the operand series columns (unless
+ *    `showOperandSeries` is false) followed by one column per formula;
+ *  - ratio configs merge their two series into a single column;
+ *  - everything else projects one column per select entry.
+ */
+export function getBuilderValueColumnCount(
+  config: ChartConfig | ChartConfigWithOptDateRange,
+): number {
+  if (!isBuilderChartConfig(config) || !Array.isArray(config.select)) {
+    return 0;
+  }
+  const formulaConfig = getFormulaConfig(config);
+  if (formulaConfig) {
+    const operandCount = formulaConfig.operandsHidden
+      ? 0
+      : config.select.length;
+    return operandCount + formulaConfig.formulas.length;
+  }
+  return isRatioChartConfig(config.select, config) ? 1 : config.select.length;
+}
+
+/**
  * Returns the number formats to use when formatting chart series values.
  *
  * The chart-wide number format is determined with the following priorities:
@@ -607,15 +676,26 @@ export function useChartNumberFormats(
   const { data: source } = useSource({ id: config.source });
 
   return useMemo(() => {
+    const formulaConfig = getFormulaConfig(config);
+
     // The chart-wide number format does not depend on meta, so that it can be
     // resolved without querying. Further, it prioritizes the config's numberFormat
     // over series-specific formats, so that the user can specify the y-axis format
-    // for charts with multiple series-specific formats.
+    // for charts with multiple series-specific formats. When only formula
+    // columns render (operands hidden), formula formats take priority over
+    // formats of series that aren't in the result at all.
+    const firstFormulaFormat = formulaConfig?.formulas.find(
+      f => f.numberFormat,
+    )?.numberFormat;
+    const firstSeriesFormat =
+      isBuilderChartConfig(config) && Array.isArray(config.select)
+        ? getFirstSeriesNumberFormat(config.select, source)
+        : undefined;
     const chartFormat =
       config.numberFormat ??
-      (isBuilderChartConfig(config) && Array.isArray(config.select)
-        ? getFirstSeriesNumberFormat(config.select, source)
-        : undefined);
+      (formulaConfig?.operandsHidden
+        ? (firstFormulaFormat ?? firstSeriesFormat)
+        : (firstSeriesFormat ?? firstFormulaFormat));
 
     // meta must be provided to map result column names (from meta) to number formats
     if (!meta) {
@@ -625,6 +705,35 @@ export function useChartNumberFormats(
     // For Raw-SQL or string-based select configs, series-specific formats are not available
     if (!isBuilderChartConfig(config) || !Array.isArray(config.select)) {
       return { formatByColumn: new Map(), chartFormat };
+    }
+
+    // Metric formula configs project the operand series columns (unless
+    // hidden) followed by one column per formula, ahead of any group-by
+    // passthrough columns (see renderMultiSeriesMetricChartConfig). Map
+    // formats positionally in that order. Formulas supersede ratio, so this
+    // takes priority over the ratio branch below.
+    if (formulaConfig) {
+      const orderedFormats: (NumberFormat | undefined)[] = [
+        ...(formulaConfig.operandsHidden
+          ? []
+          : config.select.map(
+              series =>
+                series.numberFormat ??
+                config.numberFormat ??
+                getTraceDurationNumberFormat(source, series),
+            )),
+        ...formulaConfig.formulas.map(
+          formula => formula.numberFormat ?? config.numberFormat,
+        ),
+      ];
+      const formatByColumn = new Map<string, NumberFormat>();
+      orderedFormats.forEach((format, i) => {
+        const key = meta[i]?.name;
+        if (key != null && format) {
+          formatByColumn.set(key, format);
+        }
+      });
+      return { formatByColumn, chartFormat };
     }
 
     // Ratio-based configs have exactly two series, which
@@ -720,6 +829,17 @@ const ReqMetricTableColumns = {
     'MetricName',
     'ResourceAttributes',
   ],
+  // Unified metrics series table (not a MetricsDataType)
+  series: [
+    'Date',
+    'MetricName',
+    'SeriesHash',
+    'ServiceName',
+    'MetricType',
+    'Temporality',
+    'ResourceAttributes',
+    'Attributes',
+  ],
 };
 
 export async function isValidMetricTable({
@@ -732,7 +852,7 @@ export async function isValidMetricTable({
   databaseName: string;
   tableName?: string;
   connectionId: string;
-  metricType: MetricsDataType;
+  metricType: MetricsDataType | 'series';
   metadata: Metadata;
 }) {
   if (!tableName) {

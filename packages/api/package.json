@@ -1,10 +1,19 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.32.0",
+  "version": "2.35.0",
   "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=22.16.0"
+  },
+  "nx": {
+    "targets": {
+      "ci:lint": {
+        "outputs": [
+          "{projectRoot}/openapi.json"
+        ]
+      }
+    }
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
@@ -12,7 +21,7 @@
     "@braintree/sanitize-url": "^7.1.1",
     "@clickhouse/client-common": "1.23.0-head.fae5998.1",
     "@esm2cjs/p-queue": "^7.3.0",
-    "@hyperdx/common-utils": "^0.24.0",
+    "@hyperdx/common-utils": "^0.26.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -36,8 +45,7 @@
     "handlebars": "^4.7.9",
     "http-graceful-shutdown": "^3.1.13",
     "http-proxy-middleware": "^4.0.0",
-    "ip-address": "^10.2.0",
-    "jsonwebtoken": "^9.0.0",
+    "ip-address": "^10.3.1",
     "lodash": "^4.18.1",
     "minimist": "^1.2.7",
     "mongodb": "^6.15.0",
@@ -71,6 +79,7 @@
     "@types/supertest": "^2.0.12",
     "@types/swagger-jsdoc": "^6",
     "@types/uuid": "^8.3.4",
+    "ajv": "^8.20.0",
     "jest": "^30.2.0",
     "migrate-mongo": "^11.0.0",
     "nodemon": "^2.0.20",
@@ -92,7 +101,7 @@
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && cp -r ./src/opamp/proto ./build/opamp/",
     "build:vercel": "rimraf ./build && tsc -p tsconfig.vercel.json && tsc-alias -p tsconfig.vercel.json && cp -r ./src/opamp/proto ./build/opamp/",
-    "lint": "npx eslint . --ext .ts --max-warnings 357",
+    "lint": "npx eslint . --ext .ts --max-warnings 302",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:openapi",
     "ci:unit": "jest --ci --coverage",

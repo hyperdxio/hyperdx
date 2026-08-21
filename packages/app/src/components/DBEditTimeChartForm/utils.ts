@@ -14,6 +14,7 @@ import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
+  ChartVariable,
   DisplayType,
   Filter,
   SavedChartConfig,
@@ -22,6 +23,10 @@ import {
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
+import {
+  filterReferencedVariables,
+  substituteChartConfigVariables,
+} from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
@@ -145,6 +150,43 @@ export function computeDbTimeChartConfig(
   };
 }
 
+/**
+ * Returns the dashboard variables a chart preview should use.
+ * - PromQL configs don't yet support variables, so they resolve to an empty set
+ * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
+ * - Otherwise, variables are filtered to only those referenced by the chart config.
+ */
+export function resolvePreviewVariables({
+  config,
+  variables,
+  hasAlert,
+}: {
+  config: ChartConfigWithDateRange;
+  variables: ChartVariable[] | undefined;
+  hasAlert: boolean;
+}): ChartVariable[] | undefined {
+  if (!variables) return undefined;
+  const referenced = filterReferencedVariables(config, variables);
+  return hasAlert
+    ? referenced.map(variable => ({ ...variable, values: [] }))
+    : referenced;
+}
+
+/**
+ * Expand a builder config's variable references, falling back to the config as
+ * written when one of them can't be expanded (a malformed reference, or a macro
+ * naming a variable the dashboard doesn't declare).
+ */
+function expandVariablesOrLeaveRaw<
+  T extends Parameters<typeof substituteChartConfigVariables>[0],
+>(config: T): T {
+  try {
+    return substituteChartConfigVariables(config);
+  } catch {
+    return config;
+  }
+}
+
 export function buildSampleEventsConfig(
   queriedConfig: ChartConfigWithDateRange | undefined,
   tableSource: TSource | undefined,
@@ -160,8 +202,13 @@ export function buildSampleEventsConfig(
     return null;
   }
 
+  // The series' agg conditions become `filters` below, and `filters` is
+  // deliberately not scanned for variable references. So expand the variables
+  // here, building the filters in the sample events config below.
+  const config = expandVariablesOrLeaveRaw(queriedConfig);
+
   return {
-    ...queriedConfig,
+    ...config,
     orderBy: [
       {
         ordering: 'DESC' as const,
@@ -180,7 +227,7 @@ export function buildSampleEventsConfig(
         tableSource.kind === SourceKind.Trace) &&
         tableSource.defaultTableSelectExpression) ||
       '',
-    filters: seriesToFilters(queriedConfig.select),
+    filters: seriesToFilters(config.select),
     filtersLogicalOperator: 'OR' as const,
     groupBy: undefined,
     granularity: undefined,

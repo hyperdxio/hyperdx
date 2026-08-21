@@ -1,5 +1,62 @@
 # Contributing
 
+## Getting vouched
+
+Issues, bug reports and discussion are open to everyone. Pull requests are a
+little different: a maintainer has to vouch for you before we review your first
+one. Open a PR without being vouched and it stays open — a bot adds a
+`needs-vouch` label and a comment pointing you back here. Nothing gets closed,
+you just aren't in the review queue yet.
+
+**One at a time.** Outside contributors can have one pull request open at once,
+or three once vouched. Open more than that and the newest is closed with a note
+asking you to finish the others first; reopen it once one of them lands. Drafts
+don't count towards the limit. This isn't about the quality of your work — a
+handful of parallel changes from one author is more than we can review properly,
+and in practice it means none of them get merged.
+
+To get vouched, [open an issue saying
+hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
+who you are and what you want to work on. A maintainer replies, usually within a
+day or two. Use the same issue to ask which issue to pick up, or to check an
+approach before you write code.
+
+Good places to start: the [good first
+issue](https://github.com/hyperdxio/hyperdx/labels/good%20first%20issue) label,
+and [Discord](https://discord.gg/FErRRKU78j) if the dev setup gives you trouble.
+
+Why we do this: AI tools make it cheap to open a plausible-looking PR with no
+understanding behind it, and reviewing those crowds out the contributions we
+want to spend time on. Vouching is a short introduction, not a skill test. We
+use [Vouch](https://github.com/mitchellh/vouch); the list is
+[`.github/VOUCHED.td`](./.github/VOUCHED.td).
+
+### Vouching someone (maintainers)
+
+Comment on any issue or PR with the keyword first on the first line:
+
+```
+/vouch @username optional reason
+/unvouch @username
+/denounce @username optional reason
+```
+
+On a PR, a bare `/vouch` with no handle vouches that PR's author.
+
+`/denounce` closes a PR outright and keeps closing that author's PRs from then
+on. Keep it for repeat spam and bad-faith behaviour; `/unvouch` quietly removes
+someone without blocking them.
+
+Vouching also lifts someone's open-PR allowance from one to three, which is the
+only way to let a contributor run more than one at a time. Reopening a PR that
+was closed for hitting the cap won't work on its own — the check runs again on
+reopen and closes it again.
+
+The bot opens a PR updating `.github/VOUCHED.td`. **Nothing takes effect until
+you merge it.** That PR needs an approval rather than a green CI run — GitHub
+does not run workflows on PRs the bot creates. Merge them one at a time; two
+open at once will conflict on the same sorted list.
+
 ## Architecture Overview
 
 ![architecture](./.github/images/architecture.png)
@@ -122,6 +179,48 @@ common-utils) to test and run:
 ```bash
 yarn dev:unit
 ```
+
+### Mutation Tests
+
+Coverage tells you a line ran; it doesn't tell you a test would fail if that
+line were wrong. [Stryker](https://stryker-mutator.io/) edits the source in
+small ways (flips a comparison, empties a return) and reports which edits the
+test suite failed to catch. A surviving mutant is a missing assertion.
+
+Set up in `common-utils` only for now. From `packages/common-utils`:
+
+```bash
+# The file you're working on — seconds to a couple of minutes
+yarn dev:mutation --mutate src/filters.ts
+
+# Everything you've changed off main
+yarn dev:mutation --mutate "$(git diff --name-only --diff-filter=d --relative origin/main... -- 'src/**/*.ts' | grep -v __tests__ | paste -sd, -)"
+
+# The whole package (slow — tens of minutes)
+yarn dev:mutation
+```
+
+Scope it to what you're working on. Runs are roughly linear in mutants, and the
+whole package is ~365 files. Results are cached between runs, so a re-run after
+editing one file only re-tests that file.
+
+Read the `Survived` entries: each one shows the edit that was made and the tests
+that ran anyway. `NoCoverage` means no unit test reaches that code at all — some
+of those are covered by integration tests, which this doesn't run. An HTML
+report lands in `reports/mutation/`.
+
+The score is not a coverage number for the whole file. Module-level code —
+constants, regexes, lookup tables — isn't mutated at all (`ignoreStatic`, about
+10% of the mutants here) and is left out of the denominator, so a high score
+says nothing about whether those are asserted on.
+
+Not wired into CI. It's a tool for while you're writing tests, not a gate.
+
+One wrinkle worth knowing about: the root `package.json` pins
+`@stryker-mutator/core/minimatch` to `^9`. Our blanket `brace-expansion`
+resolution forces v2 (CJS) everywhere, and minimatch v10's ESM build needs
+`brace-expansion` v5's named exports, so Stryker crashes on startup without the
+pin. Drop it if that blanket resolution is ever narrowed.
 
 ## AI-Assisted Development
 

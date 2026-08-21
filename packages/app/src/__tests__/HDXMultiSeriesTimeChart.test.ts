@@ -7,11 +7,15 @@
 // `getChartColorInfo()` on HyperDX) would not have a matching gradient
 // def after the `COLORS` palette was unified to Observable 10.
 import type { LineData } from '@/ChartUtils';
+import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
+  getSelectedLineData,
   getVisibleLineData,
+  getVisibleTooltipRows,
   HARD_LINES_LIMIT,
+  sameActiveClickSeries,
 } from '@/HDXMultiSeriesTimeChart';
 import { COLORS } from '@/utils';
 
@@ -95,17 +99,83 @@ describe('getVisibleLineData', () => {
     expect(visible.map(l => l.dataKey)).toEqual(['a', 'c']);
   });
 
-  it('drops series beyond HARD_LINES_LIMIT', () => {
+  it('caps to HARD_LINES_LIMIT when there is no selection', () => {
     const lineData = Array.from({ length: HARD_LINES_LIMIT + 5 }, (_, i) =>
       makeLine(`series-${i}`),
     );
     const visible = getVisibleLineData(lineData, undefined);
     expect(visible).toHaveLength(HARD_LINES_LIMIT);
-    // A series past the limit must never appear, even if selected.
-    const overLimitName = `series-${HARD_LINES_LIMIT + 2}`;
-    expect(getVisibleLineData(lineData, new Set([overLimitName]))).toHaveLength(
-      0,
+    expect(visible.map(l => l.dataKey)).not.toContain(
+      `series-${HARD_LINES_LIMIT + 2}`,
     );
+  });
+
+  it('draws a selected series even when it ranks beyond HARD_LINES_LIMIT', () => {
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 5 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    // Selection wins over the cap: isolating a low-ranked series still draws it
+    // (cap-first order previously left the chart empty while its stats stayed
+    // in the legend table).
+    const overLimitName = `series-${HARD_LINES_LIMIT + 2}`;
+    expect(
+      getVisibleLineData(lineData, new Set([overLimitName])).map(
+        l => l.dataKey,
+      ),
+    ).toEqual([overLimitName]);
+  });
+
+  it('still caps an oversized manual selection to HARD_LINES_LIMIT', () => {
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 20 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    const everySeries = new Set(lineData.map(l => l.dataKey));
+    expect(getVisibleLineData(lineData, everySeries)).toHaveLength(
+      HARD_LINES_LIMIT,
+    );
+  });
+});
+
+describe('getSelectedLineData', () => {
+  const makeLine = (dataKey: string, displayName?: string): LineData => ({
+    dataKey,
+    currentPeriodKey: dataKey,
+    previousPeriodKey: `${dataKey}.prev`,
+    displayName: displayName ?? dataKey,
+    valueColumnName: dataKey,
+    color: '#abcdef',
+  });
+
+  it('does NOT cap to HARD_LINES_LIMIT (feeds the uncapped pinned tooltip list)', () => {
+    // The pinned tooltip's drill-down list may show more series than are drawn,
+    // so selection is applied without the draw cap. This is the behavior that
+    // lets "load all series" reveal materialized-but-undrawn series.
+    const lineData = Array.from({ length: HARD_LINES_LIMIT + 50 }, (_, i) =>
+      makeLine(`series-${i}`),
+    );
+    expect(getSelectedLineData(lineData, undefined)).toHaveLength(
+      HARD_LINES_LIMIT + 50,
+    );
+  });
+
+  it('applies the same name-based selection as getVisibleLineData', () => {
+    const lineData = [
+      makeLine('a', 'Alpha'),
+      makeLine('b', 'Beta'),
+      makeLine('c', 'Gamma'),
+    ];
+    expect(
+      getSelectedLineData(lineData, new Set(['Alpha', 'Gamma'])).map(
+        l => l.dataKey,
+      ),
+    ).toEqual(['a', 'c']);
+  });
+
+  it('returns every series when the selection is empty', () => {
+    const lineData = [makeLine('a'), makeLine('b')];
+    expect(
+      getSelectedLineData(lineData, new Set()).map(l => l.dataKey),
+    ).toEqual(['a', 'b']);
   });
 });
 
@@ -151,6 +221,15 @@ describe('buildActiveClickSeries', () => {
     expect(result[0].value).toBe(0);
   });
 
+  it('drops non-finite values (NaN/Infinity) so the resync guard stays stable', () => {
+    // A ratio chart's zero-denominator bucket yields NaN; admitting it would
+    // break the NaN-unsafe equality guard and loop the resync effect.
+    const visible = [makeLine('a'), makeLine('b'), makeLine('c')];
+    const row = { a: NaN, b: Infinity, c: 7 };
+    const result = buildActiveClickSeries(visible, row);
+    expect(result.map(r => r.dataKey)).toEqual(['c']);
+  });
+
   it('pairs a current-period series with its previous-period value', () => {
     // makeLine sets previousPeriodKey to `${dataKey}.prev`; when the bucket row
     // carries a numeric value under that key, it is surfaced as previousValue
@@ -193,5 +272,97 @@ describe('buildActiveClickSeries', () => {
       isPreviousPeriod: true,
       previousValue: undefined,
     });
+  });
+});
+
+describe('sameActiveClickSeries', () => {
+  const row = (
+    dataKey: string,
+    value: number,
+    previousValue?: number,
+  ): ActiveClickSeries => ({ dataKey, value, previousValue });
+
+  it('treats an undefined prior snapshot as changed (initial fill)', () => {
+    expect(sameActiveClickSeries(undefined, [row('a', 1)])).toBe(false);
+  });
+
+  it('detects added series (the "load all" case)', () => {
+    // A capped snapshot gains series once the render cap is lifted; the pinned
+    // tooltip must rebuild so its "+N more" overflow reflects the drawn set.
+    const before = [row('a', 5)];
+    const after = [row('a', 5), row('b', 3)];
+    expect(sameActiveClickSeries(before, after)).toBe(false);
+  });
+
+  it('detects a changed value at the pinned bucket', () => {
+    expect(sameActiveClickSeries([row('a', 5)], [row('a', 6)])).toBe(false);
+  });
+
+  it('detects a changed previous-period comparison value', () => {
+    expect(sameActiveClickSeries([row('a', 5, 4)], [row('a', 5, 9)])).toBe(
+      false,
+    );
+  });
+
+  it('is stable for an identical drawn set (no churn on ordinary re-renders)', () => {
+    const before = [row('a', 5), row('b', 3)];
+    const after = [row('a', 5), row('b', 3)];
+    expect(sameActiveClickSeries(before, after)).toBe(true);
+  });
+
+  it('treats NaN-holding snapshots as equal (no infinite resync loop)', () => {
+    // Regression: `NaN !== NaN` would report identical NaN-holding snapshots as
+    // perpetually changed, driving the resync effect into an infinite loop.
+    // Object.is makes NaN compare equal to itself. (In practice
+    // buildActiveClickSeries now also drops non-finite values, but the equality
+    // must be NaN-safe regardless.)
+    const before = [row('a', NaN)];
+    const after = [row('a', NaN)];
+    expect(sameActiveClickSeries(before, after)).toBe(true);
+
+    const beforePrev = [row('a', 5, NaN)];
+    const afterPrev = [row('a', 5, NaN)];
+    expect(sameActiveClickSeries(beforePrev, afterPrev)).toBe(true);
+  });
+});
+
+describe('getVisibleTooltipRows', () => {
+  const mkRows = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ dataKey: `s${i}` }));
+
+  it('returns all rows and zero hidden when within the limit', () => {
+    const rows = mkRows(5);
+    const result = getVisibleTooltipRows(rows, undefined, 20);
+    expect(result.rows).toBe(rows); // same reference, no copy
+    expect(result.hiddenCount).toBe(0);
+  });
+
+  it('caps to the limit and reports the remainder as hidden', () => {
+    const rows = mkRows(100);
+    const result = getVisibleTooltipRows(rows, undefined, 20);
+    expect(result.rows).toHaveLength(20);
+    expect(result.hiddenCount).toBe(80);
+    // Keeps the highest-ranked (value-desc caller ordering) head.
+    expect(result.rows[0].dataKey).toBe('s0');
+    expect(result.rows[19].dataKey).toBe('s19');
+  });
+
+  it('keeps the cursor-nearest series even when it ranks past the cap', () => {
+    const rows = mkRows(100);
+    const result = getVisibleTooltipRows(rows, 's50', 20);
+    expect(result.rows).toHaveLength(20);
+    expect(result.hiddenCount).toBe(80);
+    const keys = result.rows.map(r => r.dataKey);
+    expect(keys).toContain('s50');
+    // The lowest kept row was swapped out to make room; count stays stable.
+    expect(keys).not.toContain('s19');
+  });
+
+  it('does not duplicate the nearest series when it is already visible', () => {
+    const rows = mkRows(100);
+    const result = getVisibleTooltipRows(rows, 's3', 20);
+    const keys = result.rows.map(r => r.dataKey);
+    expect(keys.filter(k => k === 's3')).toHaveLength(1);
+    expect(result.rows).toHaveLength(20);
   });
 });
