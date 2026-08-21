@@ -21,7 +21,11 @@ import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
-import { useChartNumberFormats, useSource } from '@/source';
+import {
+  getBuilderValueColumnCount,
+  useChartNumberFormats,
+  useSource,
+} from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -137,7 +141,11 @@ export default function DBTableChart({
   // identically and the columns memo consumes them the same way. Color targets
   // aggregation (series) columns only; group-by columns are not select items
   // and never appear here. Ratio configs merge two series into one column, so
-  // per-column color is skipped (matching the numberFormat treatment).
+  // per-column color is skipped (matching the numberFormat treatment). Metric
+  // formula configs with hidden operand series project no per-series columns
+  // at all (only formula columns, which carry no color config), so they're
+  // skipped too; with operands shown the positional mapping below still holds
+  // (formula columns come after the operands and simply get no color).
   const { colorByColumn, rulesByColumn } = useMemo(() => {
     const colorByColumn = new Map<string, ChartPaletteToken>();
     const rulesByColumn = new Map<string, ColorCondition[]>();
@@ -146,7 +154,9 @@ export default function DBTableChart({
       !meta ||
       !isBuilderChartConfig(queriedConfig) ||
       !Array.isArray(queriedConfig.select) ||
-      isRatioChartConfig(queriedConfig.select, queriedConfig)
+      isRatioChartConfig(queriedConfig.select, queriedConfig) ||
+      (queriedConfig.formulas?.length &&
+        queriedConfig.showOperandSeries === false)
     ) {
       return { colorByColumn, rulesByColumn };
     }
@@ -181,8 +191,9 @@ export default function DBTableChart({
       isBuilderChartConfig(queriedConfig) &&
       Array.isArray(queriedConfig.select)
     ) {
-      const isRatio = isRatioChartConfig(queriedConfig.select, queriedConfig);
-      const seriesCount = isRatio ? 1 : queriedConfig.select.length;
+      // Value columns come first (formula-aware: operands + formula columns,
+      // or one merged ratio column); everything after is a group-by column.
+      const seriesCount = getBuilderValueColumnCount(queriedConfig);
       const groupByCount = allKeys.length - seriesCount;
       groupByKeys = groupByCount > 0 ? allKeys.slice(-groupByCount) : [];
     }

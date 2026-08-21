@@ -204,6 +204,15 @@
           "propertyName": "type"
         }
       },
+      "AlertChannels": {
+        "type": "array",
+        "description": "Notification channels to trigger when the alert fires or resolves. Between 1 and 10 channels; duplicates are rejected.\n",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "$ref": "#/components/schemas/AlertChannel"
+        }
+      },
       "Alert": {
         "type": "object",
         "properties": {
@@ -273,7 +282,11 @@
           },
           "channel": {
             "$ref": "#/components/schemas/AlertChannel",
-            "description": "Alert notification channel configuration."
+            "description": "First notification channel, mirrored from \"channels\" for pre-multi-channel clients."
+          },
+          "channels": {
+            "$ref": "#/components/schemas/AlertChannels",
+            "description": "All notification channels to trigger when the alert fires or resolves."
           },
           "name": {
             "type": "string",
@@ -365,11 +378,11 @@
           },
           {
             "type": "object",
+            "description": "At least one of \"channel\" or \"channels\" must be provided. Sending both is allowed only when \"channel\" matches the first entry of \"channels\", so a response body can be echoed back unchanged. Responses always include both, with \"channel\" mirroring the first entry of \"channels\".\n",
             "required": [
               "threshold",
               "interval",
-              "thresholdType",
-              "channel"
+              "thresholdType"
             ]
           }
         ]
@@ -381,11 +394,11 @@
           },
           {
             "type": "object",
+            "description": "At least one of \"channel\" or \"channels\" must be provided. Sending both is allowed only when \"channel\" matches the first entry of \"channels\", so a response body can be echoed back unchanged. Responses always include both, with \"channel\" mirroring the first entry of \"channels\". Updates replace the alert's configuration rather than merging it: sending only the legacy \"channel\" field for an alert that has several channels reduces it to that one channel. Fetch the alert and resend the complete \"channels\" array to preserve them.\n",
             "required": [
               "threshold",
               "interval",
-              "thresholdType",
-              "channel"
+              "thresholdType"
             ]
           }
         ]
@@ -2986,7 +2999,7 @@
           },
           "isVariableEnabled": {
             "type": "boolean",
-            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter(<variableName>)` and\n`$__conditionalAll(<condition>, <variableName>)` macros.\n",
+            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter($<variableName>)` and\n`$__conditionalAll(<condition>, $<variableName>)` macros.\n",
             "default": false,
             "example": true
           },
@@ -5179,6 +5192,27 @@
                     "name": "Error Spike Alert",
                     "message": "Error rate has exceeded 100 in the last hour",
                     "numConsecutiveWindows": 3
+                  }
+                },
+                "multiChannelAlert": {
+                  "summary": "Create an alert that notifies several webhooks",
+                  "value": {
+                    "savedSearchId": "65f5e4a3b9e77c001a345678",
+                    "threshold": 10,
+                    "interval": "5m",
+                    "source": "saved_search",
+                    "thresholdType": "above",
+                    "channels": [
+                      {
+                        "type": "webhook",
+                        "webhookId": "65f5e4a3b9e77c001a789012"
+                      },
+                      {
+                        "type": "webhook",
+                        "webhookId": "65f5e4a3b9e77c001a789013"
+                      }
+                    ],
+                    "name": "Error Spike Alert"
                   }
                 }
               }

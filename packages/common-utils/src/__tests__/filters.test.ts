@@ -747,9 +747,12 @@ describe('filters', () => {
       });
 
       it.each([
-        ['a macro on an explicit expression', '$__filter(ServiceName, svc)'],
-        ['a macro on the variable expression', '$__filter(svc)'],
-        ['a conditionalAll macro', "$__conditionalAll(ServiceName = 'x', svc)"],
+        ['a macro on an explicit expression', '$__filter(ServiceName, $svc)'],
+        ['a macro on the variable expression', '$__filter($svc)'],
+        [
+          'a conditionalAll macro',
+          "$__conditionalAll(ServiceName = 'x', $svc)",
+        ],
         ['a braced reference', 'ServiceName IN (${svc})'],
         ['a bare reference', 'ServiceName IN ($svc)'],
       ])('accepts a sql where clause using %s', (_label, where) => {
@@ -786,7 +789,7 @@ describe('filters', () => {
           filter({
             id: 'sev',
             name: 'Severity',
-            where: '$__filter(ServiceName, nope)',
+            where: '$__filter(ServiceName, $nope)',
             whereLanguage: 'sql',
           }),
         ]);
@@ -796,7 +799,7 @@ describe('filters', () => {
           filterName: 'Severity',
           language: 'sql',
           // The raw template is reported, not its expansion.
-          where: '$__filter(ServiceName, nope)',
+          where: '$__filter(ServiceName, $nope)',
         });
         expect(issues[0].detail).toMatch(/unknown variable 'nope'/);
       });
@@ -806,7 +809,7 @@ describe('filters', () => {
           filter({
             id: 'sev',
             name: 'Severity',
-            where: '$__filter(ServiceName, svc)',
+            where: '$__filter(ServiceName, $svc)',
             whereLanguage: 'sql',
           }),
         ]);
@@ -862,7 +865,7 @@ describe('filters', () => {
     it('expands a macro against the selected values', () => {
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
           [svc(['accounting'])],
         ),
       ).toEqual({
@@ -873,7 +876,7 @@ describe('filters', () => {
 
     it('expands a macro to a no-op when nothing is selected', () => {
       const { where } = resolveFilterValuesWhere(
-        { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+        { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
         [svc([])],
       );
       expect(where).toContain('1=1');
@@ -881,7 +884,7 @@ describe('filters', () => {
 
     it('expands the one-argument macro form using the declared expression', () => {
       expect(
-        resolveFilterValuesWhere({ where: '$__filter(svc)' }, [
+        resolveFilterValuesWhere({ where: '$__filter($svc)' }, [
           svc(['accounting']),
         ]).where,
       ).toBe("(toString(ServiceName) IN ('accounting'))");
@@ -917,10 +920,10 @@ describe('filters', () => {
     it('leaves a macro as written in a lucene clause', () => {
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'lucene' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'lucene' },
           [svc(['accounting'])],
         ).where,
-      ).toBe('$__filter(ServiceName, svc)');
+      ).toBe('$__filter(ServiceName, $svc)');
     });
 
     it("narrows by a filter's own variable when it references itself", () => {
@@ -928,7 +931,7 @@ describe('filters', () => {
       // filter's own selection, which is what the author asked for.
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
           [svc(['accounting'])],
         ).where,
       ).toBe("(ServiceName IN ('accounting'))");
@@ -936,10 +939,10 @@ describe('filters', () => {
 
     it('reports a macro naming an unknown variable without throwing', () => {
       const resolved = resolveFilterValuesWhere(
-        { where: '$__filter(ServiceName, nope)', whereLanguage: 'sql' },
+        { where: '$__filter(ServiceName, $nope)', whereLanguage: 'sql' },
         [svc(['accounting'])],
       );
-      expect(resolved.where).toBe('$__filter(ServiceName, nope)');
+      expect(resolved.where).toBe('$__filter(ServiceName, $nope)');
       expect(resolved.error).toMatch(/unknown variable 'nope'/);
     });
 
@@ -1004,15 +1007,15 @@ describe('filters', () => {
     });
 
     it.each([
-      ['a macro', '$__filter(ServiceName, svc)', 'sql'],
+      ['a macro', '$__filter(ServiceName, $svc)', 'sql'],
       [
         'a conditionalAll macro',
-        "$__conditionalAll(ServiceName = 'x', svc)",
+        "$__conditionalAll(ServiceName = 'x', $svc)",
         'sql',
       ],
       [
         'a reference guarded by its own macro',
-        '$__filter(ServiceName IN ($svc), svc)',
+        '$__filter(ServiceName IN ($svc), $svc)',
         'sql',
       ],
       [
@@ -1160,6 +1163,181 @@ describe('filters', () => {
       for (const f of emitted) {
         expect(isRenderablePinnedFilter(f)).toBe(true);
       }
+    });
+  });
+
+  // Dashboard filters can be defined by an arbitrary expression, not just a
+  // bare column. The parser must treat the whole expression as the key and
+  // ignore operators/keywords nested inside its parentheses, rather than
+  // dropping the clause or splitting on a nested operator. These cases exercise
+  // the parenthesis-depth awareness of parseQuery (and, transitively,
+  // countTopLevelAnd via isRenderablePinnedFilter).
+  describe('complex expression keys (nested parentheses)', () => {
+    const ifOrExpr = `if(SeverityText = 'error' or SeverityText = 'fatal', 'Errors', 'Non-errors')`;
+    const ifInExpr = `if(SeverityText IN ('error', 'fatal'), 'Errors', 'Non-errors')`;
+    const ifBetweenExpr = `if(Duration BETWEEN 1 AND 2, 'fast', 'slow')`;
+
+    describe('parseQuery', () => {
+      it('keeps the whole expression as the key when it nests OR and = inside parens', () => {
+        expect(
+          parseQuery([{ type: 'sql', condition: `${ifOrExpr} IN ('Errors')` }])
+            .filters,
+        ).toEqual({
+          [ifOrExpr]: { included: new Set(['Errors']), excluded: new Set() },
+        });
+      });
+
+      it('splits on the outer IN, not the IN nested inside the expression', () => {
+        expect(
+          parseQuery([{ type: 'sql', condition: `${ifInExpr} IN ('Errors')` }])
+            .filters,
+        ).toEqual({
+          [ifInExpr]: { included: new Set(['Errors']), excluded: new Set() },
+        });
+      });
+
+      it('parses multiple selected values on an expression key', () => {
+        expect(
+          parseQuery([
+            {
+              type: 'sql',
+              condition: `${ifOrExpr} IN ('Errors', 'Non-errors')`,
+            },
+          ]).filters,
+        ).toEqual({
+          [ifOrExpr]: {
+            included: new Set(['Errors', 'Non-errors']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('parses NOT IN on an expression key without splitting on nested IN', () => {
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifInExpr} NOT IN ('Errors')` },
+          ]).filters,
+        ).toEqual({
+          [ifInExpr]: { included: new Set(), excluded: new Set(['Errors']) },
+        });
+      });
+
+      it('merges included and excluded selections on the same expression key', () => {
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifOrExpr} IN ('Errors')` },
+            { type: 'sql', condition: `${ifOrExpr} NOT IN ('Non-errors')` },
+          ]).filters,
+        ).toEqual({
+          [ifOrExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(['Non-errors']),
+          },
+        });
+      });
+
+      it('extracts an expression clause from an AND-joined compound condition', () => {
+        expect(
+          parseQuery([
+            {
+              type: 'sql',
+              condition: `ServiceName IN ('api') AND ${ifOrExpr} IN ('Errors')`,
+            },
+          ]).filters,
+        ).toEqual({
+          ServiceName: { included: new Set(['api']), excluded: new Set() },
+          [ifOrExpr]: { included: new Set(['Errors']), excluded: new Set() },
+        });
+      });
+
+      it('does not split on AND nested inside an expression key', () => {
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifBetweenExpr} IN ('fast')` },
+          ]).filters,
+        ).toEqual({
+          [ifBetweenExpr]: { included: new Set(['fast']), excluded: new Set() },
+        });
+      });
+
+      it('does not treat a BETWEEN nested inside an expression key as a range', () => {
+        // toEqual asserts the exact shape: an unexpected `range` key would fail
+        // this, so it doubles as the "no range was extracted" check.
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${ifBetweenExpr} NOT IN ('slow')` },
+          ]).filters,
+        ).toEqual({
+          [ifBetweenExpr]: { included: new Set(), excluded: new Set(['slow']) },
+        });
+      });
+
+      it('handles a nested function expression key', () => {
+        const key = `toString(multiIf(Status >= 500, 'error', Status >= 400, 'warn', 'ok'))`;
+        expect(
+          parseQuery([
+            { type: 'sql', condition: `${key} IN ('error', 'warn')` },
+          ]).filters,
+        ).toEqual({
+          [key]: { included: new Set(['error', 'warn']), excluded: new Set() },
+        });
+      });
+
+      it('round-trips an expression key through filtersToQuery', () => {
+        const originalFilters: FilterState = {
+          [ifOrExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(['Non-errors']),
+          },
+        };
+        expect(parseQuery(filtersToQuery(originalFilters)).filters).toEqual(
+          originalFilters,
+        );
+      });
+    });
+
+    describe('isRenderablePinnedFilter', () => {
+      const sql = (condition: string): Filter => ({ type: 'sql', condition });
+
+      // A nested IN carries no bare AND/OR/NOT keyword, so an expression key
+      // built only from it round-trips to a single renderable facet. Before the
+      // parser tracked parenthesis depth this same input parsed to the garbage
+      // key `if(SeverityText` — accepted for the wrong reason; now it is
+      // accepted with the correct, whole-expression key.
+      it('accepts an expression key whose only nested keyword is IN', () => {
+        expect(isRenderablePinnedFilter(sql(`${ifInExpr} IN ('Errors')`))).toBe(
+          true,
+        );
+      });
+
+      it('accepts a nested-function expression key', () => {
+        const key = `toString(multiIf(Status >= 500, 'error', 'ok'))`;
+        expect(isRenderablePinnedFilter(sql(`${key} IN ('error')`))).toBe(true);
+      });
+
+      // A key that nests OR/AND (including the AND of a nested BETWEEN) still
+      // carries that keyword as bare text, so it is rejected: the sidebar can't
+      // render it as a plain column facet even though the value list parses.
+      it('rejects an expression key that nests OR', () => {
+        expect(isRenderablePinnedFilter(sql(`${ifOrExpr} IN ('Errors')`))).toBe(
+          false,
+        );
+      });
+
+      it('rejects an expression key that nests a BETWEEN ... AND', () => {
+        expect(
+          isRenderablePinnedFilter(sql(`${ifBetweenExpr} IN ('fast')`)),
+        ).toBe(false);
+      });
+
+      // countTopLevelAnd counts a BETWEEN's own bounds AND (exactly one
+      // top-level conjunct) while the parentheses of the function key are
+      // tracked without disturbing that count, so the filter stays renderable.
+      it('accepts a numeric BETWEEN on a parenthesized (function) key', () => {
+        expect(
+          isRenderablePinnedFilter(sql('length(Body) BETWEEN 1 AND 5')),
+        ).toBe(true);
+      });
     });
   });
 

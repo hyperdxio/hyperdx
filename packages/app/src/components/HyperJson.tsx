@@ -357,11 +357,26 @@ function TreeNode({
   const keyPath = React.useMemo(() => _keyPath ?? [], [_keyPath]);
 
   const originalLength = React.useMemo(() => Object.keys(data).length, [data]);
+
+  // ClickHouse hands back `Map(...)` keys in physical storage order, which reads
+  // as random for wide maps like `ProfileEvents`. Sorting here (rather than
+  // upstream) covers every nesting level for free, since TreeNode recurses, and
+  // it puts the sort ahead of the MAX_TREE_NODE_ITEMS slice below so the
+  // truncated view shows a predictable prefix instead of an arbitrary subset.
+  const entries = React.useMemo(() => {
+    const raw = Object.entries(data);
+    // Arrays are index-keyed — reordering them would change the data.
+    if (isArray(data)) {
+      return raw;
+    }
+    return raw.sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { numeric: true }),
+    );
+  }, [data]);
+
   const visibleLines = React.useMemo(() => {
-    return isExpanded
-      ? Object.entries(data)
-      : Object.entries(data).slice(0, MAX_TREE_NODE_ITEMS);
-  }, [data, isExpanded]);
+    return isExpanded ? entries : entries.slice(0, MAX_TREE_NODE_ITEMS);
+  }, [entries, isExpanded]);
   const nestedLevel = keyPath?.length || 0;
 
   return (

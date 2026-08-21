@@ -249,14 +249,22 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   return values;
 }
 
-// Check whether a SQL fragment contains a keyword or operator outside of
-// single-quoted strings.  Accepts either single characters (=, <, >) or
-// multi-character keywords (' OR ', ' BETWEEN ') to search for.
+// Check whether a SQL fragment contains a keyword or operator at the *top
+// level* — outside single-quoted strings and outside any parentheses.  Accepts
+// either single characters (=, <, >) or multi-character keywords (' OR ',
+// ' BETWEEN ') to search for.
+//
+// Parenthesis-depth awareness is what lets a complex expression key survive
+// parsing: in `if(SeverityText = 'error' OR SeverityText = 'fatal', ...) IN
+// ('Errors')` the `=` and ` OR ` live inside the `if(...)` sub-expression, so
+// they must not be mistaken for top-level operators that would disqualify the
+// clause. Parentheses inside quoted strings don't affect depth.
 function containsOutsideQuotes(
   text: string,
   targets: (string | { char: string })[],
 ): boolean {
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (isQuoteBoundary(text, i)) {
@@ -271,6 +279,16 @@ function containsOutsideQuotes(
       continue;
     }
     if (inString) continue;
+
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
 
     for (const target of targets) {
       if (typeof target === 'object') {
@@ -293,15 +311,24 @@ function containsOperatorOutsideQuotes(part: string): boolean {
   ]);
 }
 
-// Split a string on the first occurrence of `delimiter` that is outside
-// single-quoted strings.  Returns [before, after] or null if not found.
+// Split a string on the first occurrence of `delimiter` that is at the top
+// level — outside single-quoted strings and outside any parentheses.  Returns
+// [before, after] or null if not found.
+//
+// Depth awareness makes the split land on the separator between the key
+// expression and its value list rather than on an operator nested inside the
+// key: `if(SeverityText IN ('error','fatal'), ...) IN ('Errors')` must split on
+// the outer ` IN `, keeping the whole `if(...)` as the key, not on the ` IN `
+// inside the `if(...)`.
 function splitOnFirstOutsideQuotes(
   text: string,
   delimiter: string,
 ): [string, string] | null {
   let inString = false;
+  let depth = 0;
   const upper = delimiter.toUpperCase();
   for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
     if (isQuoteBoundary(text, i)) {
       if (inString) {
         const esc = handleQuoteEscape(text, i);
@@ -314,6 +341,15 @@ function splitOnFirstOutsideQuotes(
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (text.slice(i, i + upper.length).toUpperCase() === upper) {
       return [text.slice(0, i), text.slice(i + upper.length)];
     }
@@ -334,10 +370,15 @@ function extractInClauses(condition: string): Array<{
     isExclude: boolean;
   }> = [];
 
-  // Split on ' AND ' while respecting quoted strings (including SQL-escaped quotes)
+  // Split on ' AND ' while respecting quoted strings (including SQL-escaped
+  // quotes) and parenthesis depth. Only a *top-level* ` AND ` joins two
+  // separate predicates; an ` AND ` nested inside parentheses belongs to a key
+  // sub-expression (e.g. `if(x BETWEEN 1 AND 2, ...) IN (...)`) and must not
+  // split the clause.
   const parts: string[] = [];
   let currentPart = '';
   let inString = false;
+  let depth = 0;
 
   for (let i = 0; i < condition.length; i++) {
     const char = condition[i];
@@ -356,13 +397,22 @@ function extractInClauses(condition: string): Array<{
       continue;
     }
 
-    if (!inString && condition.slice(i, i + 5).toUpperCase() === ' AND ') {
-      if (currentPart.trim()) {
-        parts.push(currentPart.trim());
+    if (!inString) {
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        if (depth > 0) depth--;
+      } else if (
+        depth === 0 &&
+        condition.slice(i, i + 5).toUpperCase() === ' AND '
+      ) {
+        if (currentPart.trim()) {
+          parts.push(currentPart.trim());
+        }
+        currentPart = '';
+        i += 4; // Skip past ' AND '
+        continue;
       }
-      currentPart = '';
-      i += 4; // Skip past ' AND '
-      continue;
     }
 
     currentPart += char;
@@ -375,7 +425,10 @@ function extractInClauses(condition: string): Array<{
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
     // Skip parts that contain OR (not supported) or comparison operators,
-    // but only when those operators appear outside of quoted strings.
+    // but only when those operators appear at the top level — outside quoted
+    // strings and outside any parentheses. Operators nested inside a key
+    // expression's parentheses (e.g. `if(a = 'x' OR b = 'y', ...)`) are part of
+    // that expression and must not disqualify the clause.
     if (containsOperatorOutsideQuotes(part)) {
       continue;
     }
@@ -496,12 +549,16 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state) };
 };
 
-// Count top-level ` AND ` separators (outside quoted strings). Used to detect
-// conjuncts the pinned-filter parser silently drops.
+// Count top-level ` AND ` separators (outside quoted strings and outside any
+// parentheses). Used to detect conjuncts the pinned-filter parser silently
+// drops. An ` AND ` nested inside parentheses belongs to a key sub-expression
+// and is not a top-level conjunct.
 function countTopLevelAnd(condition: string): number {
   let count = 0;
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < condition.length; i++) {
+    const char = condition.charAt(i);
     if (isQuoteBoundary(condition, i)) {
       if (inString) {
         const esc = handleQuoteEscape(condition, i);
@@ -514,6 +571,15 @@ function countTopLevelAnd(condition: string): number {
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (condition.slice(i, i + 5).toUpperCase() === ' AND ') {
       count++;
       i += 4;
