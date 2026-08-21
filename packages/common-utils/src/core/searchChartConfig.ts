@@ -1,3 +1,4 @@
+import { getFirstTimestampValueExpression } from '@/core/utils';
 import {
   BuilderChartConfig,
   DateRange,
@@ -184,4 +185,144 @@ export function buildSearchChartConfig(
   };
 
   return config;
+}
+
+/**
+ * Canonical result-column aliases used when searching across multiple sources
+ * at once. Every selected source's SELECT is rewritten to this shape, so the
+ * merged results table can map columns by name regardless of how each source's
+ * underlying schema names them.
+ *
+ * The names are quoted aliases (`expr AS "__hdx_timestamp"`), so ClickHouse
+ * returns them verbatim — unlike raw expressions, which CH may reformat.
+ */
+export const MULTI_SOURCE_ALIASES = {
+  timestamp: '__hdx_timestamp',
+  service: '__hdx_service',
+  severity: '__hdx_severity',
+  body: '__hdx_body',
+  /** Milliseconds; only projected when a Trace source is in the selection. */
+  durationMs: '__hdx_duration_ms',
+} as const;
+
+/**
+ * An extra user-picked column to project alongside the canonical aliases.
+ * `expression` is the per-source SQL expression for the column, or null when
+ * the source has no such column (projected as NULL so every source returns
+ * the same column set).
+ */
+export type MultiSourceExtraColumn = {
+  /** Result column name (used verbatim as the quoted alias). */
+  name: string;
+  expression: string | null;
+};
+
+const quoteAlias = (name: string) => `"${name.replace(/"/g, '\\"')}"`;
+
+/**
+ * Per-source semantic expression for each canonical alias. Mirrors the app's
+ * display helpers (`getDisplayedTimestampValueExpression`, `getEventBody`,
+ * `getDurationMsExpression` in packages/app/src/source.ts) — keep in sync.
+ */
+function multiSourceSemanticExpressions(source: TSource): {
+  timestamp: string;
+  service: string;
+  severity: string;
+  body: string;
+  durationMs: string;
+} {
+  const firstTimestamp = getFirstTimestampValueExpression(
+    source.timestampValueExpression,
+  );
+
+  if (isLogSource(source)) {
+    return {
+      timestamp: source.displayedTimestampValueExpression || firstTimestamp,
+      service: source.serviceNameExpression || 'NULL',
+      severity: source.severityTextExpression || 'NULL',
+      body: source.bodyExpression || source.implicitColumnExpression || 'NULL',
+      durationMs: 'NULL',
+    };
+  }
+
+  if (isTraceSource(source)) {
+    return {
+      timestamp: source.displayedTimestampValueExpression || firstTimestamp,
+      service: source.serviceNameExpression || 'NULL',
+      severity: source.statusCodeExpression || 'NULL',
+      body: source.spanNameExpression || 'NULL',
+      // Match getDurationMsExpression: durationPrecision is the sub-second
+      // digit count (9 = nanoseconds), so /1e(precision-3) yields milliseconds.
+      durationMs: `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`,
+    };
+  }
+
+  // Multi-source search only supports Log and Trace sources today; other kinds
+  // still get a valid (if minimal) shape so a stray source can't render SQL
+  // that errors the whole selection.
+  return {
+    timestamp: firstTimestamp,
+    service: 'NULL',
+    severity: 'NULL',
+    body: 'NULL',
+    durationMs: 'NULL',
+  };
+}
+
+/**
+ * Build the canonical aliased SELECT string for one source in a multi-source
+ * search. Exported for tests.
+ */
+export function buildMultiSourceSelect(
+  source: TSource,
+  {
+    includeDuration = false,
+    extraColumns = [],
+  }: {
+    /** Project `__hdx_duration_ms` (set when any selected source is a Trace). */
+    includeDuration?: boolean;
+    extraColumns?: MultiSourceExtraColumn[];
+  } = {},
+): string {
+  const exprs = multiSourceSemanticExpressions(source);
+
+  const parts = [
+    `${exprs.timestamp} AS ${quoteAlias(MULTI_SOURCE_ALIASES.timestamp)}`,
+    `${exprs.service} AS ${quoteAlias(MULTI_SOURCE_ALIASES.service)}`,
+    `${exprs.severity} AS ${quoteAlias(MULTI_SOURCE_ALIASES.severity)}`,
+    `${exprs.body} AS ${quoteAlias(MULTI_SOURCE_ALIASES.body)}`,
+  ];
+  if (includeDuration) {
+    parts.push(
+      `${exprs.durationMs} AS ${quoteAlias(MULTI_SOURCE_ALIASES.durationMs)}`,
+    );
+  }
+  for (const col of extraColumns) {
+    parts.push(`${col.expression ?? 'NULL'} AS ${quoteAlias(col.name)}`);
+  }
+
+  return parts.join(', ');
+}
+
+/**
+ * Build the chart config for one source of a multi-source search: the standard
+ * `buildSearchChartConfig` assembly with the SELECT replaced by the canonical
+ * aliased column set, so every selected source returns the same result shape.
+ *
+ * The caller supplies `orderBy` per source (each source's own timestamp-based
+ * default) — a shared orderBy is meaningless across schemas, and time-window
+ * pagination requires the first orderBy term to be the source's timestamp.
+ */
+export function buildMultiSourceSearchConfig(
+  source: TSource,
+  input: Omit<SearchChartConfigInput, 'select'>,
+  opts: {
+    includeDuration?: boolean;
+    extraColumns?: MultiSourceExtraColumn[];
+  } = {},
+): SearchChartConfig {
+  return buildSearchChartConfig(source, {
+    ...input,
+    select: buildMultiSourceSelect(source, opts),
+  });
 }
