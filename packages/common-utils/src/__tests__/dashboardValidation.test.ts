@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  validateChartConfigFormulas,
   validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
   validateDashboardFilterVariableNames,
@@ -417,5 +418,145 @@ describe('validateDashboardFilterFieldGating', () => {
     );
 
     expect(issues[0].path).toEqual(['body', 'filters', 0, 'variableName']);
+  });
+});
+
+describe('validateChartConfigFormulas', () => {
+  type TestConfig = Parameters<typeof validateChartConfigFormulas>[0];
+
+  const collectFormulaIssues = (
+    config: TestConfig,
+    paths?: { configPath?: (string | number)[] },
+  ) => {
+    const schema = z
+      .object({})
+      .superRefine((_, ctx) => validateChartConfigFormulas(config, ctx, paths));
+    const result = schema.safeParse({});
+    return result.success ? [] : result.error.issues;
+  };
+
+  const twoSeries = [{ aggFn: 'max' }, { aggFn: 'max' }];
+
+  it('accepts a config without formulas', () => {
+    expect(collectFormulaIssues({ select: twoSeries })).toEqual([]);
+    expect(collectFormulaIssues({ select: twoSeries, formulas: [] })).toEqual(
+      [],
+    );
+  });
+
+  it('accepts a valid formula over existing series', () => {
+    expect(
+      collectFormulaIssues({
+        displayType: 'line',
+        select: twoSeries,
+        formulas: [{ expression: 'A / (A + B) * 100' }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('reports an unknown series ref at the formula expression path', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [{ expression: 'A / C' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas', 0, 'expression']);
+    expect(issues[0].message).toContain('Unknown series "C"');
+  });
+
+  it('reports a malformed expression', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [{ expression: 'A +' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas', 0, 'expression']);
+  });
+
+  it('reports every invalid formula, not just the first', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [
+        { expression: 'A / Z' },
+        { expression: 'A + B' },
+        { expression: '' },
+      ],
+    });
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['formulas', 0, 'expression'],
+      ['formulas', 2, 'expression'],
+    ]);
+  });
+
+  it('treats a string select as zero referenceable series', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: 'Body',
+      formulas: [{ expression: 'A' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain('no series');
+  });
+
+  it('rejects formulas combined with asRatio', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [{ expression: 'A / B' }],
+      asRatio: true,
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas']);
+    expect(issues[0].message).toContain('asRatio');
+  });
+
+  it('rejects multiple formulas on a number chart', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'number',
+      select: twoSeries,
+      formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas']);
+    expect(issues[0].message).toBe('Number charts support a single formula');
+  });
+
+  it('allows multiple formulas on a line chart', () => {
+    expect(
+      collectFormulaIssues({
+        displayType: 'line',
+        select: twoSeries,
+        formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('honors a custom config path', () => {
+    const issues = collectFormulaIssues(
+      {
+        displayType: 'line',
+        select: twoSeries,
+        formulas: [{ expression: 'A / C' }],
+      },
+      { configPath: ['tiles', 3, 'config'] },
+    );
+
+    expect(issues[0].path).toEqual([
+      'tiles',
+      3,
+      'config',
+      'formulas',
+      0,
+      'expression',
+    ]);
   });
 });
