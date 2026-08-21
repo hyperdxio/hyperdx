@@ -13,6 +13,18 @@ export class WebhookRedirectError extends Error {
   }
 }
 
+// Carries the destination's HTTP status alongside its response body so
+// callers can log/classify without an `as any` assertion on a plain Error.
+export class WebhookResponseError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'WebhookResponseError';
+    this.status = status;
+  }
+}
+
 // @clickhouse/client (Node) rejects with these exact messages when the
 // configured request_timeout elapses or the request is aborted. See
 // clickhouse-js packages/client-node/src/connection/socket_pool.ts.
