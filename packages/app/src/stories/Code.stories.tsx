@@ -43,7 +43,7 @@ export const Playground: Story = {
 };
 
 export const InlineCode = () => (
-  <Stack gap="md" maw={640} p="lg">
+  <Stack gap="md" maw={640} mx="auto" p="lg">
     <div>
       <Text size="lg" fw={700}>
         Inline code
@@ -62,7 +62,7 @@ export const InlineCode = () => (
 );
 
 export const FencedBlocks = () => (
-  <Stack gap="lg" maw={640} p="lg">
+  <Stack gap="lg" maw={640} mx="auto" p="lg">
     <div>
       <Text size="lg" fw={700}>
         Fenced blocks
@@ -93,7 +93,7 @@ export const FencedBlocks = () => (
 );
 
 export const Usage = () => (
-  <Stack gap="lg" maw={640} p="lg">
+  <Stack gap="lg" maw={640} mx="auto" p="lg">
     <div>
       <Text size="lg" fw={700}>
         When to use which

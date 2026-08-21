@@ -4,6 +4,9 @@ import { semanticColorsGrouped } from './semanticColorsGrouped';
 
 const story = {
   title: 'Design tokens/Semantic colors',
+  parameters: {
+    layout: 'padded',
+  },
 };
 export default story;
 

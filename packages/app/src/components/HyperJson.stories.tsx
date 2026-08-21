@@ -5,6 +5,9 @@ import HyperJson from './HyperJson';
 const meta: Meta = {
   title: 'Components/HyperJson',
   component: HyperJson,
+  parameters: {
+    layout: 'padded',
+  },
 };
 
 export const Default = () => (

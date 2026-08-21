@@ -26,7 +26,7 @@ const BRAND_USAGE = `import { IncidentIOIcon } from '@/SVGIcons';
 <IncidentIOIcon width={16} />`;
 
 export const Gallery = () => (
-  <Stack gap="xl" maw={800}>
+  <Stack gap="xl" maw={800} mx="auto">
     <div>
       <Text size="lg" fw={700}>
         Custom icons

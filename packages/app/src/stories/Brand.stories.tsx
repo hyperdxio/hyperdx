@@ -42,7 +42,7 @@ export const Logos = () => {
   const wordmarkIsSvg = themeName === 'clickstack';
 
   return (
-    <Stack gap="xl" maw={720}>
+    <Stack gap="xl" maw={720} mx="auto">
       <div>
         <Text size="lg" fw={700}>
           {brand} logo

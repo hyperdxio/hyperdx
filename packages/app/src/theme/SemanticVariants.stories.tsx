@@ -15,6 +15,9 @@ import {
  */
 const story = {
   title: 'Design tokens/Semantic variants',
+  parameters: {
+    layout: 'padded',
+  },
 };
 export default story;
 

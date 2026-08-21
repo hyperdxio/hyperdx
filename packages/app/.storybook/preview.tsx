@@ -22,7 +22,7 @@ import '../styles/globals.css';
 import '../styles/app.scss';
 
 export const parameters = {
-  layout: 'fullscreen',
+  layout: 'centered',
   options: {
     showPanel: false,
     storySort: {
@@ -144,8 +144,23 @@ const preview: Preview = {
       const fontFamily = MANTINE_FONT_MAP[font.name] ?? MANTINE_FONT_MAP.Inter;
       const brandTheme = (context.globals.brand || 'hyperdx') as ThemeName;
 
+      const layout = context.parameters.layout ?? 'centered';
+
       return (
-        <div className={font.nextFont.className}>
+        <div
+          className={font.nextFont.className}
+          style={
+            layout === 'fullscreen'
+              ? { minHeight: '100vh' }
+              : layout === 'centered'
+                ? {
+                    width: 'fit-content',
+                    maxWidth: '100%',
+                    marginInline: 'auto',
+                  }
+                : { width: '100%' }
+          }
+        >
           <StorybookFontSync
             fontName={font.name}
             fontClassName={font.nextFont.className}
