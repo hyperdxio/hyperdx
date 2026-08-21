@@ -483,6 +483,38 @@ describe('convertSavedChartConfigToFormState', () => {
     expect(result.configType).toBe('builder');
   });
 
+  // Clearing the legacy singular `channel` on load is what stops a stale value
+  // being submitted alongside an edited channels list, which the API rejects.
+  it('normalises a legacy channel-only tile alert onto channels', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Line,
+      select: [seriesItem],
+      where: '',
+      alert: {
+        threshold: 1,
+        thresholdType: AlertThresholdType.ABOVE,
+        interval: '5m',
+        channel: { type: 'webhook', webhookId: 'w1' },
+      },
+    };
+    const result = convertSavedChartConfigToFormState(config);
+    expect(result.alert?.channel).toBeUndefined();
+    expect(result.alert?.channels).toEqual([
+      { type: 'webhook', webhookId: 'w1' },
+    ]);
+  });
+
+  it('leaves a config without an alert untouched', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Line,
+      select: [seriesItem],
+      where: '',
+    };
+    expect(convertSavedChartConfigToFormState(config).alert).toBeUndefined();
+  });
+
   it('maps array select to series with aggConditionLanguage defaulted', () => {
     const selectItem = {
       aggFn: 'count' as const,
