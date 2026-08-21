@@ -187,21 +187,34 @@ export default function DOMPlayer({
   // A replaced stream isn't reliably cancelled, so its callbacks can
   // interleave with the new stream's — even for identical query params
   // (e.g. switching away from a session and back while the first stream is
-  // still loading). Isolation therefore can't be keyed on parameters: each
-  // stream's onEvent/onEnd closures are captured when the fetch starts, and
-  // useMemo hands every stream change a fresh instance (previous values
-  // aren't cached across dependency changes), so a stream ends and flushes
-  // only the assembler it captured.
+  // still loading). Isolation therefore can't be keyed on parameters; the
+  // assembler instance doubles as the stream's identity:
+  //  - buffer isolation: each stream's onEvent/onEnd closures are captured
+  //    when the fetch starts, and useMemo hands every stream change a fresh
+  //    instance (previous values aren't cached across dependency changes),
+  //    so a stream ends and flushes only the assembler it captured;
+  //  - delivery gating: only the active instance may feed the replayer or
+  //    update player state, so a stale stream's events, errors, and
+  //    completion can't pollute the replacement replay.
   const streamKey = `${serviceName}|${sessionId}|${sourceId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
-  const assembler = useMemo(
-    () =>
-      createRrwebChunkAssembler({
-        onEvent: parsedEvent => handleParsedEventRef.current(parsedEvent),
-        onError: (error, info) => handleDroppedEventRef.current(error, info),
-      }),
+  const activeAssemblerRef = useRef<unknown>(null);
+  const assembler = useMemo(() => {
+    const instance = createRrwebChunkAssembler({
+      onEvent: parsedEvent => {
+        if (activeAssemblerRef.current === instance) {
+          handleParsedEventRef.current(parsedEvent);
+        }
+      },
+      onError: (error, info) => {
+        if (activeAssemblerRef.current === instance) {
+          handleDroppedEventRef.current(error, info);
+        }
+      },
+    });
+    return instance;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [streamKey],
-  );
+  }, [streamKey]);
+  activeAssemblerRef.current = assembler;
   useEffect(() => {
     setDroppedEventCount(0);
   }, [streamKey]);
@@ -217,12 +230,21 @@ export default function DOMPlayer({
       onEvent: (event: RRWebStreamRow) => {
         assembler.push(event);
 
-        if (initialEventsRef.current.length > 5) {
+        if (
+          activeAssemblerRef.current === assembler &&
+          initialEventsRef.current.length > 5
+        ) {
           setIsInitialEventsLoaded(true);
         }
       },
       onEnd: () => {
+        // Flush the stream's own buffers, but only let the active stream
+        // update player state — a stale stream finishing must not mark the
+        // replacement replay as loaded or move its end timestamp.
         assembler.end();
+        if (activeAssemblerRef.current !== assembler) {
+          return;
+        }
         setIsInitialEventsLoaded(true);
         setIsReplayFullyLoaded(true);
 
