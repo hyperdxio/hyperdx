@@ -238,7 +238,7 @@ export const buildAlertMessageTemplateTitle = ({
 export const getDefaultExternalAction = (
   alert: AlertMessageTemplateDefaultView['alert'],
 ) => {
-  if (alert.channel.type === 'webhook' && alert.channel.webhookId != null) {
+  if (alert.channel?.type === 'webhook' && alert.channel.webhookId != null) {
     return `@${alert.channel.type}-${alert.channel.webhookId}`;
   }
   return null;

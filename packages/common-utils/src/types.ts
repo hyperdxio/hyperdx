@@ -1,3 +1,4 @@
+import objectHash from 'object-hash';
 import { z } from 'zod';
 
 // Basic Enums
@@ -700,6 +701,82 @@ export const zAlertChannel = z.object({
   webhookId: z.string().nonempty("Webhook ID can't be empty"),
 });
 
+export const MAX_ALERT_CHANNELS = 10;
+
+export const zAlertChannels = z
+  .array(zAlertChannel)
+  .min(1, 'At least one notification channel is required')
+  .max(
+    MAX_ALERT_CHANNELS,
+    `An alert supports at most ${MAX_ALERT_CHANNELS} notification channels`,
+  );
+
+/**
+ * Identifies a channel by its full contents, not just `type` + `webhookId`.
+ * Two channels of a type this repo doesn't define (e.g. a downstream fork's
+ * `email` channel) both key as `"email:undefined"` under a webhook-shaped
+ * key, so a legitimate pair reads as a duplicate and a genuine disagreement
+ * reads as agreement. Hashing the whole object avoids assuming any particular
+ * field set.
+ */
+export const alertChannelKey = (channel: Record<string, unknown>) =>
+  objectHash(channel);
+
+/**
+ * Cross-field rule shared by every alert input schema in this repo (internal
+ * API, external v2 API) — the MCP tool schema has its own hand-rolled copy of
+ * this check, not this one: at least one of the legacy singular `channel` or
+ * the plural `channels` must be provided, and `channels` must not contain
+ * duplicates.
+ *
+ * Both may be sent together only when they agree — `channel` must equal
+ * `channels[0]`. Responses carry both fields, so read-modify-write clients
+ * echo both back untouched; rejecting that outright would break every
+ * GET-then-PUT caller. A genuine disagreement is still an error rather than a
+ * silent precedence rule, so no client can be surprised about which one won.
+ */
+export const validateAlertChannelSelection = (
+  alert: {
+    channel?: Record<string, unknown> | null;
+    channels?: Record<string, unknown>[];
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const hasChannel = alert.channel != null;
+  const hasChannels = alert.channels != null;
+  if (!hasChannel && !hasChannels) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['channels'],
+      message: 'Provide either "channel" or "channels"',
+    });
+    return;
+  }
+  if (hasChannel && hasChannels) {
+    const first = alert.channels?.[0];
+    if (
+      first == null ||
+      alertChannelKey(alert.channel!) !== alertChannelKey(first)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['channels'],
+        message:
+          'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"',
+      });
+      return;
+    }
+  }
+  const keys = (alert.channels ?? []).map(alertChannelKey);
+  if (new Set(keys).size !== keys.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['channels'],
+      message: 'Duplicate notification channels are not allowed',
+    });
+  }
+};
+
 export const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().optional(),
@@ -806,7 +883,8 @@ export const AlertBaseObjectSchema = z.object({
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   thresholdMax: z.number().optional(),
-  channel: zAlertChannel,
+  channel: zAlertChannel.optional(),
+  channels: zAlertChannels.optional(),
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
@@ -827,15 +905,33 @@ export const AlertBaseSchema = AlertBaseObjectSchema;
 
 const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-).superRefine(validateAlertThresholdMax);
+)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateAlertChannelSelection);
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
 });
 
+// Tile alerts embedded in a saved chart config are validated through
+// SavedChartConfigSchema, not through the API's alertSchema, so the channel rule
+// has to be attached here as well. Without it, making `channel` optional would
+// let a tile alert be saved through the dashboards endpoint with no target at
+// all — it would fire and notify nobody. Only the channel rule is applied (not
+// the schedule/threshold refinements), so existing saved dashboards that never
+// passed those checks keep parsing.
+const AlertBaseChannelCheckedSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertChannelSelection,
+);
+const ChartAlertBaseChannelCheckedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertChannelSelection,
+);
+
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-).superRefine(validateAlertThresholdMax);
+)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateAlertChannelSelection);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
@@ -1552,8 +1648,8 @@ const BuilderSavedChartConfigWithoutAlertSchema = z
 const BuilderSavedChartConfigSchema =
   BuilderSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1569,8 +1665,8 @@ const RawSqlSavedChartConfigWithoutAlertSchema =
 const RawSqlSavedChartConfigSchema =
   RawSqlSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1582,8 +1678,8 @@ const PromqlSavedChartConfigWithoutAlertSchema =
 const PromqlSavedChartConfigSchema =
   PromqlSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -2250,6 +2346,13 @@ export type AssistantResponseConfigSchema = z.infer<
 // --------------------------
 
 // Alerts
+// Looser than zAlertChannel: a page item echoes whatever was persisted, which
+// includes rows written before multi-channel that have a null type and no webhook.
+const alertsPageItemChannelSchema = z.object({
+  type: z.string().optional().nullable(),
+  webhookId: z.string().optional(),
+});
+
 export const AlertsPageItemSchema = z.object({
   _id: z.string(),
   interval: AlertIntervalSchema,
@@ -2258,10 +2361,8 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({
-    type: z.string().optional().nullable(),
-    webhookId: z.string().optional(),
-  }),
+  channel: alertsPageItemChannelSchema,
+  channels: z.array(alertsPageItemChannelSchema).optional(),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
