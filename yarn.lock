@@ -4890,6 +4890,7 @@ __metadata:
     sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
     ts-jest: "npm:^29.4.11"
+    tsc-alias: "npm:^1.8.8"
     tsup: "npm:^8.4.0"
     typescript: "npm:^6.0.3"
     zod: "npm:3.25"
