@@ -54,7 +54,7 @@ import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   formatValueToMatchThreshold,
-  getDefaultExternalAction,
+  getDefaultExternalActions,
   isAlertResolved,
   renderAlertTemplate,
   translateExternalActionsToInternal,
@@ -1535,22 +1535,42 @@ describe('checkAlerts', () => {
       expect(isAlertResolved(AlertState.DISABLED)).toBe(false);
     });
 
-    it('getDefaultExternalAction', () => {
+    it('getDefaultExternalActions', () => {
+      // Test fixtures only need the channel/channels fields, not a full
+      // AlertInput — a single narrowing point instead of one `as any` per case.
+      const partialAlert = (
+        over: Record<string, unknown>,
+      ): AlertMessageTemplateDefaultView['alert'] => over as any;
+
       expect(
-        getDefaultExternalAction({
-          channel: {
-            type: 'webhook',
-            webhookId: '123',
-          },
-        } as any),
-      ).toBe('@webhook-123');
+        getDefaultExternalActions(
+          partialAlert({
+            channel: {
+              type: 'webhook',
+              webhookId: '123',
+            },
+          }),
+        ),
+      ).toEqual(['@webhook-123']);
       expect(
-        getDefaultExternalAction({
-          channel: {
-            type: 'foo',
-          },
-        } as any),
-      ).toBeNull();
+        getDefaultExternalActions(
+          partialAlert({
+            channels: [
+              { type: 'webhook', webhookId: '123' },
+              { type: 'webhook', webhookId: '456' },
+            ],
+          }),
+        ),
+      ).toEqual(['@webhook-123', '@webhook-456']);
+      expect(
+        getDefaultExternalActions(
+          partialAlert({
+            channel: {
+              type: 'foo',
+            },
+          }),
+        ),
+      ).toEqual([]);
     });
 
     it('translateExternalActionsToInternal', () => {
@@ -1635,12 +1655,15 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
       });
 
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      // The message names the webhook by name prefix and the alert also has it
+      // configured as a channel; it is one target, so it is notified once.
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       // TODO: test call arguments
     });
 
@@ -1669,6 +1692,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -1729,6 +1753,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -1814,6 +1839,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById,
       });
 
@@ -1838,6 +1864,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById,
       });
 
@@ -1927,6 +1954,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '✅ Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -3636,8 +3664,10 @@ describe('checkAlerts', () => {
           status: 500,
           responseBody: 'webhook exploded',
           expectedRequestCount: 3,
+          // Per-target message: names the failing webhook so a multi-channel
+          // alert's errors are attributable. Raw upstream detail stays hidden.
           expectedErrorMessage:
-            'Failed to send webhook notification. Check the webhook configuration and destination.',
+            'Failed to send notification to webhook "Generic Webhook". Check the webhook configuration and destination.',
         },
         {
           responseDescription: 'a redirect response',
@@ -3645,7 +3675,7 @@ describe('checkAlerts', () => {
           responseBody: 'redirecting',
           expectedRequestCount: 1,
           expectedErrorMessage:
-            'Webhook destination responded with a redirect. Redirects are not supported.',
+            'Webhook destination responded with a redirect. Redirects are not supported. (webhook "Generic Webhook")',
         },
       ])(
         'sets state to ALERT and records a WEBHOOK_ERROR when the generic webhook returns $responseDescription',
@@ -4175,10 +4205,10 @@ describe('checkAlerts', () => {
           ),
         ).toBe(true);
         expect(
-          updated!.executionErrors!.every(
-            e =>
-              e.message ===
-              'Failed to send webhook notification. Check the webhook configuration and destination.',
+          updated!.executionErrors!.every(e =>
+            /^Failed to send notification to webhook ".+"\. Check the webhook configuration and destination\.$/.test(
+              e.message,
+            ),
           ),
         ).toBe(true);
       });
@@ -4265,8 +4295,11 @@ describe('checkAlerts', () => {
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        expect(updated!.executionErrors![0].message).toBe(
-          'Failed to send webhook notification. Check the webhook configuration and destination.',
+        // A deleted webhook now reports what actually went wrong instead of the
+        // generic transport message, and names the target so a multi-channel
+        // alert says which webhook is missing. Authored by us, not upstream.
+        expect(updated!.executionErrors![0].message).toMatch(
+          /^Webhook not found\. The webhook may have been deleted \u2014 update the alert's notification channel\. \(webhook ".+"\)$/,
         );
 
         // No actual network call should have been attempted
@@ -4516,6 +4549,7 @@ describe('checkAlerts', () => {
           Authorization: 'Bearer test-token',
           'Idempotency-Key': expect.any(String),
         }),
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -7506,6 +7540,152 @@ describe('checkAlerts', () => {
       expect(histories[0].lastValues.length).toBe(0);
 
       expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    // ── Event (log/trace) formula tiles ──
+    // Event formulas render through a different path than metric formulas
+    // (inline single-scan SELECT vs the composed query). The alert path is
+    // source-kind agnostic — it passes `formulas` through and forces
+    // showOperandSeries: false — so the formula value drives the threshold
+    // here too.
+
+    it('TILE alert (events, formula) - threshold compares the formula value, not an operand', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // Persistent mock: the beforeEach mockResolvedValueOnce only covers the
+      // first call, and resolve notifications can trigger a second one.
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValue({ text: 'ok' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      // 1 error / 4 total * 100 = 25. Both operands (1 and 4) are far from
+      // the formula result, so a regression back to evaluating either
+      // operand fails loudly against the threshold below.
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        ...Array.from({ length: 3 }, (_, i) => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'info',
+          Body: `All good ${i}`,
+        })),
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'evtformula1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error rate',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'SeverityText:error',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                  alias: 'Errors',
+                },
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                  alias: 'Total',
+                },
+              ],
+              formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+              showOperandSeries: false,
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'evtformula1');
+      if (!tile) throw new Error('tile not found for event formula test');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 20,
+          dashboardId: dashboard.id,
+          tileId: 'evtformula1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      // The formula value (25) — not operand A (1) or operand B (4).
+      expect(history.lastValues[0].count).toBe(25);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('25 meets or exceeds 20');
+
+      // Next window has no data -> resolves to OK.
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
     });
 
     it('TILE alert (metrics, grouped ratio) - honors ratioMode share_of_total', async () => {

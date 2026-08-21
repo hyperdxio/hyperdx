@@ -63,7 +63,10 @@ import { IWebhook } from '@/models/webhook';
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
+  NotificationCapExceededError,
+  UnsupportedMentionError,
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
+  WebhookNotFoundError,
   WebhookRedirectError,
 } from '@/tasks/checkAlerts/errors';
 import {
@@ -76,9 +79,10 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
-  handleSendGenericWebhook,
+  NotificationFailure,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
+import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
 import { tasksTracer } from '@/tasks/tracer';
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import {
@@ -90,7 +94,9 @@ import {
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
+  setBusinessContext,
   SpanStatusCode,
+  withSpan,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -256,6 +262,59 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
   }
 
   return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
+};
+
+// Per-target variant: names the target so a multi-channel alert's errors are
+// attributable. Two kinds of failure reach here (see renderAlertTemplate):
+// pre-dispatch (unresolvable mention/webhook, the per-event cap) and, for the
+// inline dispatcher, an actual delivery rejection. Raw upstream detail stays
+// hidden (same policy as makeWebhookAlertError); timeout and not-found
+// messages are authored by us.
+const makeNotificationAlertError = (
+  failure: NotificationFailure,
+): IAlertError => {
+  const target = `${failure.type} "${failure.target}"`;
+  const timestamp = new Date();
+  if (failure.error instanceof UnsupportedMentionError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: failure.error.message.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof NotificationCapExceededError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookNotFoundError) {
+    // Name the target like every other branch — with several channels, "a
+    // webhook was deleted" is useless unless it says which one.
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookRedirectError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${WEBHOOK_REDIRECT_ERROR_MESSAGE} (${target})`.slice(0, 10000),
+    };
+  }
+  // A delivery rejection from the inline dispatcher — the only case left.
+  return {
+    timestamp,
+    type: AlertErrorType.WEBHOOK_ERROR,
+    message:
+      `Failed to send notification to ${target}. Check the webhook configuration and destination.`.slice(
+        0,
+        10000,
+      ),
+  };
 };
 
 export const doesExceedThreshold = (
@@ -435,17 +494,27 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}) => {
+}): Promise<NotificationFailure[]> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
   }
+  // alert.team is typed as a bare ObjectId, but a caller that populated it
+  // (int-test setups do `.populate(['team', ...])`; the production path never
+  // does) hands us a full Team document instead — Mongoose documents don't
+  // override toString(), so calling it directly would silently stringify to
+  // "[object Object]" rather than the hex id. Prefer the populated
+  // document's own _id when present.
+  const isPopulatedWithId = (value: unknown): value is { _id: ObjectId } =>
+    typeof value === 'object' && value !== null && '_id' in value;
+  const teamId = (isPopulatedWithId(team) ? team._id : team).toString();
 
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       id: alert.id,
       channel: alert.channel,
+      channels: alert.channels,
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
@@ -477,7 +546,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  await renderAlertTemplate({
+  const { failures } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -489,8 +558,10 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
+    teamId,
     teamWebhooksById,
   });
+  return failures;
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -1161,7 +1232,7 @@ export const processAlert = async (
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        await fireChannelEvent({
+        const failures = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
@@ -1179,7 +1250,24 @@ export const processAlert = async (
           windowSizeInMins,
           teamWebhooksById,
         });
+        // Each entry is a target that didn't end up delivered: unresolvable,
+        // capped, or (for the inline dispatcher) an actual send rejection —
+        // see renderAlertTemplate.
+        for (const failure of failures) {
+          logger.error(
+            {
+              alertId: alert.id,
+              group,
+              target: failure.target,
+              error: serializeError(failure.error),
+            },
+            'Notification target could not be dispatched',
+          );
+          executionErrors.push(makeNotificationAlertError(failure));
+        }
       } catch (e) {
+        // Render-level failures (title/link building, template compile) —
+        // nothing was dispatched.
         logger.error(
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
@@ -1778,6 +1866,7 @@ export default class CheckAlertTask implements HdxTask {
     teamWebhooksById: Map<string, IWebhook>,
   ): Promise<boolean> {
     return tasksTracer.startActiveSpan('processAlertTask', async span => {
+      setBusinessContext({ teamId: alertTask.conn.team.toString() });
       try {
         span.setAttribute(
           'hyperdx.alerts.team.id',
@@ -1801,13 +1890,28 @@ export default class CheckAlertTask implements HdxTask {
 
         for (const alert of alerts) {
           this.task_queue.add(async () =>
-            processAlert(
-              alertTask.now,
-              alert,
-              clickhouseClient,
-              conn.id,
-              this.provider,
-              teamWebhooksById,
+            // withSpan (not a hand-rolled tracer) so exceptions and status are
+            // recorded the same way as everywhere else — see agent_docs/observability.md.
+            withSpan(
+              'processAlert',
+              async () => {
+                setBusinessContext({ teamId: conn.team.toString() });
+                await processAlert(
+                  alertTask.now,
+                  alert,
+                  clickhouseClient,
+                  conn.id,
+                  this.provider,
+                  teamWebhooksById,
+                );
+              },
+              {
+                attributes: {
+                  'hyperdx.alert.id': alert.alert.id,
+                  'hyperdx.team.id': conn.team.toString(),
+                  'hyperdx.alert.source': alert.alert.source ?? 'unknown',
+                },
+              },
             ),
           );
         }

@@ -42,6 +42,7 @@ import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
+import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -258,9 +259,9 @@ export function ChartSeriesEditor({
           <Group gap="xs">
             {/* Formula series reference (HDX-5080): formulas address series
                 positionally by letter (`A` = series 1, ...), so surface the
-                letter on each row. Metric sources only — formulas are only
-                supported there. */}
-            {tableSource?.kind === SourceKind.Metric && (
+                letter on each row of formula-capable sources (metric and
+                log/trace events). */}
+            {isFormulaSourceKind(tableSource?.kind) && (
               <Tooltip label="Reference this series in a formula by this letter">
                 <Badge
                   size="sm"

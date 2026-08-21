@@ -1,7 +1,9 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
   type AlertInterval,
+  checkAlertChannelSelection,
   isRangeThresholdType,
+  MAX_ALERT_CHANNELS,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -98,7 +100,15 @@ export const mcpSaveAlertSchema = z.object({
     .describe('Absolute UTC anchor for window alignment (ISO 8601).'),
 
   // Channel
-  channel: mcpAlertChannelSchema,
+  channel: mcpAlertChannelSchema.optional(),
+  channels: z
+    .array(mcpAlertChannelSchema)
+    .min(1)
+    .max(MAX_ALERT_CHANNELS)
+    .optional()
+    .describe(
+      `Notification channels (1-${MAX_ALERT_CHANNELS}). Provide this or "channel"; if both, "channel" must match the first entry.`,
+    ),
 
   // Metadata
   name: z
@@ -122,6 +132,21 @@ export type McpSaveAlertInput = z.infer<typeof mcpSaveAlertSchema>;
 // Returns a human-readable error string, or null when valid.
 // ---------------------------------------------------------------------------
 export function validateSaveAlertInput(data: McpSaveAlertInput): string | null {
+  // Channel selection rule shared with every other alert input schema in this
+  // repo (see checkAlertChannelSelection in common-utils); reported here as a
+  // plain string since this validator has no ZodIssueCode to add to.
+  const channelSelection = checkAlertChannelSelection(data);
+  if (!channelSelection.ok) {
+    switch (channelSelection.code) {
+      case 'missing':
+        return 'Provide either "channel" or "channels"';
+      case 'mismatch':
+        return 'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"';
+      case 'duplicate':
+        return 'Duplicate notification channels are not allowed';
+    }
+  }
+
   // Source-specific required fields
   if (data.source === 'tile') {
     if (!data.dashboardId) {
