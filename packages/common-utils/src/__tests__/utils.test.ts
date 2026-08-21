@@ -5,6 +5,7 @@ import {
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
+  convertToNumberChartConfig,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
@@ -508,6 +509,59 @@ describe('utils', () => {
       expect(config.select[0]).not.toHaveProperty('alias');
       expect(config.orderBy).toBeUndefined();
       expect(config.limit).toBeUndefined();
+    });
+  });
+
+  describe('convertToNumberChartConfig', () => {
+    const dateRange: [Date, Date] = [
+      new Date('2025-11-26T00:00:00Z'),
+      new Date('2025-11-27T00:00:00Z'),
+    ];
+
+    it('drops granularity and groupBy', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        granularity: '5 minute',
+        groupBy: 'ServiceName',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const converted = convertToNumberChartConfig(config);
+
+      expect(converted.granularity).toBeUndefined();
+      expect(converted.groupBy).toBeUndefined();
+    });
+
+    it('leaves showOperandSeries untouched without formulas', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(
+        undefined,
+      );
+    });
+
+    it('always hides operand series for formula configs (HDX-5080)', () => {
+      // A number chart displays the first value column of the result, so the
+      // formula column must be the only projection — even when the stored
+      // config shows operand series on other display types.
+      const config = {
+        select: [
+          { aggFn: 'max', valueExpression: 'Value' },
+          { aggFn: 'max', valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B * 100' }],
+        granularity: '5 minute',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(false);
+      expect(
+        convertToNumberChartConfig({ ...config, showOperandSeries: true })
+          .showOperandSeries,
+      ).toBe(false);
     });
   });
 

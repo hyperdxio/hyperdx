@@ -88,6 +88,30 @@ describe('withRetry', () => {
     expect(fn500).toHaveBeenCalledTimes(2);
   });
 
+  it('should not retry an AbortError (ambiguous timeout/cancellation)', async () => {
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+
+    const fn = jest.fn().mockRejectedValue(abortError);
+
+    await expect(
+      withRetry(fn, { initialDelayMs: 10, jitter: false }),
+    ).rejects.toThrow('The operation was aborted');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not retry a TimeoutError (AbortSignal.timeout)', async () => {
+    const timeoutError = new Error('The operation was aborted due to timeout');
+    timeoutError.name = 'TimeoutError';
+
+    const fn = jest.fn().mockRejectedValue(timeoutError);
+
+    await expect(
+      withRetry(fn, { initialDelayMs: 10, jitter: false }),
+    ).rejects.toThrow('The operation was aborted due to timeout');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it('should strictly obey retryOnlyOnStatus if provided', async () => {
     const error500 = new Error('internal server error') as any;
     error500.status = 500;

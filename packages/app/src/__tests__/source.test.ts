@@ -10,6 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { renderHook } from '@testing-library/react';
 
 import {
+  getBuilderValueColumnCount,
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
@@ -230,6 +231,14 @@ describe('useSources validation notifications', () => {
   });
 });
 
+const METRIC_TABLES = {
+  gauge: 'otel_metrics_gauge',
+  sum: 'otel_metrics_sum',
+  histogram: 'otel_metrics_histogram',
+  summary: 'otel_metrics_summary',
+  'exponential histogram': 'otel_metrics_exponential_histogram',
+};
+
 const DURATION_FORMAT: NumberFormat = { output: 'duration', factor: 1e-9 };
 const CURRENCY_FORMAT: NumberFormat = { output: 'currency' };
 const PERCENT_FORMAT: NumberFormat = { output: 'percent' };
@@ -334,6 +343,33 @@ describe('useSingleSeriesNumberFormat', () => {
         ],
       }),
       expected: undefined,
+    },
+    // Metric formula configs display the formula column (number charts hide
+    // the operand series), so the format resolves from the formula — not
+    // from an operand that isn't rendered.
+    {
+      name: 'formula config: prefers the formula numberFormat over select[0]',
+      config: makeBuilderConfig({
+        metricTables: METRIC_TABLES,
+        select: [
+          { valueExpression: 'Value', numberFormat: NUMBER_FORMAT },
+          { valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B', numberFormat: PERCENT_FORMAT }],
+        showOperandSeries: false,
+      }),
+      expected: PERCENT_FORMAT,
+    },
+    {
+      name: 'formula config: falls back to config.numberFormat when the formula has none',
+      config: makeBuilderConfig({
+        metricTables: METRIC_TABLES,
+        select: [{ valueExpression: 'Value', numberFormat: NUMBER_FORMAT }],
+        formulas: [{ expression: 'A * 100' }],
+        numberFormat: CURRENCY_FORMAT,
+        showOperandSeries: false,
+      }),
+      expected: CURRENCY_FORMAT,
     },
   ])('$name', ({ config, expected }) => {
     const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
@@ -520,5 +556,119 @@ describe('useChartNumberFormats', () => {
       useChartNumberFormats(config, [META_A]),
     );
     expect(result.current.formatByColumn.size).toBe(0);
+  });
+
+  // --- metric formula configs (HDX-5080) ---
+  // The composed metric query projects operand series columns (unless
+  // showOperandSeries is false) followed by one column per formula.
+
+  const META_FORMULA = { name: 'A / B', type: 'Float64' } as ColumnMetaType;
+
+  const makeFormulaConfig = (
+    overrides: Partial<ChartConfigWithOptTimestamp> = {},
+  ) =>
+    makeBuilderConfig({
+      metricTables: METRIC_TABLES,
+      select: [
+        { valueExpression: 'Value', numberFormat: NUMBER_FORMAT },
+        { valueExpression: 'Value' },
+      ],
+      formulas: [{ expression: 'A / B', numberFormat: PERCENT_FORMAT }],
+      ...overrides,
+    });
+
+  it('formula config: maps operand columns then formula columns positionally', () => {
+    const config = makeFormulaConfig();
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_A, META_B, META_FORMULA]),
+    );
+    expect(Array.from(result.current.formatByColumn.entries())).toEqual([
+      ['col_a', NUMBER_FORMAT],
+      ['A / B', PERCENT_FORMAT],
+    ]);
+  });
+
+  it('formula config: maps only formula columns when operand series are hidden', () => {
+    const config = makeFormulaConfig({ showOperandSeries: false });
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_FORMULA]),
+    );
+    expect(Array.from(result.current.formatByColumn.entries())).toEqual([
+      ['A / B', PERCENT_FORMAT],
+    ]);
+  });
+
+  it('formula config: formula columns fall back to config.numberFormat', () => {
+    const config = makeFormulaConfig({
+      formulas: [{ expression: 'A / B' }],
+      numberFormat: CURRENCY_FORMAT,
+      showOperandSeries: false,
+    });
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_FORMULA]),
+    );
+    expect(result.current.formatByColumn.get('A / B')).toEqual(CURRENCY_FORMAT);
+  });
+
+  it('formula config: formula supersedes ratio mapping when both are set', () => {
+    const config = makeFormulaConfig({ seriesReturnType: 'ratio' });
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_A, META_B, META_FORMULA]),
+    );
+    // The ratio branch would map only meta[0]; the formula branch maps
+    // operands + formula columns.
+    expect(result.current.formatByColumn.get('A / B')).toEqual(PERCENT_FORMAT);
+  });
+
+  it('formula config: chartFormat prefers formula format when operands are hidden', () => {
+    const config = makeFormulaConfig({ showOperandSeries: false });
+    const { result } = renderHook(() => useChartNumberFormats(config));
+    expect(result.current.chartFormat).toEqual(PERCENT_FORMAT);
+  });
+
+  it('formula config: chartFormat prefers series format when operands are shown', () => {
+    const config = makeFormulaConfig();
+    const { result } = renderHook(() => useChartNumberFormats(config));
+    expect(result.current.chartFormat).toEqual(NUMBER_FORMAT);
+  });
+});
+
+describe('getBuilderValueColumnCount', () => {
+  it('counts one column per select entry by default', () => {
+    const config = makeBuilderConfig({
+      select: [{ valueExpression: 'count()' }, { valueExpression: 'sum(x)' }],
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(2);
+  });
+
+  it('counts one merged column for ratio configs', () => {
+    const config = makeBuilderConfig({
+      seriesReturnType: 'ratio',
+      select: [{ valueExpression: 'count()' }, { valueExpression: 'sum(x)' }],
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(1);
+  });
+
+  it('counts operand and formula columns for metric formula configs', () => {
+    const config = makeBuilderConfig({
+      metricTables: METRIC_TABLES,
+      select: [{ valueExpression: 'Value' }, { valueExpression: 'Value' }],
+      formulas: [{ expression: 'A / B' }],
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(3);
+  });
+
+  it('counts only formula columns when operand series are hidden', () => {
+    const config = makeBuilderConfig({
+      metricTables: METRIC_TABLES,
+      select: [{ valueExpression: 'Value' }, { valueExpression: 'Value' }],
+      formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+      showOperandSeries: false,
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(2);
+  });
+
+  it('returns 0 for raw SQL configs', () => {
+    expect(getBuilderValueColumnCount(makeRawSqlConfig({}))).toBe(0);
   });
 });

@@ -1489,6 +1489,139 @@ describe('renderChartConfig', () => {
       );
       expect(sql).toContain("SeverityText = 'error'");
     });
+
+    const buildWhereConfig = (where: string): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where,
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      granularity: '1 minute',
+    });
+
+    it('rewrites `Map[key] = value` in a SQL `where` (search box path)', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['service.name'] = 'api'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
+    });
+
+    it('rewrites `Map[key] IN (many)` in a SQL `where` to hasAny() on ClickHouse >= 26.5', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] IN ('a', 'b')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b')))",
+      );
+    });
+
+    it('leaves a SQL `where` unchanged when no KV items column exists', async () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+    });
+
+    it('leaves a SQL `where` unchanged when the server predates direct_read support (ALIAS items column)', async () => {
+      stubKvItemsMetadata();
+      // The stub's items column is MATERIALIZED (always eligible); switch it
+      // to ALIAS so the supportsDirectReadMap version gate applies.
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'ALIAS',
+          default_expression:
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+        },
+      ]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 1, 0, 0]);
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+    });
+
+    it('rewrites a SQL aggCondition in the WHERE clause but not in the aggregate', async () => {
+      stubKvItemsMetadata();
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: "LogAttributes['service.name'] = 'api'",
+            aggConditionLanguage: 'sql',
+            valueExpression: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        granularity: '1 minute',
+      };
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      // WHERE-clause copy is rewritten so the text index can prune granules...
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      // ...while the countIf(...) copy keeps the plain Map subscript, which is
+      // cheaper to evaluate per-row than has() over an ALIAS items column.
+      expect(sql).toContain("countIf(LogAttributes['service.name'] = 'api')");
+    });
   });
 
   describe('k8s semantic convention migrations', () => {
@@ -3414,7 +3547,7 @@ describe('renderChartConfig', () => {
         },
       ],
       groupBy: [{ valueExpression: 'ServiceName' }],
-      where: '$__filter(ServiceName, service)',
+      where: '$__filter(ServiceName, $service)',
       whereLanguage: 'sql',
       having: 'count() > 0',
       timestampValueExpression: 'timestamp',
@@ -3493,7 +3626,7 @@ describe('renderChartConfig', () => {
       from: { databaseName: 'default', tableName: '' },
       select: [gaugeSeriesWithVariable],
       groupBy: [{ valueExpression: 'ServiceName' }],
-      where: '$__filter(ServiceName, service)',
+      where: '$__filter(ServiceName, $service)',
       whereLanguage: 'sql',
       timestampValueExpression: 'TimeUnix',
       dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
@@ -3964,6 +4097,168 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain('GROUP BY `__hdx_');
       expect(sql).not.toContain('`__hdx_time_bucket`');
       expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+    });
+
+    // HAVING / ORDER BY / LIMIT apply to the final joined result, where the
+    // user-facing output columns exist — never inside a per-series branch.
+    describe('outer HAVING / ORDER BY / LIMIT', () => {
+      it('renders having, orderBy and limit once, on the outer joined statement only', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            having: '"avg(metric.alpha)" > 10',
+            havingLanguage: 'sql',
+            orderBy: [
+              { valueExpression: '"avg(metric.beta)"', ordering: 'DESC' },
+            ],
+            limit: { limit: 5, offset: 10 },
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+
+        // Exactly one of each user clause in the whole composed statement —
+        // i.e. none leaked into the UNION ALL branches. (Bare ORDER BY also
+        // appears inside the gauge translation's internal CTE scaffolding,
+        // so count the user's exact clause text, not the keyword.)
+        const count = (needle: string) => sql.split(needle).length - 1;
+        expect(count('HAVING "avg(metric.alpha)" > 10')).toBe(1);
+        expect(count('ORDER BY "avg(metric.beta)" DESC')).toBe(1);
+        expect(count('LIMIT 5 OFFSET 10')).toBe(1);
+        expect(count('HAVING')).toBe(1);
+        // And on the outer scope: after the join's GROUP BY ALL, in
+        // HAVING -> ORDER BY -> LIMIT order.
+        const groupByIdx = sql.lastIndexOf('GROUP BY ALL');
+        const havingIdx = sql.indexOf('HAVING "avg(metric.alpha)" > 10');
+        const orderByIdx = sql.indexOf('ORDER BY "avg(metric.beta)" DESC');
+        expect(groupByIdx).toBeGreaterThan(-1);
+        expect(havingIdx).toBeGreaterThan(groupByIdx);
+        expect(orderByIdx).toBeGreaterThan(havingIdx);
+        expect(sql.indexOf('LIMIT 5 OFFSET 10')).toBeGreaterThan(orderByIdx);
+      });
+
+      it('keeps time charts bucket-ordered first, with the user sort as tiebreaker', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: [{ valueExpression: 'ServiceName', ordering: 'ASC' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('ORDER BY `__hdx_time_bucket`,ServiceName ASC');
+      });
+
+      it('filters a share_of_total ratio through a wrapper, not HAVING (window function)', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            having: '"avg(metric.alpha)/avg(metric.beta)" >= 0.2',
+            havingLanguage: 'sql',
+            orderBy: [
+              {
+                valueExpression: '"avg(metric.alpha)/avg(metric.beta)"',
+                ordering: 'DESC',
+              },
+            ],
+            limit: { limit: 2 },
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+
+        // The share_of_total projection is a window function, which
+        // ClickHouse rejects inside HAVING — the filter runs as WHERE on a
+        // wrapper around the joined result instead.
+        expect(sql).not.toContain('HAVING');
+        const whereIdx = sql.indexOf(
+          'WHERE "avg(metric.alpha)/avg(metric.beta)" >= 0.2',
+        );
+        expect(whereIdx).toBeGreaterThan(sql.lastIndexOf('GROUP BY ALL'));
+        // Filter, then order, then limit — on the outermost statement.
+        const orderByIdx = sql.indexOf(
+          'ORDER BY "avg(metric.alpha)/avg(metric.beta)" DESC',
+        );
+        expect(orderByIdx).toBeGreaterThan(whereIdx);
+        expect(sql.indexOf('LIMIT 2')).toBeGreaterThan(orderByIdx);
+      });
+
+      it('renders a string-form orderBy on the outer statement', async () => {
+        // SortSpecificationList also accepts a raw SQL string (saved configs
+        // may carry one), not just the structured array form.
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: '"avg(metric.alpha)" DESC',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        const count = (needle: string) => sql.split(needle).length - 1;
+        expect(count('ORDER BY "avg(metric.alpha)" DESC')).toBe(1);
+        expect(
+          sql.indexOf('ORDER BY "avg(metric.alpha)" DESC'),
+        ).toBeGreaterThan(sql.lastIndexOf('GROUP BY ALL'));
+      });
+
+      it('renders HAVING on the number shape without a GROUP BY ALL', async () => {
+        // With no passthrough columns the outer query is one implicit global
+        // aggregation — HAVING is valid there without any GROUP BY.
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Number,
+            granularity: undefined,
+            having: '"avg(metric.alpha)" > 10',
+            havingLanguage: 'sql',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).not.toContain('GROUP BY ALL');
+        const count = (needle: string) => sql.split(needle).length - 1;
+        expect(count('HAVING "avg(metric.alpha)" > 10')).toBe(1);
+      });
+
+      it('lets HAVING reference a formula output column', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            having: '"err rate" > 0.5',
+            havingLanguage: 'sql',
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql.match(/HAVING/g)).toHaveLength(1);
+        expect(sql.indexOf('HAVING "err rate" > 0.5')).toBeGreaterThan(
+          sql.lastIndexOf('GROUP BY ALL'),
+        );
+      });
     });
 
     // Formula projection over the pivoted per-series columns.

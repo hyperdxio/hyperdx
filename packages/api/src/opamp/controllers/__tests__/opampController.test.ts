@@ -46,6 +46,21 @@ describe('opampController', () => {
     resetConfig();
   });
 
+  describe('buildOtelCollectorConfig ClickHouse exporters', () => {
+    it('allows both exporter timeouts to be configured from the collector environment', () => {
+      const cfg = buildOtelCollectorConfig([]);
+
+      expect(cfg.exporters).toMatchObject({
+        clickhouse: {
+          timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
+        },
+        'clickhouse/rrweb': {
+          timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
+        },
+      });
+    });
+  });
+
   describe('buildOtelCollectorConfig datadog receiver', () => {
     it('omits the datadog receiver when the flag is off (default)', () => {
       configState.ENABLE_DATADOG_RECEIVER = false;

@@ -1167,11 +1167,54 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  // The aggCondition-to-WHERE optimization below only kicks in when every
+  // select has an aggCondition (otherwise all rows are scanned anyways).
+  const aggConditionsInWhere =
+    typeof chartConfig.select != 'string' &&
+    chartConfig.select.every(select =>
+      isNonEmptyWhereExpr(select.aggCondition),
+    );
+
+  // The Map-KV text-index rewrite (`Map['k'] = 'v'` ->
+  // `has(ItemsCol, concat('k', '=', 'v'))`, enabling ClickHouse's direct-read
+  // optimization) applies to every SQL predicate that lands in the WHERE
+  // clause: the top-level `where`, `sql`-type filters, and aggConditions
+  // copied into WHERE. Build the lookup once, up front, when any of them is
+  // present. The underlying metadata calls are cached, and
+  // rewriteSqlFilterWithKvItems is a no-op on an empty lookup.
+  const hasSqlPredicate =
+    (isNonEmptyWhereExpr(chartConfig.where) &&
+      (chartConfig.whereLanguage ?? 'sql') === 'sql') ||
+    (chartConfig.filters?.some(f => f.type === 'sql') ?? false) ||
+    (aggConditionsInWhere &&
+      typeof chartConfig.select != 'string' &&
+      chartConfig.select.some(
+        select => (select.aggConditionLanguage ?? 'sql') === 'sql',
+      ));
+  const textIndexInfoLookup: TextIndexInfoLookup =
+    hasSqlPredicate &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildTextIndexInfoLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
     whereSearchCondition = wrapChSqlIfNotEmpty(
       await renderWhereExpression({
-        condition: chartConfig.where,
+        condition:
+          (chartConfig.whereLanguage ?? 'sql') === 'sql'
+            ? rewriteSqlFilterWithKvItems(
+                chartConfig.where,
+                textIndexInfoLookup,
+              )
+            : chartConfig.where,
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1188,18 +1231,26 @@ async function renderWhere(
   }
 
   let selectSearchConditions: ChSql[] = [];
-  if (
-    typeof chartConfig.select != 'string' &&
-    // Only if every select has an aggCondition, add to where clause
-    // otherwise we'll scan all rows anyways
-    chartConfig.select.every(select => isNonEmptyWhereExpr(select.aggCondition))
-  ) {
+  if (aggConditionsInWhere && typeof chartConfig.select != 'string') {
     selectSearchConditions = (
       await Promise.all(
         chartConfig.select.map(async select => {
           if (isNonEmptyWhereExpr(select.aggCondition)) {
+            // Only this WHERE-clause copy of the aggCondition is rewritten to
+            // the `has(...)` form — the aggFnIf(...) copy in the SELECT clause
+            // (renderSelectList) is deliberately left as a Map subscript.
+            // Index-based granule pruning only happens in WHERE; inside the
+            // aggregate the predicate is evaluated per-row, where
+            // `has(<ALIAS items col>, ...)` would recompute the whole
+            // arrayMap per row and be slower than a plain Map subscript.
             return await renderWhereExpression({
-              condition: select.aggCondition,
+              condition:
+                (select.aggConditionLanguage ?? 'sql') === 'sql'
+                  ? rewriteSqlFilterWithKvItems(
+                      select.aggCondition,
+                      textIndexInfoLookup,
+                    )
+                  : select.aggCondition,
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1216,21 +1267,6 @@ async function renderWhere(
       )
     ).filter(v => v !== null) as ChSql[];
   }
-
-  const hasSqlFilter =
-    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const textIndexInfoLookup: TextIndexInfoLookup =
-    hasSqlFilter &&
-    chartConfig.from.databaseName &&
-    chartConfig.from.tableName &&
-    !hasSubqueryCte(chartConfig.with)
-      ? await buildTextIndexInfoLookup({
-          metadata,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-          connectionId: chartConfig.connection,
-        })
-      : new Map();
 
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
@@ -2378,12 +2414,18 @@ async function renderMultiSeriesMetricChartConfig(
   const branches = await Promise.all(
     select.map(async (s, splitIdx) => {
       // Formulas belong to the composed outer projection only — a branch
-      // carrying them would recurse back into this function.
+      // carrying them would recurse back into this function. HAVING,
+      // ORDER BY and LIMIT apply to the final joined result, not to each
+      // series independently, so they render on the outer statement. Only
+      // row-level filters (where/filters/aggCondition) stay per-branch.
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
         select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
         formulas: undefined,
         showOperandSeries: undefined,
+        having: undefined,
+        orderBy: undefined,
+        limit: undefined,
       };
       const rendered = await renderChartConfig(
         branchConfig,
@@ -2543,13 +2585,50 @@ async function renderMultiSeriesMetricChartConfig(
 
   const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
 
-  return concatChSql(' ', [
+  // HAVING / ORDER BY / LIMIT apply to the final joined result and
+  // reference its output columns (operand aliases, formula names, the ratio
+  // column, group passthroughs, the time bucket). HAVING is valid even
+  // without GROUP BY ALL (the no-group number-chart shape is an implicit
+  // global aggregation).
+  const having = await renderHaving(chartConfig, metadata);
+
+  // Time charts stay bucket-ordered first, with the user's sort as a
+  // tiebreaker within each bucket. renderOrderBy is not reusable here: it
+  // re-renders the bucket expression over raw timestamp columns, which
+  // don't exist in this outer scope — only the fixed bucket alias does.
+  const orderBy = concatChSql(
+    ',',
+    hasGranularity ? chSql`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : chSql``,
+    chartConfig.orderBy != null
+      ? renderSortSpecificationList(chartConfig.orderBy)
+      : [],
+  );
+
+  const limit = renderLimit(chartConfig);
+
+  const core = concatChSql(' ', [
     chSql`SELECT ${{ UNSAFE_RAW_SQL: projection.join(', ') }}`,
     chSql`FROM (${unionSql})`,
     hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
-    hasGranularity
-      ? chSql`ORDER BY \`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``
-      : chSql``,
+  ]);
+
+  // The share_of_total ratio is the one projection built on a window
+  // function, which ClickHouse prohibits in HAVING — so filter it through
+  // a wrapper instead: WHERE on the wrapped result evaluates after the
+  // window, with the same filter-the-output-rows semantics. ORDER BY/LIMIT
+  // follow on the outermost statement either way.
+  const usesWindowProjection =
+    isRatio && chartConfig.ratioMode === 'share_of_total';
+  const filtered = !having?.sql
+    ? core
+    : usesWindowProjection
+      ? chSql`SELECT * FROM (${core}) WHERE ${having}`
+      : concatChSql(' ', [core, chSql`HAVING ${having}`]);
+
+  return concatChSql(' ', [
+    filtered,
+    orderBy.sql ? chSql`ORDER BY ${orderBy}` : chSql``,
+    limit?.sql ? chSql`LIMIT ${limit}` : chSql``,
     settings !== '' ? chSql`SETTINGS ${{ UNSAFE_RAW_SQL: settings }}` : chSql``,
   ]);
 }

@@ -14,26 +14,11 @@ import {
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
-import { type AlertChannel, AlertSource } from '@/models/alert';
+import { AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
-import {
-  type McpSaveAlertInput,
-  mcpSaveAlertSchema,
-  validateSaveAlertInput,
-} from './schemas';
-
-/**
- * Convert the flat MCP channel object into the discriminated-union
- * `AlertChannel` that the controller layer expects.
- */
-function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
-  return {
-    type: 'webhook',
-    webhookId: ch.webhookId,
-  };
-}
+import { mcpSaveAlertSchema, validateSaveAlertInput } from './schemas';
 
 export function registerSaveAlert({
   context,
@@ -50,7 +35,11 @@ export function registerSaveAlert({
       description:
         'Create a new alert (omit id) or update an existing one (provide id). ' +
         'Alerts monitor a saved search or dashboard tile and fire when the ' +
-        'metric crosses a threshold. A webhook notification channel is required.',
+        'metric crosses a threshold. At least one webhook notification channel ' +
+        'is required: pass "channels" for 1-10 targets, or the legacy singular ' +
+        '"channel" for one. Updates replace the alert configuration rather than ' +
+        'merging it, so read the alert first and resend its full "channels" ' +
+        'array to avoid dropping channels you did not mean to remove.',
       inputSchema: mcpSaveAlertSchema,
     },
     async input => {
@@ -68,12 +57,12 @@ export function registerSaveAlert({
       }
 
       // Build the alert input matching the shape expected by controllers.
-      const channel = toAlertChannel(input.channel);
       const source =
         input.source === 'tile' ? AlertSource.TILE : AlertSource.SAVED_SEARCH;
       const alertInput: AlertInput = {
         source,
-        channel,
+        // `channel` is omitted; makeAlert mirrors it from channels[0].
+        channels: input.channels ?? (input.channel ? [input.channel] : []),
         interval: input.interval,
         threshold: input.threshold,
         thresholdType: input.thresholdType as AlertThresholdType,

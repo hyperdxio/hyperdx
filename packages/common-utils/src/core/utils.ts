@@ -877,11 +877,21 @@ export function convertToCategoricalChartConfig(
 /**
  * Number charts collapse to a single aggregate value, so drop the time bucket
  * (granularity) and any group-by.
+ *
+ * Metric formula configs (HDX-5080) additionally always hide their operand
+ * series: the number chart displays the first value column of the result, so
+ * the formula column must be the only one projected — never a raw operand.
+ * Enforced here (the choke point every number render passes through) so it
+ * holds for stale saved configs and display-type switches alike, regardless
+ * of the tile's "Show input series" setting on other display types.
  */
 export function convertToNumberChartConfig(
   config: BuilderChartConfigWithOptTimestamp,
 ): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
+  const converted = omit(config, ['granularity', 'groupBy']);
+  return config.formulas?.length
+    ? { ...converted, showOperandSeries: false }
+    : converted;
 }
 
 /**
@@ -1572,8 +1582,14 @@ export function validateRawSqlChartConfig(
 
       // Everything else — an unknown variable, a bad argument count, an
       // unrecognized `${v:format}`, an unconfigured metric type — is invisible
-      // to the user until the query fails, so it is reported verbatim.
-      if (!isStillTyping && !isAlreadyReported) {
+      // to the user until the query fails, so it is reported verbatim. A
+      // variable macro's message can already have come from the variable checks
+      // above, which expand the same template.
+      if (
+        !isStillTyping &&
+        !isAlreadyReported &&
+        !errors.includes(error.message)
+      ) {
         errors.push(error.message);
       }
     }
