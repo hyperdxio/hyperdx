@@ -2,11 +2,12 @@ import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
-import { getLoggedInAgent, getServer } from '@/fixtures';
+import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Team from '@/models/team';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
+import * as setupDefaults from '@/setupDefaults';
 
 describe('team router', () => {
   const server = getServer();
@@ -16,6 +17,7 @@ describe('team router', () => {
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await server.clearDBs();
   });
 
@@ -151,6 +153,26 @@ describe('team router', () => {
       throw new Error('TeamInvite not found');
     }
     expect(resp.body.url).toContain(`/join-team?token=${teamInvite.token}`);
+  });
+
+  it('POST /team/setup/:token provisions defaults for the invited team', async () => {
+    const { team } = await getLoggedInAgent(server);
+    const invite = await TeamInvite.create({
+      email: 'invited@example.com',
+      name: 'Invited User',
+      teamId: team._id,
+      token: 'invite_token',
+    });
+    const setupTeamDefaults = jest
+      .spyOn(setupDefaults, 'setupTeamDefaults')
+      .mockResolvedValue();
+
+    await getAgent(server)
+      .post(`/team/setup/${invite.token}`)
+      .send({ password: 'TacoCat!2#4X' })
+      .expect(303);
+
+    expect(setupTeamDefaults).toHaveBeenCalledWith(team._id.toString());
   });
 
   it('POST /team/invitation with different case reuses existing invitation', async () => {
