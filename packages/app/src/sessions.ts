@@ -282,6 +282,16 @@ export function useSessions(
 // we want to use clickhouse-proxy instead
 class TimeoutError extends Error {}
 
+/**
+ * Whether an error is the expected rejection of an aborted request —
+ * replaced or unmounted rrweb event streams are cancelled on purpose.
+ */
+function isAbortError(e: unknown): boolean {
+  return (
+    e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message))
+  );
+}
+
 async function* streamToAsyncIterator<T = any>(
   stream: ReadableStream<T>,
 ): AsyncIterableIterator<T> {
@@ -479,6 +489,11 @@ export function useRRWebEventStream(
           query_params: query.params,
           format,
           connectionId: source.connection,
+          // Cancels the request when the stream is replaced (query key
+          // change), times out, or the consumer unmounts — otherwise a
+          // replaced stream keeps downloading and delivering rows to its
+          // callbacks until completion.
+          abort_signal: ctrl.signal,
         });
 
         let forFunc: (data: any) => void;
@@ -539,6 +554,10 @@ export function useRRWebEventStream(
           ctrl.abort();
           console.warn('Closing event source due to timeout');
           onEnd?.(new TimeoutError());
+        } else if (isAbortError(e)) {
+          // Expected: the stream was cancelled because it was replaced or
+          // its consumer unmounted. Not an error, and onEnd must not fire —
+          // the aborted stream did not finish.
         } else {
           console.error(e);
         }
