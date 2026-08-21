@@ -16,7 +16,6 @@ import {
   Button,
   Center,
   Checkbox,
-  Collapse,
   Divider,
   Flex,
   Group,
@@ -1121,10 +1120,6 @@ const DBSearchPageFiltersComponent = ({
     'hdx-show-filter-counts',
     true,
   );
-  const [isFiltersExpanded, setFiltersExpanded] = useLocalStorage(
-    'hdx-filters-expanded',
-    true,
-  );
   const [isSharedFiltersExpanded, setSharedFiltersExpanded] = useLocalStorage(
     'hdx-shared-filters-expanded',
     true,
@@ -1622,8 +1617,13 @@ const DBSearchPageFiltersComponent = ({
       >
         <Stack gap="sm" p="xs">
           <Flex align="center" justify="space-between">
-            <Text size="xxs" c="dimmed" fw="bold">
-              Analysis Mode
+            <Text
+              size="xxs"
+              c="dimmed"
+              fw="bold"
+              className={isFacetsFetching ? 'effect-pulse' : ''}
+            >
+              Filters {isFacetsFetching && '···'}
             </Text>
             <Group gap={0}>
               {showRefreshButton && (
@@ -1635,6 +1635,25 @@ const DBSearchPageFiltersComponent = ({
                     />
                   }
                 />
+              )}
+              {showFiltersClearButton && (
+                <Tooltip
+                  label="Clear filters"
+                  position="top"
+                  withArrow
+                  fz="xxs"
+                  color="gray"
+                >
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="xs"
+                    onClick={clearRegularSelections}
+                    aria-label="Clear filters"
+                  >
+                    <IconFilterOff size={14} />
+                  </ActionIcon>
+                </Tooltip>
               )}
               <FilterSettingsPanel
                 isSharedFiltersVisible={isSharedFiltersVisible}
@@ -1711,163 +1730,108 @@ const DBSearchPageFiltersComponent = ({
             <Divider color="dark.4" />
           )}
 
-          {/* Collapsible "Filters" section */}
-          <Stack gap="xs">
-            <Flex align="center" justify="space-between">
-              <UnstyledButton
-                onClick={() => setFiltersExpanded(!isFiltersExpanded)}
-                style={{ flex: 1 }}
-              >
-                <Text
-                  size="xxs"
-                  c="dimmed"
-                  fw="bold"
-                  className={isFacetsFetching ? 'effect-pulse' : ''}
-                >
-                  Filters {isFacetsFetching && '···'}
-                </Text>
-              </UnstyledButton>
-              <Group gap={0} wrap="nowrap">
-                {showFiltersClearButton && (
+          <Stack gap="sm">
+            {analysisMode === 'results' && (
+              <Checkbox
+                size={13 as any}
+                checked={denoiseResults}
+                ms="6px"
+                label={
                   <Tooltip
-                    label="Clear Filters"
-                    position="top"
-                    withArrow
-                    fz="xxs"
+                    openDelay={200}
                     color="gray"
+                    position="right"
+                    withArrow
+                    label="Denoise results will visually remove events matching common event patterns from the results table."
                   >
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      size="xs"
-                      onClick={clearRegularSelections}
-                      aria-label="Clear Filters"
-                    >
-                      <IconFilterOff size={14} />
-                    </ActionIcon>
+                    <Text size="xs" mt="-2px" component="div">
+                      <Group gap={2}>
+                        <IconShadow
+                          size={14}
+                          style={{
+                            display: 'inline',
+                            verticalAlign: 'middle',
+                          }}
+                        />
+                        Denoise Results
+                      </Group>
+                    </Text>
                   </Tooltip>
-                )}
-                <UnstyledButton
-                  onClick={() => setFiltersExpanded(!isFiltersExpanded)}
-                >
-                  <IconChevronDown
-                    size={14}
-                    color="var(--mantine-color-gray-6)"
-                    style={{
-                      transition: 'transform 0.2s ease-in-out',
-                      transform: isFiltersExpanded
-                        ? 'rotate(0deg)'
-                        : 'rotate(-90deg)',
-                    }}
-                  />
-                </UnstyledButton>
-              </Group>
-            </Flex>
-            <Collapse expanded={isFiltersExpanded}>
-              <Stack gap="sm">
-                {analysisMode === 'results' && (
-                  <Checkbox
-                    size={13 as any}
-                    checked={denoiseResults}
-                    ms="6px"
-                    label={
-                      <Tooltip
-                        openDelay={200}
-                        color="gray"
-                        position="right"
-                        withArrow
-                        label="Denoise results will visually remove events matching common event patterns from the results table."
-                      >
-                        <Text size="xs" mt="-2px" component="div">
-                          <Group gap={2}>
-                            <IconShadow
-                              size={14}
-                              style={{
-                                display: 'inline',
-                                verticalAlign: 'middle',
-                              }}
-                            />
-                            Denoise Results
-                          </Group>
-                        </Text>
-                      </Tooltip>
-                    }
-                    onChange={() => setDenoiseResults(!denoiseResults)}
-                  />
-                )}
+                }
+                onChange={() => setDenoiseResults(!denoiseResults)}
+              />
+            )}
 
-                {source?.kind === SourceKind.Trace &&
-                  source.parentSpanIdExpression && (
-                    <Checkbox
-                      size={13 as any}
-                      checked={isRootSpansOnly}
-                      ms="6px"
-                      label={
-                        <Tooltip
-                          openDelay={200}
-                          color="gray"
-                          position="right"
-                          withArrow
-                          label="Only show root spans (spans with no parent span)."
-                        >
-                          <Text size="xs" mt="-2px" component="div">
-                            <Group gap={2}>
-                              <IconSitemap
-                                size={14}
-                                style={{
-                                  display: 'inline',
-                                  verticalAlign: 'middle',
-                                }}
-                              />
-                              Root Spans Only
-                            </Group>
-                          </Text>
-                        </Tooltip>
-                      }
-                      onChange={event => setRootSpansOnly(event.target.checked)}
-                    />
-                  )}
-
-                {isFacetsLoading ? (
-                  <Flex align="center" justify="center">
-                    <Loader size="xs" color="gray" />
-                  </Flex>
-                ) : (
-                  shownFacets.length === 0 && (
-                    <Text size="xxs">No filters available</Text>
-                  )
-                )}
-                {/* Show facets even when loading to ensure pinned filters are visible while loading */}
-                {renderFacetList(shownFacets)}
-
-                <Button
-                  variant="secondary"
-                  size="compact-xs"
-                  loading={isFacetsFetching}
-                  rightSection={
-                    showMoreFields ? (
-                      <IconChevronUp size={14} />
-                    ) : (
-                      <IconChevronDown size={14} />
-                    )
+            {source?.kind === SourceKind.Trace &&
+              source.parentSpanIdExpression && (
+                <Checkbox
+                  size={13 as any}
+                  checked={isRootSpansOnly}
+                  ms="6px"
+                  label={
+                    <Tooltip
+                      openDelay={200}
+                      color="gray"
+                      position="right"
+                      withArrow
+                      label="Only show root spans (spans with no parent span)."
+                    >
+                      <Text size="xs" mt="-2px" component="div">
+                        <Group gap={2}>
+                          <IconSitemap
+                            size={14}
+                            style={{
+                              display: 'inline',
+                              verticalAlign: 'middle',
+                            }}
+                          />
+                          Root Spans Only
+                        </Group>
+                      </Text>
+                    </Tooltip>
                   }
-                  onClick={() => setShowMoreFields(!showMoreFields)}
-                >
-                  {showMoreFields ? 'Less filters' : 'More filters'}
-                </Button>
+                  onChange={event => setRootSpansOnly(event.target.checked)}
+                />
+              )}
 
-                {showMoreFields && (
-                  <div>
-                    <Text size="xs" fw="bold">
-                      Not seeing a filter?
-                    </Text>
-                    <Text size="xxs">
-                      {`Try searching instead (e.g. column:foo)`}
-                    </Text>
-                  </div>
-                )}
-              </Stack>
-            </Collapse>
+            {isFacetsLoading ? (
+              <Flex align="center" justify="center">
+                <Loader size="xs" color="gray" />
+              </Flex>
+            ) : (
+              shownFacets.length === 0 && (
+                <Text size="xxs">No filters available</Text>
+              )
+            )}
+            {/* Show facets even when loading to ensure pinned filters are visible while loading */}
+            {renderFacetList(shownFacets)}
+
+            <Button
+              variant="secondary"
+              size="compact-xs"
+              loading={isFacetsFetching}
+              rightSection={
+                showMoreFields ? (
+                  <IconChevronUp size={14} />
+                ) : (
+                  <IconChevronDown size={14} />
+                )
+              }
+              onClick={() => setShowMoreFields(!showMoreFields)}
+            >
+              {showMoreFields ? 'Less filters' : 'More filters'}
+            </Button>
+
+            {showMoreFields && (
+              <div>
+                <Text size="xs" fw="bold">
+                  Not seeing a filter?
+                </Text>
+                <Text size="xxs">
+                  {`Try searching instead (e.g. column:foo)`}
+                </Text>
+              </div>
+            )}
           </Stack>
         </Stack>
       </ScrollArea>

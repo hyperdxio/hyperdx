@@ -334,6 +334,7 @@ export const AppNavLink = ({
           size="xs"
           color={badgeLabel ? (badgeColor ?? 'orange') : 'blue'}
           variant="light"
+          tt="none"
           className={styles.navItemBadge}
         >
           {badgeLabel ?? 'Beta'}

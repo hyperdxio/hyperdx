@@ -258,9 +258,15 @@ export function QueryEditor({
 
   // Surface field/variable suggestions as soon as the editor is focused, so
   // people can discover available fields without knowing exact names.
+  // react-codemirror fires onFocus from an updateListener, so dispatching
+  // startCompletion synchronously throws "Calls to EditorView.update are not
+  // allowed while an update is in progress" (also hit when Enter re-focuses
+  // the editor). Wait until this update finishes.
   const handleFocus = useCallback(() => {
-    const view = ref.current?.view;
-    if (view) startCompletion(view);
+    queueMicrotask(() => {
+      const view = ref.current?.view;
+      if (view) startCompletion(view);
+    });
   }, []);
 
   const isSqlMode = queryMode === 'sql';
