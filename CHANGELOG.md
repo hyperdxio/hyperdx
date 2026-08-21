@@ -6,6 +6,38 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.36.1 — 2026-08-21
+
+<!-- hyperdx-release-notes version=2.36.1 inputs=1d793b9b031c -->
+
+This is a small patch release with a single fix: the MCP server is usable again
+from Gemini-backed clients, which were rejecting HyperDX's entire tool list
+because of one field on the quantile aggregation tools. Nothing else changes,
+and no configuration or client update is needed beyond upgrading.
+
+### 🐛 Bug Fixes
+
+- **Gemini-backed MCP clients can use the server again**: the quantile `level`
+  field was advertised as a numeric enum, which Gemini's function declarations
+  reject — so a client forwarding MCP tool schemas to the provider had its whole
+  tool list refused, surfacing as a generic "trouble connecting to the model
+  provider" error that named neither the tool nor the property.
+  `clickstack_timeseries`, `clickstack_table`, `clickstack_save_dashboard` and
+  `clickstack_patch_dashboard` now advertise `level` as a string enum. Only the
+  advertised type changes: numeric input is still accepted for callers working
+  from a cached schema, out-of-set values are still rejected, and the external
+  REST API's own `level` contract is untouched (#2971).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.36.0 → 2.36.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2361)
+- `@hyperdx/app` 2.36.0 → 2.36.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2361)
+- `@hyperdx/otel-collector` 2.36.0 → 2.36.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2361)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.36.0 — 2026-08-21
 
 <!-- hyperdx-release-notes version=2.36.0 inputs=f975367d849a -->
