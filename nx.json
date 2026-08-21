@@ -26,6 +26,16 @@
       "dependsOn": ["^ci:build"],
       "inputs": ["default", "^production", { "runtime": "node --version" }]
     },
+    // Unit tests import the compiled `dist` of workspace dependencies (e.g.
+    // `@hyperdx/common-utils/dist/types`), so they need the same `^ci:build`
+    // that `ci:lint` has. Without it, `nx run-many -t ci:unit` can run jest
+    // against a stale or absent dist — which fails intermittently, because the
+    // nx cache usually leaves a usable dist behind and occasionally does not.
+    "ci:unit": {
+      "cache": true,
+      "dependsOn": ["^ci:build"],
+      "inputs": ["default", "^production", { "runtime": "node --version" }]
+    },
     "dev:build": {
       "cache": true
     },
