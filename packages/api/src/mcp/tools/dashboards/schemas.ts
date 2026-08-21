@@ -8,6 +8,8 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
   DashboardFilterType,
   MetricsDataType,
@@ -71,6 +73,29 @@ const rejectedTileWhereFields = {
   where: rejectedTileWhereField,
   whereLanguage: rejectedTileWhereField,
 };
+
+// A variable reference expands in either language; only the two variable
+// MACROS are SQL-only. Every input that can carry one repeats the note rather
+// than relying on the agent having fetched the query_guide prompt.
+const variableMacroDescription =
+  'DASHBOARD VARIABLES: a reference to a variable-enabled dashboard filter ' +
+  'expands here in either language ($variableName renders as quoted SQL ' +
+  'values, or as a Lucene value list in a Lucene input). With whereLanguage ' +
+  '"sql" this also accepts $__filter(<expression>, $<variableName>) and ' +
+  '$__conditionalAll(<condition>, $<variableName>), which are preferred ' +
+  'because they expand to 1=1 while nothing is selected, where a bare SQL ' +
+  'reference renders as NULL. The two macros have no meaning in a Lucene ' +
+  'input and are matched as literal text; write ServiceName:$variableName ' +
+  'there. A Lucene reference needs no macro: with nothing selected it renders ' +
+  'as ("") and the translator drops it to a match-all.';
+
+// Same note for the always-SQL expressions (HAVING), which have no
+// whereLanguage to set.
+const sqlOnlyVariableMacroDescription =
+  'DASHBOARD VARIABLES: accepts $__filter(<expression>, $<variableName>) and ' +
+  '$__conditionalAll(<condition>, $<variableName>), which expand to 1=1 while ' +
+  'the variable has no selection, as well as a bare $variableName reference ' +
+  '(which renders as NULL when nothing is selected).';
 
 const timeChartSeriesLimitDescription =
   'Maximum number of series to fetch (the "Series Limit" display setting). ' +
@@ -196,7 +221,8 @@ const mcpTileSelectItemSchema = z
           'whole tile to a subset of rows, put the same `where` on every select ' +
           'item; use different filters per item for cohort comparisons (errors ' +
           'vs total). There is no tile-level `where` for these tile types. ' +
-          'Lucene syntax by default. Example: "level:error"',
+          'Lucene syntax by default. Example: "level:error"\n\n' +
+          variableMacroDescription,
       ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
@@ -622,7 +648,8 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Post-aggregation SQL HAVING expression. Example: "Count > 100" to drop ' +
           'groups with few rows, or "StatusMessage != \'\'" to drop empty-message rows ' +
           'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
-          'table chart config in `externalDashboardTableChartConfigSchema`.',
+          'table chart config in `externalDashboardTableChartConfigSchema`.\n\n' +
+          sqlOnlyVariableMacroDescription,
       ),
     orderBy: z
       .string()
@@ -805,7 +832,8 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .default('')
       .describe(
-        'Row-level filter applied before bucketing. Example: "level:error"',
+        'Row-level filter applied before bucketing. Example: "level:error"\n\n' +
+          variableMacroDescription,
       ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
@@ -826,7 +854,10 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Filter in Lucene syntax. Example: "level:error"\n\n' +
+          variableMacroDescription,
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     select: z
@@ -849,7 +880,10 @@ const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Filter in Lucene syntax. Example: "level:error"\n\n' +
+          variableMacroDescription,
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     select: z
@@ -1084,7 +1118,17 @@ const mcpDashboardFilterSchema = z
       .string()
       .optional()
       .describe(
-        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
+        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene). ' +
+          "DEPENDENT FILTERS: this clause may reference ANOTHER filter's variable, which " +
+          "chains one dropdown off another (pick a service, and this filter's dropdown only " +
+          "offers that service's endpoints). The upstream filter must set isVariableEnabled: true; " +
+          'this one does not have to. With whereLanguage "sql", prefer ' +
+          '$__filter(<expression>, $<variableName>) so the dropdown lists every value until the ' +
+          'upstream filter is set; a bare $variableName leaves this dropdown empty until then. ' +
+          'With whereLanguage "lucene" a bare reference is already safe: it renders as ("") ' +
+          'with nothing selected, which matches all. ' +
+          "Reference a SIBLING filter's variable only: naming this filter's own variable " +
+          'collapses its dropdown to the values already picked.',
       ),
     whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
@@ -1099,12 +1143,52 @@ const mcpDashboardFilterSchema = z
           'A non-empty array restricts the filter to only tiles whose source ID is in the list; ' +
           'tiles on other sources are not affected by the dropdown value at all. ' +
           'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
-          'a subset of sources.',
+          'a subset of sources. ' +
+          'Scopes the broadcast condition only, so a non-empty array is rejected when ' +
+          'isBroadcastEnabled is false.',
+      ),
+    isBroadcastEnabled: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether the selected value is applied as a filter condition on every builder ' +
+          'tile this filter applies to (see appliesToSourceIds), and on every raw SQL ' +
+          'tile using the $__filters macro. Omitting the field means ENABLED. ' +
+          'Set false to build a variable-only filter that tiles opt into by name.',
+      ),
+    isVariableEnabled: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether the selected value is exposed to tile queries as a dashboard variable ' +
+          'named by variableName. Omitting the field means DISABLED. ' +
+          'Tiles reference it as $variableName, or (preferred) via ' +
+          '$__filter(<expression>, $<variableName>) and ' +
+          '$__conditionalAll(<condition>, $<variableName>) in any SQL condition ' +
+          "(a select item's `where`, a tile-level `where`, `having`, or a raw SQL " +
+          "tile's sqlTemplate). Another filter's `where` can reference it too, which " +
+          "chains that filter's dropdown off this one.",
+      ),
+    variableName: z
+      .string()
+      .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+      .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+      .optional()
+      .describe(
+        "Token tiles reference this filter's selected value by, eg. $variableName. " +
+          'Must start with a letter and may contain only letters, numbers, and ' +
+          `underscores, up to ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters. ` +
+          'A default is determined based on the display name. ' +
+          "Must be unique across the dashboard's variable-enabled filters. " +
+          'Rejected when isVariableEnabled is not true.',
       ),
   })
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
       'Each filter binds a label/name to a column expression on a source. ' +
+      'Every filter either broadcasts its selected value to matching tiles as a ' +
+      'condition (isBroadcastEnabled, the default), exposes it to tile queries as a ' +
+      'variable (isVariableEnabled + variableName), or both. Typically pick only ONE.' +
       "Filters are also the contract for row-click navigation: a table tile's " +
       'onClick.filters[i].expression must match a filter declared here for the value to land.',
   );
@@ -1117,11 +1201,17 @@ export const mcpFiltersParam = z
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
       'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
-      'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
-      'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
-      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
-      'broadcast-to-all-tiles default.\n\n' +
-      'Example (broadcast to every tile):\n' +
+      'Each filter runs in one of two modes (or both). BROADCAST (the default) applies the ' +
+      'selected value as a condition on matching tiles with no per-tile wiring. VARIABLE ' +
+      '(isVariableEnabled) exposes the value to tile queries as $variableName, which the tile ' +
+      'must reference explicitly. Prefer broadcast; reach for a variable in advanced cases. ' +
+      'Enabling both on one filter applies the value twice.\n\n' +
+      'By default, a broadcast filter applies to every tile on the dashboard. On mixed-source ' +
+      'dashboards, use variable mode or the optional `appliesToSourceIds` field to restrict a filter to only the ' +
+      'tiles whose source carries the referenced column — leave `appliesToSourceIds` omitted to ' +
+      'keep the broadcast-to-all-tiles default. `appliesToSourceIds` does NOT scope variable ' +
+      'references; any tile may reference any variable.\n\n' +
+      'Example (broadcast to every tile, the common case):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
@@ -1131,7 +1221,28 @@ export const mcpFiltersParam = z
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
       '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
-      ']',
+      ']\n\n' +
+      'Example (variable only, referenced by tiles as $service):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "isBroadcastEnabled": false, "isVariableEnabled": true, "variableName": "service" }\n' +
+      ']\n' +
+      'A tile then uses it as $__filter(ServiceName, $service) in a SQL where clause, which ' +
+      'expands to 1=1 while nothing is selected.\n\n' +
+      "Example (dependent filter: the Endpoint dropdown only lists the selected service's " +
+      'endpoints):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "isVariableEnabled": true, "variableName": "service" },\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Endpoint", "expression": "SpanName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "where": "$__filter(ServiceName, $service)" }\n' +
+      ']\n' +
+      "A filter's `where` scopes only the values ITS dropdown offers; it is not applied to " +
+      'any tile. That is why Service keeps broadcasting here: its variable is read by the ' +
+      'Endpoint dropdown, not by a tile, so the value is never applied twice.',
   );
 
 export const mcpPatchDashboardSchema = z.object({

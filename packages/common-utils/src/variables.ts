@@ -3,7 +3,11 @@ import {
   isQuoteEscapedByBackslash,
   splitAndTrimWithBracket,
 } from './core/utils';
-import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
+import {
+  MacroExpansionError,
+  MalformedMacroArgsError,
+  UnknownVariableError,
+} from './macroErrors';
 import {
   ChartConfigWithOptDateRange,
   ChartVariable,
@@ -458,13 +462,14 @@ function requireVariable(
 ): ChartVariable {
   const variable = ctx.variables.find(v => v.name === variableName);
   if (!variable) {
-    throw new MacroExpansionError(
+    const available = ctx.variables.map(v => v.name);
+    throw new UnknownVariableError(
       macroName,
+      variableName,
+      available,
       `Macro '$__${macroName}' references unknown variable '${variableName}'. ` +
         `Available variables: ${
-          ctx.variables.length > 0
-            ? ctx.variables.map(v => v.name).join(', ')
-            : '(none)'
+          available.length > 0 ? available.join(', ') : '(none)'
         }.`,
     );
   }
@@ -638,7 +643,7 @@ export function substituteVariablesForLanguage(
  * structural rather than tied to one config type so both runtime configs (which
  * carry `variables`) and saved configs (which don't) can be walked.
  */
-type BuilderVariableFields = {
+export type BuilderVariableFields = {
   select: SelectList;
   where?: string;
   whereLanguage?: SearchConditionLanguage;
@@ -694,7 +699,7 @@ const mapSortList = (
  * Calls the given map function to rewrite every chart builder expression
  * that may contain variable references, leaving the rest of the config untouched.
  */
-function mapBuilderVariableTemplates<T extends BuilderVariableFields>(
+export function mapBuilderVariableTemplates<T extends BuilderVariableFields>(
   config: T,
   map: TemplateMapper,
 ): T {
@@ -893,11 +898,19 @@ export function validateVariableReferencesInTemplate(
   {
     subject = 'SQL',
     language = 'sql',
+    reportUnknownMacroVariables = false,
   }: {
     /** The sentence subject of each message, e.g. `SQL references ...`. */
     subject?: string;
     /** The language the renderer parses this template as. */
     language?: SearchConditionLanguage;
+    /**
+     * Also report a macro naming a variable that does not exist. Off by
+     * default because the editor gets that message from expansion, which
+     * would then say it twice. Callers that validate a template without ever
+     * expanding it (a save-time API check) have no other way to catch it.
+     */
+    reportUnknownMacroVariables?: boolean;
   } = {},
 ): VariableReferenceIssues {
   const errors: string[] = [];
@@ -962,6 +975,18 @@ export function validateVariableReferencesInTemplate(
     }
     // The two checks below are specific to the `sqlstring` default format.
     return { errors, warnings };
+  }
+
+  if (reportUnknownMacroVariables) {
+    const unknownMacros = macroReferences.filter(
+      r => !knownVariableNames.has(r.name),
+    );
+    if (unknownMacros.length > 0) {
+      const [{ name }] = unknownMacros;
+      errors.push(
+        `${subject} uses ${formatReferenceList(unknownMacros)} on unknown variable '${name}'. Available variables: ${available}.`,
+      );
+    }
   }
 
   // An unrecognized format throws during expansion, so it is already reported.
