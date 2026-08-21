@@ -723,17 +723,74 @@ export const alertChannelKey = (channel: Record<string, unknown>) =>
   objectHash(channel);
 
 /**
- * Cross-field rule shared by every alert input schema in this repo (internal
- * API, external v2 API) — the MCP tool schema has its own hand-rolled copy of
- * this check, not this one: at least one of the legacy singular `channel` or
- * the plural `channels` must be provided, and `channels` must not contain
- * duplicates.
+ * Why a channel selection is rejected. Zod-independent so both the
+ * superRefine below and the MCP tool's hand-rolled validator (which has no
+ * ZodIssueCode to report through) can turn this into their own error shape.
+ */
+export type AlertChannelSelectionErrorCode =
+  | 'missing'
+  | 'mismatch'
+  | 'duplicate';
+
+export type AlertChannelSelectionResult =
+  | { ok: true }
+  | { ok: false; code: AlertChannelSelectionErrorCode };
+
+/**
+ * Cross-field rule shared by every alert input in this repo (internal API,
+ * external v2 API, MCP `clickstack_save_alert`): at least one of the legacy
+ * singular `channel` or the plural `channels` must be provided, and
+ * `channels` must not contain duplicates.
  *
  * Both may be sent together only when they agree — `channel` must equal
  * `channels[0]`. Responses carry both fields, so read-modify-write clients
  * echo both back untouched; rejecting that outright would break every
  * GET-then-PUT caller. A genuine disagreement is still an error rather than a
  * silent precedence rule, so no client can be surprised about which one won.
+ *
+ * Pure and throw-free by design: callers own how the failure is reported
+ * (Zod issue, MCP error string, …), this only classifies it.
+ */
+export const checkAlertChannelSelection = (alert: {
+  channel?: Record<string, unknown> | null;
+  channels?: Record<string, unknown>[];
+}): AlertChannelSelectionResult => {
+  const hasChannel = alert.channel != null;
+  const hasChannels = alert.channels != null;
+  if (!hasChannel && !hasChannels) {
+    return { ok: false, code: 'missing' };
+  }
+  if (hasChannel && hasChannels) {
+    const first = alert.channels?.[0];
+    if (
+      first == null ||
+      alertChannelKey(alert.channel!) !== alertChannelKey(first)
+    ) {
+      return { ok: false, code: 'mismatch' };
+    }
+  }
+  const keys = (alert.channels ?? []).map(alertChannelKey);
+  if (new Set(keys).size !== keys.length) {
+    return { ok: false, code: 'duplicate' };
+  }
+  return { ok: true };
+};
+
+const alertChannelSelectionMessages: Record<
+  AlertChannelSelectionErrorCode,
+  string
+> = {
+  missing: 'Provide either "channel" or "channels"',
+  mismatch:
+    'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"',
+  duplicate: 'Duplicate notification channels are not allowed',
+};
+
+/**
+ * Zod superRefine wrapper around {@link checkAlertChannelSelection}, shared by
+ * every alert input schema in this repo (internal API, external v2 API) — the
+ * MCP tool schema calls checkAlertChannelSelection directly, since its runtime
+ * validator has no ZodIssueCode to report through.
  */
 export const validateAlertChannelSelection = (
   alert: {
@@ -742,37 +799,12 @@ export const validateAlertChannelSelection = (
   },
   ctx: z.RefinementCtx,
 ) => {
-  const hasChannel = alert.channel != null;
-  const hasChannels = alert.channels != null;
-  if (!hasChannel && !hasChannels) {
+  const result = checkAlertChannelSelection(alert);
+  if (!result.ok) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['channels'],
-      message: 'Provide either "channel" or "channels"',
-    });
-    return;
-  }
-  if (hasChannel && hasChannels) {
-    const first = alert.channels?.[0];
-    if (
-      first == null ||
-      alertChannelKey(alert.channel!) !== alertChannelKey(first)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['channels'],
-        message:
-          'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"',
-      });
-      return;
-    }
-  }
-  const keys = (alert.channels ?? []).map(alertChannelKey);
-  if (new Set(keys).size !== keys.length) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['channels'],
-      message: 'Duplicate notification channels are not allowed',
+      message: alertChannelSelectionMessages[result.code],
     });
   }
 };
