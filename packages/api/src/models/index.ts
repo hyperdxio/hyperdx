@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import { getCounter } from '@/utils/instrumentation';
@@ -13,7 +14,7 @@ const mongoConnectionEventsCounter = getCounter(
   'hyperdx.mongodb.connection_events',
   {
     description:
-      'Count of MongoDB connection lifecycle events, labeled by event (connected, disconnected, error, reconnected, reconnect_failed).',
+      'Count of MongoDB connection lifecycle events, labeled by event (connected, disconnected, error, reconnected, reconnect_failed, initial_connect_retry).',
   },
 );
 
@@ -63,6 +64,62 @@ export const connectDB = async (options?: mongoose.ConnectOptions) => {
     maxPoolSize: 100, // 5 nodes -> max 1000 connections
     ...options,
   });
+};
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export type ConnectRetryOptions = {
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  /** Retry forever when undefined. Intended for tests. */
+  maxAttempts?: number;
+};
+
+/**
+ * Connect to MongoDB, retrying the *initial* connection with capped
+ * exponential backoff until it succeeds.
+ *
+ * Mongoose only auto-reconnects after a successful initial connect — a failed
+ * first `mongoose.connect()` is terminal. Long-lived servers must keep
+ * retrying, otherwise a Mongo that comes up moments after the API leaves the
+ * process permanently unable to serve while still listening (see
+ * https://github.com/hyperdxio/hyperdx/issues/2966).
+ *
+ * Configuration errors (missing MONGO_URI) are not retryable and are
+ * rethrown immediately.
+ */
+export const connectDBWithRetry = async (
+  options?: mongoose.ConnectOptions,
+  retryOptions?: ConnectRetryOptions,
+) => {
+  const baseDelayMs = retryOptions?.baseDelayMs ?? 1000;
+  const maxDelayMs = retryOptions?.maxDelayMs ?? 30000;
+  const maxAttempts = retryOptions?.maxAttempts ?? Infinity;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await connectDB(options);
+      if (attempt > 1) {
+        logger.info(
+          { attempt },
+          'Connection established to MongoDB after retrying',
+        );
+      }
+      return;
+    } catch (err) {
+      // Missing config can never succeed on retry.
+      if (config.MONGO_URI == null || attempt >= maxAttempts) {
+        throw err;
+      }
+      mongoConnectionEventsCounter.add(1, { event: 'initial_connect_retry' });
+      const retryInMs = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
+      logger.error(
+        { err: serializeError(err), attempt, retryInMs },
+        'Initial MongoDB connection failed, retrying',
+      );
+      await sleep(retryInMs);
+    }
+  }
 };
 
 export const mongooseConnection = mongoose.connection;
