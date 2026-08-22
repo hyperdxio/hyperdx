@@ -665,8 +665,10 @@ export class Metadata {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
     if (dateRange && !isDateRangeValid(dateRange)) {
       console.warn(
-        'getMapKeys: skipping metadata queries, dateRange contains an invalid date',
-        dateRange,
+        `getMapKeys: skipping metadata queries, dateRange contains an invalid date. ` +
+          `start=${dateRange[0]?.toString()} end=${dateRange[1]?.toString()} ` +
+          `databaseName=${databaseName} tableName=${tableName} column=${column} connectionId=${connectionId}`,
+        new Error('getMapKeys invalid date range').stack,
       );
       return [];
     }
@@ -1338,10 +1340,12 @@ export class Metadata {
     maxValuesPerKey: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
-    if (!isDateRangeValid(dateRange)) {
+      if (!isDateRangeValid(dateRange)) {
       console.warn(
-        'getMetadataMVKeyValues: skipping rollup query, dateRange contains an invalid date',
-        dateRange,
+        `getMetadataMVKeyValues: skipping rollup query, dateRange contains an invalid date. ` +
+          `start=${dateRange[0]?.toString()} end=${dateRange[1]?.toString()} ` +
+          `databaseName=${databaseName} connectionId=${connectionId}`,
+        new Error('getMetadataMVKeyValues invalid date range').stack,
       );
       return undefined;
     }
