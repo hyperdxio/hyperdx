@@ -8,6 +8,9 @@ import ChartContainer from './ChartContainer';
 const meta = {
   title: 'Charts/ChartCard',
   component: ChartCard,
+  parameters: {
+    layout: 'padded',
+  },
 } satisfies Meta<typeof ChartCard>;
 
 export default meta;

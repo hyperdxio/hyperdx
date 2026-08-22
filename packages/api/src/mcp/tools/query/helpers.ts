@@ -1,5 +1,4 @@
 import { ClickHouseError } from '@clickhouse/client-common';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
@@ -19,6 +18,7 @@ import {
 import { ObjectId } from 'mongodb';
 import ms from 'ms';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';

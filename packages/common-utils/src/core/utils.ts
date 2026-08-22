@@ -32,6 +32,7 @@ import {
   RawSqlChartConfig,
   SavedChartConfig,
   SortSpecificationList,
+  SourceKind,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -1395,6 +1396,38 @@ export function displayTypeSupportsBuilderAlerts(
     displayType === DisplayType.Number
   );
 }
+
+/**
+ * Display types that can carry formulas — the shapes the formula query
+ * paths render (composed multi-series for metrics, inline single-scan for
+ * events). Shared by the chart editor's "Add Formula" gating and the
+ * external API / MCP tile validation, so the surfaces cannot drift.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
+
+/**
+ * Source kinds that can carry formulas: metric sources (rendered via the
+ * composed multi-series metric query) and log/trace event sources (compiled
+ * inline in the single-scan SELECT). Shared by the chart editor's
+ * "Add Formula" gating and the external API / MCP tile validation, so the
+ * surfaces cannot drift. Session (and other) sources stay gated off.
+ */
+export const isFormulaSourceKind = (
+  kind: SourceKind | undefined,
+): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
+  kind === SourceKind.Metric ||
+  kind === SourceKind.Log ||
+  kind === SourceKind.Trace;
 
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,

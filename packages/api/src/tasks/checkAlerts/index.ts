@@ -546,7 +546,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { results } = await renderAlertTemplate({
+  const { failures } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -561,7 +561,7 @@ const fireChannelEvent = async ({
     teamId,
     teamWebhooksById,
   });
-  return results;
+  return failures;
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -1232,7 +1232,7 @@ export const processAlert = async (
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const results = await fireChannelEvent({
+        const failures = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
@@ -1253,7 +1253,7 @@ export const processAlert = async (
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
         // see renderAlertTemplate.
-        for (const failure of results) {
+        for (const failure of failures) {
           logger.error(
             {
               alertId: alert.id,

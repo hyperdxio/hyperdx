@@ -5,7 +5,7 @@ import { serializeError } from 'serialize-error';
 import app from '@/api-app';
 import * as config from '@/config';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
-import { connectDB, mongooseConnection } from '@/models';
+import { connectDBWithRetry, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
@@ -85,7 +85,12 @@ export default class Server {
       });
     }
 
-    await connectDB();
+    // The HTTP servers above are already listening so that `/health`
+    // (liveness) responds while we connect; `/ready` (readiness) stays 503
+    // until the connection below succeeds. Retries forever — see
+    // connectDBWithRetry for why a single failed initial connect must not be
+    // allowed to leave the process running but permanently unable to serve.
+    await connectDBWithRetry();
 
     // Initialize default connections and sources for local app mode
     if (config.IS_LOCAL_APP_MODE) {

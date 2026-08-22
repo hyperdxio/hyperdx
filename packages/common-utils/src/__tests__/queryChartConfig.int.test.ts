@@ -2381,4 +2381,202 @@ describe('queryChartConfig Integration Tests', () => {
       });
     });
   });
+
+  // Formulas on event (log/trace) sources compile inline in the single-scan
+  // SELECT (renderSelectListWithFormulas) rather than through the composed
+  // metric UNION ALL + pivot path.
+  describe('event (log/trace) formula charts (inline single-query)', () => {
+    const EVENTS_TABLE = 'events_formula_int_test';
+
+    const insertTs = (minute: number) => `2025-04-15 10:0${minute}:00`;
+    const bucket = (minute: number) => `2025-04-15T10:0${minute}:00Z`;
+    const DATE_RANGE: [Date, Date] = [
+      new Date('2025-04-14'),
+      new Date('2025-04-16'),
+    ];
+
+    type Row = Record<string, unknown>;
+    const col = (row: Row | undefined, name: string): unknown =>
+      row == null ? undefined : new Map(Object.entries(row)).get(name);
+    const expectGap = (value: unknown) => {
+      expect(value == null || Number.isNaN(Number(value))).toBe(true);
+    };
+
+    const errorCountSelect = {
+      aggFn: 'count' as const,
+      valueExpression: '',
+      aggCondition: "SeverityText = 'error'",
+      aggConditionLanguage: 'sql' as const,
+      alias: 'errors',
+    };
+    const totalCountSelect = {
+      aggFn: 'count' as const,
+      valueExpression: '',
+      aggCondition: '',
+      alias: 'total',
+    };
+
+    const baseConfig = (
+      overrides: Partial<ChartConfigWithOptDateRange>,
+    ): ChartConfigWithOptDateRange =>
+      ({
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: DATABASE, tableName: EVENTS_TABLE },
+        select: [errorCountSelect, totalCountSelect],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: DATE_RANGE,
+        granularity: '1 minute',
+        ...overrides,
+      }) as ChartConfigWithOptDateRange;
+
+    const runConfig = (config: ChartConfigWithOptDateRange) =>
+      hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${EVENTS_TABLE} (
+          Timestamp DateTime CODEC(Delta, ZSTD(1)),
+          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+          SeverityText LowCardinality(String) CODEC(ZSTD(1))
+        ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+      });
+
+      // bucket 0: svc-a 4 rows (1 error), svc-b 4 rows (3 errors)
+      //   -> overall 4 errors / 8 total = 50%
+      // bucket 1: svc-a 2 rows (0 errors) -> 0%
+      // grouped over both buckets: svc-a 1/6, svc-b 3/4
+      const row = (minute: number, service: string, severity: string) => ({
+        Timestamp: insertTs(minute),
+        ServiceName: service,
+        SeverityText: severity,
+      });
+      await client.insert({
+        table: `${DATABASE}.${EVENTS_TABLE}`,
+        values: [
+          row(0, 'svc-a', 'error'),
+          row(0, 'svc-a', 'info'),
+          row(0, 'svc-a', 'info'),
+          row(0, 'svc-a', 'info'),
+          row(0, 'svc-b', 'error'),
+          row(0, 'svc-b', 'error'),
+          row(0, 'svc-b', 'error'),
+          row(0, 'svc-b', 'info'),
+          row(1, 'svc-a', 'info'),
+          row(1, 'svc-a', 'info'),
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${EVENTS_TABLE}`,
+      });
+    });
+
+    it('appends formula columns after the operands on a time chart, with ratio gap semantics', async () => {
+      const result = await runConfig(
+        baseConfig({
+          formulas: [
+            { expression: 'A / B * 100', alias: 'Error rate' },
+            // 0 / nullif(0, 0) at bucket 1 — a gap, not 0 or an error.
+            { expression: 'A / A', alias: 'self ratio' },
+          ],
+        }),
+      );
+
+      // Meta contract: operand value columns first, in select order, then
+      // the formula columns — ahead of the bucket column.
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames.slice(0, 4)).toEqual([
+        'errors',
+        'total',
+        'Error rate',
+        'self ratio',
+      ]);
+      expect(metaNames.indexOf('__hdx_time_bucket')).toBeGreaterThanOrEqual(4);
+
+      const rows = new Map(
+        (result.data as Row[]).map(r => [
+          String(col(r, '__hdx_time_bucket')),
+          r,
+        ]),
+      );
+      expect([...rows.keys()].sort()).toEqual([bucket(0), bucket(1)]);
+
+      expect(Number(col(rows.get(bucket(0)), 'errors'))).toBe(4);
+      expect(Number(col(rows.get(bucket(0)), 'total'))).toBe(8);
+      expect(Number(col(rows.get(bucket(0)), 'Error rate'))).toBeCloseTo(50, 5);
+      expect(Number(col(rows.get(bucket(0)), 'self ratio'))).toBe(1);
+
+      expect(Number(col(rows.get(bucket(1)), 'Error rate'))).toBe(0);
+      expectGap(col(rows.get(bucket(1)), 'self ratio'));
+    });
+
+    it('drops the operand columns from meta and rows when showOperandSeries is false', async () => {
+      const result = await runConfig(
+        baseConfig({
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+          showOperandSeries: false,
+        }),
+      );
+
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames[0]).toBe('Error rate');
+      expect(metaNames).not.toContain('errors');
+      expect(metaNames).not.toContain('total');
+
+      const rows = new Map(
+        (result.data as Row[]).map(r => [
+          String(col(r, '__hdx_time_bucket')),
+          r,
+        ]),
+      );
+      expect(Number(col(rows.get(bucket(0)), 'Error rate'))).toBeCloseTo(50, 5);
+    });
+
+    it('computes a grouped table formula and lets HAVING filter on it', async () => {
+      const result = await runConfig(
+        baseConfig({
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          groupBy: 'ServiceName',
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+          having: '"Error rate" > 50',
+          havingLanguage: 'sql',
+        }),
+      );
+
+      // svc-a: 1/6 ≈ 16.7% (filtered out); svc-b: 3/4 = 75%.
+      const rows = result.data as Row[];
+      expect(rows).toHaveLength(1);
+      expect(col(rows[0], 'ServiceName')).toBe('svc-b');
+      expect(Number(col(rows[0], 'Error rate'))).toBeCloseTo(75, 5);
+    });
+
+    it('collapses a number-shape formula to a single derived value', async () => {
+      const result = await runConfig(
+        baseConfig({
+          displayType: DisplayType.Number,
+          granularity: undefined,
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+          showOperandSeries: false,
+        }),
+      );
+
+      // 4 errors / 10 total across the whole range.
+      const rows = result.data as Row[];
+      expect(rows).toHaveLength(1);
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames).toEqual(['Error rate']);
+      expect(Number(col(rows[0], 'Error rate'))).toBeCloseTo(40, 5);
+    });
+  });
 });

@@ -103,7 +103,7 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 
 We ship **themed semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven and consistent across the HyperDX and ClickStack brands (and light/dark). **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
 
-The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design Tokens/Semantic Variants` for the full visual matrix.
+The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design tokens/Semantic variants` for the full visual matrix.
 
 **`Alert`** — `info` | `success` | `warning` | `danger`. Renders a tinted `-subtle` background with the title, icon, **and body text** in the semantic color token:
 
@@ -208,6 +208,37 @@ the copy). Exercise the real dialog in E2E instead.
 ```
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
+
+### Code snippets (REQUIRED)
+
+**Do not render raw `<pre>`, ad-hoc `Paper` + monospace text, or unstyled `<code>`.** Use the existing Mantine/product components so snippets match Terraform export, onboarding, and Storybook guidelines.
+
+| Kind | Component | When |
+|------|-----------|------|
+| **Inline code** | Mantine `<Code>` | Short tokens in prose (`Session`, a column name, a flag). |
+| **Fenced / multi-line / copyable** | `CopySnippet` (`@/components/ClickStackOnboarding/CopySnippet`) | Install commands, HCL, JSX examples, any block the user might copy. Wraps `<Code block>` plus a Copy button. |
+
+```tsx
+// ✅ inline — Mantine Code
+Create a source with <Code>Session</Code> type.
+
+// ✅ fenced / copyable — CopySnippet (Code + Copy)
+<CopySnippet
+  label="Import block"
+  snippet={`import { clickstack_dashboard } from "clickhouse/clickstack"`}
+/>
+
+// Label is optional when the surrounding heading already names the snippet
+<CopySnippet snippet={USAGE} />
+
+// ❌ BAD — raw pre / Paper chrome
+<pre>{snippet}</pre>
+<Paper bg="var(--color-bg-code)"><Text component="pre" ff="monospace">{snippet}</Text></Paper>
+```
+
+**SQL query previews** (rendered ClickHouse SQL with highlighting) still use `SQLPreview` / `ChartSQLPreview` — those are editors, not snippet chrome.
+
+Storybook: `Components/Code` (live `InlineCode`, `FencedBlocks`, and `Usage`). Guidelines markdown maps fenced blocks → `CopySnippet` and inline `` `code` `` → `<Code>` automatically. Follow the same split in app UI.
 
 ### Chart cards (ChartCard)
 
