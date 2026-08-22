@@ -82,6 +82,90 @@ const router = express.Router();
 const CUSTOM_SETTING_KEY_SEP = '_';
 const CUSTOM_SETTING_KEY_USER_SUFFIX = 'user';
 
+declare module 'http' {
+  interface IncomingMessage {
+    /**
+     * Set by body-parser once it has drained the request stream. It is the
+     * only signal that separates a parsed empty body from an untouched one —
+     * see planProxyBody.
+     */
+    _body?: boolean;
+  }
+}
+
+const URLENCODED_MEDIA_TYPE = 'application/x-www-form-urlencoded';
+
+/**
+ * What to do with a request body the express parsers may have already
+ * consumed.
+ *
+ * `skip` means the stream is still intact, so the proxy can pipe the original
+ * bytes; writing here would corrupt or duplicate them.
+ */
+export type ProxyBodyPlan =
+  | { action: 'write'; payload: string | Buffer }
+  | { action: 'skip' };
+
+const mediaTypeOf = (contentType: string | undefined): string =>
+  (contentType ?? '').split(';', 1)[0].trim().toLowerCase();
+
+const serializeUrlencoded = (body: object): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(body)) {
+    // `extended: false` yields string | string[]; appending each element keeps
+    // repeated keys repeated rather than collapsing them into "a,b".
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        params.append(key, String(item));
+      }
+    } else if (value !== undefined) {
+      params.append(key, String(value));
+    }
+  }
+  return params.toString();
+};
+
+/**
+ * Decide how to re-inject a proxied request body.
+ *
+ * `bodyWasParsed` must come from body-parser's own `req._body` flag rather than
+ * from the shape of `req.body`: every parser runs `req.body = req.body || {}`
+ * *before* its content-type check, so an untouched `multipart/form-data`
+ * request is indistinguishable from a parsed empty object by shape alone.
+ * `_body` is the only signal that the stream was actually drained, and
+ * body-parser uses it for the same purpose.
+ */
+export const planProxyBody = (
+  contentType: string | undefined,
+  body: unknown,
+  bodyWasParsed: boolean,
+): ProxyBodyPlan => {
+  // Nothing consumed the stream — let it pipe through untouched.
+  if (!bodyWasParsed || body == null) {
+    return { action: 'skip' };
+  }
+
+  // express.text() already hands back exactly what was on the wire.
+  if (typeof body === 'string' || Buffer.isBuffer(body)) {
+    return { action: 'write', payload: body };
+  }
+
+  // A JSON scalar (number, boolean) — nothing to re-encode as a form.
+  if (typeof body !== 'object') {
+    return { action: 'write', payload: JSON.stringify(body) };
+  }
+
+  if (mediaTypeOf(contentType) === URLENCODED_MEDIA_TYPE) {
+    return { action: 'write', payload: serializeUrlencoded(body) };
+  }
+
+  // Only the json and urlencoded parsers produce object bodies, so anything
+  // left is JSON. Matching on the media type rather than the raw header is
+  // what lets `application/json; charset=utf-8` through — express.json()
+  // ignores content-type parameters, and so must we.
+  return { action: 'write', payload: JSON.stringify(body) };
+};
+
 router.post(
   '/test',
   validateRequest({
@@ -261,20 +345,36 @@ const proxyMiddleware: RequestHandler =
           return res.sendStatus(405);
         }
 
-        let body = _req.body;
-        if (_req.headers['content-type'] === 'application/json') {
-          try {
-            body = JSON.stringify(body);
-          } catch (e) {
-            console.error(e);
-          }
+        const plan = planProxyBody(
+          _req.headers['content-type'],
+          _req.body,
+          _req._body === true,
+        );
+
+        if (plan.action === 'skip') {
+          return;
         }
 
         try {
-          proxyReq.write(body);
-        } catch {
-          console.error(
-            `clickhouseProxy error writing body, body is type ${typeof body}`,
+          // Re-serialization can change the byte count (whitespace
+          // normalization, urlencoded round-trips) and the upstream reads
+          // exactly Content-Length bytes, so the header has to follow the
+          // payload we are about to write.
+          if (!proxyReq.getHeader('transfer-encoding')) {
+            proxyReq.setHeader(
+              'content-length',
+              Buffer.byteLength(plan.payload),
+            );
+          }
+          proxyReq.write(plan.payload);
+        } catch (e) {
+          // Continuing body-less surfaces to the user as an opaque 400 from
+          // ClickHouse; fail the hop so the proxy's error handler reports it.
+          console.error('clickhouseProxy error writing body', e);
+          proxyReq.destroy(
+            e instanceof Error
+              ? e
+              : new Error('Failed to forward request body to ClickHouse'),
           );
         }
       },
