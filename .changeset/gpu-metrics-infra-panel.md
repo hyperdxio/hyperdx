@@ -14,3 +14,8 @@ metric is available.
 The Infrastructure tab now also treats a Kubernetes resource attribute that is
 present but empty (for example `k8s.node.name: ""`) as absent. Such rows
 previously surfaced an Infrastructure tab that could render nothing.
+
+Fix GPU chart availability leaking across rows: switching the side panel to a
+row on a different host briefly rendered the previous host's set of GPU
+charts, because the availability query keeps the prior result readable while
+the new one runs.

@@ -60,7 +60,7 @@ export function useAvailableMetricNames({
     };
   }, [metricSource, gaugeTable, correlationWhere, metricNames, dateRange]);
 
-  const { data, isLoading } = useGetKeyValues(
+  const { data, isLoading, isPlaceholderData } = useGetKeyValues(
     {
       chartConfig,
       keys: ['MetricName'],
@@ -75,8 +75,15 @@ export function useAvailableMetricNames({
   return useMemo(
     () => ({
       availableMetrics: new Set<string>(data?.[0]?.value ?? []),
-      isLoading,
+      // `useGetKeyValues` sets `placeholderData: keepPreviousData`, so when the
+      // correlated resource changes the previous resource's answer stays
+      // readable while the new query runs -- and `isLoading` reads false
+      // throughout, because the query is `success` on placeholder data rather
+      // than `pending`. Callers gating on availability must therefore treat
+      // placeholder data as "not yet known", or one host's chart set leaks
+      // onto the next.
+      isLoading: isLoading || isPlaceholderData,
     }),
-    [data, isLoading],
+    [data, isLoading, isPlaceholderData],
   );
 }
