@@ -17,8 +17,6 @@ export type InfraChartSpec = {
   readonly cardTestId: string;
   readonly field: string;
   readonly numberFormat: NumberFormat;
-  // Per-chart Lucene WHERE condition ANDed with the correlation filter.
-  readonly where?: string;
   // Per-chart groupBy SQL expressions (passed through as raw SQL).
   readonly groupBy?: readonly string[];
   // Defaults to Gauge.
@@ -77,14 +75,23 @@ const GPU_GROUP_BY_EXPR =
   `if(Attributes['hw.name'] != '', concat(' ', Attributes['hw.name']), ` +
   `if(Attributes['hw.model'] != '', concat(' ', Attributes['hw.model']), '')))`;
 
+// A GPU reports utilization per engine, so `hw.gpu.utilization` carries up to
+// three series per device distinguished only by `hw.gpu.task` (general,
+// encoder, decoder -- see the OTel hardware semconv). They are grouped rather
+// than filtered to `general`: averaging the engines together would understate
+// a busy GPU, and filtering to one would hide a node saturated on video
+// encode. Producers that emit a single unlabelled utilization figure mean the
+// compute engine, so a missing task normalizes to `general` instead of
+// forming its own series.
+const GPU_TASK_GROUP_BY_EXPR = `if(Attributes['hw.gpu.task'] != '', Attributes['hw.gpu.task'], 'general')`;
+
 const GPU_CHART_SPECS: readonly InfraChartSpec[] = [
   {
     title: 'GPU utilization',
     cardTestId: 'gpu-utilization-card',
     field: 'utilization',
     numberFormat: GPU_UTILIZATION_NUMBER_FORMAT,
-    where: 'hw.gpu.task:"general" OR NOT hw.gpu.task:*',
-    groupBy: [GPU_GROUP_BY_EXPR],
+    groupBy: [GPU_GROUP_BY_EXPR, GPU_TASK_GROUP_BY_EXPR],
   },
   {
     title: 'GPU memory utilization',

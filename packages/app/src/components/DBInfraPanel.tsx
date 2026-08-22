@@ -78,7 +78,7 @@ export function buildChartConfig({
         // value column; the schema still requires a string.
         valueExpression: 'Value',
         aggConditionLanguage: 'lucene',
-        aggCondition: chart.where ? `(${where}) AND (${chart.where})` : where,
+        aggCondition: where,
       },
     ],
     from: metricSource.from,

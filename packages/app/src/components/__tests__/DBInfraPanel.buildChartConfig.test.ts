@@ -69,16 +69,24 @@ describe('buildChartConfig', () => {
     ]);
   });
 
-  it('ANDs the per-chart where onto the correlation filter', () => {
+  it('uses the correlation filter verbatim as the agg condition', () => {
     const config = build(gpu, 'gpu-utilization-card', where);
     expect(Array.isArray(config.select) && config.select[0].aggCondition).toBe(
-      `(${where}) AND (hw.gpu.task:"general" OR NOT hw.gpu.task:*)`,
+      where,
     );
   });
 
-  it('passes the GPU groupBy through as raw SQL', () => {
+  it('joins multiple GPU groupBy expressions into raw SQL', () => {
     const config = build(gpu, 'gpu-utilization-card', where);
     expect(config.groupBy).toContain("Attributes['hw.id']");
+    expect(config.groupBy).toContain("Attributes['hw.gpu.task']");
+    // Comma-joined so ClickHouse sees two group columns, which DBTimeChart
+    // renders as "<device> · <task>".
+    expect(config.groupBy).toBe(
+      gpu.charts
+        .find(c => c.cardTestId === 'gpu-utilization-card')!
+        .groupBy!.join(', '),
+    );
   });
 
   it('leaves groupBy empty for charts that do not define one', () => {

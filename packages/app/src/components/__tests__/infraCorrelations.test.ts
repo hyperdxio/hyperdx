@@ -139,25 +139,37 @@ describe('GPU chart specs', () => {
     ]);
   });
 
-  it('uses field:* for the task existence check, not _exists_', () => {
+  it('splits utilization by task rather than filtering to general', () => {
     const utilizationChart = gpuCorrelation.charts.find(
       c => c.cardTestId === 'gpu-utilization-card',
     );
-    expect(utilizationChart?.where).toBe(
-      'hw.gpu.task:"general" OR NOT hw.gpu.task:*',
+    // Filtering here would hide a node saturated on video encode, so the task
+    // dimension belongs in the groupBy instead.
+    expect(utilizationChart?.groupBy).toHaveLength(2);
+    expect(utilizationChart?.groupBy![1]).toContain(
+      "Attributes['hw.gpu.task']",
     );
   });
 
-  it('does not filter the memory chart on hw.gpu.task', () => {
+  it('normalizes a missing task to general rather than a separate series', () => {
+    const utilizationChart = gpuCorrelation.charts.find(
+      c => c.cardTestId === 'gpu-utilization-card',
+    );
+    expect(utilizationChart?.groupBy![1]).toBe(
+      "if(Attributes['hw.gpu.task'] != '', Attributes['hw.gpu.task'], 'general')",
+    );
+  });
+
+  it('does not split the memory chart by task', () => {
     const memChart = gpuCorrelation.charts.find(
       c => c.cardTestId === 'gpu-memory-utilization-card',
     );
-    expect(memChart?.where).toBeUndefined();
+    // Memory is per-device, not per-engine.
+    expect(memChart?.groupBy).toHaveLength(1);
   });
 
-  it('includes hw.id/hw.name/hw.model in the groupBy expression', () => {
+  it('includes hw.id/hw.name/hw.model in the device groupBy expression', () => {
     for (const chart of gpuCorrelation.charts) {
-      expect(chart.groupBy).toHaveLength(1);
       const expr = chart.groupBy![0];
       expect(expr).toContain("Attributes['hw.id']");
       expect(expr).toContain("Attributes['hw.name']");
