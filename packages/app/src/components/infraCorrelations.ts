@@ -130,17 +130,23 @@ export const INFRA_CORRELATIONS: readonly InfraCorrelation[] = [
   },
 ];
 
-// Returns the built-in correlation groups whose detect attribute is present
-// (non-null) on the given resource attributes. This is the single source of
+// Returns the built-in correlation groups whose detect attribute holds a
+// usable value on the given resource attributes. This is the single source of
 // truth for both the Infrastructure tab gate (rowHasK8sContext) and the panel
 // renderer (DBInfraPanel), so the gate and the render never drift apart.
+//
+// The test is truthiness rather than `!= null` so that it matches the
+// renderer's own guard exactly: an attribute present but empty correlates to
+// nothing, so admitting it would surface an Infrastructure tab whose groups
+// all render as null, and would fire the metric-availability probe with an
+// empty value.
 export function getActiveInfraCorrelations(
   resourceAttributes: Record<string, unknown> | null | undefined,
 ): readonly InfraCorrelation[] {
   if (!resourceAttributes) {
     return [];
   }
-  return INFRA_CORRELATIONS.filter(
-    correlation => resourceAttributes[correlation.detectAttribute] != null,
+  return INFRA_CORRELATIONS.filter(correlation =>
+    Boolean(resourceAttributes[correlation.detectAttribute]),
   );
 }

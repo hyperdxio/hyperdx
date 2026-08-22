@@ -28,6 +28,21 @@ describe('getActiveInfraCorrelations', () => {
     expect(getActiveInfraCorrelations({})).toEqual([]);
   });
 
+  it('treats an empty detect attribute as absent', () => {
+    // An empty value correlates to nothing, so admitting it would surface an
+    // Infrastructure tab whose groups all render as null.
+    expect(getActiveInfraCorrelations({ 'k8s.node.name': '' })).toEqual([]);
+    expect(getActiveInfraCorrelations({ 'k8s.pod.uid': '' })).toEqual([]);
+  });
+
+  it('drops only the group whose detect attribute is empty', () => {
+    const active = getActiveInfraCorrelations({
+      'k8s.pod.uid': 'pod-abc',
+      'k8s.node.name': '',
+    });
+    expect(active.map(c => c.title)).toEqual(['Pod']);
+  });
+
   it('returns no groups for unrelated resource attributes', () => {
     expect(
       getActiveInfraCorrelations({

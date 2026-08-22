@@ -122,6 +122,13 @@ const InfraCorrelationGroup = ({
     correlation;
 
   const correlateValue = resourceAttributes?.[correlation.correlateAttribute];
+  // `getActiveInfraCorrelations` already rejects a falsy *detect* attribute,
+  // but a descriptor is free to detect on one attribute and correlate on
+  // another, so the correlate side is checked here too. Never blank `where`
+  // instead: `useAvailableMetricNames` treats an empty correlation filter as
+  // "no filter" and would probe every host, reporting metrics as available
+  // for a host that has none.
+  const hasCorrelateValue = Boolean(correlateValue);
   const where = metricSource
     ? `${metricSource.resourceAttributesExpression}.${correlation.correlateAttribute}:"${correlateValue}"`
     : '';
@@ -165,7 +172,7 @@ const InfraCorrelationGroup = ({
       correlationWhere: where,
       metricNames: candidateMetricNames,
       dateRange: availabilityDateRange,
-      enabled: isGated,
+      enabled: isGated && hasCorrelateValue,
     });
 
   const { cols, height } = useMemo(() => {
@@ -192,8 +199,6 @@ const InfraCorrelationGroup = ({
     );
   }, [charts, fieldPrefix, isGated, availableMetrics]);
 
-  // The tab gate admits a correlate attribute that is present but empty; an
-  // empty value would correlate to nothing, so the whole group is dropped.
   const showCharts =
     metricSource != null &&
     visibleCharts.length > 0 &&
@@ -203,7 +208,7 @@ const InfraCorrelationGroup = ({
   const showTimeline =
     correlation.timeline != null && logSource.kind === SourceKind.Log;
 
-  if (!correlateValue || (!showCharts && !showTimeline)) {
+  if (!hasCorrelateValue || (!showCharts && !showTimeline)) {
     return null;
   }
 
