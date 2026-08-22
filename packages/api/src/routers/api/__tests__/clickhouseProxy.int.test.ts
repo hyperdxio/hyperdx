@@ -20,8 +20,9 @@ type CapturedRequest = {
  * `@clickhouse/client-web` emits when query params exceed its URL budget
  * (regression context: ClickHouse support-escalation #8482).
  *
- * Known-latent cases (charset-suffixed JSON, urlencoded) are not covered;
- * tracked in https://github.com/hyperdxio/hyperdx/issues/2942.
+ * Charset-suffixed JSON, urlencoded bodies and Content-Length sync are covered
+ * below; before #2942 each of them hung until the client gave up. The
+ * serialization decision itself is unit-tested in clickhouseProxy.test.ts.
  */
 describe('clickhouse-proxy body forwarding', () => {
   const server = getServer();
@@ -136,6 +137,76 @@ describe('clickhouse-proxy body forwarding', () => {
     expect(captured[0].body.toString()).toBe(body);
     expect(captured[0].headers['content-length']).toBe(
       String(Buffer.byteLength(body)),
+    );
+  });
+
+  it('forwards a charset-suffixed application/json body', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+
+    const payload = {
+      query: 'SELECT 1 FORMAT JSON',
+      query_params: { p0: 'x' },
+    };
+    await agent
+      .post('/clickhouse-proxy/?query_id=test-json-charset')
+      .set('x-hyperdx-connection-id', connectionId)
+      .set('Content-Type', 'application/json; charset=utf-8')
+      .send(payload)
+      .expect(200);
+
+    expect(captured).toHaveLength(1);
+    expect(JSON.parse(captured[0].body.toString())).toEqual(payload);
+    // The re-serialized payload, not the client's original framing, must set
+    // the length the upstream reads.
+    expect(captured[0].headers['content-length']).toBe(
+      String(captured[0].body.length),
+    );
+  });
+
+  it('forwards an application/x-www-form-urlencoded body', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+
+    await agent
+      .post('/clickhouse-proxy/?query_id=test-urlencoded')
+      .set('x-hyperdx-connection-id', connectionId)
+      .type('form')
+      .send({ query: 'SELECT 1 FORMAT JSON', param_p0: 'a b&c' })
+      .expect(200);
+
+    expect(captured).toHaveLength(1);
+    const forwarded = new URLSearchParams(captured[0].body.toString());
+    expect(forwarded.get('query')).toBe('SELECT 1 FORMAT JSON');
+    expect(forwarded.get('param_p0')).toBe('a b&c');
+    expect(captured[0].headers['content-length']).toBe(
+      String(captured[0].body.length),
+    );
+  });
+
+  it('syncs Content-Length when re-serialization changes the byte length', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+
+    // Pretty-printed on the wire, compact after JSON.stringify: the byte
+    // length the client announced is not the length the upstream will read.
+    const payload = { query: 'SELECT 1 FORMAT JSON' };
+    const pretty = JSON.stringify(payload, null, 4);
+    expect(Buffer.byteLength(pretty)).toBeGreaterThan(
+      Buffer.byteLength(JSON.stringify(payload)),
+    );
+
+    await agent
+      .post('/clickhouse-proxy/?query_id=test-json-length')
+      .set('x-hyperdx-connection-id', connectionId)
+      .set('Content-Type', 'application/json')
+      .send(pretty)
+      .expect(200);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].body.toString()).toBe(JSON.stringify(payload));
+    expect(captured[0].headers['content-length']).toBe(
+      String(Buffer.byteLength(JSON.stringify(payload))),
     );
   });
 
