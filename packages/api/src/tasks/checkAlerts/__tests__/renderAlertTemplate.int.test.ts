@@ -551,7 +551,7 @@ describe('per-event notification cap', () => {
       .join(' ');
     const { dispatcher, dispatched } = makeRecordingDispatcher();
 
-    const { results } = await renderAlertTemplate({
+    const { failures } = await renderAlertTemplate({
       alertProvider,
       clickhouseClient: mockClickhouseClient,
       metadata: mockMetadata,
@@ -565,7 +565,7 @@ describe('per-event notification cap', () => {
     });
 
     expect(dispatched).toHaveLength(CAP);
-    expect(results).toHaveLength(0);
+    expect(failures).toHaveLength(0);
   });
 
   it('caps dispatch and records an execution error for each dropped target', async () => {
@@ -576,7 +576,7 @@ describe('per-event notification cap', () => {
       .join(' ');
     const { dispatcher, dispatched } = makeRecordingDispatcher();
 
-    const { results } = await renderAlertTemplate({
+    const { failures } = await renderAlertTemplate({
       alertProvider,
       clickhouseClient: mockClickhouseClient,
       metadata: mockMetadata,
@@ -593,8 +593,48 @@ describe('per-event notification cap', () => {
 
     // The target over the cap is reported, not silently dropped — otherwise the
     // alert looks healthy while a channel was never notified.
-    expect(results).toHaveLength(1);
-    expect(String(results[0].error)).toContain('Notification cap');
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0].error)).toContain('Notification cap');
+  });
+
+  // A pre-dispatch failure (an unparseable mention, a missing webhook, the cap
+  // itself) never reaches the dispatcher, so it must not count against the cap
+  // meant to bound real deliveries. Otherwise enough failed mentions ahead of a
+  // valid webhook silently push it over the cap.
+  it('does not let unresolvable mentions ahead of it push a valid webhook over the cap', async () => {
+    const webhook = makeWebhook(0);
+    const id = webhook._id.toString();
+    const teamWebhooksById = new Map([[id, webhook]]);
+    // CAP unresolvable mentions, then one real webhook target. If failures
+    // counted toward the cap, the webhook would land on the CAP+1'th target
+    // and get turned away.
+    const unresolvableMentions = Array.from(
+      { length: CAP },
+      () => '@here',
+    ).join(' ');
+    const template = `${unresolvableMentions} @webhook-${id}`;
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: makeSearchView(),
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].populatedChannel).toMatchObject({ type: 'webhook' });
+    // Every "@here" is its own failure; none of them is a cap-exceeded error.
+    expect(failures).toHaveLength(CAP);
+    expect(
+      failures.every(f => !String(f.error).includes('Notification cap')),
+    ).toBe(true);
   });
 });
 
@@ -613,7 +653,7 @@ describe('notification targets are resolved once per webhook', () => {
     const id = webhook._id.toString();
     const { dispatcher, dispatched } = makeRecordingDispatcher();
 
-    const { results } = await renderAlertTemplate({
+    const { failures } = await renderAlertTemplate({
       alertProvider,
       clickhouseClient: mockClickhouseClient,
       metadata: mockMetadata,
@@ -634,7 +674,7 @@ describe('notification targets are resolved once per webhook', () => {
     });
 
     expect(dispatched).toHaveLength(1);
-    expect(results).toHaveLength(0);
+    expect(failures).toHaveLength(0);
   });
 
   it('keeps firing configured channels when the message has a plain @mention', async () => {
@@ -642,7 +682,7 @@ describe('notification targets are resolved once per webhook', () => {
     const id = webhook._id.toString();
     const { dispatcher, dispatched } = makeRecordingDispatcher();
 
-    const { results } = await renderAlertTemplate({
+    const { failures } = await renderAlertTemplate({
       alertProvider,
       clickhouseClient: mockClickhouseClient,
       metadata: mockMetadata,
@@ -663,7 +703,7 @@ describe('notification targets are resolved once per webhook', () => {
     });
 
     expect(dispatched).toHaveLength(1);
-    expect(results).toHaveLength(1);
-    expect(String(results[0].error)).toContain('not a webhook channel');
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0].error)).toContain('not a webhook channel');
   });
 });

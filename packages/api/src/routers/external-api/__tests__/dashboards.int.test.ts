@@ -1,3 +1,4 @@
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
@@ -6052,6 +6053,290 @@ describe('External API v2 Dashboards - new format', () => {
     it('round-trips a builder number tile with no background chart', async () => {
       const create = await postTile({}).expect(200);
       expect(create.body.data.tiles[0].config.backgroundChart).toBeUndefined();
+    });
+  });
+
+  describe('Chart formulas', () => {
+    // Two metric operand series (A, B) — the shape the formula grammar
+    // references by position. Payloads go through `.send()` (untyped) so
+    // negative tests can post intentionally invalid values.
+    const metricSelect = () => [
+      {
+        aggFn: 'max',
+        valueExpression: 'Value',
+        metricType: 'gauge',
+        metricName: 'test.errors',
+        alias: 'Errors',
+        where: '',
+      },
+      {
+        aggFn: 'max',
+        valueExpression: 'Value',
+        metricType: 'gauge',
+        metricName: 'test.requests',
+        alias: 'Requests',
+        where: '',
+      },
+    ];
+
+    const formulaTile = (config: Record<string, unknown>) => ({
+      name: 'Formula tile',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        displayType: 'line',
+        sourceId: metricSource._id.toString(),
+        select: metricSelect(),
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Formula dashboard',
+        tiles: [formulaTile(config)],
+        tags: [],
+      });
+
+    // ── Positive: round-trips per display type ──────────────────────────
+
+    it('round-trips a line tile with formulas and showOperandSeries', async () => {
+      const formulas = [
+        {
+          expression: 'A / B * 100',
+          alias: 'Error rate %',
+          numberFormat: { output: 'percent', mantissa: 1 },
+        },
+      ];
+      const create = await postTile({
+        formulas,
+        showOperandSeries: false,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(create.body.data.tiles[0].config.showOperandSeries).toBe(false);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.showOperandSeries).toBe(false);
+    });
+
+    it('round-trips a table tile with formulas', async () => {
+      const formulas = [{ expression: 'A + B', alias: 'Combined' }];
+      const create = await postTile({
+        displayType: 'table',
+        formulas,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+    });
+
+    it('round-trips a number tile with multiple operands and one formula', async () => {
+      const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+      const create = await postTile({
+        displayType: 'number',
+        formulas,
+      }).expect(200);
+      const config = create.body.data.tiles[0].config;
+      expect(config.formulas).toEqual(formulas);
+      // Every operand select item survives (formulas reference them by
+      // position); operands are always hidden on number tiles, persisted
+      // internally rather than exposed on the external surface.
+      expect(config.select).toHaveLength(2);
+      expect(config.showOperandSeries).toBeUndefined();
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.select).toHaveLength(2);
+
+      // The internal saved config is self-describing about hidden operands.
+      const saved = await Dashboard.findById(create.body.data.id).lean();
+      const savedConfig = saved!.tiles[0].config;
+      expect(
+        isBuilderSavedChartConfig(savedConfig) && savedConfig.showOperandSeries,
+      ).toBe(false);
+    });
+
+    it('round-trips formulas through an update (PUT)', async () => {
+      const created = await postTile({}).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      const formulas = [{ expression: 'B / A', alias: 'Inverse' }];
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Formula dashboard',
+          tiles: [{ ...tile, config: { ...tile.config, formulas } }],
+          tags: [],
+        })
+        .expect(200);
+      expect(update.body.data.tiles[0].config.formulas).toEqual(formulas);
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+    });
+
+    // ── Negative: one per validation rule ───────────────────────────────
+
+    it('rejects a formula referencing a series the tile does not have', async () => {
+      const res = await postTile({
+        formulas: [{ expression: 'A / C' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.formulas.0');
+      expect(res.body.message).toContain('Unknown series "C"');
+    });
+
+    it('rejects a malformed formula expression', async () => {
+      const res = await postTile({
+        formulas: [{ expression: 'A +' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.formulas.0');
+    });
+
+    it('rejects formulas combined with asRatio', async () => {
+      const res = await postTile({
+        formulas: [{ expression: 'A / B' }],
+        asRatio: true,
+      }).expect(400);
+      expect(res.body.message).toContain('asRatio');
+    });
+
+    it('rejects multiple formulas on a number tile', async () => {
+      const res = await postTile({
+        displayType: 'number',
+        formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+      }).expect(400);
+      expect(res.body.message).toContain(
+        'Number charts support a single formula',
+      );
+    });
+
+    it('rejects multiple select items on a number tile without formulas', async () => {
+      const res = await postTile({ displayType: 'number' }).expect(400);
+      expect(res.body.message).toContain(
+        'Number tiles support a single select item',
+      );
+    });
+
+    it('round-trips formulas on a log/trace event source', async () => {
+      // Event-source formulas are accepted and round-trip just like
+      // metric formulas.
+      const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+      const create = await postTile({
+        sourceId: traceSource._id.toString(),
+        select: [
+          { aggFn: 'count', where: 'StatusCode:Error', alias: 'Errors' },
+          { aggFn: 'count', where: '', alias: 'Total' },
+        ],
+        formulas,
+        showOperandSeries: false,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(create.body.data.tiles[0].config.showOperandSeries).toBe(false);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.showOperandSeries).toBe(false);
+    });
+
+    it('rejects formulas on a formula-incapable source kind (session)', async () => {
+      const sessionSource = await Source.create({
+        kind: SourceKind.Session,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: 'rrweb_events',
+        },
+        timestampValueExpression: 'Timestamp',
+        traceSourceId: traceSource._id.toString(),
+        connection: connection._id,
+        name: 'Sessions',
+      });
+
+      const res = await postTile({
+        sourceId: sessionSource._id.toString(),
+        select: [
+          { aggFn: 'count', where: '', alias: 'A' },
+          { aggFn: 'count', where: '', alias: 'B' },
+        ],
+        formulas: [{ expression: 'A / B' }],
+      }).expect(400);
+      expect(res.body.message).toContain(
+        'require a Metric, Log, or Trace source',
+      );
+    });
+
+    it('does not block updates over an unchanged formula tile whose source kind changed', async () => {
+      // Accept a formula tile on a metric source, then flip the source's
+      // kind to a formula-incapable one out from under it. Mirroring the
+      // heatmap gate, an update that leaves the tile untouched must not be
+      // rejected — only changes to the tile's formulas/source re-enter the
+      // gate.
+      const created = await postTile({
+        formulas: [{ expression: 'A / B', alias: 'Rate' }],
+      }).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      // `kind` is the Mongoose discriminator key, which updateOne silently
+      // strips from $set — write through the raw collection instead, the
+      // same way a source-replace API call would leave the doc.
+      await Source.collection.updateOne(
+        { _id: metricSource._id },
+        { $set: { kind: SourceKind.Session } },
+      );
+
+      // Unrelated edit (rename) resubmitting the unchanged tile: accepted.
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({ name: 'Renamed formula dashboard', tiles: [tile], tags: [] })
+        .expect(200);
+
+      // Changing the tile's formulas re-enters the gate: rejected.
+      const res = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Renamed formula dashboard',
+          tiles: [
+            {
+              ...tile,
+              config: {
+                ...tile.config,
+                formulas: [{ expression: 'B / A', alias: 'Inverse' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+      expect(res.body.message).toContain(
+        'require a Metric, Log, or Trace source',
+      );
+    });
+
+    // ── Backward compatibility: formulas are opt-in ─────────────────────
+
+    it('round-trips a multi-series metric tile with no formulas', async () => {
+      const create = await postTile({}).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toBeUndefined();
+      expect(
+        create.body.data.tiles[0].config.showOperandSeries,
+      ).toBeUndefined();
     });
   });
 

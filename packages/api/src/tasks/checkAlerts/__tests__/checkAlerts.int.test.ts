@@ -7542,6 +7542,152 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
     });
 
+    // ── Event (log/trace) formula tiles ──
+    // Event formulas render through a different path than metric formulas
+    // (inline single-scan SELECT vs the composed query). The alert path is
+    // source-kind agnostic — it passes `formulas` through and forces
+    // showOperandSeries: false — so the formula value drives the threshold
+    // here too.
+
+    it('TILE alert (events, formula) - threshold compares the formula value, not an operand', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // Persistent mock: the beforeEach mockResolvedValueOnce only covers the
+      // first call, and resolve notifications can trigger a second one.
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValue({ text: 'ok' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      // 1 error / 4 total * 100 = 25. Both operands (1 and 4) are far from
+      // the formula result, so a regression back to evaluating either
+      // operand fails loudly against the threshold below.
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        ...Array.from({ length: 3 }, (_, i) => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'info',
+          Body: `All good ${i}`,
+        })),
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'evtformula1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error rate',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'SeverityText:error',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                  alias: 'Errors',
+                },
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                  alias: 'Total',
+                },
+              ],
+              formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+              showOperandSeries: false,
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'evtformula1');
+      if (!tile) throw new Error('tile not found for event formula test');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 20,
+          dashboardId: dashboard.id,
+          tileId: 'evtformula1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      // The formula value (25) — not operand A (1) or operand B (4).
+      expect(history.lastValues[0].count).toBe(25);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('25 meets or exceeds 20');
+
+      // Next window has no data -> resolves to OK.
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
     it('TILE alert (metrics, grouped ratio) - honors ratioMode share_of_total', async () => {
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Alert window is [22:05, 22:10)

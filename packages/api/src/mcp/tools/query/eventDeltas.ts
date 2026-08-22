@@ -1,4 +1,3 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getStableSampleExpression,
   rankProperties,
@@ -12,6 +11,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';

@@ -1,0 +1,53 @@
+.doc {
+  max-width: 52rem;
+  margin-inline: auto;
+  color: var(--color-text);
+
+  a {
+    color: var(--color-text-primary);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+  }
+
+  th,
+  td {
+    border: 1px solid var(--color-border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: var(--color-bg-muted);
+  }
+
+  // Override `.hdx-markdown code { color: var(--color-json-string) }` so
+  // Mantine Code / CopySnippet keep theme text instead of JSON-green.
+  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
+  :global(.mantine-Code-root) {
+    color: inherit;
+  }
+
+  .snippet {
+    margin-bottom: 1rem;
+  }
+
+  blockquote {
+    margin: 0 0 1rem;
+    padding: 0.5rem 1rem;
+    border-left: 3px solid var(--color-border-emphasis);
+    color: var(--color-text-muted);
+    background: var(--color-bg-muted);
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 1.5rem 0;
+  }
+}

@@ -127,6 +127,13 @@ jest.mock('@/components/SearchInput/SearchInputV2', () => ({
   default: () => <div>Search Input</div>,
 }));
 
+// The sample-events panel (rendered for event sources) reads Next router
+// query state via nuqs, which isn't mounted in this test environment.
+jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
+  __esModule: true,
+  default: () => <div>SQL Row Table</div>,
+}));
+
 jest.mock('../../MaterializedViews/MVOptimizationIndicator', () => ({
   __esModule: true,
   default: () => <div>MV Indicator</div>,
@@ -907,7 +914,8 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
     expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
   });
 
-  it('does not show formula controls for non-metric sources', () => {
+  it('shows formula controls and series letter badges for log event sources', async () => {
+    const onSave = jest.fn();
     mockUseSourceData({
       id: 'log-source',
       kind: SourceKind.Log,
@@ -917,10 +925,55 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
       timestampValueExpression: 'Timestamp',
     });
 
+    const countSeries = {
+      aggFn: 'count' as const,
+      aggCondition: '',
+      aggConditionLanguage: 'lucene' as const,
+      valueExpression: '',
+    };
     renderComponent({
       chartConfig: {
         ...defaultChartConfig,
         source: 'log-source',
+        select: [
+          { ...countSeries, aggCondition: 'SeverityText:error' },
+          countSeries,
+        ],
+      },
+      onSave,
+    });
+
+    const badges = screen.getAllByTestId('series-ref-badge');
+    expect(badges.map(b => b.textContent)).toEqual(['A', 'B']);
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(
+      screen.getByTestId('formula-expression-input'),
+      'A / B * 100',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].formulas).toEqual([
+      { expression: 'A / B * 100', alias: '' },
+    ]);
+  });
+
+  it('does not show formula controls for formula-incapable source kinds', () => {
+    mockUseSourceData({
+      id: 'session-source',
+      kind: SourceKind.Session,
+      name: 'Sessions',
+      from: { databaseName: 'default', tableName: 'sessions' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      traceSourceId: 'trace-source',
+    });
+
+    renderComponent({
+      chartConfig: {
+        ...defaultChartConfig,
+        source: 'session-source',
         select: [
           {
             aggFn: 'count',

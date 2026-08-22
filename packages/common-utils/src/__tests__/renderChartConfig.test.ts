@@ -4431,4 +4431,197 @@ describe('renderChartConfig', () => {
       });
     });
   });
+
+  // Formulas on event (log/trace) sources compile inline in the single-scan
+  // SELECT (renderSelectListWithFormulas) — no UNION ALL / pivot involved.
+  describe('event (log/trace) formula charts (inline single-query)', () => {
+    const baseEventFormulaConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [
+        {
+          aggFn: 'count' as const,
+          valueExpression: '',
+          aggCondition: "SeverityText = 'error'",
+          aggConditionLanguage: 'sql' as const,
+          alias: 'errors',
+        },
+        {
+          aggFn: 'count' as const,
+          valueExpression: '',
+          aggCondition: '',
+          alias: 'total',
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+    };
+
+    it('appends the compiled formula column after the operand columns in one scan', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // Single scan — no composed UNION ALL / pivot machinery.
+      expect(sql).not.toContain('UNION ALL');
+      expect(sql).not.toContain('__hdx_series_idx');
+      // Operand columns first (select order), then the formula column.
+      expect(sql).toContain('AS "errors"');
+      expect(sql).toContain('AS "total"');
+      expect(sql).toContain('AS "Error rate"');
+      expect(sql.indexOf('AS "errors"')).toBeLessThan(
+        sql.indexOf('AS "total"'),
+      );
+      expect(sql.indexOf('AS "total"')).toBeLessThan(
+        sql.indexOf('AS "Error rate"'),
+      );
+      // Ratio-consistent missing-data semantics: refs coalesce to 0 and
+      // division denominators nullif to a gap.
+      expect(sql).toContain('coalesce(');
+      expect(sql).toContain('nullif(');
+    });
+
+    it('emits only the formula column when showOperandSeries is false', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B', alias: 'ratio' }],
+          showOperandSeries: false,
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).not.toContain('AS "errors"');
+      expect(sql).not.toContain('AS "total"');
+      expect(sql).toContain('AS "ratio"');
+      // The operand aggregates still evaluate inside the formula.
+      expect(sql).toContain('countIf(');
+    });
+
+    it('names an alias-less formula column by its expression text', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A + B' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "A + B"');
+    });
+
+    it('takes precedence over seriesReturnType ratio', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          seriesReturnType: 'ratio',
+          formulas: [{ expression: 'B / A', alias: 'inverse' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "inverse"');
+      expect(sql).not.toContain('divide(');
+    });
+
+    it('suffixes a formula name colliding with an operand alias', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A + B', alias: 'errors' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "errors"');
+      // Formula column index continues after the select entries (2).
+      expect(sql).toContain('AS "errors__2"');
+    });
+
+    it('escapes double quotes in the formula column name', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B', alias: 'bad"name' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "bad""name"');
+      expect(sql).not.toContain('AS "bad"name"');
+    });
+
+    it('lets HAVING reference a formula output column on a table shape', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          groupBy: 'ServiceName',
+          formulas: [{ expression: 'A / B', alias: 'err rate' }],
+          having: '"err rate" > 0.5',
+          havingLanguage: 'sql',
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql.match(/HAVING/g)).toHaveLength(1);
+      expect(sql.indexOf('HAVING')).toBeGreaterThan(sql.indexOf('GROUP BY'));
+    });
+
+    it('renders a single-series chart with a formula in one scan', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          select: [
+            {
+              aggFn: 'count' as const,
+              valueExpression: '',
+              aggCondition: '',
+              alias: 'total',
+            },
+          ],
+          formulas: [{ expression: 'A * 100', alias: 'pct' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).not.toContain('UNION ALL');
+      expect(sql).toContain('AS "total"');
+      expect(sql).toContain('(coalesce(count(), 0) * 100) AS "pct"');
+    });
+
+    it('throws a structured error for an invalid persisted formula', async () => {
+      await expect(
+        renderChartConfig(
+          {
+            ...baseEventFormulaConfig,
+            formulas: [{ expression: 'A / C' }],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      ).rejects.toThrow(
+        'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
+      );
+    });
+  });
 });

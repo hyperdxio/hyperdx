@@ -16,10 +16,12 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
+import {
+  getMetricSelectIssues,
+  mcpQuantileLevelSchema,
+} from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
 import {
-  externalQuantileLevelSchema,
   MAX_TAG_LENGTH,
   MAX_TAGS,
   objectIdSchema,
@@ -209,7 +211,7 @@ const mcpTileSelectItemSchema = z
           'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
           'Heatmap select items are the only exception (no alias needed).',
       ),
-    level: externalQuantileLevelSchema
+    level: mcpQuantileLevelSchema
       .optional()
       .describe(
         'Percentile level for aggFn="quantile". REQUIRED for histogram and exponential histogram metrics with aggFn:"quantile".',
@@ -266,6 +268,54 @@ const mcpTileSelectItemSchema = z
     data.metricType && data.aggFn !== 'count' && !data.valueExpression
       ? { ...data, valueExpression: 'Value' }
       : data,
+  );
+
+// ─── Chart formulas ──────────────────────────────────────────────────────────
+
+const mcpFormulaSchema = z.object({
+  expression: z
+    .string()
+    .max(1024)
+    .describe(
+      'Arithmetic expression over the tile\'s select items by position: "A" is ' +
+        'select[0], "B" is select[1], etc. Supports + - * /, parentheses, and ' +
+        'numeric constants — e.g. "A / (A + B) * 100" for a success rate. ' +
+        'Division by zero or a missing operand renders as a gap (NULL), not an error.',
+    ),
+  alias: z
+    .string()
+    .optional()
+    .describe(
+      'Display label for the formula series (chart legend / column header). ' +
+        'Falls back to the raw expression text when unset. Always set a short, ' +
+        'human-readable alias (e.g. "Error rate %").',
+    ),
+  numberFormat: mcpNumberFormatSchema
+    .optional()
+    .describe(seriesLevelNumberFormatDescription),
+});
+
+const tileFormulasDescription =
+  'METRIC, LOG, AND TRACE SOURCES. Derived series computed from the select ' +
+  'items via letter-ref arithmetic ("A" = select[0], "B" = select[1], ...). ' +
+  'Example: [{ expression: "A / B * 100", alias: "Error rate %" }] with ' +
+  'select = [errors count, total count]. Each formula adds one series ' +
+  'computed in ClickHouse. Cannot be combined with asRatio (express the ' +
+  'ratio as a formula instead). Rejected on other source kinds (e.g. session).';
+
+const mcpTileFormulasSchema = z
+  .array(mcpFormulaSchema)
+  .max(10)
+  .optional()
+  .describe(tileFormulasDescription);
+
+const mcpShowOperandSeriesSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    'Only meaningful with `formulas`: when false, only the formula series ' +
+      'are returned and the raw operand series (the select items) are hidden. ' +
+      'Defaults to true (operands shown alongside the formula).',
   );
 
 // ─── OnClick (link-out) schemas for table tiles ──────────────────────────────
@@ -579,6 +629,8 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    formulas: mcpTileFormulasSchema,
+    showOperandSeries: mcpShowOperandSeriesSchema,
   }),
 });
 
@@ -598,6 +650,8 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .describe(tileLevelNumberFormatDescription),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    formulas: mcpTileFormulasSchema,
+    showOperandSeries: mcpShowOperandSeriesSchema,
   }),
 });
 
@@ -644,6 +698,8 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .describe(tileLevelNumberFormatDescription),
     onClick: mcpOnClickSchema.optional(),
+    formulas: mcpTileFormulasSchema,
+    showOperandSeries: mcpShowOperandSeriesSchema,
   }),
 });
 
@@ -654,11 +710,24 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
-      .length(1)
-      .describe('Exactly one metric to display'),
+      .min(1)
+      .max(20)
+      .describe(
+        'Exactly one metric to display — unless `formulas` is set, in which ' +
+          'case the select items are the formula operands and the (single) ' +
+          'formula value is displayed instead.',
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    formulas: z
+      .array(mcpFormulaSchema)
+      .max(1)
+      .optional()
+      .describe(
+        `${tileFormulasDescription} Number tiles support a single formula ` +
+          'and always display the formula value (operand series are hidden).',
+      ),
     color: ChartPaletteTokenSchema.optional().describe(
       numberTileColorDescription,
     ),

@@ -346,7 +346,7 @@ export type NotificationFailure = {
   /** The webhook id/name prefix, or the raw @mention, that failed. */
   target: string;
   /** The channel type the target belongs to, or 'unknown' when it couldn't be determined (e.g. an unparseable @mention). */
-  type: string;
+  type: AlertChannelType | 'unknown';
   error: unknown;
 };
 
@@ -364,7 +364,7 @@ export type RenderedAlert = {
   /** The rendered message body, as delivered to every target. */
   body: string;
   /** One entry per target that did not end up delivered — see NotificationFailure. */
-  results: NotificationFailure[];
+  failures: NotificationFailure[];
 };
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
@@ -452,7 +452,11 @@ export const renderAlertTemplate = async ({
 
   // A target that failed before dispatch still needs to surface as its own
   // result, so the alert reports which channel missed out.
-  const recordPreFailure = (target: string, type: string, error: unknown) => {
+  const recordPreFailure = (
+    target: string,
+    type: AlertChannelType | 'unknown',
+    error: unknown,
+  ) => {
     failures.push({ target, type, error });
   };
 
@@ -519,7 +523,7 @@ export const renderAlertTemplate = async ({
         return;
       }
 
-      if (jobs.length + failures.length >= MAX_NOTIFICATIONS_PER_EVENT) {
+      if (jobs.length >= MAX_NOTIFICATIONS_PER_EVENT) {
         logger.warn(
           { alertId: alert.id, cap: MAX_NOTIFICATIONS_PER_EVENT },
           'Notification cap reached for this alert event; skipping channel',
@@ -721,7 +725,7 @@ ${targetTemplate}`;
       }),
     );
 
-    return { body, results: failures };
+    return { body, failures };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);

@@ -5,6 +5,7 @@ import {
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 
 describe('isMissingColumnError', () => {
   it.each([
@@ -145,5 +146,62 @@ describe('convertCHDataTypeToJSType', () => {
       convertCHDataTypeToJSType('Variant(String, Array(Int64))'),
     ).toBeNull();
     expect(convertCHDataTypeToJSType('Variant()')).toBeNull();
+  });
+});
+
+// logQuery is protected on the base class; this subclass exposes it so the
+// tests can drive it without reaching through the client's public query path.
+class TestClickhouseClient extends ClickhouseClient {
+  logQuery(query: string, query_params: Record<string, any> = {}): void {
+    super.logQuery(query, query_params);
+  }
+}
+
+describe('BaseClickhouseClient.logQuery', () => {
+  const makeLogger = () => ({
+    trace: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('stays silent when no customLogger is configured', () => {
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+    const client = new TestClickhouseClient({ host: 'http://localhost' });
+    client.logQuery('SELECT 1 FROM system.one');
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs through the customLogger passed to the client', () => {
+    const customLogger = makeLogger();
+    const client = new TestClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    client.logQuery('SELECT 1 FROM system.one');
+    expect(customLogger.debug).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 1 FROM system.one' },
+    });
+  });
+
+  it('interpolates query_params into the logged SQL', () => {
+    const customLogger = makeLogger();
+    const client = new TestClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    client.logQuery('SELECT {id:Int32}', { id: 5 });
+    expect(customLogger.debug).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 5' },
+    });
   });
 });
