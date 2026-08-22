@@ -1194,9 +1194,15 @@ export class Metadata {
         for (const [columnName, info] of queryOptions.entries()) {
           const orChain = concatChSql(
             ' OR ',
+            // Inline keys as SQL-escaped literals, not bind params: ~100
+            // per-key params exceed the web client's URL param budget and
+            // silently switch the request to a multipart body that proxies
+            // may reject. Keys are ingest-controlled, hence SqlString.escape.
             info.keys.map(
               k =>
-                chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
+                chSql`startsWith(token, ${{
+                  UNSAFE_RAW_SQL: SqlString.escape(`${k}${info.separator}`),
+                }})`,
             ),
           );
           const partsFilter = await this.partsOverlapFilter({
@@ -1377,17 +1383,22 @@ export class Metadata {
         // this should only be one mv... but we have a for loop in case
         const branch: ChSql[] = [];
         for (const [columnName, keys] of entry) {
-          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${concatChSql(
-            ',',
-            keys.map(key => chSql`${{ String: key }}`),
-          )}))`;
+          // Inline keys as SQL-escaped literals, not bind params: ~100
+          // per-key params exceed the web client's URL param budget and
+          // silently switch the request to a multipart body that proxies
+          // may reject. Keys are ingest-controlled, hence SqlString.escape.
+          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${{
+            UNSAFE_RAW_SQL: keys.map(key => SqlString.escape(key)).join(','),
+          }}))`;
           branch.push(sql);
         }
+        // Parenthesize the OR chain: `a OR b AND timeFilter` would bind the
+        // time filter (and notEmpty) to the last branch only.
         const sql = chSql`
           SELECT * FROM (
             SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) as Values
             FROM ${tableExpr({ database: databaseName, table: mvName })}
-            WHERE ${concatChSql(' OR ', branch)}
+            WHERE (${concatChSql(' OR ', branch)})
               AND ${timeFilter}
               AND notEmpty(Value)
             GROUP BY ColumnIdentifier, Key

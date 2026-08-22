@@ -19,9 +19,12 @@ import {
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
   tagsSchema,
+  validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   WebhookService,
+  zAlertChannel,
+  zAlertChannels,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -100,8 +103,6 @@ const searchChartSeriesSchema = z.object({
   whereLanguage: whereLanguageSchema,
 });
 
-type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
-
 const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
   content: z.string().max(100000),
@@ -131,8 +132,6 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
   markdownChartSeriesSchema,
 ]);
 
-type ChartSeries = z.infer<typeof chartSeriesSchema>;
-
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
 export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
@@ -158,10 +157,6 @@ export const externalDashboardSavedFilterValueSchema = z.object({
   type: z.literal('sql').optional().default('sql'),
   condition: z.string().max(10000),
 });
-
-type ExternalDashboardSavedFilterValue = z.infer<
-  typeof externalDashboardSavedFilterValueSchema
->;
 
 // ================================
 // Dashboards (new format)
@@ -202,7 +197,7 @@ const externalOnClickSchema = z.discriminatedUnion('type', [
   externalOnClickExternalSchema,
 ]);
 
-const externalDashboardSelectItemSchema = z
+export const externalDashboardSelectItemSchema = z
   .object({
     // For logs, traces, and metrics
     valueExpression: z.string().max(10000).optional(),
@@ -627,10 +622,6 @@ const externalDashboardTileSchemaWithOptionalId =
     }),
   );
 
-type ExternalDashboardTileWithOptionalId = z.infer<
-  typeof externalDashboardTileSchemaWithOptionalId
->;
-
 export const externalDashboardTileSchemaWithId =
   externalDashboardTileSchema.and(
     z.object({
@@ -659,11 +650,6 @@ export const externalDashboardTileListSchema = z
 // ==============================
 // Alerts
 // ==============================
-const zChannel = z.object({
-  type: z.literal('webhook'),
-  webhookId: z.string().min(1),
-});
-
 const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().nullish(),
@@ -678,7 +664,8 @@ const zTileAlert = z.object({
 
 export const alertSchema = z
   .object({
-    channel: zChannel,
+    channel: zAlertChannel.optional(),
+    channels: zAlertChannels.optional(),
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
     scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
     scheduleStartAt: scheduleStartAtSchema,
@@ -692,6 +679,7 @@ export const alertSchema = z
     numConsecutiveWindows: z.number().int().min(1).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert))
+  .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);
 

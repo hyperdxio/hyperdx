@@ -10,12 +10,14 @@ import {
   validateVariableName,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  ChartVariable,
   DashboardFilter,
   MetricsDataType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Box,
   Button,
   Center,
@@ -33,6 +35,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
+  IconAlertTriangle,
   IconFilter,
   IconInfoCircle,
   IconPencil,
@@ -46,6 +49,7 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 
 import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
 import SourceSchemaPreview, {
@@ -158,11 +162,30 @@ const DashboardFilterEditForm = ({
     [filters, filter.id],
   );
 
-  const [formFilterName, formIsBroadCastEnabled, formIsVariableEnabled] =
-    useWatch({
-      control,
-      name: ['name', 'isBroadcastEnabled', 'isVariableEnabled'],
-    });
+  const [
+    formFilterName,
+    formIsBroadCastEnabled,
+    formIsVariableEnabled,
+    formAppliesToSourceIds,
+  ] = useWatch({
+    control,
+    name: [
+      'name',
+      'isBroadcastEnabled',
+      'isVariableEnabled',
+      'appliesToSourceIds',
+    ],
+  });
+
+  // Both modes on with an unrestricted broadcast is almost always a mistake:
+  // broadcast already reaches every tile, so the variable adds nothing and the
+  // tiles that reference it get filtered twice over. Scoping the broadcast is
+  // what makes the pair meaningful, so nudge toward "Applies to sources".
+  const showUnscopedBroadcastWarning =
+    showVariableOptions &&
+    formIsBroadCastEnabled !== false &&
+    formIsVariableEnabled === true &&
+    !formAppliesToSourceIds?.some(id => !!id?.length);
 
   const derivedVariableName = deriveVariableName(formFilterName ?? '');
 
@@ -359,10 +382,11 @@ const DashboardFilterEditForm = ({
 
             <CustomInputWrapper
               label="Dropdown values filter"
-              tooltipText="Optional condition used to filter the rows from which available filter values are queried"
+              tooltipText="Optional condition used to filter the rows from which available filter values are queried. May reference the dashboard's other variables."
             >
               <SearchWhereInput
                 tableConnection={tableConnection}
+                sourceId={sourceId}
                 control={control}
                 name="where"
                 languageName="whereLanguage"
@@ -370,6 +394,7 @@ const DashboardFilterEditForm = ({
                 allowMultiline={true}
                 sqlPlaceholder="Filter for dropdown values"
                 lucenePlaceholder="Filter for dropdown values"
+                enableVariables={showVariableOptions}
               />
             </CustomInputWrapper>
 
@@ -381,7 +406,7 @@ const DashboardFilterEditForm = ({
                   name="isBroadcastEnabled"
                   size="xs"
                   label="Broadcast filter condition"
-                  description="Apply the selected value as a filter condition on each tile."
+                  description="Automatically apply the selected value to every query builder tile, and to every Raw SQL tile that uses the $__filters macro. Optionally, narrow to tiles that use specific sources."
                   data-testid="filter-broadcast-checkbox"
                 />
               </>
@@ -395,7 +420,7 @@ const DashboardFilterEditForm = ({
                 <Box ml={showVariableOptions ? 'xl' : undefined}>
                   <CustomInputWrapper
                     label="Applies to sources"
-                    tooltipText="Leave empty to apply to all tiles. Selecting one or more sources restricts the filter to only tiles using those sources."
+                    tooltipText="Which tiles the broadcast reaches. Leave empty to broadcast to all tiles. Selecting one or more sources restricts the broadcast to tiles using those sources."
                   >
                     <SourceMultiSelectControlled
                       control={control}
@@ -421,7 +446,7 @@ const DashboardFilterEditForm = ({
                   name="isVariableEnabled"
                   size="xs"
                   label="Available as variable"
-                  description="Expose the selected value a $variable."
+                  description="Expose the selected value as a $variable. Selections only affect tiles that reference the variable explicitly, typically via the $__filter or $__conditionalAll macros."
                   data-testid="filter-variable-enabled-checkbox"
                   rules={{ validate: validateFilterModes }}
                 />
@@ -442,6 +467,19 @@ const DashboardFilterEditForm = ({
                       />
                     </CustomInputWrapper>
                   </Box>
+                )}
+                {showUnscopedBroadcastWarning && (
+                  <Alert
+                    variant="warning"
+                    icon={<IconAlertTriangle size={16} />}
+                    data-testid="filter-unscoped-broadcast-warning"
+                  >
+                    Broadcast already applies this filter to every tile,
+                    including the ones that reference the variable. Set “Applies
+                    to sources” to limit which tiles the broadcast reaches, or
+                    turn off broadcast so only tiles that reference the variable
+                    are filtered.
+                  </Alert>
                 )}
               </>
             )}
@@ -651,6 +689,8 @@ interface DashboardFiltersEditModalProps {
   source?: TSource;
   /** Whether to offer the broadcast / variable controls. */
   showVariableOptions: boolean;
+  /** The dashboard's variables, if any */
+  variables?: ChartVariable[];
   onClose: () => void;
   onSaveFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (id: string) => void;
@@ -664,6 +704,7 @@ const DashboardFiltersModal = ({
   isLoading,
   source,
   showVariableOptions,
+  variables,
   onClose,
   onSaveFilter,
   onRemoveFilter,
@@ -693,10 +734,7 @@ const DashboardFiltersModal = ({
       where: '',
       whereLanguage: getStoredLanguage() ?? 'sql',
       isBroadcastEnabled: true,
-      // New filters are variable-enabled wherever the controls are available, so
-      // the checkbox is controlled from the first render. Callers that hide the
-      // controls get false, since their UI offers no way to turn it back off.
-      isVariableEnabled: showVariableOptions,
+      isVariableEnabled: false,
     });
   };
 
@@ -718,16 +756,18 @@ const DashboardFiltersModal = ({
     return <EmptyState onCreateFilter={handleAddNewFilter} onClose={onClose} />;
   } else if (selectedFilter) {
     return (
-      <DashboardFilterEditForm
-        filter={selectedFilter}
-        onSave={handleSaveFilter}
-        onCancel={() => setSelectedFilter(undefined)}
-        onClose={onClose}
-        isNew={selectedFilter.id === NEW_FILTER_ID}
-        source={source}
-        filters={filters}
-        showVariableOptions={showVariableOptions}
-      />
+      <SqlVariablesProvider variables={variables}>
+        <DashboardFilterEditForm
+          filter={selectedFilter}
+          onSave={handleSaveFilter}
+          onCancel={() => setSelectedFilter(undefined)}
+          onClose={onClose}
+          isNew={selectedFilter.id === NEW_FILTER_ID}
+          source={source}
+          filters={filters}
+          showVariableOptions={showVariableOptions}
+        />
+      </SqlVariablesProvider>
     );
   } else {
     return (

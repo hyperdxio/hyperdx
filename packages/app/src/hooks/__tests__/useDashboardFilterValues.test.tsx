@@ -1356,5 +1356,253 @@ describe('useDashboardFilterValues', () => {
       });
       expect(call?.keyConditions).toEqual([undefined, envProductionConstraint]);
     });
+
+    it('expands variable references in the where clause without dropping the conditions', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [
+              envAndStatus[0],
+              {
+                ...envAndStatus[1],
+                where: '$__filter(service_name, $svc)',
+                whereLanguage: 'sql',
+              },
+            ],
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+            variables: [
+              { name: 'svc', expression: 'service_name', values: ['api'] },
+            ],
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // The two filters no longer share a where clause, so `status` runs its own
+      // faceted scan — still constrained by the environment selection.
+      const call = callForKeys(['status']);
+      expect(call?.chartConfig?.where).toBe("(service_name IN ('api'))");
+      expect(call?.keyConditions).toEqual([envProductionConstraint]);
+    });
+  });
+
+  describe('variable references in the dropdown values filter', () => {
+    const svcVariable = (values: string[]) => [
+      { name: 'svc', expression: 'service_name', values },
+    ];
+
+    /** A `status` filter whose dropdown query is `where`. */
+    const statusFilter = (
+      where: string,
+      whereLanguage: 'lucene' | 'sql' = 'sql',
+    ): DashboardFilter => ({
+      id: 'status',
+      type: 'QUERY_EXPRESSION',
+      name: 'Status',
+      expression: 'status',
+      source: 'logs-source',
+      where,
+      whereLanguage,
+    });
+
+    /** The where clause the most recent lookup for `keys` actually ran. */
+    const lastWhereFor = (keys: string[]) =>
+      mockMetadata.getKeyValues.mock.calls
+        .filter(([arg]) => JSON.stringify(arg.keys) === JSON.stringify(keys))
+        .at(-1)?.[0].chartConfig.where;
+
+    beforeEach(() => {
+      jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+        data: mockSources,
+        isLoading: false,
+      } as unknown as ReturnType<typeof sourceModule.useSources>);
+      jest
+        .mocked(optimizeGetKeyValuesCalls)
+        .mockImplementation(async ({ keys, chartConfig }) => [
+          { keys, chartConfig },
+        ]);
+    });
+
+    it('expands a macro against the selected values', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [statusFilter('$__filter(service_name, $svc)')],
+            dateRange: mockDateRange,
+            variables: svcVariable(['api']),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      const expanded = "(service_name IN ('api'))";
+      // Both the MV optimizer and the values query see the expansion, so a
+      // rollup can be ruled out by the columns the clause actually reads.
+      expect(optimizeGetKeyValuesCalls).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chartConfig: expect.objectContaining({ where: expanded }),
+        }),
+      );
+      expect(lastWhereFor(['status'])).toBe(expanded);
+    });
+
+    it('still queries when the variable it depends on has no selection', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [statusFilter('$__filter(service_name, $svc)')],
+            dateRange: mockDateRange,
+            variables: svcVariable([]),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // The whole point: an unselected dependency expands to a no-op rather
+      // than holding the lookup back.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      expect(lastWhereFor(['status'])).toContain('1=1');
+      expect(result.current.data?.get('status')?.values).toEqual([
+        '200',
+        '404',
+        '500',
+      ]);
+      expect(result.current.erroredFilterIds.has('status')).toBe(false);
+    });
+
+    it('expands a lucene clause in the lucene format', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [statusFilter('service_name:$svc', 'lucene')],
+            dateRange: mockDateRange,
+            variables: svcVariable(['api']),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(lastWhereFor(['status'])).toBe('service_name:("api")');
+    });
+
+    it('refetches when a referenced variable changes', async () => {
+      const { result, rerender } = renderHook(
+        ({ values }: { values: string[] }) =>
+          useDashboardFilterValues({
+            filters: [statusFilter('$__filter(service_name, $svc)')],
+            dateRange: mockDateRange,
+            variables: svcVariable(values),
+          }),
+        { wrapper, initialProps: { values: ['api'] } },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      expect(lastWhereFor(['status'])).toBe("(service_name IN ('api'))");
+
+      rerender({ values: ['worker'] });
+
+      await waitFor(() =>
+        expect(lastWhereFor(['status'])).toBe("(service_name IN ('worker'))"),
+      );
+    });
+
+    it('does not refetch when an unreferenced variable changes', async () => {
+      const { result, rerender } = renderHook(
+        ({ values }: { values: string[] }) =>
+          useDashboardFilterValues({
+            filters: [statusFilter("service_name = 'api'")],
+            dateRange: mockDateRange,
+            variables: [
+              { name: 'other', expression: 'other', values },
+              ...svcVariable(['api']),
+            ],
+          }),
+        { wrapper, initialProps: { values: ['a'] } },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+
+      rerender({ values: ['b'] });
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // The resolved clause is unchanged, so the query key is too.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+    });
+
+    it('groups filters whose different clauses expand to the same SQL', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [
+              // Written out exactly as the macro below expands.
+              statusFilter("(service_name IN ('api'))"),
+              {
+                ...statusFilter('$__filter(service_name, $svc)'),
+                id: 'log_level',
+                name: 'Log Level',
+                expression: 'log_level',
+              },
+            ],
+            dateRange: mockDateRange,
+            variables: svcVariable(['api']),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+        expect.objectContaining({ keys: ['status', 'log_level'] }),
+      );
+    });
+
+    it('reports a macro naming an undeclared variable, and still runs the query', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [statusFilter('$__filter(service_name, $nope)')],
+            dateRange: mockDateRange,
+            variables: svcVariable(['api']),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // Left as written — ClickHouse will reject it, but the control reports why.
+      expect(lastWhereFor(['status'])).toBe('$__filter(service_name, $nope)');
+      expect(result.current.erroredFilterIds.has('status')).toBe(true);
+      expect(result.current.filterErrorMessages.get('status')).toMatch(
+        /unknown variable 'nope'/,
+      );
+    });
+
+    it('leaves the clause as written when no variables are in scope', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: [statusFilter('service_name IN ($svc)')],
+            dateRange: mockDateRange,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(lastWhereFor(['status'])).toBe('service_name IN ($svc)');
+      expect(result.current.erroredFilterIds.has('status')).toBe(false);
+    });
   });
 });

@@ -47,6 +47,31 @@ const tileLevelNumberFormatDescription =
   'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
   'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
 
+// Aggregation builder tiles (table, line, stacked_bar, number, pie, bar) do NOT
+// support a tile-level `where`: the chart editor only surfaces a per-select-item
+// filter, so a tile-level filter would be applied to the query yet stay
+// invisible and uneditable in the UI. Rather than silently dropping the field,
+// these fields are declared solely to REJECT it with an actionable message that
+// points at the per-select-item `where`. Keeping them as plain object fields (a
+// refinement, not a wrapping `.superRefine`) preserves each config schema's
+// `.shape` so the patch tile union can still read `.shape.config`.
+const rejectTileWhereMessage =
+  'This tile type has no tile-level `where`. Put the filter on each select ' +
+  'item\'s `where` instead (that is the tile\'s visible "Where" box); use a ' +
+  'dashboard-level filter to scope the whole dashboard.';
+
+const rejectedTileWhereField = z
+  .never({ invalid_type_error: rejectTileWhereMessage })
+  .optional()
+  .describe(
+    "Not supported on this tile type. Filter via each select item's `where`.",
+  );
+
+const rejectedTileWhereFields = {
+  where: rejectedTileWhereField,
+  whereLanguage: rejectedTileWhereField,
+};
+
 const timeChartSeriesLimitDescription =
   'Maximum number of series to fetch (the "Series Limit" display setting). ' +
   'Keeps the top-N groups by aggregated value over the queried range and ' +
@@ -164,7 +189,15 @@ const mcpTileSelectItemSchema = z
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Row filter for THIS series (compiles to `countIf(...)`). This is how ' +
+          "you filter a builder tile: the chart editor renders it as the tile's " +
+          'visible "Where" box, so the user can see and edit it. To scope the ' +
+          'whole tile to a subset of rows, put the same `where` on every select ' +
+          'item; use different filters per item for cohort comparisons (errors ' +
+          'vs total). There is no tile-level `where` for these tile types. ' +
+          'Lucene syntax by default. Example: "level:error"',
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     alias: z
@@ -507,6 +540,7 @@ const mcpTileLayoutSchema = z.object({
 
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('line').describe('Line chart over time'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
@@ -550,6 +584,7 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
@@ -568,6 +603,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('table').describe('Tabular aggregated data'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
@@ -613,6 +649,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('number').describe('Single aggregate scalar value'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
@@ -638,6 +675,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('pie').describe('Pie chart'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).length(1),
@@ -678,6 +716,7 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
 // from 'stacked_bar', which is a time series.
 const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z
       .literal('bar')
       .describe('Bar chart — one bar per group value (not a time series)'),

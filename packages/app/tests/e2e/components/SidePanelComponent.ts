@@ -163,6 +163,41 @@ export class SidePanelComponent {
   }
 
   /**
+   * The Surrounding Context tab. Its "Custom" mode reveals a WHERE input that
+   * narrows the surrounding rows.
+   */
+  get contextTab() {
+    return this.page.getByTestId('side-panel-tab-context');
+  }
+
+  /**
+   * Pick a mode in the Surrounding Context tab's segmented control (All,
+   * Service, Host, Pod, Node, Custom). Clicks the label because Mantine's
+   * SegmentedControl hides the underlying radio.
+   */
+  async setContextBy(mode: string) {
+    await this.contextTab.getByText(mode, { exact: true }).click();
+  }
+
+  /**
+   * The trace waterfall's spans and logs filters, each a `SearchWhereInput`
+   * with its own language switch. Both are collapsed behind the "Show Filters"
+   * toggle — call `toggleTraceFilters` first.
+   */
+  get traceSpansFilter() {
+    return this.page.getByTestId('trace-spans-filter');
+  }
+
+  get traceLogsFilter() {
+    return this.page.getByTestId('trace-logs-filter');
+  }
+
+  /** Expand or collapse the trace waterfall's filter inputs. */
+  async toggleTraceFilters() {
+    await this.page.getByTestId('trace-filters-toggle').click();
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {

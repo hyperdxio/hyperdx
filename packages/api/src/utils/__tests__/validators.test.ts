@@ -337,6 +337,21 @@ describe('validators', () => {
       expect(validators.validatePassword('ValidPass123!'.repeat(6))).toBe(
         false,
       ); // 78 chars (over 72)
+      expect(validators.validatePassword('Abcdefghijk1~')).toBe(false); // ~ is not an accepted special char
+    });
+
+    it('reports which accepted special characters are allowed', () => {
+      // A password whose only special character is `~` (not accepted) should
+      // fail with a message that enumerates the allowed characters, rather
+      // than a bare "invalid" so users are not left guessing.
+      const result = validators.passwordSchema.safeParse('Abcdefghijk1~');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const messages = result.error.issues.map(i => i.message);
+        expect(messages).toContain(
+          'Password must include at least one special character (!@#$%^&*(),.?":{}|<>;-+=)',
+        );
+      }
     });
   });
 });

@@ -5,8 +5,18 @@ import { IconArrowsLeftRight } from '@tabler/icons-react';
 type FilterLinkToggleProps = {
   linked: boolean;
   onChange: (linked: boolean) => void;
+  /**
+   * Whether filters on this page can declare variables. When they can, the
+   * tooltip adds a note that linking is separate from variable references
+   * written into a filter's own "Dropdown values filter".
+   */
+  showVariableNote?: boolean;
   'data-testid'?: string;
 };
+
+/** Appended when a filter's dropdown values can be written against a variable. */
+const VARIABLE_NOTE =
+  ' This does not affect variable references ($__filter, $__conditionalAll, $variable) in filter definitions — those always apply, linked or not.';
 
 /**
  * Opt-in toggle that "links" a set of filter dropdowns so each one's selectable
@@ -17,19 +27,17 @@ type FilterLinkToggleProps = {
 export function FilterLinkToggle({
   linked,
   onChange,
+  showVariableNote = false,
   'data-testid': dataTestId = 'filter-link-toggle',
 }: FilterLinkToggleProps) {
+  const label =
+    (linked
+      ? 'Filters are linked: each dropdown only shows values that match the other selections. Click to unlink.'
+      : 'Link filters: narrow each dropdown to values that match the other selections (filter-aware). May be slower on large datasets.') +
+    (showVariableNote ? VARIABLE_NOTE : '');
+
   return (
-    <Tooltip
-      withinPortal
-      multiline
-      w={250}
-      label={
-        linked
-          ? 'Filters are linked: each dropdown only shows values that match the other selections. Click to unlink.'
-          : 'Link filters: narrow each dropdown to values that match the other selections (filter-aware). May be slower on large datasets.'
-      }
-    >
+    <Tooltip withinPortal multiline w={400} label={label}>
       <ActionIcon
         variant="subtle"
         // Active state: a high-contrast inverted "pill" via theme tokens (never

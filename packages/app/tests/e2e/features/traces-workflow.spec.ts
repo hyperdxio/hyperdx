@@ -1,6 +1,11 @@
 import { SearchPage } from '../page-objects/SearchPage';
 import { expect, test } from '../utils/base-test';
 import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
+import {
+  clearLuceneInput,
+  expectFieldSuggestion,
+  switchWhereToLucene,
+} from '../utils/lucene-autocomplete';
 
 test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
   let searchPage: SearchPage;
@@ -70,6 +75,32 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
       await expect(traceTimelineElements.first()).toBeVisible({
         timeout: 10000,
       });
+    });
+
+    await test.step('Lucene autocomplete works in the waterfall spans and logs filters', async () => {
+      // Two separate inputs over two different sources: the spans filter reads
+      // the trace source, the logs filter the correlated log source. Each one
+      // has to carry its own source id and the waterfall's date range for field
+      // discovery to run at all.
+      await searchPage.sidePanel.toggleTraceFilters();
+
+      for (const filter of [
+        searchPage.sidePanel.traceSpansFilter,
+        searchPage.sidePanel.traceLogsFilter,
+      ]) {
+        await switchWhereToLucene(filter.getByTestId('where-language-switch'));
+
+        const input = filter.locator('textarea');
+        await expectFieldSuggestion(input, {
+          prefix: 'Servi',
+          field: 'ServiceName',
+        });
+        // The waterfall rows below are `role=button`, as are the suggestions —
+        // leave nothing open for the later span-clicking steps to trip over.
+        await clearLuceneInput(input);
+      }
+
+      await searchPage.sidePanel.toggleTraceFilters();
     });
 
     await test.step('Verify event details and navigation tabs', async () => {

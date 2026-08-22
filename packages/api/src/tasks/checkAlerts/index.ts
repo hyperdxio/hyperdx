@@ -24,6 +24,7 @@ import {
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
+import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -62,7 +63,10 @@ import { IWebhook } from '@/models/webhook';
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
+  NotificationCapExceededError,
+  UnsupportedMentionError,
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
+  WebhookNotFoundError,
   WebhookRedirectError,
 } from '@/tasks/checkAlerts/errors';
 import {
@@ -75,9 +79,10 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
-  handleSendGenericWebhook,
+  NotificationFailure,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
+import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
 import { tasksTracer } from '@/tasks/tracer';
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import {
@@ -89,7 +94,9 @@ import {
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
+  setBusinessContext,
   SpanStatusCode,
+  withSpan,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -255,6 +262,59 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
   }
 
   return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
+};
+
+// Per-target variant: names the target so a multi-channel alert's errors are
+// attributable. Two kinds of failure reach here (see renderAlertTemplate):
+// pre-dispatch (unresolvable mention/webhook, the per-event cap) and, for the
+// inline dispatcher, an actual delivery rejection. Raw upstream detail stays
+// hidden (same policy as makeWebhookAlertError); timeout and not-found
+// messages are authored by us.
+const makeNotificationAlertError = (
+  failure: NotificationFailure,
+): IAlertError => {
+  const target = `${failure.type} "${failure.target}"`;
+  const timestamp = new Date();
+  if (failure.error instanceof UnsupportedMentionError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: failure.error.message.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof NotificationCapExceededError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookNotFoundError) {
+    // Name the target like every other branch — with several channels, "a
+    // webhook was deleted" is useless unless it says which one.
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookRedirectError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${WEBHOOK_REDIRECT_ERROR_MESSAGE} (${target})`.slice(0, 10000),
+    };
+  }
+  // A delivery rejection from the inline dispatcher — the only case left.
+  return {
+    timestamp,
+    type: AlertErrorType.WEBHOOK_ERROR,
+    message:
+      `Failed to send notification to ${target}. Check the webhook configuration and destination.`.slice(
+        0,
+        10000,
+      ),
+  };
 };
 
 export const doesExceedThreshold = (
@@ -434,17 +494,27 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}) => {
+}): Promise<NotificationFailure[]> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
   }
+  // alert.team is typed as a bare ObjectId, but a caller that populated it
+  // (int-test setups do `.populate(['team', ...])`; the production path never
+  // does) hands us a full Team document instead — Mongoose documents don't
+  // override toString(), so calling it directly would silently stringify to
+  // "[object Object]" rather than the hex id. Prefer the populated
+  // document's own _id when present.
+  const isPopulatedWithId = (value: unknown): value is { _id: ObjectId } =>
+    typeof value === 'object' && value !== null && '_id' in value;
+  const teamId = (isPopulatedWithId(team) ? team._id : team).toString();
 
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       id: alert.id,
       channel: alert.channel,
+      channels: alert.channels,
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
@@ -476,7 +546,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  await renderAlertTemplate({
+  const { results } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -488,8 +558,10 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
+    teamId,
     teamWebhooksById,
   });
+  return results;
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -625,6 +697,14 @@ const getChartConfigFromAlert = (
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
 
+    // Substitute empty selections for each variable the dashboard defines
+    const variables = getDashboardVariableDeclarations(
+      details.dashboard.filters,
+    ).map(declaration => ({
+      ...declaration,
+      values: [],
+    }));
+
     // Raw SQL tiles: build a RawSqlChartConfig
     if (isRawSqlSavedChartConfig(tile.config)) {
       if (displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
@@ -637,6 +717,7 @@ const getChartConfigFromAlert = (
           ]),
           connection,
           dateRange,
+          variables,
           // Only time-series charts use interval bucketing
           ...(isTimeSeriesDisplayType(tile.config.displayType) && {
             granularity: `${windowSizeInMins} minute`,
@@ -706,6 +787,18 @@ const getChartConfigFromAlert = (
         where: tile.config.where,
         whereLanguage: tile.config.whereLanguage,
         seriesReturnType: tile.config.seriesReturnType,
+        // Grouped ratios can divide per-group or share-of-total; without this
+        // the alert would silently evaluate the default (per-group) mode.
+        ratioMode: tile.config.ratioMode,
+        // Metric formulas (HDX-5080): the alert must evaluate the derived
+        // formula column, not a raw operand series. Operand columns are
+        // always dropped from the alert query — regardless of the tile's
+        // "Show input series" display toggle — so the formula is the value
+        // column parseAlertData picks (the last one wins, consistent with
+        // the multi-series "last series drives the alert" semantics).
+        formulas: tile.config.formulas,
+        ...(tile.config.formulas?.length ? { showOperandSeries: false } : {}),
+        variables,
       };
     }
   }
@@ -1139,7 +1232,7 @@ export const processAlert = async (
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        await fireChannelEvent({
+        const results = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
@@ -1157,7 +1250,24 @@ export const processAlert = async (
           windowSizeInMins,
           teamWebhooksById,
         });
+        // Each entry is a target that didn't end up delivered: unresolvable,
+        // capped, or (for the inline dispatcher) an actual send rejection —
+        // see renderAlertTemplate.
+        for (const failure of results) {
+          logger.error(
+            {
+              alertId: alert.id,
+              group,
+              target: failure.target,
+              error: serializeError(failure.error),
+            },
+            'Notification target could not be dispatched',
+          );
+          executionErrors.push(makeNotificationAlertError(failure));
+        }
       } catch (e) {
+        // Render-level failures (title/link building, template compile) —
+        // nothing was dispatched.
         logger.error(
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
@@ -1366,8 +1476,9 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
-        // this happens when the ratio is 0/0
+        // NULL means no data: a metric series with no row at this bucket, or
+        // a ratio with a missing/zero denominator. Skip the row instead of
+        // fabricating a state from a gap.
         if (value == null) {
           continue;
         }
@@ -1457,7 +1568,6 @@ export const processAlert = async (
       let groupPrevious = previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
-      const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
 
       // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
       if (hitAlertThisRun) {
@@ -1734,7 +1844,7 @@ export const getConsecutiveWindowHistories = async (
   return map;
 };
 
-export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
+export default class CheckAlertTask implements HdxTask {
   private provider!: AlertProvider;
   private task_queue: PQueue;
 
@@ -1756,6 +1866,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     teamWebhooksById: Map<string, IWebhook>,
   ): Promise<boolean> {
     return tasksTracer.startActiveSpan('processAlertTask', async span => {
+      setBusinessContext({ teamId: alertTask.conn.team.toString() });
       try {
         span.setAttribute(
           'hyperdx.alerts.team.id',
@@ -1779,13 +1890,28 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
 
         for (const alert of alerts) {
           this.task_queue.add(async () =>
-            processAlert(
-              alertTask.now,
-              alert,
-              clickhouseClient,
-              conn.id,
-              this.provider,
-              teamWebhooksById,
+            // withSpan (not a hand-rolled tracer) so exceptions and status are
+            // recorded the same way as everywhere else — see agent_docs/observability.md.
+            withSpan(
+              'processAlert',
+              async () => {
+                setBusinessContext({ teamId: conn.team.toString() });
+                await processAlert(
+                  alertTask.now,
+                  alert,
+                  clickhouseClient,
+                  conn.id,
+                  this.provider,
+                  teamWebhooksById,
+                );
+              },
+              {
+                attributes: {
+                  'hyperdx.alert.id': alert.alert.id,
+                  'hyperdx.team.id': conn.team.toString(),
+                  'hyperdx.alert.source': alert.alert.source ?? 'unknown',
+                },
+              },
             ),
           );
         }

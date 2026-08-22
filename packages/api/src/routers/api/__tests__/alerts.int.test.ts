@@ -130,6 +130,42 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('returns channel.webhookId, name, and message in GET list and GET single', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        name: 'My alert',
+        message: 'My message template',
+      })
+      .expect(200);
+
+    // Edit surfaces (e.g. the alert detail page) prefill from these
+    // responses, so the notification channel and message template fields must
+    // be present — a PUT that omits name/message clears them.
+    const expected = {
+      channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      name: 'My alert',
+      message: 'My message template',
+    };
+
+    const list = await agent.get('/alerts').expect(200);
+    expect(list.body.data[0]).toMatchObject(expected);
+
+    const single = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(single.body.data).toMatchObject(expected);
+  });
+
   it('returns 404 when updating an alert that does not exist', async () => {
     const dashboard = await agent
       .post('/dashboards')
@@ -1446,6 +1482,171 @@ describe('alerts router', () => {
       expect(list.body.data[0].executionErrors[0].message).toBe(
         'webhook delivery failed',
       );
+    });
+  });
+  describe('multiple notification channels', () => {
+    const makeSavedSearch = () =>
+      SavedSearch.create({
+        name: 'Test Saved Search',
+        source: new mongoose.Types.ObjectId(),
+        team: team._id,
+      });
+
+    const secondWebhook = () =>
+      Webhook.create({
+        name: 'Second Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/second',
+        team: team._id,
+      });
+
+    const baseInput = (savedSearchId: string) => ({
+      ...makeSavedSearchAlertInput({ savedSearchId }),
+      channel: undefined,
+    });
+
+    it('creates an alert with several channels and persists all of them', async () => {
+      const [savedSearch, other] = await Promise.all([
+        makeSavedSearch(),
+        secondWebhook(),
+      ]);
+
+      const created = await agent
+        .post('/alerts')
+        .send({
+          ...baseInput(savedSearch._id.toString()),
+          channels: [
+            { type: 'webhook', webhookId: webhook._id.toString() },
+            { type: 'webhook', webhookId: other._id.toString() },
+          ],
+        })
+        .expect(200);
+
+      // POST echoes the created document, and the list endpoint returns
+      // webhookIds too so edit surfaces can prefill the channel.
+      expect(created.body.data.channels).toEqual([
+        { type: 'webhook', webhookId: webhook._id.toString() },
+        { type: 'webhook', webhookId: other._id.toString() },
+      ]);
+
+      const stored = await Alert.findById(created.body.data._id);
+      expect(stored!.channels).toEqual([
+        { type: 'webhook', webhookId: webhook._id.toString() },
+        { type: 'webhook', webhookId: other._id.toString() },
+      ]);
+      // Legacy mirror keeps pre-multi-channel readers working.
+      expect(stored!.channel).toEqual({
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      });
+    });
+
+    it('exposes channels for a legacy single-channel alert', async () => {
+      const savedSearch = await makeSavedSearch();
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeSavedSearchAlertInput({
+            savedSearchId: savedSearch._id.toString(),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const list = await agent.get('/alerts').expect(200);
+      const alert = list.body.data.find(
+        (a: { _id: string }) => a._id === created.body.data._id,
+      );
+      expect(alert.channels).toEqual([
+        { type: 'webhook', webhookId: webhook._id.toString() },
+      ]);
+    });
+
+    it('round-trips a multi-channel alert through PUT without losing channels', async () => {
+      const [savedSearch, other] = await Promise.all([
+        makeSavedSearch(),
+        secondWebhook(),
+      ]);
+      const channels = [
+        { type: 'webhook', webhookId: webhook._id.toString() },
+        { type: 'webhook', webhookId: other._id.toString() },
+      ];
+
+      const created = await agent
+        .post('/alerts')
+        .send({ ...baseInput(savedSearch._id.toString()), channels })
+        .expect(200);
+
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send({
+          ...baseInput(savedSearch._id.toString()),
+          channels,
+          threshold: 42,
+        })
+        .expect(200);
+
+      const stored = await Alert.findById(created.body.data._id);
+      expect(stored!.channels).toHaveLength(2);
+      expect(stored!.threshold).toBe(42);
+    });
+
+    it('rejects invalid channel combinations', async () => {
+      const [savedSearch, other] = await Promise.all([
+        makeSavedSearch(),
+        secondWebhook(),
+      ]);
+      const base = baseInput(savedSearch._id.toString());
+      const ch = { type: 'webhook', webhookId: webhook._id.toString() };
+
+      // neither channel nor channels
+      await agent.post('/alerts').send(base).expect(400);
+
+      // channel disagrees with channels[0]
+      await agent
+        .post('/alerts')
+        .send({
+          ...base,
+          channel: ch,
+          channels: [{ type: 'webhook', webhookId: other._id.toString() }],
+        })
+        .expect(400);
+
+      // duplicates
+      await agent
+        .post('/alerts')
+        .send({ ...base, channels: [ch, ch] })
+        .expect(400);
+
+      // over the cap
+      await agent
+        .post('/alerts')
+        .send({
+          ...base,
+          channels: Array.from({ length: 11 }, () => ({
+            type: 'webhook',
+            webhookId: randomMongoId(),
+          })),
+        })
+        .expect(400);
+
+      // a webhook belonging to another team, hidden among valid ones
+      const foreign = await Webhook.create({
+        name: 'Foreign Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/foreign',
+        team: new mongoose.Types.ObjectId(),
+      });
+      await agent
+        .post('/alerts')
+        .send({
+          ...base,
+          channels: [
+            ch,
+            { type: 'webhook', webhookId: foreign._id.toString() },
+          ],
+        })
+        .expect(400);
     });
   });
 });
