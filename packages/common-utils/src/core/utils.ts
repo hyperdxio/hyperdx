@@ -1078,7 +1078,12 @@ export function getAlignedDateRange(
 
   return [alignedStart, alignedEnd];
 }
-
+export function isDateRangeValid(dateRange: [Date, Date]): boolean {
+  return (
+    Number.isFinite(dateRange[0].getTime()) &&
+    Number.isFinite(dateRange[1].getTime())
+  );
+}
 export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
   return (
     range1[0].getTime() === range2[0].getTime() &&
