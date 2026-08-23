@@ -4734,6 +4734,7 @@ __metadata:
     "@testing-library/jest-dom": "npm:^6.4.2"
     "@testing-library/react": "npm:^16.3.0"
     "@testing-library/user-event": "npm:^14.5.2"
+    "@total-typescript/shoehorn": "npm:^0.1.2"
     "@types/crypto-js": "npm:^4"
     "@types/flat": "npm:^5.0.5"
     "@types/identity-obj-proxy": "npm:^3"
@@ -9979,6 +9980,13 @@ __metadata:
   peerDependencies:
     "@testing-library/dom": ">=7.21.4"
   checksum: 10c0/75fea130a52bf320d35d46ed54f3eec77e71a56911b8b69a3fe29497b0b9947b2dc80d30f04054ad4ce7f577856ae3e5397ea7dff0ef14944d3909784c7a93fe
+  languageName: node
+  linkType: hard
+
+"@total-typescript/shoehorn@npm:^0.1.2":
+  version: 0.1.2
+  resolution: "@total-typescript/shoehorn@npm:0.1.2"
+  checksum: 10c0/e1bb904a3c46bd00a3a31a4f24a07a5de8f6c4aebb811f4ac108dfad066d2797c682b49bbcd09e98e2bd12e8b67db9bcb793e02e2ed8a996e1fe0d232a7efcf1
   languageName: node
   linkType: hard
 
