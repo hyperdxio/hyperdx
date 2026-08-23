@@ -36,7 +36,7 @@ import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 const quoteClickHouseOutputIdentifier = (name: string) =>
-  `"${name.replaceAll('"', '""')}"`;
+  `"${name.replaceAll('\\', '\\\\').replaceAll('"', '""')}"`;
 
 export default function DBTableChart({
   config,

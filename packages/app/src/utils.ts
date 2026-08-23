@@ -1326,17 +1326,24 @@ export const orderByStringToSortingState = (
     return undefined;
   }
 
-  const orderByParts = orderBy.split(' ');
-  const endsWithDirection = orderBy.toLowerCase().match(/ (asc|desc)$/i);
+  const match = orderBy.trim().match(/^(.+)\s+(ASC|DESC)$/i);
+  if (!match) {
+    return undefined;
+  }
 
-  if (orderByParts.length !== 2 || !endsWithDirection) {
+  const column = match[1].trim();
+  const direction = match[2];
+  const isQuotedIdentifier =
+    /^"(?:[^"]|"")*"$/.test(column) || /^`(?:[^`]|``)*`$/.test(column);
+
+  if (!isQuotedIdentifier && /\s/.test(column)) {
     return undefined;
   }
 
   return [
     {
-      id: orderByParts[0].trim(),
-      desc: orderByParts[1].trim().toUpperCase() === 'DESC',
+      id: column,
+      desc: direction.toUpperCase() === 'DESC',
     },
   ];
 };

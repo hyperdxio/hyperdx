@@ -56,6 +56,32 @@ jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
 jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
 
 describe('DBTableChart', () => {
+  type TableQueryResult = ReturnType<typeof useOffsetPaginatedQuery>;
+  type TableQueryData = NonNullable<TableQueryResult['data']>;
+
+  const createTableQueryResult = (
+    rows: TableQueryData['data'],
+    meta: TableQueryData['meta'] = [],
+  ): TableQueryResult => ({
+    data: {
+      data: rows,
+      meta,
+      chSql: { sql: '', params: {} },
+      window: {
+        startTime: new Date(),
+        endTime: new Date(),
+        windowIndex: 0,
+        direction: 'DESC',
+      },
+    },
+    fetchNextPage: jest.fn(),
+    hasNextPage: false,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+  });
+
   const baseTestConfig = {
     dateRange: [new Date(), new Date()] as [Date, Date],
     from: { databaseName: 'test', tableName: 'test' },
@@ -340,11 +366,37 @@ describe('DBTableChart', () => {
       renderWithMantine(<DBTableChart config={rawSqlConfig} />);
 
       const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => c.id)).toEqual([
+        'Count',
+        'AvgDuration',
+        'ServiceName',
+        'SpanName',
+      ]);
       expect(columns.map(c => c.dataKey)).toEqual([
         'Count',
         'AvgDuration',
         'ServiceName',
         'SpanName',
+      ]);
+    });
+
+    it('keeps PromQL output identifiers unchanged', () => {
+      const promqlConfig = {
+        configType: 'promql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        promqlExpression: 'up',
+      };
+
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(createTableQueryResult([{ 'error rate': 1 }]));
+
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => ({ id: c.id, dataKey: c.dataKey }))).toEqual([
+        { id: 'error rate', dataKey: 'error rate' },
       ]);
     });
   });
@@ -358,31 +410,15 @@ describe('DBTableChart', () => {
     };
 
     beforeEach(() => {
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
-        data: {
-          data: [
-            {
-              'avg(metric.total)': 42,
-              'error rate': 84,
-              ServiceName: 'web',
-            },
-          ],
-          meta: [],
-          chSql: { sql: '', params: {} },
-          window: {
-            startTime: new Date(),
-            endTime: new Date(),
-            windowIndex: 0,
-            direction: 'DESC' as const,
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          {
+            'avg(metric.total)': 42,
+            'error rate': 84,
+            ServiceName: 'web',
           },
-        },
-        fetchNextPage: jest.fn(),
-        hasNextPage: false,
-        isLoading: false,
-        isFetching: false,
-        isError: false,
-        error: null,
-      } as any);
+        ]),
+      );
     });
 
     it('quotes generated aggregate, formula, and group-by output names', () => {
@@ -432,25 +468,11 @@ describe('DBTableChart', () => {
         formulas: [{ expression: 'A * 2', alias: 'bad"name' }],
       };
 
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
-        data: {
-          data: [{ 'avg(metric.total)': 42, 'bad"name': 84 }],
-          meta: [],
-          chSql: { sql: '', params: {} },
-          window: {
-            startTime: new Date(),
-            endTime: new Date(),
-            windowIndex: 0,
-            direction: 'DESC' as const,
-          },
-        },
-        fetchNextPage: jest.fn(),
-        hasNextPage: false,
-        isLoading: false,
-        isFetching: false,
-        isError: false,
-        error: null,
-      } as any);
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(
+          createTableQueryResult([{ 'avg(metric.total)': 42, 'bad"name': 84 }]),
+        );
 
       renderWithMantine(<DBTableChart config={config} />);
 
@@ -460,6 +482,31 @@ describe('DBTableChart', () => {
       );
 
       expect(formulaColumn?.id).toBe('"bad""name"');
+    });
+
+    it('escapes backslashes in output names', () => {
+      const outputName = 'bad\\name';
+      const config = {
+        ...builderConfig,
+        formulas: [{ expression: 'A * 2', alias: outputName }],
+      };
+
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(
+          createTableQueryResult([
+            { 'avg(metric.total)': 42, [outputName]: 84 },
+          ]),
+        );
+
+      renderWithMantine(<DBTableChart config={config} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      const formulaColumn = columns.find(
+        column => column.dataKey === outputName,
+      );
+
+      expect(formulaColumn?.id).toBe('"bad\\\\name"');
     });
   });
 
