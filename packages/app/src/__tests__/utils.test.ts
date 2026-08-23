@@ -1142,6 +1142,11 @@ describe('sortingStateToOrderByString', () => {
     const sortingState: SortingState = [{ id: 'user_count', desc: false }];
     expect(sortingStateToOrderByString(sortingState)).toBe('user_count ASC');
   });
+
+  it('preserves quoted column names with spaces', () => {
+    const sortingState: SortingState = [{ id: '"error rate"', desc: true }];
+    expect(sortingStateToOrderByString(sortingState)).toBe('"error rate" DESC');
+  });
 });
 
 describe('orderByStringToSortingState', () => {
@@ -1161,6 +1166,12 @@ describe('orderByStringToSortingState', () => {
   it('converts "column DESC" to sorting state with desc: true', () => {
     const result = orderByStringToSortingState('timestamp DESC');
     expect(result).toEqual([{ id: 'timestamp', desc: true }]);
+  });
+
+  it('converts quoted column names with spaces', () => {
+    expect(orderByStringToSortingState('"error rate" DESC')).toEqual([
+      { id: '"error rate"', desc: true },
+    ]);
   });
 
   it('handles case insensitive direction keywords', () => {
@@ -1205,6 +1216,13 @@ describe('orderByStringToSortingState', () => {
 
   it('round-trips correctly with sortingStateToOrderByString', () => {
     const originalSort: SortingState = [{ id: 'service_name', desc: true }];
+    const orderByString = sortingStateToOrderByString(originalSort);
+    const roundTripSort = orderByStringToSortingState(orderByString);
+    expect(roundTripSort).toEqual(originalSort);
+  });
+
+  it('round-trips quoted column names with spaces', () => {
+    const originalSort: SortingState = [{ id: '"error rate"', desc: true }];
     const orderByString = sortingStateToOrderByString(originalSort);
     const roundTripSort = orderByStringToSortingState(orderByString);
     expect(roundTripSort).toEqual(originalSort);
