@@ -166,6 +166,7 @@ import ChartContainer, {
   CollapsedToolbarProvider,
   DASHBOARD_TILE_PADDING_INLINE,
 } from './components/charts/ChartContainer';
+import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
@@ -193,7 +194,6 @@ import {
 import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
-import DashboardFiltersModal from './DashboardFiltersModal';
 import { EditablePageName } from './EditablePageName';
 import {
   GranularityPicker,
