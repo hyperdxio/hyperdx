@@ -16,10 +16,12 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
+import {
+  getMetricSelectIssues,
+  mcpQuantileLevelSchema,
+} from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
 import {
-  externalQuantileLevelSchema,
   MAX_TAG_LENGTH,
   MAX_TAGS,
   objectIdSchema,
@@ -209,7 +211,7 @@ const mcpTileSelectItemSchema = z
           'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
           'Heatmap select items are the only exception (no alias needed).',
       ),
-    level: externalQuantileLevelSchema
+    level: mcpQuantileLevelSchema
       .optional()
       .describe(
         'Percentile level for aggFn="quantile". REQUIRED for histogram and exponential histogram metrics with aggFn:"quantile".',
