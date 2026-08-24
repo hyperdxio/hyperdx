@@ -278,7 +278,7 @@ describe('DBRowSidePanelInner, "View Trace" row lookup time filter', () => {
     const compositeSource = {
       ...ROOT_SOURCE,
       timestampValueExpression: 'EventDate, EventTime',
-    } as TSource;
+    };
 
     mockUseRowData.mockReturnValue(
       rowResult({

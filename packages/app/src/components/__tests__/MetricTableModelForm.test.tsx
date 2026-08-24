@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { render, waitFor } from '@testing-library/react';
 import { fromPartial } from '@total-typescript/shoehorn';
@@ -123,20 +127,18 @@ function autofilledTables() {
     .map(([path, value]) => [path, value]);
 }
 
-const SAVED_SOURCE = fromPartial<Extract<TSource, { kind: SourceKind.Metric }>>(
-  {
-    id: 'metric-source-1',
-    kind: SourceKind.Metric,
-    name: 'Metrics',
-    connection: 'conn-1',
-    from: { databaseName: 'otel_v2', tableName: '' },
-    timestampValueExpression: 'TimeUnix',
-    metricTables: {
-      gauge: 'otel_metrics_gauge',
-      sum: 'otel_metrics_sum',
-    },
+const SAVED_SOURCE = fromPartial<TMetricSource>({
+  id: 'metric-source-1',
+  kind: SourceKind.Metric,
+  name: 'Metrics',
+  connection: 'conn-1',
+  from: { databaseName: 'otel_v2', tableName: '' },
+  timestampValueExpression: 'TimeUnix',
+  metricTables: {
+    gauge: 'otel_metrics_gauge',
+    sum: 'otel_metrics_sum',
   },
-);
+});
 
 describe('MetricTableModelForm metric table autofill', () => {
   beforeEach(() => {
