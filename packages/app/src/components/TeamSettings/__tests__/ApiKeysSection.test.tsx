@@ -34,6 +34,13 @@ const mockUseRotatePersonalAccessKey: jest.Mock = jest.mocked(
 );
 const mockUseConfirm: jest.Mock = jest.mocked(useConfirm);
 
+/** Mirror of `RevealSnippet`'s `defaultRedact`, kept local so the test
+ *  asserts the observable masked string, not component internals. */
+function maskLikeDefault(value: string): string {
+  const prefix = value.slice(0, 4);
+  return `${prefix}${'•'.repeat(Math.max(0, value.length - prefix.length))}`;
+}
+
 /** Options object the component hands to `mutate`, captured so the tests can
  *  drive `onSuccess` / `onError` without a real mutation. */
 type MutateOptions = {
@@ -107,10 +114,34 @@ describe('ApiKeysSection', () => {
   it('renders the ingestion and personal keys under distinct test ids', () => {
     renderWithMantine(<ApiKeysSection />);
 
-    expect(screen.getByTestId('ingestion-api-key')).toHaveTextContent(
-      'ingestion_key_xyz',
+    // Masked inputs: the value is on the input's `value`, not text content.
+    const ingestion = screen.getByTestId('ingestion-api-key');
+    const personal = screen.getByTestId('personal-access-key');
+    expect(ingestion).toHaveValue(maskLikeDefault('ingestion_key_xyz'));
+    expect(personal).toHaveValue(maskLikeDefault('personal_key_abc'));
+    // Masked length matches the real key so the field width doesn't jump.
+    expect((ingestion as HTMLInputElement).value).toHaveLength(
+      'ingestion_key_xyz'.length,
     );
-    expect(screen.getByTestId('personal-access-key')).toHaveTextContent(
+    expect(ingestion).not.toHaveValue('ingestion_key_xyz');
+    expect(personal).not.toHaveValue('personal_key_abc');
+  });
+
+  it('reveals the full key on the inline reveal toggle', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<ApiKeysSection />);
+
+    expect(screen.getByTestId('personal-access-key')).not.toHaveValue(
+      'personal_key_abc',
+    );
+
+    // Two "Reveal key" toggles (ingestion + personal); reveal the personal one.
+    const revealButtons = screen.getAllByRole('button', {
+      name: /reveal key/i,
+    });
+    await user.click(revealButtons[revealButtons.length - 1]);
+
+    expect(screen.getByTestId('personal-access-key')).toHaveValue(
       'personal_key_abc',
     );
   });
