@@ -117,12 +117,10 @@ describe('ApiKeysSection', () => {
     // Masked inputs: the value is on the input's `value`, not text content.
     const ingestion = screen.getByTestId('ingestion-api-key');
     const personal = screen.getByTestId('personal-access-key');
+    // maskLikeDefault preserves the real length, so asserting the exact masked
+    // string also covers "the field width doesn't jump on reveal".
     expect(ingestion).toHaveValue(maskLikeDefault('ingestion_key_xyz'));
     expect(personal).toHaveValue(maskLikeDefault('personal_key_abc'));
-    // Masked length matches the real key so the field width doesn't jump.
-    expect((ingestion as HTMLInputElement).value).toHaveLength(
-      'ingestion_key_xyz'.length,
-    );
     expect(ingestion).not.toHaveValue('ingestion_key_xyz');
     expect(personal).not.toHaveValue('personal_key_abc');
   });

@@ -16,14 +16,14 @@ import styles from './RevealSnippet.module.scss';
  * shoulder-surfing-safe stand-in shown until revealed — e.g.
  * `['hdx_ing_9f8a7b6c...', 'hdx_api_xxx']`.
  */
-export type Secret = readonly [real: string, redacted: string];
+type Secret = readonly [real: string, redacted: string];
 
 /**
  * A secret to mask. Either an explicit `[real, redacted]` pair, or a bare
  * string (the whole value is the secret) that is auto-redacted via
  * `defaultRedact` — so `secrets={[apiKey]}` masks `apiKey` as prefix + dots.
  */
-export type SecretInput = Secret | string;
+type SecretInput = Secret | string;
 
 interface RevealSnippetContextValue {
   realText: string;
@@ -56,7 +56,7 @@ const DEFAULT_VISIBLE_PREFIX = 4;
  * field width doesn't jump on reveal. Applied automatically to bare-string
  * `secrets` entries (the whole value is the secret, e.g. an API key).
  */
-export function defaultRedact(value: string): string {
+function defaultRedact(value: string): string {
   const prefix = value.slice(0, DEFAULT_VISIBLE_PREFIX);
   const maskedLength = Math.max(0, value.length - prefix.length);
   return `${prefix}${'•'.repeat(maskedLength)}`;
@@ -112,6 +112,16 @@ export function RevealSnippet({
 }: RevealSnippetProps) {
   const [revealed, setRevealed] = useState(false);
 
+  // Re-mask when the underlying value changes (e.g. an API key is rotated
+  // while revealed). Adjusting state during render — React's recommended
+  // pattern over an effect — re-hides the new value before it ever paints,
+  // so a freshly issued credential is never shown without a fresh reveal.
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    setRevealed(false);
+  }
+
   // Normalize entries to pairs (bare strings auto-redacted), dropping the
   // ones with nothing to mask. Omitted/empty → nothing is masked (safe,
   // least-surprising default).
@@ -145,7 +155,7 @@ export function RevealSnippet({
 }
 
 /** State handed to a custom `Reveal` renderer. */
-export interface RevealRenderProps {
+interface RevealRenderProps {
   revealed: boolean;
   toggle: () => void;
   label: string;

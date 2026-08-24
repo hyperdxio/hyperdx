@@ -181,4 +181,37 @@ describe('RevealSnippet', () => {
 
     expect(screen.queryByTestId('custom-reveal')).not.toBeInTheDocument();
   });
+
+  it('re-masks when the value changes after being revealed (key rotation)', async () => {
+    // Regression: a revealed key that is then rotated must NOT leak the new
+    // value. The component re-hides on value change so a fresh reveal is
+    // required for the rotated key.
+    const user = userEvent.setup();
+    const ROTATED_KEY = 'ffffffff1111111122222222deadbeef';
+
+    const ui = (key: string) => (
+      <RevealSnippet value={key} secrets={[key]}>
+        <RevealSnippet.Reveal />
+        <RevealSnippet.Code />
+      </RevealSnippet>
+    );
+
+    const { rerender } = render(
+      <MantineProvider>{ui(REAL_KEY)}</MantineProvider>,
+    );
+
+    // Reveal the original key.
+    await user.click(screen.getByRole('button', { name: /reveal key/i }));
+    expect(screen.getByText(REAL_KEY)).toBeInTheDocument();
+
+    // Rotate: same instance, new value. It must come back masked.
+    rerender(<MantineProvider>{ui(ROTATED_KEY)}</MantineProvider>);
+
+    expect(screen.queryByText(ROTATED_KEY)).not.toBeInTheDocument();
+    expect(screen.getByText(/^ffff•+$/)).toBeInTheDocument();
+    // And the reveal toggle is back to its hidden label.
+    expect(
+      screen.getByRole('button', { name: /reveal key/i }),
+    ).toBeInTheDocument();
+  });
 });
