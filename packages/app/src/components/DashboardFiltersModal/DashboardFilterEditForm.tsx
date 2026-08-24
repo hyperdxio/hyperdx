@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   deriveVariableName,
-  getFilterVariableName,
   hasFilterEffect,
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
   validateVariableName,
 } from '@hyperdx/common-utils/dist/filters';
 import {
-  ChartVariable,
   DashboardFilter,
   MetricsDataType,
   SourceKind,
@@ -20,84 +18,30 @@ import {
   Alert,
   Box,
   Button,
-  Center,
   Divider,
   Group,
-  Input,
   Modal,
-  Paper,
   Radio,
   Stack,
-  Text,
   TextInput,
-  Title,
-  Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
-import {
-  IconAlertTriangle,
-  IconFilter,
-  IconInfoCircle,
-  IconPencil,
-  IconRefresh,
-  IconSearch,
-  IconTrash,
-} from '@tabler/icons-react';
+import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { CheckBoxControlled } from '@/components/InputControlled';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
-
-import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
+import { SourceMultiSelectControlled } from '@/components/SourceMultiSelect';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
-} from './components/SourceSchemaPreview';
-import { SourceSelectControlled } from './components/SourceSelect';
-import { useSource, useSources } from './source';
-import { getMetricTableName } from './utils';
+} from '@/components/SourceSchemaPreview';
+import { SourceSelectControlled } from '@/components/SourceSelect';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import { useSource } from '@/source';
+import { getMetricTableName } from '@/utils';
 
-import styles from '@styles/DashboardFiltersModal.module.scss';
-
-const MODAL_SIZE = 'lg';
-
-interface CustomInputWrapperProps {
-  children: React.ReactNode;
-  label: string;
-  tooltipText?: string;
-  error?: FieldError;
-}
-
-const CustomInputWrapper = ({
-  children,
-  label,
-  tooltipText,
-  error,
-}: CustomInputWrapperProps) => {
-  const errorMessage =
-    error &&
-    (error.message ||
-      (error?.type === 'required' ? 'This field is required' : 'Error'));
-
-  return (
-    <div>
-      <Input.Label>{label}</Input.Label>
-      {tooltipText && (
-        <Tooltip label={tooltipText}>
-          <IconInfoCircle size={14} className="ms-2" />
-        </Tooltip>
-      )}
-      {errorMessage && (
-        <Input.Error color="red" size="sm">
-          {errorMessage}
-        </Input.Error>
-      )}
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-};
+import { MODAL_SIZE } from './constants';
+import { CustomInputWrapper } from './CustomInputWrapper';
 
 interface DashboardFilterEditFormProps {
   filter: DashboardFilter;
@@ -123,7 +67,7 @@ const toFormValues = (filter: DashboardFilter): DashboardFilter => ({
   variableName: filter.variableName ?? '',
 });
 
-const DashboardFilterEditForm = ({
+export const DashboardFilterEditForm = ({
   filter,
   isNew,
   source: presetSource,
@@ -502,287 +446,3 @@ const DashboardFilterEditForm = ({
     </Modal>
   );
 };
-
-interface EmptyStateProps {
-  onCreateFilter: () => void;
-  onClose: () => void;
-}
-
-const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
-  return (
-    <Modal opened onClose={onClose} size={MODAL_SIZE}>
-      <Stack
-        align="center"
-        justify="center"
-        pt="lg"
-        pb="xl"
-        data-testid="dashboard-filters-empty-state"
-      >
-        <IconFilter />
-        <Title order={4}>No filters yet.</Title>
-        <Text size="sm" ta="center" px="xl">
-          Add filters to let users quickly narrow data on key columns. Saved
-          filters will stay with this dashboard.
-        </Text>
-        <Button
-          variant="primary"
-          onClick={onCreateFilter}
-          data-testid="add-filter-button"
-        >
-          Add new filter
-        </Button>
-      </Stack>
-    </Modal>
-  );
-};
-
-interface DashboardFiltersListProps {
-  filters: DashboardFilter[];
-  isLoading?: boolean;
-  hideAppliesTo?: boolean;
-  /** Whether the broadcast / variable controls are available. */
-  showVariableOptions: boolean;
-  onEdit: (filter: DashboardFilter) => void;
-  onRemove: (id: string) => void;
-  onClose: () => void;
-  onAddNew: () => void;
-}
-
-const DashboardFiltersList = ({
-  filters,
-  isLoading,
-  hideAppliesTo,
-  showVariableOptions,
-  onEdit,
-  onRemove,
-  onClose,
-  onAddNew,
-}: DashboardFiltersListProps) => {
-  const { data: sources } = useSources();
-
-  return (
-    <Modal
-      opened
-      onClose={onClose}
-      title={showVariableOptions ? 'Filters and Variables' : 'Filters'}
-      size={MODAL_SIZE}
-      className={styles.modal}
-    >
-      <Stack
-        className={styles.filtersContainer}
-        gap="xs"
-        data-testid="dashboard-filters-list"
-      >
-        {filters.map(filter => {
-          const queriedSourceName = sources?.find(
-            s => s.id === filter.source,
-          )?.name;
-          const appliedSourceNames = filter.appliesToSourceIds?.length
-            ? filter.appliesToSourceIds
-                .map(id => sources?.find(s => s.id === id)?.name)
-                .filter((name): name is string => !!name)
-            : undefined;
-          const appliedDisplay = appliedSourceNames
-            ? appliedSourceNames.join(', ')
-            : 'All sources';
-          const variableName =
-            showVariableOptions && isFilterVariableEnabled(filter)
-              ? getFilterVariableName(filter)
-              : undefined;
-          return (
-            <Paper
-              key={filter.id}
-              withBorder
-              className={styles.filterPaper}
-              p="xs"
-              variant="muted"
-              data-testid={`dashboard-filter-item-${filter.name}`}
-            >
-              <Group justify="space-between" className={styles.filterHeader}>
-                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-                  <Text size="xs" truncate="end">
-                    {filter.name}
-                    {!!variableName && ` ($${variableName})`}
-                  </Text>
-                </Group>
-                <Group>
-                  <UnstyledButton
-                    onClick={() => onEdit(filter)}
-                    className={styles.filterActionButton}
-                    data-testid={`edit-filter-button-${filter.name}`}
-                  >
-                    <IconPencil size={16} />
-                  </UnstyledButton>
-                  <UnstyledButton
-                    onClick={() => onRemove(filter.id)}
-                    className={`${styles.filterActionButton} ${styles.deleteButton}`}
-                    data-testid={`delete-filter-button-${filter.name}`}
-                  >
-                    <IconTrash size={16} />
-                  </UnstyledButton>
-                </Group>
-              </Group>
-              <Group gap="xs" wrap="nowrap">
-                <Tooltip
-                  label="Source the dropdown values are queried from"
-                  withinPortal
-                >
-                  <IconSearch size={14} />
-                </Tooltip>
-                <Text size="xs" truncate="end">
-                  {queriedSourceName}
-                </Text>
-              </Group>
-              {!hideAppliesTo && isFilterBroadcastEnabled(filter) && (
-                <Group
-                  gap="xs"
-                  wrap="nowrap"
-                  data-testid={`dashboard-filter-applies-to-${filter.name}`}
-                >
-                  <Tooltip
-                    label={'Sources this filter applies to'}
-                    withinPortal
-                    multiline
-                    maw={400}
-                  >
-                    <IconFilter size={14} style={{ flexShrink: 0 }} />
-                  </Tooltip>
-                  <Text size="xs" truncate="end">
-                    {appliedDisplay}
-                  </Text>
-                </Group>
-              )}
-            </Paper>
-          );
-        })}
-        {isLoading && (
-          <Center>
-            <IconRefresh className="spin-animate" />
-          </Center>
-        )}
-      </Stack>
-
-      <Group justify="space-between" my="sm">
-        <Button
-          variant="secondary"
-          onClick={onClose}
-          data-testid="close-filters-button"
-        >
-          Close
-        </Button>
-        <Button
-          variant="primary"
-          onClick={onAddNew}
-          data-testid="add-filter-button"
-        >
-          Add new filter
-        </Button>
-      </Group>
-    </Modal>
-  );
-};
-
-interface DashboardFiltersEditModalProps {
-  opened: boolean;
-  filters: DashboardFilter[];
-  isLoading?: boolean;
-  source?: TSource;
-  /** Whether to offer the broadcast / variable controls. */
-  showVariableOptions: boolean;
-  /** The dashboard's variables, if any */
-  variables?: ChartVariable[];
-  onClose: () => void;
-  onSaveFilter: (filter: DashboardFilter) => void;
-  onRemoveFilter: (id: string) => void;
-}
-
-const NEW_FILTER_ID = 'new';
-
-const DashboardFiltersModal = ({
-  opened,
-  filters,
-  isLoading,
-  source,
-  showVariableOptions,
-  variables,
-  onClose,
-  onSaveFilter,
-  onRemoveFilter,
-}: DashboardFiltersEditModalProps) => {
-  const [selectedFilter, setSelectedFilter] = useState<DashboardFilter>();
-
-  useEffect(() => {
-    if (opened) {
-      setSelectedFilter(undefined);
-    }
-  }, [opened]);
-
-  const handleRemoveFilter = (id: string) => {
-    if (id === selectedFilter?.id) {
-      setSelectedFilter(filters.find(f => f.id !== id));
-    }
-    onRemoveFilter(id);
-  };
-
-  const handleAddNewFilter = () => {
-    setSelectedFilter({
-      id: NEW_FILTER_ID,
-      type: 'QUERY_EXPRESSION',
-      name: '',
-      expression: '',
-      source: source?.id ?? '',
-      where: '',
-      whereLanguage: getStoredLanguage() ?? 'sql',
-      isBroadcastEnabled: true,
-      isVariableEnabled: false,
-    });
-  };
-
-  const handleSaveFilter = (filter: DashboardFilter) => {
-    setSelectedFilter(undefined);
-    if (filter.id === NEW_FILTER_ID) {
-      const filterWithRealId = { ...filter, id: crypto.randomUUID() };
-      onSaveFilter(filterWithRealId);
-    } else {
-      onSaveFilter(filter);
-    }
-  };
-
-  const isEmpty = !selectedFilter && filters.length === 0;
-
-  if (!opened) {
-    return null;
-  } else if (isEmpty) {
-    return <EmptyState onCreateFilter={handleAddNewFilter} onClose={onClose} />;
-  } else if (selectedFilter) {
-    return (
-      <SqlVariablesProvider variables={variables}>
-        <DashboardFilterEditForm
-          filter={selectedFilter}
-          onSave={handleSaveFilter}
-          onCancel={() => setSelectedFilter(undefined)}
-          onClose={onClose}
-          isNew={selectedFilter.id === NEW_FILTER_ID}
-          source={source}
-          filters={filters}
-          showVariableOptions={showVariableOptions}
-        />
-      </SqlVariablesProvider>
-    );
-  } else {
-    return (
-      <DashboardFiltersList
-        filters={filters}
-        onEdit={setSelectedFilter}
-        onRemove={handleRemoveFilter}
-        onClose={onClose}
-        onAddNew={handleAddNewFilter}
-        isLoading={isLoading}
-        hideAppliesTo={!!source}
-        showVariableOptions={showVariableOptions}
-      />
-    );
-  }
-};
-
-export default DashboardFiltersModal;
