@@ -56,6 +56,13 @@ interface DashboardFilterEditFormProps {
   onCancel: () => void;
 }
 
+/**
+ * The modal body scrolls, so an autocomplete popup rendered inside it is
+ * clipped at the modal's edge. Portal it to the document body instead.
+ */
+const TOOLTIP_PORTAL_TARGET =
+  typeof document !== 'undefined' ? document.body : null;
+
 /** Normalize a stored filter into form values. */
 const toFormValues = (filter: DashboardFilter): DashboardFilter => ({
   ...filter,
@@ -199,9 +206,6 @@ export const DashboardFilterEditForm = ({
     source?.kind === SourceKind.Metric ? source.metricTables?.[type] : false,
   );
 
-  const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
-    null,
-  );
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -212,237 +216,236 @@ export const DashboardFilterEditForm = ({
       onClose={onClose}
       size={MODAL_SIZE}
     >
-      <div ref={setModalContentRef}>
-        <form
-          onSubmit={handleSubmit(values => {
-            const trimmedWhere = values.where?.trim() ?? '';
-            const appliesTo = values.appliesToSourceIds?.filter(
-              id => !!id?.length,
-            );
-            const isVariableEnabled = values.isVariableEnabled === true;
-            const isBroadcastEnabled = values.isBroadcastEnabled !== false;
-            const trimmedVariableName = values.variableName?.trim() ?? '';
-            onSave({
-              ...values,
-              where: trimmedWhere || undefined,
-              whereLanguage: trimmedWhere
-                ? (values.whereLanguage ?? 'sql')
-                : undefined,
-              appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
-              isBroadcastEnabled,
-              isVariableEnabled,
-              // Dropped when the variable is disabled, so the set of variable
-              // names is exactly the set of enabled filters.
-              variableName: isVariableEnabled
-                ? trimmedVariableName ||
-                  deriveVariableName(values.name) ||
-                  undefined
-                : undefined,
-            });
-          })}
-        >
-          <Stack>
+      <form
+        onSubmit={handleSubmit(values => {
+          const trimmedWhere = values.where?.trim() ?? '';
+          const appliesTo = values.appliesToSourceIds?.filter(
+            id => !!id?.length,
+          );
+          const isVariableEnabled = values.isVariableEnabled === true;
+          const isBroadcastEnabled = values.isBroadcastEnabled !== false;
+          const trimmedVariableName = values.variableName?.trim() ?? '';
+          onSave({
+            ...values,
+            where: trimmedWhere || undefined,
+            whereLanguage: trimmedWhere
+              ? (values.whereLanguage ?? 'sql')
+              : undefined,
+            appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
+            isBroadcastEnabled,
+            isVariableEnabled,
+            // Dropped when the variable is disabled, so the set of variable
+            // names is exactly the set of enabled filters.
+            variableName: isVariableEnabled
+              ? trimmedVariableName ||
+                deriveVariableName(values.name) ||
+                undefined
+              : undefined,
+          });
+        })}
+      >
+        <Stack>
+          <CustomInputWrapper
+            label="Display name"
+            error={formState.errors.name}
+          >
+            <TextInput
+              placeholder="Name"
+              data-testid="filter-name-input"
+              {...register('name', { required: true, minLength: 1 })}
+            />
+          </CustomInputWrapper>
+          <CustomInputWrapper
+            label="Data source"
+            tooltipText="The data source that the filter values are queried from"
+            error={formState.errors.source}
+          >
+            <SourceSelectControlled
+              control={control}
+              name="source"
+              data-testid="source-selector"
+              rules={{ required: true }}
+              comboboxProps={{ withinPortal: true }}
+              onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+              isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
+              disabled={!!presetSource}
+              allowedSourceKinds={[
+                SourceKind.Log,
+                SourceKind.Trace,
+                SourceKind.Session,
+                SourceKind.Metric,
+              ]}
+            />
+            <SourceSchemaPreview
+              source={source}
+              controlled
+              open={isSourceSchemaPreviewOpen}
+              onClose={() => setIsSourceSchemaPreviewOpen(false)}
+            />
+          </CustomInputWrapper>
+          {sourceIsMetric && (
             <CustomInputWrapper
-              label="Display name"
-              error={formState.errors.name}
+              label="Metric type"
+              tooltipText="The metric table that the filter values are queried from"
+              error={formState.errors.sourceMetricType}
             >
-              <TextInput
-                placeholder="Name"
-                data-testid="filter-name-input"
-                {...register('name', { required: true, minLength: 1 })}
-              />
-            </CustomInputWrapper>
-            <CustomInputWrapper
-              label="Data source"
-              tooltipText="The data source that the filter values are queried from"
-              error={formState.errors.source}
-            >
-              <SourceSelectControlled
+              <Controller
                 control={control}
-                name="source"
-                data-testid="source-selector"
+                name="sourceMetricType"
                 rules={{ required: true }}
-                comboboxProps={{ withinPortal: true }}
-                onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
-                isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
-                disabled={!!presetSource}
-                allowedSourceKinds={[
-                  SourceKind.Log,
-                  SourceKind.Trace,
-                  SourceKind.Session,
-                  SourceKind.Metric,
-                ]}
-              />
-              <SourceSchemaPreview
-                source={source}
-                controlled
-                open={isSourceSchemaPreviewOpen}
-                onClose={() => setIsSourceSchemaPreviewOpen(false)}
+                render={({ field: { onChange, value } }) => (
+                  <Radio.Group
+                    value={value}
+                    onChange={v => onChange(v)}
+                    withAsterisk
+                  >
+                    <Group>
+                      {metricTypes.map(type => (
+                        <Radio key={type} value={type} label={type} />
+                      ))}
+                    </Group>
+                  </Radio.Group>
+                )}
               />
             </CustomInputWrapper>
-            {sourceIsMetric && (
-              <CustomInputWrapper
-                label="Metric type"
-                tooltipText="The metric table that the filter values are queried from"
-                error={formState.errors.sourceMetricType}
-              >
-                <Controller
-                  control={control}
-                  name="sourceMetricType"
-                  rules={{ required: true }}
-                  render={({ field: { onChange, value } }) => (
-                    <Radio.Group
-                      value={value}
-                      onChange={v => onChange(v)}
-                      withAsterisk
-                    >
-                      <Group>
-                        {metricTypes.map(type => (
-                          <Radio key={type} value={type} label={type} />
-                        ))}
-                      </Group>
-                    </Radio.Group>
-                  )}
-                />
-              </CustomInputWrapper>
-            )}
+          )}
 
-            <CustomInputWrapper
-              label="Filter expression"
-              tooltipText="The SQL column or expression to filter on"
-              error={formState.errors.expression}
-            >
-              <SQLInlineEditorControlled
-                tableConnection={tableConnection}
+          <CustomInputWrapper
+            label="Filter expression"
+            tooltipText="The SQL column or expression to filter on"
+            error={formState.errors.expression}
+          >
+            <SQLInlineEditorControlled
+              tableConnection={tableConnection}
+              control={control}
+              name="expression"
+              placeholder="SQL column or expression"
+              language="sql"
+              enableHotkey
+              rules={{ required: true }}
+              parentRef={TOOLTIP_PORTAL_TARGET}
+            />
+          </CustomInputWrapper>
+
+          <CustomInputWrapper
+            label="Dropdown values filter"
+            tooltipText="Optional condition used to filter the rows from which available filter values are queried. May reference the dashboard's other variables."
+          >
+            <SearchWhereInput
+              tableConnection={tableConnection}
+              sourceId={sourceId}
+              control={control}
+              name="where"
+              languageName="whereLanguage"
+              showLabel={false}
+              allowMultiline={true}
+              sqlPlaceholder="Filter for dropdown values"
+              lucenePlaceholder="Filter for dropdown values"
+              enableVariables={showVariableOptions}
+              parentRef={TOOLTIP_PORTAL_TARGET}
+            />
+          </CustomInputWrapper>
+
+          {showVariableOptions && (
+            <>
+              <Divider />
+              <CheckBoxControlled
                 control={control}
-                name="expression"
-                placeholder="SQL column or expression"
-                language="sql"
-                enableHotkey
-                rules={{ required: true }}
-                parentRef={modalContentRef}
+                name="isBroadcastEnabled"
+                size="xs"
+                label="Broadcast filter condition"
+                description="Automatically apply the selected value to every query builder tile, and to every Raw SQL tile that uses the $__filters macro. Optionally, narrow to tiles that use specific sources."
+                data-testid="filter-broadcast-checkbox"
               />
-            </CustomInputWrapper>
-
-            <CustomInputWrapper
-              label="Dropdown values filter"
-              tooltipText="Optional condition used to filter the rows from which available filter values are queried. May reference the dashboard's other variables."
-            >
-              <SearchWhereInput
-                tableConnection={tableConnection}
-                sourceId={sourceId}
-                control={control}
-                name="where"
-                languageName="whereLanguage"
-                showLabel={false}
-                allowMultiline={true}
-                sqlPlaceholder="Filter for dropdown values"
-                lucenePlaceholder="Filter for dropdown values"
-                enableVariables={showVariableOptions}
-              />
-            </CustomInputWrapper>
-
-            {showVariableOptions && (
-              <>
-                <Divider />
-                <CheckBoxControlled
-                  control={control}
-                  name="isBroadcastEnabled"
-                  size="xs"
-                  label="Broadcast filter condition"
-                  description="Automatically apply the selected value to every query builder tile, and to every Raw SQL tile that uses the $__filters macro. Optionally, narrow to tiles that use specific sources."
-                  data-testid="filter-broadcast-checkbox"
-                />
-              </>
+            </>
+          )}
+          {/**
+           * Not available for filters on preset dashboards, always shown when showVariableOptions is disabled,
+           * and shown only when the broadcast condition is enabled if showVariableOptions is enabled.
+           **/}
+          {!presetSource &&
+            (!showVariableOptions || formIsBroadCastEnabled) && (
+              <Box ml={showVariableOptions ? 'xl' : undefined}>
+                <CustomInputWrapper
+                  label="Applies to sources"
+                  tooltipText="Which tiles the broadcast reaches. Leave empty to broadcast to all tiles. Selecting one or more sources restricts the broadcast to tiles using those sources."
+                >
+                  <SourceMultiSelectControlled
+                    control={control}
+                    name="appliesToSourceIds"
+                    data-testid="applies-to-source-selector"
+                    comboboxProps={{ withinPortal: true }}
+                    placeholder="All sources"
+                    allowedSourceKinds={[
+                      SourceKind.Log,
+                      SourceKind.Trace,
+                      SourceKind.Session,
+                      SourceKind.Metric,
+                    ]}
+                  />
+                </CustomInputWrapper>
+              </Box>
             )}
-            {/**
-             * Not available for filters on preset dashboards, always shown when showVariableOptions is disabled,
-             * and shown only when the broadcast condition is enabled if showVariableOptions is enabled.
-             **/}
-            {!presetSource &&
-              (!showVariableOptions || formIsBroadCastEnabled) && (
+          {showVariableOptions && (
+            <>
+              <Divider />
+              <CheckBoxControlled
+                control={control}
+                name="isVariableEnabled"
+                size="xs"
+                label="Available as variable"
+                description="Expose the selected value as a $variable. Selections only affect tiles that reference the variable explicitly, typically via the $__filter or $__conditionalAll macros."
+                data-testid="filter-variable-enabled-checkbox"
+                rules={{ validate: validateFilterModes }}
+              />
+              {formIsVariableEnabled && (
                 <Box ml={showVariableOptions ? 'xl' : undefined}>
                   <CustomInputWrapper
-                    label="Applies to sources"
-                    tooltipText="Which tiles the broadcast reaches. Leave empty to broadcast to all tiles. Selecting one or more sources restricts the broadcast to tiles using those sources."
+                    label="Variable name"
+                    tooltipText="The name by which the variable is referenced"
+                    error={formState.errors.variableName}
                   >
-                    <SourceMultiSelectControlled
-                      control={control}
-                      name="appliesToSourceIds"
-                      data-testid="applies-to-source-selector"
-                      comboboxProps={{ withinPortal: true }}
-                      placeholder="All sources"
-                      allowedSourceKinds={[
-                        SourceKind.Log,
-                        SourceKind.Trace,
-                        SourceKind.Session,
-                        SourceKind.Metric,
-                      ]}
+                    <TextInput
+                      placeholder={derivedVariableName || 'variable_name'}
+                      data-testid="filter-variable-name-input"
+                      {...register('variableName', {
+                        onChange: () => setHasEditedVariableName(true),
+                        validate: validateVariableNameField,
+                      })}
                     />
                   </CustomInputWrapper>
                 </Box>
               )}
-            {showVariableOptions && (
-              <>
-                <Divider />
-                <CheckBoxControlled
-                  control={control}
-                  name="isVariableEnabled"
-                  size="xs"
-                  label="Available as variable"
-                  description="Expose the selected value as a $variable. Selections only affect tiles that reference the variable explicitly, typically via the $__filter or $__conditionalAll macros."
-                  data-testid="filter-variable-enabled-checkbox"
-                  rules={{ validate: validateFilterModes }}
-                />
-                {formIsVariableEnabled && (
-                  <Box ml={showVariableOptions ? 'xl' : undefined}>
-                    <CustomInputWrapper
-                      label="Variable name"
-                      tooltipText="The name by which the variable is referenced"
-                      error={formState.errors.variableName}
-                    >
-                      <TextInput
-                        placeholder={derivedVariableName || 'variable_name'}
-                        data-testid="filter-variable-name-input"
-                        {...register('variableName', {
-                          onChange: () => setHasEditedVariableName(true),
-                          validate: validateVariableNameField,
-                        })}
-                      />
-                    </CustomInputWrapper>
-                  </Box>
-                )}
-                {showUnscopedBroadcastWarning && (
-                  <Alert
-                    variant="warning"
-                    icon={<IconAlertTriangle size={16} />}
-                    data-testid="filter-unscoped-broadcast-warning"
-                  >
-                    Broadcast already applies this filter to every tile,
-                    including the ones that reference the variable. Set “Applies
-                    to sources” to limit which tiles the broadcast reaches, or
-                    turn off broadcast so only tiles that reference the variable
-                    are filtered.
-                  </Alert>
-                )}
-              </>
-            )}
+              {showUnscopedBroadcastWarning && (
+                <Alert
+                  variant="warning"
+                  icon={<IconAlertTriangle size={16} />}
+                  data-testid="filter-unscoped-broadcast-warning"
+                >
+                  Broadcast already applies this filter to every tile, including
+                  the ones that reference the variable. Set “Applies to sources”
+                  to limit which tiles the broadcast reaches, or turn off
+                  broadcast so only tiles that reference the variable are
+                  filtered.
+                </Alert>
+              )}
+            </>
+          )}
 
-            <Group justify="space-between" my="xs">
-              <Button variant="secondary" onClick={onCancel}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                data-testid="save-filter-button"
-              >
-                Save filter
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </div>
+          <Group justify="space-between" my="xs">
+            <Button variant="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              data-testid="save-filter-button"
+            >
+              Save filter
+            </Button>
+          </Group>
+        </Stack>
+      </form>
     </Modal>
   );
 };
