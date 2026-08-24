@@ -253,6 +253,12 @@ export default function SQLInlineEditor({
     if (parentRef == null) {
       return [];
     }
+    // A body-level parent is already outside every scroll container, so the
+    // tooltip should be free to use the whole viewport — CodeMirror's default
+    // space.
+    if (parentRef === parentRef.ownerDocument.body) {
+      return [tooltips({ parent: parentRef })];
+    }
     return [
       tooltips({
         parent: parentRef,
