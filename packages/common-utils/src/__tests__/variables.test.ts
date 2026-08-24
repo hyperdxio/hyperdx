@@ -682,10 +682,81 @@ describe('substituteVariablesForLanguage', () => {
     });
 
     it('falls back to the plain expansion when the template will not parse', () => {
-      // `http://` only parses after `encodeSpecialTokens`, which the renderer
-      // applies and this preprocessor does not.
-      expect(expand('Url:http://example.com AND ServiceName:"$service"')).toBe(
-        'Url:http://example.com AND ServiceName:"("api" OR "web")"',
+      expect(expand('(ServiceName:"$service"')).toBe(
+        '(ServiceName:"("api" OR "web")"',
+      );
+    });
+
+    // `http://` and friends only parse after `encodeSpecialTokens`, which
+    // this preprocessor applies the same way the renderer does. The special
+    // text must round-trip verbatim wherever it sits relative to the
+    // reference.
+    it.each([
+      [
+        'Url:http://example.com AND ServiceName:"$service"',
+        'Url:http://example.com AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'ServiceName:"$service" AND Url:http://example.com',
+        '(ServiceName:"api" OR ServiceName:"web") AND Url:http://example.com',
+      ],
+      [
+        'http://example.com AND ServiceName:"$service"',
+        'http://example.com AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'Url:https://a.example AND ServiceName:"$service" AND Referrer:https://b.example',
+        'Url:https://a.example AND (ServiceName:"api" OR ServiceName:"web") AND Referrer:https://b.example',
+      ],
+      [
+        'Host:localhost:3000 AND ServiceName:"$service"',
+        'Host:localhost:3000 AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'Url:http://localhost:8080 AND ServiceName:"$service"',
+        'Url:http://localhost:8080 AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'Body:path\\\\to AND ServiceName:"$service"',
+        'Body:path\\\\to AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'foo\\:bar:baz AND ServiceName:"$service"',
+        'foo\\:bar:baz AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'Url:http://example.com AND foo\\:bar:"$service"',
+        'Url:http://example.com AND (foo\\:bar:"api" OR foo\\:bar:"web")',
+      ],
+      [
+        '-foo\\:bar:"$service" AND Url:https://example.com',
+        'NOT (foo\\:bar:"api" OR foo\\:bar:"web") AND Url:https://example.com',
+      ],
+      [
+        'ServiceName:"$service" AND Url:http://example.com AND Env:"$env"',
+        '(ServiceName:"api" OR ServiceName:"web") AND Url:http://example.com AND (Env:"prod")',
+      ],
+      [
+        'Message:"see https://example.com/docs" AND ServiceName:"$service"',
+        'Message:"see https://example.com/docs" AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        '(Url:http://a.example OR Url:https://b.example) AND ServiceName:"$service"',
+        '(Url:http://a.example OR Url:https://b.example) AND (ServiceName:"api" OR ServiceName:"web")',
+      ],
+      [
+        'ServiceName:"$service" AND Body:a\\\\b AND foo\\:bar:x AND Host:localhost:9000',
+        '(ServiceName:"api" OR ServiceName:"web") AND Body:a\\\\b AND foo\\:bar:x AND Host:localhost:9000',
+      ],
+    ])('distributes within `%s`', (template, expected) => {
+      expect(expand(template, [SERVICE, variable('env', ['prod'])])).toBe(
+        expected,
+      );
+    });
+
+    it('keeps the no-op form for an escaped-colon field with no selection', () => {
+      expect(expand('foo\\:bar:"$service"', [EMPTY_SERVICE])).toBe(
+        'foo\\:bar:("")',
       );
     });
 

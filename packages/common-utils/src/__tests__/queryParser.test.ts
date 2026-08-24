@@ -3,6 +3,8 @@ import { ClickhouseClient } from '@/clickhouse/node';
 import { getMetadata } from '@/core/metadata';
 import {
   CustomSchemaSQLSerializerV2,
+  decodeSpecialTokensToSource,
+  encodeSpecialTokens,
   genEnglishExplanation,
   parseKvItemsCastExpression,
   parseKvItemsExpression,
@@ -18,6 +20,24 @@ beforeAll(() => {
 });
 afterAll(() => {
   jest.restoreAllMocks();
+});
+
+describe('special token encoding', () => {
+  it('decodeSpecialTokensToSource is a lossless inverse of encodeSpecialTokens', () => {
+    const queries = [
+      'Url:http://example.com',
+      'Url:https://example.com/path',
+      'Host:localhost:3000',
+      'Body:path\\\\to\\\\file',
+      'foo\\:bar:baz',
+      'Url:http://localhost:8080 AND Body:a\\\\b AND foo\\:bar:x',
+    ];
+    for (const query of queries) {
+      expect(decodeSpecialTokensToSource(encodeSpecialTokens(query))).toBe(
+        query,
+      );
+    }
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - json', () => {

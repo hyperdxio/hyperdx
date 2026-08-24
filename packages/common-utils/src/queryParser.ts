@@ -29,22 +29,73 @@ import { UseTextIndex } from '@/types';
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
 
-function encodeSpecialTokens(query: string): string {
-  return query
-    .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
-    .replace(/http:\/\//g, 'http_COLON_//')
-    .replace(/https:\/\//g, 'https_COLON_//')
-    .replace(/localhost:(\d{1,5})/g, 'localhost_COLON_$1')
-    .replace(/\\:/g, 'HDX_COLON');
+/**
+ * Sequences the lucene grammar can't parse, placeholder-encoded before
+ * parsing. `source` restores the original query spelling; `value` is the
+ * raw value the sequence represents (lucene escaping dropped).
+ */
+const SPECIAL_TOKEN_ENCODINGS = [
+  {
+    encodePattern: /\\\\/g,
+    placeholder: 'HDX_BACKSLASH_LITERAL',
+    decodePattern: /HDX_BACKSLASH_LITERAL/g,
+    source: '\\\\',
+    value: '\\',
+  },
+  {
+    encodePattern: /http:\/\//g,
+    placeholder: 'http_COLON_//',
+    decodePattern: /http_COLON_\/\//g,
+    source: 'http://',
+    value: 'http://',
+  },
+  {
+    encodePattern: /https:\/\//g,
+    placeholder: 'https_COLON_//',
+    decodePattern: /https_COLON_\/\//g,
+    source: 'https://',
+    value: 'https://',
+  },
+  {
+    encodePattern: /localhost:(\d{1,5})/g,
+    placeholder: 'localhost_COLON_$1',
+    decodePattern: /localhost_COLON_(\d{1,5})/g,
+    source: 'localhost:$1',
+    value: 'localhost:$1',
+  },
+  {
+    encodePattern: /\\:/g,
+    placeholder: 'HDX_COLON',
+    decodePattern: /HDX_COLON/g,
+    source: '\\:',
+    value: ':',
+  },
+] as const;
+
+export function encodeSpecialTokens(query: string): string {
+  return SPECIAL_TOKEN_ENCODINGS.reduce(
+    (encoded, { encodePattern, placeholder }) =>
+      encoded.replace(encodePattern, placeholder),
+    query,
+  );
 }
+
+/** Decode placeholders (and `\"`) to the raw values the sequences represent. */
 function decodeSpecialTokens(query: string): string {
-  return query
-    .replace(/\\"/g, '"')
-    .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
-    .replace(/http_COLON_\/\//g, 'http://')
-    .replace(/https_COLON_\/\//g, 'https://')
-    .replace(/localhost_COLON_(\d{1,5})/g, 'localhost:$1')
-    .replace(/HDX_COLON/g, ':');
+  return SPECIAL_TOKEN_ENCODINGS.reduce(
+    (decoded, { decodePattern, value }) =>
+      decoded.replace(decodePattern, value),
+    query.replace(/\\"/g, '"'),
+  );
+}
+
+/** Lossless inverse of `encodeSpecialTokens`: placeholders back to their original query spelling. */
+export function decodeSpecialTokensToSource(query: string): string {
+  return SPECIAL_TOKEN_ENCODINGS.reduce(
+    (decoded, { decodePattern, source }) =>
+      decoded.replace(decodePattern, source),
+    query,
+  );
 }
 
 export function parse(query: string): lucene.AST {

@@ -6,7 +6,11 @@ import {
   splitAndTrimWithBracket,
 } from './core/utils';
 import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
-import { IMPLICIT_FIELD } from './queryParser';
+import {
+  decodeSpecialTokensToSource,
+  encodeSpecialTokens,
+  IMPLICIT_FIELD,
+} from './queryParser';
 import {
   ChartConfigWithOptDateRange,
   ChartVariable,
@@ -677,15 +681,21 @@ function rewriteQuotedVariableReference(
   // is not a shape the grammar accepts, so a negated reference has to come out
   // as `NOT (…)` instead.
   const negated = node.field.startsWith('-');
-  const field = negated ? node.field.slice(1) : node.field;
+  // The field is parsed from the encoded sentinel string, so restore the
+  // original spelling of any special sequences (e.g. an escaped colon).
+  const field = decodeSpecialTokensToSource(
+    negated ? node.field.slice(1) : node.field,
+  );
   if (field === '') return undefined;
 
   const span = { start: fieldStart, end: sentinelEnd + 1 };
 
   // An empty selection stays the grouped no-op: `field:("")` compiles to `1=1`,
   // where a distributed `field:""` would compare against the empty string
-  // instead. `node.field` already carries any `-`, and `-field:(…)` parses.
-  if (values.length === 0) return { ...span, text: `${node.field}:("")` };
+  // instead. `-field:(…)` parses, so the `-` can stay on the field.
+  if (values.length === 0) {
+    return { ...span, text: `${negated ? '-' : ''}${field}:("")` };
+  }
 
   return {
     ...span,
@@ -714,11 +724,14 @@ function substituteTokensWithLuceneRewrites(
   // Build the sentinel string, a string with all variable references replaced by
   // unique placeholders, and record the locations of each of those placeholders.
   // eg. Transform `field:"$service" AND $other` into `field:"__hdx_sentinel_0" AND __hdx_sentinel_1`.
+  // Text is encoded the same way the renderer encodes before parsing, so the
+  // grammar accepts sequences like `http://`; all recorded offsets are in
+  // encoded space, and untouched output is decoded back to its source spelling.
   let sentinelString = '';
   const sentinelLocations: Sentinel[] = [];
   for (const token of tokens) {
     if (token.kind === 'text') {
-      sentinelString += token.text;
+      sentinelString += encodeSpecialTokens(token.text);
       continue;
     }
     const sentinel = `__hdx_sentinel_${sentinelLocations.length}`;
@@ -753,18 +766,22 @@ function substituteTokensWithLuceneRewrites(
       runStart,
     );
     if (exactMatchRewrite) {
-      const untouched = sentinelString.slice(runStart, exactMatchRewrite.start);
+      const untouched = decodeSpecialTokensToSource(
+        sentinelString.slice(runStart, exactMatchRewrite.start),
+      );
       const rewrite = exactMatchRewrite.text;
       rewrittenOutput += untouched + rewrite;
       runStart = exactMatchRewrite.end;
     } else {
-      const untouched = sentinelString.slice(runStart, region.offset);
+      const untouched = decodeSpecialTokensToSource(
+        sentinelString.slice(runStart, region.offset),
+      );
       const expanded = expandTokenWithoutLuceneRewrites(region.token, ctx);
       rewrittenOutput += untouched + expanded;
       runStart = region.offset + region.sentinel.length;
     }
   }
-  const remaining = sentinelString.slice(runStart);
+  const remaining = decodeSpecialTokensToSource(sentinelString.slice(runStart));
   return rewrittenOutput + remaining;
 }
 
