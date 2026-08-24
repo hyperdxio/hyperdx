@@ -230,12 +230,13 @@ describe('displayTypeToActiveTab', () => {
 // ---------------------------------------------------------------------------
 
 describe('TABS_WITH_GENERATED_SQL', () => {
-  it('includes table, time, number, pie, bar, heatmap', () => {
+  it('includes table, time, number, pie, bar, treemap, heatmap', () => {
     expect(TABS_WITH_GENERATED_SQL.has('table')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('time')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('number')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('pie')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('bar')).toBe(true);
+    expect(TABS_WITH_GENERATED_SQL.has('treemap')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('heatmap')).toBe(true);
   });
 
