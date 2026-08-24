@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Divider, Group, Tooltip } from '@mantine/core';
 import {
   IconBracketsContain,
   IconChartBar,
@@ -28,8 +27,9 @@ export type SearchView =
   | 'patterns';
 
 const DEFAULT_SEARCH_VIEW: SearchView = 'list';
+export const DEFAULT_CHART_VIEW: SearchView = 'timeseries';
 
-type SearchViewMeta = {
+export type SearchViewMeta = {
   value: SearchView;
   label: string;
   icon: React.ReactNode;
@@ -119,6 +119,36 @@ export function isAggregatedSearchView(view: SearchView): boolean {
   return SEARCH_VIEWS.find(v => v.value === view)?.aggregated ?? false;
 }
 
+export function getSearchViewMeta(
+  view: SearchView,
+): SearchViewMeta | undefined {
+  return SEARCH_VIEWS.find(v => v.value === view);
+}
+
+/** Event vs chart views offered for this source (and SQL chart-only mode). */
+export function getVisibleSearchViews({
+  sourceKind,
+  chartTypesOnly = false,
+}: {
+  sourceKind?: SourceKind;
+  chartTypesOnly?: boolean;
+}): SearchViewMeta[] {
+  return SEARCH_VIEWS.filter(v => {
+    if (v.hiddenInClickhouseBuild && IS_CLICKHOUSE_BUILD) return false;
+    if (v.sourceKinds && (!sourceKind || !v.sourceKinds.includes(sourceKind))) {
+      return false;
+    }
+    // Metric sources have no raw rows, so only aggregated chart views
+    // (time series / number / table / bar / pie / treemap) make sense —
+    // the List, Event deltas, and Event patterns views are hidden.
+    if (sourceKind === SourceKind.Metric && !v.aggregated) return false;
+    // SQL mode renders a single raw-SQL statement as a chart display type,
+    // so only the aggregated (chart) views apply.
+    if (chartTypesOnly && !v.aggregated) return false;
+    return true;
+  });
+}
+
 /** Views that keep the top time histogram above the results. */
 export function viewShowsHistogram(view: SearchView): boolean {
   return view === 'list' || view === 'patterns';
@@ -159,75 +189,4 @@ export function useSearchView(): [SearchView, (view: SearchView) => void] {
   return [view, setView];
 }
 
-export function SearchViewSwitcher({
-  value,
-  onChange,
-  sourceKind,
-  chartTypesOnly = false,
-}: {
-  value: SearchView;
-  onChange: (view: SearchView) => void;
-  sourceKind?: SourceKind;
-  /**
-   * When true, only the aggregated chart views are shown. Used by SQL mode,
-   * where the switcher picks a raw-SQL display type (the aggregated views map
-   * 1:1 to the raw-SQL display types) rather than a builder view.
-   */
-  chartTypesOnly?: boolean;
-}) {
-  const options = useMemo(
-    () =>
-      SEARCH_VIEWS.filter(v => {
-        if (v.hiddenInClickhouseBuild && IS_CLICKHOUSE_BUILD) return false;
-        if (
-          v.sourceKinds &&
-          (!sourceKind || !v.sourceKinds.includes(sourceKind))
-        )
-          return false;
-        // Metric sources have no raw rows, so only aggregated chart views
-        // (time series / number / table / bar / pie / treemap) make sense —
-        // the List, Event deltas, and Event patterns views are hidden.
-        if (sourceKind === SourceKind.Metric && !v.aggregated) return false;
-        // SQL mode renders a single raw-SQL statement as a chart display type,
-        // so only the aggregated (chart) views apply.
-        if (chartTypesOnly && !v.aggregated) return false;
-        return true;
-      }),
-    [sourceKind, chartTypesOnly],
-  );
-
-  // Group raw (non-aggregated) views apart from the chart types so the strip of
-  // icons reads as two related clusters instead of one undifferentiated row.
-  const rawViews = options.filter(o => !o.aggregated);
-  const chartViews = options.filter(o => o.aggregated);
-
-  const renderOption = (option: SearchViewMeta) => (
-    <Tooltip label={option.label} key={option.value} fz="xs" color="gray">
-      <ActionIcon
-        variant={value === option.value ? 'primary' : 'subtle'}
-        color={value === option.value ? undefined : 'gray'}
-        size="md"
-        onClick={() => onChange(option.value)}
-        aria-label={option.label}
-        data-active={value === option.value || undefined}
-      >
-        {option.icon}
-      </ActionIcon>
-    </Tooltip>
-  );
-
-  return (
-    <Group
-      gap={2}
-      wrap="nowrap"
-      className="bg-muted px-1 py-1 rounded"
-      data-testid="search-view-switcher"
-    >
-      {rawViews.map(renderOption)}
-      {rawViews.length > 0 && chartViews.length > 0 && (
-        <Divider orientation="vertical" mx={4} my={2} />
-      )}
-      {chartViews.map(renderOption)}
-    </Group>
-  );
-}
+export { SearchViewSwitcher } from './SearchViewSwitcher';
