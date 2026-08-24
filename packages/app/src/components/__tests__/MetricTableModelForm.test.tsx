@@ -123,18 +123,20 @@ function autofilledTables() {
     .map(([path, value]) => [path, value]);
 }
 
-const SAVED_SOURCE = fromPartial<TSource>({
-  id: 'metric-source-1',
-  kind: SourceKind.Metric,
-  name: 'Metrics',
-  connection: 'conn-1',
-  from: { databaseName: 'otel_v2', tableName: '' },
-  timestampValueExpression: 'TimeUnix',
-  metricTables: {
-    gauge: 'otel_metrics_gauge',
-    sum: 'otel_metrics_sum',
+const SAVED_SOURCE = fromPartial<Extract<TSource, { kind: SourceKind.Metric }>>(
+  {
+    id: 'metric-source-1',
+    kind: SourceKind.Metric,
+    name: 'Metrics',
+    connection: 'conn-1',
+    from: { databaseName: 'otel_v2', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    metricTables: {
+      gauge: 'otel_metrics_gauge',
+      sum: 'otel_metrics_sum',
+    },
   },
-});
+);
 
 describe('MetricTableModelForm metric table autofill', () => {
   beforeEach(() => {
@@ -237,13 +239,11 @@ describe('MetricTableModelForm metric table autofill', () => {
   // A saved source of another kind switched over to OTEL Metrics has no metric
   // tables to preserve, so it autofills like a new source.
   it('autofills for an existing source switched to the metrics kind', async () => {
+    const { metricTables: _metricTables, ...savedSourceWithoutMetricTables } =
+      SAVED_SOURCE;
     savedSource = fromPartial<TSource>({
-      id: SAVED_SOURCE.id,
+      ...savedSourceWithoutMetricTables,
       kind: SourceKind.Log,
-      name: SAVED_SOURCE.name,
-      connection: SAVED_SOURCE.connection,
-      from: SAVED_SOURCE.from,
-      timestampValueExpression: SAVED_SOURCE.timestampValueExpression,
     });
 
     renderHarness(
