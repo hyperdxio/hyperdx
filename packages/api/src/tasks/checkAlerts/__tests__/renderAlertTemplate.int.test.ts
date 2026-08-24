@@ -580,6 +580,48 @@ describe('per-event notification cap', () => {
     ).toContain(configured._id.toString());
   });
 
+  // A configured channel and an `@mention` must deliver byte-identical bodies.
+  // Both render through the same Handlebars instance (the one with `is_match`
+  // enabled), and only that instance's output is ever delivered — the body
+  // returned by renderAlertTemplate is rendered separately, with `is_match`
+  // suppressed, and goes to the caller rather than to a channel. Pinned here
+  // so the two delivery paths cannot drift.
+  it('delivers the same body to a configured channel and a mentioned one', async () => {
+    const configured = makeWebhook(1);
+    const mentioned = makeWebhook(2);
+    const teamWebhooksById = new Map(
+      [configured, mentioned].map(w => [w._id.toString(), w]),
+    );
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: `{{#is_match "group" "http"}}routed{{/is_match}} @webhook-${mentioned._id.toString()}`,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView({ group: 'http' }),
+        alert: {
+          ...makeSearchView().alert,
+          channel: { type: 'webhook', webhookId: configured._id.toString() },
+          channels: [{ type: 'webhook', webhookId: configured._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(2);
+    const bodies = new Set(dispatched.map(j => j.message.body));
+    expect(bodies.size).toBe(1);
+    // And the routing block really is present, so this is not passing on two
+    // empty strings.
+    expect([...bodies][0]).toContain('routed');
+  });
+
   // A repeat of a target that is already queued is a no-op, so it must not be
   // reported as a target the cap turned away.
   it('does not report a duplicate at the cap as a dropped target', async () => {
