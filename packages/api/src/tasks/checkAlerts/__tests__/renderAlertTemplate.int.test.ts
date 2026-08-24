@@ -540,6 +540,46 @@ describe('per-event notification cap', () => {
       url: 'https://hooks.slack.com/services/x',
     });
 
+  // The alert's own channels used to be appended to the template as
+  // `@webhook-<id>` mentions, after whatever the user wrote — so a message
+  // body carrying CAP mentions consumed every slot and the configured channel,
+  // the one target the alert was actually set up to notify, was never reached.
+  it('notifies a configured channel even when the body is full of mentions', async () => {
+    const configured = makeWebhook(999);
+    const mentioned = Array.from({ length: CAP }, (_, i) => makeWebhook(i));
+    const teamWebhooksById = new Map(
+      [configured, ...mentioned].map(w => [w._id.toString(), w]),
+    );
+    const template = mentioned
+      .map(w => `@webhook-${w._id.toString()}`)
+      .join(' ');
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channel: { type: 'webhook', webhookId: configured._id.toString() },
+          channels: [{ type: 'webhook', webhookId: configured._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(
+      dispatched.map(j => j.populatedChannel.channel._id.toString()),
+    ).toContain(configured._id.toString());
+  });
+
   // A repeat of a target that is already queued is a no-op, so it must not be
   // reported as a target the cap turned away.
   it('does not report a duplicate at the cap as a dropped target', async () => {
