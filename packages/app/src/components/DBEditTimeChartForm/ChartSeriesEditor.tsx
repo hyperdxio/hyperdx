@@ -86,6 +86,10 @@ type ChartSeriesEditorProps = {
   /** Commit URL/query immediately on agg and metric picks (Explore). */
   eagerSubmit?: boolean;
   groupByPlaceholder?: string;
+  /** Override letter-badge visibility. Defaults to formula-capable sources. */
+  showSeriesRef?: boolean;
+  /** When set, the A/B badge inserts this letter into the focused formula. */
+  onInsertSeriesRef?: (letter: string) => void;
 };
 
 export function ChartSeriesEditor({
@@ -112,6 +116,8 @@ export function ChartSeriesEditor({
   clearErrors,
   eagerSubmit = false,
   groupByPlaceholder = 'SQL columns',
+  showSeriesRef,
+  onInsertSeriesRef,
 }: ChartSeriesEditorProps) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -258,6 +264,10 @@ export function ChartSeriesEditor({
       ? getColorFromCSSToken(seriesColor)
       : COLORS[index % COLORS.length];
   const canRemove = (index ?? -1) > 0 || length > 1;
+  const seriesRef = indexToSeriesRef(index);
+  const showRef =
+    (showSeriesRef ?? isFormulaSourceKind(tableSource?.kind)) &&
+    seriesRef != null;
 
   return (
     <>
@@ -266,16 +276,34 @@ export function ChartSeriesEditor({
         color={swatchColor}
         onColorClick={showColor ? openSeriesColor : undefined}
         titleExtra={
-          isFormulaSourceKind(tableSource?.kind) ? (
-            <Tooltip label="Reference this series in a formula by this letter">
+          showRef ? (
+            <Tooltip
+              label={
+                onInsertSeriesRef
+                  ? 'Insert in formula'
+                  : 'Reference this series in a formula by this letter'
+              }
+            >
               <Badge
                 size="sm"
                 radius="sm"
                 variant="light"
                 color="gray"
                 data-testid="series-ref-badge"
+                {...(onInsertSeriesRef
+                  ? {
+                      component: 'button' as const,
+                      type: 'button' as const,
+                      onClick: () => {
+                        if (seriesRef != null) {
+                          onInsertSeriesRef(seriesRef);
+                        }
+                      },
+                      style: { cursor: 'pointer' },
+                    }
+                  : {})}
               >
-                {indexToSeriesRef(index) ?? index + 1}
+                {seriesRef}
               </Badge>
             </Tooltip>
           ) : undefined

@@ -1,12 +1,22 @@
 import { useCallback, useMemo } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { isFormulaSourceKind } from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Group, NumberInput, Stack, Text } from '@mantine/core';
-import { IconCirclePlus } from '@tabler/icons-react';
+import { IconCirclePlus, IconMathFunction } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { ChartSeriesEditor } from '@/components/DBEditTimeChartForm/ChartSeriesEditor';
+import {
+  ExploreFormulaCard,
+  useFormulaLetterInsert,
+} from '@/components/Explore/ExploreFormulaCard';
+import {
+  canAddExploreFormula,
+  createEmptyExploreFormula,
+  exploreViewSupportsFormulas,
+} from '@/components/Search/exploreFormulas';
 import {
   canAddExploreSeries,
   createEmptyExploreSeries,
@@ -38,8 +48,10 @@ export function ExploreSeriesList({
     () => ({
       series: config.series,
       groupBy: config.groupBy,
+      formulas: config.formulas,
+      showOperandSeries: config.showOperandSeries,
     }),
-    [config.series, config.groupBy],
+    [config.series, config.groupBy, config.formulas, config.showOperandSeries],
   );
 
   const { control, setValue, getValues, clearErrors, formState } =
@@ -52,11 +64,24 @@ export function ExploreSeriesList({
     name: 'series',
   });
 
+  const {
+    fields: formulaFields,
+    append: appendFormula,
+    remove: removeFormula,
+  } = useFieldArray({
+    control,
+    name: 'formulas',
+  });
+
   const commit = useCallback(() => {
     const values = getValues();
+    const formulas = values.formulas ?? [];
     onChange({
       series: values.series,
       groupBy: typeof values.groupBy === 'string' ? values.groupBy : '',
+      formulas,
+      showOperandSeries:
+        formulas.length === 0 ? true : (values.showOperandSeries ?? true),
     });
     onSubmit();
   }, [getValues, onChange, onSubmit]);
@@ -67,8 +92,6 @@ export function ExploreSeriesList({
         ...structuredClone(getValues(`series.${index}`)),
         alias: '',
       });
-      // Field array updates are flushed before the next commit so getValues
-      // includes the copy.
       queueMicrotask(commit);
     },
     [insert, getValues, commit],
@@ -95,6 +118,31 @@ export function ExploreSeriesList({
     queueMicrotask(commit);
   }, [append, commit]);
 
+  const handleAddFormula = useCallback(() => {
+    appendFormula(createEmptyExploreFormula());
+    queueMicrotask(commit);
+  }, [appendFormula, commit]);
+
+  const handleRemoveFormula = useCallback(
+    (index: number) => {
+      removeFormula(index);
+      queueMicrotask(commit);
+    },
+    [removeFormula, commit],
+  );
+
+  const {
+    insertIntoFormula,
+    handleInsertSeriesRef,
+    registerInput,
+    onExpressionFocus,
+  } = useFormulaLetterInsert({
+    getValues,
+    setValue,
+    commit,
+    formulaCount: formulaFields.length,
+  });
+
   const tableConnection = useMemo(
     () => tcFromSource(tableSource),
     [tableSource],
@@ -102,7 +150,15 @@ export function ExploreSeriesList({
   const databaseName = tableSource?.from.databaseName ?? '';
   const tableName = tableSource?.from.tableName ?? '';
 
-  const canAdd = canAddExploreSeries(view, fields.length);
+  const hasFormulas = formulaFields.length > 0;
+  const canAdd = canAddExploreSeries(view, fields.length, hasFormulas);
+  const canAddFormula = canAddExploreFormula(
+    view,
+    formulaFields.length,
+    tableSource?.kind,
+  );
+  const showSeriesRef =
+    exploreViewSupportsFormulas(view) && isFormulaSourceKind(tableSource?.kind);
   const showGroupByOnCard = fields.length === 1 && view !== 'number';
   const showSharedGroupBy = fields.length > 1 && view !== 'number';
   const showLimit =
@@ -140,8 +196,32 @@ export function ExploreSeriesList({
           clearErrors={clearErrors}
           eagerSubmit
           groupByPlaceholder={defaultGroupBy || 'SQL columns'}
+          showSeriesRef={showSeriesRef}
+          onInsertSeriesRef={showSeriesRef ? handleInsertSeriesRef : undefined}
         />
       ))}
+      {exploreViewSupportsFormulas(view) &&
+        formulaFields.map((field, index) => (
+          <ExploreFormulaCard
+            key={field.id}
+            control={control}
+            index={index}
+            namePrefix={`formulas.${index}.`}
+            seriesCount={fields.length}
+            formulaCount={formulaFields.length}
+            onRemoveFormula={handleRemoveFormula}
+            onSubmit={commit}
+            onInsertSeriesRef={letter => insertIntoFormula(index, letter)}
+            registerInput={el => registerInput(index, el)}
+            onExpressionFocus={() => onExpressionFocus(index)}
+            showSeriesToggle={index === 0 && view !== 'number'}
+            showOperandSeries={config.showOperandSeries}
+            onShowOperandSeriesChange={value => {
+              setValue('showOperandSeries', value);
+              queueMicrotask(commit);
+            }}
+          />
+        ))}
       {showSharedGroupBy && (
         <Group gap="xs" wrap="nowrap" align="center">
           <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
@@ -160,14 +240,25 @@ export function ExploreSeriesList({
         </Group>
       )}
       <Group gap="xs" justify="space-between" wrap="wrap">
-        {canAdd ? (
-          <Button variant="subtle" size="sm" onClick={handleAddSeries}>
-            <IconCirclePlus size={14} className="me-2" />
-            Add series
-          </Button>
-        ) : (
-          <div />
-        )}
+        <Group gap="xs">
+          {canAdd && (
+            <Button variant="subtle" size="sm" onClick={handleAddSeries}>
+              <IconCirclePlus size={14} className="me-2" />
+              Add series
+            </Button>
+          )}
+          {canAddFormula && (
+            <Button
+              variant="subtle"
+              size="sm"
+              onClick={handleAddFormula}
+              data-testid="add-formula-button"
+            >
+              <IconMathFunction size={14} className="me-2" />
+              Add formula
+            </Button>
+          )}
+        </Group>
         {showLimit && (
           <Group gap="xs" wrap="nowrap">
             <Text size="xs" c="dimmed">

@@ -148,6 +148,7 @@ import { SeveritySummary } from './components/Explore/SeveritySummary';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import { exploreViewSupportsFormulas } from './components/Search/exploreFormulas';
 import {
   type AggSortField,
   exploreSeriesHaveMetricNames,
@@ -2105,6 +2106,12 @@ function DBExplorePage() {
       }
     }
 
+    const formulas = exploreViewSupportsFormulas(view)
+      ? aggConfig.formulas.filter(
+          formula => formula.expression.trim().length > 0,
+        )
+      : [];
+
     return {
       ...chartConfig,
       ...(searchedMetricSource
@@ -2125,6 +2132,13 @@ function DBExplorePage() {
       seriesLimit: view === 'timeseries' ? undefined : aggConfig.limit,
       alignDateRangeToGranularity: false,
       dateRangeEndInclusive: true,
+      ...(formulas.length > 0
+        ? {
+            formulas,
+            showOperandSeries:
+              view === 'number' ? false : aggConfig.showOperandSeries,
+          }
+        : {}),
     } as BuilderChartConfigWithDateRange;
   }, [
     chartConfig,
@@ -2157,6 +2171,8 @@ function DBExplorePage() {
       granularity: aggViewChartConfig.granularity,
       seriesLimit: aggViewChartConfig.seriesLimit,
       with: aggViewChartConfig.with,
+      formulas: aggViewChartConfig.formulas,
+      showOperandSeries: aggViewChartConfig.showOperandSeries,
     } as SavedChartConfig;
   }, [aggViewChartConfig, savedSearch?.name, searchedConfig]);
 

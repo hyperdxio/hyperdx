@@ -1,10 +1,16 @@
 import { useCallback, useMemo } from 'react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import {
+  parseAsBoolean,
+  parseAsInteger,
+  parseAsString,
+  useQueryStates,
+} from 'nuqs';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 
 import { SavedChartConfigWithSelectArray } from '@/components/ChartEditor/types';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
+import { type ExploreFormula, parseExploreFormulas } from './exploreFormulas';
 import type { SearchView } from './searchViews';
 
 const LEGACY_AGG_FNS = new Set<string>([
@@ -60,6 +66,9 @@ export interface SearchAggConfig {
   sortDir: AggSortDirection;
   /** Line vs. bar for the Time series view. */
   chartType: TimeseriesChartType;
+  formulas: ExploreFormula[];
+  /** When formulas exist: show operand series in the chart. Default on. */
+  showOperandSeries: boolean;
 }
 
 export function createEmptyExploreSeries(
@@ -81,9 +90,12 @@ export function exploreSeriesHaveMetricNames(series: ExploreSeries[]): boolean {
 export function canAddExploreSeries(
   view: SearchView,
   seriesCount: number,
+  hasFormulas = false,
 ): boolean {
   if (view === 'pie' || view === 'bar') return false;
-  if (view === 'number') return seriesCount < 2;
+  // Number is capped at 2 series unless a formula needs extra operands
+  // (e.g. A / (A + B + C)), matching Chart Explorer.
+  if (view === 'number' && !hasFormulas) return seriesCount < 2;
   return true;
 }
 
@@ -207,6 +219,8 @@ export function useSearchAggConfig(): [
 ] {
   const [state, setState] = useQueryStates({
     series: parseAsJsonEncoded(parseExploreSeries),
+    formulas: parseAsJsonEncoded(parseExploreFormulas),
+    showOperandSeries: parseAsBoolean.withDefault(true),
     agg: parseAsString,
     aggExpr: parseAsString,
     metric: parseAsString,
@@ -220,6 +234,8 @@ export function useSearchAggConfig(): [
 
   const {
     series: seriesParam,
+    formulas: formulasParam,
+    showOperandSeries,
     agg,
     aggExpr,
     metric,
@@ -241,6 +257,11 @@ export function useSearchAggConfig(): [
     return [DEFAULT_EXPLORE_SERIES];
   }, [seriesParam, agg, aggExpr, metric, metricType]);
 
+  const formulas = useMemo<ExploreFormula[]>(
+    () => formulasParam ?? [],
+    [formulasParam],
+  );
+
   const config = useMemo<SearchAggConfig>(
     () => ({
       series,
@@ -249,8 +270,10 @@ export function useSearchAggConfig(): [
       sort: sort as AggSortField,
       sortDir: sortDir as AggSortDirection,
       chartType: ts as TimeseriesChartType,
+      formulas,
+      showOperandSeries,
     }),
-    [series, groupBy, limit, sort, sortDir, ts],
+    [series, groupBy, limit, sort, sortDir, ts, formulas, showOperandSeries],
   );
 
   const setConfig = useCallback(
@@ -266,6 +289,14 @@ export function useSearchAggConfig(): [
               metric: null,
               metricType: null,
             }
+          : {}),
+        ...(patch.formulas != null
+          ? {
+              formulas: patch.formulas.length > 0 ? patch.formulas : null,
+            }
+          : {}),
+        ...(patch.showOperandSeries != null
+          ? { showOperandSeries: patch.showOperandSeries }
           : {}),
         ...(patch.groupBy != null ? { groupBy: patch.groupBy } : {}),
         ...(patch.limit != null ? { limit: patch.limit } : {}),
