@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
+import { defaultRedact } from '@/components/RevealSnippet/RevealSnippet';
 import ApiKeysSection from '@/components/TeamSettings/ApiKeysSection';
 import { useConfirm } from '@/useConfirm';
 
@@ -33,13 +34,6 @@ const mockUseRotatePersonalAccessKey: jest.Mock = jest.mocked(
   api.useRotatePersonalAccessKey,
 );
 const mockUseConfirm: jest.Mock = jest.mocked(useConfirm);
-
-/** Mirror of `RevealSnippet`'s `defaultRedact`, kept local so the test
- *  asserts the observable masked string, not component internals. */
-function maskLikeDefault(value: string): string {
-  const prefix = value.slice(0, 4);
-  return `${prefix}${'•'.repeat(Math.max(0, value.length - prefix.length))}`;
-}
 
 /** Options object the component hands to `mutate`, captured so the tests can
  *  drive `onSuccess` / `onError` without a real mutation. */
@@ -117,10 +111,10 @@ describe('ApiKeysSection', () => {
     // Masked inputs: the value is on the input's `value`, not text content.
     const ingestion = screen.getByTestId('ingestion-api-key');
     const personal = screen.getByTestId('personal-access-key');
-    // maskLikeDefault preserves the real length, so asserting the exact masked
+    // defaultRedact preserves the real length, so asserting the exact masked
     // string also covers "the field width doesn't jump on reveal".
-    expect(ingestion).toHaveValue(maskLikeDefault('ingestion_key_xyz'));
-    expect(personal).toHaveValue(maskLikeDefault('personal_key_abc'));
+    expect(ingestion).toHaveValue(defaultRedact('ingestion_key_xyz'));
+    expect(personal).toHaveValue(defaultRedact('personal_key_abc'));
     expect(ingestion).not.toHaveValue('ingestion_key_xyz');
     expect(personal).not.toHaveValue('personal_key_abc');
   });

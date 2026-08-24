@@ -214,4 +214,42 @@ describe('RevealSnippet', () => {
       screen.getByRole('button', { name: /reveal key/i }),
     ).toBeInTheDocument();
   });
+
+  describe('copy without revealing', () => {
+    // userEvent.setup() attaches its own clipboard stub; assert against it via
+    // readText() rather than mocking navigator.clipboard ourselves.
+    it('RevealSnippet.Copy puts the real value on the clipboard while masked', async () => {
+      const user = userEvent.setup();
+      renderSnippet(
+        <RevealSnippet value={SNIPPET} secrets={[REAL_KEY]}>
+          <RevealSnippet.Copy />
+          <RevealSnippet.Code />
+        </RevealSnippet>,
+      );
+
+      // Still masked on screen...
+      expect(screen.queryByText(new RegExp(REAL_KEY))).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /copy/i }));
+
+      // ...but the clipboard got the real, unmasked snippet.
+      await expect(navigator.clipboard.readText()).resolves.toBe(SNIPPET);
+    });
+
+    it('RevealSnippet.Input puts the real value on the clipboard while masked', async () => {
+      const user = userEvent.setup();
+      renderSnippet(
+        <RevealSnippet value={REAL_KEY} secrets={[REAL_KEY]}>
+          <RevealSnippet.Input aria-label="API key" copyLabel="Copy key" />
+        </RevealSnippet>,
+      );
+
+      // Field shows the masked value, not the real key.
+      expect(screen.getByLabelText('API key')).not.toHaveValue(REAL_KEY);
+
+      await user.click(screen.getByRole('button', { name: /copy key/i }));
+
+      await expect(navigator.clipboard.readText()).resolves.toBe(REAL_KEY);
+    });
+  });
 });

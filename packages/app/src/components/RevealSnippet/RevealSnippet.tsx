@@ -55,9 +55,20 @@ const DEFAULT_VISIBLE_PREFIX = 4;
  * Masks a whole value as prefix + dots, padded to the original length so the
  * field width doesn't jump on reveal. Applied automatically to bare-string
  * `secrets` entries (the whole value is the secret, e.g. an API key).
+ *
+ * The visible prefix is clamped to at most half the value so short inputs
+ * still get masked rather than shown in full (a 4-char value wouldn't be
+ * redacted at all if the whole thing were kept as prefix).
+ *
+ * Exported so tests and callers can assert against the exact masked string
+ * instead of re-deriving it.
  */
-function defaultRedact(value: string): string {
-  const prefix = value.slice(0, DEFAULT_VISIBLE_PREFIX);
+export function defaultRedact(value: string): string {
+  const visible = Math.min(
+    DEFAULT_VISIBLE_PREFIX,
+    Math.floor(value.length / 2),
+  );
+  const prefix = value.slice(0, visible);
   const maskedLength = Math.max(0, value.length - prefix.length);
   return `${prefix}${'•'.repeat(maskedLength)}`;
 }
@@ -75,12 +86,19 @@ function normalizeSecret(entry: SecretInput | null | undefined): Secret | null {
   return Array.isArray(entry) && entry[0] ? entry : null;
 }
 
-/** Replaces every occurrence of each secret's real value with its stand-in. */
+/**
+ * Replaces every occurrence of each secret's real value with its stand-in.
+ * Longer real values are substituted first so that when one secret's real
+ * value is a substring of another, the more specific (longer) match wins and
+ * the replacement is order-independent.
+ */
 function redact(text: string, secrets: readonly Secret[]): string {
-  return secrets.reduce<string>(
-    (acc, [real, redacted]) => acc.split(real).join(redacted),
-    text,
-  );
+  return [...secrets]
+    .sort((a, b) => b[0].length - a[0].length)
+    .reduce<string>(
+      (acc, [real, redacted]) => acc.split(real).join(redacted),
+      text,
+    );
 }
 
 interface RevealSnippetProps {
