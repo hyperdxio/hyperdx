@@ -8,9 +8,10 @@ import {
   getVariableReferences,
   hasVariableMacro,
   substituteChartConfigVariables,
-  substituteVariables,
   substituteVariablesForLanguage,
+  substituteWithContext,
   validateVariableReferencesInTemplate,
+  type VariableContext,
 } from '@/variables';
 
 const variable = (
@@ -18,6 +19,22 @@ const variable = (
   values: string[],
   expression?: string,
 ): ChartVariable => ({ name, values, expression });
+
+/**
+ * `substituteWithContext` with the SQL-ish defaults, so each case only spells
+ * out the part of the context it is exercising.
+ */
+const substituteVariables = (
+  input: string,
+  variables: ChartVariable[],
+  overrides: Partial<Omit<VariableContext, 'variables'>> = {},
+) =>
+  substituteWithContext(input, {
+    variables,
+    defaultFormat: 'sqlstring',
+    inputLanguage: 'sql',
+    ...overrides,
+  });
 
 const SERVICE = variable('service', ['api', 'web'], 'ServiceName');
 const EMPTY_SERVICE = variable('service', [], 'ServiceName');
@@ -156,6 +173,52 @@ describe('substituteVariables', () => {
           defaultFormat: 'regex',
         }),
       ).toBe('{service="(api|web)"}');
+    });
+  });
+
+  describe('inputLanguage', () => {
+    // `defaultFormat` says how a reference's values are rendered;
+    // `inputLanguage` says what will parse the result. Only the latter turns on
+    // the Lucene handling, so the two stay independently settable.
+    it('renders lucene values without any lucene handling by default', () => {
+      // Values render as lucene terms, but the template is still treated as
+      // SQL: no quoted-reference rewrite, and the macros expand.
+      expect(
+        substituteVariables('ServiceName:"$service"', [SERVICE], {
+          defaultFormat: 'lucene',
+        }),
+      ).toBe('ServiceName:"("api" OR "web")"');
+      expect(
+        substituteVariables('$__filter(ServiceName, $service)', [SERVICE], {
+          defaultFormat: 'lucene',
+        }),
+      ).toBe("(ServiceName IN ('api', 'web'))");
+    });
+
+    it('turns on the lucene handling when the input is lucene', () => {
+      expect(
+        substituteVariables('ServiceName:"$service"', [SERVICE], {
+          defaultFormat: 'lucene',
+          inputLanguage: 'lucene',
+        }),
+      ).toBe('(ServiceName:"api" OR ServiceName:"web")');
+      expect(
+        substituteVariables('$__filter(ServiceName, $service)', [SERVICE], {
+          defaultFormat: 'lucene',
+          inputLanguage: 'lucene',
+        }),
+      ).toBe('$__filter(ServiceName, $service)');
+    });
+
+    it('leaves a reference asking for another format alone in lucene input', () => {
+      // The rewrite is per-reference: it only applies where the values would
+      // render as lucene terms in the first place.
+      expect(
+        substituteVariables('ServiceName:"${service:csv}"', [SERVICE], {
+          defaultFormat: 'lucene',
+          inputLanguage: 'lucene',
+        }),
+      ).toBe('ServiceName:"api,web"');
     });
   });
 
@@ -448,6 +511,194 @@ describe('substituteVariablesForLanguage', () => {
         'lucene',
       ),
     ).toBe('ServiceName:("")');
+  });
+
+  describe('quoted references expand to exact matches', () => {
+    // Quoting a reference is how an author opts into matching each selected
+    // value exactly: the lucene→SQL layer compiles `field:"a"` as equality,
+    // where a group-internal `("a")` becomes a substring match. The distributed
+    // shapes below are pinned end-to-end in queryParser.test.ts.
+    const expand = (template: string, variables: ChartVariable[] = [SERVICE]) =>
+      substituteVariablesForLanguage(template, variables, 'lucene');
+
+    it('is opt-in: quoting distributes the field, leaving it grouped does not', () => {
+      expect(expand('ServiceName:"$service"')).toBe(
+        '(ServiceName:"api" OR ServiceName:"web")',
+      );
+      expect(expand('ServiceName:$service')).toBe(
+        'ServiceName:("api" OR "web")',
+      );
+    });
+
+    it('distributes over a single value', () => {
+      expect(
+        expand('ServiceName:"$service"', [variable('service', ['api'])]),
+      ).toBe('(ServiceName:"api")');
+    });
+
+    it('distributes across the whitespace the grammar allows after the colon', () => {
+      // `ServiceName: "$service"` parses to the same AST as the unspaced form
+      // — same field, same term — so it has to expand the same way.
+      expect(expand('ServiceName: "$service"')).toBe(
+        '(ServiceName:"api" OR ServiceName:"web")',
+      );
+      expect(expand('SeverityText:error AND ServiceName:  "$service"')).toBe(
+        'SeverityText:error AND (ServiceName:"api" OR ServiceName:"web")',
+      );
+    });
+
+    it('distributes over a dotted field', () => {
+      expect(expand('LogAttributes.service:"$service"')).toBe(
+        '(LogAttributes.service:"api" OR LogAttributes.service:"web")',
+      );
+    });
+
+    it('distributes over a Map key and a JSON path', () => {
+      // Both are just dotted fields to the grammar, so the field repeats
+      // verbatim per value. queryParser.test.ts pins what each compiles to —
+      // notably that a Map key keeps its `indexHint(mapContains(...))` on every
+      // distributed term.
+      expect(expand('LogAttributes.error.message:"$service"')).toBe(
+        '(LogAttributes.error.message:"api" OR LogAttributes.error.message:"web")',
+      );
+      expect(expand('ResourceAttributesJSON.error.message:"$service"')).toBe(
+        '(ResourceAttributesJSON.error.message:"api" OR ResourceAttributesJSON.error.message:"web")',
+      );
+    });
+
+    it('distributes over a Map key holding a value that needs escaping', () => {
+      expect(
+        expand('LogAttributes.k8s.pod.name:"$service"', [
+          variable('service', ['pod-a"1', 'pod\\b']),
+        ]),
+      ).toBe(
+        '(LogAttributes.k8s.pod.name:"pod-a\\"1" OR LogAttributes.k8s.pod.name:"pod\\\\b")',
+      );
+    });
+
+    it('keeps the no-op form for a Map key and a JSON path with no selection', () => {
+      expect(
+        expand('LogAttributes.error.message:"$service"', [EMPTY_SERVICE]),
+      ).toBe('LogAttributes.error.message:("")');
+      expect(
+        expand('ResourceAttributesJSON.error.message:"$service"', [
+          EMPTY_SERVICE,
+        ]),
+      ).toBe('ResourceAttributesJSON.error.message:("")');
+    });
+
+    it('distributes over a field with an escaped colon', () => {
+      expect(expand('foo\\:bar:"$service"')).toBe(
+        '(foo\\:bar:"api" OR foo\\:bar:"web")',
+      );
+    });
+
+    it('escapes each value through the distributed path', () => {
+      expect(
+        expand('ServiceName:"$service"', [variable('service', ['a"b'])]),
+      ).toBe('(ServiceName:"a\\"b")');
+    });
+
+    it('distributes every quoted reference in a template', () => {
+      expect(
+        expand('ServiceName:"$service" AND Env:"$env"', [
+          SERVICE,
+          variable('env', ['prod']),
+        ]),
+      ).toBe('(ServiceName:"api" OR ServiceName:"web") AND (Env:"prod")');
+    });
+
+    it('keeps the surrounding parentheses of a wrapped reference', () => {
+      expect(expand('(ServiceName:"$service")')).toBe(
+        '((ServiceName:"api" OR ServiceName:"web"))',
+      );
+    });
+
+    it('turns a `-` negated reference into NOT, which the grammar can parse', () => {
+      // The fork parses `-field:x` with the `-` inside the field name, and
+      // `-(...)` is not a shape the grammar accepts.
+      expect(expand('-ServiceName:"$service"')).toBe(
+        'NOT (ServiceName:"api" OR ServiceName:"web")',
+      );
+      expect(expand('SeverityText:error AND -ServiceName:"$service"')).toBe(
+        'SeverityText:error AND NOT (ServiceName:"api" OR ServiceName:"web")',
+      );
+    });
+
+    it('leaves a spelled-out NOT in the text', () => {
+      expect(expand('NOT ServiceName:"$service"')).toBe(
+        'NOT (ServiceName:"api" OR ServiceName:"web")',
+      );
+    });
+
+    it('keeps the grouped no-op form for an empty selection', () => {
+      // `field:("")` compiles to `1=1`; a distributed `field:""` would compare
+      // the column against the empty string instead. The quotes are consumed
+      // either way, so the quoted spelling is safe before anything is selected.
+      expect(expand('ServiceName:"$service"', [EMPTY_SERVICE])).toBe(
+        'ServiceName:("")',
+      );
+      expect(expand('-ServiceName:"$service"', [EMPTY_SERVICE])).toBe(
+        '-ServiceName:("")',
+      );
+      expect(expand('ServiceName:$service', [EMPTY_SERVICE])).toBe(
+        'ServiceName:("")',
+      );
+    });
+
+    it('leaves a reference embedded in a longer phrase alone', () => {
+      // The phrase is more than the reference, so it is a phrase match rather
+      // than a selection.
+      expect(expand('ServiceName:"$service down"')).toBe(
+        'ServiceName:"("api" OR "web") down"',
+      );
+    });
+
+    it('leaves a bare reference grouped, since it has no field', () => {
+      expect(expand('$service')).toBe('("api" OR "web")');
+    });
+
+    it('leaves an unfielded quoted reference alone', () => {
+      // Nothing to distribute the values over.
+      expect(expand('"$service"')).toBe('"("api" OR "web")"');
+    });
+
+    it('leaves an already grouped reference alone', () => {
+      // The inner term parses with an implicit field, so there is no field on
+      // it to distribute.
+      expect(expand('ServiceName:("$service")')).toBe(
+        'ServiceName:("("api" OR "web")")',
+      );
+    });
+
+    it('leaves a reference that asked for another format alone', () => {
+      expect(expand('ServiceName:"${service:csv}"')).toBe(
+        'ServiceName:"api,web"',
+      );
+    });
+
+    it('leaves an unknown name verbatim', () => {
+      expect(expand('ServiceName:"$unknown"')).toBe('ServiceName:"$unknown"');
+    });
+
+    it('falls back to the plain expansion when the template will not parse', () => {
+      // `http://` only parses after `encodeSpecialTokens`, which the renderer
+      // applies and this preprocessor does not.
+      expect(expand('Url:http://example.com AND ServiceName:"$service"')).toBe(
+        'Url:http://example.com AND ServiceName:"("api" OR "web")"',
+      );
+    });
+
+    it('never distributes over a field that is itself a reference', () => {
+      // `$field:"$service"` parses with the *placeholder* standing in for the
+      // field, so rewriting would splice that placeholder into the output.
+      expect(
+        expand('$field:"$service"', [
+          variable('field', ['ServiceName']),
+          SERVICE,
+        ]),
+      ).toBe('("ServiceName"):"("api" OR "web")"');
+    });
   });
 });
 
@@ -1233,7 +1484,7 @@ describe('validateVariableReferencesInTemplate', () => {
       ).toEqual({ errors: [], warnings: [] });
     });
 
-    it('accepts a quoted reference: the lucene format quotes each value', () => {
+    it('accepts a quoted reference: quoting opts into exact matches', () => {
       expect(
         validate('ServiceName:"$service"', [SERVICE], { language: 'lucene' }),
       ).toEqual({ errors: [], warnings: [] });

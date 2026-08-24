@@ -74,7 +74,7 @@ function normalizeChExpression(expr: string): string {
   return expr.replace(/\s+/g, '').replace(/`/g, '');
 }
 
-const IMPLICIT_FIELD = '<implicit>';
+export const IMPLICIT_FIELD = '<implicit>';
 const RANGE_UNBOUNDED = '*';
 
 // Type guards for lucene AST types

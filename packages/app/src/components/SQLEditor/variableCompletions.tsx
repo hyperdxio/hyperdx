@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/macros';
 import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 import {
-  substituteVariables,
+  substituteWithContext,
   VARIABLE_FORMATS,
   VariableFormat,
 } from '@hyperdx/common-utils/dist/variables';
@@ -17,17 +17,22 @@ const VARIABLE_FORMAT_DESCRIPTIONS: Record<VariableFormat, string> = {
   sqlstring: "Quoted and comma-separated, escaped for SQL. e.g. 'a', 'b', 'c'",
   csv: 'Comma-separated and unquoted. Not SQL-escaped. e.g. a,b,c',
   regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
-  lucene: 'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c")',
+  lucene:
+    'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c"). Quote the reference (field:"$var") for exact-match behavior. Leave unquoted (field:$var) for substring matching.',
 };
 
-/** What `snippet` expands to against the variable's current selection. */
-function describeVariableExpansion(
+/** What `snippet` expands to in SQL against the variable's current selection. */
+function describeSqlVariableExpansion(
   snippet: string,
   variable: ChartVariable,
 ): string | undefined {
   let expansion: string;
   try {
-    expansion = substituteVariables(snippet, [variable]);
+    expansion = substituteWithContext(snippet, {
+      variables: [variable],
+      defaultFormat: 'sqlstring',
+      inputLanguage: 'sql',
+    });
   } catch {
     return undefined;
   }
@@ -77,7 +82,7 @@ function referenceCompletions(variable: ChartVariable): SQLCompletion[] {
 
   /** A static description and an expansion preview given the current selection */
   const help = (snippet: string, description: string) => {
-    const expansion = describeVariableExpansion(snippet, variable);
+    const expansion = describeSqlVariableExpansion(snippet, variable);
     return expansion ? completionInfo(description, expansion) : description;
   };
 
@@ -153,9 +158,10 @@ export type LuceneVariableSuggestion = {
 
 /** Expand references the way a Lucene expression is expanded at query time. */
 const substituteLucene = (text: string, variables: ChartVariable[]) =>
-  substituteVariables(text, variables, {
+  substituteWithContext(text, {
+    variables,
     defaultFormat: 'lucene',
-    disableMacros: true,
+    inputLanguage: 'lucene',
   });
 
 /**
@@ -174,7 +180,7 @@ export function buildLuceneVariableSuggestions(
     return {
       value: reference,
       label: reference,
-      description: `The selected values of ${variable.name}. Expands to: ${expansion}`,
+      description: `The selected values of ${variable.name}. Expands to: ${expansion} by default, or (Field:"value1" OR Field:"value1") when quoted like Field:"$${variable.name}".`,
     };
   });
 }
@@ -188,6 +194,10 @@ export function buildLuceneVariableSuggestions(
  * `("")`, which the English serializer reads as `'field' is <blank>` even
  * though that form filters nothing; leaving the reference as written is the
  * honest rendering of "no value chosen yet".
+ *
+ * Expansion can throw on a reference that is well-formed but not yet valid —
+ * `${name:l}` is a keystroke on the way to `${name:lucene}` — and this runs on
+ * every keystroke, so a failure falls back to the text as written.
  */
 export function expandLuceneVariablesForEnglishDisplay(
   text: string,
@@ -196,7 +206,12 @@ export function expandLuceneVariablesForEnglishDisplay(
   const selected = (variables ?? []).filter(
     variable => variable.values.length > 0,
   );
-  return selected.length > 0 ? substituteLucene(text, selected) : text;
+  if (selected.length === 0) return text;
+  try {
+    return substituteLucene(text, selected);
+  } catch {
+    return text;
+  }
 }
 
 /** Context providing in-scope dashboard variables for descendant inputs. */
