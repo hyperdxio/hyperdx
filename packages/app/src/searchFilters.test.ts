@@ -2,7 +2,11 @@ import { enableMapSet } from 'immer';
 import { Filter } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
-import { parseQuery, useSearchPageFilterState } from '@/searchFilters';
+import {
+  escapeFilterStateKeys,
+  parseQuery,
+  useSearchPageFilterState,
+} from '@/searchFilters';
 
 // Filter state stores values in Sets; the app enables immer's MapSet plugin at
 // startup, but this isolated hook test must enable it explicitly.
@@ -109,6 +113,31 @@ describe('canonical key escaping at the persistence boundary', () => {
     const HYPHEN_COLUMNS = new Set(['service-name']);
     const MAP_COLUMNS = new Set(['my-map']);
     const PLAIN_COLUMNS = new Set(['ServiceName']);
+    const JSON_COLUMNS = new Set(['ResourceAttributes']);
+
+    it('merges JSON filter keys that escape to the same SQL expression', () => {
+      expect(
+        escapeFilterStateKeys(
+          {
+            'ResourceAttributes.k8s.namespace.name': {
+              included: new Set(['production']),
+              excluded: new Set<string | boolean>(),
+            },
+            'toString(ResourceAttributes.`k8s`.`namespace`.`name`)': {
+              included: new Set(['staging']),
+              excluded: new Set(['development']),
+            },
+          },
+          JSON_COLUMNS,
+          JSON_COLUMNS,
+        ),
+      ).toEqual({
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`)': {
+          included: new Set(['production', 'staging']),
+          excluded: new Set(['development']),
+        },
+      });
+    });
 
     it('keeps the FilterState key clean but emits a quoted key to the URL', () => {
       const onFilterChange = jest.fn();
@@ -188,6 +217,199 @@ describe('canonical key escaping at the persistence boundary', () => {
       expect(Object.keys(result.current.filters)).toEqual(['service-name']);
       expect([...result.current.filters['service-name'].included]).toEqual([
         'a',
+      ]);
+    });
+
+    it('uses one clean JSON key for selection and clear interactions', () => {
+      const onFilterChange = jest.fn();
+      const searchQuery: Filter[] = [
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('production')",
+        },
+      ];
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery,
+          onFilterChange,
+          knownColumns: JSON_COLUMNS,
+          jsonColumns: JSON_COLUMNS,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue(
+          'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+          'staging',
+        );
+      });
+
+      expect(result.current.filters).toEqual({
+        'ResourceAttributes.k8s.namespace.name': {
+          included: new Set(['production', 'staging']),
+          excluded: new Set(),
+        },
+      });
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('production', 'staging')",
+        },
+      ]);
+
+      act(() => {
+        result.current.clearFilter(
+          'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+        );
+      });
+
+      expect(result.current.filters).toEqual({});
+      expect(onFilterChange).toHaveBeenLastCalledWith([]);
+    });
+
+    it('canonicalizes a persisted Map-style JSON filter after columns load', () => {
+      const onFilterChange = jest.fn();
+      const onCanonicalizeFilterChange = jest.fn();
+      const searchQuery: Filter[] = [
+        {
+          type: 'sql',
+          condition:
+            "ResourceAttributes['k8s.namespace.name'] IN ('production')",
+        },
+      ];
+      const { rerender } = renderHook(
+        ({ jsonColumns }: { jsonColumns: ReadonlySet<string> }) =>
+          useSearchPageFilterState({
+            searchQuery,
+            onFilterChange,
+            onCanonicalizeFilterChange,
+            knownColumns: new Set(['ResourceAttributes']),
+            jsonColumns,
+          }),
+        { initialProps: { jsonColumns: new Set<string>() } },
+      );
+
+      expect(onFilterChange).not.toHaveBeenCalled();
+      expect(onCanonicalizeFilterChange).not.toHaveBeenCalled();
+
+      rerender({ jsonColumns: new Set(['ResourceAttributes']) });
+
+      expect(onCanonicalizeFilterChange).toHaveBeenCalledWith([
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('production')",
+        },
+      ]);
+      expect(onFilterChange).not.toHaveBeenCalled();
+    });
+
+    it('merges stale forms of one JSON filter while canonicalizing', () => {
+      const onFilterChange = jest.fn();
+      const searchQuery: Filter[] = [
+        {
+          type: 'sql',
+          condition:
+            "ResourceAttributes['k8s.namespace.name'] IN ('production')",
+        },
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('staging')",
+        },
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ];
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery,
+          onFilterChange,
+          knownColumns: new Set(['ResourceAttributes', 'ServiceName']),
+          jsonColumns: JSON_COLUMNS,
+        }),
+      );
+
+      expect(result.current.filters).toEqual({
+        'ResourceAttributes.k8s.namespace.name': {
+          included: new Set(['production', 'staging']),
+          excluded: new Set(),
+        },
+        ServiceName: {
+          included: new Set(['api']),
+          excluded: new Set(),
+        },
+      });
+      expect(onFilterChange).toHaveBeenCalledWith([
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('production', 'staging')",
+        },
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ]);
+    });
+
+    it('does not rewrite an already canonical JSON filter', () => {
+      const onFilterChange = jest.fn();
+
+      renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            {
+              type: 'sql',
+              condition:
+                "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('production')",
+            },
+          ],
+          onFilterChange,
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: new Set(['ResourceAttributes']),
+        }),
+      );
+
+      expect(onFilterChange).not.toHaveBeenCalled();
+    });
+
+    it('preserves quoted filters that are not for JSON columns', () => {
+      const onFilterChange = jest.fn();
+
+      renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            { type: 'sql', condition: "`service-name` IN ('api')" },
+          ],
+          onFilterChange,
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: new Set(['ResourceAttributes']),
+        }),
+      );
+
+      expect(onFilterChange).not.toHaveBeenCalled();
+    });
+
+    it('preserves embedded backticks when canonicalizing a JSON filter', () => {
+      const onFilterChange = jest.fn();
+
+      renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            {
+              type: 'sql',
+              condition: "ResourceAttributes['k8s.na`me'] IN ('value')",
+            },
+          ],
+          onFilterChange,
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: new Set(['ResourceAttributes']),
+        }),
+      );
+
+      expect(onFilterChange).toHaveBeenCalledWith([
+        {
+          type: 'sql',
+          condition: "toString(ResourceAttributes.`k8s`.`na``me`) IN ('value')",
+        },
       ]);
     });
   });

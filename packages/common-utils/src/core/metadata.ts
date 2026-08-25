@@ -142,19 +142,37 @@ const identifierPattern = (identifier: string): string => {
   return `(?:\`${quotedEscaped}\`|${rawEscaped})`;
 };
 
-const JSON_STRING_TYPE_SUFFIX = '.:String';
+const JSON_TYPE_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+const JSON_TYPE_PARAMS = /^[A-Za-z0-9_(), ]*$/;
 
-const renderJsonStringSubcolumn = (
+export const stripJsonTypeSuffix = (jsonPath: string): string => {
+  const suffixIndex = jsonPath.lastIndexOf('.:');
+  if (suffixIndex === -1) return jsonPath;
+
+  const suffix = jsonPath.slice(suffixIndex + 2);
+  const paramsIndex = suffix.indexOf('(');
+  const typeName = paramsIndex === -1 ? suffix : suffix.slice(0, paramsIndex);
+  const params = paramsIndex === -1 ? '' : suffix.slice(paramsIndex + 1, -1);
+  if (
+    !JSON_TYPE_NAME.test(typeName) ||
+    (paramsIndex !== -1 &&
+      (!suffix.endsWith(')') || !JSON_TYPE_PARAMS.test(params)))
+  ) {
+    return jsonPath;
+  }
+  return jsonPath.slice(0, suffixIndex);
+};
+
+export const renderJsonStringSubcolumn = (
   column: string,
   jsonPath: string,
-  options: { preserveStringTypeSuffix?: boolean } = {},
 ): string => {
   const columnIdentifier = quoteIdentifierIfNeeded(column);
-  const untypedJsonPath =
-    options.preserveStringTypeSuffix &&
-    jsonPath.endsWith(JSON_STRING_TYPE_SUFFIX)
-      ? jsonPath.slice(0, -JSON_STRING_TYPE_SUFFIX.length)
-      : jsonPath;
+  const untypedJsonPath = stripJsonTypeSuffix(jsonPath);
+
+  if (untypedJsonPath === '') {
+    return `toString(getSubcolumn(${columnIdentifier}, ''))`;
+  }
 
   const path = untypedJsonPath
     .split('.')
@@ -162,7 +180,7 @@ const renderJsonStringSubcolumn = (
     .map(quoteJsonPathSegment)
     .join('.');
 
-  return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
+  return `toString(${columnIdentifier}.${path})`;
 };
 
 export class MetadataCache {
@@ -347,9 +365,7 @@ export class Metadata {
     });
 
     if (convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON) {
-      return renderJsonStringSubcolumn(column, jsonPath, {
-        preserveStringTypeSuffix: true,
-      });
+      return renderJsonStringSubcolumn(column, jsonPath);
     }
 
     return keyExpression;
@@ -2335,6 +2351,14 @@ export class Metadata {
     const metadataMVQueryOptions: MetadataMVQueryOptions = new Map();
     const rawQueryOptions: string[] = [];
     for (const key of parsed) {
+      if (key.mapKey === '') {
+        const quotedColumn = quoteIdentifierIfNeeded(key.column);
+        rawQueryOptions.push(
+          `${quotedColumn}[${SqlString.escape(key.mapKey)}]`,
+        );
+        continue;
+      }
+
       // first check text index
       if (key.mapKey) {
         const mapTextIndex = keyValueFetchingStrategies.mapTextIndexLookup.find(

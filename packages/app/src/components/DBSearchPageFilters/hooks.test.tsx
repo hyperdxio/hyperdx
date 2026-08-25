@@ -53,18 +53,23 @@ jest.mock('@/source', () => ({
   useSource: jest.fn(),
 }));
 
-jest.mock('@/searchFilters', () => ({
-  __esModule: true,
-  usePinnedFilters: jest.fn(),
-  escapeFilterStateKeys: jest.fn((state: unknown) => state),
-}));
+jest.mock('@/searchFilters', () => {
+  const actual =
+    jest.requireActual<typeof import('@/searchFilters')>('@/searchFilters');
+  return {
+    __esModule: true,
+    ...actual,
+    usePinnedFilters: jest.fn(),
+    escapeFilterStateKeys: jest.fn(actual.escapeFilterStateKeys),
+  };
+});
 
 jest.mock('@/hooks/useMetadata', () => ({
   __esModule: true,
   useMetadataWithSettings: jest.fn(),
   useColumns: jest.fn(),
   useDateTimeColumns: jest.fn(),
-  useJsonColumns: jest.fn(),
+  useJsonColumnNames: jest.fn(),
   useMapColumns: jest.fn(),
   useAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
@@ -78,7 +83,7 @@ const useMetadataWithSettings = jest.mocked(
 );
 const useColumns = jest.mocked(useMetadataModule.useColumns);
 const useDateTimeColumns = jest.mocked(useMetadataModule.useDateTimeColumns);
-const useJsonColumns = jest.mocked(useMetadataModule.useJsonColumns);
+const useJsonColumnNames = jest.mocked(useMetadataModule.useJsonColumnNames);
 const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
@@ -159,10 +164,8 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
     isLoading: false,
   } as any);
 
-  useDateTimeColumns.mockReturnValue([
-    { name: 'Timestamp', type: 'DateTime' },
-  ] as any);
-  useJsonColumns.mockReturnValue({ data: [] } as any);
+  useDateTimeColumns.mockReturnValue(new Map([['Timestamp', 'DateTime']]));
+  useJsonColumnNames.mockReturnValue([]);
   useMapColumns.mockReturnValue({ data: [] } as any);
 
   useAllFields.mockReturnValue({
@@ -237,6 +240,46 @@ describe('useFetchFacets', () => {
       const call = useGetKeyValues.mock.calls.at(-1);
       expect(call?.[0]?.mode).toBe('all');
       expect(call?.[1]?.enabled).toBe(true);
+    });
+
+    it('passes JSON facets to metadata as raw keys', () => {
+      setupDefaultMocks({ withMVs: false });
+      useJsonColumnNames.mockReturnValue(['ResourceAttributes']);
+      useColumns.mockReturnValue({
+        data: [
+          { name: 'Timestamp', type: 'DateTime' },
+          {
+            name: 'ResourceAttributes',
+            type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+          },
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useMetadataModule.useColumns>);
+      useAllFields.mockReturnValue({
+        data: [
+          {
+            path: ['ResourceAttributes', 'k8s.namespace.name'],
+            type: 'String',
+            jsType: 'string',
+          },
+        ],
+      } as ReturnType<typeof useMetadataModule.useAllFields>);
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper },
+      );
+
+      expect(useGetKeyValues.mock.calls.at(-1)?.[0]?.keys).toEqual([
+        "ResourceAttributes['k8s.namespace.name']",
+      ]);
     });
 
     it('selection is mode-only: MV presence does not change which mode is passed', () => {
@@ -453,6 +496,85 @@ describe('useFetchFacets', () => {
   });
 
   describe('loadMoreFacetsForKey (raw-tables pipeline)', () => {
+    it("strips a JSON facet's own selection before escaping load-more filters", async () => {
+      setupDefaultMocks({ withMVs: false });
+      useJsonColumnNames.mockReturnValue(['ResourceAttributes']);
+      useColumns.mockReturnValue({
+        data: [
+          { name: 'Timestamp', type: 'DateTime' },
+          {
+            name: 'ResourceAttributes',
+            type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+          },
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useMetadataModule.useColumns>);
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest.fn().mockResolvedValue([
+          {
+            key: "ResourceAttributes['k8s.namespace.name']",
+            value: ['production'],
+          },
+        ]),
+      } as any);
+      const filterState: FilterState = {
+        'ResourceAttributes.k8s.namespace.name': {
+          included: new Set<string | boolean>(['production']),
+          excluded: new Set<string | boolean>(),
+        },
+        'ResourceAttributes.service.name': {
+          included: new Set<string | boolean>(['api']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const { wrapper } = makeWrapper();
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+            filterState,
+          }),
+        { wrapper },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey(
+          'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+        );
+      });
+
+      expect(searchFiltersModule.escapeFilterStateKeys).toHaveBeenCalledWith(
+        {
+          'ResourceAttributes.service.name': {
+            included: new Set(['api']),
+            excluded: new Set(),
+          },
+        },
+        expect.any(Set),
+        new Set(['ResourceAttributes']),
+      );
+      expect(
+        useMetadataWithSettings.mock.results.at(-1)?.value.getKeyValuesWithMVs,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          keys: ["ResourceAttributes['k8s.namespace.name']"],
+          chartConfig: expect.objectContaining({
+            filters: [
+              {
+                type: 'sql',
+                condition:
+                  "toString(ResourceAttributes.`service`.`name`) IN ('api')",
+              },
+            ],
+          }),
+        }),
+      );
+    });
+
     it('reports the key as loading while the fetch is in flight, then clears it', async () => {
       setupDefaultMocks({ withMVs: false });
       useGetKeyValues.mockReturnValue({
