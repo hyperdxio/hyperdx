@@ -102,3 +102,8 @@ packages/*/reports/
 
 # webstorm
 .idea
+
+# local agent scratch, never part of a PR
+docs/superpowers/
+.superpowers/
+.playwright-mcp/
