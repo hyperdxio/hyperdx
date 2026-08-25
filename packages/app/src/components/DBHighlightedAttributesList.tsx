@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from 'react';
+import { use, useMemo, useState } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Flex } from '@mantine/core';
 
@@ -26,7 +26,7 @@ export function DBHighlightedAttributesList({
     onPropertyAddClick,
     generateSearchUrl,
     source: contextSource,
-  } = useContext(RowSidePanelContext);
+  } = use(RowSidePanelContext);
 
   const sortedAttributes = useMemo(() => {
     return attributes

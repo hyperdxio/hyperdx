@@ -43,6 +43,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { useVirtualList } from '@/hooks/useVirtualList';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -1053,9 +1054,26 @@ function KubernetesDashboardPage() {
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
   const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
+  // Both params accept a source name as well as a source ID. Resolve them before
+  // `resolveSourceIds` so its correlation only ever works with real IDs, and so a
+  // param that names nothing is treated as absent (i.e. it gets the correlated
+  // default) rather than echoed through to a blank dashboard.
+  const { source: logParamSource } = useResolvedSourceParam(_logSourceId, {
+    kinds: [SourceKind.Log],
+  });
+  const { source: metricParamSource } = useResolvedSourceParam(
+    _metricSourceId,
+    { kinds: [SourceKind.Metric] },
+  );
+
   const { logSourceId, metricSourceId } = useMemo(
-    () => resolveSourceIds(_logSourceId, _metricSourceId, sources),
-    [_logSourceId, _metricSourceId, sources],
+    () =>
+      resolveSourceIds(
+        logParamSource?.id ?? null,
+        metricParamSource?.id ?? null,
+        sources,
+      ),
+    [logParamSource?.id, metricParamSource?.id, sources],
   );
 
   const { data: logSource } = useSource({
@@ -1098,7 +1116,16 @@ function KubernetesDashboardPage() {
     if (watchedLogSourceId === prevLogSourceIdRef.current) {
       return;
     }
+    // The form is fed from the derived IDs, so it catches up to them on load
+    // (the params resolve one render later). That is not a user pick: acting on
+    // it writes the *sibling* param, which feeds back through the derivation into
+    // this effect — a loop, plus correlation notices nobody asked for.
+    const isCatchingUpToConfig =
+      !!watchedLogSourceId && watchedLogSourceId === logSourceId;
     prevLogSourceIdRef.current = watchedLogSourceId;
+    if (isCatchingUpToConfig) {
+      return;
+    }
 
     setLogSourceId(watchedLogSourceId ?? null);
 
@@ -1134,6 +1161,7 @@ function KubernetesDashboardPage() {
   }, [
     watchedLogSourceId,
     watchedMetricSourceId,
+    logSourceId,
     sources,
     setLogSourceId,
     setMetricSourceId,
@@ -1144,7 +1172,13 @@ function KubernetesDashboardPage() {
     if (watchedMetricSourceId === prevMetricSourceIdRef.current) {
       return;
     }
+    // See the log source effect: converging on the derived ID is not a pick.
+    const isCatchingUpToConfig =
+      !!watchedMetricSourceId && watchedMetricSourceId === metricSourceId;
     prevMetricSourceIdRef.current = watchedMetricSourceId;
+    if (isCatchingUpToConfig) {
+      return;
+    }
 
     setMetricSourceId(watchedMetricSourceId ?? null);
 
@@ -1180,6 +1214,7 @@ function KubernetesDashboardPage() {
   }, [
     watchedMetricSourceId,
     watchedLogSourceId,
+    metricSourceId,
     sources,
     setMetricSourceId,
     setLogSourceId,
@@ -1376,7 +1411,6 @@ function KubernetesDashboardPage() {
         mt="md"
         keepMounted={false}
         defaultValue="pods"
-        // @ts-ignore
         onChange={setActiveTab}
         value={activeTab}
       >
@@ -1723,7 +1757,7 @@ const KubernetesDashboardPageDynamic = dynamic(
   },
 );
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 KubernetesDashboardPageDynamic.getLayout = withAppNav;
 
 export default KubernetesDashboardPageDynamic;

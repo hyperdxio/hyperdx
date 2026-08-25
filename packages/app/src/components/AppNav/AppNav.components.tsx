@@ -87,7 +87,7 @@ export const AppNavUserMenu = ({
   logoutUrl,
   onClickUserPreferences,
 }: AppNavUserMenuProps) => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const resolvedUserName = userName.trim() || 'User';
 
   const initials = getUserInitials(resolvedUserName);
@@ -182,7 +182,7 @@ export const AppNavUserMenu = ({
 };
 
 export const AppNavHelpMenu = ({ version }: { version?: string }) => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const [
     shortcutsOpened,
     { open: openShortcutsModal, close: closeShortcutsModal },
@@ -304,7 +304,7 @@ export const AppNavLink = ({
   isBeta?: boolean;
   isActive?: boolean;
 }) => {
-  const { pathname, isCollapsed } = React.useContext(AppNavContext);
+  const { pathname, isCollapsed } = React.use(AppNavContext);
 
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 

@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { indexToSeriesRef } from '@hyperdx/common-utils/dist/core/formula';
 import {
   DateRange,
   isChartPaletteToken,
@@ -15,6 +16,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Badge,
   Button,
   Divider,
   Flex,
@@ -32,11 +34,15 @@ import {
 } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
-import { AggFnSelectControlled } from '@/components/AggFnSelect';
+import {
+  AggFnSelectControlled,
+  HISTOGRAM_SUPPORTED_AGG_FNS,
+} from '@/components/AggFnSelect';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
+import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -86,6 +92,7 @@ type ChartSeriesEditorProps = {
 export function ChartSeriesEditor({
   control,
   databaseName,
+  dateRange,
   connectionId,
   index,
   namePrefix,
@@ -136,6 +143,21 @@ export function ChartSeriesEditor({
       metricType === MetricsDataType.Sum;
     if (!isSumMetric && aggFn === 'increase') {
       setValue(`${namePrefix}aggFn`, 'sum');
+    }
+  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
+
+  // Histogram and exponential histogram metrics only support 'count' and
+  // 'quantile' aggregations. Reset any unsupported aggFn to a default, valid one
+  useEffect(() => {
+    const isHistogramMetric =
+      tableSource?.kind === SourceKind.Metric &&
+      (metricType === MetricsDataType.Histogram ||
+        metricType === MetricsDataType.ExponentialHistogram);
+    if (
+      isHistogramMetric &&
+      !HISTOGRAM_SUPPORTED_AGG_FNS.includes(aggFn ?? '')
+    ) {
+      setValue(`${namePrefix}aggFn`, 'count');
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
@@ -235,6 +257,23 @@ export function ChartSeriesEditor({
       <Divider
         label={
           <Group gap="xs">
+            {/* Formula series reference (HDX-5080): formulas address series
+                positionally by letter (`A` = series 1, ...), so surface the
+                letter on each row of formula-capable sources (metric and
+                log/trace events). */}
+            {isFormulaSourceKind(tableSource?.kind) && (
+              <Tooltip label="Reference this series in a formula by this letter">
+                <Badge
+                  size="sm"
+                  radius="sm"
+                  variant="light"
+                  color="gray"
+                  data-testid="series-ref-badge"
+                >
+                  {indexToSeriesRef(index) ?? index + 1}
+                </Badge>
+              </Tooltip>
+            )}
             <Text size="xxs">Alias</Text>
 
             <div style={{ width: 150 }}>
@@ -390,6 +429,7 @@ export function ChartSeriesEditor({
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
               onSubmit={onSubmit}
+              enableVariables
             />
           </div>
         )}
@@ -412,11 +452,15 @@ export function ChartSeriesEditor({
                 >
                   <SearchWhereInput
                     tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
                     showLabel={false}
                     additionalSuggestions={attributeSuggestions}
+                    data-testid="series-where-input"
+                    enableVariables
                   />
                 </div>
               </>
@@ -442,6 +486,7 @@ export function ChartSeriesEditor({
                     placeholder="SQL Columns"
                     disableKeywordAutocomplete
                     onSubmit={onSubmit}
+                    enableVariables
                   />
                 </div>
                 {showHaving && (
@@ -457,6 +502,7 @@ export function ChartSeriesEditor({
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>

@@ -13,6 +13,8 @@ import {
   COLORS,
   evaluateColorCondition,
   formatAttributeClause,
+  formatColumnEquals,
+  formatDistanceToNowStrictShort,
   formatDurationMs,
   formatDurationMsCompact,
   formatNumber,
@@ -42,6 +44,10 @@ describe('formatAttributeClause', () => {
     expect(formatAttributeClause('data', 'user-id', 'abc-123', true)).toBe(
       "data['user-id']='abc-123'",
     );
+
+    expect(formatAttributeClause('data', 'user-id', "O'Brien", true)).toBe(
+      "data['user-id']='O''Brien'",
+    );
   });
 
   it('should format lucene attribute clause correctly', () => {
@@ -55,6 +61,54 @@ describe('formatAttributeClause', () => {
 
     expect(formatAttributeClause('data', 'user-id', 'abc-123', false)).toBe(
       'data.user-id:"abc-123"',
+    );
+
+    expect(formatAttributeClause('data', 'user-id', 'say "hello"', false)).toBe(
+      'data.user-id:"say \\"hello\\""',
+    );
+  });
+
+  it('escapes backslashes so a trailing backslash cannot escape the closing quote', () => {
+    expect(
+      formatAttributeClause('ResourceAttributes', 'path', 'C:\\logs\\', true),
+    ).toBe("ResourceAttributes['path']='C:\\\\logs\\\\'");
+
+    expect(
+      formatAttributeClause('ResourceAttributes', 'path', 'C:\\logs\\', false),
+    ).toBe('ResourceAttributes.path:"C:\\\\logs\\\\"');
+
+    // A value crafted to break out of the SQL literal stays inside it
+    expect(formatAttributeClause('attrs', 'k', "\\' OR 1=1 --", true)).toBe(
+      "attrs['k']='\\\\'' OR 1=1 --'",
+    );
+  });
+});
+
+describe('formatColumnEquals', () => {
+  it('formats SQL column equality with quote escaping', () => {
+    expect(formatColumnEquals('ServiceName', 'my-svc', true)).toBe(
+      "ServiceName = 'my-svc'",
+    );
+    expect(formatColumnEquals('Name', "O'Brien", true)).toBe(
+      "Name = 'O''Brien'",
+    );
+  });
+
+  it('formats Lucene column equality with quote escaping', () => {
+    expect(formatColumnEquals('ServiceName', 'my-svc', false)).toBe(
+      'ServiceName:"my-svc"',
+    );
+    expect(formatColumnEquals('Name', 'say "hello"', false)).toBe(
+      'Name:"say \\"hello\\""',
+    );
+  });
+
+  it('escapes backslashes in both languages', () => {
+    expect(formatColumnEquals('Path', 'C:\\logs\\', true)).toBe(
+      "Path = 'C:\\\\logs\\\\'",
+    );
+    expect(formatColumnEquals('Path', 'C:\\logs\\', false)).toBe(
+      'Path:"C:\\\\logs\\\\"',
     );
   });
 });
@@ -711,6 +765,49 @@ describe('formatDurationMs', () => {
 
   it('handles sub-microsecond precision', () => {
     expect(formatDurationMs(0.0005)).toBe('0.5µs');
+  });
+});
+
+describe('formatDistanceToNowStrictShort', () => {
+  const now = new Date('2025-06-15T12:00:00');
+  const msAgo = (ms: number) => new Date(now.getTime() - ms);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('abbreviates seconds, minutes, hours and days', () => {
+    expect(formatDistanceToNowStrictShort(msAgo(1_000))).toBe('1s');
+    expect(formatDistanceToNowStrictShort(msAgo(45_000))).toBe('45s');
+    expect(formatDistanceToNowStrictShort(msAgo(60_000))).toBe('1m');
+    expect(formatDistanceToNowStrictShort(msAgo(5 * 60_000))).toBe('5m');
+    expect(formatDistanceToNowStrictShort(msAgo(3_600_000))).toBe('1h');
+    expect(formatDistanceToNowStrictShort(msAgo(3 * 3_600_000))).toBe('3h');
+    expect(formatDistanceToNowStrictShort(msAgo(86_400_000))).toBe('1d');
+    expect(formatDistanceToNowStrictShort(msAgo(2 * 86_400_000))).toBe('2d');
+  });
+
+  it('abbreviates months', () => {
+    expect(
+      formatDistanceToNowStrictShort(new Date('2025-05-15T12:00:00')),
+    ).toBe('1mo.');
+    expect(
+      formatDistanceToNowStrictShort(new Date('2025-03-15T12:00:00')),
+    ).toBe('3mo.');
+  });
+
+  it('abbreviates years', () => {
+    expect(
+      formatDistanceToNowStrictShort(new Date('2024-06-15T12:00:00')),
+    ).toBe('1y');
+    expect(
+      formatDistanceToNowStrictShort(new Date('2023-06-15T12:00:00')),
+    ).toBe('2y');
   });
 });
 

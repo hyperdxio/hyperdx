@@ -16,7 +16,7 @@ describe('team controller', () => {
   });
 
   it('does not query for non-existent properties', async () => {
-    const team = await createTeam({ name: 'My Team' });
+    await createTeam({ name: 'My Team' });
 
     expect(await Team.find({ name: 'My Team' })).toHaveLength(1);
     expect(await Team.find({ fakeProperty: 'please' })).toHaveLength(0);

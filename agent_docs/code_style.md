@@ -103,7 +103,7 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 
 We ship **themed semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven and consistent across the HyperDX and ClickStack brands (and light/dark). **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
 
-The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design Tokens/Semantic Variants` for the full visual matrix.
+The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design tokens/Semantic variants` for the full visual matrix.
 
 **`Alert`** — `info` | `success` | `warning` | `danger`. Renders a tinted `-subtle` background with the title, icon, **and body text** in the semantic color token:
 
@@ -130,6 +130,56 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 **`Button` / `ActionIcon` `variant="danger"`** is a **soft** control: a tinted `--color-bg-danger-subtle` background (with hover) and semantic foreground, not a solid red fill. `warning`/`success` are intentionally **not** exposed as control variants — use them on `Text` and `Alert` only.
 
 **Note**: Existing `<Alert color="...">` call sites are untouched; the semantic variants are opt-in. Prefer the variant for any **new** callout, and migrate nearby `color="..."` alerts when you touch them.
+
+### Confirmation dialogs: use `useConfirm` (REQUIRED)
+
+**Use `useConfirm` (`@/useConfirm`) for any "are you sure?" step. Do not
+hand-roll a `<Modal>` with Cancel/Confirm buttons.** The provider is already
+mounted app-wide in `pages/_app.tsx`, so there is no setup at the call site.
+
+```tsx
+const confirm = useConfirm();
+
+const handleDelete = async () => {
+  if (
+    await confirm(
+      <>
+        Deleting {name} is <b>not reversible</b>.
+      </>,
+      'Delete',
+      { variant: 'danger' },
+    )
+  ) {
+    await deleteThing.mutateAsync({ id });
+  }
+};
+```
+
+- The message is a `ReactNode`, so it can carry emphasis and multiple sentences.
+- Pass `{ variant: 'danger' }` for destructive actions; the confirm label
+  defaults to `Confirm`.
+- It resolves **exactly once**, so a double click on Confirm during the modal's
+  exit transition cannot fire the action twice. A hand-rolled modal has to guard
+  that itself.
+- Test ids are shared and already exist: `confirm-modal`,
+  `confirm-confirm-button`, `confirm-cancel-button`. **Do not invent per-flow
+  confirm/cancel test ids** — E2E page objects key off the shared ones.
+
+**Known limits.** It passes no `title` to the Modal and renders the body at
+`size="sm" opacity={0.7}`, and CSS opacity applies to the whole subtree so a
+nested `<Text>` cannot opt back out. If a flow genuinely needs a heading or
+full-contrast body, **extend `useConfirm`** (an optional prop, applied to all
+call sites) rather than forking a one-off modal.
+
+**In component tests**, mock it — `ConfirmProvider` pulls in `next/router`,
+which is not available in jsdom:
+
+```tsx
+jest.mock('@/useConfirm', () => ({ useConfirm: jest.fn() }));
+```
+
+Assert on the arguments (and render the message `ReactNode` if you need to check
+the copy). Exercise the real dialog in E2E instead.
 
 ### EmptyState Component (REQUIRED)
 
@@ -158,6 +208,109 @@ The variant → token mapping is centralized in `packages/app/src/theme/themes/s
 ```
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
+
+### Code snippets (REQUIRED)
+
+**Do not render raw `<pre>`, ad-hoc `Paper` + monospace text, or unstyled `<code>`.** Use the existing Mantine/product components so snippets match Terraform export, onboarding, and Storybook guidelines.
+
+| Kind | Component | When |
+|------|-----------|------|
+| **Inline code** | Mantine `<Code>` | Short tokens in prose (`Session`, a column name, a flag). |
+| **Fenced / multi-line / copyable** | `CopySnippet` (`@/components/ClickStackOnboarding/CopySnippet`) | Install commands, HCL, JSX examples, any block the user might copy. Wraps `<Code block>` plus a Copy button. |
+
+```tsx
+// ✅ inline — Mantine Code
+Create a source with <Code>Session</Code> type.
+
+// ✅ fenced / copyable — CopySnippet (Code + Copy)
+<CopySnippet
+  label="Import block"
+  snippet={`import { clickstack_dashboard } from "clickhouse/clickstack"`}
+/>
+
+// Label is optional when the surrounding heading already names the snippet
+<CopySnippet snippet={USAGE} />
+
+// ❌ BAD — raw pre / Paper chrome
+<pre>{snippet}</pre>
+<Paper bg="var(--color-bg-code)"><Text component="pre" ff="monospace">{snippet}</Text></Paper>
+```
+
+**SQL query previews** (rendered ClickHouse SQL with highlighting) still use `SQLPreview` / `ChartSQLPreview` — those are editors, not snippet chrome.
+
+Storybook: `Components/Code` (live `InlineCode`, `FencedBlocks`, and `Usage`). Guidelines markdown maps fenced blocks → `CopySnippet` and inline `` `code` `` → `<Code>` automatically. Follow the same split in app UI.
+
+### Chart cards (ChartCard)
+
+**Use `ChartCard` (`@/components/charts/ChartCard`) to wrap a chart in a card.**
+It is a bordered surface with the same header treatment as a custom dashboard
+tile (a full-bleed divider under the title). It replaces the older `ChartBox`;
+don't hand-roll a bordered `<div>`/`<Paper>` around a chart.
+
+`ChartCard` renders the card **chrome only**. The header divider is drawn only
+when a descendant renders a `ChartContainer` with a `title` (or `toolbarItems`) —
+`ChartCard` supplies the `ChartContainerCardHeaderProvider` that switches that
+header into card mode — so put a chart that renders a `ChartContainer` inside it
+(`DBTimeChart`, `DBTableChart`, `DBHeatmapChart`, `DBListBarChart`, …). Content
+with its own heading (e.g. a bespoke table card) should still route that heading
+through a titled `ChartContainer` rather than a bare `Text`, so it gets the same
+card header — divider and top padding included — instead of sitting flush against
+the top border. The tile-level controls (fullscreen, line/bar display switcher,
+kebab menu) belong to dashboard tiles and are intentionally **not** part of
+`ChartCard`.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `children` | `ReactNode` | The chart, usually a `DB*Chart` (or a titled `ChartContainer`) |
+| `style` | `CSSProperties` | Sizing/overflow override — pass a fixed `height`, or `flex: 1; height: 100%` to fill a flex row (`paddingInline` is pinned to keep the divider aligned) |
+| `data-testid` | `string` | Test hook |
+
+```tsx
+// ✅ GOOD — shared card chrome, consistent with dashboard tiles
+<ChartCard style={{ height: 350 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</ChartCard>
+
+// ❌ BAD — hand-rolled card that drifts from the dashboard look
+<Box style={{ border: '1px solid var(--color-border)', borderRadius: 4 }}>
+  <DBTimeChart title="Request Latency" config={config} />
+</Box>
+```
+
+**Give it a height.** `ChartCard` is `width: 100%` and fills its parent, so the
+parent (or a `style={{ height }}`) must define the height. For equal-width
+side-by-side charts (e.g. the RED row) use
+`style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}` inside a
+`Flex`. See the `Charts/ChartCard` Storybook stories for the variants.
+
+## UI text: use sentence case
+
+All user-facing text uses **sentence case** — capitalize only the **first word**
+and any proper nouns/acronyms. Do **not** use Title Case (capitalizing every
+significant word).
+
+This applies to every string a user reads: field labels, buttons, tab/menu
+items, headings, section titles, modal titles, placeholders, tooltips, table
+column headers, empty states, and toast/notification copy.
+
+| Title Case (avoid) | Sentence case (use) |
+|--------------------|---------------------|
+| `Data Source`      | `Data source`       |
+| `Chart Name`       | `Chart name`        |
+| `Add Series`       | `Add series`        |
+| `Count of Events`  | `Count of events`   |
+| `Save Changes`     | `Save changes`      |
+| `Delete Dashboard` | `Delete dashboard`  |
+
+**Keep the original casing of proper nouns, product names, and acronyms**
+anywhere in the string — sentence case only changes the words around them:
+HyperDX, ClickHouse, ClickStack, OpenTelemetry/OTel, Lucene, SQL, PromQL,
+MongoDB, Kubernetes, JSON, CSV, URL, ID, API, MCP, CPU, P95. For example:
+`Search your events w/ Lucene`, `Edit SQL`, `Copy as cURL`, `View in ClickHouse`.
+
+Only sentence-case **static UI chrome**. Never rewrite dynamic/user data (column
+names, tag values, log/trace content, source or dashboard names a user typed) —
+render those verbatim.
 
 ## Semantic design tokens (prefer over raw Mantine colors)
 

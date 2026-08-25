@@ -404,6 +404,27 @@ export const bulkInsertMetricsHistogram = async (
   );
 };
 
+export const bulkInsertMetricsSummary = async (
+  metrics: {
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
+    ServiceName?: string;
+    TimeUnix: Date;
+    Count?: number;
+    Sum?: number;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUMMARY}`,
+    metrics,
+  );
+};
+
 type ExponentialHistogramMetricPoint = {
   TimeUnix: Date;
   ServiceName?: string;
@@ -545,7 +566,7 @@ export function buildMetricSeries({
   unit: string;
   team_id: string;
 }): MetricModel[] {
-  // @ts-ignore TODO: Fix Timestamp types
+  // @ts-expect-error TODO: Fix Timestamp types
   return points.map(({ value, timestamp, le }) => ({
     _string_attributes: { ...tags, ...(le && { le }) },
     name,

@@ -1,5 +1,229 @@
 # @hyperdx/common-utils
 
+## 0.27.0
+
+### Minor Changes
+
+- be26530f: Add plural alert notification channel schemas: `zAlertChannels` (1–10 entries), `MAX_ALERT_CHANNELS`, and a shared `channel`/`channels` cross-field validator, ahead of multi-channel alert support in the API.
+- b1d8dc14: Formulas now work on log and trace sources, not just metrics. Time series, table and number charts on event sources can define derived series via letter-ref arithmetic expressions (e.g. `A / B * 100`), with the same editor controls (Add Formula, series letter badges, Show input series) previously offered only on metric sources. Event formulas compile inline into the chart's single-scan SELECT — no per-series query fan-out — with the same missing-data semantics as the existing events ratio toggle.
+- dc29d57f: Chart formulas are now supported across every API surface that persists or accepts chart configs. The external dashboards API v2 and the MCP `save_dashboard` / `patch_dashboard` tools accept `formulas` (letter-ref arithmetic over the tile's select items, e.g. `A / (A + B) * 100`) and `showOperandSeries` on line, stacked bar, table and number builder tiles, round-trip them through GET/PUT, and validate the expressions on write — unknown series refs, malformed syntax, combining formulas with `asRatio`, multiple formulas on a number tile, and formulas on formula-incapable source kinds (anything other than metric, log, or trace) are all rejected with actionable errors. MCP `query_tile` computes formula columns for both metric and log/trace event tiles, the query-guide prompt documents the feature, and the OpenAPI spec includes the new `Formula` schema. The CLI's dashboard tile pipeline now delegates its number/table config transforms to the shared common-utils implementations, so formula tiles render with operand-hiding behavior identical to the web.
+- 3ecf73c2: Render metric formulas (`formulas` on builder chart configs) in the composed multi-series metric query. Letter-ref expressions like `A / (A + B + C) * 100` compile into the final SELECT projection over the pivoted per-series columns, with ratio-consistent missing-data semantics: a missing operand counts as 0 while a zero or missing division denominator yields NULL (a rendered gap). `showOperandSeries: false` emits only the formula column(s). Works for grouped and ungrouped line, table, and number charts, and single-series charts with a formula now route through the composed query path.
+- 3ecf73c2: "Convert to SQL" now supports multi-series, ratio, and formula metric charts. The composed UNION ALL + pivot query is emitted as a macro-based raw-SQL template with a `$__sourceTable(<metricType>)` macro per series branch, instead of returning a "cannot be auto-converted" error. Non-time-series metric charts remain unsupported, matching the existing single-series restriction.
+
+### Patch Changes
+
+- c349a5dd: HAVING, ORDER BY and LIMIT on multi-series metric charts now apply to the final joined result instead of leaking into each per-series branch. They reference the chart's output columns — operand aliases, formula names/aliases, the ratio column, group-by columns and the time bucket — so a HAVING like `"err rate" > 0.5` filters the joined rows, ORDER BY actually orders the result (previously it was applied per branch and then discarded by the join), and LIMIT/OFFSET paginate one consistent group set across all series.
+- 68d2ed20: feat: Support dependent variable value queries
+- 2eedfb26: feat: Substitute dashboard variables in chart builder tiles
+- 1ce61c0c: feat: Expand dashboard variables and macros nested in macro arguments
+- 43f68566: Allow editing and deleting alerts directly from the alert details page. An
+  "Edit alert" action opens a modal for changing the alert's threshold,
+  evaluation interval, schedule, group-by (saved-search alerts), notification
+  webhook, and note, and a Delete action (with confirmation) removes the alert
+  and returns to the alerts list. Alert API responses now include the
+  notification channel's webhook id and the alert's name/message template so
+  edits round-trip these fields.
+- 40ec0858: feat: Add dashboard variable properties to external dashboards API
+- b0b13806: Align alert firing/recovery chart markers with the evaluated data: markers are now drawn at the start of the newest evaluated bucket (matching the evaluation history table and the plotted data point) instead of at the evaluation time, which sat one bucket to the right.
+- a94d6da8: Fix filter sidebar values disappearing behind query proxies. Batched facet-value
+  queries (KV rollup and map text-index lookups) previously bound one query
+  parameter per key; with ~100 keys this exceeded the ClickHouse web client's URL
+  parameter budget, silently promoting the request to a multipart/form-data body
+  that proxy gateways can reject — every LowCardinality-column and map-attribute
+  filter then vanished without an error. Keys are now inlined as SQL-escaped
+  literals so the query rides the POST body with a constant parameter count. Also
+  fixes an operator-precedence bug that applied the KV rollup time filter (and
+  notEmpty guard) to only the last OR branch.
+- 8be68100: Fix dashboard filter selection state breaking on complex expressions. The
+  filter parser (shared with the search page) now tracks parenthesis depth in
+  addition to quote depth, so selections stored for expression-based filters such
+  as `if(SeverityText = 'error' OR SeverityText = 'fatal', 'Errors', 'Non-errors')`
+  or `if(SeverityText IN ('error', 'fatal'), 'Errors', 'Non-errors')` are parsed
+  correctly instead of being dropped or split on operators/keywords nested inside
+  the expression.
+- c592207b: Fix MCP tool schemas being rejected by strict JSON Schema draft 2020-12 clients. The number-tile `colorRules` `between` rule declared its `value` as a Zod tuple, which `zod-to-json-schema` renders in the draft-07 tuple form (`items: [ ... ]`). Draft 2020-12 requires `items` to be a schema rather than an array, so `clickstack_save_dashboard` and `clickstack_patch_dashboard` failed validation — and clients that forward MCP tool schemas straight to an LLM provider (e.g. the Anthropic API) rejected the entire tool list with `tools.N.custom.input_schema: JSON schema is invalid`, making the MCP server unusable. `value` is now a fixed-length array, which validates identically and serializes to the same `[min, max]` wire format. A new test validates every MCP tool's input schema against the 2020-12 metaschema so this cannot regress.
+- 9c7742fa: Fix multi-series metric charts mixing float and integer aggregations (e.g. histogram quantile + histogram count) failing with "No value columns found in result column metadata". The composed UNION ALL query now normalizes every series value to Float64, so the merged column type is deterministic instead of erroring with NO_COMMON_TYPE or producing a Variant(Float64, Int64) column depending on the ClickHouse server's `use_variant_as_common_type` setting. As a defensive layer, all-numeric `Variant(...)` result columns (e.g. from raw-SQL charts) are now also classified as numeric.
+- 7294944a: fix: route per-query SQL debug logging through an injectable logger (#2416)
+
+  `BaseClickhouseClient` dumped raw SQL to the console on every ClickHouse query,
+  unconditionally and outside the pino logger, flooding API logs with query spam.
+
+  Query logging now goes through an optional per-client `customLogger` on
+  `ClickhouseClientOptions`, logged at `debug`, and is silent when no logger is
+  passed. The API injects a pino-backed logger, so query logging follows the
+  existing `HYPERDX_LOG_LEVEL` setting instead of writing to `console.debug`. The
+  browser client defaults to a console logger that pretty-prints the SQL as a
+  single multi-line block, so query SQL stays visible and readable in devtools in
+  all builds instead of wrapping into one long line.
+
+  The API's log level now defaults to `info` (was `debug`), so SQL logging is
+  silent in production unless `HYPERDX_LOG_LEVEL=debug` is set. Dev and CI env
+  files already pin their levels explicitly and are unaffected. The default also
+  now applies when `HYPERDX_LOG_LEVEL` is set but empty — which is what Compose
+  passes when the variable is unset in the environment, and which previously made
+  pino throw at startup.
+
+- e153f46d: Number charts on metric formula configs always hide their operand series: `convertToNumberChartConfig` forces `showOperandSeries: false` when formulas are present, so the number tile renders the formula column rather than the first raw operand — regardless of the tile's "Show input series" setting on other display types or when a formula chart is switched to the Number display type.
+- 9f640a61: Add a Rotate action for the personal API access key in Team Settings → API & Agents. Previously the personal access key — the bearer token for the external API v2 and the MCP server — was generated once at account creation and could never be changed, so a leaked key could only be remediated by deleting the user. Rotating immediately revokes the previous key, so MCP / AI agent configs, external API v2 clients, Terraform / IaC providers, and CI scripts using the old key must be updated with the new one. Browser sessions are unaffected.
+- ea127077: Apply the Map KV text-index rewrite (`Map['k'] = 'v'` → `has(ItemsCol, concat('k', '=', 'v'))`, enabling ClickHouse's direct-read optimization) to SQL predicates in the top-level `where` (search box, saved searches, alerts) and to SQL `aggCondition`s copied into the WHERE clause — previously only `sql`-type `filters[]` entries were rewritten
+
+## 0.26.0
+
+### Minor Changes
+
+- fd54ac78: Persist alert evaluation errors (query errors, timeouts, webhook failures) as
+  ERROR-state AlertHistory records instead of only a latest-only snapshot,
+  upserted per evaluation window so retries collapse into a single row. Query
+  timeouts are classified separately (QUERY_TIMEOUT, including timeouts wrapped
+  by the ClickHouse query client) with an actionable message. ERROR rows are
+  excluded from scheduling/backfill computations so failed windows are still
+  retried and backfilled, and once a failed window recovers (via a same-window
+  retry or a later tick's backfill) its stale ERROR row is removed. Evaluation
+  analytics (query/webhook durations, backfilled buckets) are recorded on every
+  history row.
+- 05a3fd81: Add the AlertHistory evaluations read model and GET /alerts/:id/evaluations
+  endpoint: per-window evaluation history scoped to a time range (clamped to the
+  retention window) with per-group breakdown for group-by alerts, evaluation
+  analytics fields, deduped error surfacing for ERROR-state windows, and
+  cursor-based pagination that always advances across gaps. Adds read-side
+  schema/type support for ERROR-state AlertHistory rows and evaluation analytics.
+- 8508b6c7: Terraform export now emits team-scoped import ids (`<team_id>/<resource_id>`),
+  so resources can be imported from a ClickStack deployment that backs more than
+  one team. Each imported resource gains a `team` attribute, which the provider
+  marks as forcing replacement — the generated file now says to keep it. The
+  provider floor moves to `>= 3.25.0`, which drops server-only dashboard ids when
+  importing, so the generated dashboard config no longer churns tile ids (and the
+  tile alerts attached to them) on apply.
+- 0ed72ddf: Add the metric formula expression model: a `formulas` entry on chart configs (letter-based series refs — `A`, `B`, `C` map to `select` positions) plus an arithmetic-only parser/validator (`core/formula.ts`) that produces a validated AST and structured validation errors (unknown series ref, empty expression, malformed syntax, invalid tokens). Groundwork for metric formulas like `A / (A + B + C) * 100`; no query rendering or UI changes yet.
+
+### Patch Changes
+
+- b9430a62: feat: Add broadcast and variable settings to dashboard filters
+- 546dd442: feat: Improve SQL Editor validations and autocomplete for variables
+- cab98c7c: feat: Substitute dashboard variables in raw SQL tiles
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+- 2d33b83b: Escape the Map subscript once in numeric and Bool field searches
+
+  The three equality branches for `Bool` and numeric value types escaped the
+  column expression as an identifier even when it was already a rendered map
+  subscript, so `Measures.latency_ms:250` wrapped `` `Measures`['latency_ms'] ``
+  in a second layer of backticks that ClickHouse reads as one identifier rather
+  than a map lookup. Quoting the term worked around it for numeric maps; for
+  `Map(String, Bool)` columns both spellings were affected.
+
+- aedb514f: Multi-series metric charts now run as a single composed ClickHouse query instead of one query per series joined client-side. The per-series queries are combined via UNION ALL and pivoted back into one row per (group, time bucket) in SQL, including ratio charts (`seriesReturnType: 'ratio'`) and both `ratioMode` variants, which previously divided the two result sets in the browser/node. Result shape, column naming (including same-alias `__{index}` disambiguation), gap semantics, and ratio semantics are unchanged; charts with many series render with fewer round trips, and "View SQL" for multi-series metric charts now shows the full query instead of only the first series.
+
+## 0.25.0
+
+### Minor Changes
+
+- 3d61cf92: Cap high-cardinality time-chart series to protect the browser from rendering
+  thousands of lines at once. Time charts now materialize and draw a bounded
+  number of series per tile, with escape hatches to reveal the rest on demand: a
+  "+N more" affordance in the hover and pinned tooltips, and a "load all series"
+  action that lifts the cap for a chart. Tooltips also cap how many rows they
+  render per frame so a wide bucket can't mount thousands of popovers. The
+  external dashboards API exposes the per-tile series limit as a three-state value
+  across tile types — omit for the default cap, 0 for unlimited, or a positive N
+  for the top N
+- 97ca34df: feat: Allow configuring a `series` table for accelerating metrics
+- 1af1998c: Add Terraform helpers for adopting existing HyperDX resources with the ClickHouse provider. An "Export to Terraform" button on dashboards, saved searches, and saved-search alerts shows a ready-to-paste `import {}` block plus collapsible provider setup, and a team settings section ("API & Agents") downloads an import file covering dashboards, alerts, saved searches, sources, connections, and webhooks.
+
+  Dashboards carrying a tile the provider cannot represent, and PromQL sources, are excluded from the export and reported as skipped — in the UI and in the generated file. The provider reads a dashboard back through the external API v2, which either drops such a tile or substitutes an empty line chart, and writes tiles back whole, so importing one would destroy that tile on the next apply.
+
+  Import-only by design: resource configuration is generated by `terraform plan -generate-config-out`, which reads through the provider, rather than by HyperDX — the external API's dashboard serialisation is a field allowlist, so generating `dashboard_json` from it could silently drop tile settings on apply. Tile alerts are excluded because the provider models only saved-search alerts.
+
+  Terraform addresses are derived from each resource's id, not its name, so renaming a resource in HyperDX and re-exporting does not produce a destroy-and-recreate plan. The generator lives in `@hyperdx/common-utils` so the API can produce the same artefact the UI does. The manifest endpoint caps each listing at 1000 rows and reports which types were capped, so a very large team is told its export is partial rather than silently receiving one.
+
+  Also redacts `Authorization` and `Cookie` headers from API request logs.
+
+### Patch Changes
+
+- ed9d9a67: Treat `_` and `%` in a search term as literal characters, not LIKE wildcards
+
+  Search terms were interpolated straight into the ILIKE pattern, so ClickHouse
+  read their `_` and `%` as wildcards. `ServiceName:user_service` also matched
+  `user-service` and `user.service`, and the negated `-ServiceName:user_service`
+  dropped those same rows. Token-index lookups still receive the raw term.
+
+- c97789a0: Correctly split SQL expressions containing backslash-escaped quotes.
+- 2468b256: fix: Encode every `http://`, `https://` and `localhost:<port>` in a search, not
+  just the first
+
+  A search naming two or more URLs left the later colons unescaped, so Lucene read
+  them as field queries. `http://a.com http://b.com` compiled the second URL to
+  `http ILIKE '%//b.com%'` — a predicate on a bare `http` identifier rather than a
+  search of the log body.
+
+- 6a35df06: Honor open (`*`), exclusive (`{}`) and non-numeric bounds in Lucene ranges
+
+  `Duration:[* TO 500]` compiled to `Duration BETWEEN '*' AND 500`, which
+  ClickHouse rejects with `TYPE_MISMATCH`. Exclusive and half-open ranges such as
+  `Duration:{100 TO 500}` were all serialized as an inclusive `BETWEEN`. Bounds
+  were parsed with `parseFloat`, so `Timestamp:[2024-01-01 TO 2024-06-01]` became
+  `BETWEEN 2024 AND 2024` and matched nothing. The plain-English explanation of a
+  search now marks excluded bounds too.
+
+- d1c669dc: fix: Use ratio value for series-limit ranking in ratio mode
+
+  Charts using "ratio" series return type together with a series limit ranked the
+  top-N series by the bare numerator instead of by the plotted ratio, so a
+  low-volume group with a high ratio could lose its slot to a high-volume group
+  with a much lower ratio. The ranking now uses the same `divide(a, b)` expression
+  the chart displays. Non-ratio charts generate identical SQL to before.
+
+- b082f700: Detect ClickHouse timestamp types that carry a timezone or a type wrapper
+
+  `DateTime('UTC')` was not classified as a DateTime, so a source whose timestamp
+  column listed both a `Date` partition column and a `DateTime` column bucketed
+  charts on the `Date` — collapsing a whole day into one bar at midnight. The time
+  filter also only wrapped bounds in `toDate()` for an exact `Date` type, so a
+  `Date32` or `Nullable(Date)` column was compared against a DateTime bound and
+  lost the whole start day.
+
+- 347f0a69: fix: Bound the side panel's row lookup after "View Trace" to a time window
+
+## 0.24.1
+
+### Patch Changes
+
+- fa1a0687: feat: Warn on missing params/macros in SQL Editor
+
+## 0.24.0
+
+### Minor Changes
+
+- 7a4ad986: feat: upgrade filters and autocomplete to intelligently route queries through the best rollup
+- 7d806fb8: Add per-column color to dashboard table tiles. On builder table tiles you can
+  now set a static color on a column and layer ordered conditional rules (for
+  example `> 500` turns the cell red), the table-cell counterpart of the
+  number-tile color. Rules are authored from the column editor and applied per
+  cell at render, reusing the existing palette tokens so colors reflow across
+  light and dark themes.
+
+### Patch Changes
+
+- ad27a513: fix: Support grouping histogram quantile aggregations over non-Attribute columns
+- 00eef721: feat: Support count aggregations over exponential histogram metrics
+- 00eef721: feat: Implement quantile for exponential histogram metrics
+- eadea332: feat: surface OpenTelemetry span links in the trace view. Trace sources gain an
+  optional `spanLinksValueExpression` field (auto-detected from the OTel `Links`
+  column), and the span detail panel shows a new "Span Links" section. Each link
+  has an "Open trace" action that opens the linked trace in place in the same
+  panel, with a breadcrumb trail you can step back through, and shows the link's
+  trace state and attributes as chips.
+- 9cb69915: feat(dashboard): table tile header separator and optional alternate row background
+
+  Add an always-on separator between a table tile's sticky header and its rows so the boundary stays clear as rows scroll underneath. Add a new **Alternate Row Background** display setting (off by default) that zebra-stripes table tiles for easier scanning on wide tables. Both work in light and dark color modes.
+
+- f5f9cd19: fix: Aggregate histogram metrics across selected range for non-timeseries charts
+
 ## 0.23.0
 
 ### Minor Changes

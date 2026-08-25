@@ -249,6 +249,8 @@ auto-instrumentation and error middleware already cover.
 - Duration + swallowed-error counters where errors never reach the error
   middleware: `packages/api/src/routers/api/prometheus.ts`
 - Delivery attempt counter + duration around an outbound webhook:
+  `packages/api/src/tasks/checkAlerts/transports/generic.ts`
+- Per-event cap counter on a fan-out loop:
   `packages/api/src/tasks/checkAlerts/template.ts`
 - Connection lifecycle-event counter: `packages/api/src/models/index.ts`
 - SLO operation metrics (`withOperationMetrics`) on an external dependency:

@@ -7,12 +7,37 @@ import mongoose from 'mongoose';
 
 import { makeTile } from '@/fixtures';
 import { AlertSource } from '@/models/alert';
+import type { IWebhook } from '@/models/webhook';
+import {
+  NotificationDispatcher,
+  NotificationJob,
+} from '@/tasks/checkAlerts/notifications';
 import { loadProvider } from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
+
+const TEST_TEAM_ID = new mongoose.Types.ObjectId().toString();
+
+// Test fixtures only need a handful of IWebhook fields — a single narrowing
+// point instead of an `as unknown as IWebhook` suppression-worthy cast at
+// every call site.
+const castWebhook = (over: Record<string, unknown>): IWebhook => over as any;
+
+// A dispatcher that records jobs instead of delivering them, so these tests
+// assert on fan-out (who got a job) without exercising real transports.
+const makeRecordingDispatcher = () => {
+  const dispatched: NotificationJob[] = [];
+  const dispatcher: NotificationDispatcher = {
+    dispatch: async job => {
+      dispatched.push(job);
+    },
+    shutdown: async () => {},
+  };
+  return { dispatcher, dispatched };
+};
 
 let alertProvider: any;
 
@@ -147,17 +172,23 @@ const makeTileView = (
   value: overrides.value ?? 10,
 });
 
-const render = (view: AlertMessageTemplateDefaultView, state: AlertState) =>
-  renderAlertTemplate({
-    alertProvider,
-    clickhouseClient: mockClickhouseClient,
-    metadata: mockMetadata,
-    state,
-    template: null,
-    title: 'Test Alert Title',
-    view,
-    teamWebhooksById: new Map(),
-  });
+const render = async (
+  view: AlertMessageTemplateDefaultView,
+  state: AlertState,
+) =>
+  (
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state,
+      template: null,
+      title: 'Test Alert Title',
+      view,
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map(),
+    })
+  ).body;
 
 interface AlertCase {
   thresholdType: AlertThresholdType;
@@ -263,7 +294,7 @@ describe('renderAlertTemplate', () => {
             }),
           } as any;
 
-          const result = await renderAlertTemplate({
+          const { body: result } = await renderAlertTemplate({
             alertProvider,
             clickhouseClient: maliciousClickhouseClient,
             metadata: mockMetadata,
@@ -271,6 +302,7 @@ describe('renderAlertTemplate', () => {
             template: null,
             title: 'Test Alert Title',
             view: makeSearchView(),
+            teamId: TEST_TEAM_ID,
             teamWebhooksById: new Map(),
           });
 
@@ -491,5 +523,269 @@ describe('buildAlertMessageTemplateTitle', () => {
         },
       );
     });
+  });
+});
+
+// MAX_NOTIFICATIONS_PER_EVENT bounds how many targets one fire/resolve event can
+// notify, counting configured channels and @webhook- mentions together.
+describe('per-event notification cap', () => {
+  const CAP = 20;
+
+  const makeWebhook = (i: number) =>
+    castWebhook({
+      _id: new mongoose.Types.ObjectId(),
+      team: new mongoose.Types.ObjectId(),
+      service: 'slack',
+      name: `hook-${i}`,
+      url: 'https://hooks.slack.com/services/x',
+    });
+
+  // The alert's own channels used to be appended to the template as
+  // `@webhook-<id>` mentions, after whatever the user wrote — so a message
+  // body carrying CAP mentions consumed every slot and the configured channel,
+  // the one target the alert was actually set up to notify, was never reached.
+  it('notifies a configured channel even when the body is full of mentions', async () => {
+    const configured = makeWebhook(999);
+    const mentioned = Array.from({ length: CAP }, (_, i) => makeWebhook(i));
+    const teamWebhooksById = new Map(
+      [configured, ...mentioned].map(w => [w._id.toString(), w]),
+    );
+    const template = mentioned
+      .map(w => `@webhook-${w._id.toString()}`)
+      .join(' ');
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channel: { type: 'webhook', webhookId: configured._id.toString() },
+          channels: [{ type: 'webhook', webhookId: configured._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(
+      dispatched.map(j => j.populatedChannel.channel._id.toString()),
+    ).toContain(configured._id.toString());
+  });
+
+  // A configured channel and an `@mention` must deliver byte-identical bodies.
+  // Both render through the same Handlebars instance (the one with `is_match`
+  // enabled), and only that instance's output is ever delivered — the body
+  // returned by renderAlertTemplate is rendered separately, with `is_match`
+  // suppressed, and goes to the caller rather than to a channel. Pinned here
+  // so the two delivery paths cannot drift.
+  it('delivers the same body to a configured channel and a mentioned one', async () => {
+    const configured = makeWebhook(1);
+    const mentioned = makeWebhook(2);
+    const teamWebhooksById = new Map(
+      [configured, mentioned].map(w => [w._id.toString(), w]),
+    );
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: `{{#is_match "group" "http"}}routed{{/is_match}} @webhook-${mentioned._id.toString()}`,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView({ group: 'http' }),
+        alert: {
+          ...makeSearchView().alert,
+          channel: { type: 'webhook', webhookId: configured._id.toString() },
+          channels: [{ type: 'webhook', webhookId: configured._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(2);
+    const bodies = new Set(dispatched.map(j => j.message.body));
+    expect(bodies.size).toBe(1);
+    // And the routing block really is present, so this is not passing on two
+    // empty strings.
+    expect([...bodies][0]).toContain('routed');
+  });
+
+  // A repeat of a target that is already queued is a no-op, so it must not be
+  // reported as a target the cap turned away.
+  it('does not report a duplicate at the cap as a dropped target', async () => {
+    const webhooks = Array.from({ length: CAP }, (_, i) => makeWebhook(i));
+    const teamWebhooksById = new Map(webhooks.map(w => [w._id.toString(), w]));
+    // Exactly CAP distinct targets, then a repeat of the first one.
+    const template = [...webhooks, webhooks[0]]
+      .map(w => `@webhook-${w._id.toString()}`)
+      .join(' ');
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: makeSearchView(),
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(CAP);
+    expect(failures).toHaveLength(0);
+  });
+
+  it('caps dispatch and records an execution error for each dropped target', async () => {
+    const webhooks = Array.from({ length: CAP + 1 }, (_, i) => makeWebhook(i));
+    const teamWebhooksById = new Map(webhooks.map(w => [w._id.toString(), w]));
+    const template = webhooks
+      .map(w => `@webhook-${w._id.toString()}`)
+      .join(' ');
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: makeSearchView(),
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(CAP);
+
+    // The target over the cap is reported, not silently dropped — otherwise the
+    // alert looks healthy while a channel was never notified.
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0].error)).toContain('Notification cap');
+  });
+
+  // A pre-dispatch failure (an unparseable mention, a missing webhook, the cap
+  // itself) never reaches the dispatcher, so it must not count against the cap
+  // meant to bound real deliveries. Otherwise enough failed mentions ahead of a
+  // valid webhook silently push it over the cap.
+  it('does not let unresolvable mentions ahead of it push a valid webhook over the cap', async () => {
+    const webhook = makeWebhook(0);
+    const id = webhook._id.toString();
+    const teamWebhooksById = new Map([[id, webhook]]);
+    // CAP unresolvable mentions, then one real webhook target. If failures
+    // counted toward the cap, the webhook would land on the CAP+1'th target
+    // and get turned away.
+    const unresolvableMentions = Array.from(
+      { length: CAP },
+      () => '@here',
+    ).join(' ');
+    const template = `${unresolvableMentions} @webhook-${id}`;
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: makeSearchView(),
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].populatedChannel).toMatchObject({ type: 'webhook' });
+    // Every "@here" is its own failure; none of them is a cap-exceeded error.
+    expect(failures).toHaveLength(CAP);
+    expect(
+      failures.every(f => !String(f.error).includes('Notification cap')),
+    ).toBe(true);
+  });
+});
+
+describe('notification targets are resolved once per webhook', () => {
+  const makeWebhook = (name: string) =>
+    castWebhook({
+      _id: new mongoose.Types.ObjectId(),
+      team: new mongoose.Types.ObjectId(),
+      service: 'slack',
+      name,
+      url: 'https://hooks.slack.com/services/x',
+    });
+
+  it('does not notify a webhook twice when a mention repeats a channel', async () => {
+    const webhook = makeWebhook('dupe-hook');
+    const id = webhook._id.toString();
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      // The same webhook named by the message and configured as a channel.
+      template: `@webhook-${id}`,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channels: [{ type: 'webhook', webhookId: id }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[id, webhook]]),
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(failures).toHaveLength(0);
+  });
+
+  it('keeps firing configured channels when the message has a plain @mention', async () => {
+    const webhook = makeWebhook('ok-hook');
+    const id = webhook._id.toString();
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      // "@here" is not a channel; it must not take down the whole render.
+      template: '@here please look',
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channels: [{ type: 'webhook', webhookId: id }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[id, webhook]]),
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0].error)).toContain('not a webhook channel');
   });
 });

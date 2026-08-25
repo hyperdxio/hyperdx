@@ -4,6 +4,13 @@
   min-height: var(--autocomplete-base-height, 36px);
 }
 
+/* The measured right section: an optional adornment, then the language switch */
+.rightSection {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .textarea {
   flex-grow: 1;
   resize: none;
@@ -91,6 +98,13 @@
 
 .suggestionLabel {
   margin-right: 0.25rem;
+}
+
+// What a suggestion means and, for a variable, what it expands to right now.
+.suggestionDescription {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.125rem;
 }
 
 .belowSuggestions {

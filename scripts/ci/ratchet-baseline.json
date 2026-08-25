@@ -1,0 +1,32 @@
+{
+  "api": {
+    "as-any": 94,
+    "ts-ignore": 0,
+    "eslint-disable": 31
+  },
+  "app": {
+    "as-any": 215,
+    "ts-ignore": 0,
+    "eslint-disable": 146
+  },
+  "cli": {
+    "as-any": 0,
+    "ts-ignore": 0,
+    "eslint-disable": 1
+  },
+  "common-utils": {
+    "as-any": 116,
+    "ts-ignore": 0,
+    "eslint-disable": 39
+  },
+  "hdx-eval": {
+    "as-any": 0,
+    "ts-ignore": 0,
+    "eslint-disable": 1
+  },
+  "otel-collector": {
+    "as-any": 0,
+    "ts-ignore": 0,
+    "eslint-disable": 0
+  }
+}

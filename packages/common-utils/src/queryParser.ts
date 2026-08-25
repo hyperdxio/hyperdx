@@ -32,23 +32,28 @@ const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
 function encodeSpecialTokens(query: string): string {
   return query
     .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
-    .replace('http://', 'http_COLON_//')
-    .replace('https://', 'https_COLON_//')
-    .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
+    .replace(/http:\/\//g, 'http_COLON_//')
+    .replace(/https:\/\//g, 'https_COLON_//')
+    .replace(/localhost:(\d{1,5})/g, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
 function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
-    .replace('http_COLON_//', 'http://')
-    .replace('https_COLON_//', 'https://')
-    .replace(/localhost_COLON_(\d{1,5})/, 'localhost:$1')
+    .replace(/http_COLON_\/\//g, 'http://')
+    .replace(/https_COLON_\/\//g, 'https://')
+    .replace(/localhost_COLON_(\d{1,5})/g, 'localhost:$1')
     .replace(/HDX_COLON/g, ':');
 }
 
 export function parse(query: string): lucene.AST {
   return lucene.parse(encodeSpecialTokens(query));
+}
+
+/** Escape the LIKE/ILIKE metacharacters `\`, `%` and `_` so a term matches literally */
+function escapeLikePattern(term: string): string {
+  return term.replace(/[\\%_]/g, '\\$&');
 }
 
 function buildMapContains(mapField: string) {
@@ -57,12 +62,20 @@ function buildMapContains(mapField: string) {
   return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
 }
 
+/** Render a column as a SQL operand, escaping it as an identifier unless it is an already-rendered Map subscript */
+function renderColumnOperand(column: string | undefined, mapKey?: string) {
+  return SqlString.raw(
+    mapKey != null ? (column ?? '') : SqlString.escapeId(column),
+  );
+}
+
 /** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */
 function normalizeChExpression(expr: string): string {
   return expr.replace(/\s+/g, '').replace(/`/g, '');
 }
 
 const IMPLICIT_FIELD = '<implicit>';
+const RANGE_UNBOUNDED = '*';
 
 // Type guards for lucene AST types
 function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
@@ -192,6 +205,7 @@ interface Serializer {
     end: string,
     isNegatedField: boolean,
     context: SerializerContext,
+    inclusive?: lucene.NodeRangedTerm['inclusive'],
   ): Promise<string>;
 }
 
@@ -391,10 +405,20 @@ class EnglishSerializer implements Serializer {
     start: string,
     end: string,
     isNegatedField: boolean,
+    context: SerializerContext,
+    inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
+    const startBound =
+      inclusive === 'both' || inclusive === 'left'
+        ? start
+        : `${start} (exclusive)`;
+    const endBound =
+      inclusive === 'both' || inclusive === 'right'
+        ? end
+        : `${end} (exclusive)`;
     return `${field} ${
       isNegatedField ? 'is not' : 'is'
-    } between ${start} and ${end}`;
+    } between ${startBound} and ${endBound}`;
   }
 }
 
@@ -410,6 +434,7 @@ export abstract class SQLSerializer implements Serializer {
     propertyType?: JSDataType;
     isArray?: boolean;
     found: boolean;
+    mapKey?: string;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
     kvItemsExpression?: KvIndexInfo & { mapKey: string };
@@ -449,6 +474,7 @@ export abstract class SQLSerializer implements Serializer {
       found,
       propertyType,
       isArray,
+      mapKey,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
       kvItemsExpression,
@@ -499,9 +525,9 @@ export abstract class SQLSerializer implements Serializer {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        `(? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
         [
-          column,
+          renderColumnOperand(column, mapKey),
           normTerm === 'true'
             ? 1
             : normTerm === 'false'
@@ -680,7 +706,7 @@ export abstract class SQLSerializer implements Serializer {
 
   // TODO: Not sure if SQL really needs this or if it'll coerce itself
   private attemptToParseNumber(term: string): string | number {
-    const number = Number.parseFloat(term);
+    const number = Number(term);
     if (Number.isNaN(number)) {
       return term;
     }
@@ -712,6 +738,7 @@ export abstract class SQLSerializer implements Serializer {
     end: string,
     isNegatedField: boolean,
     context: SerializerContext,
+    inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
     const { column, found, mapKeyIndexExpression, isArray } =
       await this.getColumnForField(field, context);
@@ -727,10 +754,41 @@ export abstract class SQLSerializer implements Serializer {
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
         : '';
-    return SqlString.format(
-      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
-      [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
-    );
+
+    const isStartUnbounded = start === RANGE_UNBOUNDED;
+    const isEndUnbounded = end === RANGE_UNBOUNDED;
+    if (isStartUnbounded && isEndUnbounded) {
+      return this.isNotNull(field, isNegatedField, context);
+    }
+    if (!isStartUnbounded && !isEndUnbounded && inclusive === 'both') {
+      return SqlString.format(
+        `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
+        [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
+      );
+    }
+
+    const bounds: string[] = [];
+    if (!isStartUnbounded) {
+      const operator =
+        inclusive === 'both' || inclusive === 'left' ? '>=' : '>';
+      bounds.push(
+        SqlString.format(`${column} ${operator} ?`, [
+          this.attemptToParseNumber(start),
+        ]),
+      );
+    }
+    if (!isEndUnbounded) {
+      const operator =
+        inclusive === 'both' || inclusive === 'right' ? '<=' : '<';
+      bounds.push(
+        SqlString.format(`${column} ${operator} ?`, [
+          this.attemptToParseNumber(end),
+        ]),
+      );
+    }
+    return isNegatedField
+      ? `(NOT (${bounds.join(' AND ')})${expressionPostfix})`
+      : `(${bounds.join(' AND ')}${expressionPostfix})`;
   }
 }
 
@@ -817,7 +875,7 @@ function renderArrayFieldExpression({
         ])
       : SqlString.format(`${prefix}arrayExists(el -> el[?] ILIKE ?, ?)`, [
           mapKey,
-          `%${term}%`,
+          `%${escapeLikePattern(term)}%`,
           SqlString.raw(column),
         ]);
   }
@@ -836,7 +894,7 @@ function renderArrayFieldExpression({
         ])
       : SqlString.format(
           `${prefix}arrayExists(el -> toString(el.??) ILIKE ?, ?)`,
-          [mapKey, `%${term}%`, SqlString.raw(column)],
+          [mapKey, `%${escapeLikePattern(term)}%`, SqlString.raw(column)],
         );
   }
 
@@ -854,7 +912,7 @@ function renderArrayFieldExpression({
         )
       : SqlString.format(
           `${prefix}arrayExists(el -> ${stringifiedElement} ILIKE ?, ?)`,
-          [`%${term}%`, SqlString.raw(column)],
+          [`%${escapeLikePattern(term)}%`, SqlString.raw(column)],
         );
 }
 
@@ -1354,6 +1412,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       found,
       propertyType,
       isArray,
+      mapKey,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
     } = await this.getColumnForField(field, context);
@@ -1381,9 +1440,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     if (propertyType === JSDataType.Bool) {
       const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        `(? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
         [
-          column,
+          renderColumnOperand(column, mapKey),
           normTerm === 'true'
             ? 1
             : normTerm === 'false'
@@ -1393,13 +1452,13 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       );
     } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
-        [column, term],
+        `(? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
+        [renderColumnOperand(column, mapKey), term],
       );
     } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
         `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?${expressionPostfix})`,
-        [`%${term}%`],
+        [`%${escapeLikePattern(term)}%`],
       );
     }
 
@@ -1421,7 +1480,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
             SqlString.raw(column),
-            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
+            `${prefixWildcard ? '%' : ''}${escapeLikePattern(term)}${
+              suffixWildcard ? '%' : ''
+            }`,
           ],
         );
       } else if (shouldUseTokenBf) {
@@ -1486,7 +1547,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               ...hasAllTokensExpressions,
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column),
-                `%${term}%`,
+                `%${escapeLikePattern(term)}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
@@ -1516,7 +1577,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               // If there are token separators in the term, try to match the whole term as well
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column),
-                `%${term}%`,
+                `%${escapeLikePattern(term)}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
@@ -1538,7 +1599,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             // If there are symbols in the term, try to match the whole term as well
             SqlString.format(`(lower(?) LIKE lower(?))`, [
               SqlString.raw(column),
-              `%${term}%`,
+              `%${escapeLikePattern(term)}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
@@ -1552,7 +1613,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
     return SqlString.format(
       `(${column} ${isNegatedField ? 'NOT ' : ''}? ?${expressionPostfix})`,
-      [SqlString.raw('ILIKE'), `%${term}%`],
+      [SqlString.raw('ILIKE'), `%${escapeLikePattern(term)}%`],
     );
   }
 
@@ -1871,6 +1932,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       propertyType: type ?? undefined,
       isArray,
       found: expression.found,
+      mapKey: expression.mapKey,
       mapKeyIndexExpression: expression.mapKeyIndexExpression,
       arrayMapKeyExpression: isArray
         ? expression.arrayMapKeyExpression
@@ -1974,6 +2036,7 @@ async function nodeTerm(
       rangedTerm.term_max,
       isNegatedField,
       context,
+      rangedTerm.inclusive,
     );
   }
 

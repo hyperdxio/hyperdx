@@ -149,6 +149,9 @@ extensions:
       github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension
       v__OTEL_COLLECTOR_VERSION__
   - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
       github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage
       v__OTEL_COLLECTOR_VERSION__
   - gomod:
