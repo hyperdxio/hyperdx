@@ -1,0 +1,107 @@
+name: Vouch List
+
+# Validates edits to .github/VOUCHED.td and, when the PR is nothing but a
+# well-formed list edit, labels it `automerge` so Kodiak merges it as soon as a
+# maintainer approves. That is the whole point: a vouch PR is a one-line data
+# change, and the expensive halves of `Main` skip themselves for it (see the
+# `changes` job there), so approval is the only thing worth waiting for.
+#
+# This only runs because vouch.yml raises the PR with an app token. PRs opened
+# by GITHUB_TOKEN do not start workflow runs, so no check would ever report.
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/VOUCHED.td']
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Validate VOUCHED list
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validator tests
+        run: node --test .github/scripts/__tests__/vouch-list-validate.test.mjs
+
+      - name: Validate the list edit
+        id: validate
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { diffLists } = await import(
+              `file://${process.env.GITHUB_WORKSPACE}/.github/scripts/vouch-list-validate.mjs`
+            );
+            const LIST = '.github/VOUCHED.td';
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+
+            const read = async (ref) => {
+              const { data } = await github.rest.repos.getContent({
+                owner, repo, path: LIST, ref,
+              });
+              return Buffer.from(data.content, 'base64').toString('utf-8');
+            };
+            const { added, removed, changed, errors } = diffLists(
+              await read(pr.base.sha),
+              await read(pr.head.sha),
+            );
+            for (const error of errors) core.error(error, { file: LIST });
+            if (errors.length) core.setFailed(`${LIST} is malformed.`);
+
+            // A handle that does not resolve is a typo, and a typo means the
+            // contributor stays blocked with the list looking correct.
+            for (const handle of [...added, ...changed]) {
+              try {
+                await github.rest.users.getByUsername({ username: handle });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+                core.setFailed(`"${handle}" is not a GitHub account.`);
+              }
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            const other = files.filter((f) => f.filename !== LIST);
+
+            core.summary.addRaw(
+              [
+                `Vouched: ${added.join(', ') || 'none'}`,
+                `Removed: ${removed.join(', ') || 'none'}`,
+                `Status changed: ${changed.join(', ') || 'none'}`,
+                other.length ? `Also touches ${other.length} other file(s).` : '',
+              ].filter(Boolean).join('\n\n'),
+            );
+            await core.summary.write();
+
+            // Only a list-only PR is safe to hand to Kodiak — anything carrying
+            // code alongside it goes through the normal review path.
+            core.setOutput('automerge', String(other.length === 0));
+
+      # Fork PRs get a read-only token, so labelling would 403 — and a fork PR
+      # adding its own author to the list is exactly the thing that should go
+      # through review rather than straight to Kodiak.
+      - name: Label for automerge
+        if:
+          success() && steps.validate.outputs.automerge == 'true' &&
+          github.event.pull_request.head.repo.fork != true
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: ['automerge'],
+            });

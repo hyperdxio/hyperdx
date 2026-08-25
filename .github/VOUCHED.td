@@ -13,9 +13,12 @@
 #   /unvouch @user
 #
 # Syntax (https://github.com/mitchellh/vouch):
-#   - One handle per line, without @, sorted alphabetically, lower case.
+#   - One entry per line: a handle without @, sorted alphabetically, lower case.
 #     Vouch lower-cases handles when it rewrites the file, and matching is
 #     case-insensitive, so seeding lower-case keeps bot edits to one line.
+#   - Anything after the handle and a space is free-text detail, not part of
+#     the handle. The reason from `/vouch @user reason` is stored there, so a
+#     line like `jane wants to fix the timezone bug` is one vouched user.
 #   - Denounce with a leading minus: -username [reason]
 #   - Optional platform prefix: github:username
 #

@@ -20,10 +20,10 @@ name: Vouch
 #   /vouch @user [reason]     /denounce @user [reason]     /unvouch @user
 #
 # The list edit arrives as a pull request because `main` is protected and
-# GITHUB_TOKEN cannot bypass that. Note the bot's PR does not trigger `Main` —
-# GitHub does not start workflow runs for events raised by GITHUB_TOKEN — so it
-# needs a maintainer approval rather than a green CI run. This is the same path
-# the changesets release PR already takes.
+# GITHUB_TOKEN cannot bypass that. It is raised with an app token rather than
+# GITHUB_TOKEN because GitHub starts no workflow runs for GITHUB_TOKEN events,
+# and the PR needs `Vouch List` (.github/workflows/vouch-check.yml) to report
+# before Kodiak will merge it.
 
 on:
   pull_request_target:
@@ -185,6 +185,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Without this the PR lands but arrives dead: no workflow runs, so no
+      # check ever reports and the auto-merge never fires. Falls back to
+      # GITHUB_TOKEN when the app is not configured, which keeps vouching
+      # working — the PR just needs a manual nudge to pick up CI.
+      - id: app-token
+        # A repo variable, not a secret: app IDs are public identifiers, and
+        # `secrets` is not available to a step-level `if`.
+        if: vars.VOUCH_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.VOUCH_APP_ID }}
+          private-key: ${{ secrets.VOUCH_APP_PRIVATE_KEY }}
+
       - uses: mitchellh/vouch/action/manage-by-issue@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
         with:
           issue-id: ${{ github.event.issue.number }}
@@ -194,7 +207,8 @@ jobs:
           unvouch-keyword: /unvouch
           pull-request: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN:
+            ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
 
       # The action is silent on every failure path — no comment, no reaction —
       # and issue_comment runs are not surfaced on the issue timeline, so a

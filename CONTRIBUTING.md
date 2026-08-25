@@ -15,15 +15,16 @@ don't count towards the limit. This isn't about the quality of your work — a
 handful of parallel changes from one author is more than we can review properly,
 and in practice it means none of them get merged.
 
-To get vouched, [open an issue saying
-hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
+To get vouched,
+[open an issue saying hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
 who you are and what you want to work on. A maintainer replies, usually within a
 day or two. Use the same issue to ask which issue to pick up, or to check an
 approach before you write code.
 
-Good places to start: the [good first
-issue](https://github.com/hyperdxio/hyperdx/labels/good%20first%20issue) label,
-and [Discord](https://discord.gg/FErRRKU78j) if the dev setup gives you trouble.
+Good places to start: the
+[good first issue](https://github.com/hyperdxio/hyperdx/labels/good%20first%20issue)
+label, and [Discord](https://discord.gg/FErRRKU78j) if the dev setup gives you
+trouble.
 
 Why we do this: AI tools make it cheap to open a plausible-looking PR with no
 understanding behind it, and reviewing those crowds out the contributions we
@@ -43,6 +44,12 @@ Comment on any issue or PR with the keyword first on the first line:
 
 On a PR, a bare `/vouch` with no handle vouches that PR's author.
 
+The reason is optional and is stored next to the handle in `VOUCHED.td`, so
+`jane wants to fix the timezone bug` on one line is a normal entry, not a
+mangled one. Leave the `@` off and the whole rest of the line becomes the reason
+and the vouch lands on the issue author instead of the person you named — check
+the handle in the bot's diff before merging.
+
 `/denounce` closes a PR outright and keeps closing that author's PRs from then
 on. Keep it for repeat spam and bad-faith behaviour; `/unvouch` quietly removes
 someone without blocking them.
@@ -53,9 +60,11 @@ was closed for hitting the cap won't work on its own — the check runs again on
 reopen and closes it again.
 
 The bot opens a PR updating `.github/VOUCHED.td`. **Nothing takes effect until
-you merge it.** That PR needs an approval rather than a green CI run — GitHub
-does not run workflows on PRs the bot creates. Merge them one at a time; two
-open at once will conflict on the same sorted list.
+it merges.** A `Vouch List` check confirms the edit is well formed and that the
+handle is a real account, then labels the PR `automerge`, so your approval is
+the only thing it waits on. The rest of CI skips itself for a list-only change.
+Merge them one at a time; two open at once will conflict on the same sorted
+list.
 
 ## Architecture Overview
 
@@ -102,7 +111,8 @@ yarn dev:down
 ```
 
 To enable self-instrumentation and demo logs, you can set the `HYPERDX_API_KEY`
-to your ingestion key (visit the Team settings page after creating your account).
+to your ingestion key (visit the Team settings page after creating your
+account).
 
 To do this, create a `.env.local` file in the root of the project and add the
 following:
@@ -224,25 +234,32 @@ pin. Drop it if that blanket resolution is ever narrowed.
 
 ## AI-Assisted Development
 
-HyperDX includes an [MCP server](https://modelcontextprotocol.io/) that lets AI assistants query observability data, manage dashboards, and
-explore data sources. See [MCP.md](/MCP.md) for setup instructions.
+HyperDX includes an [MCP server](https://modelcontextprotocol.io/) that lets AI
+assistants query observability data, manage dashboards, and explore data
+sources. See [MCP.md](/MCP.md) for setup instructions.
 
-The repo also ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via
-the [Playwright MCP server](https://github.com/microsoft/playwright-mcp).
+The repo also ships with configuration for AI coding assistants that enables
+interactive browser-based E2E test generation and debugging via the
+[Playwright MCP server](https://github.com/microsoft/playwright-mcp).
 
 ### Claude Code
 
-The project includes agents and skills for test generation, healing, and planning under `.claude/`. These are loaded automatically when you open the project in Claude Code. No additional setup required.
+The project includes agents and skills for test generation, healing, and
+planning under `.claude/`. These are loaded automatically when you open the
+project in Claude Code. No additional setup required.
 
 ### Cursor
 
-A Playwright MCP server config is included at `.cursor/mcp.json`. To activate it:
+A Playwright MCP server config is included at `.cursor/mcp.json`. To activate
+it:
 
 1. Open **Cursor Settings → Tools & MCP**
-2. The `playwright-test` server should appear automatically from the project config
+2. The `playwright-test` server should appear automatically from the project
+   config
 3. Enable it
 
-This gives Cursor's AI access to a live browser for test exploration and debugging.
+This gives Cursor's AI access to a live browser for test exploration and
+debugging.
 
 ## Additional support
 
