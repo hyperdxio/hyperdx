@@ -3,18 +3,17 @@ import { Grid } from '@mantine/core';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartCard } from '@/components/charts/ChartCard';
-import DBHeatmapChart from '@/components/DBHeatmapChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 
 import { baseLLMChartConfig } from './chartConfig';
 import { LLMChartProps } from './types';
 
-const HEATMAP_HEIGHT = 250;
 const CHART_HEIGHT = 320;
 
 /**
- * LLM call latency: a duration heatmap (ClickHouse-dashboard style) plus p95
- * per model over time.
+ * LLM latency trends: p95 per model and time-to-first-token percentiles.
+ * The interactive latency heatmap with attribute deltas lives in the
+ * dedicated Latency tab (see LatencyTab).
  */
 export function LatencyCharts(props: LLMChartProps) {
   const { source, expressions } = props;
@@ -22,24 +21,6 @@ export function LatencyCharts(props: LLMChartProps) {
 
   return (
     <>
-      <Grid.Col span={12}>
-        <ChartCard style={{ height: HEATMAP_HEIGHT }}>
-          <DBHeatmapChart
-            title="LLM Call Latency"
-            config={{
-              ...base,
-              displayType: DisplayType.Heatmap,
-              select: [
-                {
-                  aggFn: 'heatmap',
-                  valueExpression: expressions.durationInMillis,
-                },
-              ],
-              granularity: 'auto',
-            }}
-          />
-        </ChartCard>
-      </Grid.Col>
       <Grid.Col span={6}>
         <ChartCard style={{ height: CHART_HEIGHT }}>
           <DBTimeChart

@@ -1,6 +1,8 @@
 import { makeTraceSource } from '@/llm/__fixtures__/sources';
 import {
+  appendWhereClause,
   baseLLMChartConfig,
+  buildDeltaFilterClause,
   buildSessionCondition,
 } from '@/llm/dashboard/chartConfig';
 import { getLLMExpressions, LLM_COST_SQL_ALIAS } from '@/llm/lib/expressions';
@@ -25,6 +27,63 @@ describe('buildSessionCondition', () => {
     );
     expect(condition).toContain(expressions.sessionId);
     expect(condition).toContain("'ses_1\\'; DROP TABLE x --'");
+  });
+});
+
+describe('buildDeltaFilterClause', () => {
+  const prop = "SpanAttributes['gen_ai.request.model']";
+
+  it('builds escaped SQL equality and inequality clauses', () => {
+    expect(buildDeltaFilterClause(prop, 'gpt-5.1', 'include', 'sql')).toBe(
+      `${prop} = 'gpt-5.1'`,
+    );
+    expect(buildDeltaFilterClause(prop, 'gpt-5.1', 'exclude', 'sql')).toBe(
+      `${prop} != 'gpt-5.1'`,
+    );
+    // 'only' behaves like include (single where input, no value set).
+    expect(buildDeltaFilterClause(prop, 'gpt-5.1', 'only', 'sql')).toBe(
+      `${prop} = 'gpt-5.1'`,
+    );
+  });
+
+  it('escapes SQL values', () => {
+    expect(buildDeltaFilterClause('ServiceName', "a'b", 'include', 'sql')).toBe(
+      "ServiceName = 'a\\'b'",
+    );
+  });
+
+  it('converts bracket notation to lucene dot notation', () => {
+    expect(buildDeltaFilterClause(prop, 'gpt-5.1', 'include', 'lucene')).toBe(
+      'SpanAttributes.gen_ai.request.model:"gpt-5.1"',
+    );
+    expect(buildDeltaFilterClause(prop, 'gpt-5.1', 'exclude', 'lucene')).toBe(
+      '-SpanAttributes.gen_ai.request.model:"gpt-5.1"',
+    );
+  });
+
+  it('keeps plain columns and quotes lucene values', () => {
+    expect(
+      buildDeltaFilterClause('ServiceName', 'my "svc"', 'include', 'lucene'),
+    ).toBe('ServiceName:"my \\"svc\\""');
+  });
+});
+
+describe('appendWhereClause', () => {
+  it('returns the clause alone when the where is empty', () => {
+    expect(appendWhereClause('', "a = 'b'", 'sql')).toBe("a = 'b'");
+    expect(appendWhereClause('  ', 'a:"b"', 'lucene')).toBe('a:"b"');
+  });
+
+  it('parenthesizes the existing SQL where before ANDing', () => {
+    expect(appendWhereClause('x = 1 OR y = 2', "a = 'b'", 'sql')).toBe(
+      "(x = 1 OR y = 2) AND a = 'b'",
+    );
+  });
+
+  it('space-joins lucene terms (implicit AND)', () => {
+    expect(appendWhereClause('level:error', 'a:"b"', 'lucene')).toBe(
+      'level:error a:"b"',
+    );
   });
 });
 

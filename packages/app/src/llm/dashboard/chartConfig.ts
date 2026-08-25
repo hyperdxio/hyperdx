@@ -82,6 +82,48 @@ export function baseLLMChartConfig({
   };
 }
 
+/**
+ * Build a where-clause fragment for a delta-chart filter click. `property`
+ * arrives in ClickHouse bracket notation (e.g.
+ * `SpanAttributes['gen_ai.request.model']`) from DBDeltaChart. For lucene,
+ * bracket notation is converted to the dot form the lucene parser expects.
+ * The 'only' action is equivalent to 'include' here — with a single where
+ * input there is no value set to narrow.
+ */
+export function buildDeltaFilterClause(
+  property: string,
+  value: string,
+  action: 'only' | 'include' | 'exclude' | undefined,
+  language: 'sql' | 'lucene',
+): string {
+  const exclude = action === 'exclude';
+  if (language === 'sql') {
+    return SqlString.format(exclude ? '? != ?' : '? = ?', [
+      SqlString.raw(property),
+      value,
+    ]);
+  }
+  const luceneKey = property.replace(
+    /^([A-Za-z0-9_]+)\['(.+)'\]$/,
+    (_m, col, key) => `${col}.${key}`,
+  );
+  const luceneValue = `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return `${exclude ? '-' : ''}${luceneKey}:${luceneValue}`;
+}
+
+/** Append a clause to an existing where string in the given language. */
+export function appendWhereClause(
+  existing: string,
+  clause: string,
+  language: 'sql' | 'lucene',
+): string {
+  const trimmed = existing.trim();
+  if (!trimmed) return clause;
+  return language === 'sql'
+    ? `(${trimmed}) AND ${clause}`
+    : `${trimmed} ${clause}`;
+}
+
 /** Build a /search URL scoped to LLM spans plus optional extra conditions. */
 export function buildLLMSearchUrl({
   source,

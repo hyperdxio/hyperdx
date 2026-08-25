@@ -47,6 +47,7 @@ import { AgentToolCharts } from './AgentToolCharts';
 import { AttributionCharts } from './AttributionCharts';
 import { EfficiencyCharts } from './EfficiencyCharts';
 import { LatencyCharts } from './LatencyCharts';
+import { LatencyTab } from './LatencyTab';
 import { LLMEmptyStateBanner } from './LLMEmptyStateBanner';
 import { LLMSessionPanel } from './LLMSessionPanel';
 import { OverviewCharts } from './OverviewCharts';
@@ -82,9 +83,12 @@ function LLMDashboardPage() {
 
   const [tab, setTab] = useQueryState(
     'tab',
-    parseAsStringEnum<string>(['overview', 'sessions', 'search']).withDefault(
+    parseAsStringEnum<string>([
       'overview',
-    ),
+      'latency',
+      'sessions',
+      'search',
+    ]).withDefault('overview'),
   );
 
   const [appliedConfig, setAppliedConfig] = useQueryStates(queryParamMap);
@@ -163,6 +167,17 @@ function LLMDashboardPage() {
       setAppliedConfig(values);
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
+
+  // Apply a where clause programmatically (delta-chart filter clicks on the
+  // Latency tab): keep the input's form state and the applied config in
+  // sync so every chart rescopes immediately.
+  const handleWhereChange = useCallback(
+    (where: string) => {
+      setValue('where', where);
+      setAppliedConfig({ where });
+    },
+    [setValue, setAppliedConfig],
+  );
 
   // Auto-apply source changes without requiring a manual submit. The
   // session filter lives in the URL only (see SessionSelect below) — it can
@@ -317,6 +332,7 @@ function LLMDashboardPage() {
           <Tabs keepMounted={false} onChange={setTab} value={tab}>
             <Tabs.List mb="sm">
               <Tabs.Tab value="overview">Overview</Tabs.Tab>
+              <Tabs.Tab value="latency">Latency</Tabs.Tab>
               <Tabs.Tab value="sessions">Sessions</Tabs.Tab>
               <Tabs.Tab value="search">Search</Tabs.Tab>
             </Tabs.List>
@@ -329,6 +345,9 @@ function LLMDashboardPage() {
                 <LatencyCharts {...chartProps} />
                 <AgentToolCharts {...chartProps} />
               </Grid>
+            </Tabs.Panel>
+            <Tabs.Panel value="latency">
+              <LatencyTab {...chartProps} onWhereChange={handleWhereChange} />
             </Tabs.Panel>
             <Tabs.Panel value="sessions">
               <SessionsTab {...chartProps} />
