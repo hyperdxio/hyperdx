@@ -17,10 +17,28 @@
 /* The builder editor keeps an input-style border so it still reads as an
    editable field once the surrounding card is gone. */
 .body {
-  padding: 3px 8px;
+  position: relative;
+  padding: 3px 48px 3px 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
   background-color: var(--color-bg-field);
+}
+
+.badge {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Raw-SQL body: full statement editor with a help/instructions row above it. */

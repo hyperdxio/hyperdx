@@ -1,24 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
-import {
-  acceptCompletion,
-  autocompletion,
-  Completion,
-  CompletionSource,
-  startCompletion,
-} from '@codemirror/autocomplete';
-import {
-  HighlightStyle,
-  StreamLanguage,
-  type StreamParser,
-  syntaxHighlighting,
-} from '@codemirror/language';
+import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
+import { syntaxHighlighting } from '@codemirror/language';
 import { type Extension } from '@codemirror/state';
-import { tags as t } from '@lezer/highlight';
 import {
   Box,
   Flex,
   SegmentedControl,
+  Text,
   useMantineColorScheme,
 } from '@mantine/core';
 import CodeMirror, {
@@ -28,21 +17,28 @@ import CodeMirror, {
   ReactCodeMirrorRef,
 } from '@uiw/react-codemirror';
 
-import { KEYWORDS_FOR_WHERE_OR_ORDER_BY } from '@/components/SQLEditor/constants';
+import { createCodeMirrorStyleTheme } from '@/components/SQLEditor/utils';
+
 import {
-  createCodeMirrorSqlDialect,
-  createCodeMirrorStyleTheme,
-} from '@/components/SQLEditor/utils';
+  languageExtensions,
+  queryEditorBaseTheme,
+  queryHighlightStyle,
+} from './queryEditorLanguage';
+import { type QueryEditorMode, type QueryLanguage } from './queryModeSafety';
 
 import styles from './QueryEditor.module.scss';
 
-export type QueryLanguage = 'sql' | 'lucene';
-
-/** Query authoring mode: builder edits WHERE only, sql is a full statement. */
+export type { QueryLanguage };
 export type QueryConfigMode = 'builder' | 'sql';
 
-const DEFAULT_LANGUAGES: QueryLanguage[] = ['sql', 'lucene'];
+const DEFAULT_LANGUAGES: QueryLanguage[] = ['lucene', 'sql'];
 const EMPTY_FIELDS: string[] = [];
+
+const MODE_LABELS: Record<QueryEditorMode, string> = {
+  lucene: 'Search',
+  sql: 'SQL',
+  raw: 'Raw SQL',
+};
 
 export interface QueryEditorProps {
   /** Current query text (controlled). */
@@ -61,12 +57,20 @@ export interface QueryEditorProps {
    */
   queryMode?: QueryConfigMode;
   onQueryModeChange?: (mode: QueryConfigMode) => void;
+  /**
+   * Combined Search / SQL / Raw SQL control. When provided, the segmented
+   * control calls this instead of flipping language/queryMode itself so the
+   * parent can snapshot and confirm unsafe switches.
+   */
+  onModeChange?: (mode: QueryEditorMode) => void;
   /** Body override rendered instead of the WHERE editor when in SQL mode. */
   children?: React.ReactNode;
   /** Right-aligned header controls (date picker, Live, Run, ...). */
   rightSection?: React.ReactNode;
   /** Extra node next to the language tabs (e.g. a syntax-help button). */
   leftSection?: React.ReactNode;
+  /** Toolbar under the input (add filter, examples, SQL preview). */
+  toolbarSlot?: React.ReactNode;
   /** Active filter chips rendered inside the card, below the input. */
   filtersSlot?: React.ReactNode;
   /** Field names offered by autocomplete (both languages). */
@@ -79,101 +83,6 @@ export interface QueryEditorProps {
   /** Max body height (px) before the editor scrolls. Defaults to 200. */
   maxHeight?: number;
   'data-testid'?: string;
-}
-
-const baseTheme = EditorView.theme({
-  '&': { backgroundColor: 'transparent', fontSize: '13px' },
-  '&.cm-focused': { outline: 'none' },
-  '.cm-content': {
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
-  '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px' },
-});
-
-/**
- * Explicit, high-priority highlight style shared by SQL and Lucene. The @uiw
- * `basicSetup` only registers CodeMirror's `defaultHighlightStyle` as a
- * fallback, which leaves identifiers and operators uncolored and reads as "no
- * highlighting". These mid-tone hues are chosen to stay legible on both the
- * light and dark app backgrounds, so a single definition works in either
- * color scheme.
- */
-const queryHighlightStyle = HighlightStyle.define([
-  { tag: [t.keyword, t.operatorKeyword, t.modifier], color: '#8b5cf6' },
-  { tag: [t.string, t.special(t.string)], color: '#37b24d' },
-  { tag: [t.number, t.bool, t.null], color: '#e8590c' },
-  { tag: [t.typeName], color: '#0ca678' },
-  {
-    tag: [t.standard(t.name), t.function(t.variableName)],
-    color: '#4dabf7',
-  },
-  { tag: [t.propertyName], color: '#4dabf7' },
-  { tag: [t.operator, t.punctuation], color: '#adb5bd' },
-  {
-    tag: [t.comment, t.lineComment, t.blockComment],
-    color: '#868e96',
-    fontStyle: 'italic',
-  },
-]);
-
-/**
- * Minimal Lucene highlighter. `@codemirror/legacy-modes` has no Lucene mode, so
- * we tokenize the essentials here — quoted strings, `field:` names, boolean
- * keywords, numbers, and operators — using standard token names that the
- * default highlight style already colors.
- */
-const luceneStreamParser: StreamParser<unknown> = {
-  token(stream) {
-    if (stream.eatSpace()) return null;
-    if (stream.match(/^"(?:[^"\\]|\\.)*"?/)) return 'string';
-    if (stream.match(/^[-+]?[\w.$*?]+(?=\s*:)/)) return 'propertyName';
-    if (stream.match(/^(?:AND|OR|NOT|TO)\b/)) return 'keyword';
-    if (stream.match(/^\d+(?:\.\d+)?\b/)) return 'number';
-    if (stream.match(/^[:+\-!^~*?(){}[\]]/)) return 'operator';
-    if (stream.match(/^[^\s:()]+/)) return null;
-    stream.next();
-    return null;
-  },
-};
-
-function luceneCompletions(fields: string[]): CompletionSource {
-  const fieldOpts: Completion[] = fields.map(label => ({
-    label,
-    type: 'variable',
-    apply: `${label}:`,
-  }));
-  const keywordOpts: Completion[] = ['AND', 'OR', 'NOT', 'TO'].map(label => ({
-    label,
-    type: 'keyword',
-  }));
-  const all = [...fieldOpts, ...keywordOpts];
-
-  return context => {
-    const word = context.matchBefore(/[\w.$-]*/);
-    if (!word) return null;
-    if (word.from === word.to && !context.explicit) return null;
-    return { from: word.from, options: all, validFor: /^[\w.$-]*$/ };
-  };
-}
-
-function languageExtensions(
-  language: QueryLanguage,
-  fields: string[],
-): Extension[] {
-  if (language === 'sql') {
-    // Reuse the app's ClickHouse dialect + identifier/keyword/function
-    // completion for consistency with the rest of the product.
-    return createCodeMirrorSqlDialect({
-      identifiers: fields,
-      keywords: KEYWORDS_FOR_WHERE_OR_ORDER_BY,
-      includeRegularFunctions: true,
-    });
-  }
-  return [
-    StreamLanguage.define(luceneStreamParser),
-    autocompletion({ override: [luceneCompletions(fields)] }),
-  ];
 }
 
 /**
@@ -191,12 +100,14 @@ export function QueryEditor({
   languages = DEFAULT_LANGUAGES,
   queryMode,
   onQueryModeChange,
+  onModeChange,
   children,
   rightSection,
   leftSection,
+  toolbarSlot,
   filtersSlot,
   fields = EMPTY_FIELDS,
-  placeholder = 'Search your events…',
+  placeholder = 'Filter this source',
   onSubmit,
   enableHotkey,
   maxHeight = 200,
@@ -246,7 +157,7 @@ export function QueryEditor({
       ]),
     );
     return [
-      baseTheme,
+      queryEditorBaseTheme,
       createCodeMirrorStyleTheme(),
       syntaxHighlighting(queryHighlightStyle),
       submitKeymap,
@@ -272,17 +183,24 @@ export function QueryEditor({
   const isSqlMode = queryMode === 'sql';
   const showToggle = languages.length > 1 && !isSqlMode;
 
-  // Combined authoring control: builder WHERE languages plus an "Advanced"
-  // option that maps to raw-SQL mode, so the value spans both `queryMode` and
-  // `language` and "SQL" isn't repeated across two adjacent controls.
-  const modeValue = isSqlMode ? 'advanced' : language;
+  // Combined authoring control: Search (Lucene) + SQL WHERE + Raw SQL, so the
+  // value spans both `queryMode` and `language`.
+  const modeValue: QueryEditorMode = isSqlMode ? 'raw' : language;
   const handleModeChange = (v: string) => {
-    if (v === 'advanced') {
+    if (v !== 'lucene' && v !== 'sql' && v !== 'raw') {
+      return;
+    }
+    const next: QueryEditorMode = v;
+    if (onModeChange) {
+      onModeChange(next);
+      return;
+    }
+    if (next === 'raw') {
       onQueryModeChange?.('sql');
       return;
     }
     if (isSqlMode) onQueryModeChange?.('builder');
-    onLanguageChange(v as QueryLanguage);
+    onLanguageChange(next);
   };
 
   return (
@@ -297,9 +215,9 @@ export function QueryEditor({
               data={[
                 ...languages.map(l => ({
                   value: l,
-                  label: l === 'sql' ? 'SQL' : 'Lucene',
+                  label: MODE_LABELS[l],
                 })),
-                { value: 'advanced', label: 'Advanced' },
+                { value: 'raw', label: MODE_LABELS.raw },
               ]}
               aria-label="Query mode"
               data-testid="query-mode-toggle"
@@ -312,7 +230,7 @@ export function QueryEditor({
                 onChange={v => onLanguageChange(v as QueryLanguage)}
                 data={languages.map(l => ({
                   value: l,
-                  label: l === 'sql' ? 'SQL' : 'Lucene',
+                  label: MODE_LABELS[l],
                 }))}
                 aria-label="Query language"
               />
@@ -334,6 +252,9 @@ export function QueryEditor({
         <Box data-testid={dataTestId}>{children}</Box>
       ) : (
         <Box className={styles.body} data-testid={dataTestId}>
+          <Text className={styles.badge} size="xs" c="dimmed">
+            {MODE_LABELS[language]}
+          </Text>
           <CodeMirror
             ref={ref}
             value={value}
@@ -357,6 +278,9 @@ export function QueryEditor({
             }}
           />
         </Box>
+      )}
+      {toolbarSlot != null && (
+        <Box className={styles.toolbar}>{toolbarSlot}</Box>
       )}
       {filtersSlot != null && (
         <Box className={styles.filters}>{filtersSlot}</Box>

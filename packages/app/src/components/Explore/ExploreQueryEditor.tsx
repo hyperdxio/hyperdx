@@ -1,30 +1,24 @@
 import { useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
-import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import SyntaxReferenceModal from '@/components/SearchInput/SyntaxReferenceModal';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import type { FilterStateHook } from '@/searchFilters';
 import { useSource } from '@/source';
 
 import { ExploreRawSqlEditor } from './ExploreRawSqlEditor';
 import { QueryConfigMode, QueryEditor, QueryLanguage } from './QueryEditor';
-
-const STORAGE_KEY = 'hdx-search-where-language';
-
-function setStoredLanguage(lang: QueryLanguage): void {
-  try {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, lang);
-    }
-  } catch {
-    // localStorage may throw in private browsing
-  }
-}
+import { QueryEditorToolbar } from './QueryEditorToolbar';
+import { getExploreWhereLanguage } from './queryModeSafety';
+import { useExploreQueryMode } from './useExploreQueryMode';
 
 export type ExploreQueryEditorProps = {
   onSubmit?: () => void;
@@ -49,6 +43,8 @@ export type ExploreQueryEditorProps = {
   sqlTemplateName?: string;
   /** Display type the raw-SQL query targets (drives macros/placeholder/help). */
   rawSqlDisplayType?: DisplayType;
+  searchFilters?: FilterStateHook;
+  chartConfig?: BuilderChartConfigWithDateRange;
   'data-testid'?: string;
 } & TableConnectionChoice &
   UseControllerProps<any>;
@@ -76,6 +72,8 @@ export function ExploreQueryEditor({
   onQueryModeChange,
   sqlTemplateName = 'sqlTemplate',
   rawSqlDisplayType = DisplayType.Table,
+  searchFilters,
+  chartConfig,
   'data-testid': dataTestId,
 }: ExploreQueryEditorProps) {
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
@@ -89,14 +87,10 @@ export function ExploreQueryEditor({
     control,
     name: languageName as FieldPath<any>,
   });
-
-  const language: QueryLanguage =
-    languageField.value ?? getStoredLanguage() ?? 'sql';
-
-  const handleLanguageChange = (lang: QueryLanguage) => {
-    setStoredLanguage(lang);
-    languageField.onChange(lang);
-  };
+  const { field: sqlTemplateField } = useController({
+    control,
+    name: sqlTemplateName as FieldPath<any>,
+  });
 
   const _tableConnections = tableConnection
     ? [tableConnection]
@@ -107,6 +101,25 @@ export function ExploreQueryEditor({
     timestampValueExpression: source?.timestampValueExpression,
   });
 
+  const language: QueryLanguage =
+    languageField.value ?? getExploreWhereLanguage(source?.kind);
+
+  const stringValue =
+    typeof valueField.value === 'string' ? valueField.value : '';
+  const sqlTemplateValue =
+    typeof sqlTemplateField.value === 'string' ? sqlTemplateField.value : '';
+
+  const { onModeChange } = useExploreQueryMode({
+    language,
+    where: stringValue,
+    sqlTemplate: sqlTemplateValue,
+    queryMode,
+    sourceKind: source?.kind,
+    onLanguageChange: languageField.onChange,
+    onWhereChange: valueField.onChange,
+    onQueryModeChange,
+  });
+
   const identifiers = useMemo(() => {
     return [
       ...(fields?.map(c =>
@@ -115,9 +128,6 @@ export function ExploreQueryEditor({
       ...(additionalSuggestions ?? []),
     ];
   }, [fields, additionalSuggestions]);
-
-  const stringValue =
-    typeof valueField.value === 'string' ? valueField.value : '';
 
   return (
     <>
@@ -130,11 +140,25 @@ export function ExploreQueryEditor({
         value={stringValue}
         onChange={valueField.onChange}
         language={language}
-        onLanguageChange={handleLanguageChange}
-        languages={['sql', 'lucene']}
+        onLanguageChange={languageField.onChange}
+        languages={['lucene', 'sql']}
         queryMode={queryMode}
         onQueryModeChange={onQueryModeChange}
+        onModeChange={onModeChange}
         rightSection={controls}
+        toolbarSlot={
+          <QueryEditorToolbar
+            mode={queryMode === 'sql' ? 'raw' : language}
+            language={language}
+            where={stringValue}
+            onWhereChange={valueField.onChange}
+            sourceKind={source?.kind}
+            fields={identifiers}
+            searchFilters={searchFilters}
+            chartConfig={chartConfig}
+            queryMode={queryMode}
+          />
+        }
         filtersSlot={filtersSlot}
         leftSection={
           <Tooltip label="Syntax reference" withArrow position="top">
@@ -152,8 +176,8 @@ export function ExploreQueryEditor({
         fields={identifiers}
         placeholder={
           language === 'sql'
-            ? "SQL WHERE clause (ex. column = 'foo')"
-            : 'Search your events w/ Lucene ex. column:foo'
+            ? "SQL WHERE clause (e.g. column = 'foo')"
+            : 'Filter this source'
         }
         onSubmit={onSubmit}
         enableHotkey={enableHotkey}

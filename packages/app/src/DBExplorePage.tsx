@@ -74,7 +74,6 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
-  IconArrowBarToRight,
   IconBolt,
   IconCheck,
   IconChevronDown,
@@ -82,6 +81,7 @@ import {
   IconCode,
   IconDotsVertical,
   IconDownload,
+  IconFilter,
   IconLayoutGridAdd,
   IconPlayerPlay,
   IconPlus,
@@ -100,12 +100,12 @@ import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/util
 import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { getExploreWhereLanguage } from '@/components/Explore/queryModeSafety';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import { SavedSearchesFlyout } from '@/components/SavedSearches/SavedSearchesFlyout';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
-import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -409,7 +409,7 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
         onClick={onExpand}
         aria-label="Show filters"
       >
-        <IconArrowBarToRight size={14} />
+        <IconFilter size={14} />
       </ActionIcon>
     </Tooltip>
   );
@@ -683,7 +683,7 @@ function SaveSearchModalComponent({
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
+              searchedConfig.whereLanguage ?? getExploreWhereLanguage(),
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -711,7 +711,7 @@ function SaveSearchModalComponent({
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
+              searchedConfig.whereLanguage ?? getExploreWhereLanguage(),
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -1259,7 +1259,8 @@ function DBExplorePage() {
         select: searchedConfig.select || '',
         where: searchedConfig.where || '',
         whereLanguage:
-          searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
+          searchedConfig.whereLanguage ??
+          getExploreWhereLanguage(searchedSource?.kind),
         configType: searchedConfig.configType ?? 'builder',
         sqlTemplate: searchedConfig.sqlTemplate ?? '',
         source:
@@ -1298,7 +1299,9 @@ function DBExplorePage() {
           ? searchedSource.defaultTableSelectExpression
           : undefined),
       where: _savedSearch?.where ?? '',
-      whereLanguage: _savedSearch?.whereLanguage ?? 'sql',
+      whereLanguage:
+        _savedSearch?.whereLanguage ??
+        getExploreWhereLanguage(searchedSource?.kind),
       source: _savedSearch?.source,
       filters: _savedSearch?.filters ?? [],
       orderBy: _savedSearch?.orderBy || defaultOrderBy,
@@ -1331,7 +1334,8 @@ function DBExplorePage() {
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
         whereLanguage:
-          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'sql',
+          searchedConfig?.whereLanguage ??
+          getExploreWhereLanguage(searchedSource?.kind),
         configType: searchedConfig?.configType ?? 'builder',
         sqlTemplate: searchedConfig?.sqlTemplate ?? '',
         source: searchedConfig?.source ?? undefined,
@@ -1339,7 +1343,7 @@ function DBExplorePage() {
         orderBy: searchedConfig?.orderBy ?? '',
       });
     }
-  }, [searchedConfig, reset, prevSearched]);
+  }, [searchedConfig, reset, prevSearched, searchedSource?.kind]);
 
   // Populate searched query with saved search if the query params have
   // been wiped (ex. clicking on the same saved search again)
@@ -1375,7 +1379,7 @@ function DBExplorePage() {
         source: defaultSourceId,
         where: '',
         select: '',
-        whereLanguage: getStoredLanguage() ?? 'sql',
+        whereLanguage: getExploreWhereLanguage(),
         filters: [],
         orderBy: '',
       });
@@ -1603,7 +1607,8 @@ function DBExplorePage() {
       source: chartSourceId,
       where: searchedConfig.where ?? '',
       whereLanguage:
-        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
+        searchedConfig.whereLanguage ??
+        getExploreWhereLanguage(searchedSource?.kind),
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     }),
@@ -1614,6 +1619,7 @@ function DBExplorePage() {
       searchedConfig.select,
       searchedConfig.where,
       searchedConfig.whereLanguage,
+      searchedSource?.kind,
     ],
   );
 
@@ -1683,7 +1689,7 @@ function DBExplorePage() {
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'sql',
+              searchedConfig.whereLanguage ?? getExploreWhereLanguage(),
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -2521,7 +2527,7 @@ function DBExplorePage() {
         setSearchedConfig({
           source: null,
           where: '',
-          whereLanguage: getStoredLanguage() ?? 'sql',
+          whereLanguage: getExploreWhereLanguage(),
           filters: [],
         });
         return;
@@ -2739,6 +2745,8 @@ function DBExplorePage() {
                 ? searchViewToDisplayType(view)
                 : DisplayType.Table
             }
+            searchFilters={searchFilters}
+            chartConfig={filtersChartConfig}
             filtersSlot={
               <ActiveFilterPills
                 searchFilters={searchFilters}
