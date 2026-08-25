@@ -212,6 +212,23 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await expect(page.getByTestId('whats-new-peek-counts')).toContainText(
         '5 improvements and 1 bug fix',
       );
+
+      // The CTA pulls itself left by --button-padding-x so its label aligns
+      // with the counts line above. That var is Mantine's, and a bad value
+      // resolves to no margin at all rather than erroring. Compare against the
+      // button's own padding rather than just asserting a negative number: the
+      // point is that the two cancel, which a drifted magnitude would not.
+      const box = await page
+        .getByTestId('view-all-releases-menu-item')
+        .evaluate(el => {
+          const s = getComputedStyle(el);
+          return {
+            ml: parseFloat(s.marginLeft),
+            pl: parseFloat(s.paddingLeft),
+          };
+        });
+      expect(box.pl).toBeGreaterThan(0);
+      expect(box.ml).toBeCloseTo(-box.pl, 1);
     });
 
     await test.step('Open the What\'s new drawer from "View all releases"', async () => {
@@ -278,6 +295,115 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
         page.getByRole('dialog', { name: 'Keyboard Shortcuts' }),
       ).toBeVisible({ timeout: 10_000 });
     });
+  });
+
+  test("sparkles the What's new label only while the release is unseen", async ({
+    page,
+  }) => {
+    await page.route('**/whats-new.json', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          releases: [
+            {
+              version: '9.9.9',
+              date: '2026-08-21',
+              anchor: 'v999--2026-08-21',
+              highlights: [{ kind: 'feature', text: 'First shiny feature' }],
+              counts: [],
+            },
+          ],
+        }),
+      }),
+    );
+
+    // A browser that has never acknowledged a version counts as unseen. Cleared
+    // explicitly because the shared auth storage state may carry the key over.
+    await page.evaluate(() =>
+      window.localStorage.removeItem('hdx-whats-new-seen'),
+    );
+    await page.reload();
+    await page.waitForLoadState();
+
+    const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+    const labelSparkle = page.getByTestId('whats-new-label-sparkle');
+
+    // The nav icon sparkles first, then hands off to the label inside the menu.
+    // Opening marks the release seen in the same tick, so the label can only
+    // render off a snapshot taken at open time — this is the assertion that
+    // catches someone passing the live flag down instead.
+    await expect(page.getByTestId('whats-new-sparkle')).toBeVisible({
+      timeout: 10_000,
+    });
+    await helpMenuTrigger.click({ timeout: 10000 });
+    await expect(labelSparkle).toBeVisible({ timeout: 10_000 });
+
+    // Reopening doesn't nudge again — the release is acknowledged now. Assert
+    // on the reopened menu, not on the closed one: the dropdown unmounts on
+    // close, and a detached element satisfies toBeHidden vacuously.
+    await page.keyboard.press('Escape');
+    await helpMenuTrigger.click({ timeout: 10000 });
+    await expect(page.getByTestId('whats-new')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(labelSparkle).toBeHidden();
+  });
+
+  test("What's new headlines share one left edge in the drawer", async ({
+    page,
+  }) => {
+    // The badge column exists so a wide "Breaking" badge doesn't push its
+    // headline further right than the "New" rows. Asserted in the drawer
+    // because that surface renders every highlight, and because the shared row
+    // was extracted to fix both surfaces at once — a menu-only test would let
+    // the drawer regress silently.
+    await page.route('**/whats-new.json', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          releases: [
+            {
+              version: '9.9.9',
+              date: '2026-08-21',
+              anchor: 'v999--2026-08-21',
+              highlights: [
+                { kind: 'breaking', text: 'A breaking change' },
+                { kind: 'feature', text: 'First shiny feature' },
+              ],
+              counts: [],
+            },
+          ],
+        }),
+      }),
+    );
+
+    await page.getByTestId('help-menu-trigger').click({ timeout: 10000 });
+    await page.getByTestId('view-all-releases-menu-item').click();
+    const drawer = page.getByTestId('whats-new-drawer');
+    await expect(drawer).toBeVisible({ timeout: 10_000 });
+
+    const headlines = drawer.getByTestId('whats-new-headline');
+    await expect(headlines).toHaveCount(2);
+
+    // Both x values in one evaluateAll, not two boundingBox() calls: the drawer
+    // slides in, so separate reads land in different frames and differ by
+    // however far it travelled between them. One layout pass shifts both rows
+    // equally, which is what makes the comparison meaningful mid-transition.
+    const xs = await headlines.evaluateAll(els =>
+      els.map(el => el.getBoundingClientRect().x),
+    );
+    expect(xs).toHaveLength(2);
+    expect(xs[0]).toBeCloseTo(xs[1], 0);
+
+    // The column is a hand-measured 76px. A font or scale change that made
+    // "Breaking" outgrow it would ellipsize the badge silently — getByText
+    // reads DOM text, so it passes even when the pill is visually clipped.
+    const clipped = await drawer
+      .getByText('Breaking', { exact: true })
+      .evaluate(el => el.scrollWidth > el.clientWidth + 1);
+    expect(clipped).toBe(false);
   });
 
   test("should degrade gracefully when What's new fails to load", async ({

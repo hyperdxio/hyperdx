@@ -196,6 +196,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   ] = useDisclosure(false);
   // Sparkle the Help button when there's a release this browser hasn't seen.
   const [hasUnseenWhatsNew, markWhatsNewSeen] = useWhatsNewUnseen(version);
+  // Opening the menu marks the release seen, which clears hasUnseenWhatsNew in
+  // the same tick — so the menu has to render off a snapshot taken at open time.
+  // Passing hasUnseenWhatsNew straight down gives a sparkle that never appears.
+  const [wasUnseenOnOpen, setWasUnseenOnOpen] = React.useState(false);
 
   return (
     <>
@@ -205,7 +209,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
         width={320}
         opened={helpMenuOpened}
         onChange={setHelpMenuOpened}
-        onOpen={markWhatsNewSeen}
+        onOpen={() => {
+          setWasUnseenOnOpen(hasUnseenWhatsNew);
+          markWhatsNewSeen();
+        }}
       >
         <Menu.Target>
           <UnstyledButton
@@ -265,6 +272,7 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
 
           <WhatsNewSection
             enabled={helpMenuOpened}
+            hasUnseen={wasUnseenOnOpen}
             version={version}
             onViewAll={() => {
               setHelpMenuOpened(false);

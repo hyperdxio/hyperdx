@@ -15,6 +15,7 @@ import {
 import { IconPackageExport } from '@tabler/icons-react';
 
 import { changelogUrl, formatCounts, useWhatsNew } from './useWhatsNew';
+import { WhatsNewHighlightRow } from './WhatsNewHighlightRow';
 
 // Link targets the release summary may point at.
 //
@@ -144,25 +145,15 @@ export const WhatsNewDrawer = ({
 
                 {release.highlights.length > 0 && (
                   <Stack gap={6}>
-                    {release.highlights.map(headline => (
-                      <Group
-                        key={headline.text}
-                        gap="xs"
-                        wrap="nowrap"
-                        align="flex-start"
-                      >
-                        <Badge
-                          size="sm"
-                          variant="light"
-                          color={headline.kind === 'breaking' ? 'red' : 'blue'}
-                          flex="0 0 auto"
-                        >
-                          {headline.kind === 'breaking' ? 'Breaking' : 'New'}
-                        </Badge>
-                        <Text size="sm" flex={1} miw={0}>
-                          {headline.text}
-                        </Text>
-                      </Group>
+                    {release.highlights.map((headline, index) => (
+                      <WhatsNewHighlightRow
+                        // Indexed because two highlights in one release can share wording. Safe
+                        // here: the list comes from a static payload, is never reordered, and
+                        // the rows hold no state.
+                        // eslint-disable-next-line @eslint-react/no-array-index-key
+                        key={`${index}-${headline.text}`}
+                        headline={headline}
+                      />
                     ))}
                   </Stack>
                 )}

@@ -1,7 +1,19 @@
-import { Anchor, Badge, Box, Group, Menu, Text, Timeline } from '@mantine/core';
-import { IconPackageExport } from '@tabler/icons-react';
+import cx from 'classnames';
+import {
+  Box,
+  Button,
+  Menu,
+  Text,
+  Timeline,
+  VisuallyHidden,
+} from '@mantine/core';
+import { IconArrowRight, IconPackageExport } from '@tabler/icons-react';
 
+import { SparkleGlyph } from './HelpSparkle';
 import { formatCounts, useWhatsNew } from './useWhatsNew';
+import { WhatsNewHighlightRow } from './WhatsNewHighlightRow';
+
+import styles from './AppNav.module.scss';
 
 const PEEK_LIMIT = 3;
 
@@ -13,10 +25,12 @@ const PEEK_LIMIT = 3;
 // lazily — `enabled` tracks the Help menu being open.
 export const WhatsNewSection = ({
   enabled,
+  hasUnseen,
   version,
   onViewAll,
 }: {
   enabled: boolean;
+  hasUnseen: boolean;
   version?: string;
   onViewAll: () => void;
 }) => {
@@ -40,39 +54,40 @@ export const WhatsNewSection = ({
 
   return (
     <>
+      {/* The section renders the same whether or not there's anything new, so
+          the sparkle is the only thing marking "new since you last looked".
+          aria-hidden (SparkleGlyph's default) rather than another labelled
+          image: the label text beside it is already announced. */}
       <Menu.Label>
+        {hasUnseen && (
+          <>
+            <SparkleGlyph
+              data-testid="whats-new-label-sparkle"
+              className={cx(styles.sparkleGlyph, styles.whatsNewLabelSparkle)}
+            />
+            {/* The glyph is decorative, and the nav item's "New updates
+                available" label is gone by now, so without this a screen
+                reader gets no "since you last looked" signal at all. */}
+            <VisuallyHidden>New since your last visit:</VisuallyHidden>
+          </>
+        )}
         What&apos;s new{shownVersion ? ` in v${shownVersion}` : ''}
       </Menu.Label>
       <Box px="sm" py={4} data-testid="whats-new">
         <Timeline bulletSize={18} lineWidth={2} color="blue">
-          {highlights.map(headline => (
+          {highlights.map((headline, index) => (
             <Timeline.Item
-              key={headline.text}
+              // Indexed because two highlights in one release can share wording. Safe
+              // here: the list comes from a static payload, is never reordered, and
+              // the rows hold no state.
+              // eslint-disable-next-line @eslint-react/no-array-index-key
+              key={`${index}-${headline.text}`}
               data-testid="whats-new-item"
               bullet={
                 <Box w={8} h={8} bdrs="50%" bg="var(--mantine-color-blue-5)" />
               }
             >
-              <Group gap="xs" wrap="nowrap" align="flex-start">
-                <Badge
-                  size="sm"
-                  variant="light"
-                  color={headline.kind === 'breaking' ? 'red' : 'blue'}
-                >
-                  {headline.kind === 'breaking' ? 'Breaking' : 'New'}
-                </Badge>
-                {/* flex + miw=0 lets the headline wrap and clamp within the row
-                    rather than forcing the menu wider. */}
-                <Text
-                  size="sm"
-                  lineClamp={2}
-                  title={headline.text}
-                  flex={1}
-                  miw={0}
-                >
-                  {headline.text}
-                </Text>
-              </Group>
+              <WhatsNewHighlightRow headline={headline} lineClamp={2} />
             </Timeline.Item>
           ))}
           {/* Terminal item: the connector line ends at an open package (the
@@ -83,16 +98,24 @@ export const WhatsNewSection = ({
                 Plus {rest}
               </Text>
             )}
-            <Anchor
-              component="button"
-              type="button"
+            {/* Deliberately `secondary`, not the `link` variant code_style.md
+                nominates for navigation CTAs: sat under the dimmed counts line,
+                link styling read as a third line of prose rather than the
+                section's one action. */}
+            <Button
               data-testid="view-all-releases-menu-item"
-              size="sm"
-              c="dimmed"
+              variant="secondary"
+              size="compact-sm"
+              mt={6}
+              // Cancel the button's own padding so the label aligns with the
+              // counts text above. Via `style`, not `ml` — spacing props run
+              // through getSpacing(), which mangles a calc() into a var name.
+              style={{ marginLeft: 'calc(var(--button-padding-x) * -1)' }}
+              rightSection={<IconArrowRight size={14} />}
               onClick={onViewAll}
             >
               View all releases
-            </Anchor>
+            </Button>
           </Timeline.Item>
         </Timeline>
       </Box>

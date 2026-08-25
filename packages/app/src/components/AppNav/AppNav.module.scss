@@ -230,11 +230,27 @@ $transition-slow: 0.2s ease;
   justify-content: center;
 }
 
-.helpSparkle {
-  position: absolute;
+// Shared by both sparkles so the reduced-motion rule below stays one selector.
+.sparkleGlyph {
   color: var(--color-text-brand);
   pointer-events: none;
   animation: whats-new-twinkle 1.8s ease-in-out infinite;
+}
+
+.helpSparkle {
+  position: absolute;
+}
+
+// One inline glyph marking the "What's new" menu label, sized to the label text
+// rather than scattered like the nav-icon set. Opening the menu marks the
+// release seen, so the nav sparkle has already stopped by the time this shows
+// and the two never animate at once.
+.whatsNewLabelSparkle {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  vertical-align: -1px;
 }
 
 .helpSparkleA {
@@ -275,7 +291,8 @@ $transition-slow: 0.2s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .helpSparkle {
+  // Static but visible, not hidden: the sparkle carries information.
+  .sparkleGlyph {
     animation: none;
     opacity: 0.9;
   }

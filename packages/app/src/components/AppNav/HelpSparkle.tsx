@@ -4,14 +4,14 @@ import { IconHelp } from '@tabler/icons-react';
 import styles from './AppNav.module.scss';
 
 // A single monochrome 4-point sparkle. `currentColor` so the CSS class controls
-// the colour (the theme brand colour); several are scattered over the Help icon.
-const SparkleGlyph = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-  >
+// the colour (the theme brand colour); several are scattered over the Help icon,
+// and WhatsNewSection reuses one to mark its label. Props are narrowed to the
+// two callers pass so none can override the aria-hidden/currentColor contract.
+export const SparkleGlyph = (props: {
+  className?: string;
+  'data-testid'?: string;
+}) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
     <path d="M12 0 L14.5 9.5 L24 12 L14.5 14.5 L12 24 L9.5 14.5 L0 12 L9.5 9.5 Z" />
   </svg>
 );
@@ -44,7 +44,7 @@ export const HelpSparkle = ({ hasUnseen }: { hasUnseen: boolean }) => (
       SPARKLES.map(sparkleStyle => (
         <SparkleGlyph
           key={sparkleStyle}
-          className={cx(styles.helpSparkle, sparkleStyle)}
+          className={cx(styles.sparkleGlyph, styles.helpSparkle, sparkleStyle)}
         />
       ))}
   </span>
