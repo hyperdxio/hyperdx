@@ -1,7 +1,14 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+import { whatsNewSchema } from '@/components/AppNav/useWhatsNew';
+
 // The parser lives in scripts/ (CommonJS) so next.config.mjs can import it at
 // build time; the test reaches across to exercise the same source of truth.
 // eslint-disable-next-line no-restricted-imports -- scripts/ is outside the @/ (src) alias by design
 import parseWhatsNew from '../../../../scripts/parse-whats-new';
+
+const REPO_ROOT = join(__dirname, '..', '..', '..', '..', '..', '..');
 
 // Mirrors the shape .github/scripts/release-notes.mjs writes into the root
 // CHANGELOG.md during a release, including the soft-wrapped bold lead-ins and
@@ -235,5 +242,18 @@ Dashboards got faster this release. And some other sentence.
     expect(releases[0].highlights[0].text).toBe(
       'Supports Postgres, etc. and a picker on top',
     );
+  });
+});
+
+describe('whats-new.json contract', () => {
+  it('accepts what the build-time parser emits for the real changelog', () => {
+    // next.config.mjs writes this payload at build time and the drawer validates
+    // it at runtime. Nothing else pins the two together, and a mismatch shows
+    // every user "Unable to load recent releases".
+    const changelog = readFileSync(join(REPO_ROOT, 'CHANGELOG.md'), 'utf-8');
+    const payload = parseWhatsNew(changelog, { maxReleases: 5 });
+
+    expect(() => whatsNewSchema.parse(payload)).not.toThrow();
+    expect(whatsNewSchema.parse(payload).releases.length).toBeGreaterThan(0);
   });
 });

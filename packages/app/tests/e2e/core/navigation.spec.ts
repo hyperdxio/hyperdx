@@ -195,11 +195,17 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await expect(items.first()).toBeVisible({ timeout: 10_000 });
       await expect(items).toHaveCount(2);
       await expect(items.getByText('First shiny feature')).toBeVisible();
-      await expect(items.getByText('New').first()).toBeVisible();
+      // exact: the default is a case-insensitive substring match, so a plain
+      // 'New' also matches any headline containing the word.
+      await expect(
+        items.getByText('New', { exact: true }).first(),
+      ).toBeVisible();
 
       // Breaking changes are badged apart from features, and sort above them:
       // only three rows fit here, so a breaking change must not lose its slot.
-      await expect(items.first().getByText('Breaking')).toBeVisible();
+      await expect(
+        items.first().getByText('Breaking', { exact: true }),
+      ).toBeVisible();
       await expect(items.first()).toContainText('A breaking change');
 
       // The sections we don't list out are summed up rather than dropped.
