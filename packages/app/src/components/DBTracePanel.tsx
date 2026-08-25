@@ -37,6 +37,7 @@ import {
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import { IS_LLM_PANELS_ENABLED } from '@/config';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import { getLLMRowData, LLMConversationPanel } from '@/llm';
@@ -138,7 +139,7 @@ function SpanDetailPanel({
   );
 
   const isLLM = useMemo(
-    () => getLLMRowData(source, normalizedRow).isLLM,
+    () => IS_LLM_PANELS_ENABLED && getLLMRowData(source, normalizedRow).isLLM,
     [source, normalizedRow],
   );
 

@@ -36,6 +36,7 @@ import {
 } from '@mantine/core';
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
+import { IS_LLM_PANELS_ENABLED } from '@/config';
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -668,7 +669,7 @@ export const DBRowSidePanelInner = ({
   );
 
   const isLLMRow = useMemo(
-    () => getLLMRowData(source, normalizedRow).isLLM,
+    () => IS_LLM_PANELS_ENABLED && getLLMRowData(source, normalizedRow).isLLM,
     [source, normalizedRow],
   );
 

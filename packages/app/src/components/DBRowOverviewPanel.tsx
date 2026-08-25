@@ -4,6 +4,7 @@ import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
+import { IS_LLM_PANELS_ENABLED } from '@/config';
 import { WithClause } from '@/hooks/useRowWhere';
 import { getLLMRowData, LLMSpanSubpanel } from '@/llm';
 import { getEventBody } from '@/source';
@@ -139,7 +140,8 @@ export function RowOverviewPanel({
   }, [dataAttributes, eventAttributesExpr]);
 
   const llmInfo = useMemo(
-    () => getLLMRowData(source, firstRow).info,
+    () =>
+      IS_LLM_PANELS_ENABLED ? getLLMRowData(source, firstRow).info : undefined,
     [source, firstRow],
   );
 

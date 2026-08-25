@@ -53,6 +53,7 @@ import {
   TimelineMinimap,
   type TimelineViewportController,
 } from '@/components/TimelineChart';
+import { IS_LLM_PANELS_ENABLED } from '@/config';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -1069,9 +1070,10 @@ export function DBTraceWaterfallChartContainer({
         const httpUrl = eventAttributes['http.url'];
 
         // LLM spans: append model + token count to the label.
-        const llmInfo = isLLMSpan(eventAttributes)
-          ? extractLLMSpanInfo(eventAttributes)
-          : undefined;
+        const llmInfo =
+          IS_LLM_PANELS_ENABLED && isLLMSpan(eventAttributes)
+            ? extractLLMSpanInfo(eventAttributes)
+            : undefined;
         const llmSuffix = llmInfo
           ? [
               llmInfo.model,
