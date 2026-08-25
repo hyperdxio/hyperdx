@@ -5,6 +5,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
+import { getLLMRowData, LLMSpanSubpanel } from '@/llm';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
@@ -137,6 +138,11 @@ export function RowOverviewPanel({
     return attributes?.['http.url'] != null;
   }, [dataAttributes, eventAttributesExpr]);
 
+  const llmInfo = useMemo(
+    () => getLLMRowData(source, firstRow).info,
+    [source, firstRow],
+  );
+
   const filteredEventAttributes = useMemo(() => {
     if (!eventAttributesExpr) return dataAttributes;
 
@@ -227,6 +233,7 @@ export function RowOverviewPanel({
           'spanEvents',
           'spanLinks',
           'network',
+          'llm',
           'resourceAttributes',
           'eventAttributes',
           'topLevelAttributes',
@@ -234,6 +241,21 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
+        {llmInfo != null && (
+          <Accordion.Item value="llm">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                LLM
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <LLMSpanSubpanel info={llmInfo} />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
         {isHttpRequest && (
           <Accordion.Item value="network">
             <Accordion.Control>

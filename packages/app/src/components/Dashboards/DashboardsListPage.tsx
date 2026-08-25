@@ -73,6 +73,11 @@ const PRESET_DASHBOARDS = [
         },
       ]
     : []),
+  {
+    name: 'LLM',
+    href: '/llm',
+    description: 'LLM calls, token usage, cost, and latency by model',
+  },
 ];
 
 export default function DashboardsListPage() {
