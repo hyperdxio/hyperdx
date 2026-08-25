@@ -43,7 +43,7 @@ export type ExploreQueryEditorProps = {
    */
   dateTimeColumns?: ReadonlyMap<string, string>;
   /**
-   * Query authoring mode. When provided, a `Builder | SQL` toggle is shown; in
+   * Query authoring mode. When provided, a Search | Raw SQL toggle is shown; in
    * `'sql'` mode the WHERE editor is swapped for a raw-SQL editor bound to
    * `sqlTemplateName`.
    */
@@ -186,14 +186,14 @@ export function ExploreQueryEditor({
         onChange={next => ingestWhere(next, next !== next.trimEnd())}
         language={language}
         onLanguageChange={languageField.onChange}
-        languages={['lucene', 'sql']}
+        languages={['lucene']}
         queryMode={queryMode}
         onQueryModeChange={onQueryModeChange}
         onModeChange={onModeChange}
         rightSection={controls}
         toolbarSlot={
           <QueryEditorToolbar
-            mode={queryMode === 'sql' ? 'raw' : language}
+            mode={queryMode === 'sql' ? 'raw' : 'lucene'}
             language={language}
             where={stringValue}
             onWhereChange={next => ingestWhere(next, true)}

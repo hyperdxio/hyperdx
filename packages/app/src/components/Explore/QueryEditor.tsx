@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
-import { syntaxHighlighting } from '@codemirror/language';
 import { type Extension } from '@codemirror/state';
 import {
   Box,
@@ -22,7 +21,6 @@ import { createCodeMirrorStyleTheme } from '@/components/SQLEditor/utils';
 import {
   languageExtensions,
   queryEditorBaseTheme,
-  queryHighlightStyle,
 } from './queryEditorLanguage';
 import { type QueryEditorMode, type QueryLanguage } from './queryModeSafety';
 
@@ -31,12 +29,11 @@ import styles from './QueryEditor.module.scss';
 export type { QueryLanguage };
 export type QueryConfigMode = 'builder' | 'sql';
 
-const DEFAULT_LANGUAGES: QueryLanguage[] = ['lucene', 'sql'];
+const DEFAULT_LANGUAGES: QueryLanguage[] = ['lucene'];
 const EMPTY_FIELDS: string[] = [];
 
 const MODE_LABELS: Record<QueryEditorMode, string> = {
   lucene: 'Search',
-  sql: 'SQL',
   raw: 'Raw SQL',
 };
 
@@ -58,9 +55,9 @@ export interface QueryEditorProps {
   queryMode?: QueryConfigMode;
   onQueryModeChange?: (mode: QueryConfigMode) => void;
   /**
-   * Combined Search / SQL / Raw SQL control. When provided, the segmented
-   * control calls this instead of flipping language/queryMode itself so the
-   * parent can snapshot and confirm unsafe switches.
+   * Combined Search / Raw SQL control. When provided, the segmented control
+   * calls this instead of flipping language/queryMode itself so the parent
+   * can snapshot and confirm unsafe switches.
    */
   onModeChange?: (mode: QueryEditorMode) => void;
   /** Body override rendered instead of the WHERE editor when in SQL mode. */
@@ -94,11 +91,11 @@ export interface QueryEditorProps {
 }
 
 /**
- * Presentational query editor: a bordered card with language tabs and header
- * controls on top of a CodeMirror body that renders SQL or Lucene with syntax
- * highlighting. The body auto-grows with its content (wrapping long lines) up
- * to `maxHeight` before scrolling. Fully controlled — value and language are
- * owned by the caller.
+ * Presentational query editor: a bordered card with Search | Raw SQL tabs and
+ * header controls on top of a CodeMirror body (Lucene) or a raw-SQL editor.
+ * The body auto-grows with its content (wrapping long lines) up to `maxHeight`
+ * before scrolling. Fully controlled — value and language are owned by the
+ * caller.
  */
 export function QueryEditor({
   value,
@@ -184,7 +181,6 @@ export function QueryEditor({
     return [
       queryEditorBaseTheme,
       createCodeMirrorStyleTheme(),
-      syntaxHighlighting(queryHighlightStyle),
       submitKeymap,
       keymap.of([{ key: 'Tab', run: acceptCompletion }]),
       ...languageExtensions(language, fields),
@@ -208,11 +204,9 @@ export function QueryEditor({
   const isSqlMode = queryMode === 'sql';
   const showToggle = languages.length > 1 && !isSqlMode;
 
-  // Combined authoring control: Search (Lucene) + SQL WHERE + Raw SQL, so the
-  // value spans both `queryMode` and `language`.
-  const modeValue: QueryEditorMode = isSqlMode ? 'raw' : language;
+  const modeValue: QueryEditorMode = isSqlMode ? 'raw' : 'lucene';
   const handleModeChange = (v: string) => {
-    if (v !== 'lucene' && v !== 'sql' && v !== 'raw') {
+    if (v !== 'lucene' && v !== 'raw') {
       return;
     }
     const next: QueryEditorMode = v;
@@ -225,7 +219,7 @@ export function QueryEditor({
       return;
     }
     if (isSqlMode) onQueryModeChange?.('builder');
-    onLanguageChange(next);
+    onLanguageChange('lucene');
   };
 
   return (
@@ -238,10 +232,7 @@ export function QueryEditor({
               value={modeValue}
               onChange={handleModeChange}
               data={[
-                ...languages.map(l => ({
-                  value: l,
-                  label: MODE_LABELS[l],
-                })),
+                { value: 'lucene', label: MODE_LABELS.lucene },
                 { value: 'raw', label: MODE_LABELS.raw },
               ]}
               aria-label="Query mode"
@@ -252,10 +243,14 @@ export function QueryEditor({
               <SegmentedControl
                 size="xs"
                 value={language}
-                onChange={v => onLanguageChange(v as QueryLanguage)}
+                onChange={v => {
+                  if (v === 'lucene' || v === 'sql') {
+                    onLanguageChange(v);
+                  }
+                }}
                 data={languages.map(l => ({
                   value: l,
-                  label: MODE_LABELS[l],
+                  label: l === 'lucene' ? MODE_LABELS.lucene : 'SQL',
                 }))}
                 aria-label="Query language"
               />
@@ -287,7 +282,7 @@ export function QueryEditor({
           )}
           <Box className={styles.editor}>
             <Text className={styles.badge} size="xs" c="dimmed">
-              {MODE_LABELS[language]}
+              {MODE_LABELS.lucene}
             </Text>
             <CodeMirror
               ref={ref}
@@ -310,6 +305,9 @@ export function QueryEditor({
                 bracketMatching: true,
                 closeBrackets: true,
                 searchKeymap: false,
+                // See queryEditorLanguage.ts — Lucene StreamLanguage
+                // highlighting throws `tags is not iterable`.
+                syntaxHighlighting: false,
               }}
             />
           </Box>

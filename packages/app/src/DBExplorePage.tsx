@@ -211,8 +211,7 @@ const SearchConfigSchema = z.object({
   source: z.string(),
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']),
-  // Query mode: 'builder' edits only the WHERE predicate (SQL/Lucene) and lets
-  // the page assemble the rest; 'sql' is a full raw-SQL statement (sqlTemplate).
+  // Query mode: 'builder' is Search (Lucene WHERE + pills); 'sql' is Raw SQL.
   configType: z.enum(['builder', 'sql']),
   sqlTemplate: z.string(),
   orderBy: z.string(),
@@ -1639,7 +1638,7 @@ function DBExplorePage() {
     useWatch({ name: 'configType', control }) ?? 'builder';
   // Live SQL-mode flag: driven by the editor toggle (not the last-run config)
   // so builder-only chrome (histogram, severity, sort/columns, agg controls,
-  // view switcher) hides the instant you switch to SQL. Query *execution* still
+  // view switcher) hides the instant you switch to Raw SQL. Query *execution* still
   // keys off `isSqlMode` (submitted) so nothing re-runs until Run.
   const isSqlUiMode = inputConfigType === 'sql';
   // query suggestion for 'where' if error

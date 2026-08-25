@@ -41,7 +41,6 @@
     "@hyperdx/browser": "^0.22.1",
     "@hyperdx/common-utils": "^0.27.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
-    "@lezer/highlight": "^1.2.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",
     "@mantine/dropzone": "^9.0.0",

@@ -60,7 +60,7 @@ export function QueryEditorToolbar({
     [searchFilters?.filters],
   );
   const hasFilters = Object.keys(filters).length > 0;
-  const showExamples = mode === 'lucene' || mode === 'sql';
+  const showExamples = mode !== 'raw';
 
   const sqlPreview = useMemo(() => {
     const filterSql = filterStateToSql(filters);

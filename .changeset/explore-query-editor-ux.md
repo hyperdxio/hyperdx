@@ -2,4 +2,4 @@
 '@hyperdx/app': minor
 ---
 
-Explore's query editor uses Search / SQL / Raw SQL modes with per-source-kind defaults, warns before reinterpreting SQL as Lucene, and lets you add filters without writing a query.
+Explore's query editor uses Search and Raw SQL. Search is Lucene with inline filter pills; Raw SQL is the full-query escape hatch.

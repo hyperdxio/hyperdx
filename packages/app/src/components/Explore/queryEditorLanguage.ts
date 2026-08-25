@@ -3,13 +3,7 @@ import {
   Completion,
   CompletionSource,
 } from '@codemirror/autocomplete';
-import {
-  HighlightStyle,
-  StreamLanguage,
-  type StreamParser,
-} from '@codemirror/language';
 import { type Extension } from '@codemirror/state';
-import { tags as t } from '@lezer/highlight';
 import { EditorView } from '@uiw/react-codemirror';
 
 import { KEYWORDS_FOR_WHERE_OR_ORDER_BY } from '@/components/SQLEditor/constants';
@@ -26,43 +20,6 @@ export const queryEditorBaseTheme = EditorView.theme({
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px' },
 });
-
-/**
- * Explicit, high-priority highlight style shared by SQL and Lucene. The @uiw
- * `basicSetup` only registers CodeMirror's `defaultHighlightStyle` as a
- * fallback, which leaves identifiers and operators uncolored.
- */
-export const queryHighlightStyle = HighlightStyle.define([
-  { tag: [t.keyword, t.operatorKeyword, t.modifier], color: '#8b5cf6' },
-  { tag: [t.string, t.special(t.string)], color: '#37b24d' },
-  { tag: [t.number, t.bool, t.null], color: '#e8590c' },
-  { tag: [t.typeName], color: '#0ca678' },
-  {
-    tag: [t.standard(t.name), t.function(t.variableName)],
-    color: '#4dabf7',
-  },
-  { tag: [t.propertyName], color: '#4dabf7' },
-  { tag: [t.operator, t.punctuation], color: '#adb5bd' },
-  {
-    tag: [t.comment, t.lineComment, t.blockComment],
-    color: '#868e96',
-    fontStyle: 'italic',
-  },
-]);
-
-const luceneStreamParser: StreamParser<unknown> = {
-  token(stream) {
-    if (stream.eatSpace()) return null;
-    if (stream.match(/^"(?:[^"\\]|\\.)*"?/)) return 'string';
-    if (stream.match(/^[-+]?[\w.$*?]+(?=\s*:)/)) return 'propertyName';
-    if (stream.match(/^(?:AND|OR|NOT|TO)\b/)) return 'keyword';
-    if (stream.match(/^\d+(?:\.\d+)?\b/)) return 'number';
-    if (stream.match(/^[:+\-!^~*?(){}[\]]/)) return 'operator';
-    if (stream.match(/^[^\s:()]+/)) return null;
-    stream.next();
-    return null;
-  },
-};
 
 function luceneCompletions(fields: string[]): CompletionSource {
   const fieldOpts: Completion[] = fields.map(label => ({
@@ -95,8 +52,10 @@ export function languageExtensions(
       includeRegularFunctions: true,
     });
   }
-  return [
-    StreamLanguage.define(luceneStreamParser),
-    autocompletion({ override: [luceneCompletions(fields)] }),
-  ];
+  // Lucene stays plaintext on purpose. StreamLanguage + syntaxHighlighting
+  // throws `tags is not iterable` here: this workspace has multiple
+  // @lezer/highlight copies, so highlightTree reads the Document node's
+  // style tags as a NodeProp instead of a Tag[]. Empty editors hide it
+  // (`tree.length === 0`); the first typed token crashes the page.
+  return [autocompletion({ override: [luceneCompletions(fields)] })];
 }

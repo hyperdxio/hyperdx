@@ -6,11 +6,8 @@ import { copyTextToClipboard } from '@/utils/clipboard';
 
 import type { QueryConfigMode, QueryLanguage } from './QueryEditor';
 import {
-  looksLikeSql,
   type QueryEditorMode,
   setExploreWhereLanguage,
-  tryConvertLuceneToSqlWhere,
-  tryConvertSqlWhereToLucene,
 } from './queryModeSafety';
 
 export function useExploreQueryMode({
@@ -38,118 +35,57 @@ export function useExploreQueryMode({
   const confirm = useConfirm();
   const luceneSnapshotRef = useRef('');
 
-  const mode: QueryEditorMode = queryMode === 'sql' ? 'raw' : language;
+  const mode: QueryEditorMode = queryMode === 'sql' ? 'raw' : 'lucene';
 
-  const persistLanguage = (nextLanguage: QueryLanguage) => {
-    setExploreWhereLanguage(sourceKind, nextLanguage);
-    onLanguageChange(nextLanguage);
+  const persistSearchLanguage = () => {
+    setExploreWhereLanguage(sourceKind, 'lucene');
+    if (language !== 'lucene') {
+      onLanguageChange('lucene');
+    }
   };
 
-  const snapshotLuceneIfNeeded = () => {
+  const snapshotSearchIfNeeded = () => {
     if (mode === 'lucene') {
       luceneSnapshotRef.current = where;
     }
   };
 
-  const switchToLucene = async () => {
+  const switchToSearch = async () => {
     if (mode === 'lucene') {
       return;
     }
 
-    const leavingRaw = mode === 'raw';
-    const sourceText = leavingRaw ? sqlTemplate : where;
-    if (!leavingRaw && !looksLikeSql(where)) {
-      persistLanguage('lucene');
-      onQueryModeChange?.('builder');
-      return;
+    if (sqlTemplate.trim()) {
+      await copyTextToClipboard(sqlTemplate);
     }
 
-    if (sourceText.trim()) {
-      await copyTextToClipboard(sourceText);
-    }
-
-    const converted = leavingRaw ? null : tryConvertSqlWhereToLucene(where);
     const snapshot = luceneSnapshotRef.current;
-
-    if (converted) {
-      const ok = await confirm(
-        'This SQL will be converted to a search query. Cancel to keep editing SQL. The original SQL is copied to the clipboard.',
-        'Convert to search',
-      );
-      if (!ok) {
-        return;
-      }
-      onWhereChange(converted);
-      persistLanguage('lucene');
-      onQueryModeChange?.('builder');
-      return;
-    }
-
     if (snapshot) {
       const ok = await confirm(
-        leavingRaw
-          ? 'Raw SQL cannot be shown as a search query. Restore the last search query? The current SQL is copied to the clipboard. Cancel to keep editing SQL.'
-          : 'This SQL cannot be shown as a search query. Restore the last search query? The current SQL is copied to the clipboard. Cancel to keep editing SQL.',
+        'Raw SQL cannot be shown as a search query. Restore the last search query? The current SQL is copied to the clipboard. Cancel to keep editing raw SQL.',
         'Restore search query',
       );
       if (!ok) {
         return;
       }
       onWhereChange(snapshot);
-      persistLanguage('lucene');
-      onQueryModeChange?.('builder');
-      return;
-    }
-
-    if (leavingRaw) {
+    } else if (sqlTemplate.trim()) {
       const ok = await confirm(
-        'Raw SQL cannot be shown as a search query. Switch to SQL WHERE instead? The current SQL is copied to the clipboard. Cancel to keep editing raw SQL.',
-        'Switch to SQL',
+        'Raw SQL cannot be shown as a search query. Switch to an empty search? The current SQL is copied to the clipboard. Cancel to keep editing raw SQL.',
+        'Switch to search',
       );
       if (!ok) {
         return;
       }
-      persistLanguage('sql');
-      onQueryModeChange?.('builder');
-      return;
+      onWhereChange('');
     }
 
-    const ok = await confirm(
-      'This SQL cannot be shown as a search query. Switch to an empty search? The current SQL is copied to the clipboard. Cancel to keep editing SQL.',
-      'Switch to search',
-    );
-    if (!ok) {
-      return;
-    }
-    onWhereChange('');
-    persistLanguage('lucene');
-    onQueryModeChange?.('builder');
-  };
-
-  const switchToSql = async () => {
-    snapshotLuceneIfNeeded();
-    if (mode === 'lucene' && where.trim() && !looksLikeSql(where)) {
-      const converted = tryConvertLuceneToSqlWhere(where);
-      if (converted != null) {
-        onWhereChange(converted);
-      } else {
-        const ok = await confirm(
-          'This search query cannot be converted to a SQL WHERE clause. Switch to an empty SQL clause? Your search query will be restored if you switch back. Cancel to keep editing the search query.',
-          'Switch to SQL',
-        );
-        if (!ok) {
-          return;
-        }
-        onWhereChange('');
-      }
-    }
-    persistLanguage('sql');
+    persistSearchLanguage();
     onQueryModeChange?.('builder');
   };
 
   const switchToRaw = () => {
-    snapshotLuceneIfNeeded();
-    persistLanguage('sql');
+    snapshotSearchIfNeeded();
     onQueryModeChange?.('sql');
   };
 
@@ -158,11 +94,7 @@ export function useExploreQueryMode({
       return;
     }
     if (next === 'lucene') {
-      await switchToLucene();
-      return;
-    }
-    if (next === 'sql') {
-      await switchToSql();
+      await switchToSearch();
       return;
     }
     switchToRaw();
