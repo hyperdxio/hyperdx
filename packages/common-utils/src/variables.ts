@@ -41,6 +41,10 @@ const escapeRegexValue = (value: string) =>
 const escapeLuceneValue = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
+/** Escape `\` and `"` so a value survives inside a double-quoted PromQL string. */
+const escapePromqlStringValue = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
 /**
  * Render a variable's selected values in the requested format. Every format
  * has an "empty selection" rendering that keeps the surrounding query valid.
@@ -395,12 +399,42 @@ export function expandTemplate(
 
 // -- Variable expansion -----------------------------------------------------
 
+type TemplateLanguage = NonNullable<SearchConditionLanguage>;
+
 export type VariableContext = {
   variables: ChartVariable[];
-  /** Format used by references that don't request one. */
+  /** The language the renderer will parse this template as. */
+  inputLanguage: TemplateLanguage;
+};
+
+type LanguageSettings = {
+  /** Format used by a reference that doesn't request one. */
   defaultFormat: VariableFormat;
-  /** The language whatever consumes the result will parse it as. */
-  inputLanguage: NonNullable<SearchConditionLanguage>;
+  /**
+   * Leaves `$__filter` / `$__conditionalAll` exactly as written. They expand to
+   * SQL predicates, so they have no meaning in a Lucene or PromQL expression.
+   */
+  disableMacros?: boolean;
+  /**
+   * Escapes a `regex`-format expansion for the string literal it always sits
+   * inside. Only `regex` needs this: `sqlstring` and `lucene` quote and escape
+   * themselves, and `csv` is the raw escape hatch that carries identifiers.
+   */
+  escapeRegexForLiteral?: (rendered: string) => string;
+};
+
+/** Settings controlling how variables and templates are expanded for each template language. */
+const LANGUAGE_SETTINGS: Record<TemplateLanguage, LanguageSettings> = {
+  sql: {
+    defaultFormat: 'sqlstring',
+    escapeRegexForLiteral: rendered => escapeSqlString(rendered),
+  },
+  lucene: { defaultFormat: 'lucene', disableMacros: true },
+  promql: {
+    defaultFormat: 'regex',
+    disableMacros: true,
+    escapeRegexForLiteral: escapePromqlStringValue,
+  },
 };
 
 const sqlNoOp = (name: string) =>
@@ -557,14 +591,17 @@ export function expandVariableToken(
     );
   }
 
-  return formatVariableValues(
-    variable.values,
-    requestedFormat ?? ctx.defaultFormat,
-  );
+  const settings = LANGUAGE_SETTINGS[ctx.inputLanguage];
+  const format = requestedFormat ?? settings.defaultFormat;
+  const rendered = formatVariableValues(variable.values, format);
+
+  return format === 'regex' && settings.escapeRegexForLiteral
+    ? settings.escapeRegexForLiteral(rendered)
+    : rendered;
 }
 
-/** Expand the given token without applying lucene-specific rewrites. */
-function expandTokenWithoutLuceneRewrites(
+/** Expand the given token if it's a variable, otherwise return the raw text. */
+function expandVariableOnly(
   token: TemplateToken,
   ctx: VariableContext,
 ): string {
@@ -603,7 +640,10 @@ function getLuceneFormattedValues(
 ): string[] | undefined {
   if (token.kind === 'text' || token.kind === 'macro') return undefined;
   const requestedFormat = token.kind === 'braced' ? token.format : undefined;
-  if ((requestedFormat ?? ctx.defaultFormat) !== 'lucene') return undefined;
+
+  const settings = LANGUAGE_SETTINGS[ctx.inputLanguage];
+  if ((requestedFormat ?? settings.defaultFormat) !== 'lucene')
+    return undefined;
   return ctx.variables.find(variable => variable.name === token.name)?.values;
 }
 
@@ -716,9 +756,7 @@ function substituteTokensWithLuceneRewrites(
     token => getLuceneFormattedValues(token, ctx) != null,
   );
   if (!anyRewritable) {
-    return tokens
-      .map(token => expandTokenWithoutLuceneRewrites(token, ctx))
-      .join('');
+    return tokens.map(token => expandVariableOnly(token, ctx)).join('');
   }
 
   // Build the sentinel string, a string with all variable references replaced by
@@ -745,9 +783,7 @@ function substituteTokensWithLuceneRewrites(
     ast = lucene.parse(sentinelString);
   } catch {
     // If the lucene is not valid, fall back to the non-rewrite path
-    return tokens
-      .map(token => expandTokenWithoutLuceneRewrites(token, ctx))
-      .join('');
+    return tokens.map(token => expandVariableOnly(token, ctx)).join('');
   }
 
   // Get the offset of every term's text in the sentinel string.
@@ -776,7 +812,7 @@ function substituteTokensWithLuceneRewrites(
       const untouched = decodeSpecialTokensToSource(
         sentinelString.slice(runStart, region.offset),
       );
-      const expanded = expandTokenWithoutLuceneRewrites(region.token, ctx);
+      const expanded = expandVariableOnly(region.token, ctx);
       rewrittenOutput += untouched + expanded;
       runStart = region.offset + region.sentinel.length;
     }
@@ -786,14 +822,15 @@ function substituteTokensWithLuceneRewrites(
 }
 
 /**
- * Expand variable references and the variable macros in a template fragment.
+ * Expand variable references and the variable macros in a template fragment,
+ * for the language its renderer will parse it as. Macro expansion is performed
+ * only for SQL templates. Default formats and escaping depend on the language.
  *
- * Standard macros (`$__timeFilter` and friends) are *not* known here, so they
- * pass through as text — raw SQL goes through `replaceMacros`, which scans for
- * both sets in one pass. This entry point is for the surfaces that only carry
- * variables (chart-builder where/having, PromQL expressions).
+ * Only variable-related macros are expanded here - the full suite of macros
+ * (eg. `$__timeFilter`) are supported only for raw SQL chart types, and are
+ * handled elsewhere.
  */
-export function substituteWithContext(
+export function substituteVariables(
   input: string,
   ctx: VariableContext,
 ): string {
@@ -806,26 +843,18 @@ export function substituteWithContext(
     );
   }
 
+  if (LANGUAGE_SETTINGS[ctx.inputLanguage].disableMacros) {
+    return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
+      onMalformed: 'skip',
+    })
+      .map(token => expandVariableOnly(token, ctx))
+      .join('');
+  }
+
   return expandTemplate(input, {
     macroNames: VARIABLE_MACRO_NAMES,
     expandMacro: token => expandVariableToken(token, ctx),
     expandReference: token => expandVariableToken(token, ctx),
-  });
-}
-
-/**
- * Expand a template for the language its renderer will parse it as, rendering
- * values in the format that language reads.
- */
-export function substituteVariablesForLanguage(
-  input: string,
-  variables: ChartVariable[],
-  inputLanguage: NonNullable<SearchConditionLanguage>,
-): string {
-  return substituteWithContext(input, {
-    variables,
-    defaultFormat: inputLanguage === 'lucene' ? 'lucene' : 'sqlstring',
-    inputLanguage,
   });
 }
 
@@ -934,11 +963,34 @@ export function substituteChartConfigVariables<
 
   const substituted = mapBuilderVariableTemplates(
     config,
-    (template, language) =>
-      substituteVariablesForLanguage(template, variables, language),
+    (template, inputLanguage) =>
+      substituteVariables(template, { variables, inputLanguage }),
   );
 
   return { ...substituted, variables: undefined };
+}
+
+/**
+ * Expand the variable references in a PromQL config's expression, returning it
+ * with `variables` consumed. `variables` being undefined means this is a no-op.
+ *
+ * Dropping `variables` from the result ensures a config can't be substituted
+ * twice, the same way `substituteChartConfigVariables` does.
+ */
+export function substitutePromqlChartConfigVariables<
+  T extends { promqlExpression: string; variables?: ChartVariable[] },
+>(config: T): T {
+  const { variables } = config;
+  if (variables == null) return config;
+
+  return {
+    ...config,
+    promqlExpression: substituteVariables(config.promqlExpression, {
+      variables,
+      inputLanguage: 'promql',
+    }),
+    variables: undefined,
+  };
 }
 
 /**
@@ -1106,7 +1158,7 @@ export function validateVariableReferencesInTemplate(
   // Attempt to expand macros, so that errors during expansion can be surfaced.
   if (variables != null && hasVariableMacro(template)) {
     try {
-      substituteVariablesForLanguage(template, variables, language);
+      substituteVariables(template, { variables, inputLanguage: language });
     } catch (e) {
       // Surface only MacroExpansionError, anything else is a bug the user can't act
       // on, or could be from the user typing an incomplete template
@@ -1227,8 +1279,7 @@ export function filterReferencedVariables(
   if ('configType' in config && config.configType === 'sql') {
     names = getReferencedVariableNames(config.sqlTemplate);
   } else if ('configType' in config && config.configType === 'promql') {
-    // PromQL queries don't support variables yet.
-    return [];
+    names = getReferencedVariableNames(config.promqlExpression);
   } else {
     names = getBuilderVariableReferences(config).map(
       reference => reference.name,

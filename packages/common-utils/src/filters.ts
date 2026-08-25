@@ -10,10 +10,7 @@ import {
   DashboardFilterValue,
   Filter,
 } from '@/types';
-import {
-  getVariableReferences,
-  substituteVariablesForLanguage,
-} from '@/variables';
+import { getVariableReferences, substituteVariables } from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -937,7 +934,10 @@ export function resolveFilterValuesWhere(
 
   try {
     return {
-      where: substituteVariablesForLanguage(where, variables, whereLanguage),
+      where: substituteVariables(where, {
+        variables,
+        inputLanguage: whereLanguage,
+      }),
       whereLanguage,
     };
   } catch (e) {

@@ -1620,6 +1620,7 @@ const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
