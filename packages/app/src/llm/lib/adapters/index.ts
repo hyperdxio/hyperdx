@@ -5,8 +5,6 @@ import { semconvEventsAdapter } from './semconvEvents';
 import { MessageAdapter } from './shared';
 import { vercelAiAdapter } from './vercelAi';
 
-export type { ExtractedMessages, MessageAdapter } from './shared';
-
 /**
  * Adapters in precedence order. The current attribute-based semconv comes
  * first (the standard going forward), then the key-path dialects whose

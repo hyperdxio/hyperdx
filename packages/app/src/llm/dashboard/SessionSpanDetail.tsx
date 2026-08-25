@@ -21,9 +21,11 @@ import { SessionSpanListRow } from './LLMSessionPanel';
 export function SessionSpanDetail({
   source,
   row,
+  dateRange,
 }: {
   source: TTraceSource;
   row: SessionSpanListRow;
+  dateRange: [Date, Date];
 }) {
   const attributeField = source.eventAttributesExpression || 'SpanAttributes';
 
@@ -34,16 +36,25 @@ export function SessionSpanDetail({
       connection: source.connection,
       from: source.from,
       select: [{ alias: 'attributes', valueExpression: attributeField }],
-      where: SqlString.format('? = ? AND ? = parseDateTime64BestEffort(?, 9)', [
-        SqlString.raw(source.spanIdExpression),
-        row.spanId,
-        SqlString.raw(source.timestampValueExpression),
-        row.ts,
-      ]),
+      // Span ids can collide (or be empty) across traces, so pin the lookup
+      // to the trace id from the session list as well.
+      where: SqlString.format(
+        '? = ? AND ? = ? AND ? = parseDateTime64BestEffort(?, 9)',
+        [
+          SqlString.raw(source.traceIdExpression),
+          row.traceId,
+          SqlString.raw(source.spanIdExpression),
+          row.spanId,
+          SqlString.raw(source.timestampValueExpression),
+          row.ts,
+        ],
+      ),
       whereLanguage: 'sql' as const,
+      // Bound the point lookup to the searched window for partition pruning.
+      dateRange,
       limit: { limit: 1 },
     }),
-    [source, attributeField, row.spanId, row.ts],
+    [source, attributeField, row.traceId, row.spanId, row.ts, dateRange],
   );
 
   const { data, isLoading } = useQueriedChartConfig(config, {

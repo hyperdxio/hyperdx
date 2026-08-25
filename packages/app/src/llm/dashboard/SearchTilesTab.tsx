@@ -26,7 +26,8 @@ export function SearchTilesTab(props: LLMChartProps) {
     props;
 
   const traceConfig = {
-    ...baseLLMChartConfig(props),
+    // Row search never references the cost alias; skip the WITH binding.
+    ...baseLLMChartConfig({ ...props, withCostAlias: false }),
     select: source.defaultTableSelectExpression || '',
     orderBy: [
       {

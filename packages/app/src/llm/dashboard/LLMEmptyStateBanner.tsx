@@ -12,7 +12,8 @@ import { LLMChartProps } from './types';
  */
 export function LLMEmptyStateBanner(props: LLMChartProps) {
   const config = {
-    ...baseLLMChartConfig(props),
+    // Plain span count; skip the cost-alias WITH binding to keep it small.
+    ...baseLLMChartConfig({ ...props, withCostAlias: false }),
     select: [{ aggFn: 'count' as const, valueExpression: '', alias: 'count' }],
   };
 

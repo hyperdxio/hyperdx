@@ -7,7 +7,7 @@ import {
   SpanAttributeMap,
 } from '@/llm/lib/types';
 
-export interface ExtractedMessages {
+interface ExtractedMessages {
   input: ChatMessage[];
   output: ChatMessage[];
 }

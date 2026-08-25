@@ -4,6 +4,7 @@ import { Grid } from '@mantine/core';
 import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { llmGatedSumExpr } from '@/llm/lib/expressions';
 
 import { baseLLMChartConfig } from './chartConfig';
 import { LLMChartProps } from './types';
@@ -37,18 +38,18 @@ export function EfficiencyCharts(props: LLMChartProps) {
               displayType: DisplayType.Line,
               select: [
                 {
-                  aggFn: 'sum',
-                  valueExpression: expressions.cachedInputTokens,
+                  valueExpression: llmGatedSumExpr(
+                    expressions,
+                    expressions.cachedInputTokens,
+                  ),
                   alias: 'cached_tokens',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
-                  aggFn: 'sum',
-                  valueExpression: expressions.effectiveInputTokens,
+                  valueExpression: llmGatedSumExpr(
+                    expressions,
+                    expressions.effectiveInputTokens,
+                  ),
                   alias: 'input_tokens',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
                   valueExpression: 'cached_tokens / greatest(input_tokens, 1)',

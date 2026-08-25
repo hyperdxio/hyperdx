@@ -92,6 +92,15 @@ const CACHED_INPUT_TOKEN_KEYS = [
   'cache_read_tokens',
 ];
 
+/** Prompt-cache write/creation tokens (billed at a premium by Anthropic). */
+const CACHE_WRITE_TOKEN_KEYS = [
+  'gen_ai.usage.cache_creation_input_tokens',
+  'llm.token_count.prompt_details.cache_write',
+  'ai.usage.inputTokenDetails.cacheWriteTokens',
+  'cache_write_tokens',
+  'cache_creation_tokens',
+];
+
 const REASONING_TOKEN_KEYS = [
   'gen_ai.usage.output_reasoning_tokens',
   'gen_ai.usage.reasoning_tokens',
@@ -151,7 +160,7 @@ const REPORTED_TOKEN_KEYS = [
  * carry LLM instrumentation in an attribute map column (SpanAttributes /
  * LogAttributes), just under a different field.
  */
-export function getLLMAttributeExpressions({
+function getLLMAttributeExpressions({
   attributeField,
   isJsonColumn,
 }: {
@@ -179,6 +188,19 @@ export function getLLMAttributeExpressions({
     CACHED_INPUT_TOKEN_KEYS,
     isJsonColumn,
   );
+  const cacheWriteInput = greatestNumber(
+    attributeField,
+    CACHE_WRITE_TOKEN_KEYS,
+    isJsonColumn,
+  );
+  /**
+   * Total prompt context per convention: OpenAI/Vercel-style report cache
+   * reads/writes as subsets of input_tokens; Anthropic/OpenInference-style
+   * report input_tokens excluding both. Heuristic: when reads + writes
+   * exceed input the row must be exclusive-style, so add them.
+   */
+  const effectiveInputTokens = `if(${cachedInput} + ${cacheWriteInput} > ${inputTokens}, ${inputTokens} + ${cachedInput} + ${cacheWriteInput}, ${inputTokens})`;
+  const uncachedInputTokens = `greatest(if(${cachedInput} + ${cacheWriteInput} > ${inputTokens}, ${inputTokens}, ${inputTokens} - ${cachedInput} - ${cacheWriteInput}), 0)`;
 
   return {
     model,
@@ -193,16 +215,12 @@ export function getLLMAttributeExpressions({
     sessionId: coalesceString(attributeField, SESSION_ID_KEYS, isJsonColumn),
     inputTokens,
     outputTokens,
-    totalTokens: `${inputTokens} + ${outputTokens}`,
+    /** Full context processed + output (see effectiveInputTokens). */
+    totalTokens: `${effectiveInputTokens} + ${outputTokens}`,
     cachedInputTokens: cachedInput,
-    /**
-     * Total prompt context per convention: OpenAI-style reports cached reads
-     * as a subset of input_tokens; Anthropic-style (Claude Code, Bedrock)
-     * reports input_tokens excluding cache reads. Heuristic: when cached >
-     * input the row must be exclusive-style, so add them.
-     */
-    effectiveInputTokens: `if(${cachedInput} > ${inputTokens}, ${inputTokens} + ${cachedInput}, ${inputTokens})`,
-    uncachedInputTokens: `greatest(if(${cachedInput} > ${inputTokens}, ${inputTokens}, ${inputTokens} - ${cachedInput}), 0)`,
+    cacheWriteInputTokens: cacheWriteInput,
+    effectiveInputTokens,
+    uncachedInputTokens,
     reasoningTokens: greatestNumber(
       attributeField,
       REASONING_TOKEN_KEYS,
@@ -221,11 +239,18 @@ export function getLLMAttributeExpressions({
     /** Estimated USD cost per row (provided cost wins over the catalog). */
     costUsd: generateCostSqlExpression({
       modelExpr: model,
-      inputTokensExpr: inputTokens,
+      uncachedInputTokensExpr: uncachedInputTokens,
+      cachedInputTokensExpr: cachedInput,
+      cacheWriteInputTokensExpr: cacheWriteInput,
       outputTokensExpr: outputTokens,
       providedCostExpr: providedCost,
     }),
     isLLMSpan: buildLLMSpanSqlPredicate({ attributeField, isJsonColumn }),
+    /**
+     * Rows carrying a cost stamped by the instrumentation itself. These are
+     * an app's own authoritative per-call reporters — see llmGatedSumExpr.
+     */
+    hasProvidedCost: `(${providedCost} > 0)`,
     /** See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count. */
     hasReportedTokens: `(${REPORTED_TOKEN_KEYS.map(key =>
       isJsonColumn
@@ -314,3 +339,42 @@ export function getLLMLogExpressions(
 }
 
 export type LLMLogExpressions = ReturnType<typeof getLLMLogExpressions>;
+
+/**
+ * Query-level alias for the per-row cost expression. The full `costUsd`
+ * expression embeds the model price catalog (~70 KiB of SQL); referencing it
+ * more than once per query risks ClickHouse's 256 KiB max_query_size, so
+ * `baseLLMChartConfig` binds it once as a WITH expression alias and charts
+ * reference this name instead.
+ */
+export const LLM_COST_SQL_ALIAS = '__llm_cost_usd';
+
+type GateExpressions = Pick<
+  LLMExpressions,
+  'hasProvidedCost' | 'hasReportedTokens'
+>;
+
+/**
+ * Election-gated sum for token/cost aggregations, used as a raw select
+ * expression (no aggFn). When the aggregation scope (group/time bucket)
+ * contains spans with an instrumentation-provided cost, those are the app's
+ * own authoritative per-call reporters and every other dialect's usage rows
+ * describe the same calls again — e.g. opencode emits an OpenInference span
+ * (with `cost_usd`) *and* Vercel AI SDK spans (with `gen_ai.usage.*`) for
+ * each call, in separate traces, so no row-local gate can dedupe them.
+ * Summing only the provided-cost rows counts each call once; scopes without
+ * provided costs fall back to all usage-reporting rows.
+ *
+ * Note: rendered as raw SQL, so sample-weight correction does not apply.
+ */
+export function llmGatedSumExpr(
+  expressions: GateExpressions,
+  valueExpression: string,
+): string {
+  return `if(countIf(${expressions.hasProvidedCost}) > 0, sumIf(${valueExpression}, ${expressions.hasProvidedCost}), sumIf(${valueExpression}, ${expressions.hasReportedTokens}))`;
+}
+
+/** Election-gated call count (see llmGatedSumExpr). */
+export function llmGatedCountExpr(expressions: GateExpressions): string {
+  return `if(countIf(${expressions.hasProvidedCost}) > 0, countIf(${expressions.hasProvidedCost}), countIf(${expressions.hasReportedTokens}))`;
+}

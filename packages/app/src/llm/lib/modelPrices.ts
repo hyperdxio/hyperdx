@@ -9,9 +9,10 @@
  * `gen_ai.usage.cost` attribute always takes precedence (see cost.ts).
  *
  * Entries are ordered most-specific → least-specific; the first pattern
- * match wins. Tuple: [name, regex source, input, output, cachedInput?].
+ * match wins. Tuple:
+ * [name, regex source, input, output, cachedInput?, cacheWriteInput?].
  */
-type PriceTuple = [string, string, number, number, number?];
+type PriceTuple = [string, string, number, number, number?, number?];
 
 // prettier-ignore
 const OPENAI: PriceTuple[] = [
@@ -54,19 +55,20 @@ const A =
 // Optional trailing variant markers: Bedrock -v1:0, Vertex @date, and
 // bracket variants like claude-opus-5[1m] (1M context window).
 const AV = '(\\[[^\\]]+\\])?(-v\\d+(:\\d+)?)?(@\\d+)?$';
+// Anthropic bills prompt-cache writes at 1.25x the input rate (5m TTL).
 // prettier-ignore
 const ANTHROPIC: PriceTuple[] = [
-  ['claude-opus-5', `${A}claude-opus-5${AV}`, 5e-6, 25e-6, 5e-7],
-  ['claude-sonnet-5', `${A}claude-sonnet-5${AV}`, 2e-6, 10e-6, 2e-7],
-  ['claude-fable-5', `${A}claude-fable-5${AV}`, 10e-6, 50e-6, 1e-6],
-  ['claude-mythos-5', `${A}claude-mythos-5${AV}`, 10e-6, 50e-6, 1e-6],
-  ['claude-opus-4-x', `${A}claude-opus-4-[5-9](-\\d{8})?${AV}`, 5e-6, 25e-6, 5e-7],
-  ['claude-opus-4', `${A}claude-opus-4(-1)?(-\\d{8})?${AV}`, 15e-6, 75e-6, 1.5e-6],
-  ['claude-sonnet-4-x', `${A}claude-sonnet-4(-[5-9])?(-latest|-\\d{8})?${AV}`, 3e-6, 15e-6, 3e-7],
-  ['claude-haiku-4-5', `${A}claude-haiku-4-5(-\\d{8})?${AV}`, 1e-6, 5e-6, 1e-7],
-  ['claude-3-7-sonnet', `${A}claude-3[.-]7-sonnet(-latest|-\\d{8})?${AV}`, 3e-6, 15e-6, 3e-7],
-  ['claude-3-5-sonnet', `${A}claude-3[.-]5-sonnet(-latest|-\\d{8})?${AV}`, 3e-6, 15e-6, 3e-7],
-  ['claude-3-5-haiku', `${A}claude-3[.-]5-haiku(-latest|-\\d{8})?${AV}`, 8e-7, 4e-6, 8e-8],
+  ['claude-opus-5', `${A}claude-opus-5${AV}`, 5e-6, 25e-6, 5e-7, 6.25e-6],
+  ['claude-sonnet-5', `${A}claude-sonnet-5${AV}`, 2e-6, 10e-6, 2e-7, 2.5e-6],
+  ['claude-fable-5', `${A}claude-fable-5${AV}`, 10e-6, 50e-6, 1e-6, 12.5e-6],
+  ['claude-mythos-5', `${A}claude-mythos-5${AV}`, 10e-6, 50e-6, 1e-6, 12.5e-6],
+  ['claude-opus-4-x', `${A}claude-opus-4-[5-9](-\\d{8})?${AV}`, 5e-6, 25e-6, 5e-7, 6.25e-6],
+  ['claude-opus-4', `${A}claude-opus-4(-1)?(-\\d{8})?${AV}`, 15e-6, 75e-6, 1.5e-6, 18.75e-6],
+  ['claude-sonnet-4-x', `${A}claude-sonnet-4(-[5-9])?(-latest|-\\d{8})?${AV}`, 3e-6, 15e-6, 3e-7, 3.75e-6],
+  ['claude-haiku-4-5', `${A}claude-haiku-4-5(-\\d{8})?${AV}`, 1e-6, 5e-6, 1e-7, 1.25e-6],
+  ['claude-3-7-sonnet', `${A}claude-3[.-]7-sonnet(-latest|-\\d{8})?${AV}`, 3e-6, 15e-6, 3e-7, 3.75e-6],
+  ['claude-3-5-sonnet', `${A}claude-3[.-]5-sonnet(-latest|-\\d{8})?${AV}`, 3e-6, 15e-6, 3e-7, 3.75e-6],
+  ['claude-3-5-haiku', `${A}claude-3[.-]5-haiku(-latest|-\\d{8})?${AV}`, 8e-7, 4e-6, 8e-8, 1e-6],
   ['claude-3-opus', `${A}claude-3-opus(-latest|-\\d{8})?${AV}`, 15e-6, 75e-6],
   ['claude-3-haiku', `${A}claude-3-haiku(-\\d{8})?${AV}`, 2.5e-7, 1.25e-6],
 ];
@@ -100,16 +102,25 @@ export interface ModelPrice {
   outputPricePerToken: number;
   /** USD per cached input token, when the provider discounts cache reads. */
   cachedInputPricePerToken?: number;
+  /**
+   * USD per cache-write/creation input token, when the provider bills cache
+   * writes at a premium (e.g. Anthropic at 1.25x input). Falls back to the
+   * plain input rate when unset.
+   */
+  cacheWriteInputPricePerToken?: number;
 }
 
 export const MODEL_PRICES: ModelPrice[] = [
   ...OPENAI,
   ...ANTHROPIC,
   ...GOOGLE,
-].map(([name, pattern, input, output, cached]) => ({
+].map(([name, pattern, input, output, cached, cacheWrite]) => ({
   name,
   pattern,
   inputPricePerToken: input,
   outputPricePerToken: output,
   ...(cached !== undefined ? { cachedInputPricePerToken: cached } : {}),
+  ...(cacheWrite !== undefined
+    ? { cacheWriteInputPricePerToken: cacheWrite }
+    : {}),
 }));

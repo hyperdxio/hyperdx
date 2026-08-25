@@ -1,7 +1,12 @@
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { makeLogSource, makeTraceSource } from '@/llm/__fixtures__/sources';
-import { getLLMExpressions, getLLMLogExpressions } from '@/llm/lib/expressions';
+import {
+  getLLMExpressions,
+  getLLMLogExpressions,
+  llmGatedCountExpr,
+  llmGatedSumExpr,
+} from '@/llm/lib/expressions';
 
 const TRACE_SOURCE = makeTraceSource();
 
@@ -19,8 +24,9 @@ describe('getLLMExpressions', () => {
       "toFloat64OrZero(SpanAttributes['gen_ai.usage.input_tokens'])",
     );
     expect(expressions.inputTokens.startsWith('greatest(')).toBe(true);
+    // Total = full context processed (effective input) + output.
     expect(expressions.totalTokens).toBe(
-      `${expressions.inputTokens} + ${expressions.outputTokens}`,
+      `${expressions.effectiveInputTokens} + ${expressions.outputTokens}`,
     );
     expect(expressions.isLLMSpan).toContain(
       "SpanAttributes['gen_ai.operation.name'] != ''",
@@ -81,9 +87,28 @@ describe('getLLMExpressions', () => {
     expect(expressions.cachedInputTokens).toContain(
       "SpanAttributes['cache_read_tokens']",
     );
-    // Convention-aware denominator: exclusive-style rows add cached to input.
+    // Cache-write tokens across conventions (billed at a premium).
+    expect(expressions.cacheWriteInputTokens).toContain(
+      "SpanAttributes['llm.token_count.prompt_details.cache_write']",
+    );
+    expect(expressions.cacheWriteInputTokens).toContain(
+      "SpanAttributes['ai.usage.inputTokenDetails.cacheWriteTokens']",
+    );
+    expect(expressions.cacheWriteInputTokens).toContain(
+      "SpanAttributes['cache_creation_tokens']",
+    );
+
+    // Convention-aware denominator: exclusive-style rows add cache
+    // reads/writes to input; inclusive-style rows subtract them.
     expect(expressions.effectiveInputTokens).toMatch(/^if\(/);
     expect(expressions.uncachedInputTokens).toMatch(/^greatest\(if\(/);
+    expect(expressions.effectiveInputTokens).toContain(
+      expressions.cacheWriteInputTokens,
+    );
+
+    // The cost estimate prices cache reads and writes separately.
+    expect(expressions.costUsd).toContain(expressions.uncachedInputTokens);
+    expect(expressions.costUsd).toContain(expressions.cacheWriteInputTokens);
 
     // TTFT across Claude Code and Vercel AI SDK.
     expect(expressions.ttftMs).toContain("SpanAttributes['ttft_ms']");
@@ -120,6 +145,33 @@ describe('getLLMExpressions', () => {
     expect(expressions.model).toContain("Attrs['gen_ai.response.model']");
     expect(expressions.isError).toBe("lower(Status) = 'error'");
     expect(expressions.durationInMillis).toBe('DurationNs/1e6');
+  });
+});
+
+describe('election-gated aggregates', () => {
+  const expressions = getLLMExpressions(TRACE_SOURCE, []);
+
+  it('exposes the provided-cost gate', () => {
+    expect(expressions.hasProvidedCost).toMatch(/^\(greatest\(/);
+    expect(expressions.hasProvidedCost).toContain(
+      "SpanAttributes['llm.cost.total']",
+    );
+    expect(expressions.hasProvidedCost).toContain("SpanAttributes['cost_usd']");
+    expect(expressions.hasProvidedCost).toMatch(/> 0\)$/);
+  });
+
+  it('sums provided-cost rows when present, else all usage reporters', () => {
+    const sql = llmGatedSumExpr(expressions, 'x');
+    expect(sql).toBe(
+      `if(countIf(${expressions.hasProvidedCost}) > 0, sumIf(x, ${expressions.hasProvidedCost}), sumIf(x, ${expressions.hasReportedTokens}))`,
+    );
+  });
+
+  it('counts calls with the same election', () => {
+    const sql = llmGatedCountExpr(expressions);
+    expect(sql).toBe(
+      `if(countIf(${expressions.hasProvidedCost}) > 0, countIf(${expressions.hasProvidedCost}), countIf(${expressions.hasReportedTokens}))`,
+    );
   });
 });
 

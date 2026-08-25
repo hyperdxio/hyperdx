@@ -22,9 +22,12 @@ export function findModelPrice(model: string): ModelPrice | undefined {
 
 /**
  * Estimate the USD cost of a call from token usage and the bundled catalog.
- * Cached input tokens are treated as a subset of input tokens (OTel GenAI
- * `gen_ai.usage.input_tokens` includes cached reads) and billed at the
- * cached rate when the catalog has one. Returns undefined when the model is
+ * Cache reads are billed at the cached rate and cache writes at the
+ * cache-write rate when the catalog has them. Handles both usage
+ * conventions: inclusive-style (OpenAI/Vercel: cache reads/writes are a
+ * subset of inputTokens) and exclusive-style (Anthropic/OpenInference:
+ * inputTokens excludes them) — when reads + writes exceed inputTokens the
+ * usage must be exclusive-style. Returns undefined when the model is
  * unknown or there is no usage to price.
  */
 export function computeCostUsd(
@@ -37,14 +40,29 @@ export function computeCostUsd(
 
   const inputTokens = usage.inputTokens ?? 0;
   const outputTokens = usage.outputTokens ?? 0;
-  if (inputTokens === 0 && outputTokens === 0) return undefined;
+  const cacheRead = usage.cachedInputTokens ?? 0;
+  const cacheWrite = usage.cacheWriteInputTokens ?? 0;
+  if (
+    inputTokens === 0 &&
+    outputTokens === 0 &&
+    cacheRead === 0 &&
+    cacheWrite === 0
+  ) {
+    return undefined;
+  }
 
-  const cachedTokens = Math.min(usage.cachedInputTokens ?? 0, inputTokens);
+  const isExclusiveStyle = cacheRead + cacheWrite > inputTokens;
+  const uncachedTokens = isExclusiveStyle
+    ? inputTokens
+    : Math.max(inputTokens - cacheRead - cacheWrite, 0);
   const cachedRate = price.cachedInputPricePerToken ?? price.inputPricePerToken;
+  const cacheWriteRate =
+    price.cacheWriteInputPricePerToken ?? price.inputPricePerToken;
 
   return (
-    (inputTokens - cachedTokens) * price.inputPricePerToken +
-    cachedTokens * cachedRate +
+    uncachedTokens * price.inputPricePerToken +
+    cacheRead * cachedRate +
+    cacheWrite * cacheWriteRate +
     outputTokens * price.outputPricePerToken
   );
 }
@@ -70,36 +88,59 @@ const escapeSqlString = (value: string) => value.replace(/'/g, "\\'");
 
 /**
  * Generate a ClickHouse SQL expression estimating per-row cost in USD for
- * dashboard aggregation. Emits a `multiIf` over the bundled catalog's
- * patterns (RE2-compatible, matched case-insensitively) with the
- * instrumentation-provided cost taking precedence. `maxModels` bounds the
+ * dashboard aggregation. Prices cache reads and cache writes at their
+ * discounted/premium rates when the catalog has them (mirrors
+ * computeCostUsd), with the instrumentation-provided cost taking
+ * precedence.
+ *
+ * Shape: each token-count expression appears exactly once, multiplied by a
+ * rate-only `multiIf` over the catalog's patterns (RE2-compatible, matched
+ * case-insensitively). Embedding the token expressions inside every model
+ * branch instead would multiply their (large) coalesce chains by the
+ * catalog size and blow past ClickHouse's default 256 KiB max_query_size
+ * once a query sums the cost more than once. `maxModels` bounds the
  * expression size; entries beyond it fall through to 0.
  */
 export function generateCostSqlExpression({
   modelExpr,
-  inputTokensExpr,
+  uncachedInputTokensExpr,
+  cachedInputTokensExpr,
+  cacheWriteInputTokensExpr,
   outputTokensExpr,
   providedCostExpr,
   maxModels = MODEL_PRICES.length,
 }: {
   /** SQL expression producing the model name (String). */
   modelExpr: string;
-  /** SQL expression producing input token count (Float64/UInt64). */
-  inputTokensExpr: string;
+  /** SQL expression producing the uncached input token count. */
+  uncachedInputTokensExpr: string;
+  /** SQL expression producing the cache-read input token count. */
+  cachedInputTokensExpr: string;
+  /** SQL expression producing the cache-write input token count. */
+  cacheWriteInputTokensExpr: string;
   /** SQL expression producing output token count (Float64/UInt64). */
   outputTokensExpr: string;
   /** Optional SQL expression producing the provided cost (Float64, 0 = none). */
   providedCostExpr?: string;
   maxModels?: number;
 }): string {
-  const branches = MODEL_PRICES.slice(0, maxModels)
-    .map(price => {
-      const pattern = escapeSqlString(`(?i)${price.pattern}`);
-      const cost = `(${inputTokensExpr}) * ${price.inputPricePerToken} + (${outputTokensExpr}) * ${price.outputPricePerToken}`;
-      return `match(${modelExpr}, '${pattern}'), ${cost}`;
-    })
-    .join(', ');
-  const estimate = `multiIf(${branches}, 0)`;
+  const prices = MODEL_PRICES.slice(0, maxModels);
+  const rateMultiIf = (rateOf: (price: ModelPrice) => number): string => {
+    const branches = prices
+      .map(price => {
+        const pattern = escapeSqlString(`(?i)${price.pattern}`);
+        return `match(${modelExpr}, '${pattern}'), ${rateOf(price)}`;
+      })
+      .join(', ');
+    return `multiIf(${branches}, 0)`;
+  };
+
+  const estimate = [
+    `(${uncachedInputTokensExpr}) * ${rateMultiIf(p => p.inputPricePerToken)}`,
+    `(${cachedInputTokensExpr}) * ${rateMultiIf(p => p.cachedInputPricePerToken ?? p.inputPricePerToken)}`,
+    `(${cacheWriteInputTokensExpr}) * ${rateMultiIf(p => p.cacheWriteInputPricePerToken ?? p.inputPricePerToken)}`,
+    `(${outputTokensExpr}) * ${rateMultiIf(p => p.outputPricePerToken)}`,
+  ].join(' + ');
   if (!providedCostExpr) return estimate;
   return `if((${providedCostExpr}) > 0, ${providedCostExpr}, ${estimate})`;
 }

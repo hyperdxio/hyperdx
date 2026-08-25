@@ -4,6 +4,8 @@ import {
   pickSampleWeightExpressionProps,
 } from '@hyperdx/common-utils/dist/types';
 
+import { LLM_COST_SQL_ALIAS } from '@/llm/lib/expressions';
+
 import { LLMChartProps } from './types';
 
 /** `sessionIdExpr = 'value'` condition, SQL-escaped. */
@@ -27,7 +29,16 @@ export function baseLLMChartConfig({
   whereLanguage,
   sessionId,
   extraFilters = [],
-}: LLMChartProps & { extraFilters?: Filter[] }) {
+  withCostAlias = true,
+}: LLMChartProps & {
+  extraFilters?: Filter[];
+  /**
+   * Bind the cost expression as a WITH alias (see LLM_COST_SQL_ALIAS). On by
+   * default; charts that never reference cost (e.g. search row tables) can
+   * opt out to keep their queries small.
+   */
+  withCostAlias?: boolean;
+}) {
   return {
     source: source.id,
     timestampValueExpression: source.timestampValueExpression,
@@ -36,6 +47,20 @@ export function baseLLMChartConfig({
     implicitColumnExpression: source.implicitColumnExpression,
     useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
     ...pickSampleWeightExpressionProps(source),
+    // Bind the (catalog-sized) cost expression once per query; charts
+    // reference it as LLM_COST_SQL_ALIAS. Referencing the full expression
+    // repeatedly would exceed ClickHouse's default 256 KiB max_query_size.
+    ...(withCostAlias
+      ? {
+          with: [
+            {
+              name: LLM_COST_SQL_ALIAS,
+              sql: { sql: expressions.costUsd, params: {} },
+              isSubquery: false,
+            },
+          ],
+        }
+      : {}),
     where,
     whereLanguage,
     filters: [

@@ -66,6 +66,13 @@ const CACHED_INPUT_TOKEN_KEYS = [
   'ai.usage.inputTokenDetails.cacheReadTokens',
   'cache_read_tokens',
 ];
+const CACHE_WRITE_TOKEN_KEYS = [
+  'gen_ai.usage.cache_creation_input_tokens', // Anthropic-style
+  'llm.token_count.prompt_details.cache_write', // OpenInference
+  'ai.usage.inputTokenDetails.cacheWriteTokens', // Vercel AI SDK
+  'cache_write_tokens',
+  'cache_creation_tokens',
+];
 const REASONING_TOKEN_KEYS = [
   'gen_ai.usage.output_reasoning_tokens',
   'gen_ai.usage.reasoning_tokens',
@@ -106,18 +113,28 @@ function extractUsage(attributes: SpanAttributeMap): LLMUsage {
   const usage: LLMUsage = {};
   const inputTokens = firstNumber(attributes, INPUT_TOKEN_KEYS);
   const outputTokens = firstNumber(attributes, OUTPUT_TOKEN_KEYS);
+  const cachedInputTokens = firstNumber(attributes, CACHED_INPUT_TOKEN_KEYS);
+  const cacheWriteTokens = firstNumber(attributes, CACHE_WRITE_TOKEN_KEYS);
+  // Exclusive-style emitters (Anthropic flat keys, OpenInference) report
+  // input tokens excluding cache reads/writes; fold them back in for the
+  // derived total so it reflects the full context processed.
+  const cacheTokens = (cachedInputTokens ?? 0) + (cacheWriteTokens ?? 0);
+  const effectiveInputTokens =
+    cacheTokens > (inputTokens ?? 0)
+      ? (inputTokens ?? 0) + cacheTokens
+      : inputTokens;
   const totalTokens =
     firstNumber(attributes, TOTAL_TOKEN_KEYS) ??
-    (inputTokens != null || outputTokens != null
-      ? (inputTokens ?? 0) + (outputTokens ?? 0)
+    (effectiveInputTokens != null || outputTokens != null
+      ? (effectiveInputTokens ?? 0) + (outputTokens ?? 0)
       : undefined);
-  const cachedInputTokens = firstNumber(attributes, CACHED_INPUT_TOKEN_KEYS);
   const reasoningOutputTokens = firstNumber(attributes, REASONING_TOKEN_KEYS);
 
   if (inputTokens != null) usage.inputTokens = inputTokens;
   if (outputTokens != null) usage.outputTokens = outputTokens;
   if (totalTokens != null) usage.totalTokens = totalTokens;
   if (cachedInputTokens != null) usage.cachedInputTokens = cachedInputTokens;
+  if (cacheWriteTokens != null) usage.cacheWriteInputTokens = cacheWriteTokens;
   if (reasoningOutputTokens != null) {
     usage.reasoningOutputTokens = reasoningOutputTokens;
   }

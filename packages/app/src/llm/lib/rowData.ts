@@ -43,7 +43,7 @@ export function getRowAttributes(
 }
 
 /** Pull span events out of a `useRowData` row. */
-export function getRowSpanEvents(
+function getRowSpanEvents(
   row: Record<string, unknown> | undefined | null,
 ): LLMSpanEvent[] {
   if (row == null) return [];

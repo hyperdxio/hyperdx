@@ -58,6 +58,7 @@ describe('LLMSessionPanel', () => {
         ts: '2026-08-24 19:12:58.173',
         spanName: 'opencode.llm',
         spanId: 'span-1',
+        traceId: 'trace-1',
         model: 'claude-fable-5',
         toolName: '',
         totalTokens: 545,
@@ -74,7 +75,14 @@ describe('LLMSessionPanel', () => {
     );
     const aliases = listQuery.config.select.map((s: any) => s.alias);
     expect(aliases).toEqual(
-      expect.arrayContaining(['ts', 'spanName', 'spanId', 'model', 'costUsd']),
+      expect.arrayContaining([
+        'ts',
+        'spanName',
+        'spanId',
+        'traceId',
+        'model',
+        'costUsd',
+      ]),
     );
     // Regression: selecting attributes shipped ~50 MiB per session.
     const selectExprs = listQuery.config.select.map(
@@ -106,7 +114,11 @@ describe('LLMSessionPanel', () => {
       q => q.queryKey?.[0] === 'llm-session-span-detail',
     );
     expect(detailQuery).toBeDefined();
+    // Trace identity: span ids alone can collide (or be empty) across traces.
+    expect(detailQuery.config.where).toContain("TraceId = 'trace-1'");
     expect(detailQuery.config.where).toContain("SpanId = 'span-1'");
+    // Bounded to the searched window so the point lookup can prune partitions.
+    expect(detailQuery.config.dateRange).toEqual([new Date(0), new Date(1000)]);
     expect(detailQuery.config.limit).toEqual({ limit: 1 });
     expect(detailQuery.config.select).toEqual([
       { alias: 'attributes', valueExpression: 'SpanAttributes' },

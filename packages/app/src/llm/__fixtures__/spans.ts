@@ -157,6 +157,37 @@ export const VERCEL_AI_STREAMTEXT_FIXTURE: SpanAttributeMap = {
 };
 
 /**
+ * Vercel AI SDK provider-call span (`ai.streamText.doStream`): carries both
+ * `ai.usage.*` (incl. inputTokenDetails cache read/write splits) and
+ * `gen_ai.usage.*` keys, so it passes the reported-tokens gate even though
+ * the same call is also reported by an `opencode.llm` span (in a different
+ * trace) when an app runs both instrumentations. (Lifted from a real local
+ * span; `ai.usage.inputTokens` is inclusive of cache reads + writes, and
+ * opencode's own cost for this call was $0.6792595.)
+ */
+export const VERCEL_AI_DOSTREAM_FIXTURE: SpanAttributeMap = {
+  'ai.operationId': 'ai.streamText.doStream',
+  'ai.model.id': 'claude-fable-5',
+  'ai.model.provider': 'anthropic.messages',
+  'ai.response.model': 'claude-fable-5',
+  'ai.response.msToFirstChunk': '2612.1',
+  'ai.usage.inputTokens': '650361',
+  'ai.usage.outputTokens': '369',
+  'ai.usage.cachedInputTokens': '649452',
+  'ai.usage.inputTokenDetails.cacheReadTokens': '649452',
+  'ai.usage.inputTokenDetails.cacheWriteTokens': '907',
+  'ai.usage.inputTokenDetails.noCacheTokens': '2',
+  'ai.usage.totalTokens': '650730',
+  'gen_ai.request.model': 'claude-fable-5',
+  'gen_ai.response.model': 'claude-fable-5',
+  'gen_ai.system': 'anthropic.messages',
+  'gen_ai.usage.input_tokens': '650361',
+  'gen_ai.usage.output_tokens': '369',
+  'operation.name': 'ai.streamText.doStream',
+  'session.id': 'ses_fc94a96aeffeKISqSqSo2ug43g',
+};
+
+/**
  * opencode `api_request` log event: flat non-standard usage keys plus a
  * standard gen_ai provider marker.
  */

@@ -16,6 +16,7 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { TokenUsageDisplay } from '@/llm/components/TokenUsageDisplay';
 import { asNumber, asString } from '@/llm/lib/attributeUtils';
+import { LLM_COST_SQL_ALIAS, llmGatedSumExpr } from '@/llm/lib/expressions';
 import { formatCostUsd, formatTokenCount } from '@/llm/lib/extract';
 import { FormatTime } from '@/useFormatTime';
 import { useZIndex, ZIndexContext } from '@/zIndex';
@@ -38,6 +39,7 @@ export interface SessionSpanListRow {
   ts: string;
   spanName: string;
   spanId: string;
+  traceId: string;
   model?: string;
   toolName?: string;
   totalTokens?: number;
@@ -49,11 +51,13 @@ function SessionSpanItem({
   index,
   expanded,
   source,
+  dateRange,
 }: {
   row: SessionSpanListRow;
   index: number;
   expanded: boolean;
   source: LLMChartProps['source'];
+  dateRange: LLMChartProps['dateRange'];
 }) {
   return (
     <Accordion.Item value={`span-${index}`}>
@@ -90,7 +94,9 @@ function SessionSpanItem({
       <Accordion.Panel>
         {/* Mounted only while expanded so the (potentially megabytes-large)
             attribute payload is fetched lazily, one span at a time. */}
-        {expanded && <SessionSpanDetail source={source} row={row} />}
+        {expanded && (
+          <SessionSpanDetail source={source} row={row} dateRange={dateRange} />
+        )}
       </Accordion.Panel>
     </Accordion.Item>
   );
@@ -141,10 +147,11 @@ export function LLMSessionPanel(props: LLMChartProps) {
         },
         { alias: 'spanName', valueExpression: expressions.spanName },
         { alias: 'spanId', valueExpression: source.spanIdExpression },
+        { alias: 'traceId', valueExpression: expressions.traceId },
         { alias: 'model', valueExpression: expressions.model },
         { alias: 'toolName', valueExpression: expressions.toolName },
         { alias: 'totalTokens', valueExpression: expressions.totalTokens },
-        { alias: 'costUsd', valueExpression: expressions.costUsd },
+        { alias: 'costUsd', valueExpression: LLM_COST_SQL_ALIAS },
       ],
       orderBy: `${source.timestampValueExpression} ASC`,
       limit: { limit: MAX_SESSION_SPANS },
@@ -157,8 +164,8 @@ export function LLMSessionPanel(props: LLMChartProps) {
     enabled: sessionId != null,
   });
 
-  // Session totals as one aggregate query (gated like the dashboard sums)
-  // rather than summing the fetched rows client-side.
+  // Session totals as one aggregate query (election-gated like the
+  // dashboard sums) rather than summing the fetched rows client-side.
   const totalsConfig = useMemo(
     () => ({
       ...baseLLMChartConfig({
@@ -168,18 +175,15 @@ export function LLMSessionPanel(props: LLMChartProps) {
       select: [
         { aggFn: 'count' as const, valueExpression: '', alias: 'span_count' },
         {
-          aggFn: 'sum' as const,
-          valueExpression: expressions.totalTokens,
+          valueExpression: llmGatedSumExpr(
+            expressions,
+            expressions.totalTokens,
+          ),
           alias: 'total_tokens',
-          aggCondition: expressions.hasReportedTokens,
-          aggConditionLanguage: 'sql' as const,
         },
         {
-          aggFn: 'sum' as const,
-          valueExpression: expressions.costUsd,
+          valueExpression: llmGatedSumExpr(expressions, LLM_COST_SQL_ALIAS),
           alias: 'total_cost',
-          aggCondition: expressions.hasReportedTokens,
-          aggConditionLanguage: 'sql' as const,
         },
       ],
     }),
@@ -204,6 +208,7 @@ export function LLMSessionPanel(props: LLMChartProps) {
           ts: String(row.ts),
           spanName: String(row.spanName ?? ''),
           spanId: String(row.spanId ?? ''),
+          traceId: String(row.traceId ?? ''),
           ...(model != null ? { model } : {}),
           ...(toolName != null ? { toolName } : {}),
           totalTokens: asNumber(row.totalTokens),
@@ -283,6 +288,7 @@ export function LLMSessionPanel(props: LLMChartProps) {
                     index={index}
                     expanded={expandedItems.includes(`span-${index}`)}
                     source={source}
+                    dateRange={dateRange}
                   />
                 ))}
               </Accordion>

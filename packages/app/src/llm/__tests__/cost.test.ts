@@ -78,12 +78,44 @@ describe('computeCostUsd', () => {
     expect(cost).toBeCloseTo(0.6 * 2.5 + 0.4 * 1.25, 10);
   });
 
-  it('never bills more cached tokens than input tokens', () => {
+  it('handles exclusive-style usage where cache counts exceed input', () => {
+    // Anthropic/OpenInference-style: inputTokens excludes cache reads, so
+    // cached > input means both must be billed (input at full rate).
     const cost = computeCostUsd(
       { inputTokens: 100, cachedInputTokens: 500, outputTokens: 0 },
       'gpt-4o',
     );
-    expect(cost).toBeCloseTo(100 * 1.25e-6, 12);
+    expect(cost).toBeCloseTo(100 * 2.5e-6 + 500 * 1.25e-6, 12);
+  });
+
+  it('bills cache writes at the premium rate (inclusive-style input)', () => {
+    // Verified against opencode's own cost_usd: claude-fable-5 at $10/M
+    // input, $50/M output, $1/M cache read, $12.5/M cache write. Vercel AI
+    // SDK style: inputTokens includes reads + writes.
+    const cost = computeCostUsd(
+      {
+        inputTokens: 650_361,
+        outputTokens: 369,
+        cachedInputTokens: 649_452,
+        cacheWriteInputTokens: 907,
+      },
+      'claude-fable-5',
+    );
+    expect(cost).toBeCloseTo(0.6792595, 7);
+  });
+
+  it('bills cache writes at the premium rate (exclusive-style input)', () => {
+    // OpenInference style: llm.token_count.prompt excludes reads + writes.
+    const cost = computeCostUsd(
+      {
+        inputTokens: 1,
+        outputTokens: 632,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 649_452,
+      },
+      'claude-fable-5',
+    );
+    expect(cost).toBeCloseTo(8.14976, 7);
   });
 
   it('returns undefined for unknown models or empty usage', () => {
@@ -118,27 +150,47 @@ describe('resolveSpanCostUsd', () => {
 });
 
 describe('generateCostSqlExpression', () => {
-  it('emits a multiIf over catalog patterns', () => {
-    const sql = generateCostSqlExpression({
-      modelExpr: 'model',
-      inputTokensExpr: 'in_tok',
-      outputTokensExpr: 'out_tok',
-      maxModels: 2,
-    });
-    expect(sql.startsWith('multiIf(')).toBe(true);
-    expect(sql.endsWith(', 0)')).toBe(true);
+  const exprs = {
+    modelExpr: 'model',
+    uncachedInputTokensExpr: 'uncached_tok',
+    cachedInputTokensExpr: 'cached_tok',
+    cacheWriteInputTokensExpr: 'cache_write_tok',
+    outputTokensExpr: 'out_tok',
+  };
+
+  it('multiplies each token term once by a rate-only multiIf', () => {
+    const sql = generateCostSqlExpression({ ...exprs, maxModels: 2 });
     expect(sql).toContain("match(model, '(?i)");
-    expect(sql).toContain('(in_tok) *');
-    expect(sql).toContain('(out_tok) *');
-    // Bounded: exactly 2 branches.
-    expect(sql.match(/match\(/g)).toHaveLength(2);
+    expect(sql).toContain('(uncached_tok) * multiIf(');
+    expect(sql).toContain('(cached_tok) * multiIf(');
+    expect(sql).toContain('(cache_write_tok) * multiIf(');
+    expect(sql).toContain('(out_tok) * multiIf(');
+    // Token expressions appear exactly once each — embedding them inside
+    // every model branch multiplies their size by the catalog and can blow
+    // past ClickHouse's max_query_size (regression).
+    expect(sql.match(/uncached_tok/g)).toHaveLength(1);
+    // Bounded: exactly 2 branches per rate lookup.
+    expect(sql.match(/match\(/g)).toHaveLength(2 * 4);
+  });
+
+  it('prices cache reads and writes at their catalog rates', () => {
+    // claude-fable-5: $10/M input, $50/M output, $1/M read, $12.5/M write.
+    const fableIndex = MODEL_PRICES.findIndex(p => p.name === 'claude-fable-5');
+    const sql = generateCostSqlExpression({
+      ...exprs,
+      maxModels: fableIndex + 1,
+    });
+    const rates = [
+      ...sql.matchAll(
+        /match\(model, '\(\?i\)[^']*claude-fable-5[^']*'\), ([\d.e-]+)/g,
+      ),
+    ].map(m => Number(m[1]));
+    expect(rates).toEqual([10e-6, 1e-6, 12.5e-6, 50e-6]);
   });
 
   it('wraps with provided-cost precedence when given', () => {
     const sql = generateCostSqlExpression({
-      modelExpr: 'model',
-      inputTokensExpr: 'in_tok',
-      outputTokensExpr: 'out_tok',
+      ...exprs,
       providedCostExpr: 'provided_cost',
       maxModels: 1,
     });
@@ -146,11 +198,7 @@ describe('generateCostSqlExpression', () => {
   });
 
   it('contains no unescaped single quotes inside patterns', () => {
-    const sql = generateCostSqlExpression({
-      modelExpr: 'm',
-      inputTokensExpr: 'i',
-      outputTokensExpr: 'o',
-    });
+    const sql = generateCostSqlExpression(exprs);
     // Sanity: balanced quotes (every pattern is quoted once).
     expect((sql.match(/'/g) ?? []).length % 2).toBe(0);
   });

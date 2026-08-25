@@ -3,7 +3,7 @@ import {
   baseLLMChartConfig,
   buildSessionCondition,
 } from '@/llm/dashboard/chartConfig';
-import { getLLMExpressions } from '@/llm/lib/expressions';
+import { getLLMExpressions, LLM_COST_SQL_ALIAS } from '@/llm/lib/expressions';
 
 const TRACE_SOURCE = makeTraceSource();
 
@@ -53,5 +53,19 @@ describe('baseLLMChartConfig session scoping', () => {
     });
     expect(config.filters).toHaveLength(3);
     expect(config.filters[2]).toEqual({ type: 'sql', condition: '1=1' });
+  });
+
+  it('binds the cost expression once as a WITH expression alias', () => {
+    // The cost expression embeds the model price catalog (~70 KiB of SQL);
+    // charts referencing it more than once must go through the alias or the
+    // rendered query exceeds ClickHouse's 256 KiB max_query_size.
+    const config = baseLLMChartConfig(baseProps);
+    expect(config.with).toEqual([
+      {
+        name: LLM_COST_SQL_ALIAS,
+        sql: { sql: expressions.costUsd, params: {} },
+        isSubquery: false,
+      },
+    ]);
   });
 });

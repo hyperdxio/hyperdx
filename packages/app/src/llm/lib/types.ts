@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 /**
  * Raw span attributes as read from the row. ClickHouse `Map(String, String)`
  * columns deliver every value as a string; JSON-typed columns deliver real
@@ -17,27 +15,25 @@ export interface LLMSpanEvent {
 }
 
 /** A tool/function call requested by the model. */
-export const ChatToolCallSchema = z.object({
-  id: z.string().optional(),
-  name: z.string(),
+export interface ChatToolCall {
+  id?: string;
+  name: string;
   /** JSON string of arguments (kept as text for display). */
-  arguments: z.string().optional(),
-});
-export type ChatToolCall = z.infer<typeof ChatToolCallSchema>;
+  arguments?: string;
+}
 
 /**
  * A normalized chat message (ChatML-style). `content` is display text; rich
  * parts (images, audio) are flattened into text placeholders for v1.
  */
-export const ChatMessageSchema = z.object({
-  role: z.string(),
-  content: z.string().nullable(),
-  toolCalls: z.array(ChatToolCallSchema).optional(),
+export interface ChatMessage {
+  role: string;
+  content: string | null;
+  toolCalls?: ChatToolCall[];
   /** For role=tool messages: the id of the call this message responds to. */
-  toolCallId: z.string().optional(),
-  name: z.string().optional(),
-});
-export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+  toolCallId?: string;
+  name?: string;
+}
 
 /** Which side of the exchange a message came from. */
 export type ConversationMessage = ChatMessage & {
@@ -62,8 +58,11 @@ export interface LLMUsage {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
-  /** Cached/reused prompt tokens (subset of inputTokens). */
+  /** Cache-read prompt tokens (may be a subset of, or extra to, inputTokens
+   * depending on the emitter's convention — see computeCostUsd). */
   cachedInputTokens?: number;
+  /** Cache-write/creation prompt tokens (billed at a premium by Anthropic). */
+  cacheWriteInputTokens?: number;
   /** Reasoning/thinking tokens (subset of outputTokens). */
   reasoningOutputTokens?: number;
 }

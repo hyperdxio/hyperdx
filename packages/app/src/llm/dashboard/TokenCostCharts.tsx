@@ -8,6 +8,11 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import {
+  LLM_COST_SQL_ALIAS,
+  llmGatedCountExpr,
+  llmGatedSumExpr,
+} from '@/llm/lib/expressions';
 
 import { baseLLMChartConfig, buildLLMSearchUrl } from './chartConfig';
 import {
@@ -22,6 +27,8 @@ const CHART_HEIGHT = 320;
 export function TokenCostCharts(props: LLMChartProps) {
   const { source, expressions, dateRange } = props;
   const base = baseLLMChartConfig(props);
+  const gatedSum = (valueExpression: string) =>
+    llmGatedSumExpr(expressions, valueExpression);
 
   const getModelSearchLink = useCallback(
     (row: Record<string, unknown>) =>
@@ -67,34 +74,28 @@ export function TokenCostCharts(props: LLMChartProps) {
               displayType: DisplayType.StackedBar,
               select: [
                 {
-                  aggFn: 'sum',
                   // Convention-aware uncached share (see effectiveInputTokens)
                   // so the cache-optimization win is visible at a glance.
-                  valueExpression: expressions.uncachedInputTokens,
+                  valueExpression: gatedSum(expressions.uncachedInputTokens),
                   alias: 'Uncached Input',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
-                  aggFn: 'sum',
-                  valueExpression: expressions.cachedInputTokens,
+                  valueExpression: gatedSum(expressions.cachedInputTokens),
                   alias: 'Cached Input',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
-                  aggFn: 'sum',
-                  valueExpression: `greatest(${expressions.outputTokens} - ${expressions.reasoningTokens}, 0)`,
+                  valueExpression: gatedSum(expressions.cacheWriteInputTokens),
+                  alias: 'Cache Write',
+                },
+                {
+                  valueExpression: gatedSum(
+                    `greatest(${expressions.outputTokens} - ${expressions.reasoningTokens}, 0)`,
+                  ),
                   alias: 'Output',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
-                  aggFn: 'sum',
-                  valueExpression: expressions.reasoningTokens,
+                  valueExpression: gatedSum(expressions.reasoningTokens),
                   alias: 'Reasoning',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
               ],
               numberFormat: TOKEN_NUMBER_FORMAT,
@@ -112,10 +113,8 @@ export function TokenCostCharts(props: LLMChartProps) {
               displayType: DisplayType.StackedBar,
               select: [
                 {
-                  aggFn: 'sum',
-                  valueExpression: expressions.costUsd,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
+                  valueExpression: gatedSum(LLM_COST_SQL_ALIAS),
+                  alias: 'Est. Cost',
                 },
               ],
               groupBy: expressions.model,
@@ -142,33 +141,25 @@ export function TokenCostCharts(props: LLMChartProps) {
                 },
                 {
                   alias: 'Calls',
-                  aggFn: 'count',
-                  valueExpression: '',
+                  valueExpression: llmGatedCountExpr(expressions),
                   numberFormat: INTEGER_NUMBER_FORMAT,
                 },
                 {
                   alias: 'Input Tokens',
-                  aggFn: 'sum',
-                  valueExpression: expressions.inputTokens,
+                  // Effective input: full context processed incl. cache
+                  // reads/writes, comparable across reporting conventions.
+                  valueExpression: gatedSum(expressions.effectiveInputTokens),
                   numberFormat: TOKEN_NUMBER_FORMAT,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
                   alias: 'Output Tokens',
-                  aggFn: 'sum',
-                  valueExpression: expressions.outputTokens,
+                  valueExpression: gatedSum(expressions.outputTokens),
                   numberFormat: TOKEN_NUMBER_FORMAT,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
                   alias: 'Est. Cost',
-                  aggFn: 'sum',
-                  valueExpression: expressions.costUsd,
+                  valueExpression: gatedSum(LLM_COST_SQL_ALIAS),
                   numberFormat: COST_USD_NUMBER_FORMAT,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
                 {
                   alias: 'Avg Cost / Call',
@@ -218,17 +209,13 @@ export function TokenCostCharts(props: LLMChartProps) {
                 },
                 {
                   alias: 'Calls',
-                  aggFn: 'count',
-                  valueExpression: '',
+                  valueExpression: llmGatedCountExpr(expressions),
                   numberFormat: INTEGER_NUMBER_FORMAT,
                 },
                 {
                   alias: 'Total Tokens',
-                  aggFn: 'sum',
-                  valueExpression: expressions.totalTokens,
+                  valueExpression: gatedSum(expressions.totalTokens),
                   numberFormat: TOKEN_NUMBER_FORMAT,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
                 },
               ],
               limit: { limit: 20 },

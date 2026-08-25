@@ -1,21 +1,5 @@
-export {
-  computeCostUsd,
-  findModelPrice,
-  generateCostSqlExpression,
-  resolveSpanCostUsd,
-} from './cost';
-export {
-  buildLLMSpanSqlPredicate,
-  isLLMSpan,
-  LLM_MARKER_ATTRIBUTE_KEYS,
-} from './detect';
-export {
-  asLLMEvents,
-  extractLLMSpanInfo,
-  formatCostUsd,
-  formatTokenCount,
-  hasReportedUsage,
-} from './extract';
-export { extractConversation } from './messages';
-export { MODEL_PRICES, type ModelPrice } from './modelPrices';
+// Surface consumed outside src/llm (via '@/llm'). Modules inside src/llm
+// import from the defining files directly.
+export { isLLMSpan } from './detect';
+export { extractLLMSpanInfo, formatTokenCount } from './extract';
 export * from './types';

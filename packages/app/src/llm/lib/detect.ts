@@ -6,7 +6,7 @@ import { LLMSpanEvent, SpanAttributeMap } from './types';
  * supported instrumentation dialects. Kept small and high-precision: these
  * also drive the SQL predicate used by search/dashboards.
  */
-export const LLM_MARKER_ATTRIBUTE_KEYS = [
+const LLM_MARKER_ATTRIBUTE_KEYS = [
   // OTel GenAI semantic conventions (also emitted by OpenLLMetry + Vercel AI)
   'gen_ai.operation.name',
   'gen_ai.system',

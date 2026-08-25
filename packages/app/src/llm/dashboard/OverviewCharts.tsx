@@ -8,6 +8,11 @@ import {
 import { ChartCard } from '@/components/charts/ChartCard';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import {
+  LLM_COST_SQL_ALIAS,
+  llmGatedCountExpr,
+  llmGatedSumExpr,
+} from '@/llm/lib/expressions';
 
 import { baseLLMChartConfig } from './chartConfig';
 import {
@@ -43,12 +48,15 @@ export function OverviewCharts(props: LLMChartProps) {
   const { expressions } = props;
   const base = baseLLMChartConfig(props);
 
+  // Election-gated aggregates (raw select expressions): count each call
+  // once even when an app runs several instrumentations in parallel.
   const gatedSum = (valueExpression: string, alias: string) => ({
-    aggFn: 'sum' as const,
-    valueExpression,
+    valueExpression: llmGatedSumExpr(expressions, valueExpression),
     alias,
-    aggCondition: expressions.hasReportedTokens,
-    aggConditionLanguage: 'sql' as const,
+  });
+  const gatedCount = (alias: string) => ({
+    valueExpression: llmGatedCountExpr(expressions),
+    alias,
   });
 
   return (
@@ -59,7 +67,7 @@ export function OverviewCharts(props: LLMChartProps) {
             title="LLM Calls"
             config={{
               ...base,
-              select: [{ aggFn: 'count', valueExpression: '' }],
+              select: [gatedCount('llm_calls')],
               numberFormat: INTEGER_NUMBER_FORMAT,
             }}
           />
@@ -83,7 +91,7 @@ export function OverviewCharts(props: LLMChartProps) {
             title="Est. Cost"
             config={{
               ...base,
-              select: [gatedSum(expressions.costUsd, 'total_cost')],
+              select: [gatedSum(LLM_COST_SQL_ALIAS, 'total_cost')],
               numberFormat: COST_USD_NUMBER_FORMAT,
             }}
           />
@@ -100,14 +108,8 @@ export function OverviewCharts(props: LLMChartProps) {
                   valueExpression: 'total_cost / greatest(llm_calls, 1)',
                   alias: 'avg_cost_per_call',
                 },
-                gatedSum(expressions.costUsd, 'total_cost'),
-                {
-                  aggFn: 'count',
-                  valueExpression: '',
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
-                  alias: 'llm_calls',
-                },
+                gatedSum(LLM_COST_SQL_ALIAS, 'total_cost'),
+                gatedCount('llm_calls'),
               ],
               numberFormat: COST_PER_CALL_NUMBER_FORMAT,
             }}
@@ -166,7 +168,7 @@ export function OverviewCharts(props: LLMChartProps) {
             config={{
               ...base,
               displayType: DisplayType.StackedBar,
-              select: [{ aggFn: 'count', valueExpression: '' }],
+              select: [gatedCount('Calls')],
               groupBy: expressions.model,
               numberFormat: INTEGER_NUMBER_FORMAT,
             }}

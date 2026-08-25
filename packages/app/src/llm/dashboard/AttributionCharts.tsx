@@ -5,6 +5,11 @@ import { Grid } from '@mantine/core';
 import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartCard } from '@/components/charts/ChartCard';
 import DBTableChart from '@/components/DBTableChart';
+import {
+  LLM_COST_SQL_ALIAS,
+  llmGatedCountExpr,
+  llmGatedSumExpr,
+} from '@/llm/lib/expressions';
 
 import { baseLLMChartConfig, buildLLMSearchUrl } from './chartConfig';
 import {
@@ -80,24 +85,23 @@ export function AttributionCharts(props: LLMChartProps) {
                 { alias: 'User', valueExpression: expressions.userId },
                 {
                   alias: 'Calls',
-                  aggFn: 'count',
-                  valueExpression: '',
+                  valueExpression: llmGatedCountExpr(expressions),
                   numberFormat: INTEGER_NUMBER_FORMAT,
                 },
                 {
                   alias: 'Total Tokens',
-                  aggFn: 'sum',
-                  valueExpression: expressions.totalTokens,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
+                  valueExpression: llmGatedSumExpr(
+                    expressions,
+                    expressions.totalTokens,
+                  ),
                   numberFormat: TOKEN_NUMBER_FORMAT,
                 },
                 {
                   alias: 'Est. Cost',
-                  aggFn: 'sum',
-                  valueExpression: expressions.costUsd,
-                  aggCondition: expressions.hasReportedTokens,
-                  aggConditionLanguage: 'sql',
+                  valueExpression: llmGatedSumExpr(
+                    expressions,
+                    LLM_COST_SQL_ALIAS,
+                  ),
                   numberFormat: COST_USD_NUMBER_FORMAT,
                 },
               ],

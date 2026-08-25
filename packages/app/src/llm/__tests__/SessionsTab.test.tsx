@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 
 import { makeTraceSource } from '@/llm/__fixtures__/sources';
 import { SessionsTab } from '@/llm/dashboard/SessionsTab';
-import { getLLMExpressions } from '@/llm/lib/expressions';
+import { getLLMExpressions, llmGatedSumExpr } from '@/llm/lib/expressions';
 
 // Capture the chart config the tab hands to DBTableChart.
 const tableChartProps: any[] = [];
@@ -40,11 +40,17 @@ describe('SessionsTab', () => {
     expect(conditions).toContain(expressions.isLLMSpan);
     expect(conditions).toContain(expressions.hasSessionId);
 
-    // Token/cost sums are gated on authoritative usage reporters.
+    // Token/cost sums use the provided-cost election so apps emitting
+    // several instrumentation dialects in parallel don't double count.
     const tokensSelect = config.select.find(
       (s: any) => s.alias === 'Total Tokens',
     );
-    expect(tokensSelect.aggCondition).toBe(expressions.hasReportedTokens);
+    expect(tokensSelect.valueExpression).toBe(
+      llmGatedSumExpr(expressions, expressions.totalTokens),
+    );
+    expect(tokensSelect.valueExpression).toContain(
+      `countIf(${expressions.hasProvidedCost})`,
+    );
 
     // start/end must be raw min()/max() expressions, not aggFn entries: the
     // chart builder coerces aggFn inputs via toFloat64OrDefault(toString(..)),
