@@ -13,8 +13,16 @@
  * `api-server` (index 0) only info and error.
  */
 import { DashboardPage } from '../page-objects/DashboardPage';
+import { SERVICES } from '../seed-clickhouse';
 import { expect, test } from '../utils/base-test';
-import { DEFAULT_LOGS_SOURCE_NAME } from '../utils/constants';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  E2E_CLICKHOUSE_DATABASE,
+  E2E_PROMQL_METRIC_NAME,
+  E2E_PROMQL_TABLE,
+  PROMQL_SOURCE_NAME,
+} from '../utils/constants';
+import { runMongoshScript } from '../utils/db-helpers';
 
 /** Severities `accounting` logs carry, and the two it does not. */
 const ACCOUNTING_SEVERITIES = ['warn', 'debug'];
@@ -253,6 +261,153 @@ test.describe(
           'aria-label',
           /no meaning in a Lucene expression/,
         );
+      });
+    });
+  },
+);
+
+/**
+ * A PromQL tile interpolates the dashboard's variables into its expression.
+ *
+ * The seed gives `e2e_service_up` one series per `SERVICES` entry, labelled
+ * `service` with the same values the logs carry in `ServiceName`, so the
+ * dashboard filter's selections line up with the metric's labels.
+ */
+test.describe(
+  'Dashboard variables in a PromQL tile',
+  { tag: ['@dashboard', '@full-stack'] },
+  () => {
+    /**
+     * The source lives in the shared `sources` collection, so anything left in
+     * it is visible to every later spec's source pickers — the enumeration
+     * failure that keeps it out of e2e-fixtures.json in the first place (see
+     * `PROMQL_SOURCE_NAME`). Removing it here bounds that exposure to this
+     * test's own run.
+     */
+    test.afterAll(() => {
+      runMongoshScript(
+        [
+          "use('hyperdx-e2e');",
+          `db.sources.deleteMany({ name: ${JSON.stringify(PROMQL_SOURCE_NAME)} });`,
+        ].join('\n'),
+      );
+    });
+
+    test('narrows the queried series to the selected values', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      const dashboardPage = new DashboardPage(page);
+
+      // The time chart is a recharts AreaChart, so each returned series is one
+      // `<g class="recharts-area">`.
+      const seriesAreas = page
+        .locator('.recharts-responsive-container')
+        .first()
+        .locator('.recharts-area');
+
+      /**
+       * Retried rather than snapshotted: the tile refetches on its own
+       * schedule, so a single read can land before the selection change has
+       * been queried.
+       */
+      const expectSeriesCount = async (count: number) => {
+        await expect(seriesAreas).toHaveCount(count, { timeout: 30000 });
+      };
+
+      await test.step('Create the PromQL source', async () => {
+        // Inserted rather than built in the source form, and created here
+        // rather than shipped in e2e-fixtures.json: a PromQL source is visible
+        // to every spec's source pickers, where the app's field fetch fails
+        // against a TimeSeries table. `afterAll` above deletes it again.
+        const out = runMongoshScript(
+          [
+            "use('hyperdx-e2e');",
+            'const team = db.teams.findOne();',
+            'const connection = db.connections.findOne();',
+            'print(JSON.stringify(db.sources.updateOne(',
+            `  { name: ${JSON.stringify(PROMQL_SOURCE_NAME)} },`,
+            '  { $set: { team: team._id, connection: connection._id,',
+            "      kind: 'promql', disabled: false,",
+            `      from: { databaseName: '${E2E_CLICKHOUSE_DATABASE}', tableName: '${E2E_PROMQL_TABLE}' },`,
+            "      timestampValueExpression: 'timestamp' } },",
+            '  { upsert: true }',
+            ')));',
+          ].join('\n'),
+        );
+        expect(out).toMatch(
+          /"(upsertedCount":1|modifiedCount":1|matchedCount":1)/,
+        );
+      });
+
+      await test.step('Create a dashboard with a Service filter exposed as $svc', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+          undefined,
+          undefined,
+          { variableName: 'svc' },
+        );
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Add a PromQL tile referencing $svc', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName('PromQL tile');
+        await dashboardPage.chartEditor.switchToPromqlMode();
+        await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.chartEditor.replacePromqlExpression(
+          `${E2E_PROMQL_METRIC_NAME}{service=~"$svc"}`,
+        );
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('With nothing selected, every series comes back', async () => {
+        // The empty selection renders as `.*`, so the tile is a valid query
+        // that constrains nothing before anything is picked.
+        await expectSeriesCount(SERVICES.length);
+      });
+
+      await test.step('Selecting one service narrows it to that series', async () => {
+        await dashboardPage.toggleFilterValue('Service', 'accounting');
+        await expectSeriesCount(1);
+      });
+
+      await test.step('Selecting a second widens it to an alternation', async () => {
+        await dashboardPage.toggleFilterValue('Service', 'api-server');
+        await expectSeriesCount(2);
+
+        // Assert *which* two, so this can't pass on an unrelated pair: with
+        // more than one series the legend qualifies each by its label.
+        //
+        // Matched on the tail rather than the whole name: the legend truncates
+        // the middle past 35 characters, and `e2e_service_up{service="…"}` is
+        // over that for both. The `"}` keeps this from matching the filter
+        // dropdown's own bare `accounting` entry.
+        const legend = page.locator('.recharts-legend-wrapper').first();
+        for (const service of ['accounting', 'api-server']) {
+          await expect(legend.getByText(`${service}"}`)).toBeVisible();
+        }
+      });
+
+      await test.step('Clearing the selection restores every series', async () => {
+        await dashboardPage.toggleFilterValue('Service', 'accounting');
+        await dashboardPage.toggleFilterValue('Service', 'api-server');
+        await expectSeriesCount(SERVICES.length);
       });
     });
   },

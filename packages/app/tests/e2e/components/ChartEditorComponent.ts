@@ -398,6 +398,51 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Switch the chart editor to PromQL mode. Only offered when the app is run
+   * with NEXT_PUBLIC_ENABLE_PROMQL=true (the e2e webServer sets it).
+   *
+   * Matched exactly: "SQL" is a substring of the PromQL label, so a
+   * `has-text("SQL")` selector would resolve to both.
+   */
+  async switchToPromqlMode() {
+    const label = this.page
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: /^PromQL$/ });
+    await label.waitFor({ state: 'visible', timeout: 5000 });
+    await label.click();
+  }
+
+  /**
+   * Select the PromQL editor's data source.
+   *
+   * Located by role rather than by the `source-selector` test id: that id is on
+   * the builder's source select (ChartEditorControls), and PromQL mode renders
+   * its own `SourceSelectControlled` which doesn't carry it.
+   */
+  async selectPromqlSource(sourceName: string) {
+    await this.page.getByRole('combobox', { name: 'Data Source' }).click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
+  /**
+   * Replace the entire contents of the PromQL expression editor.
+   *
+   * The same `.cm-editor` locator as the SQL template: PromQL mode renders one
+   * CodeMirror and no "Generated SQL" accordion, so `.first()` is that editor.
+   */
+  async replacePromqlExpression(expression: string) {
+    const content = this.page.locator('.cm-editor .cm-content').first();
+    await content.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Delete');
+    await this.page.keyboard.type(expression);
+  }
+
+  /**
    * Switch the chart editor from SQL back to Builder mode.
    */
   async switchToBuilderMode() {

@@ -464,4 +464,7 @@ GROUP BY
     ColumnIdentifier,
     Key,
     Timestamp;
+
+-- PromQL fixture.
+CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_promql ENGINE = TimeSeries;
 EOFSQL

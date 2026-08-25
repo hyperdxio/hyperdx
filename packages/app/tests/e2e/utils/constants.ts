@@ -2,6 +2,12 @@ export const DEFAULT_SESSIONS_SOURCE_NAME = 'E2E Sessions';
 export const DEFAULT_TRACES_SOURCE_NAME = 'E2E Traces';
 export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
+// Deliberately not in `e2e-fixtures.json`: a source pointing at a TimeSeries
+// table makes the app's field fetch fail (`SELECT is not supported by storage
+// TimeSeries yet`) on every page that enumerates sources, which pushed
+// borderline waits in dashboard.spec over their timeouts. The PromQL spec
+// creates it for itself instead.
+export const PROMQL_SOURCE_NAME = 'E2E PromQL';
 
 // Log source deliberately left without a correlated metric source, so tests can
 // exercise the "not correlated" paths (the search side panel's infrastructure
@@ -47,6 +53,13 @@ export const E2E_TRACES_MV_TABLE = 'e2e_otel_traces_1m';
 export const E2E_SESSIONS_TABLE = 'e2e_hyperdx_sessions';
 export const E2E_METRICS_GAUGE_TABLE = 'e2e_otel_metrics_gauge';
 export const E2E_METRICS_SUM_TABLE = 'e2e_otel_metrics_sum';
+// TimeSeries-engine table backing the PromQL source. `prometheusQueryRange`,
+// which the API's PromQL path calls, reads only this engine — the otel_metrics_*
+// tables above are not usable for PromQL. The seeder writes through the
+// timeSeries* table functions, which take this same table name.
+export const E2E_PROMQL_TABLE = 'e2e_promql';
+/** The one metric name seeded into the PromQL table, one series per service. */
+export const E2E_PROMQL_METRIC_NAME = 'e2e_service_up';
 // A second database holding OTEL-shaped metric tables, so the metric table
 // autofill tests can switch the source form's database and see tables detected
 // from the new one. The table names differ from the `default` database's so an
