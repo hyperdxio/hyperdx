@@ -2,6 +2,9 @@ import { makeTraceSource } from '@/llm/__fixtures__/sources';
 import { SEMCONV_ATTRIBUTES_FIXTURE } from '@/llm/__fixtures__/spans';
 import { getLLMRowData, getRowAttributes } from '@/llm/lib/rowData';
 
+/** Expected messages carry sequential ids, mirroring extractConversation. */
+const withIds = <T>(messages: T[]) => messages.map((m, id) => ({ ...m, id }));
+
 const TRACE_SOURCE = makeTraceSource();
 
 describe('getRowAttributes', () => {
@@ -47,9 +50,9 @@ describe('getLLMRowData', () => {
       ],
     });
     expect(result.isLLM).toBe(true);
-    expect(result.conversation?.messages).toEqual([
-      { role: 'user', content: 'hi', source: 'input' },
-    ]);
+    expect(result.conversation?.messages).toEqual(
+      withIds([{ role: 'user', content: 'hi', source: 'input' }]),
+    );
   });
 
   it('returns isLLM=false for non-LLM rows', () => {

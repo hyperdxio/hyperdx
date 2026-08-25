@@ -47,7 +47,7 @@ import { LLMEmptyStateBanner } from './LLMEmptyStateBanner';
 import { LLMSessionPanel } from './LLMSessionPanel';
 import { OverviewCharts } from './OverviewCharts';
 import { SearchTilesTab } from './SearchTilesTab';
-import { SessionSelectControlled } from './SessionSelectControlled';
+import { SessionSelect } from './SessionSelect';
 import { SessionsTab } from './SessionsTab';
 import { TokenCostCharts } from './TokenCostCharts';
 import { LLMChartProps } from './types';
@@ -96,18 +96,17 @@ function LLMDashboardPage() {
       logSource: appliedConfig.logSource,
       where: appliedConfig.where,
       whereLanguage: effectiveWhereLanguage,
-      sessionId: appliedConfig.sessionId,
     },
   });
   const sourceId = useWatch({ control, name: 'source' });
   const logSourceId = useWatch({ control, name: 'logSource' });
-  const sessionId = useWatch({ control, name: 'sessionId' });
 
   const { data: sources } = useSources();
 
   // Default the trace source on first load like the Services dashboard: the
   // URL param when it resolves to an enabled trace source, else the first
-  // available trace source.
+  // available trace source. The select only offers usable trace sources, so
+  // a user selection always resolves to itself and is never overridden.
   const effectiveTraceSourceId = sources?.length
     ? getEffectiveTraceSourceId(sourceId || appliedConfig.source, sources)
     : '';
@@ -115,10 +114,7 @@ function LLMDashboardPage() {
     if (effectiveTraceSourceId && effectiveTraceSourceId !== sourceId) {
       setValue('source', effectiveTraceSourceId);
     }
-    // Only adopt the resolved default when the form is empty/stale; the
-    // user's own selection flows through `sourceId` and stays untouched.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveTraceSourceId]);
+  }, [effectiveTraceSourceId, sourceId, setValue]);
 
   const { data: source } = useSource({
     id: sourceId || effectiveTraceSourceId || undefined,
@@ -164,7 +160,10 @@ function LLMDashboardPage() {
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
 
-  // Auto-apply source/session changes without requiring a manual submit.
+  // Auto-apply source changes without requiring a manual submit. The
+  // session filter lives in the URL only (see SessionSelect below) — it can
+  // also be set externally by the session drawer's "Filter dashboard"
+  // action, so keeping it out of the form avoids two-way sync effects.
   useEffect(() => {
     if (sourceId && sourceId !== appliedConfig.source) {
       setAppliedConfig({ source: sourceId });
@@ -175,21 +174,6 @@ function LLMDashboardPage() {
       setAppliedConfig({ logSource: logSourceId || '' });
     }
   }, [logSourceId, appliedConfig.logSource, setAppliedConfig]);
-  useEffect(() => {
-    if ((sessionId || '') !== appliedConfig.sessionId) {
-      setAppliedConfig({ sessionId: sessionId || '' });
-    }
-    // The session param can also be set externally (session drawer's "Filter
-    // dashboard" action); the effect above would clobber it with the stale
-    // form value, so instead adopt external changes into the form.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
-  useEffect(() => {
-    if ((appliedConfig.sessionId || '') !== (sessionId || '')) {
-      setValue('sessionId', appliedConfig.sessionId || '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedConfig.sessionId]);
 
   const chartProps: LLMChartProps | null =
     source?.kind === SourceKind.Trace && expressions
@@ -241,9 +225,9 @@ function LLMDashboardPage() {
             size="sm"
             data-testid="llm-dashboard-log-source-select"
           />
-          <SessionSelectControlled
-            control={control}
-            name="sessionId"
+          <SessionSelect
+            value={appliedConfig.sessionId}
+            onChange={sessionId => setAppliedConfig({ sessionId })}
             source={source}
             expressions={expressions}
             dateRange={searchedTimeRange}

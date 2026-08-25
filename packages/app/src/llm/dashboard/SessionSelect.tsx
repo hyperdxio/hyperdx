@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
-import { UseControllerProps } from 'react-hook-form';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { Select, SelectProps } from '@mantine/core';
 
-import SelectControlled from '@/components/SelectControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { LLMExpressions } from '@/llm/lib/expressions';
 
@@ -10,20 +9,24 @@ import { LLMExpressions } from '@/llm/lib/expressions';
  * Session filter dropdown: distinct session/conversation ids seen on LLM
  * spans in the searched range, resolved via the cross-dialect session
  * expression (gen_ai.conversation.id, session.id,
- * ai.telemetry.metadata.sessionId).
+ * ai.telemetry.metadata.sessionId). Plain value/onChange — the dashboard
+ * keeps the selected session in the URL, not in the search form.
  */
-export function SessionSelectControlled({
+export function SessionSelect({
   source,
   expressions,
   dateRange,
+  value,
+  onChange,
   ...props
 }: {
   /** Trace source: session ids are resolved from LLM spans. */
   source: TTraceSource | undefined;
   expressions: LLMExpressions | undefined;
   dateRange: [Date, Date];
-  size?: string;
-} & UseControllerProps<any>) {
+  value: string;
+  onChange: (sessionId: string) => void;
+} & Omit<SelectProps, 'data' | 'value' | 'onChange'>) {
   const queriedConfig = {
     source: source?.id,
     timestampValueExpression: source?.timestampValueExpression || '',
@@ -59,10 +62,18 @@ export function SessionSelectControlled({
     return [{ value: '', label: 'All sessions' }, ...sessions];
   }, [data]);
 
+  // Mantine does not clear the select if the value disappears from data
+  // (e.g. the searched window changed and the session is no longer in it).
+  const selected = values.some(d =>
+    typeof d === 'string' ? d === value : d.value === value,
+  );
+
   return (
-    <SelectControlled
+    <Select
       {...props}
       data={values}
+      value={selected ? value : null}
+      onChange={v => onChange(v ?? '')}
       disabled={isLoading || isError}
       comboboxProps={{ withinPortal: false }}
       searchable

@@ -38,7 +38,9 @@ export function extractConversation(
         role: message.role === 'unknown' ? 'assistant' : message.role,
         source: 'output' as const,
       })),
-    ];
+      // Conversations are immutable once extracted, so the position is a
+      // stable render key.
+    ].map((message, index) => ({ ...message, id: index }));
     return { messages, dialect: adapter.id };
   }
   return undefined;

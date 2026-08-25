@@ -61,11 +61,8 @@ export function LLMConversationPanel({
       )}
       {conversation != null ? (
         <Stack gap="xs">
-          {conversation.messages.map((message, i) => (
-            // Static list per fetch (never reordered/inserted), and messages
-            // carry no stable ids.
-            // eslint-disable-next-line @eslint-react/no-array-index-key
-            <ChatMessageItem key={i} message={message} />
+          {conversation.messages.map(message => (
+            <ChatMessageItem key={message.id} message={message} />
           ))}
           <Group justify="flex-end">
             <Text size="xs" c="dimmed">

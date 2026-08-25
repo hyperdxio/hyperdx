@@ -36,6 +36,11 @@ const MAX_SESSION_SPANS = 100;
  * attributes are fetched per span on expand (see SessionSpanDetail).
  */
 export interface SessionSpanListRow {
+  /**
+   * Stable render/accordion key within the fetched list (span ids alone can
+   * repeat when a span id is reused across traces).
+   */
+  itemValue: string;
   ts: string;
   spanName: string;
   spanId: string;
@@ -48,19 +53,17 @@ export interface SessionSpanListRow {
 
 function SessionSpanItem({
   row,
-  index,
   expanded,
   source,
   dateRange,
 }: {
   row: SessionSpanListRow;
-  index: number;
   expanded: boolean;
   source: LLMChartProps['source'];
   dateRange: LLMChartProps['dateRange'];
 }) {
   return (
-    <Accordion.Item value={`span-${index}`}>
+    <Accordion.Item value={row.itemValue}>
       <Accordion.Control>
         <Group gap="xs" wrap="nowrap">
           <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
@@ -201,10 +204,13 @@ export function LLMSessionPanel(props: LLMChartProps) {
 
   const rows: SessionSpanListRow[] = useMemo(
     () =>
-      (data?.data ?? []).map(row => {
+      (data?.data ?? []).map((row, index) => {
         const model = asString(row.model);
         const toolName = asString(row.toolName);
         return {
+          // Time-ordered list, replaced wholesale per fetch, so the position
+          // is a stable key; span ids alone can repeat when reused.
+          itemValue: `span-${index}`,
           ts: String(row.ts),
           spanName: String(row.spanName ?? ''),
           spanId: String(row.spanId ?? ''),
@@ -278,15 +284,11 @@ export function LLMSessionPanel(props: LLMChartProps) {
                 value={expandedItems}
                 onChange={setExpandedItems}
               >
-                {rows.map((row, index) => (
+                {rows.map(row => (
                   <SessionSpanItem
-                    // Time-ordered list, replaced wholesale per fetch; span
-                    // ids alone can repeat when a span id is reused.
-                    // eslint-disable-next-line @eslint-react/no-array-index-key
-                    key={`${row.spanId}-${index}`}
+                    key={row.itemValue}
                     row={row}
-                    index={index}
-                    expanded={expandedItems.includes(`span-${index}`)}
+                    expanded={expandedItems.includes(row.itemValue)}
                     source={source}
                     dateRange={dateRange}
                   />

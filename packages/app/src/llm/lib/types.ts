@@ -38,6 +38,11 @@ export interface ChatMessage {
 /** Which side of the exchange a message came from. */
 export type ConversationMessage = ChatMessage & {
   source: 'input' | 'output';
+  /**
+   * Stable render key within the conversation (assigned by
+   * extractConversation; conversations are immutable once extracted).
+   */
+  id: number;
 };
 
 /** Instrumentation dialects the normalizer understands. */

@@ -11,6 +11,9 @@ import { isLLMSpan } from '@/llm/lib/detect';
 import { extractLLMSpanInfo, hasReportedUsage } from '@/llm/lib/extract';
 import { extractConversation } from '@/llm/lib/messages';
 
+/** Expected messages carry sequential ids, mirroring extractConversation. */
+const withIds = <T>(messages: T[]) => messages.map((m, id) => ({ ...m, id }));
+
 // Regression tests for real-world opencode telemetry, which emits three
 // overlapping dialects (OpenInference whole-string messages, current Vercel
 // AI SDK camelCase usage, and flat-key log events).
@@ -48,9 +51,11 @@ describe('opencode-shaped telemetry', () => {
     it('parses whole-string llm.input_messages into chat messages', () => {
       const conversation = extractConversation(OPENCODE_LLM_SPAN_FIXTURE);
       expect(conversation?.dialect).toBe('openinference');
-      expect(conversation?.messages).toEqual([
-        { role: 'user', content: 'check all tests', source: 'input' },
-      ]);
+      expect(conversation?.messages).toEqual(
+        withIds([
+          { role: 'user', content: 'check all tests', source: 'input' },
+        ]),
+      );
     });
   });
 
@@ -73,14 +78,16 @@ describe('opencode-shaped telemetry', () => {
     it('renders prompt/response messages', () => {
       const conversation = extractConversation(VERCEL_AI_STREAMTEXT_FIXTURE);
       expect(conversation?.dialect).toBe('vercel-ai');
-      expect(conversation?.messages).toEqual([
-        { role: 'user', content: 'check all tests', source: 'input' },
-        {
-          role: 'assistant',
-          content: 'Running the tests now.',
-          source: 'output',
-        },
-      ]);
+      expect(conversation?.messages).toEqual(
+        withIds([
+          { role: 'user', content: 'check all tests', source: 'input' },
+          {
+            role: 'assistant',
+            content: 'Running the tests now.',
+            source: 'output',
+          },
+        ]),
+      );
     });
   });
 

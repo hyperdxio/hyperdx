@@ -82,11 +82,8 @@ export function SessionSpanDetail({
           content; the span's LLM summary still shows usage, params, TTFT. */}
       {info != null && <LLMSpanSubpanel info={info} />}
       {conversation != null ? (
-        conversation.messages.map((message, i) => (
-          // Static list per fetch (never reordered/inserted), and messages
-          // carry no stable ids.
-          // eslint-disable-next-line @eslint-react/no-array-index-key
-          <ChatMessageItem key={i} message={message} />
+        conversation.messages.map(message => (
+          <ChatMessageItem key={message.id} message={message} />
         ))
       ) : (
         <Text size="xs" c="dimmed">
