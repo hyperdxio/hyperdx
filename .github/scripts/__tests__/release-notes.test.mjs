@@ -370,6 +370,33 @@ test('a reuse round-trip does not accumulate package lists', () => {
   assert.equal(body.match(/Package changelogs/g).length, 1);
 });
 
+test('the app-side marker regex matches the marker this script emits', () => {
+  // The app's changelog parser strips markers with its own regex literal so the
+  // marker never lands in a release summary. Pin the two together: a
+  // marker-format change here must not silently leave that comment on screen.
+  const parser = readFileSync(
+    join(REPO_ROOT, 'packages/app/scripts/parse-whats-new.js'),
+    'utf-8',
+  );
+  const literal = parser.match(
+    /RELEASE_NOTES_MARKER = (\/.+?\/[gimsuy]*)/,
+  )?.[1];
+  assert.ok(
+    literal,
+    'could not find RELEASE_NOTES_MARKER in parse-whats-new.js',
+  );
+
+  const [, pattern, flags] = literal.match(/^\/(.*)\/([gimsuy]*)$/);
+  const appRe = new RegExp(pattern, flags);
+  const emitted = insertSection(null, OPTS);
+  const markerLine = emitted
+    .split('\n')
+    .find(l => l.startsWith('<!-- hyperdx-release-notes'));
+
+  assert.ok(markerLine, 'insertSection emitted no marker');
+  assert.equal(markerLine.replace(appRe, '').trim(), '');
+});
+
 test('CLI insert refuses to write "undefined" into a heading when --date is missing', () => {
   const dir = mkdtempSync(join(tmpdir(), 'release-notes-'));
   const changelog = join(dir, 'CHANGELOG.md');
@@ -514,6 +541,41 @@ test('validateBody agrees with the render-time allowlist on parsed-URL forms', (
   ]) {
     assert.deepEqual(validateBody(`See [x](${url}).\n`), [], `accept: ${url}`);
   }
+});
+
+test('the render-time host allowlist matches this script’s', () => {
+  // Two languages, one policy. Pinned here so a host added to one side cannot
+  // silently make the CI gate stricter (a red release) or looser (a phishing
+  // link that only the drawer blocks).
+  const drawer = readFileSync(
+    join(REPO_ROOT, 'packages/app/src/components/AppNav/WhatsNewDrawer.tsx'),
+    'utf-8',
+  );
+  const literal = drawer.match(
+    /ALLOWED_LINK_HOSTS = new Set\(\[([^\]]*)\]\)/,
+  )?.[1];
+  assert.ok(
+    literal,
+    'could not find ALLOWED_LINK_HOSTS in WhatsNewDrawer.tsx',
+  );
+  const appHosts = [...literal.matchAll(/'([^']+)'/g)].map(m => m[1]);
+
+  assert.deepEqual(appHosts.sort(), [...ALLOWED_LINK_HOSTS].sort());
+});
+
+test('validateBody accepts a bullet that thanks an outside contributor', () => {
+  // A handle is plain text and the profile link is on an allowed host, so
+  // thanking someone must not redden the publish job.
+  assert.deepEqual(
+    validateBody('- **Fix**: yes (#1, thanks @alice!).\n'),
+    [],
+  );
+  assert.deepEqual(
+    validateBody(
+      '- **Fix**: yes (#1, thanks [@alice](https://github.com/alice)!).\n',
+    ),
+    [],
+  );
 });
 
 test('validateBody rejects an oversized body', () => {

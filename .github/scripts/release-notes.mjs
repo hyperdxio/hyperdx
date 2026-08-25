@@ -138,19 +138,24 @@ export function extractSection(content, { version, inputs, latest }) {
   return body + '\n';
 }
 
-// Checks on a model-authored body, before it is spliced into the committed
-// changelog. Regexes cannot be complete over CommonMark, and the app no longer
-// renders this file (it ships a parsed whats-new.json built from the package
-// changelog instead), so there is no second, AST-level gate behind these: the
-// backstop is a maintainer reading the release PR. The changelog jobs run
-// without node_modules, so a real markdown parser is not available to them.
+// Fail-fast checks on a model-authored body, before it is spliced into the
+// committed changelog. These are NOT the security boundary — regexes cannot be
+// complete over CommonMark. WhatsNewDrawer.tsx holds the enforceable check: it
+// drops image nodes and allowlists link targets on react-markdown's parsed AST,
+// so no syntax can smuggle either into the in-app release summary. What lives
+// here is early, legible feedback in CI (the changelog jobs run without
+// node_modules, so a real markdown parser is not available to them).
 const MAX_BODY_BYTES = 65536;
-// Hosts a generated link may point at. Exported for the tests.
+// Kept in sync with ALLOWED_LINK_HOSTS in
+// packages/app/src/components/AppNav/WhatsNewDrawer.tsx, and pinned there by a
+// test. Exported for that test.
 export const ALLOWED_LINK_HOSTS = new Set(['github.com', 'docs.hyperdx.io']);
 
-// Parse, then compare the whole hostname. A prefix regex would reject forms
-// like `https://github.com:443/x` and `https://user@github.com/x`, reddening
-// the publish job for links that resolve to an allowed host.
+// Deliberately the same algorithm as allowChangelogUrl in WhatsNewDrawer.tsx:
+// parse, then compare the whole hostname. A prefix regex disagrees with the
+// render gate on forms like `https://github.com:443/x` and
+// `https://user@github.com/x`, which would redden the publish job for content
+// that renders correctly.
 function linkAllowed(target) {
   try {
     // The base makes a relative target resolve to a host that is never allowed,

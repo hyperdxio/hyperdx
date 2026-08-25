@@ -267,7 +267,7 @@ release_changelog_publish          contents: write - the model never ran here
 push to changeset-release/main  ->  appears as a diff in the release PR,
     |                               where a maintainer can edit it
     v
-merge the release PR  ->  CHANGELOG.md lands on main  ->  the repo release notes
+merge the release PR  ->  CHANGELOG.md lands on main  ->  served in "What's new"
 ```
 
 The job split is a security boundary, not tidiness: the model reads changeset
