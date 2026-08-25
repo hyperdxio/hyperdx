@@ -13,14 +13,18 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
+  Badge,
   Box,
   Breadcrumbs,
   Button,
   Grid,
   Group,
+  HoverCard,
+  List,
   Tabs,
   Text,
 } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -198,9 +202,58 @@ function LLMDashboardPage() {
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
           Dashboards
         </Anchor>
-        <Text fz="sm" c="dimmed">
-          LLM
-        </Text>
+        <Group gap="xs" wrap="nowrap">
+          <Text fz="sm" c="dimmed">
+            LLM
+          </Text>
+          <Badge size="xs" color="blue" variant="light">
+            Beta
+          </Badge>
+          <HoverCard
+            width={420}
+            shadow="md"
+            position="bottom-start"
+            withinPortal
+          >
+            <HoverCard.Target>
+              <Text
+                c="dimmed"
+                lh={0}
+                style={{ cursor: 'help' }}
+                data-testid="llm-dashboard-beta-info"
+              >
+                <IconInfoCircle size={14} />
+              </Text>
+            </HoverCard.Target>
+            <HoverCard.Dropdown>
+              <Text size="sm" fw={500} mb="xs">
+                About this dashboard
+              </Text>
+              <List size="xs" c="dimmed" spacing="xs">
+                <List.Item>
+                  This dashboard is experimental — charts and metrics may change
+                  between releases.
+                </List.Item>
+                <List.Item>
+                  Works with traces from the OpenTelemetry GenAI semantic
+                  conventions, OpenLLMetry, OpenInference, and the Vercel AI
+                  SDK. No ingestion changes needed — spans are interpreted at
+                  query time.
+                </List.Item>
+                <List.Item>
+                  Costs are estimates from a bundled model price catalog and can
+                  lag provider pricing. A cost reported by the instrumentation
+                  itself always takes precedence.
+                </List.Item>
+                <List.Item>
+                  When an app emits several instrumentations for the same calls,
+                  spans reporting their own cost are counted once as the source
+                  of truth.
+                </List.Item>
+              </List>
+            </HoverCard.Dropdown>
+          </HoverCard>
+        </Group>
       </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       <form
