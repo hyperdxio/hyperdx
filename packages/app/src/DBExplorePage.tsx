@@ -93,7 +93,6 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
-import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
@@ -2747,13 +2746,7 @@ function DBExplorePage() {
             }
             searchFilters={searchFilters}
             chartConfig={filtersChartConfig}
-            filtersSlot={
-              <ActiveFilterPills
-                searchFilters={searchFilters}
-                chartConfig={filtersChartConfig}
-                dateTimeColumns={dateTimeColumns}
-              />
-            }
+            dateTimeColumns={dateTimeColumns}
             controls={
               <>
                 <TimePicker

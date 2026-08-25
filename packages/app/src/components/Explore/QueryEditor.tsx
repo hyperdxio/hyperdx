@@ -71,13 +71,21 @@ export interface QueryEditorProps {
   leftSection?: React.ReactNode;
   /** Toolbar under the input (add filter, examples, SQL preview). */
   toolbarSlot?: React.ReactNode;
-  /** Active filter chips rendered inside the card, below the input. */
+  /** Active filter chips rendered inside the bordered input, before the editor. */
   filtersSlot?: React.ReactNode;
+  /**
+   * Backspace at caret 0 with an empty selection removes the last filter
+   * token. Return true when a token was removed so the editor does not also
+   * delete text.
+   */
+  onRemoveLastFilter?: () => boolean;
   /** Field names offered by autocomplete (both languages). */
   fields?: string[];
   placeholder?: string;
   /** Fired on Enter (Shift+Enter inserts a newline). */
   onSubmit?: () => void;
+  /** Fired when the CodeMirror editor loses focus. */
+  onBlur?: () => void;
   /** Focus the editor on "/" or "s" when true. */
   enableHotkey?: boolean;
   /** Max body height (px) before the editor scrolls. Defaults to 200. */
@@ -106,9 +114,11 @@ export function QueryEditor({
   leftSection,
   toolbarSlot,
   filtersSlot,
+  onRemoveLastFilter,
   fields = EMPTY_FIELDS,
   placeholder = 'Filter this source',
   onSubmit,
+  onBlur,
   enableHotkey,
   maxHeight = 200,
   'data-testid': dataTestId,
@@ -120,6 +130,11 @@ export function QueryEditor({
   useEffect(() => {
     onSubmitRef.current = onSubmit;
   }, [onSubmit]);
+
+  const onRemoveLastFilterRef = useRef(onRemoveLastFilter);
+  useEffect(() => {
+    onRemoveLastFilterRef.current = onRemoveLastFilter;
+  }, [onRemoveLastFilter]);
 
   useHotkeys(
     ['/', 's'],
@@ -136,7 +151,7 @@ export function QueryEditor({
 
   const extensions = useMemo<Extension[]>(() => {
     const submitKeymap = Prec.highest(
-      // The Enter handler reads `onSubmitRef.current`, but only when the key is
+      // The Enter/Backspace handlers read refs, but only when the key is
       // pressed (an event), never during render — the compiler can't tell the
       // CodeMirror `run` callback isn't a render-time ref read, so disable here.
       // eslint-disable-next-line react-hooks/refs
@@ -154,6 +169,16 @@ export function QueryEditor({
         },
         // Shift+Enter inserts a newline (the editor auto-grows to fit).
         { key: 'Shift-Enter', run: () => false },
+        {
+          key: 'Backspace',
+          run: view => {
+            const remove = onRemoveLastFilterRef.current;
+            if (!remove) return false;
+            const sel = view.state.selection.main;
+            if (sel.from !== sel.to || sel.from !== 0) return false;
+            return remove();
+          },
+        },
       ]),
     );
     return [
@@ -249,41 +274,49 @@ export function QueryEditor({
         </Flex>
       </Flex>
       {isSqlMode ? (
-        <Box data-testid={dataTestId}>{children}</Box>
+        <>
+          {filtersSlot != null && (
+            <Box className={styles.filters}>{filtersSlot}</Box>
+          )}
+          <Box data-testid={dataTestId}>{children}</Box>
+        </>
       ) : (
         <Box className={styles.body} data-testid={dataTestId}>
-          <Text className={styles.badge} size="xs" c="dimmed">
-            {MODE_LABELS[language]}
-          </Text>
-          <CodeMirror
-            ref={ref}
-            value={value}
-            onChange={onChange}
-            onFocus={handleFocus}
-            placeholder={placeholder}
-            theme={colorScheme === 'dark' ? 'dark' : 'light'}
-            extensions={extensions}
-            height="auto"
-            minHeight="24px"
-            maxHeight={`${maxHeight}px`}
-            basicSetup={{
-              lineNumbers: false,
-              foldGutter: false,
-              highlightActiveLine: false,
-              highlightActiveLineGutter: false,
-              autocompletion: false,
-              bracketMatching: true,
-              closeBrackets: true,
-              searchKeymap: false,
-            }}
-          />
+          {filtersSlot != null && (
+            <Box className={styles.filters}>{filtersSlot}</Box>
+          )}
+          <Box className={styles.editor}>
+            <Text className={styles.badge} size="xs" c="dimmed">
+              {MODE_LABELS[language]}
+            </Text>
+            <CodeMirror
+              ref={ref}
+              value={value}
+              onChange={onChange}
+              onFocus={handleFocus}
+              onBlur={onBlur}
+              placeholder={placeholder}
+              theme={colorScheme === 'dark' ? 'dark' : 'light'}
+              extensions={extensions}
+              height="auto"
+              minHeight="24px"
+              maxHeight={`${maxHeight}px`}
+              basicSetup={{
+                lineNumbers: false,
+                foldGutter: false,
+                highlightActiveLine: false,
+                highlightActiveLineGutter: false,
+                autocompletion: false,
+                bracketMatching: true,
+                closeBrackets: true,
+                searchKeymap: false,
+              }}
+            />
+          </Box>
         </Box>
       )}
       {toolbarSlot != null && (
         <Box className={styles.toolbar}>{toolbarSlot}</Box>
-      )}
-      {filtersSlot != null && (
-        <Box className={styles.filters}>{filtersSlot}</Box>
       )}
     </Box>
   );

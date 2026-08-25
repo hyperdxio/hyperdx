@@ -4,6 +4,8 @@ import {
 } from '@hyperdx/common-utils/dist/filters';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
+import { formatDurationBound } from './durationBound';
+
 const EXPLORE_LANGUAGE_KEY_PREFIX = 'hdx-explore-where-language:';
 
 export type QueryLanguage = 'sql' | 'lucene';
@@ -278,6 +280,27 @@ export function tryConvertLuceneToSqlWhere(lucene: string): string | null {
   return convertLuceneAtom(trimmed);
 }
 
+function luceneBound(field: string, n: number): string {
+  return /duration/i.test(field) ? formatDurationBound(n) : String(n);
+}
+
+function luceneRangeClause(
+  field: string,
+  range: NonNullable<FilterState[string]['range']>,
+): string | null {
+  const { min, max, minOp = '>=', maxOp = '<=' } = range;
+  if (min != null && max != null) {
+    return `${field}:[${min} TO ${max}]`;
+  }
+  if (min != null) {
+    return `${field}:${minOp}${luceneBound(field, min)}`;
+  }
+  if (max != null) {
+    return `${field}:${maxOp}${luceneBound(field, max)}`;
+  }
+  return null;
+}
+
 export function filterStateToLucene(filters: FilterState): string {
   const parts: string[] = [];
   for (const [field, state] of Object.entries(filters)) {
@@ -288,7 +311,10 @@ export function filterStateToLucene(filters: FilterState): string {
       parts.push(`-${field}:${luceneQuote(String(value))}`);
     }
     if (state.range != null) {
-      parts.push(`${field}:[${state.range.min} TO ${state.range.max}]`);
+      const luceneRange = luceneRangeClause(field, state.range);
+      if (luceneRange != null) {
+        parts.push(luceneRange);
+      }
     }
   }
   return parts.join(' AND ');
@@ -301,21 +327,61 @@ export function filterStateToSql(filters: FilterState): string {
     .join(' AND ');
 }
 
-export function getFilterExampleQueries(kind?: SourceKind): {
+type FilterExampleTone = 'danger' | 'warning';
+
+export type FilterExampleQuery = {
   label: string;
   lucene: string;
-}[] {
+  sql: string;
+  tone: FilterExampleTone;
+};
+
+export function getFilterExampleQueries(
+  kind?: SourceKind,
+): FilterExampleQuery[] {
   if (kind === SourceKind.Trace) {
     return [
-      { label: 'Errors', lucene: 'status:error' },
-      { label: 'Slow spans', lucene: 'duration:>1s' },
+      {
+        label: 'Error',
+        lucene: 'status:error',
+        sql: "status = 'error'",
+        tone: 'danger',
+      },
+      {
+        label: 'Warning',
+        lucene: 'status:warn',
+        sql: "status = 'warn'",
+        tone: 'warning',
+      },
+      {
+        label: 'Slow spans',
+        lucene: 'duration:>1s',
+        sql: 'Duration > 1000000000',
+        tone: 'warning',
+      },
     ];
   }
   if (kind === SourceKind.Metric || kind === SourceKind.Promql) {
     return [];
   }
   return [
-    { label: 'Errors', lucene: 'level:error' },
-    { label: 'HTTP 5xx', lucene: 'status:>=500' },
+    {
+      label: 'Error',
+      lucene: 'level:error',
+      sql: "level = 'error'",
+      tone: 'danger',
+    },
+    {
+      label: 'Warning',
+      lucene: 'level:warn',
+      sql: "level = 'warn'",
+      tone: 'warning',
+    },
+    {
+      label: 'HTTP 5xx',
+      lucene: 'status:>=500',
+      sql: 'status >= 500',
+      tone: 'danger',
+    },
   ];
 }

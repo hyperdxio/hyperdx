@@ -69,6 +69,12 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
     // Check range
     if (a[key].range?.min !== b[key].range?.min) return false;
     if (a[key].range?.max !== b[key].range?.max) return false;
+    if ((a[key].range?.minOp ?? '>=') !== (b[key].range?.minOp ?? '>=')) {
+      return false;
+    }
+    if ((a[key].range?.maxOp ?? '<=') !== (b[key].range?.maxOp ?? '<=')) {
+      return false;
+    }
   }
 
   return true;
@@ -237,6 +243,34 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  const mergeFilterValues = useCallback(
+    (incoming: FilterState) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          for (const [field, sel] of Object.entries(incoming)) {
+            if (!draft[field]) {
+              draft[field] = { included: new Set(), excluded: new Set() };
+            }
+            for (const value of sel.included) {
+              draft[field].excluded.delete(value);
+              draft[field].included.add(value);
+            }
+            for (const value of sel.excluded) {
+              draft[field].included.delete(value);
+              draft[field].excluded.add(value);
+            }
+            if (sel.range != null) {
+              draft[field].range = sel.range;
+            }
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
@@ -334,6 +368,7 @@ export const useSearchPageFilterState = ({
     setFilterValue,
     setOnlyFilters,
     setIncludedValues,
+    mergeFilterValues,
     replaceFilterValue,
     setFilterRange,
     clearFilter,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -15,6 +15,13 @@ import type { FilterStateHook } from '@/searchFilters';
 import { useSource } from '@/source';
 
 import { ExploreRawSqlEditor } from './ExploreRawSqlEditor';
+import { FilterExpression } from './FilterExpression';
+import {
+  filterStateToExpression,
+  lastClause,
+  removeFilterClause,
+} from './filterExpressionModel';
+import { promoteWhereToFilters } from './promoteWhereToFilters';
 import { QueryConfigMode, QueryEditor, QueryLanguage } from './QueryEditor';
 import { QueryEditorToolbar } from './QueryEditorToolbar';
 import { getExploreWhereLanguage } from './queryModeSafety';
@@ -30,8 +37,11 @@ export type ExploreQueryEditorProps = {
   languageName?: string;
   /** Right-aligned header controls (time picker, Live, Run, ...). */
   controls?: React.ReactNode;
-  /** Active filter chips rendered inside the card, below the input. */
-  filtersSlot?: React.ReactNode;
+  /**
+   * Map of DateTime/Date column name → ClickHouse type. Filter pill values for
+   * these columns are formatted to the user's locale/timezone.
+   */
+  dateTimeColumns?: ReadonlyMap<string, string>;
   /**
    * Query authoring mode. When provided, a `Builder | SQL` toggle is shown; in
    * `'sql'` mode the WHERE editor is swapped for a raw-SQL editor bound to
@@ -67,7 +77,7 @@ export function ExploreQueryEditor({
   additionalSuggestions,
   languageName = `${name}Language`,
   controls,
-  filtersSlot,
+  dateTimeColumns,
   queryMode,
   onQueryModeChange,
   sqlTemplateName = 'sqlTemplate',
@@ -129,6 +139,41 @@ export function ExploreQueryEditor({
     ];
   }, [fields, additionalSuggestions]);
 
+  const handleRemoveLastFilter = useCallback(() => {
+    if (searchFilters == null) {
+      return false;
+    }
+    const clause = lastClause(filterStateToExpression(searchFilters.filters));
+    if (clause == null) {
+      return false;
+    }
+    return removeFilterClause(clause, searchFilters);
+  }, [searchFilters]);
+
+  const ingestWhere = useCallback(
+    (next: string, commitTrailing: boolean) => {
+      if (searchFilters == null) {
+        valueField.onChange(next);
+        return;
+      }
+      const result = promoteWhereToFilters(next, language, { commitTrailing });
+      const hasClauses = Object.values(result.filters).some(
+        sel =>
+          sel.included.size > 0 || sel.excluded.size > 0 || sel.range != null,
+      );
+      if (hasClauses) {
+        searchFilters.mergeFilterValues(result.filters);
+      }
+      valueField.onChange(result.remainder);
+    },
+    [language, searchFilters, valueField],
+  );
+
+  const handleSubmit = useCallback(() => {
+    ingestWhere(stringValue, true);
+    onSubmit?.();
+  }, [ingestWhere, onSubmit, stringValue]);
+
   return (
     <>
       <SyntaxReferenceModal
@@ -138,7 +183,7 @@ export function ExploreQueryEditor({
       />
       <QueryEditor
         value={stringValue}
-        onChange={valueField.onChange}
+        onChange={next => ingestWhere(next, next !== next.trimEnd())}
         language={language}
         onLanguageChange={languageField.onChange}
         languages={['lucene', 'sql']}
@@ -151,7 +196,7 @@ export function ExploreQueryEditor({
             mode={queryMode === 'sql' ? 'raw' : language}
             language={language}
             where={stringValue}
-            onWhereChange={valueField.onChange}
+            onWhereChange={next => ingestWhere(next, true)}
             sourceKind={source?.kind}
             fields={identifiers}
             searchFilters={searchFilters}
@@ -159,7 +204,17 @@ export function ExploreQueryEditor({
             queryMode={queryMode}
           />
         }
-        filtersSlot={filtersSlot}
+        filtersSlot={
+          searchFilters != null && chartConfig != null ? (
+            <FilterExpression
+              searchFilters={searchFilters}
+              chartConfig={chartConfig}
+              language={language}
+              dateTimeColumns={dateTimeColumns}
+            />
+          ) : undefined
+        }
+        onRemoveLastFilter={handleRemoveLastFilter}
         leftSection={
           <Tooltip label="Syntax reference" withArrow position="top">
             <ActionIcon
@@ -179,7 +234,8 @@ export function ExploreQueryEditor({
             ? "SQL WHERE clause (e.g. column = 'foo')"
             : 'Filter this source'
         }
-        onSubmit={onSubmit}
+        onSubmit={handleSubmit}
+        onBlur={() => ingestWhere(stringValue, true)}
         enableHotkey={enableHotkey}
         data-testid={dataTestId}
       >

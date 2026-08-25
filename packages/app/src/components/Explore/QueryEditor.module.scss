@@ -15,19 +15,30 @@
 }
 
 /* The builder editor keeps an input-style border so it still reads as an
-   editable field once the surrounding card is gone. */
+   editable field once the surrounding card is gone. Filter pills wrap inside
+   this field, with the CodeMirror region growing beside them. */
 .body {
-  position: relative;
-  padding: 3px 48px 3px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
   background-color: var(--color-bg-field);
 }
 
+.editor {
+  position: relative;
+  flex: 1 1 8rem;
+  min-width: 8rem;
+  padding-right: 40px;
+}
+
 .badge {
   position: absolute;
   top: 4px;
-  right: 8px;
+  right: 0;
   pointer-events: none;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -56,9 +67,15 @@
   background: transparent !important;
 }
 
-/* Active filter chips sit below the input. Collapse the strip entirely when
-   there are no chips (ActiveFilterPills renders null). */
+/* Collapse the chip cluster when FilterExpression / ActiveFilterPills
+   render nothing, so the editor still fills the input. */
 .filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+
   &:empty {
     display: none;
   }

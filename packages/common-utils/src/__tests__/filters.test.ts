@@ -112,6 +112,36 @@ describe('filters', () => {
       ]);
     });
 
+    it('emits one-sided comparisons for open-ended ranges', () => {
+      expect(
+        filtersToQuery({
+          Duration: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min: 1_000_000_000, minOp: '>' },
+          },
+        }),
+      ).toEqual([{ type: 'sql', condition: 'Duration > 1000000000' }]);
+      expect(
+        filtersToQuery({
+          status: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min: 500, minOp: '>=' },
+          },
+        }),
+      ).toEqual([{ type: 'sql', condition: 'status >= 500' }]);
+      expect(
+        filtersToQuery({
+          Duration: {
+            included: new Set(),
+            excluded: new Set(),
+            range: { max: 100, maxOp: '<' },
+          },
+        }),
+      ).toEqual([{ type: 'sql', condition: 'Duration < 100' }]);
+    });
+
     it('should escape single quotes in excluded filter values', () => {
       const filters = {
         message: {
@@ -1074,6 +1104,28 @@ describe('filters', () => {
       });
     });
 
+    it('parses one-sided numeric comparisons into a range', () => {
+      expect(
+        parseQuery([{ type: 'sql', condition: 'Duration > 1000000000' }])
+          .filters,
+      ).toEqual({
+        Duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 1000000000, minOp: '>' },
+        },
+      });
+      expect(
+        parseQuery([{ type: 'sql', condition: 'status >= 500' }]).filters,
+      ).toEqual({
+        status: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 500, minOp: '>=' },
+        },
+      });
+    });
+
     it('drops a BETWEEN with quoted / non-numeric bounds instead of emitting NaN', () => {
       expect(
         parseQuery([
@@ -1106,6 +1158,8 @@ describe('filters', () => {
       ["ServiceName IN ('checkout', 'payments')", 'IN'],
       ["SeverityText NOT IN ('debug', 'trace')", 'NOT IN'],
       ['Duration BETWEEN 100 AND 5000', 'BETWEEN (numeric)'],
+      ['Duration > 1000000000', 'one-sided greater-than'],
+      ['status >= 500', 'one-sided greater-or-equal'],
       ["LogAttributes['x'] IN ('y')", 'map-access column'],
       ["Body IN ('a AND b')", 'value containing AND'],
     ])('accepts a single renderable predicate: %s (%s)', condition => {

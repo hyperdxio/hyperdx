@@ -4,17 +4,33 @@ import type {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Code, Collapse, Group, Text } from '@mantine/core';
+import {
+  IconAlertCircle,
+  IconAlertTriangle,
+  IconClock,
+} from '@tabler/icons-react';
 
 import type { FilterStateHook } from '@/searchFilters';
 
 import { AddFilterControl } from './AddFilterControl';
 import type { QueryLanguage } from './QueryEditor';
 import {
+  type FilterExampleQuery,
   filterStateToLucene,
   filterStateToSql,
   getFilterExampleQueries,
   type QueryEditorMode,
 } from './queryModeSafety';
+
+function exampleIcon(example: FilterExampleQuery) {
+  if (example.label === 'Slow spans') {
+    return IconClock;
+  }
+  if (example.tone === 'warning') {
+    return IconAlertTriangle;
+  }
+  return IconAlertCircle;
+}
 
 export function QueryEditorToolbar({
   mode,
@@ -44,6 +60,7 @@ export function QueryEditorToolbar({
     [searchFilters?.filters],
   );
   const hasFilters = Object.keys(filters).length > 0;
+  const showExamples = mode === 'lucene' || mode === 'sql';
 
   const sqlPreview = useMemo(() => {
     const filterSql = filterStateToSql(filters);
@@ -63,12 +80,13 @@ export function QueryEditorToolbar({
       .join('\n');
   }, [filters, language, queryMode, where]);
 
-  const handleExample = (lucene: string) => {
-    if (mode !== 'lucene') {
+  const handleExample = (example: FilterExampleQuery) => {
+    if (!showExamples) {
       return;
     }
+    const clause = language === 'sql' ? example.sql : example.lucene;
     const trimmed = where.trim();
-    onWhereChange(trimmed ? `${trimmed} AND ${lucene}` : lucene);
+    onWhereChange(trimmed ? `${trimmed} AND ${clause}` : clause);
   };
 
   return (
@@ -81,17 +99,21 @@ export function QueryEditorToolbar({
             chartConfig={chartConfig}
           />
         )}
-        {mode === 'lucene' &&
-          examples.map(example => (
-            <Button
-              key={example.lucene}
-              variant="subtle"
-              size="compact-xs"
-              onClick={() => handleExample(example.lucene)}
-            >
-              {example.label}
-            </Button>
-          ))}
+        {showExamples &&
+          examples.map(example => {
+            const Icon = exampleIcon(example);
+            return (
+              <Button
+                key={example.label}
+                variant={example.tone}
+                size="compact-xs"
+                leftSection={<Icon size={14} />}
+                onClick={() => handleExample(example)}
+              >
+                {example.label}
+              </Button>
+            );
+          })}
         <Button
           variant="subtle"
           size="compact-xs"
@@ -100,7 +122,7 @@ export function QueryEditorToolbar({
           {sqlOpened ? 'Hide SQL' : 'Show SQL'}
         </Button>
       </Group>
-      {mode === 'lucene' && !where.trim() && !hasFilters && (
+      {showExamples && !where.trim() && !hasFilters && (
         <Text size="xs" c="dimmed">
           Filter this source. Add a filter or type a search query.
         </Text>

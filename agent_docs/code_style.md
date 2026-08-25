@@ -41,7 +41,8 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 |---------|----------|---------|
 | `variant="primary"` | Primary actions (Submit, Save, Create, Run) | `<Button variant="primary">Save</Button>` |
 | `variant="secondary"` | Secondary actions (Cancel, Clear, auxiliary actions) | `<Button variant="secondary">Cancel</Button>` |
-| `variant="danger"` | Destructive actions (Delete, Remove, Rotate API Key) | `<Button variant="danger">Delete</Button>` |
+| `variant="danger"` | Destructive or error-severity actions (Delete, Remove, Error filter) | `<Button variant="danger">Delete</Button>` |
+| `variant="warning"` | Caution or warning-severity actions (Warning filter, Slow spans) | `<Button variant="warning">Warning</Button>` |
 | `variant="link"` | Link-style actions with no background or border (View Details, navigation-style CTAs) | `<Button variant="link">View Details</Button>` |
 | `variant="subtle"` | Transparent background with hover highlight; for toolbar/utility controls that shouldn't draw attention until hovered (collapse toggles, close buttons, auxiliary actions) | `<Button variant="subtle">Filter</Button>` |
 
@@ -51,11 +52,13 @@ The project uses Mantine UI with **custom variants** defined in `packages/app/sr
 <Button variant="primary">Save</Button>
 <Button variant="secondary">Cancel</Button>
 <Button variant="danger">Delete</Button>
+<Button variant="warning">Warning</Button>
 <Button variant="subtle">Filter</Button>
 <Button variant="link">View Details</Button>
 <ActionIcon variant="primary">...</ActionIcon>
 <ActionIcon variant="secondary">...</ActionIcon>
 <ActionIcon variant="danger">...</ActionIcon>
+<ActionIcon variant="warning">...</ActionIcon>
 <ActionIcon variant="link">...</ActionIcon>
 <ActionIcon variant="subtle">...</ActionIcon>
 ```

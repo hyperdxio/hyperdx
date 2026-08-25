@@ -3,6 +3,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   getDefaultExploreLanguage,
   getExploreWhereLanguage,
+  getFilterExampleQueries,
   looksLikeSql,
   setExploreWhereLanguage,
   tryConvertLuceneToSqlWhere,
@@ -75,6 +76,35 @@ describe('queryModeSafety', () => {
       expect(
         tryConvertLuceneToSqlWhere('message:"a phrase" AND error'),
       ).toBeNull();
+    });
+  });
+
+  describe('getFilterExampleQueries', () => {
+    it('returns lucene and sql clauses for logs and traces', () => {
+      const logs = getFilterExampleQueries(SourceKind.Log);
+      expect(logs.map(e => e.label)).toEqual(['Error', 'Warning', 'HTTP 5xx']);
+      expect(logs.find(e => e.label === 'Error')).toMatchObject({
+        lucene: 'level:error',
+        sql: "level = 'error'",
+        tone: 'danger',
+      });
+      expect(logs.find(e => e.label === 'Warning')).toMatchObject({
+        lucene: 'level:warn',
+        sql: "level = 'warn'",
+        tone: 'warning',
+      });
+
+      const traces = getFilterExampleQueries(SourceKind.Trace);
+      expect(traces.map(e => e.label)).toEqual([
+        'Error',
+        'Warning',
+        'Slow spans',
+      ]);
+      expect(traces.find(e => e.label === 'Slow spans')).toMatchObject({
+        lucene: 'duration:>1s',
+        sql: 'Duration > 1000000000',
+        tone: 'warning',
+      });
     });
   });
 
