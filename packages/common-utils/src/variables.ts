@@ -399,7 +399,7 @@ export function expandTemplate(
 
 // -- Variable expansion -----------------------------------------------------
 
-type TemplateLanguage = NonNullable<SearchConditionLanguage>;
+export type TemplateLanguage = NonNullable<SearchConditionLanguage>;
 
 export type VariableContext = {
   variables: ChartVariable[];
