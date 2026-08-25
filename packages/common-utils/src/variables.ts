@@ -400,7 +400,7 @@ export type VariableContext = {
   /** Format used by references that don't request one. */
   defaultFormat: VariableFormat;
   /** The language whatever consumes the result will parse it as. */
-  inputLanguage: SearchConditionLanguage;
+  inputLanguage: NonNullable<SearchConditionLanguage>;
 };
 
 const sqlNoOp = (name: string) =>
@@ -820,7 +820,7 @@ export function substituteWithContext(
 export function substituteVariablesForLanguage(
   input: string,
   variables: ChartVariable[],
-  inputLanguage: SearchConditionLanguage,
+  inputLanguage: NonNullable<SearchConditionLanguage>,
 ): string {
   return substituteWithContext(input, {
     variables,
@@ -852,7 +852,7 @@ type BuilderVariableFields = {
  */
 type TemplateMapper = (
   template: string,
-  language: SearchConditionLanguage,
+  language: NonNullable<SearchConditionLanguage>,
 ) => string;
 
 const mapSelectList = (list: SelectList, map: TemplateMapper): SelectList =>

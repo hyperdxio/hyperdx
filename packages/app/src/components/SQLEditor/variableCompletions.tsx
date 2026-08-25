@@ -180,7 +180,7 @@ export function buildLuceneVariableSuggestions(
     return {
       value: reference,
       label: reference,
-      description: `The selected values of ${variable.name}. Expands to: ${expansion} by default, or (Field:"value1" OR Field:"value1") when quoted like Field:"$${variable.name}".`,
+      description: `The selected values of ${variable.name}. Expands to: ${expansion} by default, or (Field:"value1" OR Field:"value2") when quoted like Field:"$${variable.name}".`,
     };
   });
 }
