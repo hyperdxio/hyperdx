@@ -1,4 +1,3 @@
-import { useRouter } from 'next/router';
 import ReactMarkdown from 'react-markdown';
 import {
   Anchor,
@@ -8,7 +7,6 @@ import {
   Divider,
   Drawer,
   Group,
-  Image,
   Loader,
   Stack,
   Text,
@@ -16,12 +14,44 @@ import {
 } from '@mantine/core';
 import { IconPackageExport } from '@tabler/icons-react';
 
-import { CHANGELOG_URL, useWhatsNew } from './useWhatsNew';
+import { changelogUrl, formatCounts, useWhatsNew } from './useWhatsNew';
+
+// Link targets the release summary may point at.
+//
+// Kept in sync with ALLOWED_LINK_HOSTS in .github/scripts/release-notes.mjs, and
+// pinned there by a test.
+const ALLOWED_LINK_HOSTS = new Set(['github.com', 'docs.hyperdx.io']);
+
+/**
+ * Allowlist link targets in the release summary.
+ *
+ * The summary is written during the release from changeset bodies, commit
+ * messages and PR titles — all of which anyone opening a PR can influence — so
+ * an off-site link is a phishing surface in every deployment's "What's new". The
+ * release workflow greps for disallowed links before publishing, but grep cannot
+ * be complete over CommonMark (a bare autolink `<https://host/x>` carries no
+ * `](`), so the enforceable check belongs here, where react-markdown hands us
+ * the parsed target whatever syntax produced it.
+ *
+ * Returning '' is react-markdown's own convention for a rejected URL — it is
+ * what the library's `defaultUrlTransform` returns for unsafe protocols.
+ */
+export function allowChangelogUrl(url: string): string {
+  try {
+    // The base makes a relative target resolve to a host that is never allowed,
+    // rather than throwing.
+    const parsed = new URL(url, 'https://disallowed.invalid');
+    if (parsed.protocol !== 'https:') return '';
+    return ALLOWED_LINK_HOSTS.has(parsed.hostname) ? url : '';
+  } catch {
+    return '';
+  }
+}
 
 // The fuller "What's new" surface: a scrollable feed of recent releases. Each
-// shows its auto-parsed feature headlines, and — when one has been hand-authored
-// — a richer highlight hero (title, markdown blurb, optional image). Falls back
-// to a link out to the complete changelog on GitHub.
+// leads with the headline and summary the release notes open with, then its
+// breaking changes and new features, then a link to the improvements and fixes
+// on GitHub. Falls back to a link out to the complete changelog.
 export const WhatsNewDrawer = ({
   opened,
   onClose,
@@ -29,16 +59,8 @@ export const WhatsNewDrawer = ({
   opened: boolean;
   onClose: () => void;
 }) => {
-  const { basePath } = useRouter();
   const { data, isError } = useWhatsNew(opened);
   const releases = data?.releases;
-
-  // Local highlight images ship under the app's basePath; external URLs pass
-  // through untouched.
-  const resolveImage = (src: string) =>
-    /^https?:\/\//.test(src)
-      ? src
-      : `${basePath}${src.startsWith('/') ? '' : '/'}${src}`;
 
   return (
     <Drawer
@@ -62,7 +84,7 @@ export const WhatsNewDrawer = ({
           <Text size="sm" c="dimmed">
             Unable to load recent releases.{' '}
             <Anchor
-              href={CHANGELOG_URL}
+              href={changelogUrl()}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -89,52 +111,76 @@ export const WhatsNewDrawer = ({
                       Latest
                     </Badge>
                   )}
+                  {release.date && (
+                    <Text size="xs" c="dimmed">
+                      {release.date}
+                    </Text>
+                  )}
                 </Group>
 
-                {release.highlight && (
+                {(release.title || release.summary) && (
                   <Card withBorder radius="md" padding="md">
-                    {release.highlight.image && (
-                      <Card.Section mb="sm">
-                        <Image
-                          src={resolveImage(release.highlight.image)}
-                          alt=""
-                          loading="lazy"
-                        />
-                      </Card.Section>
+                    {release.title && (
+                      <Text fw={600} mb={4} data-testid="whats-new-title">
+                        {release.title}
+                      </Text>
                     )}
-                    <Text fw={600} mb={4}>
-                      {release.highlight.title}
-                    </Text>
-                    <div className="hdx-markdown">
-                      <ReactMarkdown>{release.highlight.blurb}</ReactMarkdown>
-                    </div>
+                    {release.summary && (
+                      <div className="hdx-markdown">
+                        {/* Images are dropped outright and link targets
+                            allowlisted at the AST level, so no markdown syntax —
+                            inline, reference-style or autolink — can smuggle an
+                            off-site image or link in here. */}
+                        <ReactMarkdown
+                          disallowedElements={['img']}
+                          urlTransform={allowChangelogUrl}
+                        >
+                          {release.summary}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </Card>
                 )}
 
-                {release.features.length > 0 && (
+                {release.highlights.length > 0 && (
                   <Stack gap={6}>
-                    {release.features.map(feature => (
+                    {release.highlights.map(headline => (
                       <Group
-                        key={feature.text}
+                        key={headline.text}
                         gap="xs"
                         wrap="nowrap"
                         align="flex-start"
                       >
-                        {/* The feat() scope (or "general") tags each change. */}
                         <Badge
                           size="sm"
                           variant="light"
-                          color="gray"
+                          color={headline.kind === 'breaking' ? 'red' : 'blue'}
                           flex="0 0 auto"
                         >
-                          {feature.scope}
+                          {headline.kind === 'breaking' ? 'Breaking' : 'New'}
                         </Badge>
                         <Text size="sm" flex={1} miw={0}>
-                          {feature.text}
+                          {headline.text}
                         </Text>
                       </Group>
                     ))}
                   </Stack>
+                )}
+
+                {/* Improvements and fixes are counted rather than listed — the
+                    link goes to the release's own section of the changelog, so
+                    the reader lands on the detail instead of the file top. */}
+                {release.counts.length > 0 && (
+                  <Anchor
+                    href={`${changelogUrl(release.version)}#${release.anchor}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="sm"
+                    c="dimmed"
+                    data-testid="whats-new-counts"
+                  >
+                    {formatCounts(release.counts)}
+                  </Anchor>
                 )}
 
                 <Divider />
@@ -142,7 +188,7 @@ export const WhatsNewDrawer = ({
             ))}
 
             <Anchor
-              href={CHANGELOG_URL}
+              href={changelogUrl(releases[0]?.version)}
               target="_blank"
               rel="noopener noreferrer"
               size="sm"

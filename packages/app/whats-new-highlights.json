@@ -1,6 +1,0 @@
-{
-  "2.31.0": {
-    "title": "Interactive charts & a revamped Browser RUM dashboard",
-    "blurb": "Click a time-chart point to **pin its tooltip** and drill in per series, and explore the out-of-the-box **Browser RUM dashboard** — now reorganised into Core Web Vitals, Load Time, Traffic, and Errors with colour-coded tiles."
-  }
-}

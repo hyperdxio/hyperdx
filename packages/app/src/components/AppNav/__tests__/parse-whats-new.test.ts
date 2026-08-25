@@ -3,158 +3,237 @@
 // eslint-disable-next-line no-restricted-imports -- scripts/ is outside the @/ (src) alias by design
 import parseWhatsNew from '../../../../scripts/parse-whats-new';
 
-const CHANGELOG = `# @hyperdx/app
+// Mirrors the shape .github/scripts/release-notes.mjs writes into the root
+// CHANGELOG.md during a release, including the soft-wrapped bold lead-ins and
+// the appended package list.
+const CHANGELOG = `# HyperDX Changelog
 
-## 2.31.0
+Release-level highlights across all packages. Maintainer preamble that must
+never reach users.
 
-### Minor Changes
+## v2.36.0 — 2026-08-21
 
-- ff05b3df: feat: Convert current builder config to SQL during editor switch
-- d137eaab: chore(charts): upgrade Recharts from 2.13 to 3.x. Reworks chart event handlers
-  to the Recharts 3 event API
+<!-- hyperdx-release-notes version=2.36.0 inputs=abc123 -->
 
-### Patch Changes
+**Formulas land on every chart**
 
-- 697006ba: feat(dashboards): add background area sparklines to the Browser RUM dashboard
-  number tiles. Each of the ten single-value tiles now renders a faint trend line.
-- 1705b37a: fix: Block webhook URLs targeting known-bad IP ranges
-- c86ed556: feat(app): make the selected source clearer, e.g. in the source picker. The
-  dropdown now marks the current source with a trailing check.
-- ae5daba7: feat: support alerting on 1.5x baseline deviation
-- Updated dependencies [ff05b3df]
-  - @hyperdx/common-utils@0.23.0
-  - @hyperdx/api@2.31.0
+Formulas are the headline of this release. Read [the docs](https://docs.hyperdx.io/formulas).
 
-## 2.30.1
+### 💥 Breaking Changes
 
-### Patch Changes
+- **The API's log level now defaults to \`info\`, and query SQL is no longer
+  dumped to the console**: set \`HYPERDX_LOG_LEVEL=debug\` if you relied on it
+  (#2679).
 
-- deadbeef: feat: add a second-release feature
-- feedface: fix: a fix that should be filtered out
+### ✨ New Features
 
-## 2.30.0
+- **Formulas on metric, log and trace charts**: time series, table and number
+  charts gain an "Add Formula" row (#2909, #2908).
+- **\`clickstack_emerging_signals\` MCP tool**: surfaces newly-appearing errors
+  (#2810).
+- A bullet written without a bold lead-in. It still names the change.
 
-### Minor Changes
+### 🔧 Improvements
 
-- cafebabe: feat: a third-release feature
+- **Faster metadata queries**: cached (#2801).
+- **Tidier trace layout**: wraps (#2802).
+
+### 🐛 Bug Fixes
+
+- **Fix a chart crash**: guard (#2803).
+
+### 📦 Package changelogs
+
+- @hyperdx/app@2.36.0
+
+## v2.35.0 — 2026-08-14
+
+<!-- hyperdx-release-notes version=2.35.0 inputs=def456 -->
+
+### ✨ New Features
+
+- **Alert evaluation history over the API**: read past evaluations (#2700).
+
+## v2.34.1 — 2026-08-10
+
+### 🐛 Bug Fixes
+
+- **Fix a replay stall**: order events (#2701).
 `;
 
 describe('parseWhatsNew', () => {
-  it('returns each release with its feat-only headlines, newest first', () => {
-    const { releases } = parseWhatsNew(CHANGELOG, { maxReleases: 10 });
+  it('reads the version, date and GitHub anchor from each release heading', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
 
     expect(releases.map(r => r.version)).toEqual([
-      '2.31.0',
-      '2.30.1',
-      '2.30.0',
+      '2.36.0',
+      '2.35.0',
+      '2.34.1',
     ]);
-    // fix/chore/"Updated dependencies"/sub-bullets excluded; only feats kept,
-    // in changelog order, uncapped per release. Each carries its feat() scope
-    // (or "general" when unscoped).
-    expect(releases[0].features).toEqual([
-      {
-        scope: 'general',
-        text: 'Convert current builder config to SQL during editor switch',
-      },
-      {
-        scope: 'dashboards',
-        text: 'Add background area sparklines to the Browser RUM dashboard number tiles',
-      },
-      {
-        scope: 'app',
-        text: 'Make the selected source clearer, e.g. in the source picker',
-      },
-      {
-        scope: 'general',
-        text: 'Support alerting on 1.5x baseline deviation',
-      },
-    ]);
-    expect(releases[1].features).toEqual([
-      { scope: 'general', text: 'Add a second-release feature' },
-    ]);
-    expect(releases[2].features).toEqual([
-      { scope: 'general', text: 'A third-release feature' },
-    ]);
+    expect(releases[0].date).toBe('2026-08-21');
+    // GitHub drops punctuation and turns each space into a hyphen, so the em
+    // dash leaves a double hyphen behind.
+    expect(releases[0].anchor).toBe('v2360--2026-08-21');
   });
 
-  it('bounds the number of releases', () => {
-    const { releases } = parseWhatsNew(CHANGELOG, { maxReleases: 2 });
-    expect(releases.map(r => r.version)).toEqual(['2.31.0', '2.30.1']);
-  });
-
-  it('defaults to at most 5 releases', () => {
-    // Only 3 exist here, so all 3 come back; the default cap is exercised in
-    // the bound test above.
-    expect(parseWhatsNew(CHANGELOG).releases).toHaveLength(3);
-  });
-
-  it('does not mis-cut on version numbers or abbreviations', () => {
+  it('reads the headline and summary the release notes open with', () => {
     const { releases } = parseWhatsNew(CHANGELOG);
-    const texts = releases[0].features.map(f => f.text);
-    expect(texts).toContain('Support alerting on 1.5x baseline deviation');
-    expect(texts).toContain(
-      'Make the selected source clearer, e.g. in the source picker',
+
+    expect(releases[0].title).toBe('Formulas land on every chart');
+    // Only the first sentence: a whole paragraph in the release card reads as
+    // body text rather than a headline. The markdown is kept — the drawer
+    // renders it, with images dropped and link hosts allowlisted.
+    expect(releases[0].summary).toBe(
+      'Formulas are the headline of this release.',
     );
   });
 
-  describe('sentence splitting', () => {
-    // Each case is a `feat` message; we assert the headline it becomes.
-    const headline = (message: string) =>
-      parseWhatsNew(`## 9.9.9\n\n- abc1234: feat: ${message}\n`).releases[0]
-        .features[0].text;
+  it('never reads the release-notes marker as the summary', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
 
-    it.each([
-      // Abbreviations must not be mistaken for a sentence end — cutting at
-      // "etc." or "vs." throws away the part that describes the feature.
-      [
-        'Support ClickHouse, Postgres, etc. Adds a new source picker',
-        'Support ClickHouse, Postgres, etc. Adds a new source picker',
-      ],
-      [
-        'Compare p50 vs. p99 latency. Adds a toggle',
-        'Compare p50 vs. p99 latency',
-      ],
-      [
-        'Make the source clearer, e.g. in the picker. And elsewhere',
-        'Make the source clearer, e.g. in the picker',
-      ],
-      // A sentence that genuinely ends in a number still gets cut there.
-      [
-        'Raise the tile cap to 10. The dashboard now scrolls',
-        'Raise the tile cap to 10',
-      ],
-      // A decimal mid-sentence is never a cut point (its period is followed by
-      // a digit, not whitespace).
-      [
-        'Support alerting on 1.5x baseline deviation',
-        'Support alerting on 1.5x baseline deviation',
-      ],
-      // Code spans render as plain text, so the backticks are unwrapped.
-      ['Add `link` variant for Button', 'Add link variant for Button'],
-    ])('%s -> %s', (message, expected) => {
-      expect(headline(message)).toBe(expected);
-    });
+    expect(releases[0].summary).not.toContain('hyperdx-release-notes');
   });
 
-  it('yields an empty feature list for a release with no feats', () => {
-    const fixesOnly = `# @hyperdx/app
+  it('still shows a summary when the notes carry no headline', () => {
+    // Releases written before the notes carried a headline, and any a maintainer
+    // strips, must still show their opening sentence.
+    const { releases } = parseWhatsNew(`## v1.0.0 — 2026-01-01
 
-## 2.31.1
+Just a summary, no headline.
 
-### Patch Changes
+### ✨ New Features
 
-- abc1234: fix: correct a rendering glitch
-- def5678: chore: bump deps
-`;
-    expect(parseWhatsNew(fixesOnly).releases).toEqual([
-      { version: '2.31.1', features: [] },
+- **A thing**: yes (#1).
+`);
+
+    expect(releases[0].title).toBeUndefined();
+    expect(releases[0].summary).toBe('Just a summary, no headline.');
+  });
+
+  it('splits a promoted headline at the claim, keeping the detail below it', () => {
+    // The notes open "the claim: the detail". The whole sentence is far too long
+    // to read as a headline, and dropping the detail leaves a card that says
+    // almost nothing.
+    const { releases } = parseWhatsNew(`## v1.0.0 — 2026-01-01
+
+Formulas are the headline of this release: any metric, log or trace chart can
+now carry a derived series written as letter-ref arithmetic.
+
+### ✨ New Features
+
+- **A thing**: yes (#1).
+`);
+
+    expect(releases[0].title).toBe('Formulas are the headline of this release');
+    expect(releases[0].summary).toBe(
+      'Any metric, log or trace chart can now carry a derived series written as letter-ref arithmetic.',
+    );
+  });
+
+  it('keeps a colon-less opening sentence whole as the summary', () => {
+    const { releases } = parseWhatsNew(`## v1.0.0 — 2026-01-01
+
+Dashboards got faster this release. And some other sentence.
+
+### ✨ New Features
+
+- **A thing**: yes (#1).
+`);
+
+    expect(releases[0].title).toBeUndefined();
+    expect(releases[0].summary).toBe('Dashboards got faster this release.');
+  });
+
+  it('takes the bolded lead-in of breaking changes and new features', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
+
+    expect(releases[0].highlights).toEqual([
+      {
+        kind: 'breaking',
+        text: "The API's log level now defaults to info, and query SQL is no longer dumped to the console",
+      },
+      { kind: 'feature', text: 'Formulas on metric, log and trace charts' },
+      { kind: 'feature', text: 'clickstack_emerging_signals MCP tool' },
+      {
+        kind: 'feature',
+        text: 'A bullet written without a bold lead-in',
+      },
     ]);
   });
 
-  it('handles empty/malformed input safely', () => {
-    expect(parseWhatsNew('')).toEqual({ releases: [] });
-    expect(parseWhatsNew('# @hyperdx/app\n\nno versions here')).toEqual({
-      releases: [],
-    });
+  it('keeps the case of a headline that opens with a code identifier', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
+
+    // Capitalising would rename it to something that does not exist.
+    expect(releases[0].highlights[2].text).toBe(
+      'clickstack_emerging_signals MCP tool',
+    );
+  });
+
+  it('counts every other section instead of listing it', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
+
+    expect(releases[0].counts).toEqual([
+      { label: 'improvements', count: 2 },
+      { label: 'bug fixes', count: 1 },
+    ]);
+  });
+
+  it('leaves the appended package list out of the counts', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
+
+    expect(releases[0].counts.map(c => c.label)).not.toContain(
+      'package changelogs',
+    );
+  });
+
+  it('never reads the file title or maintainer preamble as a release', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
+
+    expect(releases.map(r => r.version)).not.toContain('HyperDX Changelog');
+    const text = JSON.stringify(releases);
+    expect(text).not.toContain('Maintainer preamble');
+  });
+
+  it('emits a fix-only release with no highlights rather than skipping it', () => {
+    const { releases } = parseWhatsNew(CHANGELOG);
+    const patch = releases[2];
+
+    // The Help-menu peek skips past these itself; dropping them here would make
+    // the drawer claim the release never happened.
+    expect(patch.version).toBe('2.34.1');
+    expect(patch.highlights).toEqual([]);
+    expect(patch.counts).toEqual([{ label: 'bug fixes', count: 1 }]);
+  });
+
+  it('bounds the release count', () => {
+    expect(parseWhatsNew(CHANGELOG, { maxReleases: 2 }).releases).toHaveLength(
+      2,
+    );
+  });
+
+  it('returns no releases for a changelog that has none yet', () => {
+    expect(
+      parseWhatsNew('# HyperDX Changelog\n\nNothing released yet.\n').releases,
+    ).toEqual([]);
+  });
+
+  it('tolerates empty and missing input', () => {
+    expect(parseWhatsNew('').releases).toEqual([]);
+    expect(parseWhatsNew().releases).toEqual([]);
+  });
+
+  it('drops a trailing period from a lead-in-less bullet but not mid-sentence ones', () => {
+    const { releases } = parseWhatsNew(`## v1.0.0
+
+### ✨ New Features
+
+- Supports Postgres, etc. and a picker on top.
+`);
+
+    // "etc." must not be read as the end of the sentence.
+    expect(releases[0].highlights[0].text).toBe(
+      'Supports Postgres, etc. and a picker on top',
+    );
   });
 });

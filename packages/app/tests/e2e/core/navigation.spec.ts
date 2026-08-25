@@ -121,18 +121,25 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
           releases: [
             {
               version: '9.9.9',
-              features: [
-                { scope: 'charts', text: 'First shiny feature' },
-                { scope: 'general', text: 'Second shiny feature' },
+              date: '2026-08-21',
+              anchor: 'v999--2026-08-21',
+              highlights: [
+                { kind: 'feature', text: 'First shiny feature' },
+                { kind: 'breaking', text: 'A breaking change' },
               ],
-              highlight: {
-                title: 'The big headline feature',
-                blurb: 'A **great** thing landed this release.',
-              },
+              counts: [
+                { label: 'improvements', count: 5 },
+                { label: 'bug fixes', count: 1 },
+              ],
+              title: 'The big headline feature',
+              summary:
+                'A **great** thing landed, see [the docs](https://docs.hyperdx.io/x) and [evil](https://evil.example/phish).',
             },
             {
               version: '9.9.8',
-              features: [{ scope: 'general', text: 'An older feature' }],
+              anchor: 'v998',
+              highlights: [{ kind: 'feature', text: 'An older feature' }],
+              counts: [],
             },
           ],
         }),
@@ -182,13 +189,23 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     });
 
     await test.step("Verify What's new section renders inline", async () => {
-      // The latest release's feature headlines render as inline timeline rows,
-      // each with a "New" badge — no modal.
+      // The release's headlines render as inline timeline rows, badged by kind —
+      // no modal.
       const items = page.getByTestId('whats-new-item');
       await expect(items.first()).toBeVisible({ timeout: 10_000 });
       await expect(items).toHaveCount(2);
       await expect(items.getByText('First shiny feature')).toBeVisible();
       await expect(items.getByText('New').first()).toBeVisible();
+
+      // Breaking changes are badged apart from features, and sort above them:
+      // only three rows fit here, so a breaking change must not lose its slot.
+      await expect(items.first().getByText('Breaking')).toBeVisible();
+      await expect(items.first()).toContainText('A breaking change');
+
+      // The sections we don't list out are summed up rather than dropped.
+      await expect(page.getByTestId('whats-new-peek-counts')).toContainText(
+        '5 improvements and 1 bug fix',
+      );
     });
 
     await test.step('Open the What\'s new drawer from "View all releases"', async () => {
@@ -196,18 +213,39 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
 
       const drawer = page.getByTestId('whats-new-drawer');
       await expect(drawer).toBeVisible({ timeout: 10_000 });
-      // Newest release, its hand-authored highlight, and the older release all
-      // render; the full changelog stays one click away.
+      // Newest release, its headline hero, and the older release all render;
+      // the full changelog stays one click away.
       await expect(drawer.getByText('v9.9.9')).toBeVisible();
-      await expect(drawer.getByText('The big headline feature')).toBeVisible();
-      // The highlight blurb is markdown, so its **bold** must render as real
-      // <strong>, not literal asterisks.
+      // The headline and summary both come from the release notes — nothing in
+      // the app writes them.
+      await expect(drawer.getByTestId('whats-new-title')).toHaveText(
+        'The big headline feature',
+      );
+      // The summary is markdown, so its **bold** must render as real <strong>,
+      // not literal asterisks.
       await expect(
         drawer.locator('strong', { hasText: 'great' }),
       ).toBeVisible();
-      // Features are tagged with their feat() scope.
-      await expect(drawer.getByText('charts')).toBeVisible();
+      // The summary is written during the release from PR titles and changeset
+      // bodies, so it is untrusted: an allowed host survives, an off-site link
+      // is stripped of its target, and no image can reach the DOM by any
+      // syntax. Jest stubs react-markdown out, so this is the only place the
+      // real urlTransform/disallowedElements run.
+      await expect(
+        drawer.locator('a[href="https://docs.hyperdx.io/x"]'),
+      ).toHaveCount(1);
+      await expect(drawer.locator('a[href*="evil.example"]')).toHaveCount(0);
+      await expect(drawer.locator('img')).toHaveCount(0);
       await expect(drawer.getByTestId('whats-new-release')).toHaveCount(2);
+      // The counted sections deep-link to that release's own changelog section,
+      // at that release's tag — main's changelog describes whatever has shipped
+      // since, which a deployment behind main is not running.
+      await expect(
+        drawer.getByTestId('whats-new-counts').first(),
+      ).toHaveAttribute(
+        'href',
+        /blob\/%40hyperdx%2Fapp%409\.9\.9\/CHANGELOG\.md#v999--2026-08-21$/,
+      );
       await expect(drawer.getByTestId('drawer-github-link')).toHaveAttribute(
         'href',
         /github\.com\/hyperdxio\/hyperdx.*CHANGELOG\.md/,
@@ -249,7 +287,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     const helpMenuTrigger = page.getByTestId('help-menu-trigger');
     await helpMenuTrigger.click({ timeout: 10000 });
 
-    // The feature rows collapse, but the section header and the link out to the
+    // The headline rows collapse, but the section header and the link out to the
     // full changelog (with its package icon) still render so users aren't
     // stranded.
     const viewAll = page.getByTestId('view-all-releases-menu-item');
@@ -271,22 +309,31 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     );
   });
 
-  test("What's new falls back to the newest release that has features", async ({
+  test("What's new falls back to the newest release that has headlines", async ({
     page,
   }) => {
-    // Fix-only patch releases parse to zero features (10 of 71 real releases so
-    // far). The section must not go blank on those — it shows the newest release
-    // that does have features, and labels itself with *that* version.
+    // A fix-only patch release has no breaking changes or new features. The
+    // section must not go blank on those — it shows the newest release that does
+    // have headlines, and labels itself with *that* version.
     await page.route('**/whats-new.json', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           releases: [
-            { version: '9.9.9', features: [] },
+            {
+              version: '9.9.9',
+              anchor: 'v999',
+              highlights: [],
+              counts: [{ label: 'bug fixes', count: 3 }],
+            },
             {
               version: '9.9.8',
-              features: [{ scope: 'charts', text: 'A feature worth showing' }],
+              anchor: 'v998',
+              highlights: [
+                { kind: 'feature', text: 'A feature worth showing' },
+              ],
+              counts: [],
             },
           ],
         }),

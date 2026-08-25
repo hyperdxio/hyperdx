@@ -1,5 +1,5 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -12,16 +12,17 @@ const packageJson = JSON.parse(
 );
 const { version } = packageJson;
 
-// Generate public/whats-new.json — the latest release's feature headlines that
-// the Help menu's "What's new" section fetches as a small static asset (instead
-// of shipping the whole, ever-growing CHANGELOG.md). Done here (rather than a
-// package.json pre-script) because Yarn 4 does not run arbitrary pre/post
-// lifecycle scripts; next.config is evaluated by both `next dev` (Turbopack) and
-// `next build` (Webpack), so this runs in every build mode. The ClickStack
-// static export additionally needs `whats-new.json` allow-listed in
+// Generate public/whats-new.json — the recent releases' headlines that the Help
+// menu's "What's new" section fetches as a small static asset (instead of
+// shipping the whole, ever-growing changelog). Reads the repo-root CHANGELOG.md,
+// the release-level summary, not the app-only package changelog. Done here
+// (rather than a package.json pre-script) because Yarn 4 does not run arbitrary
+// pre/post lifecycle scripts; next.config is evaluated by both `next dev`
+// (Turbopack) and `next build` (Webpack), so this runs in every build mode. The
+// ClickStack static export additionally needs `whats-new.json` allow-listed in
 // scripts/prepare-clickhouse-build-export.js, and the Docker builder stages must
-// COPY CHANGELOG.md, scripts/ and whats-new-highlights.json in as build inputs
-// (see the Dockerfiles).
+// COPY the root CHANGELOG.md and scripts/ in as build inputs (see the
+// Dockerfiles).
 //
 // The parser is imported dynamically, inside the try, on purpose. A static
 // top-level import is resolved before this module's body runs, so it would be
@@ -33,56 +34,36 @@ try {
   const { default: parseWhatsNew } = await import(
     './scripts/parse-whats-new.js'
   );
-  const changelog = readFileSync(join(__dirname, 'CHANGELOG.md'), 'utf-8');
+  const changelog = readFileSync(
+    join(__dirname, '..', '..', 'CHANGELOG.md'),
+    'utf-8',
+  );
   const { releases } = parseWhatsNew(changelog, { maxReleases: 5 });
-
-  // Optional hand-authored highlights, keyed by version — merged onto the
-  // matching release so the "What's new" drawer can show a richer hero card.
-  let highlights = {};
-  try {
-    highlights = JSON.parse(
-      readFileSync(join(__dirname, 'whats-new-highlights.json'), 'utf-8'),
-    );
-  } catch (err) {
-    // No highlights authored is fine — releases just render without them. A
-    // file that exists but doesn't parse is not: swallowing that would silently
-    // drop every hero card over a stray comma, so let it reach the outer
-    // handler (which fails a production build and warns otherwise).
-    if (err.code !== 'ENOENT') throw err;
-  }
-
-  // A key that matches no emitted release is almost always a typo or a release
-  // that has aged out of the window — either way the card silently never shows,
-  // so say so at build time.
-  const versions = new Set(releases.map(r => r.version));
-  for (const key of Object.keys(highlights)) {
-    if (!versions.has(key)) {
-      console.warn(
-        `whats-new-highlights.json: no release "${key}" in the latest ${releases.length} — its highlight will not be shown.`,
-      );
-    }
-  }
 
   writeFileSync(
     join(__dirname, 'public', 'whats-new.json'),
-    JSON.stringify({
-      releases: releases.map(r =>
-        highlights[r.version] ? { ...r, highlight: highlights[r.version] } : r,
-      ),
-    }),
+    JSON.stringify({ releases }),
   );
 } catch (err) {
-  // Fail loudly during a production build: a missing CHANGELOG.md there means
-  // the shipped image would silently render an empty "What's new" for every
-  // user. Stay non-fatal otherwise — `next start` re-evaluates this config at
-  // runtime where the source file is absent but public/whats-new.json already
-  // exists from the build stage, and dev tolerates its absence.
-  if (process.env.NEXT_PHASE === 'phase-production-build') {
+  // The invariant is "the app must not ship without the asset", so key the
+  // failure on that rather than on which phase we think we are in. `next start`
+  // re-evaluates this config at runtime, where the build sources are absent but
+  // public/whats-new.json already exists from the build stage — that case is
+  // fine. Nothing having produced the asset at all is not.
+  //
+  // Deliberately not keyed on NEXT_PHASE: that is an undocumented Next internal,
+  // and if it were ever unset the build would fall through to a warn and ship an
+  // image whose "What's new" is empty for every user.
+  if (!existsSync(join(__dirname, 'public', 'whats-new.json'))) {
     throw new Error(
-      `Failed to generate whats-new.json during build: ${err.message}`,
+      `Failed to generate whats-new.json and no file exists from an earlier ` +
+        `build, so the app would ship without it: ${err.message}`,
     );
   }
-  console.warn('Could not generate public/whats-new.json:', err.message);
+  console.warn(
+    'Could not regenerate public/whats-new.json; using the existing file:',
+    err.message,
+  );
 }
 
 // Support legacy consumers of next-runtime-env that expect this value under window.__ENV
