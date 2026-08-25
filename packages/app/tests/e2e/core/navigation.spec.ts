@@ -387,6 +387,11 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     const headlines = drawer.getByTestId('whats-new-headline');
     await expect(headlines).toHaveCount(2);
 
+    // Both measurements below are font-metric dependent, and the fallback font
+    // is wider than the webfont — "BREAKING" genuinely does overflow the column
+    // mid-swap. Wait for the swap so this measures the shipped typeface.
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+
     // Both x values in one evaluateAll, not two boundingBox() calls: the drawer
     // slides in, so separate reads land in different frames and differ by
     // however far it travelled between them. One layout pass shifts both rows

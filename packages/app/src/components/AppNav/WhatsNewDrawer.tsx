@@ -145,13 +145,11 @@ export const WhatsNewDrawer = ({
 
                 {release.highlights.length > 0 && (
                   <Stack gap={6}>
-                    {release.highlights.map((headline, index) => (
+                    {release.highlights.map(headline => (
                       <WhatsNewHighlightRow
-                        // Indexed because two highlights in one release can share wording. Safe
-                        // here: the list comes from a static payload, is never reordered, and
-                        // the rows hold no state.
-                        // eslint-disable-next-line @eslint-react/no-array-index-key
-                        key={`${index}-${headline.text}`}
+                        // Kind included: a release can word a breaking change and a
+                        // feature identically.
+                        key={`${headline.kind}-${headline.text}`}
                         headline={headline}
                       />
                     ))}

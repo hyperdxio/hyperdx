@@ -75,13 +75,11 @@ export const WhatsNewSection = ({
       </Menu.Label>
       <Box px="sm" py={4} data-testid="whats-new">
         <Timeline bulletSize={18} lineWidth={2} color="blue">
-          {highlights.map((headline, index) => (
+          {highlights.map(headline => (
             <Timeline.Item
-              // Indexed because two highlights in one release can share wording. Safe
-              // here: the list comes from a static payload, is never reordered, and
-              // the rows hold no state.
-              // eslint-disable-next-line @eslint-react/no-array-index-key
-              key={`${index}-${headline.text}`}
+              // Kind included: a release can word a breaking change and a
+              // feature identically.
+              key={`${headline.kind}-${headline.text}`}
               data-testid="whats-new-item"
               bullet={
                 <Box w={8} h={8} bdrs="50%" bg="var(--mantine-color-blue-5)" />
