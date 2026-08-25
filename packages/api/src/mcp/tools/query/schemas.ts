@@ -93,6 +93,33 @@ const mcpMetricTypeSchema = z
   );
 
 /**
+ * Percentile levels for `aggFn: "quantile"`, advertised to MCP callers as a
+ * string enum rather than a union of numeric literals.
+ *
+ * `enum` on a non-string type is valid JSON Schema, and the equivalent
+ * `z.union([z.literal(0.5), ...])` renders as
+ * `{ "type": "number", "enum": [0.5, 0.9, 0.95, 0.99] }` — but Gemini's
+ * function-declaration subset only accepts `enum` alongside `type: "string"`.
+ * Clients that forward MCP tool schemas straight to the provider therefore
+ * get the ENTIRE tool list rejected because of this one field, and the user
+ * sees a generic connectivity error that names neither the tool nor the
+ * property. See https://github.com/hyperdxio/hyperdx/issues/2967.
+ *
+ * The wire type is the only thing that changes. Numeric input is still
+ * accepted for callers working from a cached schema, the value is coerced
+ * back to a number before it reaches any consumer, and out-of-set values are
+ * still rejected either way — so `level` remains a `number` everywhere
+ * downstream, including the `quantile(<level>)(...)` SQL synthesis and the
+ * stored dashboard config.
+ */
+export const mcpQuantileLevelSchema = z
+  .preprocess(
+    value => (typeof value === 'number' ? String(value) : value),
+    z.enum(['0.5', '0.9', '0.95', '0.99']),
+  )
+  .transform(Number);
+
+/**
  * Shared cross-field validation issues for MCP select items. Returns the
  * list of Zod issues a `.superRefine` callback should emit. Kept as a pure
  * function so both `mcpSelectItemSchema` (query tools) and
@@ -262,8 +289,7 @@ export const mcpSelectItemSchema = z.object({
         'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
         'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read.',
     ),
-  level: z
-    .union([z.literal(0.5), z.literal(0.9), z.literal(0.95), z.literal(0.99)])
+  level: mcpQuantileLevelSchema
     .optional()
     .describe(
       'Percentile level. Required when aggFn is "quantile" on a histogram or exponential histogram metric, ' +

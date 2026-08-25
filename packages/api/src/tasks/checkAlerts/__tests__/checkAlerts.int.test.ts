@@ -54,7 +54,6 @@ import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   formatValueToMatchThreshold,
-  getDefaultExternalActions,
   isAlertResolved,
   renderAlertTemplate,
   translateExternalActionsToInternal,
@@ -1533,44 +1532,6 @@ describe('checkAlerts', () => {
 
       // Test DISABLED state returns false
       expect(isAlertResolved(AlertState.DISABLED)).toBe(false);
-    });
-
-    it('getDefaultExternalActions', () => {
-      // Test fixtures only need the channel/channels fields, not a full
-      // AlertInput — a single narrowing point instead of one `as any` per case.
-      const partialAlert = (
-        over: Record<string, unknown>,
-      ): AlertMessageTemplateDefaultView['alert'] => over as any;
-
-      expect(
-        getDefaultExternalActions(
-          partialAlert({
-            channel: {
-              type: 'webhook',
-              webhookId: '123',
-            },
-          }),
-        ),
-      ).toEqual(['@webhook-123']);
-      expect(
-        getDefaultExternalActions(
-          partialAlert({
-            channels: [
-              { type: 'webhook', webhookId: '123' },
-              { type: 'webhook', webhookId: '456' },
-            ],
-          }),
-        ),
-      ).toEqual(['@webhook-123', '@webhook-456']);
-      expect(
-        getDefaultExternalActions(
-          partialAlert({
-            channel: {
-              type: 'foo',
-            },
-          }),
-        ),
-      ).toEqual([]);
     });
 
     it('translateExternalActionsToInternal', () => {

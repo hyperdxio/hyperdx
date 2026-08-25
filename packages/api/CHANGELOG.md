@@ -1,5 +1,78 @@
 # @hyperdx/api
 
+## 2.36.0
+
+### Minor Changes
+
+- 8723d7af: Alerts can be configured with multiple notification channels (up to 10 webhooks) via the new `channels` field on the v2 external API, internal API, and the MCP `clickstack_save_alert` tool. The legacy singular `channel` field is still accepted on input and mirrored in responses, so existing integrations keep working unchanged.
+
+  Note that alert updates are a full replace, not a merge. A client that sends only the legacy `channel` field when updating an alert that has several channels will reduce it to that one channel — fetch the alert and resend the complete `channels` array to preserve them.
+
+- a4b2ad00: The API now recovers from a MongoDB that is unreachable at startup, and exposes a Mongo-aware readiness endpoint. Previously a failed initial connect was never retried: the process kept listening while every Mongo-backed request timed out, `/health` reported 200, and Kubernetes kept the pod Ready indefinitely — cascading into OpAMP 500s and crash-looping collectors. The initial connection is now retried with capped exponential backoff until it succeeds, and both the API and OpAMP servers expose `GET /ready`, which returns 503 unless MongoDB is connected (point Kubernetes readiness probes at it; `/health` remains a pure liveness check).
+- dc29d57f: Chart formulas are now supported across every API surface that persists or accepts chart configs. The external dashboards API v2 and the MCP `save_dashboard` / `patch_dashboard` tools accept `formulas` (letter-ref arithmetic over the tile's select items, e.g. `A / (A + B) * 100`) and `showOperandSeries` on line, stacked bar, table and number builder tiles, round-trip them through GET/PUT, and validate the expressions on write — unknown series refs, malformed syntax, combining formulas with `asRatio`, multiple formulas on a number tile, and formulas on formula-incapable source kinds (anything other than metric, log, or trace) are all rejected with actionable errors. MCP `query_tile` computes formula columns for both metric and log/trace event tiles, the query-guide prompt documents the feature, and the OpenAPI spec includes the new `Formula` schema. The CLI's dashboard tile pipeline now delegates its number/table config transforms to the shared common-utils implementations, so formula tiles render with operand-hiding behavior identical to the web.
+
+### Patch Changes
+
+- d205a776: Allow the ClickHouse exporter request timeout to be configured with
+  `HYPERDX_OTEL_EXPORTER_TIMEOUT` in both OpAMP-managed and standalone collector
+  modes. The default remains 5 seconds.
+- 90da4097: Disable mongoose autoIndex in check-alerts worker to prevent MongoExpiredSessionError
+- 43f68566: Allow editing and deleting alerts directly from the alert details page. An
+  "Edit alert" action opens a modal for changing the alert's threshold,
+  evaluation interval, schedule, group-by (saved-search alerts), notification
+  webhook, and note, and a Delete action (with confirmation) removes the alert
+  and returns to the alerts list. Alert API responses now include the
+  notification channel's webhook id and the alert's name/message template so
+  edits round-trip these fields.
+- 40ec0858: feat: Add dashboard variable properties to external dashboards API
+- b0b13806: Align alert firing/recovery chart markers with the evaluated data: markers are now drawn at the start of the newest evaluated bucket (matching the evaluation history table and the plotted data point) instead of at the evaluation time, which sat one bucket to the right.
+- c592207b: Fix MCP tool schemas being rejected by strict JSON Schema draft 2020-12 clients. The number-tile `colorRules` `between` rule declared its `value` as a Zod tuple, which `zod-to-json-schema` renders in the draft-07 tuple form (`items: [ ... ]`). Draft 2020-12 requires `items` to be a schema rather than an array, so `clickstack_save_dashboard` and `clickstack_patch_dashboard` failed validation — and clients that forward MCP tool schemas straight to an LLM provider (e.g. the Anthropic API) rejected the entire tool list with `tools.N.custom.input_schema: JSON schema is invalid`, making the MCP server unusable. `value` is now a fixed-length array, which validates identically and serializes to the same `[min, max]` wire format. A new test validates every MCP tool's input schema against the 2020-12 metaschema so this cannot regress.
+- e153f46d: Tile alerts on metric charts with formulas now evaluate the formula value instead of the last raw operand series: the alert task previously dropped `formulas`/`showOperandSeries` when rebuilding the tile's chart config, so an alert on a formula tile compared the threshold against a raw operand (e.g. bytes) rather than the derived value. Grouped ratio tile alerts also now honor `ratioMode` (`share_of_total` previously evaluated as `per_group`).
+- 7294944a: fix: route per-query SQL debug logging through an injectable logger (#2416)
+
+  `BaseClickhouseClient` dumped raw SQL to the console on every ClickHouse query,
+  unconditionally and outside the pino logger, flooding API logs with query spam.
+
+  Query logging now goes through an optional per-client `customLogger` on
+  `ClickhouseClientOptions`, logged at `debug`, and is silent when no logger is
+  passed. The API injects a pino-backed logger, so query logging follows the
+  existing `HYPERDX_LOG_LEVEL` setting instead of writing to `console.debug`. The
+  browser client defaults to a console logger that pretty-prints the SQL as a
+  single multi-line block, so query SQL stays visible and readable in devtools in
+  all builds instead of wrapping into one long line.
+
+  The API's log level now defaults to `info` (was `debug`), so SQL logging is
+  silent in production unless `HYPERDX_LOG_LEVEL=debug` is set. Dev and CI env
+  files already pin their levels explicitly and are unaffected. The default also
+  now applies when `HYPERDX_LOG_LEVEL` is set but empty — which is what Compose
+  passes when the variable is unset in the environment, and which previously made
+  pino throw at startup.
+
+- e60a7d30: fix: populate the span StatusMessage on failed MCP tool calls so the error text is visible in the trace
+- 9f640a61: Add a Rotate action for the personal API access key in Team Settings → API & Agents. Previously the personal access key — the bearer token for the external API v2 and the MCP server — was generated once at account creation and could never be changed, so a leaked key could only be remediated by deleting the user. Rotating immediately revokes the previous key, so MCP / AI agent configs, external API v2 clients, Terraform / IaC providers, and CI scripts using the old key must be updated with the new one. Browser sessions are unaffected.
+- 08e5b62f: Stop the external dashboards API returning aggregation parameters the aggregation cannot carry: a `level` left over from a quantile agg, or a `valueExpression` left over on a count. Both are ignored when rendering, but the input schema rejects them, so a GET body could not be PUT back and importing a dashboard into Terraform failed with "Level can only be used with quantile aggregation function".
+- Updated dependencies [be26530f]
+- Updated dependencies [c349a5dd]
+- Updated dependencies [68d2ed20]
+- Updated dependencies [2eedfb26]
+- Updated dependencies [1ce61c0c]
+- Updated dependencies [43f68566]
+- Updated dependencies [b1d8dc14]
+- Updated dependencies [40ec0858]
+- Updated dependencies [b0b13806]
+- Updated dependencies [a94d6da8]
+- Updated dependencies [8be68100]
+- Updated dependencies [c592207b]
+- Updated dependencies [9c7742fa]
+- Updated dependencies [dc29d57f]
+- Updated dependencies [7294944a]
+- Updated dependencies [3ecf73c2]
+- Updated dependencies [3ecf73c2]
+- Updated dependencies [e153f46d]
+- Updated dependencies [9f640a61]
+- Updated dependencies [ea127077]
+  - @hyperdx/common-utils@0.27.0
+
 ## 2.35.0
 
 ### Minor Changes
