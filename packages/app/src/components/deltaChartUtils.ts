@@ -50,6 +50,25 @@ export const OTHER_BUCKET_COLOR = 'var(--mantine-color-gray-5)';
 // Color for the "All spans" distribution bar (no selection / comparison mode off).
 export const ALL_SPANS_COLOR = 'var(--mantine-color-blue-6)';
 
+/**
+ * Stable partition of an already-sorted property list: keys matching
+ * `isPriority` come first, then the rest, preserving the input's relative
+ * order (i.e. score order) within each group. Used by callers that want
+ * domain-relevant attributes (e.g. LLM gen_ai.* keys) pinned to the top of
+ * the delta breakdown.
+ */
+export function partitionPriorityProperties(
+  sortedKeys: string[],
+  isPriority: (key: string) => boolean,
+): string[] {
+  const priority: string[] = [];
+  const rest: string[] = [];
+  for (const key of sortedKeys) {
+    (isPriority(key) ? priority : rest).push(key);
+  }
+  return [...priority, ...rest];
+}
+
 export function mergeValueStatisticsMaps(
   outlierValues: Map<string, number>, // value -> count
   inlierValues: Map<string, number>,

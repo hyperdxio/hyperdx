@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 
 import { makeTraceSource } from '@/llm/__fixtures__/sources';
 import { LatencyTab } from '@/llm/dashboard/LatencyTab';
-import { getLLMExpressions } from '@/llm/lib/expressions';
+import { getLLMExpressions, isLLMAttributeKey } from '@/llm/lib/expressions';
 
 // Capture the props handed to the heatmap + delta composite.
 const heatmapChartProps: any[] = [];
@@ -43,6 +43,11 @@ describe('LatencyTab', () => {
     // Delta sampling queries never reference cost; the WITH binding is
     // skipped to keep them small.
     expect(chartConfig.with).toBeUndefined();
+  });
+
+  it('pins AI-relevant attributes to the top of the delta breakdown', () => {
+    renderWithMantine(<LatencyTab {...baseProps} />);
+    expect(heatmapChartProps[0].isPriorityProperty).toBe(isLLMAttributeKey);
   });
 
   it('appends delta filter clicks to the where clause', () => {

@@ -30,6 +30,7 @@ import {
   getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
+  partitionPriorityProperties,
   SAMPLE_SIZE,
   semanticBoost,
 } from './deltaChartUtils';
@@ -54,6 +55,7 @@ export default function DBDeltaChart({
   onAddFilter,
   spanIdExpression,
   legendPrefix,
+  isPriorityProperty,
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
@@ -64,6 +66,12 @@ export default function DBDeltaChart({
   onAddFilter?: AddFilterFn;
   spanIdExpression?: string;
   legendPrefix?: React.ReactNode;
+  /**
+   * When set, visible properties matching this predicate are pinned above
+   * the rest (score order preserved within each group). Lets domain
+   * dashboards (e.g. LLM) surface their relevant attributes first.
+   */
+  isPriorityProperty?: (flattenedKey: string) => boolean;
 }) {
   // Derive whether a heatmap selection exists from nullable props
   const hasSelection =
@@ -355,7 +363,11 @@ export default function DBDeltaChart({
     });
 
     return {
-      visibleProperties,
+      // Pin caller-designated priority properties (e.g. LLM attributes)
+      // above the rest, keeping score order within each group.
+      visibleProperties: isPriorityProperty
+        ? partitionPriorityProperties(visibleProperties, isPriorityProperty)
+        : visibleProperties,
       hiddenProperties,
       outlierValueOccurences,
       inlierValueOccurences,
@@ -366,6 +378,7 @@ export default function DBDeltaChart({
     allSpansData?.data,
     hasSelection,
     columnMeta,
+    isPriorityProperty,
   ]);
 
   const [activePage, setPage] = useState(1);

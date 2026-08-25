@@ -167,6 +167,49 @@ const REPORTED_TOKEN_KEYS = [
   'output_tokens',
 ];
 
+/** Every attribute key the dashboard derives meaning from. */
+const ALL_LLM_ATTRIBUTE_KEYS = new Set([
+  ...MODEL_KEYS,
+  ...PROVIDER_KEYS,
+  ...OPERATION_KEYS,
+  ...INPUT_TOKEN_KEYS,
+  ...OUTPUT_TOKEN_KEYS,
+  ...PROVIDED_COST_KEYS,
+  ...CACHED_INPUT_TOKEN_KEYS,
+  ...CACHE_WRITE_TOKEN_KEYS,
+  ...REASONING_TOKEN_KEYS,
+  ...TTFT_MS_KEYS,
+  ...TOOL_NAME_KEYS,
+  ...AGENT_NAME_KEYS,
+  ...FINISH_REASON_KEYS,
+  ...SESSION_ID_KEYS,
+]);
+
+/** AI instrumentation namespaces (as a dot-segment prefix within a key). */
+const LLM_KEY_NAMESPACE_PATTERN =
+  /(^|\.)(gen_ai|llm|ai|openinference|copilot_chat)\./;
+
+/**
+ * Whether a flattened property key (e.g. `SpanAttributes.gen_ai.request.model`
+ * from the delta chart's `select *` sampling) is an AI-relevant attribute:
+ * any key the dashboard derives meaning from, or anything under an AI
+ * instrumentation namespace. Used to pin these attributes to the top of the
+ * Latency tab's delta breakdown.
+ */
+export function isLLMAttributeKey(flattenedKey: string): boolean {
+  if (LLM_KEY_NAMESPACE_PATTERN.test(flattenedKey)) return true;
+  if (ALL_LLM_ATTRIBUTE_KEYS.has(flattenedKey)) return true;
+  // Claude Code's flat `model` key, only directly under an attribute map
+  // column — bare `model` is too generic for suffix matching (device.model).
+  if (/^[A-Za-z0-9_]+\.model$/.test(flattenedKey)) return true;
+  // Flat dialect keys (opencode/Claude Code) appear nested under the
+  // attribute map column, e.g. `SpanAttributes.input_tokens`.
+  for (const key of ALL_LLM_ATTRIBUTE_KEYS) {
+    if (flattenedKey.endsWith(`.${key}`)) return true;
+  }
+  return false;
+}
+
 /**
  * Attribute-derived expressions shared by trace spans and log events: both
  * carry LLM instrumentation in an attribute map column (SpanAttributes /

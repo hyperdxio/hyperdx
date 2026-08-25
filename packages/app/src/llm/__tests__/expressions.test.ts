@@ -4,6 +4,7 @@ import { makeLogSource, makeTraceSource } from '@/llm/__fixtures__/sources';
 import {
   getLLMExpressions,
   getLLMLogExpressions,
+  isLLMAttributeKey,
   llmGatedCountExpr,
   llmGatedSumExpr,
 } from '@/llm/lib/expressions';
@@ -189,6 +190,45 @@ describe('election-gated aggregates', () => {
     expect(sql).toBe(
       `if(countIf(${expressions.hasProvidedCost}) > 0, countIf(${expressions.hasProvidedCost}), countIf(${expressions.hasReportedTokens}))`,
     );
+  });
+});
+
+describe('isLLMAttributeKey', () => {
+  it('matches AI namespaces under any attribute column', () => {
+    expect(isLLMAttributeKey('SpanAttributes.gen_ai.request.model')).toBe(true);
+    expect(isLLMAttributeKey('SpanAttributes.gen_ai.usage.input_tokens')).toBe(
+      true,
+    );
+    expect(isLLMAttributeKey('SpanAttributes.llm.token_count.prompt')).toBe(
+      true,
+    );
+    expect(isLLMAttributeKey('SpanAttributes.ai.usage.inputTokens')).toBe(true);
+    expect(
+      isLLMAttributeKey('SpanAttributes.copilot_chat.time_to_first_token'),
+    ).toBe(true);
+    expect(isLLMAttributeKey('SpanAttributes.openinference.span.kind')).toBe(
+      true,
+    );
+  });
+
+  it('matches flat dialect keys nested under the attribute column', () => {
+    expect(isLLMAttributeKey('SpanAttributes.input_tokens')).toBe(true);
+    expect(isLLMAttributeKey('SpanAttributes.cost_usd')).toBe(true);
+    // Bare `model` counts only directly under the attribute column.
+    expect(isLLMAttributeKey('SpanAttributes.model')).toBe(true);
+    expect(isLLMAttributeKey('ResourceAttributes.device.model')).toBe(false);
+    expect(isLLMAttributeKey('SpanAttributes.ttft_ms')).toBe(true);
+    expect(isLLMAttributeKey('SpanAttributes.tool_name')).toBe(true);
+    expect(isLLMAttributeKey('SpanAttributes.agent.name')).toBe(true);
+    expect(isLLMAttributeKey('SpanAttributes.session.id')).toBe(true);
+  });
+
+  it('rejects non-AI attributes and top-level columns', () => {
+    expect(isLLMAttributeKey('ServiceName')).toBe(false);
+    expect(isLLMAttributeKey('Duration')).toBe(false);
+    expect(isLLMAttributeKey('ResourceAttributes.service.name')).toBe(false);
+    expect(isLLMAttributeKey('ResourceAttributes.host.name')).toBe(false);
+    expect(isLLMAttributeKey('SpanAttributes.http.method')).toBe(false);
   });
 });
 

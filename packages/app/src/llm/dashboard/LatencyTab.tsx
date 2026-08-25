@@ -3,6 +3,7 @@ import { Box } from '@mantine/core';
 
 import type { AddFilterFn } from '@/components/DBDeltaChart';
 import { DBSearchHeatmapChart } from '@/components/Search/DBSearchHeatmapChart';
+import { isLLMAttributeKey } from '@/llm/lib/expressions';
 
 import {
   appendWhereClause,
@@ -72,6 +73,7 @@ export function LatencyTab(
         source={source}
         isReady
         onAddFilter={handleAddFilter}
+        isPriorityProperty={isLLMAttributeKey}
       />
     </Box>
   );
