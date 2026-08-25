@@ -37,10 +37,8 @@ import {
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_LLM_PANELS_ENABLED } from '@/config';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
-import { getLLMRowData, LLMConversationPanel } from '@/llm';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
@@ -83,7 +81,6 @@ const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
 
 enum SpanDetailTab {
   Overview = 'overview',
-  LLM = 'llm',
   Parsed = 'parsed',
   Infrastructure = 'infrastructure',
 }
@@ -138,17 +135,11 @@ function SpanDetailPanel({
     [source, normalizedRow],
   );
 
-  const isLLM = useMemo(
-    () => IS_LLM_PANELS_ENABLED && getLLMRowData(source, normalizedRow).isLLM,
-    [source, normalizedRow],
-  );
-
-  // If the selected span loses k8s/LLM context (e.g. switching spans) while
-  // that tab is active, fall back to Overview so we don't show a blank
-  // panel. Derived rather than synced via an effect.
+  // If the selected span loses k8s context (e.g. switching spans) while the
+  // Infrastructure tab is active, fall back to Overview so we don't show a
+  // blank panel. Derived rather than synced via an effect.
   const effectiveTab =
-    (displayedTab === SpanDetailTab.Infrastructure && !hasK8sContext) ||
-    (displayedTab === SpanDetailTab.LLM && !isLLM)
+    displayedTab === SpanDetailTab.Infrastructure && !hasK8sContext
       ? SpanDetailTab.Overview
       : displayedTab;
 
@@ -162,14 +153,6 @@ function SpanDetailPanel({
               text: 'Overview',
               value: SpanDetailTab.Overview,
             },
-            ...(isLLM
-              ? [
-                  {
-                    text: 'LLM',
-                    value: SpanDetailTab.LLM,
-                  },
-                ]
-              : []),
             {
               text: 'Column Values',
               value: SpanDetailTab.Parsed,
@@ -231,14 +214,6 @@ function SpanDetailPanel({
           tab bar; the wrapping container already provides the outer inset. */}
       {effectiveTab === SpanDetailTab.Overview && (
         <RowOverviewPanel
-          source={source}
-          rowId={rowId}
-          aliasWith={aliasWith}
-          flush
-        />
-      )}
-      {effectiveTab === SpanDetailTab.LLM && isLLM && (
-        <LLMConversationPanel
           source={source}
           rowId={rowId}
           aliasWith={aliasWith}

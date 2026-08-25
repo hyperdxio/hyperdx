@@ -76,11 +76,6 @@ export const IS_DASHBOARD_VARIABLES_ENABLED =
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =
   env('NEXT_PUBLIC_ENABLE_ALERT_DETAILS') === 'true';
-// LLM surfaces on event/trace side panels (LLM tab, overview section,
-// waterfall span labels). Default off while the feature bakes — currently
-// enabled only in dev (.env.development). The /llm dashboard is not gated.
-export const IS_LLM_PANELS_ENABLED =
-  env('NEXT_PUBLIC_ENABLE_LLM_PANELS') === 'true';
 // Not exported: IS_IAC_EXPORT_ENABLED below is the only gate callers should
 // read. Leaving the raw flag importable re-opens the "forgot the local-mode
 // check" mistake that folding the two together was meant to close.

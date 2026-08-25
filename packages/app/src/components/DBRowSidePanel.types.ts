@@ -3,7 +3,6 @@ import { SourceKind, WithClauseSchema } from '@hyperdx/common-utils/dist/types';
 
 export enum Tab {
   Overview = 'overview',
-  LLM = 'llm',
   Parsed = 'parsed',
   Debug = 'debug',
   Trace = 'trace',

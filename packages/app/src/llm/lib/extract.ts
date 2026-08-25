@@ -2,7 +2,6 @@ import {
   asString,
   firstNumber,
   firstString,
-  isRecord,
   parseMaybeJson,
 } from './attributeUtils';
 import { isLLMSpan } from './detect';
@@ -250,21 +249,4 @@ export function formatCostUsd(cost: number): string {
   if (cost === 0) return '$0.00';
   if (cost < 0.01) return `$${cost.toFixed(6).replace(/0+$/, '')}`;
   return `$${cost.toFixed(cost < 1 ? 4 : 2)}`;
-}
-
-export function asLLMEvents(rawEvents: unknown): LLMSpanEvent[] {
-  if (!Array.isArray(rawEvents)) return [];
-  return rawEvents.flatMap(event => {
-    if (!isRecord(event)) return [];
-    const record = event;
-    const name = asString(record.Name ?? record.name);
-    if (name === undefined) return [];
-    const attributes = record.Attributes ?? record.attributes;
-    return [
-      {
-        name,
-        attributes: isRecord(attributes) ? attributes : {},
-      },
-    ];
-  });
 }

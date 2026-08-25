@@ -53,11 +53,9 @@ import {
   TimelineMinimap,
   type TimelineViewportController,
 } from '@/components/TimelineChart';
-import { IS_LLM_PANELS_ENABLED } from '@/config';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { extractLLMSpanInfo, formatTokenCount, isLLMSpan } from '@/llm';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
@@ -1069,28 +1067,8 @@ export function DBTraceWaterfallChartContainer({
           eventAttributes['http.url'] || eventAttributes['http.method'];
         const httpUrl = eventAttributes['http.url'];
 
-        // LLM spans: append model + token count to the label.
-        const llmInfo =
-          IS_LLM_PANELS_ENABLED && isLLMSpan(eventAttributes)
-            ? extractLLMSpanInfo(eventAttributes)
-            : undefined;
-        const llmSuffix = llmInfo
-          ? [
-              llmInfo.model,
-              llmInfo.usage.totalTokens != null
-                ? formatTokenCount(llmInfo.usage.totalTokens)
-                : undefined,
-            ]
-              .filter(Boolean)
-              .join(' · ')
-          : '';
-
         const displayText =
-          hasHttpAttributes && httpUrl
-            ? `${body} ${httpUrl}`
-            : llmSuffix !== ''
-              ? `${body} · ${llmSuffix}`
-              : body;
+          hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
 
         // Process span events into markers (only if showSpanEvents is enabled)
         const markers =

@@ -36,7 +36,6 @@ import {
 } from '@mantine/core';
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
-import { IS_LLM_PANELS_ENABLED } from '@/config';
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -45,7 +44,6 @@ import useSidePanelStack, {
   SidePanelStack,
 } from '@/hooks/useSidePanelStack';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { getLLMRowData, LLMConversationPanel } from '@/llm';
 import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
 import { getEventBody, useSource } from '@/source';
 import TabBar from '@/TabBar';
@@ -668,11 +666,6 @@ export const DBRowSidePanelInner = ({
     [source, normalizedRow],
   );
 
-  const isLLMRow = useMemo(
-    () => IS_LLM_PANELS_ENABLED && getLLMRowData(source, normalizedRow).isLLM,
-    [source, normalizedRow],
-  );
-
   const initialRowHighlightHint = useMemo(() => {
     if (normalizedRow) {
       return {
@@ -769,7 +762,6 @@ export const DBRowSidePanelInner = ({
   const availableTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = [];
     if (hasOverviewPanel && !sourceIsTrace) tabs.push(Tab.Overview);
-    if (isLLMRow) tabs.push(Tab.LLM);
     if (!sourceIsTrace) tabs.push(Tab.Parsed);
     if (sourceIsTrace) tabs.push(Tab.Trace);
     if (enableServiceMap) tabs.push(Tab.ServiceMap);
@@ -780,7 +772,6 @@ export const DBRowSidePanelInner = ({
   }, [
     hasOverviewPanel,
     sourceIsTrace,
-    isLLMRow,
     enableServiceMap,
     rumSessionId,
     hasK8sContext,
@@ -991,14 +982,6 @@ export const DBRowSidePanelInner = ({
                 },
               ]
             : []),
-          ...(isLLMRow
-            ? [
-                {
-                  text: 'LLM',
-                  value: Tab.LLM,
-                },
-              ]
-            : []),
           ...(!sourceIsTrace
             ? [
                 {
@@ -1065,26 +1048,6 @@ export const DBRowSidePanelInner = ({
             aliasWith={activeAliasWith}
             dateRange={activeDateRange}
             hideHeader={true}
-          />
-        </ErrorBoundary>
-      )}
-      {displayedTab === Tab.LLM && isLLMRow && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <LLMConversationPanel
-            data-testid="side-panel-tab-llm"
-            source={source}
-            rowId={activeRowId}
-            aliasWith={activeAliasWith}
-            dateRange={activeDateRange}
           />
         </ErrorBoundary>
       )}

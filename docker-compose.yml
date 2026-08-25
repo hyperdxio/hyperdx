@@ -76,8 +76,6 @@ services:
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'
       # Uncomment to enable the alert detail page (in development)
       # NEXT_PUBLIC_ENABLE_ALERT_DETAILS: 'true'
-      # Uncomment to enable LLM panels on event/trace side panels (in development)
-      # NEXT_PUBLIC_ENABLE_LLM_PANELS: 'true'
       DEFAULT_CONNECTIONS:
         '[{"name":"Local
         ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'
