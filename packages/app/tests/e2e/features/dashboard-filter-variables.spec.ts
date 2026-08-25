@@ -531,5 +531,87 @@ test.describe(
         );
       });
     });
+
+    /**
+     * What the tile will actually query. Substitution happens client-side and
+     * the result is shipped to Prometheus as text, so the expression a user
+     * writes is never the one that runs — and a PromQL tile has no "Generated
+     * SQL" panel where the difference would otherwise show.
+     */
+    test('previews the expression that will be sent to Prometheus', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      const dashboardPage = new DashboardPage(page);
+      const editor = dashboardPage.chartEditor;
+
+      /**
+       * Type `expression` and query with it. The preview reads the *queried*
+       * config, exactly as the Generated SQL panel does, so an expression that
+       * has only been typed is not yet the one shown.
+       */
+      const queryWith = async (expression: string) => {
+        await editor.replacePromqlExpression(expression);
+        // The completion popup sits over the editor, where it would intercept
+        // the run click. (`dismissCompletion` is no use here: it clears the
+        // editor.)
+        await page
+          .locator('.cm-tooltip-autocomplete')
+          .waitFor({ state: 'hidden', timeout: 10000 });
+        // Not waiting on a rendered chart: an exact-match matcher below
+        // deliberately selects no series, so there is nothing to draw.
+        await editor.runQuery(false);
+      };
+
+      /** The panel repaints on its own schedule, so read it until it settles. */
+      const expectGeneratedPromql = async (expected: string) => {
+        await expect(async () => {
+          expect(await editor.getGeneratedPromqlText()).toBe(expected);
+        }).toPass({ timeout: 15000 });
+      };
+
+      await test.step('Select two services on a dashboard with a variable', async () => {
+        await createDashboardWithServiceVariable(dashboardPage);
+        // Chosen before the tile is opened: the editor covers the filter bar,
+        // so this is the only point at which the selection can be set.
+        await dashboardPage.toggleFilterValue('Service', 'accounting');
+        await dashboardPage.toggleFilterValue('Service', 'api-server');
+      });
+
+      await test.step('Before a run, the accordion says why it is empty', async () => {
+        await openPromqlTileEditor(dashboardPage);
+
+        // Offered from the moment the editor enters PromQL mode, so it doesn't
+        // read as a missing feature while there is nothing to show.
+        await expect(editor.generatedPromqlControl()).toBeDisabled();
+      });
+
+      await test.step('The preview expands the selection', async () => {
+        await queryWith(`${E2E_PROMQL_METRIC_NAME}{service=~"$svc"}`);
+
+        await editor.openGeneratedPromql();
+        await expectGeneratedPromql(
+          `${E2E_PROMQL_METRIC_NAME}{service=~"(accounting|api-server)"}`,
+        );
+      });
+
+      await test.step('The input still holds the template', async () => {
+        // The preview is a view of the query, not a rewrite of the expression:
+        // the tile is saved with the reference so it re-renders on every
+        // selection change.
+        expect(await editor.getPromqlEditorText()).toContain('$svc');
+        expect(await editor.getGeneratedPromqlText()).not.toContain('$svc');
+      });
+
+      await test.step('It follows the format the reference asks for', async () => {
+        // `csv` is the raw-interpolation form, so this is a preview of an
+        // exact-match matcher rather than the default regex alternation.
+        await queryWith(`${E2E_PROMQL_METRIC_NAME}{service="\${svc:csv}"}`);
+        await expectGeneratedPromql(
+          `${E2E_PROMQL_METRIC_NAME}{service="accounting,api-server"}`,
+        );
+      });
+    });
   },
 );

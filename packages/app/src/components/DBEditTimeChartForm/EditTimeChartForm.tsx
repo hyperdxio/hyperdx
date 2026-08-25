@@ -953,6 +953,7 @@ export default function EditTimeChartForm({
         chartConfigForExplanations={chartConfigForExplanations}
         showGeneratedSql={showGeneratedSql}
         showSampleEvents={showSampleEvents}
+        showGeneratedPromql={isPromqlInput}
         dbTimeChartConfig={dbTimeChartConfig}
         setValue={(name, value) => setValue(name, value)}
         onSubmit={onSubmit}

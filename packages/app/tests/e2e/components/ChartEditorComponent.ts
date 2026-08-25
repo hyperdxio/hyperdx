@@ -429,8 +429,9 @@ export class ChartEditorComponent {
   /**
    * Replace the entire contents of the PromQL expression editor.
    *
-   * The same `.cm-editor` locator as the SQL template: PromQL mode renders one
-   * CodeMirror and no "Generated SQL" accordion, so `.first()` is that editor.
+   * The same `.cm-editor` locator as the SQL template, and `.first()` for the
+   * same reason: the expression input is above the preview panel, whose
+   * "Generated PromQL" accordion holds a second, read-only CodeMirror.
    */
   async replacePromqlExpression(expression: string) {
     const content = this.page.locator('.cm-editor .cm-content').first();
@@ -591,6 +592,54 @@ export class ChartEditorComponent {
    */
   async getGeneratedSqlText(): Promise<string> {
     const text = await this.generatedSqlContent().innerText();
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Expand the "Generated PromQL" accordion in the preview panel, where a
+   * PromQL tile shows what "Generated SQL" shows for the other kinds. Safe to
+   * call when it is already open.
+   *
+   * Rendered off the *queried* config, like that one, so it only appears once
+   * the tile has been run.
+   */
+  async openGeneratedPromql() {
+    const control = this.generatedPromqlControl();
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+    await this.generatedPromqlContent().waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * The "Generated PromQL" accordion's control. Present for the whole time the
+   * editor is in PromQL mode, and disabled until a PromQL query has run.
+   */
+  generatedPromqlControl(): Locator {
+    return this.page.getByRole('button', { name: 'Generated PromQL' });
+  }
+
+  /**
+   * CodeMirror content of the "Generated PromQL" preview.
+   *
+   * Its own test id rather than `.cm-editor` with an index: the editor page
+   * can hold several CodeMirror instances, and which ordinal this one takes
+   * depends on the mode the editor is in.
+   */
+  generatedPromqlContent(): Locator {
+    return this.page.getByTestId('chart-promql-preview').locator('.cm-content');
+  }
+
+  /**
+   * The generated PromQL as a single whitespace-collapsed line. Substitution is
+   * debounced by 300ms, so assert on it with `toPass` or an expect timeout.
+   */
+  async getGeneratedPromqlText(): Promise<string> {
+    const text = await this.generatedPromqlContent().innerText();
     return text.replace(/\s+/g, ' ').trim();
   }
 
