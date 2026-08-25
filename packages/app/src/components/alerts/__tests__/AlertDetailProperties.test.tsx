@@ -43,6 +43,44 @@ const baseAlert = {
 } as unknown as AlertsPageItem;
 
 describe('AlertDetailProperties', () => {
+  // `channel` is a single-value mirror of channels[0], so reading it rendered
+  // a multi-channel alert as though it notified one target.
+  it('reports the channel count when an alert has several', () => {
+    renderWithMantine(
+      <AlertDetailProperties
+        alert={
+          {
+            ...baseAlert,
+            channels: [
+              { type: 'webhook', webhookId: 'webhook-id' },
+              { type: 'webhook', webhookId: 'other-webhook' },
+            ],
+          } as unknown as AlertsPageItem
+        }
+      />,
+    );
+
+    expect(screen.getByText('2 channels')).toBeInTheDocument();
+  });
+
+  // One channel keeps naming its webhook — a count would be a regression for
+  // the overwhelmingly common case.
+  it('still names the webhook when an alert has a single channel', () => {
+    renderWithMantine(
+      <AlertDetailProperties
+        alert={
+          {
+            ...baseAlert,
+            channels: [{ type: 'webhook', webhookId: 'webhook-id' }],
+          } as unknown as AlertsPageItem
+        }
+      />,
+    );
+
+    expect(screen.getByText('Team Slack')).toBeInTheDocument();
+    expect(screen.queryByText('1 channels')).not.toBeInTheDocument();
+  });
+
   it('renders all persisted metadata fields when set', () => {
     renderWithMantine(
       <AlertDetailProperties
