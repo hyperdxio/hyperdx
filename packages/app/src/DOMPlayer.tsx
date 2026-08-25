@@ -1,10 +1,25 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Replayer } from 'rrweb';
-import { ActionIcon, CopyButton, Group, HoverCard } from '@mantine/core';
 import {
+  ActionIcon,
+  CopyButton,
+  Group,
+  HoverCard,
+  Tooltip,
+} from '@mantine/core';
+import { Replayer } from '@rrweb/replay';
+import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconCheck,
   IconCopy,
@@ -16,6 +31,10 @@ import {
 
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
+import {
+  createRrwebChunkAssembler,
+  RRWebStreamRow,
+} from '@/utils/rrwebChunkAssembler';
 
 import { FieldExpressionGenerator } from './hooks/useFieldExpressionGenerator';
 
@@ -128,8 +147,101 @@ export default function DOMPlayer({
   );
   const [isInitialEventsLoaded, setIsInitialEventsLoaded] = useState(false);
   const [isReplayFullyLoaded, setIsReplayFullyLoaded] = useState(false);
+  const [droppedEventCount, setDroppedEventCount] = useState(0);
 
-  let currentRrwebEvent = '';
+  const handleDroppedEventRef = useRef<
+    (error: unknown, context: unknown) => void
+  >(() => {});
+  handleDroppedEventRef.current = (error, context) => {
+    // Surfaced unconditionally: dropped events (e.g. a dropped full snapshot)
+    // can render the replay empty/unstyled with no other signal.
+    // https://github.com/hyperdxio/hyperdx/issues/2569
+    console.error('Failed to load session replay event', context, error);
+    setDroppedEventCount(count => count + 1);
+  };
+
+  const handleParsedEventRef = useRef<(parsedEvent: any) => void>(() => {});
+  handleParsedEventRef.current = (parsedEvent: any) => {
+    if (replayerRef.current != null) {
+      try {
+        replayerRef.current.addEvent(parsedEvent);
+      } catch (error) {
+        handleDroppedEventRef.current(error, {
+          reason: 'add-event-error',
+          eventType: parsedEvent?.type,
+        });
+        return;
+      }
+    } else {
+      if (
+        setPlayerStartTimestamp != null &&
+        initialEventsRef.current.length === 0
+      ) {
+        setPlayerStartTimestamp(parsedEvent.timestamp);
+      }
+
+      initialEventsRef.current.push(parsedEvent);
+    }
+
+    setLastEventTsLoadedRef.current(parsedEvent.timestamp);
+    // Used for setting the player end timestamp on onEnd
+    // we can't use state since the onEnd function is declared
+    // at the beginning of the component lifecylce.
+    // We can't use the rrweb metadata as it's not updated fast enough
+    lastEventTsLoadedRef.current = parsedEvent.timestamp;
+  };
+
+  // Reassembles chunked rrweb events, one assembler instance per stream.
+  //
+  // A replaced or unmounted stream is cancelled at the source (the fetch is
+  // aborted, see useRRWebEventStream), but rows of an already-received chunk
+  // can still be delivered synchronously after the abort, so the assembler
+  // instance doubles as the stream's identity as a second line of defense:
+  //  - buffer isolation: each stream's onEvent/onEnd closures are captured
+  //    when the fetch starts, and useMemo hands every stream change a fresh
+  //    instance (previous values aren't cached across dependency changes),
+  //    so a stream ends and flushes only the assembler it captured — even
+  //    when two streams have identical query params (switching away from a
+  //    session and back while the first stream is still loading);
+  //  - delivery gating: only the active instance may feed the replayer or
+  //    update player state, so a stale stream's events, errors, and
+  //    completion can't pollute the replacement replay.
+  //
+  // streamKey must mirror useRRWebEventStream's internal queryKey exactly:
+  // an assembler may only be replaced when the fetch is actually replaced,
+  // otherwise the still-running stream fails the identity gate and its
+  // remaining events are silently discarded. (The hook does not refetch on
+  // serviceName/sourceId changes, so they must not be part of this key.)
+  const streamKey = `${sessionId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
+  const activeAssemblerRef = useRef<unknown>(null);
+  const assembler = useMemo(() => {
+    const instance = createRrwebChunkAssembler({
+      onEvent: parsedEvent => {
+        if (activeAssemblerRef.current === instance) {
+          handleParsedEventRef.current(parsedEvent);
+        }
+      },
+      onError: (error, info) => {
+        if (activeAssemblerRef.current === instance) {
+          handleDroppedEventRef.current(error, info);
+        }
+      },
+    });
+    return instance;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamKey]);
+  // Publish the active instance from a layout effect: it never runs for a
+  // discarded render (so an uncommitted assembler can't take over the gate),
+  // and it runs synchronously within the commit task (so no stream delivery
+  // — a network callback — can observe a stale gate between the commit and
+  // the ref flip). Passive effects, including the one that starts a
+  // replacement fetch, run after it.
+  useLayoutEffect(() => {
+    activeAssemblerRef.current = assembler;
+  }, [assembler]);
+  useEffect(() => {
+    setDroppedEventCount(0);
+  }, [streamKey]);
 
   const { isFetching: isSearchResultsFetching, abort } = useRRWebEventStream(
     {
@@ -139,48 +251,24 @@ export default function DOMPlayer({
       startDate: dateRange[0],
       endDate: dateRange[1],
       limit: 1000000, // large enough to get all events
-      onEvent: (event: { b: string; ck: number; tcks: number; t: number }) => {
-        try {
-          const { b: body, ck: chunk, tcks: totalChunks } = event;
-          currentRrwebEvent += body;
-          if (!chunk || chunk === totalChunks) {
-            const parsedEvent = JSON.parse(currentRrwebEvent);
+      onEvent: (event: RRWebStreamRow) => {
+        assembler.push(event);
 
-            if (replayerRef.current != null) {
-              replayerRef.current.addEvent(parsedEvent);
-            } else {
-              if (
-                setPlayerStartTimestamp != null &&
-                initialEventsRef.current.length === 0
-              ) {
-                setPlayerStartTimestamp(parsedEvent.timestamp);
-              }
-
-              initialEventsRef.current.push(parsedEvent);
-            }
-
-            setLastEventTsLoadedRef.current(parsedEvent.timestamp);
-            // Used for setting the player end timestamp on onEnd
-            // we can't use state since the onEnd function is declared
-            // at the beginning of the component lifecylce.
-            // We can't use the rrweb metadata as it's not updated fast enough
-            lastEventTsLoadedRef.current = parsedEvent.timestamp;
-
-            currentRrwebEvent = '';
-          }
-        } catch (e) {
-          if (debug) {
-            console.error(e);
-          }
-
-          currentRrwebEvent = '';
-        }
-
-        if (initialEventsRef.current.length > 5) {
+        if (
+          activeAssemblerRef.current === assembler &&
+          initialEventsRef.current.length > 5
+        ) {
           setIsInitialEventsLoaded(true);
         }
       },
       onEnd: () => {
+        // Flush the stream's own buffers, but only let the active stream
+        // update player state — a stale stream finishing must not mark the
+        // replacement replay as loaded or move its end timestamp.
+        assembler.end();
+        if (activeAssemblerRef.current !== assembler) {
+          return;
+        }
         setIsInitialEventsLoaded(true);
         setIsReplayFullyLoaded(true);
 
@@ -264,7 +352,6 @@ export default function DOMPlayer({
       );
     }
 
-    // eslint-disable-next-line react-hooks/immutability
     updatePlayerTimeRafRef.current = requestAnimationFrame(updatePlayerTime);
   }, []);
 
@@ -503,6 +590,20 @@ export default function DOMPlayer({
             </>
           )}
         </CopyButton>
+        {droppedEventCount > 0 && (
+          <Tooltip
+            label={`${droppedEventCount} replay ${
+              droppedEventCount === 1 ? 'event' : 'events'
+            } could not be decoded — replay may be incomplete`}
+            withArrow
+          >
+            <IconAlertTriangle
+              size={14}
+              color="var(--mantine-color-yellow-6)"
+              data-testid="replay-dropped-events-warning"
+            />
+          </Tooltip>
+        )}
       </div>
 
       <div className={styles.playerContainer}>

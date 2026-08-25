@@ -1,5 +1,4 @@
 import PQueue from '@esm2cjs/p-queue';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { Tile } from '@hyperdx/common-utils/dist/types';
@@ -7,6 +6,7 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { URLSearchParams } from 'url';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { LOCAL_APP_TEAM } from '@/controllers/team';

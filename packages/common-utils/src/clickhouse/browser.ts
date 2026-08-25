@@ -1,3 +1,4 @@
+import type { Logger, WarnLogParams } from '@clickhouse/client-common';
 import type {
   BaseResultSet,
   ClickHouseClient as WebClickHouseClient,
@@ -6,11 +7,47 @@ import type {
 } from '@clickhouse/client-web';
 import { createClient } from '@clickhouse/client-web';
 
+import { format } from '@/sqlFormatter';
+
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
   QueryInputs,
 } from './index';
+
+const tryFormatSql = (sql: string): string => {
+  try {
+    return format(sql);
+  } catch {
+    return sql;
+  }
+};
+
+const writeLog = (
+  write: (...data: unknown[]) => void,
+  { module, message, args, err }: WarnLogParams,
+): void => {
+  const { sql, ...rest } = args ?? {};
+
+  if (typeof sql === 'string') {
+    write(`${message}:\n${tryFormatSql(sql)}`);
+    return;
+  }
+
+  write(
+    `[${module}] ${message}`,
+    ...Object.values(rest),
+    ...(err ? [err] : []),
+  );
+};
+
+export const consoleLogger: Logger = {
+  trace: params => writeLog(console.debug, params),
+  debug: params => writeLog(console.debug, params),
+  info: params => writeLog(console.info, params),
+  warn: params => writeLog(console.warn, params),
+  error: params => writeLog(console.error, params),
+};
 
 const localModeFetch: typeof fetch = (
   input: RequestInfo | URL,
@@ -70,7 +107,8 @@ export const testLocalConnection = async ({
 
 export class ClickhouseClient extends BaseClickhouseClient {
   constructor(options: ClickhouseClientOptions) {
-    super(options);
+    // Log queries to devtools by default so SQL stays inspectable in all builds
+    super({ ...options, customLogger: options.customLogger ?? consoleLogger });
   }
 
   // This subclass always builds a web client, so narrow the base class's
@@ -129,7 +167,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       this.client = this.buildClient();
     }
 
-    this.logDebugQuery(query, query_params);
+    this.logQuery(query, query_params);
 
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
