@@ -246,6 +246,17 @@
       "spanIdExpression": "SpanId",
       "implicitColumnExpression": "Body",
       "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E PromQL",
+      "kind": "promql",
+      "name": "E2E PromQL",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_promql"
+      },
+      "timestampValueExpression": "timestamp"
     }
   ]
 }

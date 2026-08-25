@@ -17,12 +17,9 @@ import { SERVICES } from '../seed-clickhouse';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
-  E2E_CLICKHOUSE_DATABASE,
   E2E_PROMQL_METRIC_NAME,
-  E2E_PROMQL_TABLE,
   PROMQL_SOURCE_NAME,
 } from '../utils/constants';
-import { runMongoshScript } from '../utils/db-helpers';
 
 /** Severities `accounting` logs carry, and the two it does not. */
 const ACCOUNTING_SEVERITIES = ['warn', 'debug'];
@@ -277,22 +274,6 @@ test.describe(
   'Dashboard variables in a PromQL tile',
   { tag: ['@dashboard', '@full-stack'] },
   () => {
-    /**
-     * The source lives in the shared `sources` collection, so anything left in
-     * it is visible to every later spec's source pickers — the enumeration
-     * failure that keeps it out of e2e-fixtures.json in the first place (see
-     * `PROMQL_SOURCE_NAME`). Removing it here bounds that exposure to this
-     * test's own run.
-     */
-    test.afterAll(() => {
-      runMongoshScript(
-        [
-          "use('hyperdx-e2e');",
-          `db.sources.deleteMany({ name: ${JSON.stringify(PROMQL_SOURCE_NAME)} });`,
-        ].join('\n'),
-      );
-    });
-
     test('narrows the queried series to the selected values', async ({
       page,
     }) => {
@@ -315,31 +296,6 @@ test.describe(
       const expectSeriesCount = async (count: number) => {
         await expect(seriesAreas).toHaveCount(count, { timeout: 30000 });
       };
-
-      await test.step('Create the PromQL source', async () => {
-        // Inserted rather than built in the source form, and created here
-        // rather than shipped in e2e-fixtures.json: a PromQL source is visible
-        // to every spec's source pickers, where the app's field fetch fails
-        // against a TimeSeries table. `afterAll` above deletes it again.
-        const out = runMongoshScript(
-          [
-            "use('hyperdx-e2e');",
-            'const team = db.teams.findOne();',
-            'const connection = db.connections.findOne();',
-            'print(JSON.stringify(db.sources.updateOne(',
-            `  { name: ${JSON.stringify(PROMQL_SOURCE_NAME)} },`,
-            '  { $set: { team: team._id, connection: connection._id,',
-            "      kind: 'promql', disabled: false,",
-            `      from: { databaseName: '${E2E_CLICKHOUSE_DATABASE}', tableName: '${E2E_PROMQL_TABLE}' },`,
-            "      timestampValueExpression: 'timestamp' } },",
-            '  { upsert: true }',
-            ')));',
-          ].join('\n'),
-        );
-        expect(out).toMatch(
-          /"(upsertedCount":1|modifiedCount":1|matchedCount":1)/,
-        );
-      });
 
       await test.step('Create a dashboard with a Service filter exposed as $svc', async () => {
         await dashboardPage.goto();
