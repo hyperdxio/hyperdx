@@ -27,9 +27,9 @@ import {
 const CHART_HEIGHT = 320;
 
 /**
- * Agent/tool monitoring (Datadog Agent Monitoring parity): tool-call volume
- * per tool, a per-tool table with error rate and p95 duration, and usage
- * broken down by agent (gen_ai.agent.name) for agent frameworks.
+ * Agent/tool monitoring: tool-call volume per tool, a per-tool table with
+ * error rate and p95 duration, and usage broken down by agent
+ * (gen_ai.agent.name) for agent frameworks.
  */
 export function AgentToolCharts(props: LLMChartProps) {
   const { source, expressions, dateRange } = props;

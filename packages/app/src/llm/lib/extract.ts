@@ -7,9 +7,8 @@ import {
 import { isLLMSpan } from './detect';
 import { LLMSpanEvent, LLMSpanInfo, LLMUsage, SpanAttributeMap } from './types';
 
-// Model-name precedence mirrors Langfuse's OTel ingestion mapping: the
-// response model is the most truthful (resolved by the provider), then SDK
-// specific ids, then the requested model.
+// Model-name precedence: the response model is the most truthful (resolved
+// by the provider), then SDK-specific ids, then the requested model.
 const RESPONSE_MODEL_KEYS = ['gen_ai.response.model', 'llm.response.model'];
 const REQUEST_MODEL_KEYS = ['gen_ai.request.model', 'ai.model.id', 'model'];
 const MODEL_KEYS = [
