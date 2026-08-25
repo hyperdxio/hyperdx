@@ -448,6 +448,18 @@ export class ChartEditorComponent {
   }
 
   /**
+   * The warning icon the PromQL expression input shows about the variables it
+   * references.
+   *
+   * Scoped to the editor form, which in PromQL mode renders the expression
+   * input and no WHERE inputs — so this is the only indicator inside it. The
+   * validation debounces, so assertions on it need a generous timeout.
+   */
+  promqlVariableWarning(): Locator {
+    return this.editorForm().getByTestId('variable-validation');
+  }
+
+  /**
    * Type `prefix` into the PromQL editor and return the labels its
    * autocomplete popup offers, once `settleOn` is among them.
    *

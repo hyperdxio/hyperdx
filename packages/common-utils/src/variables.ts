@@ -437,6 +437,15 @@ const LANGUAGE_SETTINGS: Record<TemplateLanguage, LanguageSettings> = {
   },
 };
 
+const SETTINGS_BY_LANGUAGE = new Map(Object.entries(LANGUAGE_SETTINGS));
+
+/** Get the settings for a template language, without an eslint warning */
+function languageSettings(language: TemplateLanguage): LanguageSettings {
+  const settings = SETTINGS_BY_LANGUAGE.get(language);
+  if (!settings) throw new Error(`Unknown template language '${language}'.`);
+  return settings;
+}
+
 const sqlNoOp = (name: string) =>
   `(1=1 /** no values selected for variable '${name}' */)`;
 
@@ -591,7 +600,7 @@ export function expandVariableToken(
     );
   }
 
-  const settings = LANGUAGE_SETTINGS[ctx.inputLanguage];
+  const settings = languageSettings(ctx.inputLanguage);
   const format = requestedFormat ?? settings.defaultFormat;
   const rendered = formatVariableValues(variable.values, format);
 
@@ -641,7 +650,7 @@ function getLuceneFormattedValues(
   if (token.kind === 'text' || token.kind === 'macro') return undefined;
   const requestedFormat = token.kind === 'braced' ? token.format : undefined;
 
-  const settings = LANGUAGE_SETTINGS[ctx.inputLanguage];
+  const settings = languageSettings(ctx.inputLanguage);
   if ((requestedFormat ?? settings.defaultFormat) !== 'lucene')
     return undefined;
   return ctx.variables.find(variable => variable.name === token.name)?.values;
@@ -843,7 +852,7 @@ export function substituteVariables(
     );
   }
 
-  if (LANGUAGE_SETTINGS[ctx.inputLanguage].disableMacros) {
+  if (languageSettings(ctx.inputLanguage).disableMacros) {
     return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
       onMalformed: 'skip',
     })
@@ -1202,16 +1211,17 @@ export function validateVariableReferencesInTemplate(
     );
   }
 
-  // Macros are not supported in lucene
-  if (language === 'lucene') {
-    if (macroReferences.length > 0) {
-      const [{ name }] = macroReferences;
-      errors.push(
-        `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
-      );
-    }
-    // The two checks below are specific to the `sqlstring` default format.
-    return { errors, warnings };
+  const settings = languageSettings(language);
+
+  // A macro-less language leaves a macro exactly as written, so writing one can
+  // only ever have been a mistake.
+  if (settings.disableMacros && macroReferences.length > 0) {
+    const [{ name }] = macroReferences;
+    errors.push(
+      language === 'promql'
+        ? `${formatReferenceList(macroReferences)} has no meaning in a PromQL expression — it is left as written and sent to Prometheus verbatim. Reference the variable directly, as in {<label>=~"$${name}"}.`
+        : `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
+    );
   }
 
   // An unrecognized format throws during expansion, so it is already reported.
@@ -1221,27 +1231,48 @@ export function validateVariableReferencesInTemplate(
       (r.format == null || isVariableFormat(r.format)),
   );
 
-  const quoted = resolved.filter(
-    r => (r.format ?? 'sqlstring') === 'sqlstring' && r.inStringLiteral,
-  );
-  if (quoted.length > 0) {
-    const [{ name }] = quoted;
-    errors.push(
-      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, $${name}) or \${${name}:csv} instead?`,
+  // The two checks below are specific to SQL's `sqlstring` default format.
+  if (language === 'sql') {
+    const quoted = resolved.filter(
+      r =>
+        (r.format ?? settings.defaultFormat) === 'sqlstring' &&
+        r.inStringLiteral,
     );
+    if (quoted.length > 0) {
+      const [{ name }] = quoted;
+      errors.push(
+        `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, $${name}) or \${${name}:csv} instead?`,
+      );
+    }
+
+    const unguarded = resolved.filter(
+      r =>
+        (r.format ?? settings.defaultFormat) === 'sqlstring' &&
+        !r.inStringLiteral &&
+        r.guardedBy !== r.name,
+    );
+    if (unguarded.length > 0) {
+      const [{ name }] = unguarded;
+      warnings.push(
+        `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, $${name}) or $__conditionalAll(<condition>, $${name}) so the query stays valid when no values are selected.`,
+      );
+    }
   }
 
-  const unguarded = resolved.filter(
-    r =>
-      (r.format ?? 'sqlstring') === 'sqlstring' &&
-      !r.inStringLiteral &&
-      r.guardedBy !== r.name,
-  );
-  if (unguarded.length > 0) {
-    const [{ name }] = unguarded;
-    warnings.push(
-      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, $${name}) or $__conditionalAll(<condition>, $${name}) so the query stays valid when no values are selected.`,
+  // A regex expansion — PromQL's default — is only valid as a matcher value:
+  // both `(api|web)` and the empty-selection `.*` are syntax errors anywhere
+  // else, so `up{service=~$svc}` and `${svc}_total` are mistakes.
+  if (language === 'promql') {
+    const unquoted = resolved.filter(
+      r =>
+        (r.format ?? settings.defaultFormat) === 'regex' && !r.inStringLiteral,
     );
+    if (unquoted.length > 0) {
+      const [{ name }] = unquoted;
+      warnings.push(
+        `${formatReferenceList(unquoted)} expands to a regular expression, which is only valid inside a quoted matcher value. Wrap it as {<label>=~"$${name}"}, or use \${${name}:csv} to interpolate the values as written.`,
+      );
+    }
   }
 
   return { errors, warnings };

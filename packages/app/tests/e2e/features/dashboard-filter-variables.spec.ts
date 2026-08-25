@@ -467,5 +467,69 @@ test.describe(
         }
       });
     });
+
+    /**
+     * What the input says when a reference is wrong. A PromQL expression is
+     * substituted client-side and shipped as text, so a mistake here is silent
+     * — Prometheus is handed `$nope` verbatim and answers with an empty or
+     * nonsensical series rather than an error the tile could show.
+     */
+    test('flags a variable reference the expression cannot use', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      const dashboardPage = new DashboardPage(page);
+      const editor = dashboardPage.chartEditor;
+      const indicator = editor.promqlVariableWarning();
+
+      /** Type `expression` and wait for the input to settle on `message`. */
+      const expectWarning = async (expression: string, message: RegExp) => {
+        await editor.replacePromqlExpression(expression);
+        await expect(indicator).toBeVisible({ timeout: 15000 });
+        await expect(indicator).toHaveAttribute('aria-label', message, {
+          timeout: 15000,
+        });
+      };
+
+      await test.step('Open a PromQL tile on a dashboard with a variable', async () => {
+        await createDashboardWithServiceVariable(dashboardPage);
+        await openPromqlTileEditor(dashboardPage);
+      });
+
+      await test.step('A typo names a variable that does not exist', async () => {
+        await expectWarning(
+          `${E2E_PROMQL_METRIC_NAME}{service=~"$nope"}`,
+          /references unknown variable \$nope.*Available variables: svc/,
+        );
+      });
+
+      await test.step('Correcting the name clears the warning', async () => {
+        // Also the regression guard for the checks that used to run on every
+        // language: this expression is what the tile above queries with, and
+        // the sqlstring-shaped rules would call it both wrongly quoted and
+        // NULL-before-selection.
+        await editor.replacePromqlExpression(
+          `${E2E_PROMQL_METRIC_NAME}{service=~"$svc"}`,
+        );
+        await expect(indicator).toBeHidden({ timeout: 15000 });
+      });
+
+      await test.step('A reference outside the quoted matcher value is flagged', async () => {
+        // `(api|web)` — and `.*` before anything is selected — parse only as a
+        // matcher value, so dropping the quotes breaks the expression.
+        await expectWarning(
+          `${E2E_PROMQL_METRIC_NAME}{service=~$svc}`,
+          /only valid inside a quoted matcher value/,
+        );
+      });
+
+      await test.step('A macro is flagged, since PromQL leaves it as written', async () => {
+        await expectWarning(
+          '$__filter(service, $svc)',
+          /no meaning in a PromQL expression/,
+        );
+      });
+    });
   },
 );
