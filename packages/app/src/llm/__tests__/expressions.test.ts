@@ -80,12 +80,19 @@ describe('getLLMExpressions', () => {
   it('derives efficiency, attribution, and agent expressions', () => {
     const expressions = getLLMExpressions(TRACE_SOURCE, []);
 
-    // Cached tokens across conventions.
+    // Cached tokens across conventions, incl. the current-registry dotted
+    // key (emitted by GitHub Copilot Chat).
+    expect(expressions.cachedInputTokens).toContain(
+      "SpanAttributes['gen_ai.usage.cache_read.input_tokens']",
+    );
     expect(expressions.cachedInputTokens).toContain(
       "SpanAttributes['gen_ai.usage.cached_input_tokens']",
     );
     expect(expressions.cachedInputTokens).toContain(
       "SpanAttributes['cache_read_tokens']",
+    );
+    expect(expressions.reasoningTokens).toContain(
+      "SpanAttributes['gen_ai.usage.reasoning.output_tokens']",
     );
     // Cache-write tokens across conventions (billed at a premium).
     expect(expressions.cacheWriteInputTokens).toContain(
@@ -110,15 +117,25 @@ describe('getLLMExpressions', () => {
     expect(expressions.costUsd).toContain(expressions.uncachedInputTokens);
     expect(expressions.costUsd).toContain(expressions.cacheWriteInputTokens);
 
-    // TTFT across Claude Code and Vercel AI SDK.
+    // TTFT across Claude Code, Vercel AI SDK, and Copilot Chat (all ms).
     expect(expressions.ttftMs).toContain("SpanAttributes['ttft_ms']");
     expect(expressions.ttftMs).toContain(
       "SpanAttributes['ai.response.msToFirstChunk']",
+    );
+    expect(expressions.ttftMs).toContain(
+      "SpanAttributes['copilot_chat.time_to_first_token']",
     );
     expect(expressions.hasTtft).toContain('> 0');
 
     // Tool name coalesce includes the flat form.
     expect(expressions.toolName).toContain("SpanAttributes['tool_name']");
+
+    // Agent attribution across semconv and CLI-agent forms.
+    expect(expressions.agentName).toContain(
+      "SpanAttributes['gen_ai.agent.name']",
+    );
+    expect(expressions.agentName).toContain("SpanAttributes['agent.name']");
+    expect(expressions.hasAgentName).toContain("!= ''");
 
     // Finish reasons normalized out of their JSON-array encoding.
     expect(expressions.finishReason).toMatch(/^replaceRegexpAll\(/);

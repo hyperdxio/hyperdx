@@ -83,6 +83,7 @@ const OUTPUT_TOKEN_KEYS = [
 const PROVIDED_COST_KEYS = ['gen_ai.usage.cost', 'llm.cost.total', 'cost_usd'];
 
 const CACHED_INPUT_TOKEN_KEYS = [
+  'gen_ai.usage.cache_read.input_tokens', // current semconv registry
   'gen_ai.usage.cached_input_tokens',
   'gen_ai.usage.input_cached_tokens',
   'gen_ai.usage.cache_read_input_tokens',
@@ -102,6 +103,7 @@ const CACHE_WRITE_TOKEN_KEYS = [
 ];
 
 const REASONING_TOKEN_KEYS = [
+  'gen_ai.usage.reasoning.output_tokens', // current semconv registry
   'gen_ai.usage.output_reasoning_tokens',
   'gen_ai.usage.reasoning_tokens',
   'llm.token_count.completion_details.reasoning',
@@ -109,10 +111,20 @@ const REASONING_TOKEN_KEYS = [
   'reasoning_tokens',
 ];
 
-/** Time-to-first-token in ms (Claude Code flat key, Vercel AI SDK). */
-const TTFT_MS_KEYS = ['ttft_ms', 'ai.response.msToFirstChunk'];
+/**
+ * Time-to-first-token in ms (Claude Code flat key, Vercel AI SDK, GitHub
+ * Copilot Chat — verified ms in vscode-copilot-chat's chatMLFetcher).
+ */
+const TTFT_MS_KEYS = [
+  'ttft_ms',
+  'ai.response.msToFirstChunk',
+  'copilot_chat.time_to_first_token',
+];
 
 const TOOL_NAME_KEYS = ['gen_ai.tool.name', 'ai.toolCall.name', 'tool_name'];
+
+/** Agent attribution (semconv; opencode/Claude Code stamp agent.name). */
+const AGENT_NAME_KEYS = ['gen_ai.agent.name', 'agent.name'];
 
 const FINISH_REASON_KEYS = [
   'gen_ai.response.finish_reasons',
@@ -228,6 +240,8 @@ function getLLMAttributeExpressions({
     ),
     ttftMs: greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn),
     toolName: coalesceString(attributeField, TOOL_NAME_KEYS, isJsonColumn),
+    agentName: coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn),
+    hasAgentName: `${coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn)} != ''`,
     // Emitters disagree on encoding ('stop' vs '["stop"]'); strip the JSON
     // array wrapper so the group-by buckets align.
     finishReason: `replaceRegexpAll(${coalesceString(

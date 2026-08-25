@@ -57,6 +57,7 @@ const TOTAL_TOKEN_KEYS = [
   'ai.usage.tokens',
 ];
 const CACHED_INPUT_TOKEN_KEYS = [
+  'gen_ai.usage.cache_read.input_tokens', // current semconv registry
   'gen_ai.usage.cached_input_tokens',
   'gen_ai.usage.input_cached_tokens',
   'gen_ai.usage.cache_read_input_tokens', // Anthropic-style
@@ -73,6 +74,7 @@ const CACHE_WRITE_TOKEN_KEYS = [
   'cache_creation_tokens',
 ];
 const REASONING_TOKEN_KEYS = [
+  'gen_ai.usage.reasoning.output_tokens', // current semconv registry
   'gen_ai.usage.output_reasoning_tokens',
   'gen_ai.usage.reasoning_tokens',
   'llm.token_count.completion_details.reasoning',
@@ -92,8 +94,15 @@ const SESSION_ID_KEYS = [
   'ai.telemetry.metadata.sessionId',
 ];
 
-/** Time-to-first-token in milliseconds (Vercel AI SDK, Claude Code). */
-const TTFT_MS_KEYS = ['ai.response.msToFirstChunk', 'ttft_ms'];
+/**
+ * Time-to-first-token in milliseconds (Vercel AI SDK, Claude Code, GitHub
+ * Copilot Chat — verified ms in vscode-copilot-chat's chatMLFetcher).
+ */
+const TTFT_MS_KEYS = [
+  'ai.response.msToFirstChunk',
+  'ttft_ms',
+  'copilot_chat.time_to_first_token',
+];
 
 /** `gen_ai.request.*` parameters worth surfacing, in display order. */
 const REQUEST_PARAM_KEYS = [
@@ -209,6 +218,10 @@ export function extractLLMSpanInfo(
   const toolName =
     asString(attrs['gen_ai.tool.name']) ?? asString(attrs['tool_name']);
   if (toolName !== undefined) info.toolName = toolName;
+
+  const agentName =
+    asString(attrs['gen_ai.agent.name']) ?? asString(attrs['agent.name']);
+  if (agentName !== undefined) info.agentName = agentName;
 
   return info;
 }

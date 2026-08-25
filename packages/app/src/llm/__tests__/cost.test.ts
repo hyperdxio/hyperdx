@@ -41,6 +41,64 @@ describe('MODEL_PRICES catalog', () => {
     );
   });
 
+  it('matches the expanded provider families across id flavors', () => {
+    // xAI (bare + OpenRouter-style ids)
+    expect(findModelPrice('grok-4')?.name).toBe('grok-4');
+    expect(findModelPrice('x-ai/grok-4-fast-reasoning')?.name).toBe(
+      'grok-4-fast',
+    );
+    expect(findModelPrice('grok-code-fast-1')?.name).toBe('grok-code-fast');
+    // DeepSeek (bare, OpenRouter, HF, Bedrock)
+    expect(findModelPrice('deepseek-chat')?.name).toBe('deepseek-chat');
+    expect(findModelPrice('deepseek/deepseek-reasoner')?.name).toBe(
+      'deepseek-reasoner',
+    );
+    expect(findModelPrice('deepseek-ai/DeepSeek-V3.2')?.name).toBe(
+      'deepseek-chat',
+    );
+    expect(findModelPrice('us.deepseek.r1-v1:0')?.name).toBe(
+      'deepseek-reasoner',
+    );
+    // Mistral
+    expect(findModelPrice('mistral-large-latest')?.name).toBe('mistral-large');
+    expect(findModelPrice('mistralai/mistral-small-2503')?.name).toBe(
+      'mistral-small',
+    );
+    expect(findModelPrice('codestral-2508')?.name).toBe('codestral');
+    // Cohere (bare + Bedrock)
+    expect(findModelPrice('command-a-03-2025')?.name).toBe('command-a');
+    expect(findModelPrice('cohere.command-r-plus-v1:0')?.name).toBe(
+      'command-r-plus',
+    );
+    expect(findModelPrice('command-r-08-2024')?.name).toBe('command-r');
+    // Qwen
+    expect(findModelPrice('qwen3-max')?.name).toBe('qwen3-max');
+    expect(findModelPrice('qwen/qwen-plus-latest')?.name).toBe('qwen-plus');
+    // Meta Llama (Groq, OpenRouter, Bedrock id flavors)
+    expect(findModelPrice('llama-3.3-70b-versatile')?.name).toBe(
+      'llama-3.3-70b',
+    );
+    expect(findModelPrice('meta-llama/llama-4-maverick')?.name).toBe(
+      'llama-4-maverick',
+    );
+    expect(findModelPrice('meta.llama3-3-70b-instruct-v1:0')?.name).toBe(
+      'llama-3.3-70b',
+    );
+    // Amazon Nova (Bedrock + cross-region)
+    expect(findModelPrice('amazon.nova-pro-v1:0')?.name).toBe('nova-pro');
+    expect(findModelPrice('us.amazon.nova-lite-v1:0')?.name).toBe('nova-lite');
+  });
+
+  it('keeps more specific expanded variants ahead of family entries', () => {
+    expect(findModelPrice('command-r-plus')?.name).toBe('command-r-plus');
+    expect(findModelPrice('command-r7b-12-2024')?.name).toBe('command-r7b');
+    expect(findModelPrice('grok-3-mini')?.name).toBe('grok-3-mini');
+    expect(findModelPrice('magistral-medium-latest')?.name).toBe(
+      'magistral-medium',
+    );
+    expect(findModelPrice('ministral-8b-latest')?.name).toBe('ministral-8b');
+  });
+
   it('returns undefined for unknown models', () => {
     expect(findModelPrice('my-custom-finetune')).toBeUndefined();
     expect(findModelPrice('')).toBeUndefined();

@@ -188,6 +188,29 @@ export const VERCEL_AI_DOSTREAM_FIXTURE: SpanAttributeMap = {
 };
 
 /**
+ * GitHub Copilot Chat `chat` span (vscode-copilot-chat's built-in OTLP
+ * exporter): current-registry dotted semconv usage keys
+ * (`gen_ai.usage.cache_read.input_tokens`), a Copilot-specific TTFT
+ * attribute in milliseconds, and agent attribution. Shape verified against
+ * the shipped extension source (chatMLFetcher.ts / genAiAttributes.ts).
+ */
+export const GITHUB_COPILOT_CHAT_FIXTURE: SpanAttributeMap = {
+  'gen_ai.operation.name': 'chat',
+  'gen_ai.provider.name': 'azure.ai.openai',
+  'gen_ai.request.model': 'gpt-5.1',
+  'gen_ai.response.model': 'gpt-5.1',
+  'gen_ai.response.id': 'chatcmpl-abc123',
+  'gen_ai.response.finish_reasons': '["stop"]',
+  'gen_ai.usage.input_tokens': '20000',
+  'gen_ai.usage.output_tokens': '1500',
+  'gen_ai.usage.cache_read.input_tokens': '16000',
+  'gen_ai.usage.reasoning_tokens': '400',
+  'gen_ai.agent.name': 'agent',
+  'gen_ai.conversation.id': 'conv-42',
+  'copilot_chat.time_to_first_token': '812',
+};
+
+/**
  * opencode `api_request` log event: flat non-standard usage keys plus a
  * standard gen_ai provider marker.
  */

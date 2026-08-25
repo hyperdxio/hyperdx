@@ -1,6 +1,7 @@
 import {
   CLAUDE_CODE_LLM_REQUEST_FIXTURE,
   CLAUDE_CODE_TOOL_FIXTURE,
+  GITHUB_COPILOT_CHAT_FIXTURE,
   OPENCODE_API_REQUEST_LOG_FIXTURE,
   OPENCODE_LLM_SPAN_FIXTURE,
   VERCEL_AI_DOSTREAM_FIXTURE,
@@ -188,6 +189,39 @@ describe('claude-code-shaped telemetry', () => {
     expect(isLLMSpan(CLAUDE_CODE_TOOL_FIXTURE)).toBe(true);
     const info = extractLLMSpanInfo(CLAUDE_CODE_TOOL_FIXTURE);
     expect(info?.toolName).toBe('Bash');
+  });
+});
+
+describe('github copilot chat span (current-registry dotted semconv)', () => {
+  it('extracts dotted cache-read key, TTFT, and agent name', () => {
+    expect(isLLMSpan(GITHUB_COPILOT_CHAT_FIXTURE)).toBe(true);
+    const info = extractLLMSpanInfo(GITHUB_COPILOT_CHAT_FIXTURE);
+    expect(info).toMatchObject({
+      model: 'gpt-5.1',
+      provider: 'azure.ai.openai',
+      operation: 'chat',
+      agentName: 'agent',
+      conversationId: 'conv-42',
+      usage: {
+        inputTokens: 20_000,
+        outputTokens: 1500,
+        // Dotted current-registry key (subset of inputTokens).
+        cachedInputTokens: 16_000,
+        reasoningOutputTokens: 400,
+      },
+    });
+    // copilot_chat.time_to_first_token is milliseconds (verified against
+    // vscode-copilot-chat's chatMLFetcher: Date.now() - issuedTime).
+    expect(info?.timeToFirstTokenMs).toBe(812);
+  });
+
+  it('prices dotted cache reads at the cached rate', () => {
+    const info = extractLLMSpanInfo(GITHUB_COPILOT_CHAT_FIXTURE);
+    // gpt-5.1: $1.25/M input, $10/M output, $0.125/M cached.
+    expect(computeCostUsd(info!.usage, info!.model)).toBeCloseTo(
+      4000 * 1.25e-6 + 16_000 * 1.25e-7 + 1500 * 10e-6,
+      10,
+    );
   });
 });
 

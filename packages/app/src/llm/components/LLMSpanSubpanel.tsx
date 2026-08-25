@@ -42,6 +42,11 @@ export function LLMSpanSubpanel({ info }: { info: LLMSpanInfo }) {
             {info.toolName}
           </Badge>
         )}
+        {info.agentName != null && (
+          <Badge size="sm" variant="light" color="teal" tt="none">
+            {info.agentName}
+          </Badge>
+        )}
       </Group>
 
       <TokenUsageDisplay

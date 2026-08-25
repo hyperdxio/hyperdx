@@ -73,6 +73,94 @@ const ANTHROPIC: PriceTuple[] = [
   ['claude-3-haiku', `${A}claude-3-haiku(-\\d{8})?${AV}`, 2.5e-7, 1.25e-6],
 ];
 
+// xAI model ids also appear OpenRouter-style (`x-ai/grok-4`).
+const X = '^(x-?ai/)?';
+// prettier-ignore
+const XAI: PriceTuple[] = [
+  ['grok-code-fast', `${X}grok-code-fast(-\\d+)?$`, 2e-7, 1.5e-6, 2e-8],
+  ['grok-4-fast', `${X}grok-4(-1)?-fast(-(reasoning|non-reasoning))?(-\\d{4})?$`, 2e-7, 5e-7, 5e-8],
+  ['grok-4', `${X}grok-4(-\\d{4})?$`, 3e-6, 15e-6, 7.5e-7],
+  ['grok-3-mini', `${X}grok-3-mini(-fast)?(-beta)?$`, 3e-7, 5e-7, 7.5e-8],
+  ['grok-3', `${X}grok-3(-fast)?(-beta)?$`, 3e-6, 15e-6, 7.5e-7],
+];
+
+// DeepSeek ids appear bare, OpenRouter-style (`deepseek/deepseek-chat`),
+// HF-style (`deepseek-ai/DeepSeek-V3`), and as Bedrock ids
+// (`us.deepseek.r1-v1:0`).
+const DS = '^(deepseek(-ai)?/)?deepseek';
+// prettier-ignore
+const DEEPSEEK: PriceTuple[] = [
+  ['deepseek-reasoner', `(${DS}-(reasoner|r1)([.-][\\w.]+)?|^((us|eu|apac)\\.)?deepseek\\.r1(-v\\d+(:\\d+)?)?)$`, 2.8e-7, 4.2e-7, 2.8e-8],
+  ['deepseek-chat', `${DS}-(chat|v3([.-]\\d+)?(-\\w+)?)$`, 2.8e-7, 4.2e-7, 2.8e-8],
+];
+
+// Mistral ids also appear OpenRouter-style (`mistralai/mistral-large`).
+const M = '^(mistral(ai)?/)?';
+const MV = '(-latest|-\\d{4})?$';
+// prettier-ignore
+const MISTRAL: PriceTuple[] = [
+  ['mistral-large', `${M}(mistral|pixtral)-large${MV}`, 2e-6, 6e-6],
+  ['magistral-medium', `${M}magistral-medium${MV}`, 2e-6, 5e-6],
+  ['magistral-small', `${M}magistral-small${MV}`, 5e-7, 1.5e-6],
+  ['mistral-medium', `${M}mistral-medium(-3(\\.\\d+)?)?${MV}`, 4e-7, 2e-6],
+  ['mistral-small', `${M}mistral-small(-3(\\.\\d+)?)?${MV}`, 1e-7, 3e-7],
+  ['codestral', `${M}codestral${MV}`, 3e-7, 9e-7],
+  ['devstral-medium', `${M}devstral-medium${MV}`, 4e-7, 2e-6],
+  ['devstral-small', `${M}devstral-small${MV}`, 1e-7, 3e-7],
+  ['ministral-8b', `${M}ministral-8b${MV}`, 1e-7, 1e-7],
+  ['ministral-3b', `${M}ministral-3b${MV}`, 4e-8, 4e-8],
+  ['mistral-nemo', `${M}(open-)?mistral-nemo${MV}`, 1.5e-7, 1.5e-7],
+];
+
+// Cohere ids also appear OpenRouter-style (`cohere/command-r`) and as
+// Bedrock ids (`cohere.command-r-plus-v1:0`).
+const C = '^(cohere[/.])?';
+const CV = '(-\\d{2}-\\d{4})?(-v\\d+(:\\d+)?)?$';
+// prettier-ignore
+const COHERE: PriceTuple[] = [
+  ['command-a', `${C}command-a(-reasoning|-vision|-translate)?${CV}`, 2.5e-6, 10e-6],
+  ['command-r-plus', `${C}command-r-plus${CV}`, 2.5e-6, 10e-6],
+  ['command-r7b', `${C}command-r7b${CV}`, 3.75e-8, 1.5e-7],
+  ['command-r', `${C}command-r${CV}`, 1.5e-7, 6e-7],
+];
+
+// Qwen commercial (DashScope) ids, also OpenRouter-style (`qwen/qwen3-max`).
+const Q = '^(qwen/|alibaba/)?';
+const QV = '(-preview|-latest|-\\d{4}-\\d{2}-\\d{2})?$';
+// prettier-ignore
+const QWEN: PriceTuple[] = [
+  ['qwen3-max', `${Q}qwen3-max${QV}`, 1.2e-6, 6e-6, 2.4e-7],
+  ['qwen3-coder', `${Q}qwen3-coder(-plus|-flash)?${QV}`, 1e-6, 5e-6, 1e-7],
+  ['qwen-max', `${Q}qwen-max${QV}`, 1.6e-6, 6.4e-6, 6.4e-7],
+  ['qwen-plus', `${Q}qwen-plus${QV}`, 4e-7, 1.2e-6, 1.6e-7],
+  ['qwen-turbo', `${Q}qwen-(turbo|flash)${QV}`, 5e-8, 4e-7, 2e-8],
+];
+
+// Meta Llama, priced at the common hosted (Groq) rates. Ids appear bare
+// (`llama-3.3-70b-versatile`), OpenRouter-style (`meta-llama/llama-4-maverick`),
+// and as Bedrock ids (`meta.llama3-3-70b-instruct-v1:0`).
+const L = '^((us|eu|apac)\\.)?(meta[./]|meta-llama/)?llama-?';
+const LV = '[\\w.:-]*$';
+// prettier-ignore
+const META_LLAMA: PriceTuple[] = [
+  ['llama-4-maverick', `${L}4-maverick${LV}`, 2e-7, 6e-7],
+  ['llama-4-scout', `${L}4-scout${LV}`, 1.1e-7, 3.4e-7],
+  ['llama-3.3-70b', `${L}3[.-]3-70b${LV}`, 5.9e-7, 7.9e-7],
+  ['llama-3.1-8b', `${L}3[.-]1-8b${LV}`, 5e-8, 8e-8],
+];
+
+// Amazon Nova Bedrock ids (`amazon.nova-pro-v1:0`, cross-region
+// `us.amazon.nova-pro-v1:0`, OpenRouter `amazon/nova-pro-v1`).
+const N = '^((us|eu|apac)\\.)?amazon[./]nova-';
+const NV = '(-v\\d+(:\\d+)?)?$';
+// prettier-ignore
+const AMAZON_NOVA: PriceTuple[] = [
+  ['nova-premier', `${N}premier${NV}`, 2.5e-6, 12.5e-6],
+  ['nova-pro', `${N}pro${NV}`, 8e-7, 3.2e-6, 2e-7],
+  ['nova-lite', `${N}lite${NV}`, 6e-8, 2.4e-7, 1.5e-8],
+  ['nova-micro', `${N}micro${NV}`, 3.5e-8, 1.4e-7, 8.75e-9],
+];
+
 const G = '^(google(ai)?/)?';
 // prettier-ignore
 const GOOGLE: PriceTuple[] = [
@@ -114,6 +202,13 @@ export const MODEL_PRICES: ModelPrice[] = [
   ...OPENAI,
   ...ANTHROPIC,
   ...GOOGLE,
+  ...XAI,
+  ...DEEPSEEK,
+  ...MISTRAL,
+  ...COHERE,
+  ...QWEN,
+  ...META_LLAMA,
+  ...AMAZON_NOVA,
 ].map(([name, pattern, input, output, cached, cacheWrite]) => ({
   name,
   pattern,

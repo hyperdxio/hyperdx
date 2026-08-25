@@ -97,4 +97,6 @@ export interface LLMSpanInfo {
   finishReasons?: string;
   /** Tool name for execute_tool spans. */
   toolName?: string;
+  /** Agent name for agent-framework spans (gen_ai.agent.name). */
+  agentName?: string;
 }
