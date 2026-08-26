@@ -1,8 +1,6 @@
 import * as React from 'react';
-import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import { Badge, Group, Text } from '@mantine/core';
 
-import api from '@/api';
 import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import type { AlertsPageItem } from '@/types';
 import { FormatTime } from '@/useFormatTime';
@@ -31,29 +29,12 @@ function PropertyRow({
 
 /**
  * Full alert metadata block for the alert detail page: the shared one-line
- * summary (threshold, schedule, channel, creator) plus every other persisted
+ * summary (threshold, schedule, targets, creator) plus every other persisted
  * property — name, message template, group-by, schedule anchor/offset,
  * acknowledgement, tags, and created/updated timestamps. Rows render only
  * when the field is set.
  */
 export function AlertDetailProperties({ alert }: { alert: AlertsPageItem }) {
-  // Resolve the notification webhook's display name (the alert only stores
-  // its id). Falls back to the generic "Webhook" label while loading or if
-  // the webhook has been deleted.
-  const { data: webhooks } = api.useWebhooks([
-    WebhookService.Slack,
-    WebhookService.Generic,
-    WebhookService.IncidentIO,
-  ]);
-  const webhookName = React.useMemo(() => {
-    if (!alert.channel.webhookId) {
-      return undefined;
-    }
-    return webhooks?.data?.find(
-      (w: { _id: string; name: string }) => w._id === alert.channel.webhookId,
-    )?.name;
-  }, [webhooks, alert.channel.webhookId]);
-
   const tags = alert.dashboard?.tags ?? alert.savedSearch?.tags ?? [];
   const hasScheduleAnchor = alert.scheduleStartAt != null;
   const hasScheduleOffset =
@@ -61,11 +42,7 @@ export function AlertDetailProperties({ alert }: { alert: AlertsPageItem }) {
 
   return (
     <div data-testid="alert-detail-properties">
-      <AlertPropertiesSummary
-        alert={alert}
-        showSchedule
-        webhookName={webhookName}
-      />
+      <AlertPropertiesSummary alert={alert} variant="detail" />
       <div className="d-flex flex-column gap-1 mt-2">
         {alert.name && (
           <PropertyRow label="Name" testId="alert-property-name">
