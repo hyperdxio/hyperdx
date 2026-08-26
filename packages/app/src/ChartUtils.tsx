@@ -36,6 +36,7 @@ import {
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { substituteChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
@@ -1151,12 +1152,30 @@ export const convertV1ChartConfigToV2 = (
 };
 
 /**
+ * Expand a builder config's variable references, falling back to the config as
+ * written when one of them can't be expanded (a malformed reference, or a macro
+ * naming a variable the dashboard doesn't declare).
+ *
+ * Idempotent: the result carries `variables: undefined`, so expanding again at
+ * an inner layer is a no-op.
+ */
+export function expandVariablesOrLeaveRaw<
+  T extends Parameters<typeof substituteChartConfigVariables>[0],
+>(config: T): T {
+  try {
+    return substituteChartConfigVariables(config);
+  } catch {
+    return config;
+  }
+}
+
+/**
  * Build search URL for viewing events based on group-by values
  * Used by both chart clicks and table row clicks
  */
 export function buildEventsSearchUrl({
   source,
-  config,
+  config: rawConfig,
   dateRange,
   groupFilters,
   valueRangeFilter,
@@ -1170,6 +1189,13 @@ export function buildEventsSearchUrl({
   if (!source?.id) {
     return null;
   }
+
+  // The destination page has no variable machinery, so every expression must be
+  // final SQL/Lucene before it goes in the URL.
+  const config = expandVariablesOrLeaveRaw({
+    ...rawConfig,
+    whereLanguage: rawConfig.whereLanguage || 'lucene',
+  });
 
   const isMetricChart = isMetricChartConfig(config);
   if (isMetricChart) {
@@ -1328,7 +1354,7 @@ function extractGroupColumns(
 export function buildTableRowSearchUrl({
   row,
   source,
-  config,
+  config: rawConfig,
   dateRange,
 }: {
   row: Record<string, any>;
@@ -1339,6 +1365,10 @@ export function buildTableRowSearchUrl({
   if (!source?.id) {
     return null;
   }
+
+  // The row keys are result-set column names, so they're already expanded — the
+  // group-by expressions have to be expanded here to match them.
+  const config = expandVariablesOrLeaveRaw(rawConfig);
 
   // Extract group-by column names and build filters from row values
   const groupFilters: Array<{ column: string; value: any }> = [];

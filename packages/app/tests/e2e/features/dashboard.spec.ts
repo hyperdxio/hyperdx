@@ -4,6 +4,7 @@ import { Locator } from '@playwright/test';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { DashboardsListPage } from '../page-objects/DashboardsListPage';
+import { SearchPage } from '../page-objects/SearchPage';
 import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
@@ -2148,6 +2149,96 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await expect(
             tile.getByTitle('accounting', { exact: true }),
           ).toBeVisible();
+        });
+      },
+    );
+
+    test(
+      'expands variables in the chart drilldown search link',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Builder Drilldown Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+          // The drilldown searches the clicked bucket only. Auto granularity
+          // over the default hour gives one-minute buckets, and the seeded logs
+          // put an `accounting` row down roughly every 3.6 minutes — so most
+          // buckets are legitimately empty and the search below would have
+          // nothing to show. A 30-minute bucket always holds several.
+          await dashboardPage.changeGranularity('30 Minutes Granularity');
+        });
+
+        await test.step('Save a builder line tile whose WHERE uses $__filter', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setSqlWhere(
+            '$__filter(ServiceName, $svc)',
+          );
+          await dashboardPage.chartEditor.runQuery();
+          await dashboardPage.saveTile();
+        });
+
+        const link = dashboardPage.page.getByTestId('chart-view-events-link');
+
+        await test.step('Pin the tooltip and read the View All Events link', async () => {
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          const chart = tile.locator('.recharts-responsive-container');
+          await expect(chart).toBeVisible({ timeout: 30000 });
+
+          // Recharts only pins on a click that lands on a bucket, so the click
+          // itself is part of what gets retried.
+          await expect(async () => {
+            await chart.click();
+            await expect(link).toBeVisible({ timeout: 2000 });
+          }).toPass({ timeout: 30000 });
+
+          const href = (await link.getAttribute('href')) ?? '';
+          const params = new URL(href, 'http://localhost').searchParams;
+          expect(params.get('where')).toBe("(ServiceName IN ('accounting'))");
+          expect(decodeURIComponent(href)).not.toContain('$svc');
+        });
+
+        await test.step('Following the link searches on the expanded predicate', async () => {
+          // The href assertion above only proves what was written. Following it
+          // is what proves the expansion is SQL the search page can actually
+          // run — an unexpanded `$__filter(...)` reaches ClickHouse verbatim
+          // and errors, because the destination has no variable machinery.
+          const popupPromise = dashboardPage.page.waitForEvent('popup');
+          await link.click();
+          const searchTab = await popupPromise;
+          const searchPage = new SearchPage(searchTab);
+
+          await expect(searchTab).toHaveURL(/\/search\?/, { timeout: 15000 });
+          expect(new URL(searchTab.url()).searchParams.get('where')).toBe(
+            "(ServiceName IN ('accounting'))",
+          );
+
+          await expect(searchPage.table.firstRow).toBeVisible({
+            timeout: 30000,
+          });
+          await expect(searchTab.getByTestId('chart-error-state')).toHaveCount(
+            0,
+          );
+
+          // ServiceName is a column of the E2E Logs default select, so every
+          // rendered row names its service.
+          const rowTexts = await searchPage.table.getRows().allInnerTexts();
+          expect(rowTexts.filter(text => !text.includes('accounting'))).toEqual(
+            [],
+          );
+
+          await searchTab.close();
         });
       },
     );
