@@ -11,6 +11,7 @@ import {
   Skeleton,
   Table,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import { useInViewport } from '@mantine/hooks';
 
@@ -104,13 +105,23 @@ export function AlertEvaluationsTable({
       <Table highlightOnHover data-testid="alert-evaluations-table">
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Evaluation Window</Table.Th>
+            <Table.Th>Evaluation window</Table.Th>
             <Table.Th>State</Table.Th>
-            <Table.Th>Latest Value</Table.Th>
+            <Table.Th>Latest value</Table.Th>
             <Table.Th>Breaches</Table.Th>
-            <Table.Th>Backfilled Buckets</Table.Th>
-            <Table.Th>Query Duration</Table.Th>
-            <Table.Th>Webhook Duration</Table.Th>
+            <Table.Th>Backfilled buckets</Table.Th>
+            <Table.Th>Query duration</Table.Th>
+            <Table.Th>
+              <Tooltip
+                label="Wall time delivering notifications in this evaluation, including retries. Targets are dispatched concurrently, so the slowest one sets this figure."
+                multiline
+                maw={320}
+                withArrow
+                color="dark"
+              >
+                <span>Notification duration</span>
+              </Tooltip>
+            </Table.Th>
             <Table.Th>Errors</Table.Th>
           </Table.Tr>
         </Table.Thead>

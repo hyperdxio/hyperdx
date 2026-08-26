@@ -1,37 +1,143 @@
 import * as React from 'react';
-import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
-import { Group } from '@mantine/core';
+import {
+  isRangeThresholdType,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
+import { Group, Text, Tooltip, VisuallyHidden } from '@mantine/core';
 
+import api from '@/api';
 import type { AlertsPageItem } from '@/types';
-import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from '@/utils/alerts';
+import {
+  TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+  toAlertChannels,
+} from '@/utils/alerts';
 import { getWebhookChannelIcon } from '@/utils/webhookIcons';
+
+/**
+ * Targets listed inline before the rest collapse into a "+N more" tooltip.
+ * An alert can carry up to MAX_ALERT_CHANNELS, which would push the creator
+ * and threshold off the end of the alerts-page rows.
+ */
+const MAX_INLINE_TARGETS = 2;
 
 type AlertPropertiesSummaryProps = {
   alert: AlertsPageItem;
   /**
-   * Include the evaluation schedule (interval and, when configured,
-   * consecutive-window count). On by the detail page; the alerts-page rows
-   * keep the shorter line.
+   * Which surface is rendering. `detail` names the targets and adds the
+   * evaluation schedule; `row` shows target icons only, with the names on
+   * hover, so a multi-target alert doesn't wrap the line.
    */
-  showSchedule?: boolean;
-  /**
-   * Display name of the notification webhook (the alert only stores its id).
-   * The detail page resolves and passes it; the alerts-page rows keep the
-   * generic "Webhook" label.
-   */
-  webhookName?: string;
+  variant?: 'row' | 'detail';
+};
+
+type NotificationTarget = {
+  key: string;
+  name: string;
+  /** Webhook service, for the icon. Undefined until the webhooks load. */
+  service?: WebhookService;
 };
 
 /**
+ * Resolve an alert's notification channels to display targets. The alert only
+ * stores webhook ids, so names and service icons come from the team's webhooks.
+ * The query key is shared, so every row on the alerts page reads one fetch.
+ */
+function useNotificationTargets(alert: AlertsPageItem): NotificationTarget[] {
+  const { data: webhooks } = api.useWebhooks([
+    WebhookService.Slack,
+    WebhookService.Generic,
+    WebhookService.IncidentIO,
+  ]);
+
+  return React.useMemo(() => {
+    return toAlertChannels(alert).map((channel, index) => {
+      const webhook = channel.webhookId
+        ? webhooks?.data?.find(w => w._id === channel.webhookId)
+        : undefined;
+      return {
+        // Index-qualified: rows written before the API rejected duplicate
+        // channels can repeat a webhookId.
+        key: `${channel.webhookId || channel.type}-${index}`,
+        // Falls back to the generic label while the webhooks load, and for
+        // webhooks that have since been deleted.
+        name: webhook?.name ?? 'Webhook',
+        service: webhook?.service,
+      };
+    });
+  }, [alert, webhooks]);
+}
+
+/**
+ * Notification targets. Named and comma-separated on the detail page, with
+ * the overflow behind a tooltip; icons only on the alerts-page rows, where
+ * spelling out up to ten names wrapped the line into an unreadable block.
+ */
+function NotificationTargets({
+  alert,
+  showNames,
+}: {
+  alert: AlertsPageItem;
+  showNames: boolean;
+}) {
+  const targets = useNotificationTargets(alert);
+  const allNames = targets.map(target => target.name).join(', ');
+
+  if (!showNames) {
+    return (
+      <Tooltip label={allNames} multiline maw={320} withArrow color="dark">
+        <Group gap={4} wrap="nowrap" data-testid="alert-notification-targets">
+          Notify via
+          {targets.map(target => (
+            <React.Fragment key={target.key}>
+              {getWebhookChannelIcon(target.service)}
+            </React.Fragment>
+          ))}
+          {/* The names are otherwise hover-only. An aria-label on the
+              wrapper would sit on a role-less div, which isn't reliably
+              exposed, so put the text in the tree instead. */}
+          <VisuallyHidden>{allNames}</VisuallyHidden>
+        </Group>
+      </Tooltip>
+    );
+  }
+
+  const inline = targets.slice(0, MAX_INLINE_TARGETS);
+  const overflow = targets.length - inline.length;
+
+  return (
+    <Group gap={5} wrap="nowrap" data-testid="alert-notification-targets">
+      Notify via
+      {inline.map((target, index) => (
+        <React.Fragment key={target.key}>
+          {getWebhookChannelIcon(target.service)}
+          <span>
+            {index < inline.length - 1 || overflow > 0
+              ? `${target.name},`
+              : target.name}
+          </span>
+        </React.Fragment>
+      ))}
+      {overflow > 0 && (
+        <Tooltip label={allNames} multiline maw={320} withArrow color="dark">
+          <Text span inherit td="underline">
+            +{overflow} more
+          </Text>
+        </Tooltip>
+      )}
+    </Group>
+  );
+}
+
+/**
  * One-line alert metadata summary: threshold condition, optional evaluation
- * schedule, notification channel, and creator. Shared between the alerts
+ * schedule, notification targets, and creator. Shared between the alerts
  * page rows and the alert detail page header.
  */
 export function AlertPropertiesSummary({
   alert,
-  showSchedule = false,
-  webhookName,
+  variant = 'row',
 }: AlertPropertiesSummaryProps) {
+  const isDetail = variant === 'detail';
   const thresholdLabel =
     TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
     alert.thresholdType;
@@ -48,7 +154,7 @@ export function AlertPropertiesSummary({
           </>
         )}
       </span>
-      {showSchedule && (
+      {isDetail && (
         <>
           <span>&middot;</span>
           <span>Evaluates every {alert.interval}</span>
@@ -64,10 +170,7 @@ export function AlertPropertiesSummary({
         </>
       )}
       <span>&middot;</span>
-      <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)}
-        <span>{webhookName ?? 'Webhook'}</span>
-      </Group>
+      <NotificationTargets alert={alert} showNames={isDetail} />
       {alert.createdBy && (
         <>
           <span>&middot;</span>
