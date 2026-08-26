@@ -1159,7 +1159,7 @@ export const convertV1ChartConfigToV2 = (
  * Idempotent: the result carries `variables: undefined`, so expanding again at
  * an inner layer is a no-op.
  */
-export function expandVariablesOrLeaveRaw<
+export function tryExpandConfigVariables<
   T extends Parameters<typeof substituteChartConfigVariables>[0],
 >(config: T): T {
   try {
@@ -1192,7 +1192,7 @@ export function buildEventsSearchUrl({
 
   // The destination page has no variable machinery, so every expression must be
   // final SQL/Lucene before it goes in the URL.
-  const config = expandVariablesOrLeaveRaw({
+  const config = tryExpandConfigVariables({
     ...rawConfig,
     whereLanguage: rawConfig.whereLanguage || 'lucene',
   });
@@ -1368,7 +1368,7 @@ export function buildTableRowSearchUrl({
 
   // The row keys are result-set column names, so they're already expanded — the
   // group-by expressions have to be expanded here to match them.
-  const config = expandVariablesOrLeaveRaw(rawConfig);
+  const config = tryExpandConfigVariables(rawConfig);
 
   // Extract group-by column names and build filters from row values
   const groupFilters: Array<{ column: string; value: any }> = [];

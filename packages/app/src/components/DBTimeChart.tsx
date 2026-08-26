@@ -31,10 +31,10 @@ import {
   buildEventsSearchUrl,
   ChartKeyJoiner,
   convertToTimeChartConfig,
-  expandVariablesOrLeaveRaw,
   formatResponseForTimeChart,
   getPreviousDateRange,
   shouldFillNullsWithZero,
+  tryExpandConfigVariables,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
@@ -723,7 +723,7 @@ function DBTimeChartComponent({
       // and handed to buildEventsSearchUrl must be final SQL/Lucene.
       // `whereLanguage` is pinned to buildEventsSearchUrl's default first, since
       // expansion below leaves nothing for it to expand.
-      const expandedConfig = expandVariablesOrLeaveRaw({
+      const expandedConfig = tryExpandConfigVariables({
         ...config,
         whereLanguage: config.whereLanguage || 'lucene',
       });

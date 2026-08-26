@@ -30,7 +30,7 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
-  expandVariablesOrLeaveRaw,
+  tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { getFirstTimestampValueExpression } from '@/source';
@@ -186,7 +186,7 @@ export function buildSampleEventsConfig(
   // The series' agg conditions become `filters` below, and `filters` is
   // deliberately not scanned for variable references. So expand the variables
   // here, building the filters in the sample events config below.
-  const config = expandVariablesOrLeaveRaw(queriedConfig);
+  const config = tryExpandConfigVariables(queriedConfig);
 
   return {
     ...config,
