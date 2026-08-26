@@ -1,5 +1,5 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import { copyFileSync, existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -12,37 +12,56 @@ const packageJson = JSON.parse(
 );
 const { version } = packageJson;
 
-// Copy the repo-root CHANGELOG.md — the cross-package release summary, not the
-// app-only package changelog — into public/ so the in-app "What's new" viewer
-// can fetch it as a static asset. Done here (rather than a pre-script) because
-// Yarn 4 does not run arbitrary pre/post lifecycle scripts; next.config is
-// evaluated by both `next dev` (Turbopack) and `next build` (Webpack), so this
-// runs in every build mode. The ClickStack static export additionally needs
-// `.md` allow-listed in scripts/prepare-clickhouse-build-export.js, and the
-// Docker builder stages must COPY the file in (see the Dockerfiles).
+// Generate public/whats-new.json — the recent releases' headlines that the Help
+// menu's "What's new" section fetches as a small static asset (instead of
+// shipping the whole, ever-growing changelog). Reads the repo-root CHANGELOG.md,
+// the release-level summary, not the app-only package changelog. Done here
+// (rather than a package.json pre-script) because Yarn 4 does not run arbitrary
+// pre/post lifecycle scripts; next.config is evaluated by both `next dev`
+// (Turbopack) and `next build` (Webpack), so this runs in every build mode. The
+// ClickStack static export additionally needs `whats-new.json` allow-listed in
+// scripts/prepare-clickhouse-build-export.js, and the Docker builder stages must
+// COPY the root CHANGELOG.md and scripts/ in as build inputs (see the
+// Dockerfiles).
+//
+// The parser is imported dynamically, inside the try, on purpose. A static
+// top-level import is resolved before this module's body runs, so it would be
+// unguardable: the prod image copies next.config.mjs on its own and re-evaluates
+// it under `next start`, where no build sources are present — a static import
+// there crashes the container on startup instead of harmlessly falling through
+// to the already-generated public/whats-new.json.
 try {
-  copyFileSync(
+  const { default: parseWhatsNew } = await import(
+    './scripts/parse-whats-new.js'
+  );
+  const changelog = readFileSync(
     join(__dirname, '..', '..', 'CHANGELOG.md'),
-    join(__dirname, 'public', 'CHANGELOG.md'),
+    'utf-8',
+  );
+  const { releases } = parseWhatsNew(changelog, { maxReleases: 5 });
+
+  writeFileSync(
+    join(__dirname, 'public', 'whats-new.json'),
+    JSON.stringify({ releases }),
   );
 } catch (err) {
   // The invariant is "the app must not ship without the asset", so key the
   // failure on that rather than on which phase we think we are in. `next start`
-  // re-evaluates this config at runtime, where the source file is absent but
-  // public/CHANGELOG.md already exists from the build stage — that case is
+  // re-evaluates this config at runtime, where the build sources are absent but
+  // public/whats-new.json already exists from the build stage — that case is
   // fine. Nothing having produced the asset at all is not.
   //
-  // Deliberately not keyed on NEXT_PHASE alone: that is an undocumented Next
-  // internal, and if it were ever unset the build would fall through to a warn
-  // and ship an image whose "What's new" renders "Unable to load" for everyone.
-  if (!existsSync(join(__dirname, 'public', 'CHANGELOG.md'))) {
+  // Deliberately not keyed on NEXT_PHASE: that is an undocumented Next internal,
+  // and if it were ever unset the build would fall through to a warn and ship an
+  // image whose "What's new" is empty for every user.
+  if (!existsSync(join(__dirname, 'public', 'whats-new.json'))) {
     throw new Error(
-      `Failed to copy CHANGELOG.md into public/ and no previously copied file ` +
-        `exists, so the build would ship without it: ${err.message}`,
+      `Failed to generate whats-new.json and no file exists from an earlier ` +
+        `build, so the app would ship without it: ${err.message}`,
     );
   }
   console.warn(
-    'Could not refresh public/CHANGELOG.md; using the existing copy:',
+    'Could not regenerate public/whats-new.json; using the existing file:',
     err.message,
   );
 }
