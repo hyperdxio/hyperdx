@@ -393,39 +393,60 @@ export function useReleaseAnnotations(
   // configured expression can also reference a column the source's table
   // doesn't have (e.g. no `ResourceAttributes` at all) — a query error the
   // chart otherwise renders identically to "no releases", with no signal to
-  // the user. Distinguish the two, each once (Mantine dedupes concurrent
-  // tiles by notification id).
-  const hasWarnedRef = useRef(false);
+  // the user. Distinguish the two (Mantine dedupes concurrent tiles by
+  // notification id).
+  //
+  // Tracks *which* warning last fired rather than a plain boolean, so a
+  // config that flips from one problem kind to the other (or recovers and
+  // later fails again) still gets its own warning instead of being
+  // suppressed by an earlier, different-kind warning on the same query.
+  const lastWarningRef = useRef<'error' | 'empty' | null>(null);
   // A changed config is a genuinely new query (different range, filters, or
   // source) — it deserves its own warning even if the previous query already
-  // latched one, so this reset is independent of the `!enabled` reset below.
+  // latched one. Detected inline (rather than a separate effect keyed on
+  // `config`) so every `lastWarningRef` mutation lives in one place and
+  // doesn't depend on effect declaration order.
+  const prevConfigRef = useRef(config);
   useEffect(() => {
-    hasWarnedRef.current = false;
-  }, [config]);
-  useEffect(() => {
+    if (prevConfigRef.current !== config) {
+      prevConfigRef.current = config;
+      lastWarningRef.current = null;
+    }
     if (!enabled) {
-      hasWarnedRef.current = false;
+      lastWarningRef.current = null;
       return;
     }
-    if (isFetching || hasWarnedRef.current) {
+    if (isFetching) {
       return;
     }
     if (isError) {
-      hasWarnedRef.current = true;
+      if (lastWarningRef.current === 'error') {
+        return;
+      }
+      lastWarningRef.current = 'error';
+      const rawMessage = error instanceof Error ? error.message : String(error);
       notifications.show({
         id: RELEASE_ERROR_NOTIFICATION_ID,
         color: 'red',
         title: "Couldn't load release markers",
         message: isMissingColumnError(error)
-          ? "The version expression configured for release markers doesn't match a column on this source. Check the Service Version Expression setting on the source."
-          : `Release marker query failed: ${error instanceof Error ? error.message : String(error)}`,
+          ? `The version expression configured for release markers doesn't match a column on this source. Check the Service Version Expression setting on the source. (${rawMessage})`
+          : `Release marker query failed: ${rawMessage}`,
       });
       return;
     }
-    if (data == null || annotations != null) {
+    if (annotations != null) {
+      // A healthy result clears the latch so a later problem warns again.
+      lastWarningRef.current = null;
       return;
     }
-    hasWarnedRef.current = true;
+    if (data == null) {
+      return;
+    }
+    if (lastWarningRef.current === 'empty') {
+      return;
+    }
+    lastWarningRef.current = 'empty';
     notifications.show({
       id: RELEASE_EMPTY_NOTIFICATION_ID,
       color: 'yellow',
@@ -433,7 +454,7 @@ export function useReleaseAnnotations(
       message:
         'Release markers come from changes in the version attribute configured on this source. No version changes were found in this time range - if you deploy without changing the version, there is nothing to mark.',
     });
-  }, [enabled, isFetching, isError, error, data, annotations]);
+  }, [enabled, isFetching, isError, error, data, annotations, config]);
 
   return annotations;
 }

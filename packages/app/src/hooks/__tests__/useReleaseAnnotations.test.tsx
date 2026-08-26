@@ -602,6 +602,21 @@ describe('useReleaseAnnotations', () => {
     expect(result.current).toBeUndefined();
   });
 
+  // Regression: the `isError` branch was added ahead of this one; guard
+  // against a future reorder silently swallowing the empty-result case.
+  it('warns "no releases found" for a genuinely empty result', () => {
+    mockQuery([{ firstSeen: '2026-06-30T20:00:00.000Z', version: '1.43.0' }]);
+
+    renderHook(() => useReleaseAnnotations(range, true, { source: logSource }));
+
+    expect(mockedNotificationsShow).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'release-markers-empty' }),
+    );
+    expect(mockedNotificationsShow).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'release-markers-error' }),
+    );
+  });
+
   describe('query errors', () => {
     // A query failure and a truly-empty result both leave `data` unset;
     // without distinguishing `isError` the two look identical to the user.
@@ -675,6 +690,51 @@ describe('useReleaseAnnotations', () => {
           message: expect.stringContaining('Connection reset'),
         }),
       );
+    });
+
+    // Regression: a single boolean latch stayed tripped across a kind
+    // change on the *same* query (e.g. a background refetch that flips an
+    // empty result to an error), silently swallowing the second warning.
+    it('warns again when the result kind changes without a config change', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQuery([{ firstSeen: '2026-06-30T20:00:00.000Z', version: '1.43.0' }]);
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+      expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'release-markers-empty' }),
+      );
+
+      mockQueryError(new Error('Timeout exceeded'));
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(3);
+      expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'release-markers-error' }),
+      );
+    });
+
+    // A real (non-empty) result between two failures clears the latch, same
+    // as a distinct kind would -- a later failure is never "the same" one.
+    it('warns again after recovering and failing once more on the same config', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQuery([{ firstSeen: '2026-07-01T00:30:00.000Z', version: '1.43.1' }]);
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQueryError(new Error('Timeout exceeded'));
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
     });
   });
 
