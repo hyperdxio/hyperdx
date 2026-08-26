@@ -1,13 +1,15 @@
 import { useCallback, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
-import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
+import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  type Field,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconHelp } from '@tabler/icons-react';
 
 import SyntaxReferenceModal from '@/components/SearchInput/SyntaxReferenceModal';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
@@ -15,6 +17,7 @@ import type { FilterStateHook } from '@/searchFilters';
 import { useSource } from '@/source';
 
 import { AddFilterControl } from './AddFilterControl';
+import { ExploreLanguageAddon } from './ExploreLanguageAddon';
 import { ExploreSqlPanel } from './ExploreSqlPanel';
 import { ExploreSqlToggle } from './ExploreSqlToggle';
 import { FilterExpression } from './FilterExpression';
@@ -25,7 +28,13 @@ import {
 } from './filterExpressionModel';
 import { promoteWhereToFilters } from './promoteWhereToFilters';
 import { QueryConfigMode, QueryEditor, QueryLanguage } from './QueryEditor';
-import { getExploreWhereLanguage } from './queryModeSafety';
+import { getDefaultExploreLanguage } from './queryModeSafety';
+
+/** Map column syntax matches the autocomplete: `LogAttributes['level']`. */
+const fieldIdentifier = (field: Field): string =>
+  field.path.length > 1
+    ? `${field.path[0]}['${field.path[1]}']`
+    : field.path[0];
 
 export type ExploreQueryEditorProps = {
   onSubmit?: () => void;
@@ -127,7 +136,7 @@ export function ExploreQueryEditor({
   });
 
   const language: QueryLanguage =
-    languageField.value ?? getExploreWhereLanguage(source?.kind);
+    languageField.value ?? getDefaultExploreLanguage();
 
   const stringValue =
     typeof valueField.value === 'string' ? valueField.value : '';
@@ -138,12 +147,23 @@ export function ExploreQueryEditor({
 
   const identifiers = useMemo(() => {
     return [
-      ...(fields?.map(c =>
-        c.path.length > 1 ? `${c.path[0]}['${c.path[1]}']` : c.path[0],
-      ) ?? []),
+      ...(fields?.map(fieldIdentifier) ?? []),
       ...(additionalSuggestions ?? []),
     ];
   }, [fields, additionalSuggestions]);
+
+  // Which fields a bound can be compared against. Only these get `>` and
+  // friends in the Add filter popover, since a range compiles to an unquoted
+  // literal and would be invalid SQL against a string column.
+  const numericFields = useMemo(
+    () =>
+      new Set(
+        fields
+          ?.filter(c => c.jsType === JSDataType.Number)
+          .map(fieldIdentifier) ?? [],
+      ),
+    [fields],
+  );
 
   const handleRemoveLastFilter = useCallback(() => {
     if (searchFilters == null) {
@@ -191,9 +211,13 @@ export function ExploreQueryEditor({
         value={stringValue}
         onChange={next => ingestWhere(next, next !== next.trimEnd())}
         language={language}
-        onLanguageChange={languageField.onChange}
-        languages={['lucene']}
         rightSection={controls}
+        addonSlot={
+          <ExploreLanguageAddon
+            language={language}
+            onOpenSyntaxReference={openSyntaxRef}
+          />
+        }
         sqlToggle={
           onSqlOpenChange != null ? (
             <ExploreSqlToggle
@@ -224,6 +248,7 @@ export function ExploreQueryEditor({
           searchFilters != null ? (
             <AddFilterControl
               fields={identifiers}
+              numericFields={numericFields}
               searchFilters={searchFilters}
               chartConfig={chartConfig}
             />
@@ -240,23 +265,12 @@ export function ExploreQueryEditor({
           ) : undefined
         }
         onRemoveLastFilter={handleRemoveLastFilter}
-        leftSection={
-          <Tooltip label="Syntax reference" withArrow position="top">
-            <ActionIcon
-              variant="subtle"
-              size="sm"
-              color="gray"
-              aria-label="Open syntax reference"
-              onClick={openSyntaxRef}
-            >
-              <IconHelp size={16} />
-            </ActionIcon>
-          </Tooltip>
-        }
         fields={identifiers}
         placeholder={
           language === 'sql'
-            ? "SQL WHERE clause (e.g. column = 'foo')"
+            ? // The addon already says WHERE, so the placeholder spends its
+              // width on an example instead of repeating the label.
+              "ServiceName = 'checkout' AND SeverityText = 'error'"
             : 'Search this source, e.g. service:checkout'
         }
         onSubmit={handleSubmit}

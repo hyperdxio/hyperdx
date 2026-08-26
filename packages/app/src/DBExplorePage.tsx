@@ -74,6 +74,7 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToRight,
   IconBolt,
   IconCheck,
   IconChevronDown,
@@ -81,7 +82,6 @@ import {
   IconCode,
   IconDotsVertical,
   IconDownload,
-  IconFilter,
   IconLayoutGridAdd,
   IconPlayerPlay,
   IconPlus,
@@ -99,7 +99,7 @@ import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/util
 import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
-import { getExploreWhereLanguage } from '@/components/Explore/queryModeSafety';
+import { getDefaultExploreLanguage } from '@/components/Explore/queryModeSafety';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
@@ -144,6 +144,7 @@ import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolba
 import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
 import { type QueryConfigMode } from './components/Explore/QueryEditor';
 import { SeveritySummary } from './components/Explore/SeveritySummary';
+import { PatternColumnSelector } from './components/Patterns/PatternColumnSelector';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
@@ -407,7 +408,7 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
         onClick={onExpand}
         aria-label="Show filters"
       >
-        <IconFilter size={14} />
+        <IconArrowBarToRight size={14} />
       </ActionIcon>
     </Tooltip>
   );
@@ -681,7 +682,7 @@ function SaveSearchModalComponent({
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getExploreWhereLanguage(),
+              searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -709,7 +710,7 @@ function SaveSearchModalComponent({
             select: effectiveSelect,
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getExploreWhereLanguage(),
+              searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -1257,8 +1258,7 @@ function DBExplorePage() {
         select: searchedConfig.select || '',
         where: searchedConfig.where || '',
         whereLanguage:
-          searchedConfig.whereLanguage ??
-          getExploreWhereLanguage(searchedSource?.kind),
+          searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
         configType: searchedConfig.configType ?? 'builder',
         sqlTemplate: searchedConfig.sqlTemplate ?? '',
         source:
@@ -1297,9 +1297,7 @@ function DBExplorePage() {
           ? searchedSource.defaultTableSelectExpression
           : undefined),
       where: _savedSearch?.where ?? '',
-      whereLanguage:
-        _savedSearch?.whereLanguage ??
-        getExploreWhereLanguage(searchedSource?.kind),
+      whereLanguage: _savedSearch?.whereLanguage ?? getDefaultExploreLanguage(),
       source: _savedSearch?.source,
       filters: _savedSearch?.filters ?? [],
       orderBy: _savedSearch?.orderBy || defaultOrderBy,
@@ -1332,8 +1330,7 @@ function DBExplorePage() {
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
         whereLanguage:
-          searchedConfig?.whereLanguage ??
-          getExploreWhereLanguage(searchedSource?.kind),
+          searchedConfig?.whereLanguage ?? getDefaultExploreLanguage(),
         configType: searchedConfig?.configType ?? 'builder',
         sqlTemplate: searchedConfig?.sqlTemplate ?? '',
         source: searchedConfig?.source ?? undefined,
@@ -1341,7 +1338,7 @@ function DBExplorePage() {
         orderBy: searchedConfig?.orderBy ?? '',
       });
     }
-  }, [searchedConfig, reset, prevSearched, searchedSource?.kind]);
+  }, [searchedConfig, reset, prevSearched]);
 
   // Populate searched query with saved search if the query params have
   // been wiped (ex. clicking on the same saved search again)
@@ -1377,7 +1374,7 @@ function DBExplorePage() {
         source: defaultSourceId,
         where: '',
         select: '',
-        whereLanguage: getExploreWhereLanguage(),
+        whereLanguage: getDefaultExploreLanguage(),
         filters: [],
         orderBy: '',
       });
@@ -1608,8 +1605,7 @@ function DBExplorePage() {
       source: chartSourceId,
       where: searchedConfig.where ?? '',
       whereLanguage:
-        searchedConfig.whereLanguage ??
-        getExploreWhereLanguage(searchedSource?.kind),
+        searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     }),
@@ -1620,7 +1616,6 @@ function DBExplorePage() {
       searchedConfig.select,
       searchedConfig.where,
       searchedConfig.whereLanguage,
-      searchedSource?.kind,
     ],
   );
 
@@ -1700,7 +1695,7 @@ function DBExplorePage() {
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
             whereLanguage:
-              searchedConfig.whereLanguage ?? getExploreWhereLanguage(),
+              searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -2570,7 +2565,7 @@ function DBExplorePage() {
         setSearchedConfig({
           source: null,
           where: '',
-          whereLanguage: getExploreWhereLanguage(),
+          whereLanguage: getDefaultExploreLanguage(),
           filters: [],
         });
         return;
@@ -2808,7 +2803,10 @@ function DBExplorePage() {
                   defaultRelativeTimeMode={
                     isLive && interval !== LIVE_TAIL_DURATION_MS
                   }
-                  width="100%"
+                  // Fixed rather than 100%: the search field now shares this
+                  // row and takes the slack, so the time range needs a width
+                  // that does not depend on how much is left over.
+                  width={280}
                   size="xs"
                 />
                 {view === 'list' && denoiseResults != true && (
@@ -2947,6 +2945,26 @@ function DBExplorePage() {
                           sourceKind={searchedSource?.kind}
                           chartTypesOnly={isSqlUiMode}
                         />
+                      }
+                      viewControls={
+                        !isSqlUiMode &&
+                        view === 'patterns' && (
+                          // Beside the switcher that asked for it, in the slot
+                          // the chart-type picker uses, rather than stranded
+                          // between the chart and the table it governs.
+                          <PatternColumnSelector
+                            sourceId={searchedSource?.id}
+                            value={draftPatternColumn}
+                            onChange={setDraftPatternColumn}
+                            onSubmit={onSubmit}
+                            dateRange={searchedTimeRange}
+                            bodyValueExpression={
+                              searchedSource
+                                ? (getEventBody(searchedSource) ?? '')
+                                : (chartConfig.implicitColumnExpression ?? '')
+                            }
+                          />
+                        )
                       }
                       addToDashboard={
                         isSqlUiMode
@@ -3305,9 +3323,6 @@ function DBExplorePage() {
                             : (chartConfig.implicitColumnExpression ?? '')
                         }
                         patternColumn={patternColumn}
-                        draftPatternColumn={draftPatternColumn}
-                        onDraftPatternColumnChange={setDraftPatternColumn}
-                        onSubmit={onSubmit}
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />

@@ -1,25 +1,45 @@
 import { useMemo, useState } from 'react';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Autocomplete, Button, Popover, Select, Stack } from '@mantine/core';
+import {
+  ActionIcon,
+  Autocomplete,
+  Button,
+  Popover,
+  Select,
+  Stack,
+  Tooltip,
+} from '@mantine/core';
 import { IconFilterPlus } from '@tabler/icons-react';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
 
+import {
+  buildFilterUpdate,
+  type FilterOperator,
+  isComparison,
+  operatorOptions,
+  resolveOperator,
+  toFilterOperator,
+} from './addFilterModel';
+
 const VALUE_LIMIT = 50;
 
 export function AddFilterControl({
   fields,
+  numericFields,
   searchFilters,
   chartConfig,
 }: {
   fields: string[];
+  /** Fields whose ClickHouse type is numeric, so a bound can be compared. */
+  numericFields?: ReadonlySet<string>;
   searchFilters: FilterStateHook;
   chartConfig?: BuilderChartConfigWithDateRange;
 }) {
   const [opened, setOpened] = useState(false);
   const [field, setField] = useState<string | null>(null);
-  const [polarity, setPolarity] = useState<'include' | 'exclude'>('include');
+  const [operator, setOperator] = useState<FilterOperator>('include');
   const [value, setValue] = useState('');
 
   const valueChartConfig = useMemo(
@@ -47,17 +67,37 @@ export function AddFilterControl({
     [fields],
   );
 
-  const canAdd = Boolean(field && value.trim());
+  const fieldIsNumeric = field != null && (numericFields?.has(field) ?? false);
+  const effectiveOperator = resolveOperator(operator, fieldIsNumeric);
+
+  const update =
+    field == null
+      ? null
+      : buildFilterUpdate({
+          operator: effectiveOperator,
+          value,
+          existingRange: searchFilters.filters[field]?.range,
+        });
 
   const handleAdd = () => {
-    if (!field || !value.trim()) {
+    if (field == null || update == null) {
       return;
     }
-    searchFilters.setFilterValue(
-      field,
-      value.trim(),
-      polarity === 'exclude' ? 'exclude' : undefined,
-    );
+    if (update.kind === 'range') {
+      searchFilters.mergeFilterValues({
+        [field]: {
+          included: new Set(),
+          excluded: new Set(),
+          range: update.range,
+        },
+      });
+    } else {
+      searchFilters.setFilterValue(
+        field,
+        update.value,
+        update.exclude ? 'exclude' : undefined,
+      );
+    }
     setValue('');
     setOpened(false);
   };
@@ -70,15 +110,17 @@ export function AddFilterControl({
       onChange={setOpened}
     >
       <Popover.Target>
-        <Button
-          variant="subtle"
-          size="compact-xs"
-          leftSection={<IconFilterPlus size={14} />}
-          onClick={() => setOpened(o => !o)}
-          aria-label="Add filter"
-        >
-          Add filter
-        </Button>
+        <Tooltip label="Add filter" fz="xs" color="gray">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={() => setOpened(o => !o)}
+            aria-label="Add filter"
+          >
+            <IconFilterPlus size={16} />
+          </ActionIcon>
+        </Tooltip>
       </Popover.Target>
       <Popover.Dropdown>
         <Stack gap="xs" w={260}>
@@ -94,22 +136,28 @@ export function AddFilterControl({
           />
           <Select
             size="xs"
-            data={[
-              { value: 'include', label: 'is' },
-              { value: 'exclude', label: 'is not' },
-            ]}
-            value={polarity}
+            data={operatorOptions(fieldIsNumeric)}
+            value={effectiveOperator}
             onChange={next => {
-              if (next === 'include' || next === 'exclude') {
-                setPolarity(next);
+              const picked = toFilterOperator(next);
+              if (picked != null) {
+                setOperator(picked);
               }
             }}
             aria-label="Filter operator"
           />
           <Autocomplete
             size="xs"
-            placeholder={isFetching ? 'Loading values...' : 'Value'}
-            data={valueOptions}
+            placeholder={
+              isFetching
+                ? 'Loading values...'
+                : isComparison(effectiveOperator)
+                  ? 'Number'
+                  : 'Value'
+            }
+            // Distinct values are suggestions for equality, but for a bound
+            // they are only a hint at the range, so the field stays free text.
+            data={isComparison(effectiveOperator) ? [] : valueOptions}
             value={value}
             onChange={setValue}
             onKeyDown={event => {
@@ -124,7 +172,7 @@ export function AddFilterControl({
           <Button
             variant="primary"
             size="compact-xs"
-            disabled={!canAdd}
+            disabled={update == null}
             onClick={handleAdd}
           >
             Add

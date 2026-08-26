@@ -95,14 +95,16 @@ export default function PatternTable({
   return (
     <>
       {hasExternalPatternColumn && (
-        <PatternColumnSelector
-          sourceId={source?.id}
-          value={externalDraftPatternColumn ?? ''}
-          onChange={externalOnDraftPatternColumnChange}
-          onSubmit={externalOnSubmit}
-          dateRange={config.dateRange}
-          bodyValueExpression={bodyValueExpression}
-        />
+        <Box py="xs">
+          <PatternColumnSelector
+            sourceId={source?.id}
+            value={externalDraftPatternColumn ?? ''}
+            onChange={externalOnDraftPatternColumnChange}
+            onSubmit={externalOnSubmit}
+            dateRange={config.dateRange}
+            bodyValueExpression={bodyValueExpression}
+          />
+        </Box>
       )}
       {error ? (
         <Container style={{ overflow: 'auto' }}>

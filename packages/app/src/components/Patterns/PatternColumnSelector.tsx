@@ -40,14 +40,18 @@ export function PatternColumnSelector({
     : 'Default — column name or expression';
 
   return (
-    <Box py="xs" maw={600}>
+    // Wide enough for the default placeholder to read in full, fixed so it does
+    // not squeeze the result stats sharing its row.
+    <Box w={420} style={{ flexShrink: 0 }}>
       <SQLInlineEditor
         tableConnection={tableConnection}
         value={value}
         onChange={onChange}
         onSubmit={onSubmit}
         enableHotkey
-        label="Pattern Expression"
+        // Unqualified: it sits against the Patterns segment that selected it,
+        // and "Pattern pattern expression" is what the long name reads as.
+        label="Expression"
         placeholder={placeholder}
         size="xs"
         allowMultiline={false}

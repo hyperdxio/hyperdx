@@ -2,12 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
 import { type Extension } from '@codemirror/state';
-import {
-  Box,
-  Flex,
-  SegmentedControl,
-  useMantineColorScheme,
-} from '@mantine/core';
+import { Box, Flex, useMantineColorScheme } from '@mantine/core';
 import CodeMirror, {
   EditorView,
   keymap,
@@ -28,29 +23,30 @@ import styles from './QueryEditor.module.scss';
 export type { QueryLanguage };
 export type QueryConfigMode = 'builder' | 'sql';
 
-const DEFAULT_LANGUAGES: QueryLanguage[] = ['lucene'];
 const EMPTY_FIELDS: string[] = [];
 
 export interface QueryEditorProps {
   /** Current query text (controlled). */
   value: string;
   onChange: (value: string) => void;
-  /** Language (controlled). */
+  /** Language (controlled) — drives syntax highlighting and autocomplete. */
   language: QueryLanguage;
-  onLanguageChange: (language: QueryLanguage) => void;
-  /** Which languages appear in the toggle (also controls order). */
-  languages?: QueryLanguage[];
-  /** Disclosure control for the SQL panel, shown at the far left of the header. */
+  /** Left addon naming the expression language, flush inside the field. */
+  addonSlot?: React.ReactNode;
+  /**
+   * Discloses the full-statement editor. Sits outside the field, because the
+   * statement is the larger thing: the field is one clause inside it, spliced
+   * in wherever `$__filters` appears. Nesting this control in the field would
+   * have that backwards.
+   */
   sqlToggle?: React.ReactNode;
   /**
    * SQL editor revealed under the search input. The search input stays visible
    * either way — SQL is an addition to the query, never a replacement for it.
    */
   sqlPanel?: React.ReactNode;
-  /** Right-aligned header controls (date picker, Live, Run, ...). */
+  /** Time picker, Live and Run, on the same row as the field. */
   rightSection?: React.ReactNode;
-  /** Extra node next to the language tabs (e.g. a syntax-help button). */
-  leftSection?: React.ReactNode;
   /** Active filter chips rendered inside the bordered input, before the editor. */
   filtersSlot?: React.ReactNode;
   /** Trailing control inside the input, after the editor (e.g. "Add filter"). */
@@ -76,21 +72,19 @@ export interface QueryEditorProps {
 }
 
 /**
- * Presentational query editor: a header of controls above a CodeMirror search
- * input, with an optional SQL editor disclosed beneath it. The body auto-grows
- * with its content (wrapping long lines) up to `maxHeight` before scrolling.
- * Fully controlled — value and language are owned by the caller.
+ * Presentational query editor: one row holding a CodeMirror search field and
+ * the time/run controls, with an optional full-statement editor disclosed
+ * beneath. The field auto-grows with its content (wrapping long lines) up to
+ * `maxHeight` before scrolling. Fully controlled — the caller owns the value.
  */
 export function QueryEditor({
   value,
   onChange,
   language,
-  onLanguageChange,
-  languages = DEFAULT_LANGUAGES,
+  addonSlot,
   sqlToggle,
   sqlPanel,
   rightSection,
-  leftSection,
   filtersSlot,
   addFilterSlot,
   onRemoveLastFilter,
@@ -183,77 +177,51 @@ export function QueryEditor({
     });
   }, []);
 
-  const showLanguageToggle = languages.length > 1;
-
   return (
     <Box className={styles.card} data-testid="explore-query-editor">
-      <Flex align="center" gap="sm" className={styles.header}>
-        <Flex align="center" gap="xs" wrap="nowrap">
-          {sqlToggle}
-          {showLanguageToggle && (
-            <SegmentedControl
-              size="xs"
-              value={language}
-              onChange={v => {
-                if (v === 'lucene' || v === 'sql') {
-                  onLanguageChange(v);
-                }
-              }}
-              data={languages.map(l => ({
-                value: l,
-                label: l === 'lucene' ? 'Search' : 'SQL',
-              }))}
-              aria-label="Query language"
-            />
-          )}
-          {leftSection}
-        </Flex>
-        <Flex
-          align="center"
-          gap="sm"
-          ml="auto"
-          wrap="nowrap"
-          className={styles.controls}
-        >
+      <Flex align="center" gap="sm" wrap="nowrap" className={styles.row}>
+        <Box className={styles.field} data-testid={dataTestId}>
+          {addonSlot}
+          <Box className={styles.body}>
+            {filtersSlot != null && (
+              <Box className={styles.filters}>{filtersSlot}</Box>
+            )}
+            <Box className={styles.editor}>
+              <CodeMirror
+                ref={ref}
+                value={value}
+                onChange={onChange}
+                onFocus={handleFocus}
+                onBlur={onBlur}
+                placeholder={placeholder}
+                theme={colorScheme === 'dark' ? 'dark' : 'light'}
+                extensions={extensions}
+                height="auto"
+                minHeight="24px"
+                maxHeight={`${maxHeight}px`}
+                basicSetup={{
+                  lineNumbers: false,
+                  foldGutter: false,
+                  highlightActiveLine: false,
+                  highlightActiveLineGutter: false,
+                  autocompletion: false,
+                  bracketMatching: true,
+                  closeBrackets: true,
+                  searchKeymap: false,
+                  // See queryEditorLanguage.ts — Lucene StreamLanguage
+                  // highlighting throws `tags is not iterable`.
+                  syntaxHighlighting: false,
+                }}
+              />
+            </Box>
+            <Box className={styles.actions}>{addFilterSlot}</Box>
+          </Box>
+        </Box>
+        {sqlToggle}
+        <Flex align="center" gap="sm" wrap="nowrap" className={styles.controls}>
           {rightSection}
         </Flex>
       </Flex>
-      <Box className={styles.body} data-testid={dataTestId}>
-        {filtersSlot != null && (
-          <Box className={styles.filters}>{filtersSlot}</Box>
-        )}
-        <Box className={styles.editor}>
-          <CodeMirror
-            ref={ref}
-            value={value}
-            onChange={onChange}
-            onFocus={handleFocus}
-            onBlur={onBlur}
-            placeholder={placeholder}
-            theme={colorScheme === 'dark' ? 'dark' : 'light'}
-            extensions={extensions}
-            height="auto"
-            minHeight="24px"
-            maxHeight={`${maxHeight}px`}
-            basicSetup={{
-              lineNumbers: false,
-              foldGutter: false,
-              highlightActiveLine: false,
-              highlightActiveLineGutter: false,
-              autocompletion: false,
-              bracketMatching: true,
-              closeBrackets: true,
-              searchKeymap: false,
-              // See queryEditorLanguage.ts — Lucene StreamLanguage
-              // highlighting throws `tags is not iterable`.
-              syntaxHighlighting: false,
-            }}
-          />
-        </Box>
-        {addFilterSlot != null && (
-          <Box className={styles.addFilter}>{addFilterSlot}</Box>
-        )}
-      </Box>
       {sqlPanel}
     </Box>
   );

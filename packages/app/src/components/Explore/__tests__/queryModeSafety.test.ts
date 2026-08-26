@@ -1,31 +1,12 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { getDefaultExploreLanguage } from '@/components/Explore/queryModeSafety';
 
-import {
-  getDefaultExploreLanguage,
-  getExploreWhereLanguage,
-  setExploreWhereLanguage,
-} from '@/components/Explore/queryModeSafety';
+describe('getDefaultExploreLanguage', () => {
+  it('authors SQL, so the search box and the full query speak one language', () => {
+    expect(getDefaultExploreLanguage()).toBe('sql');
+  });
 
-describe('queryModeSafety', () => {
-  describe('explore language preference', () => {
-    beforeEach(() => {
-      window.localStorage.clear();
-    });
-
-    it('defaults to lucene for every source kind', () => {
-      expect(getDefaultExploreLanguage(SourceKind.Log)).toBe('lucene');
-      expect(getDefaultExploreLanguage(SourceKind.Trace)).toBe('lucene');
-      expect(getDefaultExploreLanguage(SourceKind.Session)).toBe('lucene');
-      expect(getDefaultExploreLanguage(SourceKind.Metric)).toBe('lucene');
-      expect(getDefaultExploreLanguage()).toBe('lucene');
-    });
-
-    it('remembers the last language per source kind', () => {
-      setExploreWhereLanguage(SourceKind.Log, 'sql');
-      setExploreWhereLanguage(SourceKind.Metric, 'lucene');
-      expect(getExploreWhereLanguage(SourceKind.Log)).toBe('sql');
-      expect(getExploreWhereLanguage(SourceKind.Metric)).toBe('lucene');
-      expect(getExploreWhereLanguage(SourceKind.Trace)).toBe('lucene');
-    });
+  it('ignores any stored preference from when the page had a language switch', () => {
+    window.localStorage.setItem('hdx-explore-where-language:log', 'lucene');
+    expect(getDefaultExploreLanguage()).toBe('sql');
   });
 });

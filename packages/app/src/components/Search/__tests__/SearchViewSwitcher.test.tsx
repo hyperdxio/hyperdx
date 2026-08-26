@@ -38,9 +38,9 @@ describe('SearchViewSwitcher', () => {
     expect(onChange).toHaveBeenCalledWith('timeseries');
   });
 
-  it('picks pie from the chart type menu without selecting Charts first', async () => {
+  it('picks pie from the chart type menu', async () => {
     const user = userEvent.setup();
-    const onChange = renderSwitcher();
+    const onChange = renderSwitcher({ value: 'timeseries' });
 
     await user.click(screen.getByRole('button', { name: /Chart as/ }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pie' }));
@@ -49,7 +49,7 @@ describe('SearchViewSwitcher', () => {
 
   it('picks number from the chart type menu', async () => {
     const user = userEvent.setup();
-    const onChange = renderSwitcher();
+    const onChange = renderSwitcher({ value: 'timeseries' });
 
     await user.click(screen.getByRole('button', { name: /Chart as/ }));
     await user.click(await screen.findByRole('menuitem', { name: 'Number' }));
@@ -98,8 +98,30 @@ describe('SearchViewSwitcher', () => {
     expect(screen.getByTestId('visualize-as-button')).toHaveTextContent('Pie');
   });
 
-  it('keeps naming the chart type the switcher would return to', () => {
+  it('withholds the As control until a chart is on screen', () => {
     renderSwitcher({ value: 'list' });
+
+    expect(screen.queryByTestId('visualize-as-button')).not.toBeInTheDocument();
+  });
+
+  it('brings the As control back with the chart it belongs to', async () => {
+    const user = userEvent.setup();
+
+    function Harness() {
+      const [value, setValue] = useState<SearchView>('list');
+      return (
+        <SearchViewSwitcher
+          value={value}
+          onChange={setValue}
+          sourceKind={SourceKind.Log}
+        />
+      );
+    }
+
+    renderWithMantine(<Harness />);
+    expect(screen.queryByTestId('visualize-as-button')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Charts' }));
 
     expect(screen.getByTestId('visualize-as-button')).toHaveTextContent(
       'Time series',

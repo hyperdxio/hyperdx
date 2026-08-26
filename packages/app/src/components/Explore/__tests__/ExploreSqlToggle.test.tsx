@@ -4,22 +4,29 @@ import userEvent from '@testing-library/user-event';
 import { ExploreSqlToggle } from '@/components/Explore/ExploreSqlToggle';
 
 describe('ExploreSqlToggle', () => {
-  it('reads as plain SQL while the query is generated', () => {
+  it('stays icon-only while the query is still generated', () => {
     renderWithMantine(
       <ExploreSqlToggle open={false} edited={false} onToggle={jest.fn()} />,
     );
 
-    const button = screen.getByRole('button', { name: 'SQL' });
-    expect(button).toHaveTextContent('SQL');
-    expect(button).not.toHaveTextContent('edited');
+    const button = screen.getByRole('button', { name: 'Query editor' });
+    expect(button).toHaveTextContent('');
     expect(button).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('announces the query as edited once the user owns it', () => {
+  it('names the surface, not the language, so it survives a PromQL source', () => {
+    renderWithMantine(
+      <ExploreSqlToggle open={false} edited={false} onToggle={jest.fn()} />,
+    );
+
+    expect(screen.queryByRole('button', { name: /SQL/i })).toBeNull();
+  });
+
+  it('spells itself out once the user owns the query', () => {
     renderWithMantine(<ExploreSqlToggle open edited onToggle={jest.fn()} />);
 
-    const button = screen.getByRole('button', { name: 'SQL, edited' });
-    expect(button).toHaveTextContent('SQL edited');
+    const button = screen.getByRole('button', { name: 'Query editor, edited' });
+    expect(button).toHaveTextContent('Query edited');
     expect(button).toHaveAttribute('aria-expanded', 'true');
   });
 
@@ -30,7 +37,7 @@ describe('ExploreSqlToggle', () => {
       <ExploreSqlToggle open={false} edited={false} onToggle={onToggle} />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'SQL' }));
+    await user.click(screen.getByRole('button', { name: 'Query editor' }));
 
     expect(onToggle).toHaveBeenCalledTimes(1);
   });

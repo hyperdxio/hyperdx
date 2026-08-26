@@ -130,7 +130,10 @@ export function SearchViewSwitcher({
           data={segments}
         />
       )}
-      {chartViews.length > 0 && (
+      {/* Only while a chart is on screen: picking a chart type is a question
+          about the current view, and asking it beside a table of events offers
+          a setting that changes nothing you can see. */}
+      {chartViews.length > 0 && isChart && (
         <Menu withinPortal position="bottom-end">
           <div className={classes.asControl}>
             <Text size="xs" fw={500} className={classes.asLabel}>

@@ -14,6 +14,7 @@ export function ExploreResultsToolbar({
   stats,
   filterExpand,
   viewSwitcher,
+  viewControls,
   addToDashboard,
   overflowMenu,
   shapeControls,
@@ -23,6 +24,12 @@ export function ExploreResultsToolbar({
   stats?: React.ReactNode;
   filterExpand?: React.ReactNode;
   viewSwitcher: React.ReactNode;
+  /**
+   * The one control the current view needs to be read at all, sitting where the
+   * switcher's own chart-type picker does. The two never appear together, so
+   * the slot beside the switcher always belongs to whichever view is showing.
+   */
+  viewControls?: React.ReactNode;
   /** "Add to dashboard" action, shown only for chart-tile views. */
   addToDashboard?: React.ReactNode;
   /** Overflow (3-dots) menu holding secondary actions (SQL, export). */
@@ -46,6 +53,7 @@ export function ExploreResultsToolbar({
         >
           {filterExpand}
           {viewSwitcher}
+          {viewControls}
           {hasStats && <Divider orientation="vertical" my={4} />}
           {stats}
           {resultsCount}

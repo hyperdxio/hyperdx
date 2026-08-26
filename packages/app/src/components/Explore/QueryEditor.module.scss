@@ -6,26 +6,57 @@
   gap: 6px;
 }
 
-.header {
+.row {
   min-height: 34px;
 }
 
 .controls {
+  flex-shrink: 0;
   min-width: 0;
 }
 
-/* The builder editor keeps an input-style border so it still reads as an
-   editable field once the surrounding card is gone. Filter pills wrap inside
-   this field, with the CodeMirror region growing beside them. */
+/* The field keeps an input-style border so it still reads as editable once the
+   surrounding card is gone, and takes the row's slack so the time controls keep
+   their natural width. No `overflow: hidden` here, however tempting — it clips
+   CodeMirror's autocomplete popup; the addon rounds its own corners instead. */
+.field {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+  background-color: var(--color-bg-field);
+}
+
+/* Part of the field's frame, not a control sitting inside it — the addon fill
+   is what says so, the same way it does on the "As" picker. */
+.addon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-inline: 8px;
+  border-right: 1px solid var(--color-border);
+  border-start-start-radius: var(--mantine-radius-default);
+  border-end-start-radius: var(--mantine-radius-default);
+  background: var(--color-bg-field-addon);
+  color: var(--color-text-secondary);
+
+  &:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+  }
+}
+
+/* Filter pills wrap in here, with the CodeMirror region growing beside them. */
 .body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  flex: 1 1 auto;
   gap: 4px;
+  min-width: 0;
   padding: 3px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--mantine-radius-default);
-  background-color: var(--color-bg-field);
 }
 
 .editor {
@@ -36,11 +67,15 @@
 
 /* Trailing action inside the field. Keeps its width so the editor, not the
    button, absorbs the wrapping when filter pills fill the row. */
-.addFilter {
+.actions {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   margin-left: auto;
+
+  &:empty {
+    display: none;
+  }
 }
 
 /* Marks the SQL query as hand-edited: small enough to ignore while scanning

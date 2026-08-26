@@ -1,42 +1,14 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
-
-const EXPLORE_LANGUAGE_KEY_PREFIX = 'hdx-explore-where-language:';
-
 export type QueryLanguage = 'sql' | 'lucene';
 
-export function getDefaultExploreLanguage(_kind?: SourceKind): QueryLanguage {
-  return 'lucene';
-}
-
-export function getExploreWhereLanguage(kind?: SourceKind): QueryLanguage {
-  if (typeof window !== 'undefined' && kind != null) {
-    try {
-      const stored = window.localStorage.getItem(
-        `${EXPLORE_LANGUAGE_KEY_PREFIX}${kind}`,
-      );
-      if (stored === 'sql' || stored === 'lucene') {
-        return stored;
-      }
-    } catch {
-      // localStorage may throw in private browsing
-    }
-  }
-  return getDefaultExploreLanguage(kind);
-}
-
-export function setExploreWhereLanguage(
-  kind: SourceKind | undefined,
-  language: QueryLanguage,
-): void {
-  if (typeof window === 'undefined' || kind == null) {
-    return;
-  }
-  try {
-    window.localStorage.setItem(
-      `${EXPLORE_LANGUAGE_KEY_PREFIX}${kind}`,
-      language,
-    );
-  } catch {
-    // localStorage may throw in private browsing
-  }
+/**
+ * Explore is SQL-only: what you type in the search box is a WHERE clause, which
+ * is the same language as the full statement behind the code toggle. That is
+ * the whole point of the two coexisting — anything you learn in the box carries
+ * over when you open the statement.
+ *
+ * Lucene is still *rendered* when a saved search or a shared link carries it,
+ * so older searches keep working; there is just no way to author it here.
+ */
+export function getDefaultExploreLanguage(): QueryLanguage {
+  return 'sql';
 }
