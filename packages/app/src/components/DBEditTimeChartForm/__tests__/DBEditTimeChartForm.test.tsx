@@ -12,6 +12,14 @@ import userEvent from '@testing-library/user-event';
 import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
 
+/**
+ * These render the whole chart editor and drive it through user events, so
+ * individual tests routinely exceed Jest's 5s default when the suite competes
+ * for CPU with the rest of the run. Verified pre-existing: the slowest tests
+ * here time out the same way on a clean origin/main checkout.
+ */
+jest.setTimeout(20_000);
+
 // Mock the hooks that fetch data
 jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
   useFetchMetricResourceAttrs: jest.fn().mockReturnValue({
@@ -70,6 +78,57 @@ jest.mock('@/source', () => ({
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
   getFirstSeriesNumberFormat: jest.fn().mockReturnValue(undefined),
   useSources: jest.fn().mockReturnValue({ data: [] }),
+}));
+
+// What the stubbed explorer reports as staged when a metric is applied. The
+// `mock` prefix is required for a jest.mock factory to close over it.
+const mockStagedWhere: string[] = [];
+const mockStagedGroupBy: string[] = [];
+
+// The explorer has its own suite (MetricExplorer.test.tsx). Here it is stubbed
+// down to "emit a chosen metric", so these tests cover only the form wiring —
+// mounting the real tree six times pushed this suite past the 5s-per-test
+// budget under parallel load.
+jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
+  MetricExplorerModal: ({
+    opened,
+    onApply,
+  }: {
+    opened: boolean;
+    onApply: (selection: {
+      name: string;
+      type: string;
+      where: string[];
+      groupBy: string[];
+    }) => void;
+  }) =>
+    opened ? (
+      <div data-testid="metric-explorer-stub">
+        {(
+          [
+            ['gauge', 'test.metric.gauge'],
+            ['sum', 'test.metric.counter'],
+            ['histogram', 'test.metric.latency'],
+          ] as const
+        ).map(([type, name]) => (
+          <button
+            key={type}
+            type="button"
+            data-testid={`metric-explorer-pick-${type}`}
+            onClick={() =>
+              onApply({
+                name,
+                type,
+                where: mockStagedWhere,
+                groupBy: mockStagedGroupBy,
+              })
+            }
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    ) : null,
 }));
 
 jest.mock('../../MetricNameSelect', () => ({
