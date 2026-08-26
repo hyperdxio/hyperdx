@@ -4,7 +4,10 @@ import type {
   QueryInputs,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  Metadata,
+  MetadataCache,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -88,7 +91,7 @@ async function attachMetricNamePreviews({
     string,
     {
       clickhouseClient: ClickhouseClient;
-      metadata: ReturnType<typeof getMetadata>;
+      metadata: Metadata;
     }
   >();
   await Promise.all(
@@ -102,7 +105,8 @@ async function attachMetricNamePreviews({
       });
       clients.set(connectionId, {
         clickhouseClient,
-        metadata: getMetadata(clickhouseClient),
+        // Private cache keeps any such truncation scoped to this preview.
+        metadata: new Metadata(clickhouseClient, new MetadataCache()),
       });
     }),
   );

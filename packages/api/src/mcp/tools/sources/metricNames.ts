@@ -4,7 +4,7 @@ import {
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 
 import logger from '@/utils/logger';
 
@@ -51,7 +51,7 @@ export async function sampleMetricNamesForKind({
   maxNames = MAX_METRIC_NAMES_PER_KIND,
   enrich = true,
 }: {
-  metadata: ReturnType<typeof getMetadata>;
+  metadata: Metadata;
   clickhouseClient: ClickhouseClient;
   databaseName: string;
   tableName: string;
