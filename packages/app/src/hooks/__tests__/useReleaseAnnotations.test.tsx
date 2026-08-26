@@ -28,6 +28,15 @@ jest.mock('@/hooks/useChartConfig', () => ({
 jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },
 }));
+// A getter (rather than a plain value) so individual tests can flip
+// `mockIsLocalMode` without re-mocking the module.
+let mockIsLocalMode = false;
+jest.mock('@/config', () => ({
+  __esModule: true,
+  get IS_LOCAL_MODE() {
+    return mockIsLocalMode;
+  },
+}));
 
 // Untyped handle on the mocked hook. Going through the module object keeps the
 // mock's argument and return types loose, so the fixtures below don't need
@@ -597,7 +606,10 @@ describe('useReleaseAnnotations', () => {
     ];
 
   beforeEach(() => mockQuery([]));
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.clearAllMocks();
+    mockIsLocalMode = false;
+  });
 
   it('returns undefined and keeps the query idle when disabled', () => {
     mockQuery([{ firstSeen: '2026-07-01T00:30:00.000Z', version: '1.0.0' }]);
@@ -700,6 +712,22 @@ describe('useReleaseAnnotations', () => {
       expect(text).toContain('Service Version Expression');
       expect(text).toContain("Missing columns: 'ResourceAttributes'");
       expect(hrefs).toContain(`/team#source-${logSource.id}`);
+    });
+
+    // Regression: `/team` isn't reachable in local mode (e.g. the Vercel
+    // preview), so linking there would be a dead link.
+    it('omits the Team Settings link in local mode', () => {
+      mockIsLocalMode = true;
+      mockQueryError(new Error("Missing columns: 'ResourceAttributes'"));
+
+      renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      const { text, hrefs } = readNotificationMessage(call.message);
+      expect(text).toContain("doesn't match a column on this source");
+      expect(hrefs).toEqual([]);
     });
 
     // Real ClickHouse errors often echo the full rendered SQL, which is

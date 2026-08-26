@@ -13,6 +13,7 @@ import { Anchor, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { IS_LOCAL_MODE } from '@/config';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getChartColorInfo } from '@/utils';
@@ -457,7 +458,13 @@ export function useReleaseAnnotations(
                 <>
                   The version expression configured for release markers
                   doesn&apos;t match a column on this source.{' '}
-                  {source != null && (
+                  {/* `/team` isn't reachable in local mode (e.g. the Vercel
+                  preview) — same constraint DBRowSidePanelErrorState works
+                  around with a modal instead. A hook's notification content
+                  isn't part of a component tree a Modal could mount into, so
+                  just omit the link there rather than pointing at a dead
+                  route. */}
+                  {!IS_LOCAL_MODE && source != null && (
                     <Anchor
                       component={Link}
                       href={`/team#source-${source.id}`}
