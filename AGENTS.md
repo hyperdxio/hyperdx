@@ -106,6 +106,34 @@ before stopping.
    them). Use the shared helpers in
    `packages/api/src/utils/instrumentation.ts`. See
    [`agent_docs/observability.md`](agent_docs/observability.md).
+8. **Communication**: Be concise and straightforward - in chat, in code
+   comments, in commits, and in PR descriptions. See
+   [Communication style](#communication-style) below.
+
+## Communication style
+
+Write plainly. This applies to everything you produce: chat replies, code
+comments, commit messages, PR descriptions, and docs.
+
+- **Lead with the answer.** State the result first, then the detail that
+  supports it. No preamble, no restating the request back at the reader.
+- **Cut filler.** Drop hedges ("it seems like", "essentially", "basically"),
+  intensifiers ("very", "extremely", "quite"), and throat-clearing ("in order
+  to" → "to"). Prefer short concrete words over long abstract ones.
+- **Keep summaries short.** A handful of bullets or a short paragraph. Don't
+  recap what the diff already shows, and don't restate one point in three
+  different phrasings.
+- **No self-narration.** Skip the play-by-play of your own process, the options
+  you rejected, and the victory lap ("Perfect!", "All done!"). Report what
+  changed and what is still broken.
+- **Comments explain _why_, not _what_.** The code already says what it does.
+  Omit the comment when the line is self-evident; write one when a choice needs
+  justification — a workaround, a non-obvious constraint, a ClickHouse quirk. No
+  banner comments, no ASCII section dividers, and no `// increment the counter`
+  restatements. This applies to test bodies too: don't narrate each step of a
+  test that already reads top-to-bottom.
+- **Say it straight.** If something is broken, unverified, or skipped, say so in
+  one sentence. Don't soften bad news and don't oversell partial work.
 
 ## Running Tests
 
