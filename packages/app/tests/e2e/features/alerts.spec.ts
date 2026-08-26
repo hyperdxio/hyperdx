@@ -66,11 +66,10 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
         ).toBeVisible({ timeout: 10000 });
         // The provider models saved-search alerts, so this one is offered for
         // import.
-        await expect(
-          alertsPage
-            .getAlertCardByName(savedSearchName)
-            .locator('[data-testid^="terraform-popover-button-"]'),
-        ).toBeVisible();
+        await alertsPage.openRowMenu(
+          alertsPage.getAlertCardByName(savedSearchName),
+        );
+        await expect(alertsPage.terraformMenuItem).toBeVisible();
       });
     },
   );
@@ -132,12 +131,9 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
         // Tile alerts have no Terraform resource, so they must not be offered
-        // for import — this is the eligibility branch in AlertsPage.
-        await expect(
-          alertsPage
-            .getAlertCardByName(tileName)
-            .locator('[data-testid^="terraform-popover-button-"]'),
-        ).toBeHidden();
+        // for import — this is the eligibility branch in AlertRowMenu.
+        await alertsPage.openRowMenu(alertsPage.getAlertCardByName(tileName));
+        await expect(alertsPage.terraformMenuItem).toBeHidden();
       });
     },
   );
