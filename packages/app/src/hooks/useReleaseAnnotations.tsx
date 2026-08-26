@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { isMissingColumnError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   Filter,
@@ -22,6 +23,7 @@ export const DEFAULT_VERSION_EXPRESSION =
   "ResourceAttributes['service.version']";
 
 const RELEASE_EMPTY_NOTIFICATION_ID = 'release-markers-empty';
+const RELEASE_ERROR_NOTIFICATION_ID = 'release-markers-error';
 
 /** Distinct versions fetched per window. Far above any real release cadence. */
 const MAX_RELEASE_ROWS = 500;
@@ -372,7 +374,7 @@ export function useReleaseAnnotations(
     scopeKey,
   ]);
 
-  const { data, isFetching } = useQueriedChartConfig(config, {
+  const { data, isFetching, isError, error } = useQueriedChartConfig(config, {
     enabled: enabled && isSupported,
   });
 
@@ -386,19 +388,35 @@ export function useReleaseAnnotations(
     return mapped.length ? mapped : undefined;
   }, [enabled, data, windowStartMs]);
 
-  // Toggling markers on and seeing nothing reads as broken, and the common
-  // cause is simply that the service does not emit `service.version`. Say so
-  // once (Mantine dedupes concurrent tiles by notification id).
+  // Toggling markers on and seeing nothing reads as broken. The common cause
+  // is simply that the service does not emit `service.version`, but the
+  // configured expression can also reference a column the source's table
+  // doesn't have (e.g. no `ResourceAttributes` at all) — a query error the
+  // chart otherwise renders identically to "no releases", with no signal to
+  // the user. Distinguish the two, each once (Mantine dedupes concurrent
+  // tiles by notification id).
   const hasWarnedRef = useRef(false);
   useEffect(() => {
     if (!enabled) {
       hasWarnedRef.current = false;
       return;
     }
-    if (isFetching || data == null || annotations != null) {
+    if (isFetching || hasWarnedRef.current) {
       return;
     }
-    if (hasWarnedRef.current) {
+    if (isError) {
+      hasWarnedRef.current = true;
+      notifications.show({
+        id: RELEASE_ERROR_NOTIFICATION_ID,
+        color: 'red',
+        title: "Couldn't load release markers",
+        message: isMissingColumnError(error)
+          ? "The version expression configured for release markers doesn't match a column on this source. Check the Service Version Expression setting on the source."
+          : `Release marker query failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+    if (data == null || annotations != null) {
       return;
     }
     hasWarnedRef.current = true;
@@ -409,7 +427,7 @@ export function useReleaseAnnotations(
       message:
         'Release markers come from changes in the version attribute configured on this source. No version changes were found in this time range - if you deploy without changing the version, there is nothing to mark.',
     });
-  }, [enabled, isFetching, data, annotations]);
+  }, [enabled, isFetching, isError, error, data, annotations]);
 
   return annotations;
 }

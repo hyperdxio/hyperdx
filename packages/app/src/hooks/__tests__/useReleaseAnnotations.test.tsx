@@ -35,6 +35,10 @@ const chartConfigModule: { useQueriedChartConfig: jest.Mock } =
   jest.requireMock('@/hooks/useChartConfig');
 const mockedUseQueriedChartConfig = chartConfigModule.useQueriedChartConfig;
 
+const notificationsModule: { notifications: { show: jest.Mock } } =
+  jest.requireMock('@mantine/notifications');
+const mockedNotificationsShow = notificationsModule.notifications.show;
+
 // Fully-formed sources, typed as their concrete kind rather than asserted, so
 // a schema change surfaces here instead of being silently cast away.
 const logSource: TLogSource = {
@@ -522,6 +526,16 @@ describe('useReleaseAnnotations', () => {
     mockedUseQueriedChartConfig.mockReturnValue({
       data: rows ? { data: rows } : undefined,
       isFetching,
+      isError: false,
+      error: null,
+    });
+
+  const mockQueryError = (error: Error) =>
+    mockedUseQueriedChartConfig.mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      isError: true,
+      error,
     });
 
   /** The config and options the hook last handed to `useQueriedChartConfig`. */
@@ -586,6 +600,56 @@ describe('useReleaseAnnotations', () => {
     );
 
     expect(result.current).toBeUndefined();
+  });
+
+  describe('query errors', () => {
+    // A query failure and a truly-empty result both leave `data` unset;
+    // without distinguishing `isError` the two look identical to the user.
+    it('warns distinctly on a query error rather than reporting "no releases found"', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { result } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      expect(result.current).toBeUndefined();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+      expect(mockedNotificationsShow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'release-markers-error',
+          color: 'red',
+          message: expect.stringContaining('Timeout exceeded'),
+        }),
+      );
+    });
+
+    // The scenario in question: a source configured for release markers
+    // whose table has no matching column (e.g. no `ResourceAttributes`).
+    it('gives an actionable hint for a missing-column error', () => {
+      mockQueryError(new Error("Missing columns: 'ResourceAttributes'"));
+
+      renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      expect(mockedNotificationsShow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'release-markers-error',
+          message: expect.stringContaining('Service Version Expression'),
+        }),
+      );
+    });
+
+    it('warns only once while the error persists', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+      rerender();
+
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("uses the source's configured version expression", () => {
