@@ -678,6 +678,37 @@ describe('useReleaseAnnotations', () => {
     );
   });
 
+  // Regression: unlike a structural error, "no releases found" is inherently
+  // per-window -- a different range can genuinely have different releases --
+  // so an unchanged scope must not suppress a second window's empty warning.
+  it('warns again for a new window even if a previous window already warned empty', () => {
+    // A timestamp before any window in this test, so every window maps to
+    // the same "genuinely empty" result regardless of its bounds.
+    mockQuery([{ firstSeen: '2000-01-01T00:00:00.000Z', version: '1.0.0' }]);
+
+    const { rerender } = renderHook(
+      ({ range }: { range: [Date, Date] }) =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      { initialProps: { range } },
+    );
+    expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+    expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'release-markers-empty' }),
+    );
+
+    rerender({
+      range: [
+        new Date(range[0].getTime() + 24 * 60 * 60_000),
+        new Date(range[1].getTime() + 24 * 60 * 60_000),
+      ],
+    });
+
+    expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+    expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'release-markers-empty' }),
+    );
+  });
+
   describe('query errors', () => {
     // A query failure and a truly-empty result both leave `data` unset;
     // without distinguishing `isError` the two look identical to the user.

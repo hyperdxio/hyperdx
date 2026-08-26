@@ -412,39 +412,49 @@ export function useReleaseAnnotations(
   // the user. Distinguish the two (Mantine dedupes concurrent tiles by
   // notification id).
   //
-  // Tracks *which* warning last fired rather than a plain boolean, so a
-  // scope that flips from one problem kind to the other (or recovers and
-  // later fails again) still gets its own warning instead of being
-  // suppressed by an earlier, different-kind warning on the same query.
-  const lastWarningRef = useRef<'error' | 'empty' | null>(null);
+  // The two warnings latch on different identities, because they mean
+  // different things: an error is a scope-wide problem (e.g. a missing
+  // column persists regardless of which window you're looking at), so
+  // panning shouldn't re-show it — but "no releases found" is inherently
+  // per-window (a different range can genuinely have different releases),
+  // so a new window's empty result deserves its own notification even on an
+  // unchanged scope. Two independent latches (rather than one "last warned
+  // kind") keep those two reset rules from fighting each other: a run of
+  // empty windows must not reset the error latch, and vice versa.
+  const hasWarnedErrorRef = useRef(false);
+  const hasWarnedEmptyRef = useRef(false);
   // A changed *scope* (source, version expression, or the tile's own
-  // filters) is a genuinely new query and deserves its own warning even if
-  // the previous one already latched. The visible time range is excluded —
-  // a live-tailing dashboard reslices it every `BUCKET_MS`, but panning the
-  // range rarely changes whether a structural error (e.g. a missing column)
-  // still applies, so including it here would re-show the same error on a
-  // timer. Detected inline (rather than a separate effect keyed on scope) so
-  // every `lastWarningRef` mutation lives in one place and doesn't depend on
-  // effect declaration order.
+  // filters) is a genuinely new query, so it resets both latches. A changed
+  // *window* only resets the empty latch — see above. Detected inline
+  // (rather than separate effects) so every latch mutation lives in one
+  // place and doesn't depend on effect declaration order.
   const scopeIdentity = `${source?.id ?? ''}::${versionExpression}::${scopeKey}`;
+  const windowIdentity = `${windowStartMs}::${windowEndMs}`;
   const prevScopeRef = useRef(scopeIdentity);
+  const prevWindowRef = useRef(windowIdentity);
   useEffect(() => {
     if (prevScopeRef.current !== scopeIdentity) {
       prevScopeRef.current = scopeIdentity;
-      lastWarningRef.current = null;
+      hasWarnedErrorRef.current = false;
+      hasWarnedEmptyRef.current = false;
+    }
+    if (prevWindowRef.current !== windowIdentity) {
+      prevWindowRef.current = windowIdentity;
+      hasWarnedEmptyRef.current = false;
     }
     if (!enabled) {
-      lastWarningRef.current = null;
+      hasWarnedErrorRef.current = false;
+      hasWarnedEmptyRef.current = false;
       return;
     }
     if (isFetching) {
       return;
     }
     if (isError) {
-      if (lastWarningRef.current === 'error') {
+      if (hasWarnedErrorRef.current) {
         return;
       }
-      lastWarningRef.current = 'error';
+      hasWarnedErrorRef.current = true;
       const rawMessage = error instanceof Error ? error.message : String(error);
       const truncatedMessage = truncateForNotification(rawMessage);
       notifications.show({
@@ -486,18 +496,19 @@ export function useReleaseAnnotations(
       });
       return;
     }
+    // A non-error result recovers the error latch: a later failure of this
+    // scope is a new problem, not a continuation of one already shown.
+    hasWarnedErrorRef.current = false;
     if (annotations != null) {
-      // A healthy result clears the latch so a later problem warns again.
-      lastWarningRef.current = null;
       return;
     }
     if (data == null) {
       return;
     }
-    if (lastWarningRef.current === 'empty') {
+    if (hasWarnedEmptyRef.current) {
       return;
     }
-    lastWarningRef.current = 'empty';
+    hasWarnedEmptyRef.current = true;
     notifications.show({
       id: RELEASE_EMPTY_NOTIFICATION_ID,
       color: 'yellow',
@@ -513,6 +524,7 @@ export function useReleaseAnnotations(
     data,
     annotations,
     scopeIdentity,
+    windowIdentity,
     source,
   ]);
 
