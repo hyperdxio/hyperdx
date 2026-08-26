@@ -4720,6 +4720,7 @@ __metadata:
     "@next/eslint-plugin-next": "npm:^16.0.10"
     "@playwright/test": "npm:^1.57.0"
     "@prometheus-io/codemirror-promql": "npm:^0.311.3"
+    "@rrweb/replay": "npm:2.1.1"
     "@storybook/addon-docs": "npm:^10.1.4"
     "@storybook/addon-links": "npm:^10.1.4"
     "@storybook/addon-styling-webpack": "npm:^3.0.0"
@@ -4800,7 +4801,6 @@ __metadata:
     recharts: "npm:^3.2.1"
     remark-gfm: "npm:^4.0.1"
     rimraf: "npm:^4.4.1"
-    rrweb: "npm:2.1.1"
     sass: "npm:^1.54.8"
     serve: "npm:^14.0.0"
     sql-formatter: "npm:^15.7.2"
@@ -4890,6 +4890,7 @@ __metadata:
     sql-formatter: "npm:^15.7.2"
     sqlstring: "npm:^2.3.3"
     ts-jest: "npm:^29.4.11"
+    tsc-alias: "npm:^1.8.8"
     tsup: "npm:^8.4.0"
     typescript: "npm:^6.0.3"
     zod: "npm:3.25"
@@ -8961,6 +8962,16 @@ __metadata:
   version: 4.59.0
   resolution: "@rollup/rollup-win32-x64-msvc@npm:4.59.0"
   conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@rrweb/replay@npm:2.1.1":
+  version: 2.1.1
+  resolution: "@rrweb/replay@npm:2.1.1"
+  dependencies:
+    "@rrweb/types": "npm:^2.1.1"
+    rrweb: "npm:^2.1.1"
+  checksum: 10c0/a1d6fadf1bee5e7844923725d0f76df9628fae833307bfe2372085946aedfeba884d3b6b996c2daa6b1ee75e979cd0b771d5510dd058c5cb42bc8e004d41775b
   languageName: node
   linkType: hard
 
@@ -26263,7 +26274,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rrweb@npm:2.1.1":
+"rrweb@npm:^2.1.1":
   version: 2.1.1
   resolution: "rrweb@npm:2.1.1"
   dependencies:

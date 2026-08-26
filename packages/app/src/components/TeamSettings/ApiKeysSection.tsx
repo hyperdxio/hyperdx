@@ -1,39 +1,32 @@
-import { useState } from 'react';
-import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { Box, Button, Card, Divider, Group, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconClipboard } from '@tabler/icons-react';
 
 import api from '@/api';
+import { RevealSnippet } from '@/components/RevealSnippet/RevealSnippet';
 import { useConfirm } from '@/useConfirm';
 
+// The reveal Input fills its container, so cap its width here at the parent.
+const KEY_FIELD_MAX_WIDTH = 420;
+
+/** Masked, read-only API-key field with an inline reveal eye and copy icon. */
 function APIKeyCopyButton({
   value,
   dataTestId,
+  ariaLabel,
 }: {
   value: string;
   dataTestId?: string;
+  ariaLabel?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-
   return (
-    <CopyToClipboard text={value}>
-      <Button
-        onClick={() => setCopied(true)}
-        variant={copied ? 'light' : 'default'}
-        color="gray"
-        rightSection={
-          <Group wrap="nowrap" gap={4} ms="xs">
-            {copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
-            {copied ? 'Copied!' : 'Copy'}
-          </Group>
-        }
-      >
-        <div data-testid={dataTestId} className="text-wrap text-break">
-          {value}
-        </div>
-      </Button>
-    </CopyToClipboard>
+    <RevealSnippet value={value} secrets={[value]}>
+      <RevealSnippet.Input
+        aria-label={ariaLabel}
+        data-testid={dataTestId}
+        revealLabel="Reveal key"
+        copyLabel="Copy key"
+      />
+    </RevealSnippet>
   );
 }
 
@@ -119,12 +112,15 @@ export default function ApiKeysSection() {
       <Divider my="md" />
       <Card mb="md">
         <Text mb="md">Ingestion API key</Text>
-        <Group gap="xs">
+        <Group gap="xs" align="flex-start" wrap="nowrap">
           {team?.apiKey && (
-            <APIKeyCopyButton
-              value={team.apiKey}
-              dataTestId="ingestion-api-key"
-            />
+            <Box flex={1} miw={0} maw={KEY_FIELD_MAX_WIDTH}>
+              <APIKeyCopyButton
+                value={team.apiKey}
+                dataTestId="ingestion-api-key"
+                ariaLabel="Ingestion API key"
+              />
+            </Box>
           )}
           {hasAdminAccess && (
             <Button
@@ -141,11 +137,14 @@ export default function ApiKeysSection() {
         <Card>
           <Card.Section p="md">
             <Text mb="md">Personal API access key</Text>
-            <Group gap="xs">
-              <APIKeyCopyButton
-                value={me.accessKey}
-                dataTestId="personal-access-key"
-              />
+            <Group gap="xs" align="flex-start" wrap="nowrap">
+              <Box flex={1} miw={0} maw={KEY_FIELD_MAX_WIDTH}>
+                <APIKeyCopyButton
+                  value={me.accessKey}
+                  dataTestId="personal-access-key"
+                  ariaLabel="Personal API access key"
+                />
+              </Box>
               <Button
                 data-testid="rotate-access-key-button"
                 variant="danger"
