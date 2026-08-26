@@ -1,4 +1,7 @@
-import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertErrorType,
+  AlertNotificationTargetTiming,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import ms from 'ms';
 
@@ -28,6 +31,12 @@ export interface IAlertHistoryAnalytics {
    * (expected buckets − 1). 0 in steady state.
    */
   backfilledBuckets?: number;
+  /**
+   * Per-target breakdown of `webhookDurationMs`, one entry per distinct
+   * target, slowest first. Targets dispatch concurrently, so these do not sum
+   * to `webhookDurationMs`. Absent when the evaluation sent nothing.
+   */
+  notificationTargets?: AlertNotificationTargetTiming[];
 }
 
 export interface IAlertHistory {
@@ -105,6 +114,19 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
       queryDurationMs: { type: Number, required: false },
       webhookDurationMs: { type: Number, required: false },
       backfilledBuckets: { type: Number, required: false },
+      notificationTargets: {
+        type: [
+          {
+            _id: false,
+            target: { type: String, required: true },
+            durationMs: { type: Number, required: true },
+            dispatches: { type: Number, required: true },
+            failures: { type: Number, required: true },
+          },
+        ],
+        required: false,
+        default: undefined,
+      },
     },
     required: false,
     default: undefined,
