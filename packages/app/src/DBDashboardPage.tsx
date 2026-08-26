@@ -3052,7 +3052,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Tooltip>
       <Tooltip
         withArrow
-        label="Edit Filters and Variables"
+        label="Edit filters and variables"
         fz="xs"
         color="gray"
       >
