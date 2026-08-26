@@ -1,9 +1,16 @@
+import lucene from '@hyperdx/lucene';
+
 import {
   escapeSqlString,
   isQuoteEscapedByBackslash,
   splitAndTrimWithBracket,
 } from './core/utils';
 import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
+import {
+  decodeSpecialTokensToSource,
+  encodeSpecialTokens,
+  IMPLICIT_FIELD,
+} from './queryParser';
 import {
   ChartConfigWithOptDateRange,
   ChartVariable,
@@ -392,13 +399,8 @@ export type VariableContext = {
   variables: ChartVariable[];
   /** Format used by references that don't request one. */
   defaultFormat: VariableFormat;
-  /**
-   * When true, `$__filter` and `$__conditionalAll` are left exactly as
-   * written. They expand to SQL predicates, so they have no meaning in a
-   * Lucene expression — expanding one there would splice SQL into a query
-   * that is about to be parsed as Lucene.
-   */
-  disableMacros?: boolean;
+  /** The language whatever consumes the result will parse it as. */
+  inputLanguage: NonNullable<SearchConditionLanguage>;
 };
 
 const sqlNoOp = (name: string) =>
@@ -561,35 +563,226 @@ export function expandVariableToken(
   );
 }
 
-/**
- * Expand references, leaving each variable macro exactly as written — argument
- * list and all, so the `$name` argument that names the variable survives too.
- *
- * The macros are still *scanned* rather than left to the text branch, which is
- * what makes "exactly as written" true: their arguments are never visited, so
- * nothing inside one is substituted. A macro missing its closing paren is
- * tolerated (`skip`), since this runs over expressions as they are typed.
- */
-function substituteReferencesOnly(input: string, ctx: VariableContext): string {
-  return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
-    onMalformed: 'skip',
-  })
-    .map(token => {
-      if (token.kind === 'text') return token.text;
-      if (token.kind === 'macro') return token.raw;
-      return expandVariableToken(token, ctx);
-    })
-    .join('');
+/** Expand the given token without applying lucene-specific rewrites. */
+function expandTokenWithoutLuceneRewrites(
+  token: TemplateToken,
+  ctx: VariableContext,
+): string {
+  if (token.kind === 'text') return token.text;
+  if (token.kind === 'macro') return token.raw;
+  return expandVariableToken(token, ctx);
 }
 
-function substituteWithContext(input: string, ctx: VariableContext): string {
-  if (ctx.disableMacros) return substituteReferencesOnly(input, ctx);
+/**
+ * Renders Lucene syntax for a field being exact-matched against any of the given values.
+ * eg. `field:"value1" OR field:"value2" OR field:"value3"`
+ **/
+const formatDistributedLuceneValues = (field: string, values: string[]) =>
+  `(${values
+    .map(value => `${field}:"${escapeLuceneValue(value)}"`)
+    .join(' OR ')})`;
 
-  return expandTemplate(input, {
-    macroNames: VARIABLE_MACRO_NAMES,
-    expandMacro: token => expandVariableToken(token, ctx),
-    expandReference: token => expandVariableToken(token, ctx),
-  });
+/** A non-text token's placeholder term and its span in the sentinel string. */
+type Sentinel = {
+  token: Exclude<TemplateToken, { kind: 'text' }>;
+  sentinel: string;
+  offset: number;
+};
+
+/** What a rewritten reference emits, and the span of text it replaces. */
+type LuceneRewrite = { start: number; end: number; text: string };
+
+/**
+ * The values a variable reference renders when it renders in the lucene format.
+ * `undefined` if the token is not a lucene formatted variable reference or if
+ * the referenced variable is not found.
+ */
+function getLuceneFormattedValues(
+  token: TemplateToken,
+  ctx: VariableContext,
+): string[] | undefined {
+  if (token.kind === 'text' || token.kind === 'macro') return undefined;
+  const requestedFormat = token.kind === 'braced' ? token.format : undefined;
+  if ((requestedFormat ?? ctx.defaultFormat) !== 'lucene') return undefined;
+  return ctx.variables.find(variable => variable.name === token.name)?.values;
+}
+
+/**
+ * Index every `NodeTerm` in an AST by the offset of its term text,
+ * writing them to `termsByOffset`.
+ * */
+function indexLuceneTermsByOffset(
+  node: lucene.AST | lucene.Node | null | undefined,
+  termsByOffset: Map<number, lucene.NodeTerm>,
+): void {
+  if (node == null) return;
+
+  if ('termLocation' in node) {
+    termsByOffset.set(
+      // A quoted node's `termLocation` starts at the opening quote,
+      // so +1 to get offset of the actual term text.
+      node.termLocation.start.offset + (node.quoted ? 1 : 0),
+      node,
+    );
+    return;
+  }
+
+  if ('left' in node) {
+    indexLuceneTermsByOffset(node.left, termsByOffset);
+    if ('right' in node) indexLuceneTermsByOffset(node.right, termsByOffset);
+  }
+}
+
+/**
+ * Returns the lucene exact-match behavior for a quoted field reference, if the
+ * given sentinel is a quoted field reference in the given sentinel string.
+ * Otherwise returns undefined.
+ *
+ * @param runStart is the offset the last rewrite ended at.
+ */
+function rewriteQuotedVariableReference(
+  sentinel: Sentinel,
+  sentinelString: string,
+  termsByOffset: Map<number, lucene.NodeTerm>,
+  ctx: VariableContext,
+  runStart: number,
+): LuceneRewrite | undefined {
+  // If the variable does not exist, then no rewrite is possible
+  const values = getLuceneFormattedValues(sentinel.token, ctx);
+  if (values == null) return undefined;
+
+  // Find the Lucene AST node that corresponds to this token's sentinel
+  const node = termsByOffset.get(sentinel.offset);
+
+  // If the sentinel is not being used in the form Field:"$var", apply no rewrite.
+  if (
+    node == null ||
+    node.term !== sentinel.sentinel ||
+    !node.quoted ||
+    node.field === IMPLICIT_FIELD ||
+    node.fieldLocation == null
+  ) {
+    return undefined;
+  }
+
+  // The offset in the sentinel string where the field name starts
+  const fieldStart = node.fieldLocation.start.offset;
+
+  // If the field starts in a section that has been rewritten already,
+  // skip the rewrite to avoid overlapping rewrites.
+  if (fieldStart < runStart) return undefined;
+
+  // Find the closing quote from the sentinel rather than from `termLocation.end`,
+  // which swallows whatever whitespace follows the term.
+  const sentinelEnd = sentinel.offset + sentinel.sentinel.length;
+  if (sentinelString.charAt(sentinelEnd) !== '"') return undefined;
+
+  // `-field:x` is parsed with the `-` riding on `node.field`, and `-(…)`
+  // is not a shape the grammar accepts, so a negated reference has to come out
+  // as `NOT (…)` instead.
+  const negated = node.field.startsWith('-');
+  // The field is parsed from the encoded sentinel string, so restore the
+  // original spelling of any special sequences (e.g. an escaped colon).
+  const field = decodeSpecialTokensToSource(
+    negated ? node.field.slice(1) : node.field,
+  );
+  if (field === '') return undefined;
+
+  const span = { start: fieldStart, end: sentinelEnd + 1 };
+
+  // An empty selection stays the grouped no-op: `field:("")` compiles to `1=1`,
+  // where a distributed `field:""` would compare against the empty string
+  // instead. `-field:(…)` parses, so the `-` can stay on the field.
+  if (values.length === 0) {
+    return { ...span, text: `${negated ? '-' : ''}${field}:("")` };
+  }
+
+  return {
+    ...span,
+    text: `${negated ? 'NOT ' : ''}${formatDistributedLuceneValues(field, values)}`,
+  };
+}
+
+/**
+ * Substitute rendered values for variable tokens, with lucene-aware rewrites
+ * that provide exact-match semantics for quoted Field:"$var" references.
+ */
+function substituteTokensWithLuceneRewrites(
+  tokens: TemplateToken[],
+  ctx: VariableContext,
+): string {
+  // If no reference is rendered in the lucene format, the rewrite path is unnecessary.
+  const anyRewritable = tokens.some(
+    token => getLuceneFormattedValues(token, ctx) != null,
+  );
+  if (!anyRewritable) {
+    return tokens
+      .map(token => expandTokenWithoutLuceneRewrites(token, ctx))
+      .join('');
+  }
+
+  // Build the sentinel string, a string with all variable references replaced by
+  // unique placeholders, and record the locations of each of those placeholders.
+  // eg. Transform `field:"$service" AND $other` into `field:"__hdx_sentinel_0" AND __hdx_sentinel_1`.
+  // Text is encoded the same way the renderer encodes before parsing, so the
+  // grammar accepts sequences like `http://`; all recorded offsets are in
+  // encoded space, and untouched output is decoded back to its source spelling.
+  let sentinelString = '';
+  const sentinelLocations: Sentinel[] = [];
+  for (const token of tokens) {
+    if (token.kind === 'text') {
+      sentinelString += encodeSpecialTokens(token.text);
+      continue;
+    }
+    const sentinel = `__hdx_sentinel_${sentinelLocations.length}`;
+    sentinelLocations.push({ token, sentinel, offset: sentinelString.length });
+    sentinelString += sentinel;
+  }
+
+  // Parse the sentinel string into a lucene AST
+  let ast: lucene.AST;
+  try {
+    ast = lucene.parse(sentinelString);
+  } catch {
+    // If the lucene is not valid, fall back to the non-rewrite path
+    return tokens
+      .map(token => expandTokenWithoutLuceneRewrites(token, ctx))
+      .join('');
+  }
+
+  // Get the offset of every term's text in the sentinel string.
+  const termsByOffset = new Map<number, lucene.NodeTerm>();
+  indexLuceneTermsByOffset(ast, termsByOffset);
+
+  // Build the final output by replacing each sentinel with its rewritten expansion.
+  let rewrittenOutput = '';
+  let runStart = 0;
+  for (const region of sentinelLocations) {
+    const exactMatchRewrite = rewriteQuotedVariableReference(
+      region,
+      sentinelString,
+      termsByOffset,
+      ctx,
+      runStart,
+    );
+    if (exactMatchRewrite) {
+      const untouched = decodeSpecialTokensToSource(
+        sentinelString.slice(runStart, exactMatchRewrite.start),
+      );
+      const rewrite = exactMatchRewrite.text;
+      rewrittenOutput += untouched + rewrite;
+      runStart = exactMatchRewrite.end;
+    } else {
+      const untouched = decodeSpecialTokensToSource(
+        sentinelString.slice(runStart, region.offset),
+      );
+      const expanded = expandTokenWithoutLuceneRewrites(region.token, ctx);
+      rewrittenOutput += untouched + expanded;
+      runStart = region.offset + region.sentinel.length;
+    }
+  }
+  const remaining = decodeSpecialTokensToSource(sentinelString.slice(runStart));
+  return rewrittenOutput + remaining;
 }
 
 /**
@@ -600,34 +793,39 @@ function substituteWithContext(input: string, ctx: VariableContext): string {
  * both sets in one pass. This entry point is for the surfaces that only carry
  * variables (chart-builder where/having, PromQL expressions).
  */
-export function substituteVariables(
+export function substituteWithContext(
   input: string,
-  variables: ChartVariable[],
-  {
-    defaultFormat = 'sqlstring',
-    disableMacros,
-  }: { defaultFormat?: VariableFormat; disableMacros?: boolean } = {},
+  ctx: VariableContext,
 ): string {
-  return substituteWithContext(input, {
-    variables,
-    defaultFormat,
-    disableMacros,
+  if (ctx.inputLanguage === 'lucene') {
+    return substituteTokensWithLuceneRewrites(
+      // Variable macros are not supported in lucene, but we still scan for them so that
+      // downstream expansion doesn't attempt to expand variables referenced in their args.
+      scanTemplateTokens(input, VARIABLE_MACRO_NAMES, { onMalformed: 'skip' }),
+      ctx,
+    );
+  }
+
+  return expandTemplate(input, {
+    macroNames: VARIABLE_MACRO_NAMES,
+    expandMacro: token => expandVariableToken(token, ctx),
+    expandReference: token => expandVariableToken(token, ctx),
   });
 }
 
 /**
- * Expand a template for the language its renderer will parse it as.
- * A Lucene expression renders values in the `lucene` format and gets no macros.
+ * Expand a template for the language its renderer will parse it as, rendering
+ * values in the format that language reads.
  */
 export function substituteVariablesForLanguage(
   input: string,
   variables: ChartVariable[],
-  language: SearchConditionLanguage,
+  inputLanguage: NonNullable<SearchConditionLanguage>,
 ): string {
-  const isLucene = language === 'lucene';
-  return substituteVariables(input, variables, {
-    defaultFormat: isLucene ? 'lucene' : 'sqlstring',
-    disableMacros: isLucene,
+  return substituteWithContext(input, {
+    variables,
+    defaultFormat: inputLanguage === 'lucene' ? 'lucene' : 'sqlstring',
+    inputLanguage,
   });
 }
 
@@ -654,7 +852,7 @@ type BuilderVariableFields = {
  */
 type TemplateMapper = (
   template: string,
-  language: SearchConditionLanguage,
+  language: NonNullable<SearchConditionLanguage>,
 ) => string;
 
 const mapSelectList = (list: SelectList, map: TemplateMapper): SelectList =>

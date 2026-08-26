@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -38,7 +38,9 @@ import SourceSchemaPreview, {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useSource } from '@/source';
+import { useConfirm } from '@/useConfirm';
 import { getMetricTableName } from '@/utils';
+import { useZIndex } from '@/zIndex';
 
 import { MODAL_SIZE } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
@@ -95,6 +97,38 @@ export const DashboardFilterEditForm = ({
   } = useForm<DashboardFilter>({
     defaultValues: toFormValues(filter),
   });
+
+  const confirm = useConfirm();
+  // Read during render so react-hook-form subscribes this component to it.
+  const isDirty = formState.isDirty;
+
+  // Keep this modal below the root confirm dialog (Mantine's default 200) so
+  // the "discard unsaved changes?" prompt stacks on top of it — mirrors the
+  // tile editor's z-index handling.
+  const modalZIndex = useZIndex() + 10;
+
+  // Guards against re-entrancy while the confirm dialog is open: Mantine's
+  // focus management can re-fire the modal's onClose after the confirm modal
+  // closes, which would otherwise stack a second dialog.
+  const isConfirmingRef = useRef(false);
+
+  const handleClose = useCallback(() => {
+    if (isConfirmingRef.current) return;
+    if (!isDirty) {
+      onClose();
+      return;
+    }
+    isConfirmingRef.current = true;
+    confirm(
+      'You have unsaved changes. Discard them and close the editor?',
+      'Discard',
+    ).then(ok => {
+      isConfirmingRef.current = false;
+      if (ok) {
+        onClose();
+      }
+    });
+  }, [confirm, isDirty, onClose]);
 
   // Gates the auto-fill of Variable Name from Name below. Seeded true for a filter
   // that already has a stored name, because renaming an existing filter must not
@@ -213,8 +247,9 @@ export const DashboardFilterEditForm = ({
     <Modal
       title={isNew ? 'Add filter' : 'Edit filter'}
       opened
-      onClose={onClose}
+      onClose={handleClose}
       size={MODAL_SIZE}
+      zIndex={modalZIndex}
     >
       <form
         onSubmit={handleSubmit(values => {
