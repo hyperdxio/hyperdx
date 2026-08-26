@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { isMissingColumnError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
@@ -8,6 +9,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { Anchor, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
@@ -24,6 +26,19 @@ export const DEFAULT_VERSION_EXPRESSION =
 
 const RELEASE_EMPTY_NOTIFICATION_ID = 'release-markers-empty';
 const RELEASE_ERROR_NOTIFICATION_ID = 'release-markers-error';
+
+/**
+ * A ClickHouse error message often echoes the full rendered SQL, which reads
+ * as an unreadable wall of text in a toast. Truncating keeps the notification
+ * skimmable while still surfacing enough of the raw error to be useful.
+ */
+const RELEASE_ERROR_MESSAGE_MAX_LENGTH = 200;
+
+function truncateForNotification(message: string): string {
+  return message.length > RELEASE_ERROR_MESSAGE_MAX_LENGTH
+    ? `${message.slice(0, RELEASE_ERROR_MESSAGE_MAX_LENGTH)}…`
+    : message;
+}
 
 /** Distinct versions fetched per window. Far above any real release cadence. */
 const MAX_RELEASE_ROWS = 500;
@@ -397,19 +412,24 @@ export function useReleaseAnnotations(
   // notification id).
   //
   // Tracks *which* warning last fired rather than a plain boolean, so a
-  // config that flips from one problem kind to the other (or recovers and
+  // scope that flips from one problem kind to the other (or recovers and
   // later fails again) still gets its own warning instead of being
   // suppressed by an earlier, different-kind warning on the same query.
   const lastWarningRef = useRef<'error' | 'empty' | null>(null);
-  // A changed config is a genuinely new query (different range, filters, or
-  // source) — it deserves its own warning even if the previous query already
-  // latched one. Detected inline (rather than a separate effect keyed on
-  // `config`) so every `lastWarningRef` mutation lives in one place and
-  // doesn't depend on effect declaration order.
-  const prevConfigRef = useRef(config);
+  // A changed *scope* (source, version expression, or the tile's own
+  // filters) is a genuinely new query and deserves its own warning even if
+  // the previous one already latched. The visible time range is excluded —
+  // a live-tailing dashboard reslices it every `BUCKET_MS`, but panning the
+  // range rarely changes whether a structural error (e.g. a missing column)
+  // still applies, so including it here would re-show the same error on a
+  // timer. Detected inline (rather than a separate effect keyed on scope) so
+  // every `lastWarningRef` mutation lives in one place and doesn't depend on
+  // effect declaration order.
+  const scopeIdentity = `${source?.id ?? ''}::${versionExpression}::${scopeKey}`;
+  const prevScopeRef = useRef(scopeIdentity);
   useEffect(() => {
-    if (prevConfigRef.current !== config) {
-      prevConfigRef.current = config;
+    if (prevScopeRef.current !== scopeIdentity) {
+      prevScopeRef.current = scopeIdentity;
       lastWarningRef.current = null;
     }
     if (!enabled) {
@@ -425,13 +445,37 @@ export function useReleaseAnnotations(
       }
       lastWarningRef.current = 'error';
       const rawMessage = error instanceof Error ? error.message : String(error);
+      const truncatedMessage = truncateForNotification(rawMessage);
       notifications.show({
         id: RELEASE_ERROR_NOTIFICATION_ID,
         color: 'red',
         title: "Couldn't load release markers",
-        message: isMissingColumnError(error)
-          ? `The version expression configured for release markers doesn't match a column on this source. Check the Service Version Expression setting on the source. (${rawMessage})`
-          : `Release marker query failed: ${rawMessage}`,
+        message: (
+          <Stack gap={4}>
+            <Text size="sm">
+              {isMissingColumnError(error) ? (
+                <>
+                  The version expression configured for release markers
+                  doesn&apos;t match a column on this source.{' '}
+                  {source != null && (
+                    <Anchor
+                      component={Link}
+                      href={`/team#source-${source.id}`}
+                      size="sm"
+                    >
+                      Check the Service Version Expression in Team Settings
+                    </Anchor>
+                  )}
+                </>
+              ) : (
+                'Release marker query failed.'
+              )}
+            </Text>
+            <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
+              {truncatedMessage}
+            </Text>
+          </Stack>
+        ),
       });
       return;
     }
@@ -454,7 +498,16 @@ export function useReleaseAnnotations(
       message:
         'Release markers come from changes in the version attribute configured on this source. No version changes were found in this time range - if you deploy without changing the version, there is nothing to mark.',
     });
-  }, [enabled, isFetching, isError, error, data, annotations, config]);
+  }, [
+    enabled,
+    isFetching,
+    isError,
+    error,
+    data,
+    annotations,
+    scopeIdentity,
+    source,
+  ]);
 
   return annotations;
 }

@@ -1,3 +1,4 @@
+import { isValidElement } from 'react';
 import {
   BuilderChartConfigWithDateRange,
   DerivedColumn,
@@ -38,6 +39,54 @@ const mockedUseQueriedChartConfig = chartConfigModule.useQueriedChartConfig;
 const notificationsModule: { notifications: { show: jest.Mock } } =
   jest.requireMock('@mantine/notifications');
 const mockedNotificationsShow = notificationsModule.notifications.show;
+
+/**
+ * The error notification's `message` is JSX (to carry a truncated raw error
+ * and, for missing-column errors, a settings link), not a plain string.
+ * Walks it to recover the rendered text and any `href`s for assertions.
+ * Takes `unknown` (rather than `ReactNode`) so narrowing an element's untyped
+ * `props` needs only `in` checks, not a type assertion.
+ */
+function readNotificationMessage(node: unknown): {
+  text: string;
+  hrefs: string[];
+} {
+  if (node == null || typeof node === 'boolean') {
+    return { text: '', hrefs: [] };
+  }
+  if (typeof node === 'string' || typeof node === 'number') {
+    return { text: String(node), hrefs: [] };
+  }
+  if (Array.isArray(node)) {
+    return node.reduce<{ text: string; hrefs: string[] }>(
+      (acc, child) => {
+        const next = readNotificationMessage(child);
+        return {
+          text: acc.text + next.text,
+          hrefs: [...acc.hrefs, ...next.hrefs],
+        };
+      },
+      { text: '', hrefs: [] },
+    );
+  }
+  if (isValidElement(node)) {
+    const props: unknown = node.props;
+    if (props == null || typeof props !== 'object') {
+      return { text: '', hrefs: [] };
+    }
+    const children = 'children' in props ? props.children : undefined;
+    const href =
+      'href' in props && typeof props.href === 'string'
+        ? props.href
+        : undefined;
+    const inner = readNotificationMessage(children);
+    return {
+      text: inner.text,
+      hrefs: href ? [...inner.hrefs, href] : inner.hrefs,
+    };
+  }
+  return { text: '', hrefs: [] };
+}
 
 // Fully-formed sources, typed as their concrete kind rather than asserted, so
 // a schema change surfaces here instead of being silently cast away.
@@ -629,30 +678,43 @@ describe('useReleaseAnnotations', () => {
 
       expect(result.current).toBeUndefined();
       expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
-      expect(mockedNotificationsShow).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 'release-markers-error',
-          color: 'red',
-          message: expect.stringContaining('Timeout exceeded'),
-        }),
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      expect(call).toMatchObject({ id: 'release-markers-error', color: 'red' });
+      expect(readNotificationMessage(call.message).text).toContain(
+        'Timeout exceeded',
       );
     });
 
     // The scenario in question: a source configured for release markers
     // whose table has no matching column (e.g. no `ResourceAttributes`).
-    it('gives an actionable hint for a missing-column error', () => {
+    it('gives an actionable hint for a missing-column error, linking to the source settings', () => {
       mockQueryError(new Error("Missing columns: 'ResourceAttributes'"));
 
       renderHook(() =>
         useReleaseAnnotations(range, true, { source: logSource }),
       );
 
-      expect(mockedNotificationsShow).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 'release-markers-error',
-          message: expect.stringContaining('Service Version Expression'),
-        }),
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      expect(call.id).toBe('release-markers-error');
+      const { text, hrefs } = readNotificationMessage(call.message);
+      expect(text).toContain('Service Version Expression');
+      expect(text).toContain("Missing columns: 'ResourceAttributes'");
+      expect(hrefs).toContain(`/team#source-${logSource.id}`);
+    });
+
+    // Real ClickHouse errors often echo the full rendered SQL, which is
+    // unreadable dumped whole into a toast.
+    it('truncates a long raw error message', () => {
+      mockQueryError(new Error('x'.repeat(500)));
+
+      renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
       );
+
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      const { text } = readNotificationMessage(call.message);
+      expect(text.length).toBeLessThan(500);
+      expect(text).toContain('…');
     });
 
     it('warns only once while the error persists', () => {
@@ -684,12 +746,38 @@ describe('useReleaseAnnotations', () => {
       rerender({ where: 'ServiceName:"cart"' });
 
       expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
-      expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          id: 'release-markers-error',
-          message: expect.stringContaining('Connection reset'),
-        }),
+      const lastCallArg =
+        mockedNotificationsShow.mock.calls[
+          mockedNotificationsShow.mock.calls.length - 1
+        ][0];
+      expect(lastCallArg.id).toBe('release-markers-error');
+      expect(readNotificationMessage(lastCallArg.message).text).toContain(
+        'Connection reset',
       );
+    });
+
+    // A reviewer's point: panning/zooming the time range doesn't fix a
+    // structural error (e.g. a missing column), so re-showing the same
+    // warning on every range change -- which happens every `BUCKET_MS` on a
+    // live-tailing dashboard -- would just be noise.
+    it('does not warn again for a pure time-range change on the same scope', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(
+        ({ range }: { range: [Date, Date] }) =>
+          useReleaseAnnotations(range, true, { source: logSource }),
+        { initialProps: { range } },
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      rerender({
+        range: [
+          new Date(range[0].getTime() + 5 * 60_000),
+          new Date(range[1].getTime() + 5 * 60_000),
+        ],
+      });
+
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
     });
 
     // Regression: a single boolean latch stayed tripped across a kind
