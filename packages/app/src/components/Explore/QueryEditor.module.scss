@@ -93,6 +93,17 @@
   flex-direction: column;
 }
 
+/* A code block rather than a text field. The query bar above is where you type
+   a fragment; this holds a whole statement you read, scroll, and get errors
+   about by line, so it takes the code surface the rest of the app uses for SQL.
+   !important because Paper sets its own background at equal specificity. */
+.sqlSurface {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+  background-color: var(--color-bg-code) !important;
+}
+
 .body :global(.cm-gutters) {
   background: transparent !important;
   border: none !important;

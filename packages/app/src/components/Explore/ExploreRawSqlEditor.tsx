@@ -110,7 +110,9 @@ export function ExploreRawSqlEditor({
       ) : null}
       <SQLEditorControlled
         {...controllerProps}
+        className={styles.sqlSurface}
         onValueChange={onValueChange}
+        showLineNumbers
         enableLineWrapping
         placeholder={SQL_PLACEHOLDERS[displayType]}
         tableConnections={tableConnections}

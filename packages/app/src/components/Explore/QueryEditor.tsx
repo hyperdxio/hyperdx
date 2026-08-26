@@ -208,9 +208,6 @@ export function QueryEditor({
                   bracketMatching: true,
                   closeBrackets: true,
                   searchKeymap: false,
-                  // See queryEditorLanguage.ts — Lucene StreamLanguage
-                  // highlighting throws `tags is not iterable`.
-                  syntaxHighlighting: false,
                 }}
               />
             </Box>

@@ -52,10 +52,8 @@ export function languageExtensions(
       includeRegularFunctions: true,
     });
   }
-  // Lucene stays plaintext on purpose. StreamLanguage + syntaxHighlighting
-  // throws `tags is not iterable` here: this workspace has multiple
-  // @lezer/highlight copies, so highlightTree reads the Document node's
-  // style tags as a NodeProp instead of a Tag[]. Empty editors hide it
-  // (`tree.length === 0`); the first typed token crashes the page.
+  // Plaintext with completions, no grammar: Explore is SQL-only now, and
+  // Lucene survives only to render saved searches written before that. It is
+  // not worth a CodeMirror mode for text nobody can newly author here.
   return [autocompletion({ override: [luceneCompletions(fields)] })];
 }
