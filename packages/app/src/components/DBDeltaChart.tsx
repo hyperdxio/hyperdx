@@ -56,6 +56,7 @@ export default function DBDeltaChart({
   spanIdExpression,
   legendPrefix,
   isPriorityProperty,
+  selectExpression = '*',
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
@@ -72,6 +73,13 @@ export default function DBDeltaChart({
    * dashboards (e.g. LLM) surface their relevant attributes first.
    */
   isPriorityProperty?: (flattenedKey: string) => boolean;
+  /**
+   * Select list for the sampling queries. Defaults to '*'. Callers whose
+   * rows carry very large attribute values (e.g. LLM spans stamping full
+   * conversation histories) can trim them server-side — a 1000-row sample
+   * of raw LLM spans measured ~400 MiB.
+   */
+  selectExpression?: string;
 }) {
   // Derive whether a heatmap selection exists from nullable props
   const hasSelection =
@@ -230,7 +238,7 @@ export default function DBDeltaChart({
     {
       ...config,
       with: buildWithClauses(true),
-      select: '*',
+      select: selectExpression,
       filters: buildFilters(true),
       orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
       limit: { limit: SAMPLE_SIZE },
@@ -243,7 +251,7 @@ export default function DBDeltaChart({
       {
         ...config,
         with: buildWithClauses(false),
-        select: '*',
+        select: selectExpression,
         filters: buildFilters(false),
         orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
         limit: { limit: SAMPLE_SIZE },
@@ -259,7 +267,7 @@ export default function DBDeltaChart({
   } = useQueriedChartConfig(
     {
       ...config,
-      select: '*',
+      select: selectExpression,
       orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
       limit: { limit: SAMPLE_SIZE },
     },

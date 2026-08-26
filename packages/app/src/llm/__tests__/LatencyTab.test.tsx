@@ -13,6 +13,12 @@ jest.mock('@/components/Search/DBSearchHeatmapChart', () => ({
   },
 }));
 
+// Controls the JSON-column lookup per test (undefined = still loading).
+let mockJsonColumns: string[] | undefined = [];
+jest.mock('@/hooks/useMetadata', () => ({
+  useJsonColumns: () => ({ data: mockJsonColumns }),
+}));
+
 const TRACE_SOURCE = makeTraceSource();
 const expressions = getLLMExpressions(TRACE_SOURCE, []);
 
@@ -28,6 +34,7 @@ const baseProps = {
 describe('LatencyTab', () => {
   beforeEach(() => {
     heatmapChartProps.length = 0;
+    mockJsonColumns = [];
     jest.clearAllMocks();
   });
 
@@ -48,6 +55,28 @@ describe('LatencyTab', () => {
   it('pins AI-relevant attributes to the top of the delta breakdown', () => {
     renderWithMantine(<LatencyTab {...baseProps} />);
     expect(heatmapChartProps[0].isPriorityProperty).toBe(isLLMAttributeKey);
+  });
+
+  it('trims oversized attribute values out of the delta sampling rows', () => {
+    renderWithMantine(<LatencyTab {...baseProps} />);
+    expect(heatmapChartProps[0].deltaSelectExpression).toContain(
+      'mapFilter((k, v) -> length(v) <= 256, SpanAttributes) AS SpanAttributes',
+    );
+    expect(heatmapChartProps[0].deltaSelectExpression).toContain(
+      '* EXCEPT (SpanAttributes)',
+    );
+  });
+
+  it('keeps * and holds queries for JSON-typed attribute columns', () => {
+    mockJsonColumns = ['SpanAttributes'];
+    renderWithMantine(<LatencyTab {...baseProps} />);
+    expect(heatmapChartProps[0].deltaSelectExpression).toBe('*');
+  });
+
+  it('does not mount the chart until the JSON-column lookup resolves', () => {
+    mockJsonColumns = undefined;
+    renderWithMantine(<LatencyTab {...baseProps} />);
+    expect(heatmapChartProps).toHaveLength(0);
   });
 
   it('appends delta filter clicks to the where clause', () => {

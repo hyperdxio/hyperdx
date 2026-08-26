@@ -4,6 +4,8 @@ import {
   baseLLMChartConfig,
   buildDeltaFilterClause,
   buildSessionCondition,
+  buildTrimmedDeltaSelect,
+  DELTA_ATTRIBUTE_VALUE_MAX_LENGTH,
 } from '@/llm/dashboard/chartConfig';
 import { getLLMExpressions, LLM_COST_SQL_ALIAS } from '@/llm/lib/expressions';
 
@@ -84,6 +86,27 @@ describe('appendWhereClause', () => {
     expect(appendWhereClause('level:error', 'a:"b"', 'lucene')).toBe(
       'level:error a:"b"',
     );
+  });
+});
+
+describe('buildTrimmedDeltaSelect', () => {
+  it('trims oversized attribute values on plain Map columns', () => {
+    expect(buildTrimmedDeltaSelect(TRACE_SOURCE, [])).toBe(
+      '* EXCEPT (SpanAttributes), ' +
+        `mapFilter((k, v) -> length(v) <= ${DELTA_ATTRIBUTE_VALUE_MAX_LENGTH}, SpanAttributes) AS SpanAttributes`,
+    );
+  });
+
+  it('falls back to * for JSON-typed attribute columns', () => {
+    expect(buildTrimmedDeltaSelect(TRACE_SOURCE, ['SpanAttributes'])).toBe('*');
+  });
+
+  it('falls back to * when the attribute field is a derived expression', () => {
+    const source = {
+      ...TRACE_SOURCE,
+      eventAttributesExpression: "mapConcat(SpanAttributes, map('a', 'b'))",
+    };
+    expect(buildTrimmedDeltaSelect(source, [])).toBe('*');
   });
 });
 

@@ -1,14 +1,17 @@
 import { useCallback, useMemo } from 'react';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box } from '@mantine/core';
 
 import type { AddFilterFn } from '@/components/DBDeltaChart';
 import { DBSearchHeatmapChart } from '@/components/Search/DBSearchHeatmapChart';
+import { useJsonColumns } from '@/hooks/useMetadata';
 import { isLLMAttributeKey } from '@/llm/lib/expressions';
 
 import {
   appendWhereClause,
   baseLLMChartConfig,
   buildDeltaFilterClause,
+  buildTrimmedDeltaSelect,
 } from './chartConfig';
 import { LLMChartProps } from './types';
 
@@ -31,6 +34,14 @@ export function LatencyTab(
     sessionId,
     onWhereChange,
   } = props;
+
+  // Trim oversized attribute values (full conversation payloads) out of the
+  // delta sampling rows server-side; see buildTrimmedDeltaSelect.
+  const { data: jsonColumns } = useJsonColumns(tcFromSource(source));
+  const deltaSelectExpression = useMemo(
+    () => buildTrimmedDeltaSelect(source, jsonColumns),
+    [source, jsonColumns],
+  );
 
   // The heatmap and delta sampling queries never reference the cost alias;
   // skip the (catalog-sized) WITH binding to keep them small.
@@ -63,6 +74,19 @@ export function LatencyTab(
     [where, whereLanguage, onWhereChange],
   );
 
+  // Hold all queries until the JSON-column lookup resolves so a JSON-typed
+  // attribute column never receives a mapFilter select. On this page the
+  // lookup is already cached by useLLMDashboardExpressions, so this resolves
+  // on first render.
+  if (jsonColumns == null) {
+    return (
+      <Box
+        style={{ height: 'calc(100vh - 240px)', minHeight: 500 }}
+        data-testid="llm-latency-tab"
+      />
+    );
+  }
+
   return (
     <Box
       style={{ height: 'calc(100vh - 240px)', minHeight: 500 }}
@@ -74,6 +98,7 @@ export function LatencyTab(
         isReady
         onAddFilter={handleAddFilter}
         isPriorityProperty={isLLMAttributeKey}
+        deltaSelectExpression={deltaSelectExpression}
       />
     </Box>
   );

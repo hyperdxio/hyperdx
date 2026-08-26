@@ -35,6 +35,7 @@ export function DBSearchHeatmapChart({
   isReady,
   onAddFilter,
   isPriorityProperty,
+  deltaSelectExpression,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   source: TTraceSource;
@@ -42,6 +43,8 @@ export function DBSearchHeatmapChart({
   onAddFilter?: AddFilterFn;
   /** Pin matching properties to the top of the delta breakdown. */
   isPriorityProperty?: (flattenedKey: string) => boolean;
+  /** Select list for the delta sampling queries (defaults to '*'). */
+  deltaSelectExpression?: string;
 }) {
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
@@ -221,6 +224,7 @@ export function DBSearchHeatmapChart({
           spanIdExpression={source.spanIdExpression}
           legendPrefix={<ColorLegend colors={palette} />}
           isPriorityProperty={isPriorityProperty}
+          selectExpression={deltaSelectExpression}
         />
       </Box>
     </Flex>

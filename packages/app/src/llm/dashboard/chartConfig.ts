@@ -83,6 +83,38 @@ export function baseLLMChartConfig({
 }
 
 /**
+ * Attribute values longer than this are dropped from delta sampling rows
+ * server-side. Categorical values worth breaking down on (model ids,
+ * providers, finish reasons, tool names) are far shorter; anything longer
+ * would be hidden client-side as high-cardinality anyway.
+ */
+export const DELTA_ATTRIBUTE_VALUE_MAX_LENGTH = 256;
+
+const BARE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Select list for the Latency tab's delta sampling queries. Agent SDKs stamp
+ * full conversation histories on every span, so a raw 1000-row `SELECT *`
+ * sample of LLM spans measured ~400 MiB — trimming long attribute values
+ * server-side cuts that ~500x. Falls back to '*' when the attribute column
+ * isn't a plain Map column (mapFilter doesn't apply to JSON-typed columns or
+ * derived expressions).
+ */
+export function buildTrimmedDeltaSelect(
+  source: LLMChartProps['source'],
+  jsonColumns: string[] | undefined,
+): string {
+  const attrCol = source.eventAttributesExpression || 'SpanAttributes';
+  if (!BARE_IDENTIFIER.test(attrCol) || jsonColumns?.includes(attrCol)) {
+    return '*';
+  }
+  return (
+    `* EXCEPT (${attrCol}), ` +
+    `mapFilter((k, v) -> length(v) <= ${DELTA_ATTRIBUTE_VALUE_MAX_LENGTH}, ${attrCol}) AS ${attrCol}`
+  );
+}
+
+/**
  * Build a where-clause fragment for a delta-chart filter click. `property`
  * arrives in ClickHouse bracket notation (e.g.
  * `SpanAttributes['gen_ai.request.model']`) from DBDeltaChart. For lucene,
