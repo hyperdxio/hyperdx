@@ -236,7 +236,7 @@ function ServicesDashboardPage() {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const {
     filters,
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
     filterQueries: additionalFilters,
     handleSaveFilter,
@@ -409,7 +409,7 @@ function ServicesDashboardPage() {
       </form>
       <DashboardFilters
         filters={filters}
-        filterValues={filterValues}
+        selectionByFilterId={selectionByFilterId}
         onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />

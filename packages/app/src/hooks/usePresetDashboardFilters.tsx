@@ -28,9 +28,11 @@ export default function usePresetDashboardFilters({
     enabled,
   );
 
-  const { filterValues, setFilterValue, filterQueries } = useDashboardFilters(
-    data ?? [],
-  );
+  const {
+    selectionByFilterId,
+    setFilterValue,
+    broadcastedFilters: filterQueries,
+  } = useDashboardFilters(data ?? []);
 
   const onSuccess = useCallback(() => {
     refetch();
@@ -91,7 +93,7 @@ export default function usePresetDashboardFilters({
 
   return {
     filters: data ?? [],
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
     filterQueries,
     handleSaveFilter,

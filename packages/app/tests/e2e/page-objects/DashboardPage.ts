@@ -1217,7 +1217,12 @@ export class DashboardPage {
    * or backticks. Assumes the Edit Filters modal is already open; leaves it open
    * (on the filters list) so multiple filters can be added in sequence.
    */
-  async addCustomFilter(name: string, sourceName: string, expression: string) {
+  async addCustomFilter(
+    name: string,
+    sourceName: string,
+    expression: string,
+    variableOptions?: { variableName: string },
+  ) {
     await this.addFiltersButton.click();
     const nameInput = this.page.getByTestId('filter-name-input');
     await nameInput.waitFor({ state: 'visible', timeout: 10000 });
@@ -1237,6 +1242,10 @@ export class DashboardPage {
     // closes — left open it overlaps the save button and makes the click flake
     // on "element is not stable".
     await nameInput.click();
+    if (variableOptions) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
     const saveButton = this.page.getByTestId('save-filter-button');
     await expect(saveButton).toBeEnabled();
     await saveButton.click();
