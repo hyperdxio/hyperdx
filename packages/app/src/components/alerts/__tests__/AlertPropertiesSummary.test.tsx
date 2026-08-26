@@ -29,7 +29,7 @@ const baseAlert = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   history: [],
-} as unknown as AlertsPageItem;
+} satisfies AlertsPageItem;
 
 const threeChannels = {
   ...baseAlert,
@@ -38,7 +38,7 @@ const threeChannels = {
     { type: 'webhook', webhookId: 'hook-2' },
     { type: 'webhook', webhookId: 'hook-3' },
   ],
-} as AlertsPageItem;
+} satisfies AlertsPageItem;
 
 const targets = () => screen.getByTestId('alert-notification-targets');
 // The targets render as flex children, so textContent has no separating
@@ -109,7 +109,7 @@ describe('AlertPropertiesSummary notification targets', () => {
               ...baseAlert,
               channel: { type: null },
               channels: undefined,
-            } as unknown as AlertsPageItem
+            } satisfies AlertsPageItem
           }
           variant="detail"
         />,
@@ -125,7 +125,7 @@ describe('AlertPropertiesSummary notification targets', () => {
             {
               ...baseAlert,
               channel: { type: 'webhook', webhookId: 'gone' },
-            } as AlertsPageItem
+            } satisfies AlertsPageItem
           }
           variant="detail"
         />,
