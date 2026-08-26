@@ -1,5 +1,6 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
+  AlertChartConfig,
   AlertErrorType,
   AlertThresholdType,
 } from '@hyperdx/common-utils/dist/types';
@@ -71,6 +72,8 @@ export const getAlertChannels = (alert: {
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
+  /** Detached alert that persists its own chart config (no saved search/tile). */
+  CHART = 'chart',
 }
 
 export interface IAlert {
@@ -103,6 +106,10 @@ export interface IAlert {
   // Tile alerts
   dashboard?: ObjectId | null;
   tileId?: string | null;
+
+  // Chart alerts: the persisted chart config (same shape as a dashboard
+  // tile's config, minus the embedded alert field)
+  chartConfig?: AlertChartConfig | null;
 
   // Silenced
   silenced?: {
@@ -222,6 +229,12 @@ const AlertSchema = new Schema<IAlert>(
     },
     tileId: {
       type: String,
+      required: false,
+    },
+
+    // Chart alerts
+    chartConfig: {
+      type: Schema.Types.Mixed,
       required: false,
     },
     numConsecutiveWindows: {

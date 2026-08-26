@@ -666,6 +666,11 @@ export type AlertError = z.infer<typeof AlertErrorSchema>;
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
+  /**
+   * A "detached" alert that persists its own chart config (the same shape a
+   * dashboard tile stores) instead of referencing a saved search or tile.
+   */
+  CHART = 'chart',
 }
 
 export const AlertIntervalSchema = z.union([
@@ -821,6 +826,18 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
+/**
+ * Chart alerts persist their query/chart definition directly on the alert —
+ * the same shape a dashboard tile stores (minus the embedded `alert` field).
+ * Builder and raw SQL configs only; PromQL charts cannot be alerted on.
+ * `z.lazy` defers resolution because the chart-config schemas are declared
+ * later in this module.
+ */
+export const zChartAlert = z.object({
+  source: z.literal(AlertSource.CHART),
+  chartConfig: z.lazy(() => AlertChartConfigSchema),
+});
+
 export const validateAlertScheduleOffsetMinutes = (
   alert: {
     interval: AlertInterval;
@@ -968,6 +985,7 @@ const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
   z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zChartAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
@@ -1738,6 +1756,19 @@ export const SavedChartConfigSchema = z.union([
   PromqlSavedChartConfigSchema,
 ]);
 
+/**
+ * The chart config a chart-source alert persists (see `zChartAlert`). Same
+ * shape as a dashboard tile's config, but without the embedded `alert` field
+ * (the alert's own document carries those fields) and without the PromQL
+ * variant (PromQL charts cannot be alerted on).
+ */
+export const AlertChartConfigSchema = z.union([
+  BuilderSavedChartConfigWithoutAlertSchema,
+  RawSqlSavedChartConfigWithoutAlertSchema,
+]);
+
+export type AlertChartConfig = z.infer<typeof AlertChartConfigSchema>;
+
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
 >;
@@ -2417,6 +2448,8 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  // Chart alerts: the persisted chart config (absent on other sources).
+  chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),

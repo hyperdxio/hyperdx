@@ -1,7 +1,7 @@
 import PQueue from '@esm2cjs/p-queue';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { Tile } from '@hyperdx/common-utils/dist/types';
+import { AlertChartConfig, Tile } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import { URLSearchParams } from 'url';
@@ -218,6 +218,105 @@ async function getTileDetails(
   ];
 }
 
+async function getChartDetails(
+  alert: IAlert,
+): Promise<[IConnection, PartialAlertDetails] | []> {
+  const chartConfig = alert.chartConfig;
+  if (chartConfig == null) {
+    logger.error({
+      message: 'chart alert has no chartConfig',
+      alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (isRawSqlSavedChartConfig(chartConfig)) {
+    if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+      logger.warn({
+        alertId: alert.id,
+        message:
+          'skipping chart alert with raw sql chart config, only line/bar/number display types are supported',
+      });
+      return [];
+    }
+
+    // Raw SQL configs store the connection ID directly
+    const connection = await Connection.findOne({
+      _id: chartConfig.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for raw sql chart alert',
+        connectionId: chartConfig.connection,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    // Optionally look up source for filter/macro metadata
+    let source: ISource | undefined;
+    if (chartConfig.source) {
+      const sourceDoc = await Source.findOne({
+        _id: chartConfig.source,
+        team: alert.team,
+      });
+      if (sourceDoc) {
+        source = sourceDoc.toObject();
+      }
+    }
+
+    return [
+      connection,
+      {
+        alert,
+        source,
+        taskType: AlertTaskType.CHART,
+        chartConfig,
+      },
+    ];
+  }
+
+  const source = await Source.findOne({
+    _id: chartConfig.source,
+    team: alert.team,
+  }).populate<Omit<ISource, 'connection'> & { connection: IConnection }>({
+    path: 'connection',
+    match: { team: alert.team },
+    select: '+password',
+  });
+  if (!source) {
+    logger.error({
+      message: 'source not found',
+      sourceId: chartConfig.source,
+      alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (!source.connection) {
+    logger.error({
+      message: 'connection not found',
+      alertId: alert.id,
+      sourceId: source.id,
+    });
+    return [];
+  }
+
+  const connection = source.connection;
+  const sourceProps = source.toObject();
+  return [
+    connection,
+    {
+      alert,
+      source: { ...sourceProps, connection: connection.id },
+      taskType: AlertTaskType.CHART,
+      chartConfig,
+    },
+  ];
+}
+
 async function loadAlert(
   alert: IAlert,
   groupedTasks: Map<string, AlertTask>,
@@ -244,6 +343,10 @@ async function loadAlert(
 
     case AlertSource.TILE:
       [conn, details] = await getTileDetails(alert);
+      break;
+
+    case AlertSource.CHART:
+      [conn, details] = await getChartDetails(alert);
       break;
 
     default:
@@ -370,6 +473,32 @@ export default class DefaultAlertProvider implements AlertProvider {
     if (tileId) {
       queryParams.set('highlightedTileId', tileId);
     }
+    url.search = queryParams.toString();
+    return url.toString();
+  }
+
+  buildChartExplorerLink({
+    chartConfig,
+    endTime,
+    granularity,
+    startTime,
+  }: {
+    chartConfig: AlertChartConfig;
+    endTime: Date;
+    granularity: string;
+    startTime: Date;
+  }): string {
+    const url = new URL(`${config.FRONTEND_URL}/chart`);
+    // Extend both start and end time by 7x granularity, matching the
+    // dashboard link so the alerting window has surrounding context. The
+    // chart explorer reads `config` (JSON) and `from`/`to` (epoch ms).
+    const from = (startTime.getTime() - ms(granularity) * 7).toString();
+    const to = (endTime.getTime() + ms(granularity) * 7).toString();
+    const queryParams = new URLSearchParams({
+      config: JSON.stringify(chartConfig),
+      from,
+      to,
+    });
     url.search = queryParams.toString();
     return url.toString();
   }

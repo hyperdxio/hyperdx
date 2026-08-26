@@ -1,5 +1,5 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { Tile } from '@hyperdx/common-utils/dist/types';
+import { AlertChartConfig, Tile } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 
 import { ObjectId } from '@/models';
@@ -17,6 +17,7 @@ import logger from '@/utils/logger';
 export enum AlertTaskType {
   SAVED_SEARCH,
   TILE,
+  CHART,
 }
 
 // Discriminated union of possible alert channel types with populated channel data
@@ -25,7 +26,8 @@ export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 // Details about the alert and the source for the alert. Depending on
 // the taskType either:
 //   1. the savedSearch field is required or
-//   2. the tile and dashboard field are required
+//   2. the tile and dashboard field are required or
+//   3. the chartConfig field is required (persisted on the alert itself)
 //
 // The dependent typing means less null checks when using these values as
 // the are required when the type is set accordingly.
@@ -46,6 +48,14 @@ export type AlertDetails = {
       source?: ISource;
       tile: Tile;
       dashboard: IDashboard;
+    }
+  | {
+      // Chart alerts: the config lives on the alert document. `source` is
+      // present for builder configs and optional for raw SQL configs (which
+      // carry the connection directly).
+      taskType: AlertTaskType.CHART;
+      source?: ISource;
+      chartConfig: AlertChartConfig;
     }
 );
 
@@ -76,6 +86,18 @@ export interface AlertProvider {
     granularity: string;
     startTime: Date;
     tileId?: string;
+  }): string;
+
+  /**
+   * Link for chart alerts (which have no saved search or dashboard to open):
+   * the chart explorer with the alert's persisted config over the alerting
+   * window. Works regardless of whether the alert-details page is enabled.
+   */
+  buildChartExplorerLink(params: {
+    chartConfig: AlertChartConfig;
+    endTime: Date;
+    granularity: string;
+    startTime: Date;
   }): string;
 
   /**

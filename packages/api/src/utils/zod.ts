@@ -2,6 +2,7 @@ import { validateChartConfigFormulas } from '@hyperdx/common-utils/dist/dashboar
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  AlertChartConfigSchema,
   alertNoteSchema,
   AlertThresholdType,
   BackgroundChartSchema,
@@ -729,23 +730,40 @@ const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const alertSchema = z
-  .object({
-    channel: zAlertChannel.optional(),
-    channels: zAlertChannels.optional(),
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
-    scheduleStartAt: scheduleStartAtSchema,
-    threshold: z.number(),
-    thresholdType: z.nativeEnum(AlertThresholdType),
-    thresholdMax: z.number().optional(),
-    source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
-    name: z.string().min(1).max(512).nullish(),
-    message: z.string().min(1).max(4096).nullish(),
-    note: alertNoteSchema,
-    numConsecutiveWindows: z.number().int().min(1).nullish(),
-  })
+const zChartAlert = z.object({
+  source: z.literal(AlertSource.CHART),
+  // Builder + raw SQL configs only; the schema has no PromQL variant.
+  chartConfig: AlertChartConfigSchema,
+});
+
+const alertBaseSchema = z.object({
+  channel: zAlertChannel.optional(),
+  channels: zAlertChannels.optional(),
+  interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
+  scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
+  scheduleStartAt: scheduleStartAtSchema,
+  threshold: z.number(),
+  thresholdType: z.nativeEnum(AlertThresholdType),
+  thresholdMax: z.number().optional(),
+  source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
+  name: z.string().min(1).max(512).nullish(),
+  message: z.string().min(1).max(4096).nullish(),
+  note: alertNoteSchema,
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
+});
+
+export const alertSchema = alertBaseSchema
   .and(zSavedSearchAlert.or(zTileAlert))
+  .superRefine(validateAlertChannelSelection)
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax);
+
+// Superset of alertSchema for the internal API only: also accepts chart
+// alerts (source: 'chart'), which persist their own chart config. The
+// external v2 API keeps the narrower alertSchema until its contract (OpenAPI
+// docs, Terraform provider) is extended to cover chart alerts.
+export const internalAlertSchema = alertBaseSchema
+  .and(zSavedSearchAlert.or(zTileAlert).or(zChartAlert))
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);

@@ -658,6 +658,41 @@ describe('External API Alerts', () => {
   });
 
   describe('Input validation', () => {
+    it('rejects the internal-only chart alert source', async () => {
+      // Chart alerts (source: 'chart') are creatable through the internal API
+      // only; the external v2 contract (OpenAPI docs, Terraform provider) has
+      // not been extended to cover them yet.
+      const webhook = await createTestWebhook();
+
+      const alertInput = {
+        threshold: 100,
+        interval: '1h',
+        source: 'chart',
+        chartConfig: {
+          name: 'Chart Alert Query',
+          source: new ObjectId().toString(),
+          displayType: 'line',
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+          ],
+          where: '',
+          whereLanguage: 'lucene',
+        },
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+      };
+
+      await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+    });
+
     describe('webhook validation', () => {
       it('should reject a non-existent webhook', async () => {
         const dashboard = await createTestDashboard();

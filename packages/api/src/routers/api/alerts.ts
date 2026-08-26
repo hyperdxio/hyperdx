@@ -29,7 +29,7 @@ import {
 import { getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { PreSerialized, sendJson } from '@/utils/serialization';
-import { alertSchema, objectIdSchema } from '@/utils/zod';
+import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -78,6 +78,9 @@ const formatAlertResponse = (
         'tags',
       ]),
     }),
+    // Chart alerts carry their persisted config so edit surfaces can seed the
+    // chart editor and the detail page can render the query.
+    ...(alert.chartConfig && { chartConfig: alert.chartConfig }),
     ...pick(alert, [
       '_id',
       'interval',
@@ -303,7 +306,7 @@ router.get(
 
 router.post(
   '/',
-  processRequest({ body: alertSchema }),
+  processRequest({ body: internalAlertSchema }),
   async (req, res, next) => {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -325,7 +328,7 @@ router.post(
 router.put(
   '/:id',
   processRequest({
-    body: alertSchema,
+    body: internalAlertSchema,
     params: z.object({
       id: objectIdSchema,
     }),
