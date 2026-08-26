@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
-  Button,
-  Divider,
+  Center,
   Group,
   Menu,
+  SegmentedControl,
+  Text,
   Tooltip,
+  UnstyledButton,
+  VisuallyHidden,
 } from '@mantine/core';
 import { IconChartLine, IconCheck, IconChevronDown } from '@tabler/icons-react';
 
@@ -18,56 +20,38 @@ import {
   type SearchView,
 } from './searchViews';
 
-/** Matches ActionIcon size="md" so the switcher lines up with its neighbours. */
-const SEGMENT_HEIGHT = 28;
+import classes from './SearchViewSwitcher.module.scss';
 
 /**
- * One segment of the switcher. Only the active segment spends width on its
- * label; the rest stay icon-only with the label in a tooltip, so naming the
- * current view costs the row a single label rather than one per view.
+ * Stands in for whichever chart view is current, so the six chart types occupy
+ * one segment instead of six. Not a `SearchView`.
  */
-function ViewSegment({
-  label,
-  icon,
-  active,
-  onClick,
-  'data-testid': dataTestId,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  'data-testid'?: string;
-}) {
+const CHART_SEGMENT = 'chart';
+
+/**
+ * Only the active segment spends width on its label; the rest stay icon-only
+ * with the name in a tooltip, so the row pays for one label rather than one per
+ * view.
+ */
+function segmentLabel(
+  label: string,
+  icon: React.ReactNode,
+  active: boolean,
+): React.ReactNode {
   if (active) {
     return (
-      <Button
-        variant="primary"
-        size="compact-sm"
-        h={SEGMENT_HEIGHT}
-        px={10}
-        leftSection={icon}
-        onClick={onClick}
-        aria-label={label}
-        data-active
-        data-testid={dataTestId}
-      >
+      <span className={classes.segment}>
+        {icon}
         {label}
-      </Button>
+      </span>
     );
   }
   return (
     <Tooltip label={label} fz="xs" color="gray">
-      <ActionIcon
-        variant="subtle"
-        color="gray"
-        size="md"
-        onClick={onClick}
-        aria-label={label}
-        data-testid={dataTestId}
-      >
+      <Center>
+        <VisuallyHidden>{label}</VisuallyHidden>
         {icon}
-      </ActionIcon>
+      </Center>
     </Tooltip>
   );
 }
@@ -102,88 +86,85 @@ export function SearchViewSwitcher({
     setLastChartView(value);
   }
 
-  // The chart segment wears the chart type's own glyph, so the sibling control
-  // is only a chevron and the same icon is never painted twice.
+  // Both the chart segment and the As control show the current type's own
+  // glyph, so switching type is visible even while the segment is icon-only.
   const chartMeta = getSearchViewMeta(isChart ? value : lastChartView);
   const chartIcon = chartMeta?.icon ?? <IconChartLine size={16} />;
 
+  const segments: { value: string; label: React.ReactNode }[] = eventViews.map(
+    option => ({
+      value: option.value,
+      label: segmentLabel(
+        option.shortLabel ?? option.label,
+        option.icon,
+        value === option.value,
+      ),
+    }),
+  );
+  if (chartViews.length > 0) {
+    segments.push({
+      value: CHART_SEGMENT,
+      label: segmentLabel('Charts', chartIcon, isChart),
+    });
+  }
+
   return (
-    <Group
-      gap={2}
-      wrap="nowrap"
-      className="bg-muted px-1 py-1 rounded"
-      data-testid="search-view-switcher"
-    >
-      {eventViews.map(option => (
-        <ViewSegment
-          key={option.value}
-          label={option.shortLabel ?? option.label}
-          icon={option.icon}
-          active={value === option.value}
-          onClick={() => onChange(option.value)}
+    <Group gap="xs" wrap="nowrap" data-testid="search-view-switcher">
+      {eventViews.length > 0 && (
+        <SegmentedControl
+          size="xs"
+          withItemsBorders={false}
+          classNames={{
+            root: classes.switcherRoot,
+            label: classes.switcherLabel,
+          }}
+          value={isChart ? CHART_SEGMENT : value}
+          onChange={next => {
+            if (next === CHART_SEGMENT) {
+              if (!isChart) onChange(lastChartView);
+              return;
+            }
+            const picked = eventViews.find(option => option.value === next);
+            if (picked) onChange(picked.value);
+          }}
+          data={segments}
         />
-      ))}
-      {eventViews.length > 0 && chartViews.length > 0 && (
-        <Divider orientation="vertical" mx={4} my={2} />
       )}
       {chartViews.length > 0 && (
-        <>
-          <ViewSegment
-            label="Chart"
-            icon={chartIcon}
-            active={isChart}
-            onClick={() => {
-              if (!isChart) {
-                onChange(lastChartView);
-              }
-            }}
-            data-testid="visualize-button"
-          />
-          <Menu withinPortal position="bottom-end">
-            <Tooltip label="Chart as" fz="xs" color="gray">
-              <Menu.Target>
-                {isChart ? (
-                  <Button
-                    variant="subtle"
-                    color="gray"
-                    size="compact-sm"
-                    h={SEGMENT_HEIGHT}
-                    px={8}
-                    rightSection={<IconChevronDown size={14} />}
-                    aria-label="Chart as"
-                    data-testid="visualize-as-button"
-                  >
-                    {`as ${chartMeta?.label ?? ''}`}
-                  </Button>
-                ) : (
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="md"
-                    aria-label="Chart as"
-                    data-testid="visualize-as-button"
-                  >
-                    <IconChevronDown size={14} />
-                  </ActionIcon>
-                )}
-              </Menu.Target>
-            </Tooltip>
-            <Menu.Dropdown>
-              {chartViews.map(option => (
-                <Menu.Item
-                  key={option.value}
-                  leftSection={option.icon}
-                  rightSection={
-                    value === option.value ? <IconCheck size={14} /> : undefined
-                  }
-                  onClick={() => onChange(option.value)}
-                >
-                  {option.label}
-                </Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
-        </>
+        <Menu withinPortal position="bottom-end">
+          <div className={classes.asControl}>
+            <Text size="xs" fw={500} className={classes.asLabel}>
+              As
+            </Text>
+            <Menu.Target>
+              <UnstyledButton
+                className={classes.asTarget}
+                aria-label={`Chart as ${chartMeta?.label ?? ''}`}
+                data-testid="visualize-as-button"
+              >
+                {chartIcon}
+                <Text size="xs" fw={600}>
+                  {chartMeta?.label}
+                </Text>
+                <IconChevronDown size={14} />
+              </UnstyledButton>
+            </Menu.Target>
+          </div>
+          <Menu.Dropdown>
+            {chartViews.map(option => (
+              <Menu.Item
+                key={option.value}
+                leftSection={option.icon}
+                rightSection={
+                  value === option.value ? <IconCheck size={14} /> : undefined
+                }
+                onClick={() => onChange(option.value)}
+              >
+                {option.label}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
       )}
     </Group>
   );

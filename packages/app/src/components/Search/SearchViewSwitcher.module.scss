@@ -1,0 +1,67 @@
+/* The switcher and the "As <chart type>" picker are two pills that have to read
+   as one control, so both are built from the same three measurements. */
+$pill-padding: 4px;
+$segment-height: 24px;
+$pill-height: $segment-height + 2 * $pill-padding;
+
+.switcherRoot {
+  --sc-padding: #{$pill-padding};
+
+  flex-shrink: 0;
+  border-radius: var(--mantine-radius-default);
+}
+
+.switcherLabel {
+  display: flex;
+  align-items: center;
+  height: $segment-height;
+  padding-block: 0;
+  padding-inline: 8px;
+}
+
+/* Built as a field with a left addon rather than a second segmented control:
+   "As" is a fixed part of the frame, not a thing you can press, and the addon
+   colour is what says so. */
+.asControl {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--color-bg-field);
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+}
+
+/* Full-contrast text, not dimmed: the addon fill already sets this apart from
+   the value, so the label only has to be legible. Weight carries the hierarchy
+   instead — the chart type beside it is the heavier of the two. */
+.asLabel {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-inline: 8px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-field-addon);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.asTarget {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: $pill-height;
+  padding-inline: 8px;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.segment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}

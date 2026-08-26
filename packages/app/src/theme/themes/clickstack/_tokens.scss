@@ -103,7 +103,7 @@
   --click-global-color-title-default: rgb(97.5% 97.5% 97.5%);
   --click-global-color-title-muted: #b3b6bd;
   --click-global-color-outline-default: #faff69;
-  --click-field-color-background-default: #2d2d2d;
+  --click-field-color-background-default: #2a2a2a;
 
   /* Backgrounds - Using Click UI tokens */
   --color-bg-body: var(--click-global-color-background-default);
@@ -134,7 +134,10 @@
   --color-bg-option-active: var(--palette-neutral-712);
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: var(--palette-neutral-650);
-  --color-bg-field-addon: var(--palette-neutral-712);
+
+  /* Recedes past the border (neutral-712) so the addon reads as a fixed part of
+     the input's frame rather than a button sitting inside it. */
+  --color-bg-field-addon: var(--palette-neutral-725);
   --color-bg-neutral: #4d4f66;
   --color-bg-success: #22c55e;
   --color-bg-danger: #ef4444;
@@ -358,9 +361,19 @@
      (Select/Combobox options, Menu items, popover/dropdown lists) when it is
      hovered or is the currently-selected entry. */
   --color-bg-option-active: var(--click-global-color-background-muted);
+
+  /* The field is the lightest surface in light mode, so everything attached to
+     one — addons, hover — steps *down* into grey, mirroring dark mode, where
+     the field is the darkest surface and its addons step up. The addon sits
+     between slate-50 and slate-100: 50 disappears against the field, 100 reads
+     as a button rather than a fixed part of the input. */
   --color-bg-field: var(--click-field-color-background-default);
-  --color-bg-field-highlighted: var(--click-global-color-background-default);
-  --color-bg-field-addon: var(--click-global-color-background-default);
+  --color-bg-field-highlighted: var(--click-global-color-background-muted);
+  --color-bg-field-addon: color-mix(
+    in srgb,
+    var(--palette-slate-100) 50%,
+    var(--palette-slate-50)
+  );
   --color-bg-neutral: #adb5bd;
   --color-bg-success: #16a34a;
   --color-bg-danger: #dc2626;

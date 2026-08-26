@@ -29,29 +29,29 @@ describe('SearchViewSwitcher', () => {
     return onChange;
   }
 
-  it('switches to time series when Chart is clicked from Events', async () => {
+  it('switches to time series when Charts is selected from Events', async () => {
     const user = userEvent.setup();
     const onChange = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'Chart' }));
+    await user.click(screen.getByRole('radio', { name: 'Charts' }));
 
     expect(onChange).toHaveBeenCalledWith('timeseries');
   });
 
-  it('picks pie from Chart as without an extra Chart click', async () => {
+  it('picks pie from the chart type menu without selecting Charts first', async () => {
     const user = userEvent.setup();
     const onChange = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'Chart as' }));
+    await user.click(screen.getByRole('button', { name: /Chart as/ }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pie' }));
     expect(onChange).toHaveBeenCalledWith('pie');
   });
 
-  it('picks number from Chart as', async () => {
+  it('picks number from the chart type menu', async () => {
     const user = userEvent.setup();
     const onChange = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'Chart as' }));
+    await user.click(screen.getByRole('button', { name: /Chart as/ }));
     await user.click(await screen.findByRole('menuitem', { name: 'Number' }));
     expect(onChange).toHaveBeenCalledWith('number');
   });
@@ -76,43 +76,43 @@ describe('SearchViewSwitcher', () => {
 
     renderWithMantine(<Harness />);
 
-    await user.click(screen.getByRole('button', { name: 'Events' }));
-    await user.click(screen.getByRole('button', { name: 'Chart' }));
+    await user.click(screen.getByRole('radio', { name: 'Events' }));
+    await user.click(screen.getByRole('radio', { name: 'Charts' }));
     expect(onChange).toHaveBeenLastCalledWith('pie');
   });
 
-  it('labels only the active view, leaving the rest icon-only', () => {
+  it('labels only the active segment, leaving the rest icon-only', () => {
     renderSwitcher({ value: 'list' });
 
-    expect(screen.getByRole('button', { name: 'Events' })).toHaveTextContent(
-      'Events',
-    );
-    expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent('');
-    expect(screen.getByRole('button', { name: 'Patterns' })).toHaveTextContent(
-      '',
-    );
+    expect(screen.getByRole('radio', { name: 'Events' })).toBeChecked();
+    // The inactive segments keep their names for screen readers, but the text
+    // is visually hidden so the row only pays for one label.
+    expect(screen.getByRole('radio', { name: 'Charts' })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Patterns' })).not.toBeChecked();
   });
 
-  it('names the chart type beside the chart segment once a chart is active', () => {
+  it('names the current chart type in the As control', () => {
     renderSwitcher({ value: 'pie' });
 
-    expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent(
-      'Chart',
-    );
-    expect(screen.getByRole('button', { name: 'Chart as' })).toHaveTextContent(
-      'as Pie',
-    );
-    expect(screen.getByRole('button', { name: 'Events' })).toHaveTextContent(
-      '',
+    expect(screen.getByRole('radio', { name: 'Charts' })).toBeChecked();
+    expect(screen.getByTestId('visualize-as-button')).toHaveTextContent('Pie');
+  });
+
+  it('keeps naming the chart type the switcher would return to', () => {
+    renderSwitcher({ value: 'list' });
+
+    expect(screen.getByTestId('visualize-as-button')).toHaveTextContent(
+      'Time series',
     );
   });
 
-  it('hides event views for metric sources and SQL chart-only mode', () => {
+  it('hides event views for metric sources', () => {
     renderSwitcher({ sourceKind: SourceKind.Metric, value: 'timeseries' });
-    expect(
-      screen.queryByRole('button', { name: 'Events' }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Chart' })).toBeInTheDocument();
+
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.getByTestId('visualize-as-button')).toHaveTextContent(
+      'Time series',
+    );
   });
 
   it('hides event views in SQL chart-only mode', () => {
@@ -121,8 +121,7 @@ describe('SearchViewSwitcher', () => {
       chartTypesOnly: true,
       value: 'timeseries',
     });
-    expect(
-      screen.queryByRole('button', { name: 'Events' }),
-    ).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 });
