@@ -3,13 +3,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import ReactMarkdown from 'react-markdown';
-import { isImportableAlert } from '@hyperdx/common-utils/dist/iac';
 import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Anchor,
   Badge,
-  Button,
   Collapse,
   Container,
   Flex,
@@ -38,8 +36,8 @@ import {
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
+import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
 import EmptyState from '@/components/EmptyState';
-import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 
@@ -49,6 +47,13 @@ import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
+
+/**
+ * Minimum width held for the acknowledgement control, sized to its widest
+ * state (the "Ack'd" button, which carries a bell icon). A minimum rather than
+ * a fixed width so a longer label grows the slot instead of being clipped.
+ */
+const ACK_SLOT_WIDTH = 84;
 
 export function getAlertDisplayName(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
@@ -234,36 +239,20 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         </Stack>
       </Group>
 
-      <Group>
-        {/* Eligibility comes from the shared predicate rather than an inline
-            source check, so this and the bulk export can't diverge on which
-            alerts the provider can actually model. */}
-        {isImportableAlert(alert) && (
-          <ResourceTerraformPopover
-            resource={{
-              type: 'alert',
-              id: alert._id,
-              // No fallback to the saved search's name: the name only labels
-              // the generated block, and the manifest the bulk export reads
-              // carries the alert's own name, so a fallback here would make
-              // the two surfaces disagree about what they call this alert.
-              name: alert.name ?? undefined,
-            }}
-          />
-        )}
+      <Group gap="xs" wrap="nowrap">
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
-        <AckAlert alert={alert} />
-        {IS_ALERT_DETAILS_ENABLED && alertUrl && (
-          <Button
-            component={Link}
-            href={alertUrl}
-            variant="link"
-            size="compact-sm"
-            data-testid={`alert-source-link-${alert._id}`}
-          >
-            {linkTitle}
-          </Button>
-        )}
+        {/* Reserved width: AckAlert renders nothing for an OK alert that has
+            never been acknowledged, and letting that gap close shifted every
+            control to its left, so no two rows lined up. */}
+        <Flex miw={ACK_SLOT_WIDTH} justify="flex-end">
+          <AckAlert alert={alert} />
+        </Flex>
+        <AlertRowMenu
+          alert={alert}
+          alertUrl={IS_ALERT_DETAILS_ENABLED ? alertUrl : undefined}
+          linkTitle={linkTitle}
+          alertName={getAlertDisplayName(alert)}
+        />
       </Group>
     </div>
   );
