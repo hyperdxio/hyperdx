@@ -134,10 +134,32 @@ export class AlertsPage {
   /**
    * Get the alert-name link for a given alert card. With alert details
    * enabled it navigates to /alerts/:id; the source tile / saved search is
-   * a separate secondary link (alert-source-link-*).
+   * reachable from the row's overflow menu.
    */
   getDetailsLinkForAlertCard(alertCard: Locator) {
     return alertCard.locator('[data-testid^="alert-link-"]');
+  }
+
+  /**
+   * The row's overflow menu button. Present on every row, which is the point —
+   * the actions inside it are conditional, the control is not.
+   */
+  getRowMenuButton(alertCard: Locator) {
+    return alertCard.locator('[data-testid^="alert-row-menu-"]');
+  }
+
+  /**
+   * Open a row's overflow menu. The dropdown is portalled, so items are
+   * queried from the page rather than from the card.
+   */
+  async openRowMenu(alertCard: Locator) {
+    await this.getRowMenuButton(alertCard).click();
+    await this.page.getByRole('menu').waitFor();
+  }
+
+  /** The "Export to Terraform" item, only present for importable alerts. */
+  get terraformMenuItem() {
+    return this.page.locator('[data-testid^="terraform-menu-item-"]');
   }
 
   /**
