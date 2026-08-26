@@ -1046,6 +1046,22 @@ export const FilterSchema = z.union([
 
 export type Filter = z.infer<typeof FilterSchema>;
 
+export const VariableFilterValueSchema = z.object({
+  type: z.literal('variable'),
+  name: z.string().min(1).max(1024),
+  values: z.array(z.string().max(10000)).max(1000),
+});
+
+export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
+
+/** One entry in a dashboard's `filters=` param / `savedFilterValues`. */
+export const DashboardFilterValueSchema = z.union([
+  FilterSchema,
+  VariableFilterValueSchema,
+]);
+
+export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
+
 // --------------------------
 // TAGS
 // --------------------------
@@ -1893,7 +1909,7 @@ export const DashboardSchema = z.object({
   filters: z.array(DashboardFilterSchema).optional(),
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
-  savedFilterValues: z.array(FilterSchema).optional(),
+  savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)

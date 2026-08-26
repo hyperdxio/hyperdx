@@ -1,4 +1,8 @@
 import { createParser } from 'nuqs';
+import {
+  DashboardFilterValue,
+  DashboardFilterValueSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 /**
@@ -48,7 +52,9 @@ export const parseAsStringEncoded = createParser<string>({
  * the safe default rather than a value that throws downstream during render.
  * Zod schemas satisfy this signature via `schema.parse`.
  */
-export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
+export function parseAsJsonEncoded<T>(
+  validate?: (value: unknown) => T | null | undefined,
+) {
   const finalize = (parsed: unknown): T | null => {
     if (!validate) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -82,6 +88,24 @@ export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
     serialize: value => encodeURIComponent(JSON.stringify(value)),
   });
 }
+
+/**
+ * The dashboard `filters=` param: an array of filter-value entries, each either
+ * expression-keyed (`{type:'sql'}`) or variable-keyed (`{type:'variable'}`).
+ *
+ * Lenient by design — an unrecognized entry is dropped and the rest of the
+ * array survives.
+ */
+export const dashboardFilterValuesParser = parseAsJsonEncoded<
+  DashboardFilterValue[]
+>(value =>
+  Array.isArray(value)
+    ? value.flatMap(entry => {
+        const parsed = DashboardFilterValueSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : null,
+);
 
 export const parseAsSortingStateString = createParser<SortingState[number]>({
   parse: value => {
