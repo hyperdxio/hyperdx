@@ -446,6 +446,45 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
   });
 
+  test('should warn when closing filter editor with unsaved changes', async () => {
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.openEditFiltersModal();
+    await dashboardPage.openAddFilterForm();
+    await expect(dashboardPage.getFilterForm()).toBeVisible();
+
+    await dashboardPage.fillFilterName('Unsaved filter');
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+
+    // Cancelling keeps the editor open with the pending edit intact.
+    await dashboardPage.unsavedChangesConfirmCancelButton.click();
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+    await expect(dashboardPage.getFilterNameInput()).toHaveValue(
+      'Unsaved filter',
+    );
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+    await dashboardPage.unsavedChangesConfirmDiscardButton.click();
+    await expect(dashboardPage.getFilterForm()).toBeHidden({ timeout: 5000 });
+  });
+
+  test('should close filter editor without confirm when there are no unsaved changes', async () => {
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.openEditFiltersModal();
+    await dashboardPage.openAddFilterForm();
+    await expect(dashboardPage.getFilterForm()).toBeVisible();
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.getFilterForm()).toBeHidden({ timeout: 5000 });
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+  });
+
   test('should create and populate filters', {}, async () => {
     test.setTimeout(30000);
 
