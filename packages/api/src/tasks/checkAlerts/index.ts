@@ -932,16 +932,13 @@ export const processAlert = async (
   // Per-target notification timings, keyed by webhook id so the same target
   // notified for several groups (and again on resolve) aggregates into one
   // entry rather than one per dispatch.
-  const notificationTimings = new Map<
-    string,
-    AlertNotificationTargetTiming & { key: string }
-  >();
+  const notificationTimings = new Map<string, AlertNotificationTargetTiming>();
   const recordNotificationTimings = (timings: NotificationTiming[]) => {
     for (const timing of timings) {
       const existing = notificationTimings.get(timing.key);
       if (existing == null) {
         notificationTimings.set(timing.key, {
-          key: timing.key,
+          targetId: timing.key,
           target: timing.target,
           durationMs: timing.durationMs,
           dispatches: 1,
@@ -969,8 +966,7 @@ export const processAlert = async (
       // Slowest first: the point of the breakdown is finding what dominated
       // the total, and the cap below should drop the least interesting rows.
       .sort((a, b) => b.durationMs - a.durationMs)
-      .slice(0, ALERT_NOTIFICATION_TARGETS_LIMIT)
-      .map(({ key: _key, ...timing }) => timing);
+      .slice(0, ALERT_NOTIFICATION_TARGETS_LIMIT);
   };
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;

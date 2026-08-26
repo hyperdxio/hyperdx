@@ -6,12 +6,66 @@ import { NotificationDurationCell } from '@/components/alerts/NotificationDurati
 const analytics = {
   webhookDurationMs: 4120,
   notificationTargets: [
-    { target: 'Team Slack', durationMs: 4120, dispatches: 50, failures: 0 },
-    { target: 'Ops webhook', durationMs: 210, dispatches: 50, failures: 2 },
+    {
+      targetId: 'hook-1',
+      target: 'Team Slack',
+      durationMs: 4120,
+      dispatches: 50,
+      failures: 0,
+    },
+    {
+      targetId: 'hook-2',
+      target: 'Ops webhook',
+      durationMs: 210,
+      dispatches: 50,
+      failures: 2,
+    },
   ],
 };
 
 describe('NotificationDurationCell', () => {
+  // Aggregation keys on the webhook id, so two webhooks sharing a display
+  // name are two legitimate entries. React only complains about the duplicate
+  // key through console.error, so watch for it directly.
+  it('renders same-named targets as distinct rows without key collisions', () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    renderWithMantine(
+      <NotificationDurationCell
+        analytics={{
+          webhookDurationMs: 4120,
+          notificationTargets: [
+            {
+              targetId: 'hook-1',
+              target: 'Ops webhook',
+              durationMs: 4120,
+              dispatches: 1,
+              failures: 0,
+            },
+            {
+              targetId: 'hook-2',
+              target: 'Ops webhook',
+              durationMs: 210,
+              dispatches: 1,
+              failures: 0,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText('Ops webhook')).toHaveLength(2);
+    // Scan every call rather than matching an argument list: React passes the
+    // message as a format string plus substitutions, so a fixed-arity
+    // toHaveBeenCalledWith matcher never matches and passes vacuously.
+    const warnings = consoleError.mock.calls
+      .map(args => args.map(String).join(' '))
+      .filter(message => message.includes('same key'));
+    consoleError.mockRestore();
+    expect(warnings).toHaveLength(0);
+  });
+
   it('shows a dash when the evaluation notified nothing', () => {
     renderWithMantine(<NotificationDurationCell analytics={{}} />);
 

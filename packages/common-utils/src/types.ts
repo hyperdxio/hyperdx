@@ -988,6 +988,11 @@ export const ALERT_NOTIFICATION_TARGETS_LIMIT = 20;
  * dispatch.
  */
 export const AlertNotificationTargetTimingSchema = z.object({
+  /**
+   * Stable identity for the target — the webhook id. Two webhooks can share a
+   * display name, so `target` alone does not identify a row.
+   */
+  targetId: z.string(),
   /** Display label: the webhook's name as it was at dispatch time. */
   target: z.string(),
   /** Summed wall time across this target's dispatches (ms). */

@@ -56,7 +56,8 @@ export function NotificationDurationCell({
       <Collapse expanded={expanded}>
         <Stack gap={2} pt={2} data-testid="notification-duration-breakdown">
           {targets.map(target => (
-            <Group key={target.target} gap="xs" wrap="nowrap">
+            // Keyed on the id, not the label: two webhooks can share a name.
+            <Group key={target.targetId} gap="xs" wrap="nowrap">
               <Text size="xs" c="dimmed">
                 {target.target}
               </Text>
@@ -67,7 +68,7 @@ export function NotificationDurationCell({
                 </Text>
               )}
               {target.failures > 0 && (
-                <Text size="xs" c="red">
+                <Text size="xs" c="var(--color-text-danger)">
                   {target.failures} failed
                 </Text>
               )}

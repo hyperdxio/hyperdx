@@ -3351,6 +3351,7 @@ describe('checkAlerts', () => {
         // don't deep-equal a plain object literal.
         const targets = normalHistories[0].analytics!.notificationTargets;
         expect(targets).toHaveLength(1);
+        expect(targets![0].targetId).toBe(webhook._id.toString());
         expect(targets![0].target).toBe(webhook.name);
         expect(targets![0].durationMs).toEqual(expect.any(Number));
         expect(targets![0].dispatches).toBe(1);

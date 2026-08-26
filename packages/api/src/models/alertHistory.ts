@@ -118,6 +118,7 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
         type: [
           {
             _id: false,
+            targetId: { type: String, required: true },
             target: { type: String, required: true },
             durationMs: { type: Number, required: true },
             dispatches: { type: Number, required: true },
