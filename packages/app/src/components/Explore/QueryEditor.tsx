@@ -6,7 +6,6 @@ import {
   Box,
   Flex,
   SegmentedControl,
-  Text,
   useMantineColorScheme,
 } from '@mantine/core';
 import CodeMirror, {
@@ -22,7 +21,7 @@ import {
   languageExtensions,
   queryEditorBaseTheme,
 } from './queryEditorLanguage';
-import { type QueryEditorMode, type QueryLanguage } from './queryModeSafety';
+import { type QueryLanguage } from './queryModeSafety';
 
 import styles from './QueryEditor.module.scss';
 
@@ -31,11 +30,6 @@ export type QueryConfigMode = 'builder' | 'sql';
 
 const DEFAULT_LANGUAGES: QueryLanguage[] = ['lucene'];
 const EMPTY_FIELDS: string[] = [];
-
-const MODE_LABELS: Record<QueryEditorMode, string> = {
-  lucene: 'Search',
-  raw: 'Raw SQL',
-};
 
 export interface QueryEditorProps {
   /** Current query text (controlled). */
@@ -46,30 +40,21 @@ export interface QueryEditorProps {
   onLanguageChange: (language: QueryLanguage) => void;
   /** Which languages appear in the toggle (also controls order). */
   languages?: QueryLanguage[];
+  /** Disclosure control for the SQL panel, shown at the far left of the header. */
+  sqlToggle?: React.ReactNode;
   /**
-   * Query authoring mode. When provided, a `Builder | SQL` toggle is shown at
-   * the far left of the header. In `'sql'` mode the CodeMirror WHERE editor is
-   * replaced by `children` (a raw-SQL editor) and the language toggle and
-   * `leftSection` are hidden.
+   * SQL editor revealed under the search input. The search input stays visible
+   * either way — SQL is an addition to the query, never a replacement for it.
    */
-  queryMode?: QueryConfigMode;
-  onQueryModeChange?: (mode: QueryConfigMode) => void;
-  /**
-   * Combined Search / Raw SQL control. When provided, the segmented control
-   * calls this instead of flipping language/queryMode itself so the parent
-   * can snapshot and confirm unsafe switches.
-   */
-  onModeChange?: (mode: QueryEditorMode) => void;
-  /** Body override rendered instead of the WHERE editor when in SQL mode. */
-  children?: React.ReactNode;
+  sqlPanel?: React.ReactNode;
   /** Right-aligned header controls (date picker, Live, Run, ...). */
   rightSection?: React.ReactNode;
   /** Extra node next to the language tabs (e.g. a syntax-help button). */
   leftSection?: React.ReactNode;
-  /** Toolbar under the input (add filter, examples, SQL preview). */
-  toolbarSlot?: React.ReactNode;
   /** Active filter chips rendered inside the bordered input, before the editor. */
   filtersSlot?: React.ReactNode;
+  /** Trailing control inside the input, after the editor (e.g. "Add filter"). */
+  addFilterSlot?: React.ReactNode;
   /**
    * Backspace at caret 0 with an empty selection removes the last filter
    * token. Return true when a token was removed so the editor does not also
@@ -91,11 +76,10 @@ export interface QueryEditorProps {
 }
 
 /**
- * Presentational query editor: a bordered card with Search | Raw SQL tabs and
- * header controls on top of a CodeMirror body (Lucene) or a raw-SQL editor.
- * The body auto-grows with its content (wrapping long lines) up to `maxHeight`
- * before scrolling. Fully controlled — value and language are owned by the
- * caller.
+ * Presentational query editor: a header of controls above a CodeMirror search
+ * input, with an optional SQL editor disclosed beneath it. The body auto-grows
+ * with its content (wrapping long lines) up to `maxHeight` before scrolling.
+ * Fully controlled — value and language are owned by the caller.
  */
 export function QueryEditor({
   value,
@@ -103,14 +87,12 @@ export function QueryEditor({
   language,
   onLanguageChange,
   languages = DEFAULT_LANGUAGES,
-  queryMode,
-  onQueryModeChange,
-  onModeChange,
-  children,
+  sqlToggle,
+  sqlPanel,
   rightSection,
   leftSection,
-  toolbarSlot,
   filtersSlot,
+  addFilterSlot,
   onRemoveLastFilter,
   fields = EMPTY_FIELDS,
   placeholder = 'Filter this source',
@@ -201,62 +183,30 @@ export function QueryEditor({
     });
   }, []);
 
-  const isSqlMode = queryMode === 'sql';
-  const showToggle = languages.length > 1 && !isSqlMode;
-
-  const modeValue: QueryEditorMode = isSqlMode ? 'raw' : 'lucene';
-  const handleModeChange = (v: string) => {
-    if (v !== 'lucene' && v !== 'raw') {
-      return;
-    }
-    const next: QueryEditorMode = v;
-    if (onModeChange) {
-      onModeChange(next);
-      return;
-    }
-    if (next === 'raw') {
-      onQueryModeChange?.('sql');
-      return;
-    }
-    if (isSqlMode) onQueryModeChange?.('builder');
-    onLanguageChange('lucene');
-  };
+  const showLanguageToggle = languages.length > 1;
 
   return (
     <Box className={styles.card} data-testid="explore-query-editor">
       <Flex align="center" gap="sm" className={styles.header}>
         <Flex align="center" gap="xs" wrap="nowrap">
-          {onQueryModeChange != null ? (
+          {sqlToggle}
+          {showLanguageToggle && (
             <SegmentedControl
               size="xs"
-              value={modeValue}
-              onChange={handleModeChange}
-              data={[
-                { value: 'lucene', label: MODE_LABELS.lucene },
-                { value: 'raw', label: MODE_LABELS.raw },
-              ]}
-              aria-label="Query mode"
-              data-testid="query-mode-toggle"
+              value={language}
+              onChange={v => {
+                if (v === 'lucene' || v === 'sql') {
+                  onLanguageChange(v);
+                }
+              }}
+              data={languages.map(l => ({
+                value: l,
+                label: l === 'lucene' ? 'Search' : 'SQL',
+              }))}
+              aria-label="Query language"
             />
-          ) : (
-            showToggle && (
-              <SegmentedControl
-                size="xs"
-                value={language}
-                onChange={v => {
-                  if (v === 'lucene' || v === 'sql') {
-                    onLanguageChange(v);
-                  }
-                }}
-                data={languages.map(l => ({
-                  value: l,
-                  label: l === 'lucene' ? MODE_LABELS.lucene : 'SQL',
-                }))}
-                aria-label="Query language"
-              />
-            )
           )}
-          {!isSqlMode && leftSection}
+          {leftSection}
         </Flex>
         <Flex
           align="center"
@@ -268,54 +218,43 @@ export function QueryEditor({
           {rightSection}
         </Flex>
       </Flex>
-      {isSqlMode ? (
-        <>
-          {filtersSlot != null && (
-            <Box className={styles.filters}>{filtersSlot}</Box>
-          )}
-          <Box data-testid={dataTestId}>{children}</Box>
-        </>
-      ) : (
-        <Box className={styles.body} data-testid={dataTestId}>
-          {filtersSlot != null && (
-            <Box className={styles.filters}>{filtersSlot}</Box>
-          )}
-          <Box className={styles.editor}>
-            <Text className={styles.badge} size="xs" c="dimmed">
-              {MODE_LABELS.lucene}
-            </Text>
-            <CodeMirror
-              ref={ref}
-              value={value}
-              onChange={onChange}
-              onFocus={handleFocus}
-              onBlur={onBlur}
-              placeholder={placeholder}
-              theme={colorScheme === 'dark' ? 'dark' : 'light'}
-              extensions={extensions}
-              height="auto"
-              minHeight="24px"
-              maxHeight={`${maxHeight}px`}
-              basicSetup={{
-                lineNumbers: false,
-                foldGutter: false,
-                highlightActiveLine: false,
-                highlightActiveLineGutter: false,
-                autocompletion: false,
-                bracketMatching: true,
-                closeBrackets: true,
-                searchKeymap: false,
-                // See queryEditorLanguage.ts — Lucene StreamLanguage
-                // highlighting throws `tags is not iterable`.
-                syntaxHighlighting: false,
-              }}
-            />
-          </Box>
+      <Box className={styles.body} data-testid={dataTestId}>
+        {filtersSlot != null && (
+          <Box className={styles.filters}>{filtersSlot}</Box>
+        )}
+        <Box className={styles.editor}>
+          <CodeMirror
+            ref={ref}
+            value={value}
+            onChange={onChange}
+            onFocus={handleFocus}
+            onBlur={onBlur}
+            placeholder={placeholder}
+            theme={colorScheme === 'dark' ? 'dark' : 'light'}
+            extensions={extensions}
+            height="auto"
+            minHeight="24px"
+            maxHeight={`${maxHeight}px`}
+            basicSetup={{
+              lineNumbers: false,
+              foldGutter: false,
+              highlightActiveLine: false,
+              highlightActiveLineGutter: false,
+              autocompletion: false,
+              bracketMatching: true,
+              closeBrackets: true,
+              searchKeymap: false,
+              // See queryEditorLanguage.ts — Lucene StreamLanguage
+              // highlighting throws `tags is not iterable`.
+              syntaxHighlighting: false,
+            }}
+          />
         </Box>
-      )}
-      {toolbarSlot != null && (
-        <Box className={styles.toolbar}>{toolbarSlot}</Box>
-      )}
+        {addFilterSlot != null && (
+          <Box className={styles.addFilter}>{addFilterSlot}</Box>
+        )}
+      </Box>
+      {sqlPanel}
     </Box>
   );
 }

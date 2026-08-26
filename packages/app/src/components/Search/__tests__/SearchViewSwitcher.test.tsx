@@ -29,34 +29,34 @@ describe('SearchViewSwitcher', () => {
     return onChange;
   }
 
-  it('switches to time series when Visualize is clicked from List', async () => {
+  it('switches to time series when Chart is clicked from Events', async () => {
     const user = userEvent.setup();
     const onChange = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'Visualize' }));
+    await user.click(screen.getByRole('button', { name: 'Chart' }));
 
     expect(onChange).toHaveBeenCalledWith('timeseries');
   });
 
-  it('picks pie from Visualize as without an extra Visualize click', async () => {
+  it('picks pie from Chart as without an extra Chart click', async () => {
     const user = userEvent.setup();
     const onChange = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'Visualize as' }));
+    await user.click(screen.getByRole('button', { name: 'Chart as' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pie' }));
     expect(onChange).toHaveBeenCalledWith('pie');
   });
 
-  it('picks number from Visualize as', async () => {
+  it('picks number from Chart as', async () => {
     const user = userEvent.setup();
     const onChange = renderSwitcher();
 
-    await user.click(screen.getByRole('button', { name: 'Visualize as' }));
+    await user.click(screen.getByRole('button', { name: 'Chart as' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Number' }));
     expect(onChange).toHaveBeenCalledWith('number');
   });
 
-  it('returns to the last chart type after switching back to List', async () => {
+  it('returns to the last chart type after switching back to Events', async () => {
     const user = userEvent.setup();
     const onChange = jest.fn();
 
@@ -76,19 +76,43 @@ describe('SearchViewSwitcher', () => {
 
     renderWithMantine(<Harness />);
 
-    await user.click(screen.getByRole('button', { name: 'List' }));
-    await user.click(screen.getByRole('button', { name: 'Visualize' }));
+    await user.click(screen.getByRole('button', { name: 'Events' }));
+    await user.click(screen.getByRole('button', { name: 'Chart' }));
     expect(onChange).toHaveBeenLastCalledWith('pie');
+  });
+
+  it('labels only the active view, leaving the rest icon-only', () => {
+    renderSwitcher({ value: 'list' });
+
+    expect(screen.getByRole('button', { name: 'Events' })).toHaveTextContent(
+      'Events',
+    );
+    expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent('');
+    expect(screen.getByRole('button', { name: 'Patterns' })).toHaveTextContent(
+      '',
+    );
+  });
+
+  it('names the chart type beside the chart segment once a chart is active', () => {
+    renderSwitcher({ value: 'pie' });
+
+    expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent(
+      'Chart',
+    );
+    expect(screen.getByRole('button', { name: 'Chart as' })).toHaveTextContent(
+      'as Pie',
+    );
+    expect(screen.getByRole('button', { name: 'Events' })).toHaveTextContent(
+      '',
+    );
   });
 
   it('hides event views for metric sources and SQL chart-only mode', () => {
     renderSwitcher({ sourceKind: SourceKind.Metric, value: 'timeseries' });
     expect(
-      screen.queryByRole('button', { name: 'List' }),
+      screen.queryByRole('button', { name: 'Events' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Visualize' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chart' })).toBeInTheDocument();
   });
 
   it('hides event views in SQL chart-only mode', () => {
@@ -98,7 +122,7 @@ describe('SearchViewSwitcher', () => {
       value: 'timeseries',
     });
     expect(
-      screen.queryByRole('button', { name: 'List' }),
+      screen.queryByRole('button', { name: 'Events' }),
     ).not.toBeInTheDocument();
   });
 });

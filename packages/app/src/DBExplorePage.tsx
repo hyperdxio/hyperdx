@@ -1429,7 +1429,10 @@ function DBExplorePage() {
           where,
           whereLanguage,
           configType,
-          sqlTemplate,
+          // A generated template is derived from the search, so persisting it
+          // would only bloat the URL with something we can rebuild. Only a
+          // query the user owns is worth carrying.
+          sqlTemplate: configType === 'sql' ? sqlTemplate : null,
           source,
           filters,
           orderBy,
@@ -1636,11 +1639,21 @@ function DBExplorePage() {
   const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
   const inputConfigType: QueryConfigMode =
     useWatch({ name: 'configType', control }) ?? 'builder';
-  // Live SQL-mode flag: driven by the editor toggle (not the last-run config)
+  // Live SQL-mode flag: true once the user has taken the generated query over,
   // so builder-only chrome (histogram, severity, sort/columns, agg controls,
-  // view switcher) hides the instant you switch to Raw SQL. Query *execution* still
-  // keys off `isSqlMode` (submitted) so nothing re-runs until Run.
+  // event views) hides the instant the SQL becomes theirs. Query *execution*
+  // still keys off `isSqlMode` (submitted) so nothing re-runs until Run.
   const isSqlUiMode = inputConfigType === 'sql';
+
+  // SQL starts folded away — the search box is the faster tool and most
+  // sessions never open it. A URL carrying a hand-written query opens it, or
+  // the query it names would be invisible.
+  const [sqlPanelOpen, setSqlPanelOpen] = useState(
+    searchedConfigType === 'sql',
+  );
+  // The last text we generated, so its echo through the editor's onChange is
+  // not mistaken for the user typing.
+  const lastGeneratedSqlRef = useRef('');
   // query suggestion for 'where' if error
   const whereSuggestions = useSqlSuggestions({
     input: inputWhere,
@@ -2185,6 +2198,11 @@ function DBExplorePage() {
   // is carried over so macros ($__sourceTable, $__filters) resolve. The display
   // type is picked from the current chart view (aggregated views map 1:1 to raw
   // SQL display types).
+  //
+  // The search box rides along as one more filter so it keeps working after the
+  // user takes the SQL over: $__filters expands to the pills AND the search
+  // text. A template that drops the macro drops both, which the SQL panel warns
+  // about.
   const rawSqlChartConfig = useMemo<
     (RawSqlChartConfig & { dateRange: [Date, Date] }) | undefined
   >(() => {
@@ -2203,7 +2221,17 @@ function DBExplorePage() {
       displayType,
       granularity: view === 'timeseries' ? 'auto' : undefined,
       dateRange: searchedTimeRange,
-      filters: searchedConfig.filters ?? [],
+      filters: [
+        ...(searchedConfig.filters ?? []),
+        ...(searchedConfig.where?.trim()
+          ? [
+              {
+                type: searchedConfig.whereLanguage ?? 'lucene',
+                condition: searchedConfig.where.trim(),
+              } as Filter,
+            ]
+          : []),
+      ],
       implicitColumnExpression:
         isLogSource(searchedSource) || isTraceSource(searchedSource)
           ? searchedSource.implicitColumnExpression
@@ -2225,6 +2253,8 @@ function DBExplorePage() {
     searchedConfig.source,
     searchedConfig.sqlTemplate,
     searchedConfig.filters,
+    searchedConfig.where,
+    searchedConfig.whereLanguage,
     view,
     searchedTimeRange,
   ]);
@@ -2248,63 +2278,78 @@ function DBExplorePage() {
 
   const metadata = useMetadataWithSettings();
 
-  // Builder -> SQL prefill: on first switch to SQL mode, seed the empty SQL
-  // editor with a macro-based template generated from the current builder
-  // config so the user starts from a working statement.
-  const handleQueryModeChange = useCallback(
-    (mode: QueryConfigMode) => {
-      setValue('configType', mode, { shouldDirty: true });
-      if (mode !== 'sql') return;
-      const current = getValues('sqlTemplate');
-      if (current && current.trim()) return;
+  // The builder config the SQL panel mirrors. aggViewChartConfig already has a
+  // raw-SQL-compatible display type and an array select; for non-aggregated
+  // views synthesize a simple count().
+  const sqlTemplateBaseConfig = useMemo(() => {
+    if (aggViewChartConfig) return aggViewChartConfig;
+    if (!chartConfig) return undefined;
+    return {
+      ...chartConfig,
+      displayType: DisplayType.Table,
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: undefined,
+      orderBy: undefined,
+      granularity: undefined,
+      dateRange: searchedTimeRange,
+    };
+  }, [aggViewChartConfig, chartConfig, searchedTimeRange]);
 
-      // aggViewChartConfig already has a raw-SQL-compatible display type and an
-      // array select; for non-aggregated views synthesize a simple count().
-      const base =
-        aggViewChartConfig ??
-        (chartConfig
-          ? {
-              ...chartConfig,
-              displayType: DisplayType.Table,
-              select: [
-                { aggFn: 'count', aggCondition: '', valueExpression: '' },
-              ],
-              groupBy: undefined,
-              orderBy: undefined,
-              granularity: undefined,
-              dateRange: searchedTimeRange,
-            }
-          : undefined);
-      if (!base) return;
-
-      renderBuilderConfigAsSqlTemplate(
-        base as BuilderChartConfigWithDateRange,
-        metadata,
-      )
-        .then(result => {
-          if (result.isError) return;
-          // Don't clobber a hand-edit made while generation was in flight, and
-          // only write while still in SQL mode.
-          if (
-            getValues('configType') === 'sql' &&
-            !getValues('sqlTemplate')?.trim()
-          ) {
-            setValue('sqlTemplate', result.sql, { shouldDirty: true });
-          }
-        })
-        .catch(() => {
-          // Leave the editor empty (with its placeholder) if conversion fails.
-        });
-    },
-    [
-      setValue,
-      getValues,
-      aggViewChartConfig,
-      chartConfig,
-      searchedTimeRange,
+  // While the query is generated, keep it in step with the search above, so
+  // opening the panel always shows the statement the current search would run.
+  // The moment the user types, `configType` flips to 'sql' and this stops —
+  // regenerating over someone's edits is the behaviour the old read-only
+  // preview existed to prevent.
+  useEffect(() => {
+    if (
+      !sqlPanelOpen ||
+      inputConfigType !== 'builder' ||
+      !sqlTemplateBaseConfig
+    )
+      return;
+    let cancelled = false;
+    renderBuilderConfigAsSqlTemplate(
+      sqlTemplateBaseConfig as BuilderChartConfigWithDateRange,
       metadata,
-    ],
+    )
+      .then(result => {
+        if (cancelled || result.isError) return;
+        if (getValues('configType') !== 'builder') return;
+        lastGeneratedSqlRef.current = result.sql;
+        setValue('sqlTemplate', result.sql);
+      })
+      .catch(() => {
+        // Leave whatever is there (placeholder included) if conversion fails.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    sqlPanelOpen,
+    inputConfigType,
+    sqlTemplateBaseConfig,
+    metadata,
+    getValues,
+    setValue,
+  ]);
+
+  // First keystroke hands the query to the user. Echoes of our own regeneration
+  // carry the text we just wrote, so they never trip this.
+  const handleSqlEdit = useCallback(
+    (next: string) => {
+      if (next === lastGeneratedSqlRef.current) return;
+      if (getValues('configType') === 'sql') return;
+      setValue('configType', 'sql', { shouldDirty: true });
+    },
+    [getValues, setValue],
   );
+
+  // Hand it back: clearing the template lets the effect above regenerate.
+  const handleSqlReset = useCallback(() => {
+    setValue('configType', 'builder', { shouldDirty: true });
+    setValue('sqlTemplate', '', { shouldDirty: true });
+    lastGeneratedSqlRef.current = '';
+  }, [setValue]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
@@ -2735,8 +2780,11 @@ function DBExplorePage() {
             data-testid="search-input"
             dateRange={searchedTimeRange}
             sourceId={inputSource}
+            sqlOpen={sqlPanelOpen}
+            onSqlOpenChange={setSqlPanelOpen}
             queryMode={inputConfigType}
-            onQueryModeChange={handleQueryModeChange}
+            onSqlEdit={handleSqlEdit}
+            onSqlReset={handleSqlReset}
             sqlTemplateName="sqlTemplate"
             rawSqlDisplayType={
               isAggregatedSearchView(view)

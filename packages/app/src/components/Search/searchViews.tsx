@@ -32,6 +32,12 @@ export const DEFAULT_CHART_VIEW: SearchView = 'timeseries';
 export type SearchViewMeta = {
   value: SearchView;
   label: string;
+  /**
+   * Shown in the view switcher when this view is active, where the label sits
+   * beside the icon and every character costs width the results row needs.
+   * Falls back to `label`.
+   */
+  shortLabel?: string;
   icon: React.ReactNode;
   /** Requires an aggregation (agg fn + optional group by). */
   aggregated: boolean;
@@ -44,7 +50,7 @@ export type SearchViewMeta = {
 const SEARCH_VIEWS: SearchViewMeta[] = [
   {
     value: 'list',
-    label: 'List',
+    label: 'Events',
     icon: <IconList size={16} />,
     aggregated: false,
   },
@@ -87,6 +93,7 @@ const SEARCH_VIEWS: SearchViewMeta[] = [
   {
     value: 'heatmap',
     label: 'Event deltas',
+    shortLabel: 'Deltas',
     icon: <IconGrid3x3 size={16} />,
     aggregated: false,
     sourceKinds: [SourceKind.Trace],
@@ -94,6 +101,7 @@ const SEARCH_VIEWS: SearchViewMeta[] = [
   {
     value: 'patterns',
     label: 'Event patterns',
+    shortLabel: 'Patterns',
     icon: <IconBracketsContain size={16} />,
     aggregated: false,
     hiddenInClickhouseBuild: true,

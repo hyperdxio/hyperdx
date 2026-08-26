@@ -32,24 +32,24 @@
   position: relative;
   flex: 1 1 8rem;
   min-width: 8rem;
-  padding-right: 40px;
 }
 
-.badge {
-  position: absolute;
-  top: 4px;
-  right: 0;
-  pointer-events: none;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.toolbar {
+/* Trailing action inside the field. Keeps its width so the editor, not the
+   button, absorbs the wrapping when filter pills fill the row. */
+.addFilter {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Marks the SQL query as hand-edited: small enough to ignore while scanning
+   the row, present enough to explain why the search box stopped driving it. */
+.editedDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-bg-warning);
 }
 
 /* Raw-SQL body: full statement editor with a help/instructions row above it. */

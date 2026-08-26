@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Divider, Group, Menu, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  Divider,
+  Group,
+  Menu,
+  Tooltip,
+} from '@mantine/core';
 import { IconChartLine, IconCheck, IconChevronDown } from '@tabler/icons-react';
 
 import {
@@ -10,6 +17,60 @@ import {
   isAggregatedSearchView,
   type SearchView,
 } from './searchViews';
+
+/** Matches ActionIcon size="md" so the switcher lines up with its neighbours. */
+const SEGMENT_HEIGHT = 28;
+
+/**
+ * One segment of the switcher. Only the active segment spends width on its
+ * label; the rest stay icon-only with the label in a tooltip, so naming the
+ * current view costs the row a single label rather than one per view.
+ */
+function ViewSegment({
+  label,
+  icon,
+  active,
+  onClick,
+  'data-testid': dataTestId,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  'data-testid'?: string;
+}) {
+  if (active) {
+    return (
+      <Button
+        variant="primary"
+        size="compact-sm"
+        h={SEGMENT_HEIGHT}
+        px={10}
+        leftSection={icon}
+        onClick={onClick}
+        aria-label={label}
+        data-active
+        data-testid={dataTestId}
+      >
+        {label}
+      </Button>
+    );
+  }
+  return (
+    <Tooltip label={label} fz="xs" color="gray">
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        size="md"
+        onClick={onClick}
+        aria-label={label}
+        data-testid={dataTestId}
+      >
+        {icon}
+      </ActionIcon>
+    </Tooltip>
+  );
+}
 
 export function SearchViewSwitcher({
   value,
@@ -41,12 +102,10 @@ export function SearchViewSwitcher({
     setLastChartView(value);
   }
 
-  // Active chart type lives on Visualize; the sibling control is only a chevron
-  // so the same glyph is never painted twice.
-  const visualizeIcon = (isChart
-    ? getSearchViewMeta(value)?.icon
-    : undefined) ??
-    getSearchViewMeta(DEFAULT_CHART_VIEW)?.icon ?? <IconChartLine size={16} />;
+  // The chart segment wears the chart type's own glyph, so the sibling control
+  // is only a chevron and the same icon is never painted twice.
+  const chartMeta = getSearchViewMeta(isChart ? value : lastChartView);
+  const chartIcon = chartMeta?.icon ?? <IconChartLine size={16} />;
 
   return (
     <Group
@@ -56,53 +115,57 @@ export function SearchViewSwitcher({
       data-testid="search-view-switcher"
     >
       {eventViews.map(option => (
-        <Tooltip label={option.label} key={option.value} fz="xs" color="gray">
-          <ActionIcon
-            variant={value === option.value ? 'primary' : 'subtle'}
-            color={value === option.value ? undefined : 'gray'}
-            size="md"
-            onClick={() => onChange(option.value)}
-            aria-label={option.label}
-            data-active={value === option.value || undefined}
-          >
-            {option.icon}
-          </ActionIcon>
-        </Tooltip>
+        <ViewSegment
+          key={option.value}
+          label={option.shortLabel ?? option.label}
+          icon={option.icon}
+          active={value === option.value}
+          onClick={() => onChange(option.value)}
+        />
       ))}
       {eventViews.length > 0 && chartViews.length > 0 && (
         <Divider orientation="vertical" mx={4} my={2} />
       )}
       {chartViews.length > 0 && (
-        <ActionIcon.Group>
-          <Tooltip label="Visualize" fz="xs" color="gray">
-            <ActionIcon
-              variant={isChart ? 'primary' : 'subtle'}
-              color={isChart ? undefined : 'gray'}
-              size="md"
-              onClick={() => {
-                if (!isChart) {
-                  onChange(lastChartView);
-                }
-              }}
-              aria-label="Visualize"
-              data-testid="visualize-button"
-              data-active={isChart || undefined}
-            >
-              {visualizeIcon}
-            </ActionIcon>
-          </Tooltip>
+        <>
+          <ViewSegment
+            label="Chart"
+            icon={chartIcon}
+            active={isChart}
+            onClick={() => {
+              if (!isChart) {
+                onChange(lastChartView);
+              }
+            }}
+            data-testid="visualize-button"
+          />
           <Menu withinPortal position="bottom-end">
-            <Tooltip label="Visualize as" fz="xs" color="gray">
+            <Tooltip label="Chart as" fz="xs" color="gray">
               <Menu.Target>
-                <ActionIcon
-                  variant={isChart ? 'primary' : 'subtle'}
-                  color={isChart ? undefined : 'gray'}
-                  size="md"
-                  aria-label="Visualize as"
-                  data-testid="visualize-as-button"
-                >
-                  <IconChevronDown size={14} />
-                </ActionIcon>
+                {isChart ? (
+                  <Button
+                    variant="subtle"
+                    color="gray"
+                    size="compact-sm"
+                    h={SEGMENT_HEIGHT}
+                    px={8}
+                    rightSection={<IconChevronDown size={14} />}
+                    aria-label="Chart as"
+                    data-testid="visualize-as-button"
+                  >
+                    {`as ${chartMeta?.label ?? ''}`}
+                  </Button>
+                ) : (
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="md"
+                    aria-label="Chart as"
+                    data-testid="visualize-as-button"
+                  >
+                    <IconChevronDown size={14} />
+                  </ActionIcon>
+                )}
               </Menu.Target>
             </Tooltip>
             <Menu.Dropdown>
@@ -120,7 +183,7 @@ export function SearchViewSwitcher({
               ))}
             </Menu.Dropdown>
           </Menu>
-        </ActionIcon.Group>
+        </>
       )}
     </Group>
   );

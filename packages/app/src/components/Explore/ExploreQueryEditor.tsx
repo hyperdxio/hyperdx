@@ -14,7 +14,9 @@ import { useMultipleAllFields } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
 import { useSource } from '@/source';
 
-import { ExploreRawSqlEditor } from './ExploreRawSqlEditor';
+import { AddFilterControl } from './AddFilterControl';
+import { ExploreSqlPanel } from './ExploreSqlPanel';
+import { ExploreSqlToggle } from './ExploreSqlToggle';
 import { FilterExpression } from './FilterExpression';
 import {
   filterStateToExpression,
@@ -23,9 +25,7 @@ import {
 } from './filterExpressionModel';
 import { promoteWhereToFilters } from './promoteWhereToFilters';
 import { QueryConfigMode, QueryEditor, QueryLanguage } from './QueryEditor';
-import { QueryEditorToolbar } from './QueryEditorToolbar';
 import { getExploreWhereLanguage } from './queryModeSafety';
-import { useExploreQueryMode } from './useExploreQueryMode';
 
 export type ExploreQueryEditorProps = {
   onSubmit?: () => void;
@@ -43,13 +43,25 @@ export type ExploreQueryEditorProps = {
    */
   dateTimeColumns?: ReadonlyMap<string, string>;
   /**
-   * Query authoring mode. When provided, a Search | Raw SQL toggle is shown; in
-   * `'sql'` mode the WHERE editor is swapped for a raw-SQL editor bound to
-   * `sqlTemplateName`.
+   * Whether the SQL editor is disclosed. When `onSqlOpenChange` is provided a
+   * `SQL` toggle appears in the header; the search input stays visible either
+   * way.
+   */
+  sqlOpen?: boolean;
+  onSqlOpenChange?: (open: boolean) => void;
+  /**
+   * `'builder'` means the SQL is generated from the search above and kept in
+   * step with it; `'sql'` means the user has taken it over.
    */
   queryMode?: QueryConfigMode;
-  onQueryModeChange?: (mode: QueryConfigMode) => void;
-  /** Form field name for the raw-SQL template (SQL mode). */
+  /**
+   * Called when the user edits the SQL, to hand the query over to them.
+   * Receives the new text so the caller can ignore echoes of its own writes.
+   */
+  onSqlEdit?: (value: string) => void;
+  /** Called to hand the query back to the generator. */
+  onSqlReset?: () => void;
+  /** Form field name for the raw-SQL template. */
   sqlTemplateName?: string;
   /** Display type the raw-SQL query targets (drives macros/placeholder/help). */
   rawSqlDisplayType?: DisplayType;
@@ -78,8 +90,11 @@ export function ExploreQueryEditor({
   languageName = `${name}Language`,
   controls,
   dateTimeColumns,
+  sqlOpen = false,
+  onSqlOpenChange,
   queryMode,
-  onQueryModeChange,
+  onSqlEdit,
+  onSqlReset,
   sqlTemplateName = 'sqlTemplate',
   rawSqlDisplayType = DisplayType.Table,
   searchFilters,
@@ -119,16 +134,7 @@ export function ExploreQueryEditor({
   const sqlTemplateValue =
     typeof sqlTemplateField.value === 'string' ? sqlTemplateField.value : '';
 
-  const { onModeChange } = useExploreQueryMode({
-    language,
-    where: stringValue,
-    sqlTemplate: sqlTemplateValue,
-    queryMode,
-    sourceKind: source?.kind,
-    onLanguageChange: languageField.onChange,
-    onWhereChange: valueField.onChange,
-    onQueryModeChange,
-  });
+  const sqlEdited = queryMode === 'sql';
 
   const identifiers = useMemo(() => {
     return [
@@ -187,22 +193,41 @@ export function ExploreQueryEditor({
         language={language}
         onLanguageChange={languageField.onChange}
         languages={['lucene']}
-        queryMode={queryMode}
-        onQueryModeChange={onQueryModeChange}
-        onModeChange={onModeChange}
         rightSection={controls}
-        toolbarSlot={
-          <QueryEditorToolbar
-            mode={queryMode === 'sql' ? 'raw' : 'lucene'}
-            language={language}
-            where={stringValue}
-            onWhereChange={next => ingestWhere(next, true)}
-            sourceKind={source?.kind}
-            fields={identifiers}
-            searchFilters={searchFilters}
-            chartConfig={chartConfig}
-            queryMode={queryMode}
-          />
+        sqlToggle={
+          onSqlOpenChange != null ? (
+            <ExploreSqlToggle
+              open={sqlOpen}
+              edited={sqlEdited}
+              onToggle={() => onSqlOpenChange(!sqlOpen)}
+            />
+          ) : undefined
+        }
+        sqlPanel={
+          sqlOpen ? (
+            <ExploreSqlPanel
+              control={control}
+              name={sqlTemplateName as FieldPath<any>}
+              tableConnections={_tableConnections ?? []}
+              displayType={rawSqlDisplayType}
+              dateRange={dateRange}
+              timestampValueExpression={source?.timestampValueExpression}
+              onSubmit={onSubmit}
+              sqlTemplate={sqlTemplateValue}
+              edited={sqlEdited}
+              onEdit={onSqlEdit}
+              onReset={() => onSqlReset?.()}
+            />
+          ) : undefined
+        }
+        addFilterSlot={
+          searchFilters != null ? (
+            <AddFilterControl
+              fields={identifiers}
+              searchFilters={searchFilters}
+              chartConfig={chartConfig}
+            />
+          ) : undefined
         }
         filtersSlot={
           searchFilters != null && chartConfig != null ? (
@@ -232,25 +257,13 @@ export function ExploreQueryEditor({
         placeholder={
           language === 'sql'
             ? "SQL WHERE clause (e.g. column = 'foo')"
-            : 'Filter this source'
+            : 'Search this source, e.g. service:checkout'
         }
         onSubmit={handleSubmit}
         onBlur={() => ingestWhere(stringValue, true)}
         enableHotkey={enableHotkey}
         data-testid={dataTestId}
-      >
-        {queryMode === 'sql' ? (
-          <ExploreRawSqlEditor
-            control={control}
-            name={sqlTemplateName as FieldPath<any>}
-            tableConnections={_tableConnections ?? []}
-            displayType={rawSqlDisplayType}
-            dateRange={dateRange}
-            timestampValueExpression={source?.timestampValueExpression}
-            onSubmit={onSubmit}
-          />
-        ) : null}
-      </QueryEditor>
+      />
     </>
   );
 }

@@ -23,6 +23,10 @@ type ExploreRawSqlEditorProps = {
   dateRange?: [Date, Date];
   timestampValueExpression?: string;
   onSubmit?: () => void;
+  /** Right-aligned controls on the help row (copy, reset, ...). */
+  headerActions?: React.ReactNode;
+  /** Fired when the user edits the text (not when it is set programmatically). */
+  onValueChange?: (value: string) => void;
 } & UseControllerProps<any>;
 
 /**
@@ -38,6 +42,8 @@ export function ExploreRawSqlEditor({
   dateRange,
   timestampValueExpression,
   onSubmit,
+  headerActions,
+  onValueChange,
   ...controllerProps
 }: ExploreRawSqlEditorProps) {
   const [instructionsOpen, { toggle: toggleInstructions }] =
@@ -91,6 +97,11 @@ export function ExploreRawSqlEditor({
           </Text>
           .
         </Text>
+        {headerActions != null && (
+          <Group gap={4} ml="auto" wrap="nowrap" style={{ flexShrink: 0 }}>
+            {headerActions}
+          </Group>
+        )}
       </Group>
       {instructionsOpen ? (
         <Box mb={6}>
@@ -99,6 +110,7 @@ export function ExploreRawSqlEditor({
       ) : null}
       <SQLEditorControlled
         {...controllerProps}
+        onValueChange={onValueChange}
         enableLineWrapping
         placeholder={SQL_PLACEHOLDERS[displayType]}
         tableConnections={tableConnections}

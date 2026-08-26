@@ -147,9 +147,27 @@ export default function SQLEditor({
 }
 
 export function SQLEditorControlled({
+  onValueChange,
   ...props
-}: Omit<SQLEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
+}: Omit<SQLEditorProps, 'value' | 'onChange'> &
+  UseControllerProps<any> & {
+    /**
+     * Fired alongside the form update, for callers that need to react to the
+     * user editing (rather than to the value changing, which also happens when
+     * the field is set programmatically).
+     */
+    onValueChange?: (value: string) => void;
+  }) {
   const { field } = useController(props);
 
-  return <SQLEditor onChange={field.onChange} value={field.value} {...props} />;
+  return (
+    <SQLEditor
+      {...props}
+      value={field.value}
+      onChange={value => {
+        field.onChange(value);
+        onValueChange?.(value);
+      }}
+    />
+  );
 }
