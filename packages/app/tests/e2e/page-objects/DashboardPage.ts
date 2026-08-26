@@ -844,6 +844,24 @@ export class DashboardPage {
     await this.addFiltersButton.click();
   }
 
+  /** The filter edit form's display-name input. */
+  getFilterNameInput(): Locator {
+    return this.page.getByTestId('filter-name-input');
+  }
+
+  /**
+   * Fill only the filter's display name in the open edit form. Enough to mark
+   * the react-hook-form dirty without completing the whole form.
+   */
+  async fillFilterName(name: string) {
+    await this.getFilterNameInput().fill(name);
+  }
+
+  /** Open the edit form for an already-saved filter, without saving. */
+  async openEditFilterForm(filterName: string) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+  }
+
   /** Pick the data source in the filter edit form. */
   async selectFilterSource(sourceName: string) {
     await this.filtersSourceSelector.click();
