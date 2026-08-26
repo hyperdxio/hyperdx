@@ -396,6 +396,12 @@ export function useReleaseAnnotations(
   // the user. Distinguish the two, each once (Mantine dedupes concurrent
   // tiles by notification id).
   const hasWarnedRef = useRef(false);
+  // A changed config is a genuinely new query (different range, filters, or
+  // source) — it deserves its own warning even if the previous query already
+  // latched one, so this reset is independent of the `!enabled` reset below.
+  useEffect(() => {
+    hasWarnedRef.current = false;
+  }, [config]);
   useEffect(() => {
     if (!enabled) {
       hasWarnedRef.current = false;

@@ -650,6 +650,32 @@ describe('useReleaseAnnotations', () => {
 
       expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
     });
+
+    // Regression: the warned-once latch used to reset only when markers were
+    // toggled off, so a later, differently-scoped query's own error (or empty
+    // result) silently went unreported because the earlier query had already
+    // tripped the latch.
+    it('warns again for a new query even if a previous query already warned', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(
+        ({ where }: { where: string }) =>
+          useReleaseAnnotations(range, true, { source: logSource, where }),
+        { initialProps: { where: 'ServiceName:"checkout"' } },
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQueryError(new Error('Connection reset'));
+      rerender({ where: 'ServiceName:"cart"' });
+
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+      expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 'release-markers-error',
+          message: expect.stringContaining('Connection reset'),
+        }),
+      );
+    });
   });
 
   it("uses the source's configured version expression", () => {
