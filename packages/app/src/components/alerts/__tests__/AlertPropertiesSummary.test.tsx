@@ -1,5 +1,5 @@
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 
 import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import type { AlertsPageItem } from '@/types';
@@ -80,6 +80,23 @@ describe('AlertPropertiesSummary notification targets', () => {
       );
 
       expect(targetsText()).toBe('Notify viaTeam Slack,Ops webhook,+1 more');
+    });
+
+    // The overflowed names live nowhere but the tooltip, so the trigger has to
+    // be focusable and has to name them itself.
+    it('makes the overflow reachable without a pointer', async () => {
+      renderWithMantine(
+        <AlertPropertiesSummary alert={threeChannels} variant="detail" />,
+      );
+
+      const overflow = screen.getByRole('button', {
+        name: '1 more: incident.io',
+      });
+      // Focusing now opens the tooltip, which is a state update.
+      await act(async () => {
+        overflow.focus();
+      });
+      expect(overflow).toHaveFocus();
     });
 
     // Rows written before multi-channel carry a null-typed channel and no

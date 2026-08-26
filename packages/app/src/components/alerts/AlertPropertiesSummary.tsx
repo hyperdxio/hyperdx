@@ -3,7 +3,7 @@ import {
   isRangeThresholdType,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
-import { Group, Text, Tooltip, VisuallyHidden } from '@mantine/core';
+import { Group, Tooltip, UnstyledButton, VisuallyHidden } from '@mantine/core';
 
 import api from '@/api';
 import type { AlertsPageItem } from '@/types';
@@ -103,6 +103,10 @@ function NotificationTargets({
 
   const inline = targets.slice(0, MAX_INLINE_TARGETS);
   const overflow = targets.length - inline.length;
+  const overflowNames = targets
+    .slice(MAX_INLINE_TARGETS)
+    .map(target => target.name)
+    .join(', ');
 
   return (
     <Group gap={5} wrap="nowrap" data-testid="alert-notification-targets">
@@ -118,10 +122,27 @@ function NotificationTargets({
         </React.Fragment>
       ))}
       {overflow > 0 && (
-        <Tooltip label={allNames} multiline maw={320} withArrow color="dark">
-          <Text span inherit td="underline">
+        <Tooltip
+          label={allNames}
+          multiline
+          maw={320}
+          withArrow
+          color="dark"
+          // Mantine leaves focus off by default, so a keyboard user could tab
+          // to the trigger and still never see the names.
+          events={{ hover: true, focus: true, touch: true }}
+        >
+          {/* A button, not a span: the overflowed names exist nowhere else, so
+              the trigger has to be reachable by keyboard. The accessible name
+              carries them outright, for anyone who can't see a tooltip. */}
+          <UnstyledButton
+            fz="inherit"
+            c="inherit"
+            td="underline"
+            aria-label={`${overflow} more: ${overflowNames}`}
+          >
             +{overflow} more
-          </Text>
+          </UnstyledButton>
         </Tooltip>
       )}
     </Group>
