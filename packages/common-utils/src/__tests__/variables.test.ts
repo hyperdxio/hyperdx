@@ -1931,13 +1931,14 @@ describe('macros naming an unknown variable', () => {
   it('leaves the Lucene message alone rather than piling on', () => {
     // In a Lucene input the macro is literal text, so complaining about the
     // name it happens to carry is noise on top of the real problem.
-    const { errors } = validateVariableReferencesInTemplate(
+    const { errors, warnings } = validateVariableReferencesInTemplate(
       '$__filter(ServiceName, tenant)',
       [SERVICE],
       { language: 'lucene' },
     );
 
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('no meaning in a Lucene expression');
+    expect(errors).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('no meaning in a Lucene expression');
   });
 });
