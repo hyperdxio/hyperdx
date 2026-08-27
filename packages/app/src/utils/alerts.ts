@@ -11,11 +11,13 @@ import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
   AlertInterval,
+  AlertSource,
   AlertThresholdType,
   ChartAlertBaseSchema,
 } from '@hyperdx/common-utils/dist/types';
 
 import { IS_DEV } from '@/config';
+import type { AlertsPageItem } from '@/types';
 
 export function intervalToGranularity(interval: AlertInterval) {
   if (interval === '1m') return Granularity.OneMinute;
@@ -234,4 +236,38 @@ export function normalizeNoOpAlertScheduleFields<
   }
 
   return normalizedAlert as T;
+}
+
+export function getAlertDisplayName(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
+    const tileName = tile?.config.name || 'Tile';
+    return `${alert.dashboard.name} ${tileName}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return alert.savedSearch.name;
+  }
+  return '';
+}
+
+/** URL of the saved search / dashboard tile the alert is watching. */
+export function getAlertSourceUrl(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return `/search/${alert.savedSearchId}`;
+  }
+  return '';
+}
+
+export function getAlertTags(alert: AlertsPageItem): string[] {
+  return alert.dashboard?.tags ?? alert.savedSearch?.tags ?? [];
+}
+
+export function getAlertCreatorLabel(
+  alert: AlertsPageItem,
+): string | undefined {
+  if (!alert.createdBy) return undefined;
+  return alert.createdBy.name || alert.createdBy.email;
 }

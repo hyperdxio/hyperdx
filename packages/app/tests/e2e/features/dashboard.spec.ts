@@ -402,6 +402,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Verify alerts page loads with content', async () => {
       await expect(alertsPage.pageContainer).toBeVisible();
+      await alertsPage.filterToAlert(tileName);
       await expect(
         alertsPage.pageContainer
           .getByRole('link')
@@ -428,6 +429,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Verify alerts page loads with no alerts', async () => {
       await expect(alertsPage.pageContainer).toBeVisible();
+      // Search first: an unrendered virtualized row is absent from the DOM
+      // too, so this would pass even if the alert were still there.
+      await alertsPage.searchByName(tileName);
       await expect(
         alertsPage.pageContainer
           .getByRole('link')

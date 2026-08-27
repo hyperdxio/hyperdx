@@ -29,7 +29,7 @@ import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSec
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { IS_IAC_EXPORT_ENABLED } from './config';
-import { withAppNav } from './layout';
+import { APP_CONTENT_SCROLL_CONTAINER_ID, withAppNav } from './layout';
 
 type TeamTab = {
   value: string;
@@ -229,7 +229,7 @@ export default function TeamPage() {
         return;
       }
 
-      document.getElementById('app-content-scroll-container')?.scrollTo({
+      document.getElementById(APP_CONTENT_SCROLL_CONTAINER_ID)?.scrollTo({
         top: 0,
       });
 

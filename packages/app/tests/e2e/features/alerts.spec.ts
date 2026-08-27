@@ -59,6 +59,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(savedSearchName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -125,6 +126,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -194,6 +196,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -318,6 +321,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -379,6 +383,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(savedSearchName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -449,6 +454,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -525,6 +531,10 @@ test.describe(
         await test.step('Verify the alert no longer appears on the alerts page', async () => {
           await alertsPage.goto();
           await expect(alertsPage.pageContainer).toBeVisible();
+          // Search rather than scan the list: a virtualized row that is merely
+          // outside the render window is also absent from the DOM, so this
+          // assertion would pass whether or not the delete worked.
+          await alertsPage.searchByName(savedSearchName);
           await expect(
             alertsPage.getAlertCardByName(savedSearchName),
           ).toBeHidden({ timeout: 10000 });
@@ -584,6 +594,7 @@ test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the note is displayed on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(savedSearchName);
         const alertCard = alertsPage.getAlertCardByName(savedSearchName);
         await expect(alertCard).toBeVisible({ timeout: 10000 });
 
@@ -658,6 +669,7 @@ test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the note is displayed on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         const alertCard = alertsPage.getAlertCardByName(tileName);
         await expect(alertCard).toBeVisible({ timeout: 10000 });
 
@@ -687,6 +699,9 @@ test.describe(
       alertsPage = new AlertsPage(page);
       await alertsPage.goto();
       await expect(alertsPage.pageContainer).toBeVisible();
+      // Every test here works on the one seeded alert; filtering to it keeps
+      // its row inside the virtualized list's render window.
+      await alertsPage.filterToAlert(SEEDED_ERROR_ALERT.savedSearchName);
     });
 
     test('shows alert errors with the correct type and message', async () => {
@@ -774,6 +789,15 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
   let alertsPage: AlertsPage;
   const ts = Date.now();
 
+  /**
+   * Common to all three fixture names. Every test below searches by it first:
+   * the org accumulates alerts from the specs that ran earlier, and the list is
+   * virtualized, so an unfiltered fixture row can sit outside the render window
+   * and therefore outside the DOM. These tests are about how filtering behaves,
+   * not about where a row lands in a long list.
+   */
+  const seededScope = 'E2E Filter';
+
   const searchAlpha = {
     name: `E2E FilterAlpha ${ts}`,
     tags: [`team-alpha-${ts}`, `production-${ts}`],
@@ -848,6 +872,7 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     await alertsPage.goto();
     await expect(alertsPage.pageContainer).toBeVisible();
     await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+    await alertsPage.searchByName(seededScope);
   });
 
   test('should show search and filter controls', async () => {
@@ -886,6 +911,12 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
 
     await test.step('Clearing search restores all alerts', async () => {
       await alertsPage.clearSearch();
+      await expect(alertsPage.page).not.toHaveURL(/search=/);
+      // Re-scope before asserting: with no search at all, these rows are back
+      // among every other alert in the org and may fall outside the
+      // virtualized render window. What matters is that the alerts excluded by
+      // the FilterAlpha search are selectable again.
+      await alertsPage.searchByName(seededScope);
       await expect(
         alertsPage.getAlertCardByName(searchAlpha.name),
       ).toBeVisible();
