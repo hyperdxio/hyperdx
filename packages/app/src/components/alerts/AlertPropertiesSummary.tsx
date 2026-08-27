@@ -85,7 +85,16 @@ function NotificationTargets({
   if (!showNames) {
     return (
       <Tooltip label={allNames} multiline maw={320} withArrow color="dark">
-        <Group gap={4} wrap="nowrap" data-testid="alert-notification-targets">
+        {/* Positioned so VisuallyHidden below resolves against this row rather
+            than the document: it is absolutely positioned, and without a
+            containing block inside the page it lands at its offset within the
+            whole document, which causes the page to extend and adds a second scrollbar. */}
+        <Group
+          gap={4}
+          wrap="nowrap"
+          pos="relative"
+          data-testid="alert-notification-targets"
+        >
           Notify via
           {targets.map(target => (
             <React.Fragment key={target.key}>

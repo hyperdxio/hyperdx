@@ -27,6 +27,7 @@ import {
   ChartConfigWithOptDateRange,
   QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
+import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   useQuery,
   useQueryClient,
@@ -323,6 +324,9 @@ export function useQueriedChartConfig(
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
+        // Expand dashboard variables in the PromQL expression before sending to Prometheus API.
+        const { promqlExpression } =
+          substitutePromqlChartConfigVariables(config);
         const [startDate, endDate] = config.dateRange;
         const startSec = startDate.getTime() / 1000;
         const endSec = endDate.getTime() / 1000;
@@ -348,7 +352,7 @@ export function useQueriedChartConfig(
         }
 
         const resp = await prometheusApi.queryRange({
-          query: config.promqlExpression,
+          query: promqlExpression,
           start: startSec,
           end: endSec,
           step: stepStr,
