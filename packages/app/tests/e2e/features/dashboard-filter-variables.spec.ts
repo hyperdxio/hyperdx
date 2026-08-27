@@ -4,8 +4,7 @@
  * selection.
  *
  * Every test here is `@full-stack`: the option lists come from real ClickHouse
- * queries, and the dashboard-variables flag is only set on the full-stack
- * webServer (see playwright.config.ts).
+ * queries against the full-stack webServer (see playwright.config.ts).
  *
  * The seed data makes the narrowing checkable: default logs are generated with
  * `SERVICES[i % 10]` and `SEVERITIES[i % 4]`, so each service carries exactly
