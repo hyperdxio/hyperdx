@@ -8,7 +8,15 @@ function pair(
   mcp: string,
   i: number,
   plugin = 'none',
-  adoption?: { score: number; hits: Array<{ id: string; satisfied: boolean }> },
+  adoption?: {
+    score: number;
+    hits: Array<{
+      id: string;
+      satisfied: boolean;
+      informational?: boolean;
+      weight?: number;
+    }>;
+  },
 ): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
@@ -64,9 +72,10 @@ function pair(
       score: adoption.score,
       hits: adoption.hits.map(h => ({
         id: h.id,
-        weight: 1,
+        weight: h.weight ?? 1,
         matched: h.satisfied,
         satisfied: h.satisfied,
+        ...(h.informational ? { informational: true } : {}),
       })),
     };
   }
@@ -144,6 +153,12 @@ describe('renderMarkdownReport with adoption data', () => {
     hits: [
       { id: 'used_metric_tool', satisfied: used },
       { id: 'named_jvm_memory', satisfied: named },
+      {
+        id: 'checked_supporting',
+        satisfied: false,
+        informational: true,
+        weight: 0,
+      },
     ],
   });
   const summary = buildAggregate({
@@ -171,6 +186,13 @@ describe('renderMarkdownReport with adoption data', () => {
     expect(md).toContain('named_jvm_memory');
     // hyperdx (challenger) adoption 1.0 vs clickhouse (baseline) 0.0 → +100%.
     expect(md).toContain('+100%');
+  });
+
+  it('labels informational checks with (info) and explains the exclusion', () => {
+    expect(md).toContain('checked_supporting (info)');
+    expect(md).toContain('excluded from the adoption score');
+    // Scoring checks must NOT get the label.
+    expect(md).not.toContain('used_metric_tool (info)');
   });
 });
 
