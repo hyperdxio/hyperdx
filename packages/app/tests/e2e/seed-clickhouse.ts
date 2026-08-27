@@ -21,6 +21,8 @@ import {
   E2E_METADATA_MV_LOGS_TABLE,
   E2E_METRICS_GAUGE_TABLE,
   E2E_METRICS_SUM_TABLE,
+  E2E_PROMQL_METRIC_NAME,
+  E2E_PROMQL_TABLE,
   E2E_SESSIONS_TABLE,
   E2E_TRACES_MV_TABLE,
   E2E_TRACES_TABLE,
@@ -989,7 +991,66 @@ export async function seedClickHouse(): Promise<void> {
     `  Inserted ${METADATA_MV_ROWS.length} metadata-MV source entries`,
   );
 
+  // PromQL series: one per service, labelled with the same `ServiceName` values
+  // the logs carry, so a dashboard filter on ServiceName selects values that
+  // actually match a `service` label here.
+  console.log('  Inserting PromQL series...');
+  await seedPromqlSeries(client, startMs, endMs);
+  console.log(`  Inserted ${SERVICES.length} PromQL series`);
+
   console.log('ClickHouse seeding complete');
+}
+
+/**
+ * Seed one `E2E_PROMQL_METRIC_NAME` series per service into the TimeSeries
+ * table, through the `timeSeries*` table functions that expose its inner
+ * tables (the engine names those after the table's UUID, so they can't be
+ * addressed directly).
+ *
+ * A series' identity lives in the tags table while its samples live in the data
+ * table, tied together by `id`. Rather than recompute the engine's
+ * `reinterpretAsUUID(sipHash128(metric_name, all_tags))` here — where drifting
+ * from the schema would silently orphan every sample — the samples select their
+ * `id` back out of the tags table.
+ */
+async function seedPromqlSeries(
+  client: ReturnType<typeof createClickHouseClient>,
+  startMs: number,
+  endMs: number,
+) {
+  const ts = (part: 'Tags' | 'Data' | 'Metrics') =>
+    `timeSeries${part}('${E2E_CLICKHOUSE_DATABASE}', '${E2E_PROMQL_TABLE}')`;
+
+  await client.query(`
+    INSERT INTO FUNCTION ${ts('Metrics')} (metric_family_name, type, unit, help)
+    VALUES ('${E2E_PROMQL_METRIC_NAME}', 'gauge', '', 'E2E service liveness')
+  `);
+
+  const tagRows = SERVICES.map(
+    service =>
+      `('${E2E_PROMQL_METRIC_NAME}', map('service', '${service}'), ` +
+      `map('__name__', '${E2E_PROMQL_METRIC_NAME}', 'service', '${service}'), ` +
+      `fromUnixTimestamp64Milli(toInt64(${startMs})), fromUnixTimestamp64Milli(toInt64(${endMs})))`,
+  ).join(',\n');
+
+  await client.query(`
+    INSERT INTO FUNCTION ${ts('Tags')} (metric_name, tags, all_tags, min_time, max_time)
+    VALUES ${tagRows}
+  `);
+
+  // One sample a minute across the seeded window, for every series.
+  const stepMs = 60000;
+  const sampleCount = Math.max(1, Math.floor((endMs - startMs) / stepMs));
+  await client.query(`
+    INSERT INTO FUNCTION ${ts('Data')} (id, timestamp, value)
+    SELECT
+      t.id,
+      fromUnixTimestamp64Milli(toInt64(${startMs} + (n * ${stepMs}))),
+      1
+    FROM ${ts('Tags')} AS t
+    CROSS JOIN (SELECT number AS n FROM numbers(${sampleCount})) AS steps
+    WHERE t.metric_name = '${E2E_PROMQL_METRIC_NAME}'
+  `);
 }
 
 // Allow running directly for testing

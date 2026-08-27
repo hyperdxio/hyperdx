@@ -462,6 +462,17 @@ describe('replaceMacros with variables', () => {
       ).toBe("SELECT '$100 $nope'");
     });
 
+    it('escapes a regex reference for the SQL literal it sits in', () => {
+      // Raw SQL and the chart builder share one substitution path, so both get
+      // a pattern ClickHouse's literal parser hands to the regex engine intact.
+      expect(
+        replaceMacros({
+          sqlTemplate: "WHERE match(msg, '${service:regex}')",
+          variables: [{ name: 'service', values: ['v1.2'] }],
+        }),
+      ).toBe("WHERE match(msg, 'v1\\\\.2')");
+    });
+
     it('treats an empty variables array as a provided context', () => {
       expect(() =>
         replaceMacros({
@@ -492,6 +503,20 @@ describe('replaceMacros with variables', () => {
           variables: nested,
         }),
       ).toBe(`WHERE ${timeFilterOn('Timestamp')}`);
+    });
+
+    it('leaves a csv column expression unescaped, quotes and all', () => {
+      // `csv` is the raw escape hatch: it carries identifiers, and escaping a
+      // column expression for the surrounding literal would corrupt it.
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${mapCol:csv})',
+          variables: [
+            ...nested,
+            { name: 'mapCol', values: ["toDateTime(Attributes['ts'])"] },
+          ],
+        }),
+      ).toBe(`WHERE ${timeFilterOn("toDateTime(Attributes['ts'])")}`);
     });
 
     it('renders a bare reference in the quoted sqlstring format', () => {

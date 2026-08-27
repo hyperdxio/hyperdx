@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/macros';
 import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 import {
-  substituteWithContext,
+  substituteVariables,
   VARIABLE_FORMATS,
   VariableFormat,
 } from '@hyperdx/common-utils/dist/variables';
@@ -28,9 +28,8 @@ function describeSqlVariableExpansion(
 ): string | undefined {
   let expansion: string;
   try {
-    expansion = substituteWithContext(snippet, {
+    expansion = substituteVariables(snippet, {
       variables: [variable],
-      defaultFormat: 'sqlstring',
       inputLanguage: 'sql',
     });
   } catch {
@@ -158,11 +157,7 @@ export type LuceneVariableSuggestion = {
 
 /** Expand references the way a Lucene expression is expanded at query time. */
 const substituteLucene = (text: string, variables: ChartVariable[]) =>
-  substituteWithContext(text, {
-    variables,
-    defaultFormat: 'lucene',
-    inputLanguage: 'lucene',
-  });
+  substituteVariables(text, { variables, inputLanguage: 'lucene' });
 
 /**
  * Suggestions for a Lucene expression: the bare `$name` reference of each

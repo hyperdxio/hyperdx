@@ -8,10 +8,10 @@ import {
   getVariableReferences,
   hasVariableMacro,
   substituteChartConfigVariables,
-  substituteVariablesForLanguage,
-  substituteWithContext,
+  substitutePromqlChartConfigVariables,
+  substituteVariables,
   validateVariableReferencesInTemplate,
-  type VariableContext,
+  VariableContext,
 } from '@/variables';
 
 const variable = (
@@ -24,14 +24,13 @@ const variable = (
  * `substituteWithContext` with the SQL-ish defaults, so each case only spells
  * out the part of the context it is exercising.
  */
-const substituteVariables = (
+const substituteVariablesSql = (
   input: string,
   variables: ChartVariable[],
   overrides: Partial<Omit<VariableContext, 'variables'>> = {},
 ) =>
-  substituteWithContext(input, {
+  substituteVariables(input, {
     variables,
-    defaultFormat: 'sqlstring',
     inputLanguage: 'sql',
     ...overrides,
   });
@@ -133,28 +132,30 @@ describe('substituteVariables', () => {
   describe('bare references', () => {
     it('substitutes with the sqlstring format by default', () => {
       expect(
-        substituteVariables('WHERE ServiceName IN ($service)', [SERVICE]),
+        substituteVariablesSql('WHERE ServiceName IN ($service)', [SERVICE]),
       ).toBe("WHERE ServiceName IN ('api', 'web')");
     });
 
     it('substitutes NULL when nothing is selected', () => {
       expect(
-        substituteVariables('WHERE ServiceName IN ($service)', [EMPTY_SERVICE]),
+        substituteVariablesSql('WHERE ServiceName IN ($service)', [
+          EMPTY_SERVICE,
+        ]),
       ).toBe('WHERE ServiceName IN (NULL)');
     });
 
     it('leaves an unknown name verbatim', () => {
-      expect(substituteVariables("SELECT '$notAVariable'", [SERVICE])).toBe(
+      expect(substituteVariablesSql("SELECT '$notAVariable'", [SERVICE])).toBe(
         "SELECT '$notAVariable'",
       );
     });
 
     it('matches names maximally so a longer name is not partially replaced', () => {
-      expect(substituteVariables('$service_name', [SERVICE])).toBe(
+      expect(substituteVariablesSql('$service_name', [SERVICE])).toBe(
         '$service_name',
       );
       expect(
-        substituteVariables('$service_name', [
+        substituteVariablesSql('$service_name', [
           SERVICE,
           variable('service_name', ['checkout']),
         ]),
@@ -162,49 +163,32 @@ describe('substituteVariables', () => {
     });
 
     it('leaves a lone $ and $-digit sequences alone', () => {
-      expect(substituteVariables('SELECT $, $1, x$', [SERVICE])).toBe(
+      expect(substituteVariablesSql('SELECT $, $1, x$', [SERVICE])).toBe(
         'SELECT $, $1, x$',
       );
     });
 
-    it('applies the caller-provided default format', () => {
+    it("applies the language's default format", () => {
       expect(
-        substituteVariables('{service="$service"}', [SERVICE], {
-          defaultFormat: 'regex',
+        substituteVariables('{service="$service"}', {
+          variables: [SERVICE],
+          inputLanguage: 'promql',
         }),
       ).toBe('{service="(api|web)"}');
     });
   });
 
   describe('inputLanguage', () => {
-    // `defaultFormat` says how a reference's values are rendered;
-    // `inputLanguage` says what will parse the result. Only the latter turns on
-    // the Lucene handling, so the two stay independently settable.
-    it('renders lucene values without any lucene handling by default', () => {
-      // Values render as lucene terms, but the template is still treated as
-      // SQL: no quoted-reference rewrite, and the macros expand.
-      expect(
-        substituteVariables('ServiceName:"$service"', [SERVICE], {
-          defaultFormat: 'lucene',
-        }),
-      ).toBe('ServiceName:"("api" OR "web")"');
-      expect(
-        substituteVariables('$__filter(ServiceName, $service)', [SERVICE], {
-          defaultFormat: 'lucene',
-        }),
-      ).toBe("(ServiceName IN ('api', 'web'))");
-    });
-
     it('turns on the lucene handling when the input is lucene', () => {
       expect(
-        substituteVariables('ServiceName:"$service"', [SERVICE], {
-          defaultFormat: 'lucene',
+        substituteVariables('ServiceName:"$service"', {
+          variables: [SERVICE],
           inputLanguage: 'lucene',
         }),
       ).toBe('(ServiceName:"api" OR ServiceName:"web")');
       expect(
-        substituteVariables('$__filter(ServiceName, $service)', [SERVICE], {
-          defaultFormat: 'lucene',
+        substituteVariables('$__filter(ServiceName, $service)', {
+          variables: [SERVICE],
           inputLanguage: 'lucene',
         }),
       ).toBe('$__filter(ServiceName, $service)');
@@ -214,8 +198,8 @@ describe('substituteVariables', () => {
       // The rewrite is per-reference: it only applies where the values would
       // render as lucene terms in the first place.
       expect(
-        substituteVariables('ServiceName:"${service:csv}"', [SERVICE], {
-          defaultFormat: 'lucene',
+        substituteVariables('ServiceName:"${service:csv}"', {
+          variables: [SERVICE],
           inputLanguage: 'lucene',
         }),
       ).toBe('ServiceName:"api,web"');
@@ -224,7 +208,9 @@ describe('substituteVariables', () => {
 
   describe('braced references', () => {
     it('substitutes ${name} with the default format', () => {
-      expect(substituteVariables('${service}', [SERVICE])).toBe("'api', 'web'");
+      expect(substituteVariablesSql('${service}', [SERVICE])).toBe(
+        "'api', 'web'",
+      );
     });
 
     it.each([
@@ -233,49 +219,51 @@ describe('substituteVariables', () => {
       ['csv', 'api,web'],
       ['lucene', '("api" OR "web")'],
     ])('substitutes ${name:%s}', (format, expected) => {
-      expect(substituteVariables(`\${service:${format}}`, [SERVICE])).toBe(
+      expect(substituteVariablesSql(`\${service:${format}}`, [SERVICE])).toBe(
         expected,
       );
     });
 
     it('leaves an unknown name verbatim, format and all', () => {
-      expect(substituteVariables('${other:csv}', [SERVICE])).toBe(
+      expect(substituteVariablesSql('${other:csv}', [SERVICE])).toBe(
         '${other:csv}',
       );
     });
 
     it('throws on an unknown format for a known name', () => {
-      expect(() => substituteVariables('${service:json}', [SERVICE])).toThrow(
-        "Unknown variable format 'json'",
-      );
+      expect(() =>
+        substituteVariablesSql('${service:json}', [SERVICE]),
+      ).toThrow("Unknown variable format 'json'");
     });
 
     it('leaves a malformed brace expression as plain text', () => {
-      expect(substituteVariables('${not a name}', [SERVICE])).toBe(
+      expect(substituteVariablesSql('${not a name}', [SERVICE])).toBe(
         '${not a name}',
       );
-      expect(substituteVariables('${service', [SERVICE])).toBe('${service');
+      expect(substituteVariablesSql('${service', [SERVICE])).toBe('${service');
     });
   });
 
   describe('$__filter', () => {
     it('expands the two-argument form against the given expression', () => {
       expect(
-        substituteVariables('WHERE $__filter(ServiceName, $service)', [
+        substituteVariablesSql('WHERE $__filter(ServiceName, $service)', [
           SERVICE,
         ]),
       ).toBe("WHERE (ServiceName IN ('api', 'web'))");
     });
 
     it('expands the one-argument form using the variable expression', () => {
-      expect(substituteVariables('WHERE $__filter($service)', [SERVICE])).toBe(
-        "WHERE (toString(ServiceName) IN ('api', 'web'))",
-      );
+      expect(
+        substituteVariablesSql('WHERE $__filter($service)', [SERVICE]),
+      ).toBe("WHERE (toString(ServiceName) IN ('api', 'web'))");
     });
 
     it('rejects a name argument written without its $', () => {
       expect(() =>
-        substituteVariables('WHERE $__filter(ServiceName, service)', [SERVICE]),
+        substituteVariablesSql('WHERE $__filter(ServiceName, service)', [
+          SERVICE,
+        ]),
       ).toThrow(
         "Macro '$__filter' requires its variable argument to be written as a " +
           "reference, as in $__filter(<expression>, $service) — got 'service'.",
@@ -284,13 +272,13 @@ describe('substituteVariables', () => {
 
     it('rejects a bare name in the one-argument form too', () => {
       expect(() =>
-        substituteVariables('WHERE $__filter(service)', [SERVICE]),
+        substituteVariablesSql('WHERE $__filter(service)', [SERVICE]),
       ).toThrow('as in $__filter($service)');
     });
 
     it('rejects a braced name argument', () => {
       expect(() =>
-        substituteVariables('WHERE $__filter(ServiceName, ${service})', [
+        substituteVariablesSql('WHERE $__filter(ServiceName, ${service})', [
           SERVICE,
         ]),
       ).toThrow("as in $__filter(<expression>, $name) — got '${service}'");
@@ -298,7 +286,7 @@ describe('substituteVariables', () => {
 
     it('expands to a no-op predicate when nothing is selected', () => {
       expect(
-        substituteVariables('WHERE $__filter(ServiceName, $service)', [
+        substituteVariablesSql('WHERE $__filter(ServiceName, $service)', [
           EMPTY_SERVICE,
         ]),
       ).toBe("WHERE (1=1 /** no values selected for variable 'service' */)");
@@ -306,22 +294,24 @@ describe('substituteVariables', () => {
 
     it('substitutes references nested in the expression argument', () => {
       expect(
-        substituteVariables("WHERE $__filter(concat(col, '$env'), $service)", [
-          SERVICE,
-          variable('env', ['prod']),
-        ]),
+        substituteVariablesSql(
+          "WHERE $__filter(concat(col, '$env'), $service)",
+          [SERVICE, variable('env', ['prod'])],
+        ),
       ).toBe("WHERE (concat(col, ''prod'') IN ('api', 'web'))");
     });
 
     it('throws when the named variable does not exist', () => {
       expect(() =>
-        substituteVariables('WHERE $__filter(ServiceName, $nope)', [SERVICE]),
+        substituteVariablesSql('WHERE $__filter(ServiceName, $nope)', [
+          SERVICE,
+        ]),
       ).toThrow("Macro '$__filter' references unknown variable 'nope'");
     });
 
     it('throws on the one-argument form when the variable has no expression', () => {
       expect(() =>
-        substituteVariables('WHERE $__filter($service)', [
+        substituteVariablesSql('WHERE $__filter($service)', [
           variable('service', ['api']),
         ]),
       ).toThrow("Macro '$__filter($service)' requires the variable's filter");
@@ -329,7 +319,7 @@ describe('substituteVariables', () => {
 
     it('throws on a bad argument count', () => {
       expect(() =>
-        substituteVariables('$__filter(a, b, $c)', [SERVICE]),
+        substituteVariablesSql('$__filter(a, b, $c)', [SERVICE]),
       ).toThrow("Macro 'filter' expects 1-2 argument(s), but got 3");
     });
   });
@@ -339,14 +329,14 @@ describe('substituteVariables', () => {
       expect(
         substituteVariables(
           "WHERE $__conditionalAll(ServiceName = 'api', $service)",
-          [SERVICE],
+          { variables: [SERVICE], inputLanguage: 'sql' },
         ),
       ).toBe("WHERE (ServiceName = 'api')");
     });
 
     it('emits a no-op predicate when nothing is selected', () => {
       expect(
-        substituteVariables(
+        substituteVariablesSql(
           "WHERE $__conditionalAll(ServiceName = 'api', $service)",
           [EMPTY_SERVICE],
         ),
@@ -355,7 +345,7 @@ describe('substituteVariables', () => {
 
     it('substitutes references inside the condition', () => {
       expect(
-        substituteVariables(
+        substituteVariablesSql(
           'WHERE $__conditionalAll(ServiceName IN ($service), $service)',
           [SERVICE],
         ),
@@ -364,7 +354,7 @@ describe('substituteVariables', () => {
 
     it('rejects a name argument written without its $', () => {
       expect(() =>
-        substituteVariables(
+        substituteVariablesSql(
           "WHERE $__conditionalAll(ServiceName = 'api', service)",
           [SERVICE],
         ),
@@ -376,7 +366,7 @@ describe('substituteVariables', () => {
 
     it('expands a variable macro nested in the condition', () => {
       expect(
-        substituteVariables(
+        substituteVariablesSql(
           'WHERE $__conditionalAll(NOT $__filter(ServiceName, $service), $env)',
           [SERVICE, variable('env', ['prod'])],
         ),
@@ -385,7 +375,7 @@ describe('substituteVariables', () => {
 
     it('expands a nested reference exactly once', () => {
       expect(
-        substituteVariables('$__conditionalAll(col = $a, $service)', [
+        substituteVariablesSql('$__conditionalAll(col = $a, $service)', [
           SERVICE,
           variable('a', ['$service']),
         ]),
@@ -394,20 +384,21 @@ describe('substituteVariables', () => {
 
     it('throws when the named variable does not exist', () => {
       expect(() =>
-        substituteVariables('$__conditionalAll(x = 1, $nope)', [SERVICE]),
+        substituteVariablesSql('$__conditionalAll(x = 1, $nope)', [SERVICE]),
       ).toThrow("Macro '$__conditionalAll' references unknown variable 'nope'");
     });
 
     it('throws on a bad argument count', () => {
-      expect(() => substituteVariables('$__conditionalAll(x = 1)', [SERVICE])) //
-        .toThrow("Macro 'conditionalAll' expects 2 argument(s), but got 1");
+      expect(() =>
+        substituteVariablesSql('$__conditionalAll(x = 1)', [SERVICE]),
+      ).toThrow("Macro 'conditionalAll' expects 2 argument(s), but got 1");
     });
   });
 
   describe('argument parsing', () => {
     it('handles a close paren inside a quoted argument', () => {
       expect(
-        substituteVariables("$__conditionalAll(col = 'a)b', $service)", [
+        substituteVariablesSql("$__conditionalAll(col = 'a)b', $service)", [
           SERVICE,
         ]),
       ).toBe("(col = 'a)b')");
@@ -415,7 +406,7 @@ describe('substituteVariables', () => {
 
     it('handles an open paren and a comma inside a quoted argument', () => {
       expect(
-        substituteVariables("$__conditionalAll(col = 'a,(b', $service)", [
+        substituteVariablesSql("$__conditionalAll(col = 'a,(b', $service)", [
           SERVICE,
         ]),
       ).toBe("(col = 'a,(b')");
@@ -423,7 +414,7 @@ describe('substituteVariables', () => {
 
     it('handles nested parens in the condition', () => {
       expect(
-        substituteVariables(
+        substituteVariablesSql(
           '$__conditionalAll(has(splitByChar(:, col), 1), $service)',
           [SERVICE],
         ),
@@ -432,14 +423,14 @@ describe('substituteVariables', () => {
 
     it('throws when the argument list is never closed', () => {
       expect(() =>
-        substituteVariables('$__filter(ServiceName, service', [SERVICE]),
+        substituteVariablesSql('$__filter(ServiceName, service', [SERVICE]),
       ).toThrow(MalformedMacroArgsError);
     });
   });
 
   it('does not re-expand values that themselves look like references', () => {
     expect(
-      substituteVariables('$a $b', [
+      substituteVariablesSql('$a $b', [
         variable('a', ['$b']),
         variable('b', ['literal']),
       ]),
@@ -448,7 +439,9 @@ describe('substituteVariables', () => {
 
   it('leaves non-variable macros untouched', () => {
     expect(
-      substituteVariables('WHERE $__timeFilter(ts) AND $__filters', [SERVICE]),
+      substituteVariablesSql('WHERE $__timeFilter(ts) AND $__filters', [
+        SERVICE,
+      ]),
     ).toBe('WHERE $__timeFilter(ts) AND $__filters');
   });
 
@@ -456,61 +449,62 @@ describe('substituteVariables', () => {
     // Standard macros exist in the raw SQL path (`replaceMacros`) alone, so
     // there is no argument to recurse into — the reference is plain text.
     expect(
-      substituteVariables('WHERE $__timeFilter(${service:csv})', [SERVICE]),
+      substituteVariablesSql('WHERE $__timeFilter(${service:csv})', [SERVICE]),
     ).toBe('WHERE $__timeFilter(api,web)');
   });
 
   it('does not treat $__filters as the $__filter macro', () => {
-    expect(substituteVariables('$__filters', [SERVICE])).toBe('$__filters');
+    expect(substituteVariablesSql('$__filters', [SERVICE])).toBe('$__filters');
   });
 });
 
-describe('substituteVariablesForLanguage', () => {
+describe('substituteVariables per language', () => {
   it('expands references as SQL strings and macros as predicates for sql', () => {
     expect(
-      substituteVariablesForLanguage(
+      substituteVariables(
         'ServiceName IN ($service) AND $__filter(ServiceName, $service)',
-        [SERVICE],
-        'sql',
+        { variables: [SERVICE], inputLanguage: 'sql' },
       ),
     ).toBe("ServiceName IN ('api', 'web') AND (ServiceName IN ('api', 'web'))");
   });
 
   it('expands references in the lucene format for lucene', () => {
     expect(
-      substituteVariablesForLanguage(
-        'ServiceName:$service',
-        [SERVICE],
-        'lucene',
-      ),
+      substituteVariables('ServiceName:$service', {
+        variables: [SERVICE],
+        inputLanguage: 'lucene',
+      }),
     ).toBe('ServiceName:("api" OR "web")');
   });
 
   it('leaves macros as written in a lucene expression', () => {
     expect(
-      substituteVariablesForLanguage(
-        '$__filter(ServiceName, $service)',
-        [SERVICE],
-        'lucene',
-      ),
+      substituteVariables('$__filter(ServiceName, $service)', {
+        variables: [SERVICE],
+        inputLanguage: 'lucene',
+      }),
     ).toBe('$__filter(ServiceName, $service)');
   });
 
   it('renders an empty selection in each language', () => {
     expect(
-      substituteVariablesForLanguage(
-        'ServiceName IN ($service)',
-        [EMPTY_SERVICE],
-        'sql',
-      ),
+      substituteVariables('ServiceName IN ($service)', {
+        variables: [EMPTY_SERVICE],
+        inputLanguage: 'sql',
+      }),
     ).toBe('ServiceName IN (NULL)');
     expect(
-      substituteVariablesForLanguage(
-        'ServiceName:$service',
-        [EMPTY_SERVICE],
-        'lucene',
-      ),
+      substituteVariables('ServiceName:$service', {
+        variables: [EMPTY_SERVICE],
+        inputLanguage: 'lucene',
+      }),
     ).toBe('ServiceName:("")');
+    expect(
+      substituteVariables('up{service=~"$service"}', {
+        variables: [EMPTY_SERVICE],
+        inputLanguage: 'promql',
+      }),
+    ).toBe('up{service=~".*"}');
   });
 
   describe('quoted references expand to exact matches', () => {
@@ -519,7 +513,7 @@ describe('substituteVariablesForLanguage', () => {
     // where a group-internal `("a")` becomes a substring match. The distributed
     // shapes below are pinned end-to-end in queryParser.test.ts.
     const expand = (template: string, variables: ChartVariable[] = [SERVICE]) =>
-      substituteVariablesForLanguage(template, variables, 'lucene');
+      substituteVariables(template, { variables, inputLanguage: 'lucene' });
 
     it('is opt-in: quoting distributes the field, leaving it grouped does not', () => {
       expect(expand('ServiceName:"$service"')).toBe(
@@ -773,6 +767,148 @@ describe('substituteVariablesForLanguage', () => {
   });
 });
 
+describe('substituteVariables for promql', () => {
+  const promql = (input: string, variables: ChartVariable[]) =>
+    substituteVariables(input, { variables, inputLanguage: 'promql' });
+
+  /** `up{service=~"…"}` with `service` selecting the given values. */
+  const matcher = (values: string[]) =>
+    promql('up{service=~"$service"}', [variable('service', values)]);
+
+  describe('escaping a value for the matcher it sits in', () => {
+    it('matches anything when nothing is selected, so the tile stays valid', () => {
+      expect(matcher([])).toBe('up{service=~".*"}');
+    });
+
+    it('emits a single value as-is', () => {
+      expect(matcher(['api'])).toBe('up{service=~"api"}');
+    });
+
+    it('emits an alternation for several values', () => {
+      expect(matcher(['api', 'web'])).toBe('up{service=~"(api|web)"}');
+    });
+
+    it('double-escapes a regex metacharacter for the string literal around it', () => {
+      // `v1\.2` in the RE2 pattern, so it matches `v1.2` and not `v1x2`.
+      expect(matcher(['v1.2'])).toBe('up{service=~"v1\\\\.2"}');
+    });
+
+    it('escapes a double quote with a single backslash, unlike Grafana', () => {
+      // `\\"` would close the PromQL string literal early.
+      expect(matcher(['a"b'])).toBe('up{service=~"a\\"b"}');
+    });
+
+    it('escapes a backslash twice over — once as a regex, once as a string', () => {
+      // Value `a\b` -> pattern `a\\b` -> literal `a\\\\b`.
+      expect(matcher(['a\\b'])).toBe('up{service=~"a\\\\\\\\b"}');
+    });
+
+    it("leaves ' alone, which is not an RE2 metacharacter and invalid to escape here", () => {
+      expect(matcher(["o'brien"])).toBe('up{service=~"o\'brien"}');
+    });
+
+    it('handles a value needing every layer at once', () => {
+      expect(matcher(['a."b\\c', 'web'])).toBe(
+        'up{service=~"(a\\\\.\\"b\\\\\\\\c|web)"}',
+      );
+    });
+  });
+
+  describe('behaviour', () => {
+    it('uses the regex format for an unformatted reference', () => {
+      expect(promql('${service}', [SERVICE])).toBe('(api|web)');
+      expect(promql('$service', [SERVICE])).toBe('(api|web)');
+    });
+
+    it('still honours an explicitly requested format', () => {
+      expect(promql('${service:csv}', [SERVICE])).toBe('api,web');
+      expect(promql('${service:sqlstring}', [SERVICE])).toBe("'api', 'web'");
+    });
+
+    it('leaves the variable macros exactly as written, arguments and all', () => {
+      expect(promql('$__filter(ServiceName, $service)', [SERVICE])).toBe(
+        '$__filter(ServiceName, $service)',
+      );
+      expect(promql('$__conditionalAll(x == 1, $service)', [SERVICE])).toBe(
+        '$__conditionalAll(x == 1, $service)',
+      );
+    });
+
+    it('leaves an unknown name verbatim', () => {
+      expect(promql('up{service=~"$nope"}', [SERVICE])).toBe(
+        'up{service=~"$nope"}',
+      );
+    });
+
+    it('does not substitute inside a # comment', () => {
+      expect(promql('# see $service\nup', [SERVICE])).toBe(
+        '# see $service\nup',
+      );
+    });
+
+    it('does not re-expand a selected value that looks like a reference', () => {
+      expect(
+        promql('$a $b', [variable('a', ['$b']), variable('b', ['literal'])]),
+      ).toBe('\\\\$b literal');
+    });
+  });
+});
+
+describe('substituteVariables regex escaping for sql', () => {
+  const sqlMatch = (values: string[]) =>
+    substituteVariables("match(x, '${service:regex}')", {
+      variables: [variable('service', values)],
+      inputLanguage: 'sql',
+    });
+
+  it('leaves an ordinary alternation byte-identical', () => {
+    expect(sqlMatch(['api', 'web'])).toBe("match(x, '(api|web)')");
+  });
+
+  it("doubles the regex escape so ClickHouse's literal parser keeps it", () => {
+    // Before: `'a\.b'`, where CH drops the unknown escape and `a.b` matches `axb`.
+    expect(sqlMatch(['a.b'])).toBe("match(x, 'a\\\\.b')");
+  });
+
+  it('escapes a single quote, which used to end the literal early', () => {
+    expect(sqlMatch(["a'b"])).toBe("match(x, 'a''b')");
+  });
+
+  it('escapes a backslash so the pattern gets a literal one', () => {
+    expect(sqlMatch(['a\\b'])).toBe("match(x, 'a\\\\\\\\b')");
+  });
+
+  it('renders the empty selection as an unconstrained pattern', () => {
+    expect(sqlMatch([])).toBe("match(x, '.*')");
+  });
+});
+
+describe('substituteVariables formats the language must not re-escape', () => {
+  it.each(['sql', 'promql'] as const)(
+    'leaves the sqlstring format self-quoted in %s',
+    language => {
+      expect(
+        substituteVariables('${service:sqlstring}', {
+          variables: [SERVICE],
+          inputLanguage: language,
+        }),
+      ).toBe("'api', 'web'");
+    },
+  );
+
+  it.each(['sql', 'promql'] as const)(
+    'keeps the csv format raw in %s, since it carries identifiers',
+    language => {
+      expect(
+        substituteVariables('${service:csv}', {
+          variables: [variable('service', ["a'b.c"])],
+          inputLanguage: language,
+        }),
+      ).toBe("a'b.c");
+    },
+  );
+});
+
 describe('getVariableReferences', () => {
   it('returns an empty list for a template with no references', () => {
     expect(getVariableReferences('SELECT 1 FROM t')).toEqual([]);
@@ -889,19 +1025,26 @@ describe('getVariableReferences', () => {
     });
 
     it('leaves a reference inside a comment unsubstituted', () => {
-      expect(substituteVariables('-- see $service\nSELECT 1', [SERVICE])).toBe(
-        '-- see $service\nSELECT 1',
-      );
-      expect(substituteVariables('/* $service */ SELECT 1', [SERVICE])).toBe(
-        '/* $service */ SELECT 1',
-      );
+      expect(
+        substituteVariables('-- see $service\nSELECT 1', {
+          variables: [SERVICE],
+          inputLanguage: 'sql',
+        }),
+      ).toBe('-- see $service\nSELECT 1');
+      expect(
+        substituteVariables('/* $service */ SELECT 1', {
+          variables: [SERVICE],
+          inputLanguage: 'sql',
+        }),
+      ).toBe('/* $service */ SELECT 1');
     });
 
     it('substitutes normally after a comment ends', () => {
       expect(
-        substituteVariables('-- see $service\nWHERE a IN ($service)', [
-          SERVICE,
-        ]),
+        substituteVariables('-- see $service\nWHERE a IN ($service)', {
+          variables: [SERVICE],
+          inputLanguage: 'sql',
+        }),
       ).toBe("-- see $service\nWHERE a IN ('api', 'web')");
     });
   });
@@ -1106,17 +1249,17 @@ describe('filterReferencedVariables', () => {
     );
   });
 
-  it('returns an empty array for a PromQL config even when its expression mentions a variable', () => {
+  it('keeps the variables a PromQL expression references', () => {
     expect(
       filterReferencedVariables(
         {
           configType: 'promql',
-          promqlExpression: 'up{service="$service"}',
+          promqlExpression: 'up{service=~"$service"}',
           connection: 'local',
         },
         variables,
       ),
-    ).toEqual([]);
+    ).toEqual([SERVICE]);
   });
 
   it('keeps the variables a builder config references, across every expression field', () => {
@@ -1167,17 +1310,22 @@ describe('getAlertVariableWarning', () => {
     ).toBeUndefined();
   });
 
-  it('says nothing for a PromQL config, which cannot use variables', () => {
+  // Unreachable in practice — PromQL displays don't support alerts at all — but
+  // the warning is produced from the same reference walk as every other config.
+  it('names the variables a PromQL expression references', () => {
     expect(
       getAlertVariableWarning(
         {
           configType: 'promql',
-          promqlExpression: 'up{service="$service"}',
+          promqlExpression: 'up{service=~"$service"}',
           connection: 'local',
         },
         variables,
       ),
-    ).toBeUndefined();
+    ).toBe(
+      'This tile references $service. Alerts run with every dashboard variable ' +
+        'in its empty state, not the values selected here.',
+    );
   });
 
   it('names only the variables the raw SQL references', () => {
@@ -1360,6 +1508,42 @@ describe('substituteChartConfigVariables', () => {
         }),
       ).where,
     ).toBe("(1=1 /** no values selected for variable 'service' */)");
+  });
+});
+
+describe('substitutePromqlChartConfigVariables', () => {
+  const promqlConfig = (
+    promqlExpression: string,
+    variables?: ChartVariable[],
+  ) => ({
+    configType: 'promql' as const,
+    promqlExpression,
+    connection: 'local',
+    variables,
+  });
+
+  it('returns the config untouched when there is no variable context', () => {
+    const config = promqlConfig('up{service=~"$service"}');
+    expect(substitutePromqlChartConfigVariables(config)).toBe(config);
+  });
+
+  it('expands the expression and consumes the variables', () => {
+    expect(
+      substitutePromqlChartConfigVariables(
+        promqlConfig('up{service=~"$service"}', [SERVICE]),
+      ),
+    ).toMatchObject({
+      promqlExpression: 'up{service=~"(api|web)"}',
+      variables: undefined,
+    });
+  });
+
+  it('renders an empty selection as an unconstrained matcher', () => {
+    expect(
+      substitutePromqlChartConfigVariables(
+        promqlConfig('up{service=~"$service"}', [EMPTY_SERVICE]),
+      ).promqlExpression,
+    ).toBe('up{service=~".*"}');
   });
 });
 
@@ -1551,13 +1735,17 @@ describe('validateVariableReferencesInTemplate', () => {
 
     it('accepts a bare reference: the lucene format has a valid empty state', () => {
       expect(
-        validate('ServiceName:$service', [SERVICE], { language: 'lucene' }),
+        validate('ServiceName:$service', [SERVICE], {
+          language: 'lucene',
+        }),
       ).toEqual({ errors: [], warnings: [] });
     });
 
     it('accepts a quoted reference: quoting opts into exact matches', () => {
       expect(
-        validate('ServiceName:"$service"', [SERVICE], { language: 'lucene' }),
+        validate('ServiceName:"$service"', [SERVICE], {
+          language: 'lucene',
+        }),
       ).toEqual({ errors: [], warnings: [] });
     });
 

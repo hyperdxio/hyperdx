@@ -550,7 +550,7 @@ const Tile = ({
   // changes to `tileVariables`.
   const serializedTileVariables = useMemo(
     () =>
-      !!variables && !isPromqlSavedChartConfig(chart.config)
+      variables
         ? JSON.stringify(filterReferencedVariables(chart.config, variables))
         : undefined,
     [chart.config, variables],
@@ -570,6 +570,7 @@ const Tile = ({
           connection: source.connection,
           dateRange,
           granularity,
+          variables: tileVariables,
         });
       }
       return;
