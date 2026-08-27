@@ -1217,7 +1217,7 @@ export function validateVariableReferencesInTemplate(
   // only ever have been a mistake.
   if (settings.disableMacros && macroReferences.length > 0) {
     const [{ name }] = macroReferences;
-    errors.push(
+    warnings.push(
       language === 'promql'
         ? `${formatReferenceList(macroReferences)} has no meaning in a PromQL expression — it is left as written and sent to Prometheus verbatim. Reference the variable directly, as in {<label>=~"$${name}"}.`
         : `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,

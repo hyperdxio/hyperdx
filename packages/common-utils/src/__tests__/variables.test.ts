@@ -1665,15 +1665,15 @@ describe('validateVariableReferencesInTemplate', () => {
     });
 
     it('reports only the Lucene error there, where no macro expands at all', () => {
-      const { errors } = validate(
+      const { warnings } = validate(
         '$__filter(ServiceName, service)',
         [SERVICE],
         {
           language: 'lucene',
         },
       );
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain('has no meaning in a Lucene expression');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('has no meaning in a Lucene expression');
     });
   });
 
@@ -1755,12 +1755,12 @@ describe('validateVariableReferencesInTemplate', () => {
       '$__conditionalAll(ServiceName = 1, $service)',
     ])('errors on the macro %s, which is left as literal text', template => {
       expect(validate(template, [SERVICE], { language: 'lucene' })).toEqual({
-        errors: [
+        warnings: [
           `${template.slice(0, template.indexOf('('))} has no meaning in a Lucene expression — ` +
             'it is left as written and matched as literal text. Switch this input to SQL, ' +
             'or reference the variable directly, as in <field>:$service.',
         ],
-        warnings: [],
+        errors: [],
       });
     });
 
@@ -1768,7 +1768,7 @@ describe('validateVariableReferencesInTemplate', () => {
       expect(
         validate('$__filter(ServiceName, $srvice)', [SERVICE], {
           language: 'lucene',
-        }).errors,
+        }).warnings,
       ).toEqual([
         '$__filter has no meaning in a Lucene expression — it is left as written ' +
           'and matched as literal text. Switch this input to SQL, or reference the ' +
@@ -1849,12 +1849,12 @@ describe('validateVariableReferencesInTemplate', () => {
       '$__conditionalAll(up, $service)',
     ])('errors on the macro %s, which is sent verbatim', template => {
       expect(promql(template, [SERVICE])).toEqual({
-        errors: [
+        warnings: [
           `${template.slice(0, template.indexOf('('))} has no meaning in a PromQL expression — ` +
             'it is left as written and sent to Prometheus verbatim. Reference the ' +
             'variable directly, as in {<label>=~"$service"}.',
         ],
-        warnings: [],
+        errors: [],
       });
     });
 
