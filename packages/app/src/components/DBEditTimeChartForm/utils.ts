@@ -23,7 +23,10 @@ import {
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
-import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
+import {
+  filterReferencedVariables,
+  substitutePromqlChartConfigVariables,
+} from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
@@ -165,6 +168,37 @@ export function resolvePreviewVariables({
   return hasAlert
     ? referenced.map(variable => ({ ...variable, values: [] }))
     : referenced;
+}
+
+/** A PromQL tile's substituted expression, or why there isn't one. */
+export type RenderedPromqlExpression =
+  | { expression: string; error?: never }
+  | { expression?: never; error: string };
+
+/** The expression a PromQL tile is queried with, with variables substituted. */
+export function buildRenderedPromqlExpression(
+  queriedConfig: ChartConfigWithDateRange | undefined,
+): RenderedPromqlExpression | undefined {
+  if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
+    return undefined;
+  }
+
+  try {
+    return {
+      expression:
+        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+    };
+  } catch (e) {
+    // Substitution throws on an unrecognized format such as `${svc:json}`. The
+    // query path substitutes the same way, so nothing reached Prometheus —
+    // showing the template here would claim an expression that never ran.
+    return {
+      error:
+        e instanceof Error
+          ? `Variables could not be expanded: ${e.message}`
+          : 'Variables could not be expanded.',
+    };
+  }
 }
 
 export function buildSampleEventsConfig(
