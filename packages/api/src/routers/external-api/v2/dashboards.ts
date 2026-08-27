@@ -52,6 +52,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       enum: [sql, lucene]
  *       description: Query language for the where clause.
  *     SavedFilterValue:
+ *       description: >
+ *         A single saved dashboard filter selection. Either a rendered SQL
+ *         condition, or a selection addressed by the name of the dashboard
+ *         variable it belongs to.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/SqlSavedFilterValue'
+ *         - $ref: '#/components/schemas/VariableSavedFilterValue'
+ *     SqlSavedFilterValue:
  *       type: object
  *       required: [condition]
  *       properties:
@@ -59,12 +67,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: string
  *           enum: [sql]
  *           default: sql
- *           description: Filter type. Currently only "sql" is supported.
+ *           description: Filter type.
  *           example: "sql"
  *         condition:
  *           type: string
+ *           maxLength: 10000
  *           description: SQL filter condition. For example use expressions in the form "column IN ('value')".
  *           example: "ServiceName IN ('hdx-oss-dev-api')"
+ *     VariableSavedFilterValue:
+ *       type: object
+ *       required: [type, name, values]
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [variable]
+ *           description: Filter type.
+ *           example: "variable"
+ *         name:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 1024
+ *           description: >
+ *             The variableName of the dashboard variable this selection
+ *             belongs to. Only allowed for variable-enabled filters.
+ *           example: "service"
+ *         values:
+ *           type: array
+ *           maxItems: 1000
+ *           description: Selected values
+ *           items:
+ *             type: string
+ *             maxLength: 10000
+ *           example: ["hdx-oss-dev-api"]
  *     MetricDataType:
  *       type: string
  *       enum: [sum, gauge, histogram, summary, exponential histogram]

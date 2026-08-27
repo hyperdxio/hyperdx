@@ -274,6 +274,154 @@ describe('runAdoptionChecks', () => {
     expect(result.hits[0].satisfied).toBe(false);
   });
 
+  describe('quiet-saturation answer-check regexes (phrasings from real runs)', () => {
+    const check = (id: string, text: string): boolean => {
+      const rubric = loadScenarioRubric('quiet-saturation');
+      const entry = rubric.programmatic.find(c => c.id === id)!;
+      const result = runProgrammaticChecks(text, [entry]);
+      return result.hits[0].satisfied;
+    };
+
+    it('names_uniform_latency accepts route enumeration and every-request phrasing', () => {
+      // Real phrasings that the original pattern missed:
+      expect(
+        check(
+          'names_uniform_latency',
+          'p95 went 185ms → 2.4s across `POST /api/orders`, `GET /api/orders/{orderId}`, `GET /api/cart`',
+        ),
+      ).toBe(true);
+      expect(
+        check(
+          'names_uniform_latency',
+          'since then every request queues behind connection acquisition',
+        ),
+      ).toBe(true);
+      expect(
+        check(
+          'names_uniform_latency',
+          'All order endpoints on `order-api` are affected — everything that needs an `orders-pg` connection',
+        ),
+      ).toBe(true);
+      // Still no credit for an answer that never conveys uniformity:
+      expect(
+        check('names_uniform_latency', 'POST /api/orders latency rose.'),
+      ).toBe(false);
+    });
+
+    it('distinguishes_true_onset accepts clock-time chains and fill-over-duration phrasing', () => {
+      expect(
+        check(
+          'distinguishes_true_onset',
+          'The pool filled up over the next hour, hit its max of 40 at ~15:38',
+        ),
+      ).toBe(true);
+      expect(
+        check(
+          'distinguishes_true_onset',
+          'The leak slowly drained the orders-pg connection pool (max 40) for about an hour with no visible impact',
+        ),
+      ).toBe(true);
+      expect(
+        check(
+          'distinguishes_true_onset',
+          'Leaked connections accumulated steadily until the pool was pinned at 40/40 by ~15:30',
+        ),
+      ).toBe(true);
+      expect(
+        check(
+          'distinguishes_true_onset',
+          'the feature flag was ramped 5% → 100% at 14:39 UTC; the pool was pinned at 40/40 by 15:30',
+        ),
+      ).toBe(true);
+      expect(
+        check(
+          'distinguishes_true_onset',
+          '"used" was flat at ~8 all hour before, then climbs 11.7 → 14.7 → 19 between 14:40 and 15:45',
+        ),
+      ).toBe(true);
+      // No credit when the answer only reports the visible onset:
+      expect(
+        check(
+          'distinguishes_true_onset',
+          'Latency degraded starting around 15:40 and requests now time out.',
+        ),
+      ).toBe(false);
+    });
+
+    it('rules_out_batch_spike was removed — only the negative batch check remains', () => {
+      const rubric = loadScenarioRubric('quiet-saturation');
+      expect(
+        rubric.programmatic.find(c => c.id === 'rules_out_batch_spike'),
+      ).toBeUndefined();
+      expect(
+        rubric.programmatic.find(c => c.id === 'false_blame_batch'),
+      ).toBeDefined();
+    });
+  });
+
+  it('quiet-saturation rubric: supporting metrics are informational, pool metrics score', () => {
+    const rubric = loadScenarioRubric('quiet-saturation');
+    const pool = rubric.adoption!.find(c => c.id === 'queried_pool_metrics')!;
+    const supporting = rubric.adoption!.find(
+      c => c.id === 'queried_supporting_metrics',
+    )!;
+    expect(pool.informational).toBeUndefined();
+    expect(pool.weight).toBeGreaterThan(0);
+    expect(supporting.informational).toBe(true);
+
+    // An agent that only queries the pool metrics scores 100% adoption.
+    const result = runAdoptionChecks(
+      [toolCall('t', { metricName: 'db.client.connections.usage' })],
+      rubric.adoption!,
+    );
+    expect(result.score).toBeCloseTo(1, 5);
+  });
+
+  describe('informational checks', () => {
+    const infoCheck = {
+      id: 'queried_supporting_metrics',
+      informational: true,
+      metrics: ['system.cpu.utilization'],
+    };
+
+    it('excludes informational checks from the score — skipping them still reads 100%', () => {
+      const result = runAdoptionChecks(
+        [toolCall('t', { metricName: 'jvm.gc.pause' })],
+        [gcCheck, infoCheck],
+      );
+      // gcCheck satisfied, informational check not — score is still 1.0.
+      expect(result.score).toBeCloseTo(1, 5);
+      const info = result.hits.find(
+        h => h.id === 'queried_supporting_metrics',
+      )!;
+      expect(info.satisfied).toBe(false);
+      expect(info.informational).toBe(true);
+      expect(info.weight).toBe(0);
+    });
+
+    it('still evaluates and reports informational hits when they match', () => {
+      const result = runAdoptionChecks(
+        [toolCall('t', { metricName: 'system.cpu.utilization' })],
+        [gcCheck, infoCheck],
+      );
+      // Only the informational check matched — the score stays 0.
+      expect(result.score).toBe(0);
+      const info = result.hits.find(
+        h => h.id === 'queried_supporting_metrics',
+      )!;
+      expect(info.satisfied).toBe(true);
+      expect(info.informational).toBe(true);
+    });
+
+    it('does not flag scoring hits as informational', () => {
+      const result = runAdoptionChecks(
+        [toolCall('t', { metricName: 'jvm.gc.pause' })],
+        [gcCheck],
+      );
+      expect(result.hits[0].informational).toBeUndefined();
+    });
+  });
+
   it('alsoPattern must match the SAME call as the metric key', () => {
     const grouped = {
       id: 'grouped_memory_by_pod_or_pool',

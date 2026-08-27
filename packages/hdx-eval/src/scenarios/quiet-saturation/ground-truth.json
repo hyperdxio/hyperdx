@@ -1,0 +1,194 @@
+{
+  "scenario": "quiet-saturation",
+  "agentPrompt": "Customers are complaining that the storefront has been getting slower over the past half hour — order pages take noticeably longer to load, and in the last few minutes a handful of orders have failed outright. Figure out what's going on and explain the mechanism.",
+  "expected": {
+    "affectedService": "order-api",
+    "rootCause": "order-api's Postgres connection pool ('orders-pg', 40 connections per pod, 4 pods) is exhausted by a connection LEAK, not by load. 90 minutes ago the orders.async-invoice feature flag was rolled from 5% to 100%; the flag-gated async-invoice path acquires a pooled connection and never releases it. Per-pod pool usage climbs monotonically from ~8 toward the 40-connection cap and pins at 40/40 between 36 and 27 minutes ago (staggered by traffic). Once a pod's pool is pinned, every request on that pod queues waiting for a connection before any query runs — latency creeps up uniformly across ALL order-api routes while the database itself stays fast (query spans hold at 5-25ms). In the final ~12 minutes, acquire waits started hitting the 30s pool timeout, producing a trickle of 503s with ~30,000ms durations and ERROR logs carrying the pool stats.",
+    "mechanismChain": [
+      "The feature_flag.update event (orders.async-invoice 5% -> 100%) lands exactly at the onset of the db.client.connections.usage{state=used} climb, 90 minutes before now — the timing join that attributes the leak to the flag-gated path. After the flip, the new invoice.render_async span appears under POST /api/orders.",
+      "Pool usage climbs MONOTONICALLY on every order-api pod — it never dips even though http.server.request.count's slope (traffic) is completely flat. Held connections that never return to the pool are a leak; increased demand would track load. This leak-vs-load discrimination is the core inference.",
+      "Each pod pins at 40/40 (db.client.connections.max = 40) between 36 and 27 minutes ago; db.client.connections.pending_requests lifts off zero at the same moments — the pool is the bottleneck, and the ceiling is 40.",
+      "From saturation onward, every request queues at acquire time BEFORE any query executes: db.pool.acquire child spans grow from sub-2ms into the seconds while db.query children (INSERT/SELECT orders) stay at 5-25ms throughout. The wait is client-side; Postgres is healthy. Because the wait precedes every DB operation, ALL routes slow together — the uniformity is the signature of pool starvation, not a slow endpoint.",
+      "In the last ~12 minutes acquire waits reach the 30s pool timeout: POST/GET requests fail with 503 and a distinctive ~30,000ms duration, and order-api logs 'Timeout: failed to acquire connection from pool orders-pg within 30000ms (pool size 40, in use 40, ...)' ERROR lines, trace-correlated to the failing spans."
+    ],
+    "loadBearingSignal": "metrics-fast-path",
+    "whyMetricsFaster": "Both solve paths reach the full answer, but they are not equally priced. METRIC PATH (~5-7 calls): db.client.connections.usage grouped by pod shows the monotonic climb pinned at 40/40 with its onset at the flag flip; db.client.connections.max names the ceiling; pending_requests lifts off at saturation; http.server.request.count's flat slope rules out a traffic spike; cpu/memory gauges rule out infra — then one log query finds the feature_flag.update event at the climb onset. TRACE/LOG PATH (viable but ~12-18 calls): notice all routes slowed together, open slow-trace waterfalls to find db.pool.acquire dominating while db.query stays fast, find the late acquire-timeout ERROR logs (which state the pool stats but only exist for the final 12 minutes), then reconstruct the onset and the flat-traffic fact with several more windowed aggregations. The pool's 90-minute history — when the climb started, that it is monotonic, and that traffic never changed — is cheap in metrics and expensive everywhere else.",
+    "metricsRole": {
+      "gauge": "db.client.connections.usage{state=used} per pod is THE story: flat at ~8 until the flag flip, monotonic climb to 40, pinned there from ~30 min ago. db.client.connections.max (40) names the ceiling; db.client.connections.pending_requests lifts off zero at saturation. system.cpu.utilization and process.memory.usage stay flat on order-api (rules out infra). catalog-api publishes the same db.client.* metric names with a healthy ~8/40 pool — filtering by service is required. inventory-service's CPU spike (0.85-0.95, T-60m to T-45m) is the nightly reconciliation batch, a red herring.",
+      "sum": "http.server.request.count (cumulative) has a perfectly constant slope across the whole window — the leak-vs-load discriminator. A traffic surge would bend it; nothing does.",
+      "histogram": "http.server.request.duration shifts right starting ~30 min ago and keeps degrading — corroborates the visible onset support reported, which is the SATURATION time, not the leak start.",
+      "adoptionNote": "This scenario is the 'metrics are the fast path' middle tier: metric use is neither forced (metric-saturation) nor redundant (deploy-regression). The adoption SCORE is driven solely by queried_pool_metrics — the load-bearing signal. queried_supporting_metrics is informational (reported, not scored): its facts have cheaper trace-side substitutes (span counts for traffic, span quantiles for latency), so efficient agents legitimately skip those metric names and still deserve 100% adoption. Efficiency is read from the tool-calls and wall-clock columns alongside the score."
+    }
+  },
+  "distractors": [
+    {
+      "kind": "innocent completed deploy near the VISIBLE onset",
+      "service": "notification-service",
+      "minutesAgo": 40,
+      "whyNotRootCause": "notification-service rolled 2.14.0 -> 2.15.0 starting 40 min ago and completed 3/3 pods by 37 min ago — right next to the visible latency onset (~30 min ago), which makes it the tempting 'a deploy just happened' answer. But notification.send spans are fast and error-free on both versions, notification-service is not in the order path's synchronous chain, and the pool climb began 90 minutes ago — 50 minutes BEFORE this rollout started."
+    },
+    {
+      "kind": "co-timed CPU spike on a neighbor (alarm bait)",
+      "service": "inventory-service",
+      "minutesAgo": 60,
+      "durationMinutes": 15,
+      "whyNotRootCause": "inventory-service CPU jumps to 0.85-0.95 from T-60m to T-45m — visually the most alarming chart in the window. It is the nightly reconciliation batch, bracketed by INFO start/complete events, ends before the pools saturate, and touches nothing in the order path."
+    },
+    {
+      "kind": "healthy pool twin (same metric names)",
+      "service": "catalog-api",
+      "whyNotRootCause": "catalog-api publishes the identical db.client.connections.* metric names against its own 'catalog-pg' pool, holding steady at ~8/40 with zero pending requests. A keyword hunt for connection-pool metrics returns two services; only per-service filtering isolates order-api."
+    },
+    {
+      "kind": "the database-is-slow trap",
+      "service": "order-api",
+      "whyNotRootCause": "Every db.query child span (INSERT orders / SELECT orders) stays at 5-25ms through the entire incident — Postgres is never the bottleneck. The added time lives exclusively in db.pool.acquire, client-side, before any query runs. Blaming 'the database is overloaded' inverts the mechanism and is a calibration failure."
+    },
+    {
+      "kind": "constant-rate caught-exception noise",
+      "service": "order-api",
+      "pattern": "NonFatalRetryableError (caught) worker stack traces",
+      "whyNotRootCause": "An error-looking log pattern that exists at the SAME steady rate before and after every boundary in the scenario, marked handled, with no trace correlation to slow or failing requests."
+    },
+    {
+      "kind": "infra saturation (ruled out)",
+      "service": "order-api",
+      "whyNotRootCause": "order-api CPU (~24%) and process memory (~400MB) are flat and healthy throughout. The resource that saturates is the CONNECTION POOL, a configured application-level limit — not the host."
+    }
+  ],
+  "rubric": {
+    "programmatic": [
+      ["names_affected_service", 1, "order-api"],
+      [
+        "names_pool_exhaustion",
+        3,
+        "(connection|conn|db)[- ]?pool[^.\\n]{0,60}?(exhaust|saturat|full|maxed|pinned|starv|at (its )?(cap|capacity|limit|max)|bottleneck)|pool[^.\\n]{0,50}?(exhaust|saturat|maxed|starv|pinned)|40\\s*/\\s*40|(all|every)[^.\\n]{0,30}?connections?[^.\\n]{0,30}?(in use|used|busy|held|taken)|exhaust(ed|ion)?[^.\\n]{0,40}?(connection|pool)"
+      ],
+      [
+        "names_leak_mechanism",
+        2,
+        "leak|never (releas|return|freed|give[sn]? back)|not (releas|return)|without releasing|fail(s|ed|ing)? to release|(held|kept|retained)[^.\\n]{0,40}?(indefinitely|forever|never)|monotonic"
+      ],
+      [
+        "ties_onset_to_flag",
+        2,
+        "async[- _]?invoice|orders\\.async|feature[- _]?flag[^.\\n]{0,80}?(100\\s?%|roll|flip|enabl|updat)|flag[^.\\n]{0,40}?(100\\s?%|flip|roll|enabl)|ORD-4112"
+      ],
+      [
+        "cites_pool_ceiling",
+        1,
+        "\\b40\\b[^.\\n]{0,40}?(connection|conn\\b|pool|cap\\b|capacity|max|limit)|(connection|conn\\b|pool|cap\\b|capacity|max|limit)[^.\\n]{0,40}?\\b40\\b"
+      ],
+      [
+        "names_acquire_wait",
+        2,
+        "pool\\.acquire|acquir(e|ing|ition)[^.\\n]{0,50}?(wait|queue|block|stall|time)|wait(ing)?[^.\\n]{0,50}?(for|on)[^.\\n]{0,20}?connection|queu(e|ed|ing)[^.\\n]{0,50}?(connection|acquire|pool)|(blocked|stalled)[^.\\n]{0,40}?(pool|connection)"
+      ],
+      [
+        "notes_db_fast",
+        2,
+        "(quer(y|ies)|database|postgres|db)\\b[^.\\n]{0,70}?(fast|quick|healthy|normal|fine|unchanged|not slow|not the bottleneck|stay(ed|s)? (at |around )?\\d)|not[^.\\n]{0,40}?(database|postgres|db server)[^.\\n]{0,40}?(slow|problem|fault|bottleneck|overload)|(wait|latency|delay|time)[^.\\n]{0,60}?(client[- ]side|before (the|any|a) quer|in the pool|acquiring)"
+      ],
+      [
+        "names_uniform_latency",
+        1,
+        "(all|every|each)\\s[^.\\n]{0,25}?(endpoint|route|operation)|every (request|order)[^.\\n]{0,50}?(queue|wait|block|stall|slow)|uniform|across[- ]the[- ]board|board[- ]wide|(no single|not (just |only )?one)[^.\\n]{0,30}?(route|endpoint|operation)|/api/orders[^\\n]{0,120}?/api/cart|/api/cart[^\\n]{0,120}?/api/orders|everything that (needs|uses|touches|acquires)"
+      ],
+      [
+        "distinguishes_true_onset",
+        2,
+        "(90|ninety)[- ](min|minute)|1\\.5[- ]?h|hour[- ]and[- ]a[- ]half|an hour (and a half|before)|(climb|leak|usage|pool)[^.\\n]{0,70}?(began|start|onset)[^.\\n]{0,60}?(before|earlier|90|flag|flip)|(long|well|far) before[^.\\n]{0,60}?(latency|slow|symptom|visible|users? notic)|(fill|drain|climb|leak|grow|grew|accumulat|ramp)\\w*[^.\\n]{0,70}?(over|for|across)[^.\\n]{0,25}?(the next |about |~ ?|roughly |nearly )?(an |one |1 )?hour|(climb|leak|accumulat|drain|fill|ramp|grew|grow)\\w*[^\\n]{0,100}?(until|then|before)[^\\n]{0,90}?(pinn?|hit|reach|saturat|cap\\b|max\\b|40/40)|(flag|flip|100\\s?%)[^\\n]{0,200}?(pinn?ed|hit (the |its )?(cap|max)|fill(ed|s)? (up|the pool)|saturat|40/40|max(ed)? out)|(flat|steady|baseline)[^\\n]{0,60}?(then|until)[^\\n]{0,50}?(climb|rise|rose|grew|ramp)|\\d{1,2}:\\d{2}[^\\n]{0,12}?(\u2192|->|to|\u2013)[^\\n]{0,12}?~?\\d{1,2}:\\d{2}[^\\n]{0,140}?(climb|fill|leak|ramp|drain|pinn?|cap|40)"
+      ],
+      [
+        "notes_flat_traffic",
+        2,
+        "(traffic|request (rate|count|volume)|load|throughput|rps|qps)[^.\\n]{0,70}?(flat|steady|constant|unchanged|stable|did ?n[o']?t (change|increase|grow|spike)|no (spike|increase|surge|change))|(no|not a|rul(e|ed|ing) out)[^.\\n]{0,40}?(traffic|load|demand)[^.\\n]{0,30}?(spike|increase|surge|growth)"
+      ],
+      [
+        "cites_timeout_errors",
+        1,
+        "30[,_ ]?000\\s?ms|30\\s?s(ec(ond)?s?)?\\b[^.\\n]{0,50}?(timeout|acquire|wait)|(acquire|acquisition)[- _]?timeout|timed? ?out[^.\\n]{0,50}?(acquir|connection|pool)|503"
+      ],
+      [
+        "rules_out_deploy",
+        1,
+        "notification[- ]service[^\\n]{0,140}?(innocent|unrelated|healthy|benign|not (the )?(cause|culprit|related)|ruled? out|red herring|coinciden|predates|error[- ]?free|clean)|(deploy|roll[- ]?out|2\\.15\\.0)[^\\n]{0,60}?notification[^\\n]{0,100}?(innocent|unrelated|healthy|benign|ruled? out|coinciden|not)|(leak|climb|pool usage)[^\\n]{0,80}?(began|started|predates)[^\\n]{0,60}?(before|prior to)[^\\n]{0,50}?(deploy|roll[- ]?out)"
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )(root cause|caused by|due to|because of|culprit|the (issue|problem|cause) is)(?:(?!not |no evidence |no sign|n['’]t |rul(e|ed|ing)|unrelated|healthy|innocent|clean|error[- ]?free|look|appear|seem|might|could|may|possib|suspect|hypothes|whether|initial|unlikely|doubt)[^.?!\\n]){0,60}?notification[- ]service(?![^.!\\n]{0,120}\\?)",
+        true
+      ],
+      [
+        "false_blame_database",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|potential\\w*|candidate|hypothes\\w*|suspect\\w*|might|may|could|appear\\w*|look\\w*|seem\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|exonerat\\w*)\\b[^.?!\\n]{0,24})(?<!n['’]t )(root cause|caused by|due to|because of|culprit|the (issue|problem|cause) is)(?:(?!not |no evidence |n['’]t |rul(e|ed|ing)|unrelated|healthy|fast|client)[^.?!\\n]){0,60}?(postgres|database|db server)[^.?!\\n]{0,40}?(slow|overload|degrad|saturat|struggl|falling over)(?![^.!\\n]{0,120}\\?)|(?<!not )(?<!n['’]t )(postgres|the database|db server) (is|was|being) (slow|overloaded|saturated|the bottleneck)(?![^.!\\n]{0,120}\\?)",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!not )(?<!n['’]t )(?<!never )(root cause|caused by|due to|because of|the (issue|problem|cause) is)(?:(?!not |no evidence |n['’]t |rul(e|ed|ing)|unrelated|flat|steady|constant)[^.\\n]){0,60}?(traffic|load|demand|request volume)[^.\\n]{0,30}?(spike|surge|increase|growth|jump)",
+        true
+      ],
+      [
+        "false_blame_infra",
+        2,
+        "(?<!not )(?<!n['’]t )(?<!never )(root cause|caused by|due to|because of|the (issue|problem|cause) is)(?:(?!not |no evidence |n['’]t |rul(e|ed|ing)|unrelated)[^.\\n]){0,60}?(cpu|memory|oom|out of memory|disk|node pressure|host (resource|saturat))",
+        true
+      ],
+      [
+        "false_blame_batch",
+        2,
+        "(?<!not )(?<!n['’]t )(?<!never )(root cause|caused by|due to|because of|the (issue|problem|cause) is)(?:(?!not |no evidence |n['’]t |rul(e|ed|ing)|unrelated)[^.\\n]){0,60}?(reconciliation|nightly batch|inventory[- ]service)",
+        true
+      ]
+    ],
+    "adoption": [
+      {
+        "id": "queried_pool_metrics",
+        "weight": 2,
+        "metrics": [
+          "db.client.connections.usage",
+          "db.client.connections.pending_requests",
+          "db.client.connections.max"
+        ]
+      },
+      {
+        "id": "queried_supporting_metrics",
+        "informational": true,
+        "metrics": [
+          "http.server.request.count",
+          "http.server.request.duration",
+          "system.cpu.utilization",
+          "process.memory.usage"
+        ]
+      }
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer identify the root cause: order-api's Postgres connection pool ('orders-pg', 40 per pod) exhausted by a connection LEAK on the async-invoice path enabled when the orders.async-invoice feature flag went to 100% ~90 minutes ago — with queueing at connection-acquire time producing the uniform slowdown and the 30s acquire-timeout 503s? CAP at 4 unless the answer states the LEAK mechanism (connections never released — usage climbs monotonically while traffic is flat), not merely 'the pool is full'. CAP at 3 if the flag/async-invoice trigger is missing. 'order-api is slow because its database pool is exhausted' with no leak mechanism and no trigger caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is the conclusion grounded in the discriminating evidence? Strong answers cite: (a) per-pod db.client.connections.usage climbing monotonically from ~8 and pinning at the 40-connection cap (saturation ~36-27 min ago), with the climb onset at the feature-flag event 90 min ago; (b) flat traffic (http.server.request.count slope unchanged) — the leak-vs-load discrimination; (c) the acquire-vs-query split — db.pool.acquire spans grow into the seconds while db.query children stay 5-25ms (client-side wait; the database is healthy). CAP at 3 unless BOTH (b)-style leak-vs-load reasoning AND either (a)'s onset join or (c)'s split are explicit. 5 additionally requires the two-onset distinction (leak began ~90 min ago; user-visible latency only after saturation ~30 min ago) and the 30s-timeout 503 mechanism for the recent hard failures."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Did the answer avoid the traps? (a) the notification-service 2.15.0 rollout (~40 min ago, next to the visible onset) is innocent — healthy on both versions, not in the order path, and the pool climb predates it by ~50 minutes; (b) the inventory-service CPU spike is the nightly reconciliation batch — bracketed by INFO events, ends before saturation, unrelated; (c) 'Postgres is slow/overloaded' inverts the mechanism — queries stay fast, the wait is client-side in the pool; (d) order-api CPU/memory are flat — not host saturation; (e) catalog-api's identical pool metrics are healthy (~8/40). Blaming any of these scores 1-2. CAP at 3 unless the co-timed traps (a) and (c) are explicitly addressed. 5 = traps dismissed WITH their evidence."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Was the answer concise, well-structured, and free of filler or unnecessary speculation?"
+        }
+      ]
+    }
+  }
+}
