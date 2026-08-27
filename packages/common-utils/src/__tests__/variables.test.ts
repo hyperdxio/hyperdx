@@ -1665,15 +1665,15 @@ describe('validateVariableReferencesInTemplate', () => {
     });
 
     it('reports only the Lucene error there, where no macro expands at all', () => {
-      const { errors } = validate(
+      const { warnings } = validate(
         '$__filter(ServiceName, service)',
         [SERVICE],
         {
           language: 'lucene',
         },
       );
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain('has no meaning in a Lucene expression');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('has no meaning in a Lucene expression');
     });
   });
 
@@ -1755,12 +1755,12 @@ describe('validateVariableReferencesInTemplate', () => {
       '$__conditionalAll(ServiceName = 1, $service)',
     ])('errors on the macro %s, which is left as literal text', template => {
       expect(validate(template, [SERVICE], { language: 'lucene' })).toEqual({
-        errors: [
+        warnings: [
           `${template.slice(0, template.indexOf('('))} has no meaning in a Lucene expression — ` +
             'it is left as written and matched as literal text. Switch this input to SQL, ' +
             'or reference the variable directly, as in <field>:$service.',
         ],
-        warnings: [],
+        errors: [],
       });
     });
 
@@ -1768,7 +1768,7 @@ describe('validateVariableReferencesInTemplate', () => {
       expect(
         validate('$__filter(ServiceName, $srvice)', [SERVICE], {
           language: 'lucene',
-        }).errors,
+        }).warnings,
       ).toEqual([
         '$__filter has no meaning in a Lucene expression — it is left as written ' +
           'and matched as literal text. Switch this input to SQL, or reference the ' +
@@ -1782,6 +1782,89 @@ describe('validateVariableReferencesInTemplate', () => {
           language: 'sql',
         }),
       ).toEqual({ errors: [], warnings: [] });
+    });
+  });
+
+  describe('a PromQL expression', () => {
+    const promql = (template: string, variables?: ChartVariable[]) =>
+      validate(template, variables, {
+        subject: 'This expression',
+        language: 'promql',
+      });
+
+    it('accepts the canonical matcher form', () => {
+      // The SQL-only checks would call this both quoted (an error) and
+      // unguarded (a warning); neither applies to the regex default.
+      expect(promql('up{service=~"$service"}', [SERVICE])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+    });
+
+    it('accepts the braced and explicitly-formatted matcher forms', () => {
+      expect(promql('up{service=~"${service}"}', [SERVICE])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+      expect(promql('up{service=~"${service:regex}"}', [SERVICE])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+    });
+
+    it('still warns about a reference to a variable that does not exist', () => {
+      const { errors, warnings } = promql('up{service=~"$srvice"}', [
+        SERVICE,
+        variable('env', ['prod']),
+      ]);
+
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([
+        'This expression references unknown variable $srvice. Available variables: service, env.',
+      ]);
+    });
+
+    it('warns about a regex reference outside a quoted matcher value', () => {
+      const { errors, warnings } = promql('up{service=~$service}', [SERVICE]);
+
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([
+        '$service expands to a regular expression, which is only valid inside a quoted matcher value. Wrap it as {<label>=~"$service"}, or use ${service:csv} to interpolate the values as written.',
+      ]);
+    });
+
+    it('warns the same way about a reference pasted into a metric name', () => {
+      expect(promql('${service}_total', [SERVICE]).warnings).toHaveLength(1);
+    });
+
+    it('says nothing about a csv reference outside a literal, which is raw', () => {
+      expect(promql('sum by (${service:csv}) (up)', [SERVICE])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+    });
+
+    it.each([
+      '$__filter(service, $service)',
+      '$__conditionalAll(up, $service)',
+    ])('errors on the macro %s, which is sent verbatim', template => {
+      expect(promql(template, [SERVICE])).toEqual({
+        warnings: [
+          `${template.slice(0, template.indexOf('('))} has no meaning in a PromQL expression — ` +
+            'it is left as written and sent to Prometheus verbatim. Reference the ' +
+            'variable directly, as in {<label>=~"$service"}.',
+        ],
+        errors: [],
+      });
+    });
+
+    it('warns rather than errors when no variables are in scope', () => {
+      expect(promql('up{service=~"$service"}', undefined)).toEqual({
+        errors: [],
+        warnings: [
+          'This expression references $service, but no variables are available here.',
+        ],
+      });
     });
   });
 });

@@ -22,6 +22,10 @@ import {
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from '@/components/SQLEditor/utils';
 import { usePromqlVariableCompletions } from '@/components/SQLEditor/variableCompletions';
+import {
+  useVariableValidation,
+  VariableIssueIndicator,
+} from '@/components/SQLEditor/variableValidation';
 
 import { createVariableCompletionSource } from './variableCompletionSource';
 
@@ -106,6 +110,7 @@ export default function PromQLEditor({
   const compartmentRef = useRef<Compartment>(new Compartment());
   const [isFocused, setIsFocused] = useState(false);
   const variableCompletions = usePromqlVariableCompletions();
+  const variableIssues = useVariableValidation(value, { language: 'promql' });
 
   const updateAutocomplete = useCallback(
     (viewRef: EditorView) => {
@@ -185,6 +190,8 @@ export default function PromQLEditor({
   }, []);
 
   const isExpanded = isFocused;
+  const isVariableWarningOnly =
+    variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
   const baseHeight = 36;
 
   return (
@@ -198,6 +205,8 @@ export default function PromQLEditor({
         shadow="none"
         className={cx(
           styles.paper,
+          variableIssues.errors.length > 0 ? styles.error : undefined,
+          isVariableWarningOnly ? styles.warning : undefined,
           isExpanded ? styles.expanded : undefined,
           !isExpanded ? styles.collapseFade : undefined,
         )}
@@ -225,6 +234,7 @@ export default function PromQLEditor({
             onClick={onClickCodeMirror}
           />
         </div>
+        <VariableIssueIndicator issues={variableIssues} />
       </Paper>
     </div>
   );
