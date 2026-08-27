@@ -7,12 +7,10 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
+  DashboardFilterValue,
   Filter,
 } from '@/types';
-import {
-  getVariableReferences,
-  substituteVariablesForLanguage,
-} from '@/variables';
+import { getVariableReferences, substituteVariables } from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -700,9 +698,11 @@ export function isValidFilterCondition(
  *
  * Empty / whitespace-only conditions are treated as valid (they're no-ops at
  * query time, not errors), as are structurally-validated `sql_ast` filters.
+ * Variable-keyed entries carry no condition text at all, so there is nothing to
+ * validate and they are skipped by the same `type` guard.
  */
 export function validateSavedFilterValues(
-  filters: Filter[],
+  filters: DashboardFilterValue[],
 ): SavedFilterValueIssue[] {
   const issues: SavedFilterValueIssue[] = [];
   filters.forEach((filter, index) => {
@@ -874,11 +874,14 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
-/** The variables a dashboard declares, in filter order. */
-export function getDashboardVariableDeclarations(
+/**
+ * The variable-enabled filters a dashboard declares, paired with the name each
+ * one answers to, in filter order.
+ */
+export function getDashboardVariableFilters(
   filters: DashboardFilter[] | undefined,
-): DashboardVariableDeclaration[] {
-  const declarations: DashboardVariableDeclaration[] = [];
+): { filter: DashboardFilter; name: string }[] {
+  const results: { filter: DashboardFilter; name: string }[] = [];
   const takenNames = new Set<string>();
 
   for (const filter of filters ?? []) {
@@ -889,10 +892,20 @@ export function getDashboardVariableDeclarations(
     if (!name || takenNames.has(name)) continue;
     takenNames.add(name);
 
-    declarations.push({ name, expression: filter.expression });
+    results.push({ filter, name });
   }
 
-  return declarations;
+  return results;
+}
+
+/** The variables a dashboard declares, in filter order. */
+export function getDashboardVariableDeclarations(
+  filters: DashboardFilter[] | undefined,
+): DashboardVariableDeclaration[] {
+  return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
+    name,
+    expression: filter.expression,
+  }));
 }
 
 export type ResolvedFilterValuesQuery = {
@@ -921,7 +934,10 @@ export function resolveFilterValuesWhere(
 
   try {
     return {
-      where: substituteVariablesForLanguage(where, variables, whereLanguage),
+      where: substituteVariables(where, {
+        variables,
+        inputLanguage: whereLanguage,
+      }),
       whereLanguage,
     };
   } catch (e) {

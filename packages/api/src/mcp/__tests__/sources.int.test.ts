@@ -188,6 +188,161 @@ describe('MCP Source Tools', () => {
 
       await client2.close();
     });
+
+    describe('metric-name previews', () => {
+      const createMetricSource = (name = 'Metrics') =>
+        Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+            [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name,
+        });
+
+      it('includes metricNamesPreview and metricsUsage for metric sources with recent data', async () => {
+        const metricSource = await createMetricSource();
+        const now = new Date();
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'system.cpu.utilization',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 0.42,
+          },
+        ]);
+        await bulkInsertMetricsSum([
+          {
+            MetricName: 'http.server.request.count',
+            AggregationTemporality: 1,
+            IsMonotonic: true,
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 100,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        expect(metric.metricNamesPreview).toBeDefined();
+        expect(metric.metricNamesPreview.gauge).toEqual(
+          expect.arrayContaining(['system.cpu.utilization']),
+        );
+        expect(metric.metricNamesPreview.sum).toEqual(
+          expect.arrayContaining(['http.server.request.count']),
+        );
+
+        // Top-level usage note explains direct metric querying.
+        expect(output.metricsUsage).toContain('metricType + metricName');
+      });
+
+      it('falls back to a wider lookback when no metrics reported in the last 24h', async () => {
+        const metricSource = await createMetricSource('Sparse Metrics');
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'batch.job.duration',
+            ResourceAttributes: { 'service.name': 'batch-svc' },
+            ServiceName: 'batch-svc',
+            TimeUnix: threeDaysAgo,
+            Value: 60,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        expect(metric.metricNamesPreview?.gauge).toEqual(
+          expect.arrayContaining(['batch.job.duration']),
+        );
+      });
+
+      it('excludes non-queryable summary metrics from metricNamesPreview', async () => {
+        const metricSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+            [MetricsDataType.Summary.toLowerCase()]: 'otel_metrics_summary',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name: 'Metrics With Summary',
+        });
+        const now = new Date();
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'system.memory.usage',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 1024,
+          },
+        ]);
+        await bulkInsertMetricsSummary([
+          {
+            MetricName: 'rpc.server.duration.summary',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Count: 10,
+            Sum: 123,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        // The summary table stays discoverable in metricTables...
+        expect(metric.metricTables.summary).toBe('otel_metrics_summary');
+        // ...but its metrics are not previewed, since the query builder
+        // tools reject metricType 'summary'.
+        expect(metric.metricNamesPreview.gauge).toEqual(
+          expect.arrayContaining(['system.memory.usage']),
+        );
+        expect(metric.metricNamesPreview.summary).toBeUndefined();
+      });
+
+      it('omits metricNamesPreview when the metric tables are empty', async () => {
+        const metricSource = await createMetricSource('Empty Metrics');
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        expect(metric.metricTables).toBeDefined();
+        expect(metric.metricNamesPreview).toBeUndefined();
+        // The usage note still appears — a metric source exists.
+        expect(output.metricsUsage).toBeDefined();
+      });
+    });
   });
 
   // ── clickstack_describe_source ───────────────────────────────────────────────

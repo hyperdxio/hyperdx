@@ -478,7 +478,7 @@ export function replaceMacros(
 
   const variableContext: VariableContext | undefined = variables && {
     variables,
-    defaultFormat: 'sqlstring',
+    inputLanguage: 'sql',
   };
 
   const macroNames = [
