@@ -259,13 +259,13 @@ async function getTileDetails(
   ];
 }
 
-async function getChartDetails(
+async function getInlineAlertDetails(
   alert: IAlert,
 ): Promise<[IConnection, PartialAlertDetails] | []> {
   const chartConfig = alert.chartConfig;
   if (chartConfig == null) {
     logger.error({
-      message: 'chart alert has no chartConfig',
+      message: 'inline alert has no chartConfig',
       alertId: alert.id,
     });
     return [];
@@ -276,7 +276,7 @@ async function getChartDetails(
       logger.warn({
         alertId: alert.id,
         message:
-          'skipping chart alert with raw sql chart config, only line/bar/number display types are supported',
+          'skipping inline alert with raw sql chart config, only line/bar/number display types are supported',
       });
       return [];
     }
@@ -289,7 +289,7 @@ async function getChartDetails(
 
     if (!connection) {
       logger.error({
-        message: 'connection not found for raw sql chart alert',
+        message: 'connection not found for raw sql inline alert',
         connectionId: chartConfig.connection,
         alertId: alert.id,
       });
@@ -304,7 +304,7 @@ async function getChartDetails(
       {
         alert,
         source,
-        taskType: AlertTaskType.CHART,
+        taskType: AlertTaskType.INLINE,
         chartConfig,
       },
     ];
@@ -343,7 +343,7 @@ async function getChartDetails(
     {
       alert,
       source: { ...sourceProps, connection: connection.id },
-      taskType: AlertTaskType.CHART,
+      taskType: AlertTaskType.INLINE,
       chartConfig,
     },
   ];
@@ -377,8 +377,8 @@ async function loadAlert(
       [conn, details] = await getTileDetails(alert);
       break;
 
-    case AlertSource.CHART:
-      [conn, details] = await getChartDetails(alert);
+    case AlertSource.INLINE:
+      [conn, details] = await getInlineAlertDetails(alert);
       break;
 
     default:

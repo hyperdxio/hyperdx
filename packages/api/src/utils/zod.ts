@@ -730,30 +730,30 @@ const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-const zChartAlert = z.object({
-  source: z.literal(AlertSource.CHART),
+const zInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
   // Builder + raw SQL configs only; the schema has no PromQL variant.
   chartConfig: AlertChartConfigSchema,
 });
 
 /**
- * Metric-formula validation for chart alerts (builder configs only — raw SQL
+ * Metric-formula validation for inline alerts (builder configs only — raw SQL
  * configs have no formulas). Dashboard tiles get this through the editor's
- * save-time rules and the external tile-config refinement above; chart alerts
+ * save-time rules and the external tile-config refinement above; inline alerts
  * are authored through this API directly, so without it a malformed formula
  * (or one referencing a nonexistent series) persists and then throws on every
  * evaluation tick instead of being rejected at write time. The helper checks
  * the external-shape `asRatio`, so map the internal `seriesReturnType: 'ratio'`
  * onto it.
  */
-const validateChartAlertFormulas = (
+const validateInlineAlertFormulas = (
   alert: {
     source: AlertSource;
     chartConfig?: z.infer<typeof AlertChartConfigSchema>;
   },
   ctx: z.RefinementCtx,
 ) => {
-  if (alert.source !== AlertSource.CHART || alert.chartConfig == null) {
+  if (alert.source !== AlertSource.INLINE || alert.chartConfig == null) {
     return;
   }
   const chartConfig = alert.chartConfig;
@@ -789,16 +789,16 @@ export const alertSchema = alertBaseSchema
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);
 
-// Superset of alertSchema for the internal API only: also accepts chart
-// alerts (source: 'chart'), which persist their own chart config. The
+// Superset of alertSchema for the internal API only: also accepts inline
+// alerts (source: 'inline'), which persist their own chart config. The
 // external v2 API keeps the narrower alertSchema until its contract (OpenAPI
-// docs, Terraform provider) is extended to cover chart alerts.
+// docs, Terraform provider) is extended to cover inline alerts.
 export const internalAlertSchema = alertBaseSchema
-  .and(zSavedSearchAlert.or(zTileAlert).or(zChartAlert))
+  .and(zSavedSearchAlert.or(zTileAlert).or(zInlineAlert))
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax)
-  .superRefine(validateChartAlertFormulas);
+  .superRefine(validateInlineAlertFormulas);
 
 // ==============================
 // Webhooks

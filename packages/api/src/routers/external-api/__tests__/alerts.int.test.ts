@@ -658,8 +658,8 @@ describe('External API Alerts', () => {
   });
 
   describe('Input validation', () => {
-    it('rejects the internal-only chart alert source', async () => {
-      // Chart alerts (source: 'chart') are creatable through the internal API
+    it('rejects the internal-only inline alert source', async () => {
+      // Inline alerts (source: 'inline') are creatable through the internal API
       // only; the external v2 contract (OpenAPI docs, Terraform provider) has
       // not been extended to cover them yet.
       const webhook = await createTestWebhook();
@@ -667,7 +667,7 @@ describe('External API Alerts', () => {
       const alertInput = {
         threshold: 100,
         interval: '1h',
-        source: 'chart',
+        source: 'inline',
         chartConfig: {
           name: 'Chart Alert Query',
           source: new ObjectId().toString(),

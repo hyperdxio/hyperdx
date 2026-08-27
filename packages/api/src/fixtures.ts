@@ -782,7 +782,7 @@ export const makeSavedSearchAlertInput = ({
   savedSearchId,
 });
 
-export const makeChartAlertConfig = (opts: {
+export const makeAlertChartConfig = (opts: {
   sourceId: string;
   name?: string;
   displayType?: DisplayType;
@@ -805,7 +805,7 @@ export const makeChartAlertConfig = (opts: {
   ...(opts.groupBy != null && { groupBy: opts.groupBy }),
 });
 
-export const makeChartAlertInput = ({
+export const makeInlineAlertInput = ({
   chartConfig,
   interval = '15m',
   threshold = 8,
@@ -823,6 +823,6 @@ export const makeChartAlertInput = ({
   interval,
   threshold,
   thresholdType: AlertThresholdType.ABOVE,
-  source: AlertSource.CHART,
+  source: AlertSource.INLINE,
   chartConfig,
 });

@@ -17,7 +17,7 @@ import logger from '@/utils/logger';
 export enum AlertTaskType {
   SAVED_SEARCH,
   TILE,
-  CHART,
+  INLINE,
 }
 
 // Discriminated union of possible alert channel types with populated channel data
@@ -50,10 +50,10 @@ export type AlertDetails = {
       dashboard: IDashboard;
     }
   | {
-      // Chart alerts: the config lives on the alert document. `source` is
+      // Inline alerts: the config lives on the alert document. `source` is
       // present for builder configs and optional for raw SQL configs (which
       // carry the connection directly).
-      taskType: AlertTaskType.CHART;
+      taskType: AlertTaskType.INLINE;
       source?: ISource;
       chartConfig: AlertChartConfig;
     }
@@ -89,7 +89,7 @@ export interface AlertProvider {
   }): string;
 
   /**
-   * Link for chart alerts (which have no saved search or dashboard to open):
+   * Link for inline alerts (which have no saved search or dashboard to open):
    * the chart explorer with the alert's persisted config over the alerting
    * window. Works regardless of whether the alert-details page is enabled.
    */

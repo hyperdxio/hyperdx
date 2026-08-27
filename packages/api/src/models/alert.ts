@@ -72,8 +72,8 @@ export const getAlertChannels = (alert: {
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
-  /** Detached alert that persists its own chart config (no saved search/tile). */
-  CHART = 'chart',
+  /** Detached alert whose chart config lives inline on the alert (no saved search/tile). */
+  INLINE = 'inline',
 }
 
 export interface IAlert {
@@ -107,7 +107,7 @@ export interface IAlert {
   dashboard?: ObjectId | null;
   tileId?: string | null;
 
-  // Chart alerts: the persisted chart config (same shape as a dashboard
+  // Inline alerts: the persisted chart config (same shape as a dashboard
   // tile's config, minus the embedded alert field)
   chartConfig?: AlertChartConfig | null;
 
@@ -232,7 +232,7 @@ const AlertSchema = new Schema<IAlert>(
       required: false,
     },
 
-    // Chart alerts
+    // Inline alerts
     chartConfig: {
       type: Schema.Types.Mixed,
       required: false,

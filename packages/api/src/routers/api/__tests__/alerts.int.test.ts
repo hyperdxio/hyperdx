@@ -9,9 +9,9 @@ import mongoose from 'mongoose';
 import {
   getLoggedInAgent,
   getServer,
+  makeAlertChartConfig,
   makeAlertInput,
-  makeChartAlertConfig,
-  makeChartAlertInput,
+  makeInlineAlertInput,
   makeRawSqlAlertTile,
   makeRawSqlNumberAlertTile,
   makeRawSqlTile,
@@ -1655,7 +1655,7 @@ describe('alerts router', () => {
     });
   });
 
-  describe('chart alerts', () => {
+  describe('inline alerts', () => {
     const makeSource = async () => {
       const connection = await Connection.create({
         team: team._id,
@@ -1675,23 +1675,23 @@ describe('alerts router', () => {
       return { connection, source };
     };
 
-    it('creates a chart alert and round-trips chartConfig through GET', async () => {
+    it('creates an inline alert and round-trips chartConfig through GET', async () => {
       const { source } = await makeSource();
-      const chartConfig = makeChartAlertConfig({
+      const chartConfig = makeAlertChartConfig({
         sourceId: source._id.toString(),
       });
 
       const created = await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig,
             webhookId: webhook._id.toString(),
           }),
         )
         .expect(200);
 
-      expect(created.body.data.source).toBe(AlertSource.CHART);
+      expect(created.body.data.source).toBe(AlertSource.INLINE);
       expect(created.body.data.chartConfig).toMatchObject({
         name: 'Chart Alert Query',
         source: source._id.toString(),
@@ -1714,13 +1714,13 @@ describe('alerts router', () => {
       });
     });
 
-    it('updates a chart alert config', async () => {
+    it('updates an inline alert config', async () => {
       const { source } = await makeSource();
       const created = await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
-            chartConfig: makeChartAlertConfig({
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
               sourceId: source._id.toString(),
             }),
             webhookId: webhook._id.toString(),
@@ -1728,14 +1728,14 @@ describe('alerts router', () => {
         )
         .expect(200);
 
-      const updatedConfig = makeChartAlertConfig({
+      const updatedConfig = makeAlertChartConfig({
         sourceId: source._id.toString(),
         groupBy: 'ServiceName',
       });
       await agent
         .put(`/alerts/${created.body.data._id}`)
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: updatedConfig,
             threshold: 42,
             webhookId: webhook._id.toString(),
@@ -1759,8 +1759,8 @@ describe('alerts router', () => {
       const created = await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
-            chartConfig: makeChartAlertConfig({
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
               sourceId: source._id.toString(),
             }),
             webhookId: webhook._id.toString(),
@@ -1787,8 +1787,8 @@ describe('alerts router', () => {
       await agent
         .put(`/alerts/${created.body.data._id}`)
         .send(
-          makeChartAlertInput({
-            chartConfig: makeChartAlertConfig({
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
               sourceId: source._id.toString(),
             }),
             webhookId: webhook._id.toString(),
@@ -1804,25 +1804,25 @@ describe('alerts router', () => {
       expect(stored!.tileId).toBeNull();
     });
 
-    it('rejects a chart alert whose source does not exist in the team', async () => {
+    it('rejects an inline alert whose source does not exist in the team', async () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
-            chartConfig: makeChartAlertConfig({ sourceId: randomMongoId() }),
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({ sourceId: randomMongoId() }),
             webhookId: webhook._id.toString(),
           }),
         )
         .expect(400);
     });
 
-    it('rejects a chart alert with an unsupported display type', async () => {
+    it('rejects an inline alert with an unsupported display type', async () => {
       const { source } = await makeSource();
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
-            chartConfig: makeChartAlertConfig({
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
               sourceId: source._id.toString(),
               displayType: DisplayType.Table,
             }),
@@ -1834,13 +1834,13 @@ describe('alerts router', () => {
 
     it('validates metric formulas on builder chart configs', async () => {
       const { source } = await makeSource();
-      const base = makeChartAlertConfig({ sourceId: source._id.toString() });
+      const base = makeAlertChartConfig({ sourceId: source._id.toString() });
 
       // Formula referencing a nonexistent series (only A exists)
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: { ...base, formulas: [{ expression: 'B * 2' }] },
             webhookId: webhook._id.toString(),
           }),
@@ -1851,7 +1851,7 @@ describe('alerts router', () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: { ...base, formulas: [{ expression: 'A +' }] },
             webhookId: webhook._id.toString(),
           }),
@@ -1863,7 +1863,7 @@ describe('alerts router', () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               ...base,
               seriesReturnType: 'ratio',
@@ -1877,7 +1877,7 @@ describe('alerts router', () => {
       const created = await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: { ...base, formulas: [{ expression: 'A * 2' }] },
             webhookId: webhook._id.toString(),
           }),
@@ -1888,7 +1888,7 @@ describe('alerts router', () => {
       });
     });
 
-    it('rejects a raw SQL chart alert whose source is on a different connection', async () => {
+    it('rejects a raw SQL inline alert whose source is on a different connection', async () => {
       const { connection, source } = await makeSource();
       const otherConnection = await Connection.create({
         team: team._id,
@@ -1910,7 +1910,7 @@ describe('alerts router', () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               ...rawSqlConfig,
               connection: otherConnection._id.toString(),
@@ -1923,7 +1923,7 @@ describe('alerts router', () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               ...rawSqlConfig,
               connection: connection._id.toString(),
@@ -1939,7 +1939,7 @@ describe('alerts router', () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               ...rawSqlConfig,
               connection: connection._id.toString().toUpperCase(),
@@ -1950,12 +1950,12 @@ describe('alerts router', () => {
         .expect(200);
     });
 
-    it('rejects a chart alert with a PromQL config', async () => {
+    it('rejects an inline alert with a PromQL config', async () => {
       await agent
         .post('/alerts')
         .send({
-          ...makeChartAlertInput({
-            chartConfig: makeChartAlertConfig({ sourceId: randomMongoId() }),
+          ...makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({ sourceId: randomMongoId() }),
             webhookId: webhook._id.toString(),
           }),
           chartConfig: {
@@ -1967,14 +1967,14 @@ describe('alerts router', () => {
         .expect(400);
     });
 
-    it('accepts a raw SQL chart alert and validates its template', async () => {
+    it('accepts a raw SQL inline alert and validates its template', async () => {
       const { connection } = await makeSource();
 
       // Missing the required time-filter/interval parameters
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               configType: 'sql',
               displayType: DisplayType.Line,
@@ -1990,7 +1990,7 @@ describe('alerts router', () => {
       await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               configType: 'sql',
               displayType: DisplayType.Line,
@@ -2005,7 +2005,7 @@ describe('alerts router', () => {
       const created = await agent
         .post('/alerts')
         .send(
-          makeChartAlertInput({
+          makeInlineAlertInput({
             chartConfig: {
               configType: 'sql',
               displayType: DisplayType.Line,

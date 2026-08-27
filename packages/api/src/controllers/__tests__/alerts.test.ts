@@ -50,13 +50,13 @@ describe('makeAlert', () => {
     whereLanguage: 'lucene',
   };
 
-  it('persists chartConfig for chart alerts and clears the other source references', () => {
+  it('persists chartConfig for inline alerts and clears the other source references', () => {
     const result = makeAlert({
       interval: '5m',
       threshold: 1,
       thresholdType: AlertThresholdType.ABOVE,
       channels: [{ type: 'webhook', webhookId: 'webhook-id' }],
-      source: AlertSource.CHART,
+      source: AlertSource.INLINE,
       chartConfig,
     });
 
@@ -68,7 +68,7 @@ describe('makeAlert', () => {
   });
 
   it('clears chartConfig when the alert source is not chart', () => {
-    // Converting a chart alert to another source must not leave the old
+    // Converting an inline alert to another source must not leave the old
     // config behind (mirrors how savedSearch/dashboard references clear).
     const result = makeAlert({
       interval: '5m',

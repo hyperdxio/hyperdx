@@ -22,7 +22,7 @@ import {
   DEFAULT_METRICS_TABLE,
   getServer,
   getTestFixtureClickHouseClient,
-  makeChartAlertConfig,
+  makeAlertChartConfig,
   makeTile,
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
@@ -1125,11 +1125,11 @@ describe('checkAlerts', () => {
         };
       }
 
-      if (overrides.taskType === AlertTaskType.CHART) {
+      if (overrides.taskType === AlertTaskType.INLINE) {
         return {
           ...base,
-          taskType: AlertTaskType.CHART,
-          chartConfig: makeChartAlertConfig({
+          taskType: AlertTaskType.INLINE,
+          chartConfig: makeAlertChartConfig({
             sourceId: 'fake-source-id',
             groupBy: overrides.tileGroupBy ?? '',
           }),
@@ -1194,19 +1194,19 @@ describe('checkAlerts', () => {
       ).toBe(true);
     });
 
-    it('should return false for chart alert with empty config groupBy', () => {
+    it('should return false for inline alert with empty config groupBy', () => {
       expect(
         alertHasGroupBy(
-          makeDetails({ taskType: AlertTaskType.CHART, tileGroupBy: '' }),
+          makeDetails({ taskType: AlertTaskType.INLINE, tileGroupBy: '' }),
         ),
       ).toBe(false);
     });
 
-    it('should return true for chart alert with config groupBy', () => {
+    it('should return true for inline alert with config groupBy', () => {
       expect(
         alertHasGroupBy(
           makeDetails({
-            taskType: AlertTaskType.CHART,
+            taskType: AlertTaskType.INLINE,
             tileGroupBy: 'ServiceName',
           }),
         ),
@@ -1326,20 +1326,20 @@ describe('checkAlerts', () => {
       value: 5,
     };
 
-    const chartAlertConfig = makeChartAlertConfig({
+    const inlineAlertConfig = makeAlertChartConfig({
       sourceId: 'fake-source-id',
     });
-    const defaultChartAlertView: AlertMessageTemplateDefaultView = {
+    const defaultInlineAlertView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
         threshold: 1,
-        source: AlertSource.CHART,
+        source: AlertSource.INLINE,
         channel: {
           type: 'webhook',
           webhookId: 'fake-webhook-id',
         },
         interval: '1m',
-        chartConfig: chartAlertConfig,
+        chartConfig: inlineAlertConfig,
       },
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
@@ -1382,17 +1382,17 @@ describe('checkAlerts', () => {
         `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103&highlightedTileId=test-tile-id"`,
       );
 
-      // Chart alerts link to the chart explorer seeded with the persisted
+      // Inline alerts link to the chart explorer seeded with the persisted
       // config. Built programmatically — the URL-encoded config JSON makes an
       // inline snapshot unreadable.
       const expectedChartAlertUrl = new URL('http://app:8080/chart');
       expectedChartAlertUrl.search = new URLSearchParams({
-        config: JSON.stringify(chartAlertConfig),
+        config: JSON.stringify(inlineAlertConfig),
         from: '1679089083103',
         to: '1679093339103',
       }).toString();
       expect(
-        buildAlertMessageTemplateHdxLink(alertProvider, defaultChartAlertView),
+        buildAlertMessageTemplateHdxLink(alertProvider, defaultInlineAlertView),
       ).toBe(expectedChartAlertUrl.toString());
     });
 
@@ -1496,10 +1496,10 @@ describe('checkAlerts', () => {
       ).toMatchInlineSnapshot(
         `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
       );
-      // Chart alerts default to the chart config's name
+      // Inline alerts default to the chart config's name
       expect(
         buildAlertMessageTemplateTitle({
-          view: defaultChartAlertView,
+          view: defaultInlineAlertView,
         }),
       ).toMatchInlineSnapshot(
         `"🚨 Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
@@ -2149,7 +2149,7 @@ describe('checkAlerts', () => {
             dashboard: IDashboard;
           }
         | {
-            taskType: AlertTaskType.CHART;
+            taskType: AlertTaskType.INLINE;
             chartConfig: AlertChartConfig;
           },
     ): Promise<AlertDetails> => {
@@ -2863,7 +2863,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('CHART alert (events) - slack webhook', async () => {
+    it('INLINE alert (events) - slack webhook', async () => {
       const {
         team,
         webhook,
@@ -2887,7 +2887,7 @@ describe('checkAlerts', () => {
       );
 
       // The config lives on the alert itself — no saved search or dashboard.
-      const chartConfig = makeChartAlertConfig({
+      const chartConfig = makeAlertChartConfig({
         sourceId: source.id,
         name: 'Error Count',
         aggCondition: 'ServiceName:api',
@@ -2897,7 +2897,7 @@ describe('checkAlerts', () => {
         team,
         source,
         {
-          source: AlertSource.CHART,
+          source: AlertSource.INLINE,
           channel: {
             type: 'webhook',
             webhookId: webhook._id.toString(),
@@ -2908,7 +2908,7 @@ describe('checkAlerts', () => {
           chartConfig,
         },
         {
-          taskType: AlertTaskType.CHART,
+          taskType: AlertTaskType.INLINE,
           chartConfig,
         },
       );
@@ -3002,7 +3002,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('CHART alert (group by) - notifies per group', async () => {
+    it('INLINE alert (group by) - notifies per group', async () => {
       // Two groups fire, so two notifications go out (the shared beforeEach
       // only mocks a single call).
       jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
@@ -3034,7 +3034,7 @@ describe('checkAlerts', () => {
         })),
       ]);
 
-      const chartConfig = makeChartAlertConfig({
+      const chartConfig = makeAlertChartConfig({
         sourceId: source.id,
         name: 'Errors by service',
         groupBy: 'ServiceName',
@@ -3044,7 +3044,7 @@ describe('checkAlerts', () => {
         team,
         source,
         {
-          source: AlertSource.CHART,
+          source: AlertSource.INLINE,
           channel: {
             type: 'webhook',
             webhookId: webhook._id.toString(),
@@ -3055,7 +3055,7 @@ describe('checkAlerts', () => {
           chartConfig,
         },
         {
-          taskType: AlertTaskType.CHART,
+          taskType: AlertTaskType.INLINE,
           chartConfig,
         },
       );

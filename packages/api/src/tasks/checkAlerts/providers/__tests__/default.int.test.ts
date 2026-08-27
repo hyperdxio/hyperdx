@@ -5,7 +5,7 @@ import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
 import {
   getServer,
-  makeChartAlertConfig,
+  makeAlertChartConfig,
   makeTile,
   RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
@@ -735,7 +735,7 @@ describe('DefaultAlertProvider', () => {
       expect(result[0].conn.host).toBe('http://localhost:8124');
     });
 
-    it('should process a single chart alert', async () => {
+    it('should process a single inline alert', async () => {
       const team = await createTeam({ name: 'Test Team' });
 
       const connection = await Connection.create({
@@ -758,14 +758,14 @@ describe('DefaultAlertProvider', () => {
         connection: connection._id,
       });
 
-      const chartConfig = makeChartAlertConfig({
+      const chartConfig = makeAlertChartConfig({
         sourceId: source._id.toString(),
       });
 
       const alert = await createAlert(
         team._id,
         {
-          source: AlertSource.CHART,
+          source: AlertSource.INLINE,
           chartConfig,
           threshold: 10,
           thresholdType: AlertThresholdType.ABOVE,
@@ -781,13 +781,13 @@ describe('DefaultAlertProvider', () => {
       const result = await provider.getAlertTasks();
 
       expect(result).toHaveLength(1);
-      // Builder chart alerts derive their connection from the source
+      // Builder inline alerts derive their connection from the source
       expect(result[0].conn.id).toBe(connection.id);
       expect(result[0].alerts).toHaveLength(1);
-      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.CHART);
+      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.INLINE);
       expect(result[0].alerts[0].alert.id).toBe(alert.id);
 
-      if (result[0].alerts[0].taskType === AlertTaskType.CHART) {
+      if (result[0].alerts[0].taskType === AlertTaskType.INLINE) {
         expect(result[0].alerts[0].chartConfig).toMatchObject({
           source: source._id.toString(),
         });
@@ -830,14 +830,14 @@ describe('DefaultAlertProvider', () => {
       return { team, connection, otherConnection, source };
     };
 
-    it('drops raw-SQL chart alert source metadata when the source moved to a different connection', async () => {
+    it('drops raw-SQL inline alert source metadata when the source moved to a different connection', async () => {
       const { team, connection, otherConnection, source } =
         await setupRawSqlSourceMove();
 
       await createAlert(
         team._id,
         {
-          source: AlertSource.CHART,
+          source: AlertSource.INLINE,
           chartConfig: {
             configType: 'sql',
             displayType: DisplayType.Line,
@@ -858,8 +858,8 @@ describe('DefaultAlertProvider', () => {
 
       let result = await provider.getAlertTasks();
       expect(result).toHaveLength(1);
-      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.CHART);
-      if (result[0].alerts[0].taskType === AlertTaskType.CHART) {
+      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.INLINE);
+      if (result[0].alerts[0].taskType === AlertTaskType.INLINE) {
         expect(result[0].alerts[0].source?.name).toBe('Test Source');
       }
 
@@ -873,7 +873,7 @@ describe('DefaultAlertProvider', () => {
       // Still executes through the alert's pinned connection...
       expect(result[0].conn.id).toBe(connection.id);
       // ...but without the moved source's metadata.
-      if (result[0].alerts[0].taskType === AlertTaskType.CHART) {
+      if (result[0].alerts[0].taskType === AlertTaskType.INLINE) {
         expect(result[0].alerts[0].source).toBeUndefined();
       }
     });

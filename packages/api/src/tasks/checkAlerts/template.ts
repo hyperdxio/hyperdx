@@ -210,11 +210,11 @@ export const buildAlertMessageTemplateHdxLink = (
       startTime,
       tileId: alert.tileId ?? undefined,
     });
-  } else if (alert.source === AlertSource.CHART) {
+  } else if (alert.source === AlertSource.INLINE) {
     if (alert.chartConfig == null) {
       throw new Error(`Source is ${alert.source} but chartConfig is null`);
     }
-    // Chart alerts have no saved search or dashboard to open — link to the
+    // Inline alerts have no saved search or dashboard to open — link to the
     // chart explorer seeded with the alert's persisted config.
     return alertProvider.buildChartExplorerLink({
       chartConfig: alert.chartConfig,
@@ -270,9 +270,9 @@ export const buildAlertMessageTemplateTitle = ({
             : describeThresholdResolution(alert.thresholdType)
         } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
-  } else if (alert.source === AlertSource.CHART) {
+  } else if (alert.source === AlertSource.INLINE) {
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    // Chart alerts have no saved search/tile to name them; the alert's `name`
+    // Inline alerts have no saved search/tile to name them; the alert's `name`
     // doubles as the title template, so the default falls back to the chart
     // config's name.
     const baseTitle = template
@@ -719,7 +719,7 @@ ${targetTemplate}
 \`\`\``;
   } else if (
     alert.source === AlertSource.TILE ||
-    alert.source === AlertSource.CHART
+    alert.source === AlertSource.INLINE
   ) {
     if (alert.source === AlertSource.TILE && dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);

@@ -126,7 +126,7 @@ const alertBatchFailuresCounter = getCounter('hyperdx.alerts.batch_failures', {
 /**
  * Determine if an alert has group-by behavior.
  * For saved search alerts, groupBy is on alert.groupBy.
- * For tile and chart alerts, groupBy is on the chart config.
+ * For tile and inline alerts, groupBy is on the chart config.
  */
 export const alertHasGroupBy = (details: AlertDetails): boolean => {
   const { alert } = details;
@@ -140,7 +140,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   const savedConfig: SavedChartConfig | undefined =
     details.taskType === AlertTaskType.TILE
       ? details.tile.config
-      : details.taskType === AlertTaskType.CHART
+      : details.taskType === AlertTaskType.INLINE
         ? details.chartConfig
         : undefined;
   if (savedConfig == null) {
@@ -544,7 +544,7 @@ const fireChannelEvent = async ({
       thresholdMax: alert.thresholdMax,
       thresholdType: alert.thresholdType,
       tileId: alert.tileId,
-      // Chart alerts: the persisted config, used to build the explorer link
+      // Inline alerts: the persisted config, used to build the explorer link
       // and the default notification title.
       chartConfig: alert.chartConfig,
     },
@@ -683,9 +683,9 @@ const getAlertEvaluationDateRange = (
 
 /**
  * Assemble the queryable chart config for an alert backed by a saved chart
- * config — a dashboard tile's config or a chart alert's persisted config.
- * Shared so tile and chart alerts evaluate identically; only the dashboard
- * variables differ (chart alerts have no dashboard, so none are declared).
+ * config — a dashboard tile's config or an inline alert's persisted config.
+ * Shared so tile and inline alerts evaluate identically; only the dashboard
+ * variables differ (inline alerts have no dashboard, so none are declared).
  */
 const buildAlertChartConfigFromSavedConfig = ({
   alertId,
@@ -697,7 +697,7 @@ const buildAlertChartConfigFromSavedConfig = ({
   variables,
 }: {
   alertId: string;
-  // AlertChartConfig (a chart alert's persisted config) is assignable here:
+  // AlertChartConfig (an inline alert's persisted config) is assignable here:
   // its members are the tile config types minus the embedded alert field.
   savedConfig: SavedChartConfig;
   source?: ISource;
@@ -740,7 +740,7 @@ const buildAlertChartConfigFromSavedConfig = ({
   }
 
   if (!source) {
-    logger.error({ alertId }, 'Source not found for builder chart alert');
+    logger.error({ alertId }, 'Source not found for builder inline alert');
     return undefined;
   }
 
@@ -847,8 +847,8 @@ const getChartConfigFromAlert = (
     if (config != null) {
       return config;
     }
-  } else if (details.taskType === AlertTaskType.CHART) {
-    // Chart alerts have no dashboard, so no variables are declared.
+  } else if (details.taskType === AlertTaskType.INLINE) {
+    // Inline alerts have no dashboard, so no variables are declared.
     const config = buildAlertChartConfigFromSavedConfig({
       alertId: alert.id,
       savedConfig: details.chartConfig,

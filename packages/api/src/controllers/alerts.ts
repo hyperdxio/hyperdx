@@ -113,7 +113,7 @@ export const validateAlertInput = async (
     }
   }
 
-  if (alertInput.source === AlertSource.CHART) {
+  if (alertInput.source === AlertSource.INLINE) {
     const chartConfig = alertInput.chartConfig;
     if (chartConfig == null) {
       throw new Api400Error('Chart config is required');
@@ -177,7 +177,7 @@ export const validateAlertInput = async (
       // time series (mirrors the tile-alert rules).
       if (!displayTypeSupportsBuilderAlerts(chartConfig.displayType)) {
         throw new Api400Error(
-          'Chart alerts are only supported for Line, Stacked Bar, or Number display types',
+          'Inline chart alerts are only supported for Line, Stacked Bar, or Number display types',
         );
       }
 
@@ -234,7 +234,7 @@ export const makeAlert = (
         : alert.scheduleOffsetMinutes;
   const isSavedSearch = alert.source === AlertSource.SAVED_SEARCH;
   const isTile = alert.source === AlertSource.TILE;
-  const isChart = alert.source === AlertSource.CHART;
+  const isInline = alert.source === AlertSource.INLINE;
   const channels = getAlertChannels(alert);
 
   return {
@@ -275,8 +275,8 @@ export const makeAlert = (
       : null,
     tileId: isTile ? (alert.tileId ?? null) : null,
 
-    // Chart alerts
-    chartConfig: isChart ? (alert.chartConfig ?? null) : null,
+    // Inline alerts
+    chartConfig: isInline ? (alert.chartConfig ?? null) : null,
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
