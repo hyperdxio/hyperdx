@@ -1932,6 +1932,22 @@ describe('alerts router', () => {
           }),
         )
         .expect(200);
+
+      // Equivalent non-canonical representations (uppercase hex) of the same
+      // connection ID must be accepted — the consistency check compares
+      // ObjectIds, not strings.
+      await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: connection._id.toString().toUpperCase(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
     });
 
     it('rejects a chart alert with a PromQL config', async () => {

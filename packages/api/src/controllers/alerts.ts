@@ -5,6 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { groupBy } from 'lodash';
+import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
@@ -156,7 +157,16 @@ export const validateAlertInput = async (
         // source on a different (even team-owned) connection would query the
         // wrong database — silently wrong values when the table also exists
         // there, repeated query failures when it does not.
-        if (source.connection.toString() !== chartConfig.connection) {
+        //
+        // Compare as ObjectIds, not strings: objectIdSchema admits every
+        // representation ObjectId.isValid does (uppercase hex, 12-byte
+        // strings), and the Mongo lookups above cast them — a lexical
+        // comparison would reject an equivalent non-canonical ID.
+        if (
+          !new Types.ObjectId(String(source.connection)).equals(
+            chartConfig.connection,
+          )
+        ) {
           throw new Api400Error(
             'Source does not belong to the specified connection',
           );
