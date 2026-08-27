@@ -206,7 +206,6 @@ export function getFilterVariableWarnings(
     const result = validateVariableReferencesInTemplate(where, variables, {
       subject: 'The dropdown values query',
       language,
-      reportUnknownMacroVariables: true,
     });
     const issues = [...result.errors, ...result.warnings];
 
@@ -275,7 +274,6 @@ export function getTileVariableWarnings(
       const result = validateVariableReferencesInTemplate(template, variables, {
         subject: language === 'lucene' ? 'The Lucene filter' : 'SQL',
         language,
-        reportUnknownMacroVariables: true,
       });
       issues.push(...result.errors, ...result.warnings);
     };

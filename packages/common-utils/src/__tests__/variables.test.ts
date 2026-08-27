@@ -319,10 +319,10 @@ describe('substituteVariables', () => {
       // must not have to match on the message to recognize it.
       expect.assertions(5);
       try {
-        substituteVariables('WHERE $__filter(ServiceName, nope)', [
-          SERVICE,
-          variable('env', ['prod']),
-        ]);
+        substituteVariables('WHERE $__filter(ServiceName, $nope)', {
+          variables: [SERVICE, variable('env', ['prod'])],
+          inputLanguage: 'sql',
+        });
       } catch (e) {
         expect(e).toBeInstanceOf(UnknownVariableError);
         // Still a MacroExpansionError, so existing handling keeps working.
@@ -337,7 +337,10 @@ describe('substituteVariables', () => {
     it('reports an empty declared set rather than omitting the field', () => {
       expect.assertions(1);
       try {
-        substituteVariables('WHERE $__conditionalAll(1=1, nope)', []);
+        substituteVariables('WHERE $__conditionalAll(1=1, $nope)', {
+          variables: [],
+          inputLanguage: 'sql',
+        });
       } catch (e) {
         expect((e as UnknownVariableError).availableVariables).toEqual([]);
       }
@@ -1820,36 +1823,24 @@ describe('validateVariableReferencesInTemplate', () => {
   });
 });
 
-describe('reportUnknownMacroVariables', () => {
-  it('stays quiet about a macro naming an unknown variable by default', () => {
-    // The chart editor gets this message from expansion instead, and would
-    // otherwise print it twice.
-    expect(
-      validateVariableReferencesInTemplate('$__filter(ServiceName, tenant)', [
-        SERVICE,
-      ]),
-    ).toEqual({ errors: [], warnings: [] });
-  });
-
-  it('reports a macro naming an unknown variable when asked', () => {
+describe('macros naming an unknown variable', () => {
+  it('reports the message expansion gives', () => {
     const { errors, warnings } = validateVariableReferencesInTemplate(
-      '$__filter(ServiceName, tenant)',
+      '$__filter(ServiceName, $tenant)',
       [SERVICE],
-      { reportUnknownMacroVariables: true },
     );
 
     expect(warnings).toEqual([]);
     expect(errors).toEqual([
-      "SQL uses $__filter on unknown variable 'tenant'. Available variables: service.",
+      "Macro '$__filter' references unknown variable 'tenant'. Available variables: service.",
     ]);
   });
 
   it('says nothing when the macro names a declared variable', () => {
     expect(
       validateVariableReferencesInTemplate(
-        "$__conditionalAll(ServiceName != 'api', service)",
+        "$__conditionalAll(ServiceName != 'api', $service)",
         [SERVICE],
-        { reportUnknownMacroVariables: true },
       ),
     ).toEqual({ errors: [], warnings: [] });
   });
@@ -1860,7 +1851,7 @@ describe('reportUnknownMacroVariables', () => {
     const { errors } = validateVariableReferencesInTemplate(
       '$__filter(ServiceName, tenant)',
       [SERVICE],
-      { language: 'lucene', reportUnknownMacroVariables: true },
+      { language: 'lucene' },
     );
 
     expect(errors).toHaveLength(1);

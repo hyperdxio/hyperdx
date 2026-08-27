@@ -265,9 +265,9 @@ describe('errorHint', () => {
       // declare-a-variable hint would be misleading noise on top of it. The
       // old string match could not tell the two apart.
       const message =
-        "Macro '$__filter(service)' requires the variable's filter " +
+        "Macro '$__filter($service)' requires the variable's filter " +
         'expression, which is not available - pass it explicitly, e.g. ' +
-        '$__filter(<expression>, service).';
+        '$__filter(<expression>, $service).';
 
       expect(
         errorHint(message, new MacroExpansionError('filter', message)),

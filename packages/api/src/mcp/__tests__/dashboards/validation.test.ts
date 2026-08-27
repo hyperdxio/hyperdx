@@ -644,7 +644,7 @@ describe('getTileVariableWarnings', () => {
           makeSqlTile({
             sourceId,
             sqlTemplate:
-              'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service)',
+              'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $service)',
           }),
         ],
         [variableFilter],
@@ -689,7 +689,7 @@ describe('getTileVariableWarnings', () => {
         makeSqlTile({
           sourceId,
           sqlTemplate:
-            'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, tenant)',
+            'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $tenant)',
         }),
       ],
       [variableFilter],
@@ -704,7 +704,7 @@ describe('getTileVariableWarnings', () => {
       [
         makeSearchTile({
           name: 'Recent Errors',
-          where: '$__filter(ServiceName, service)',
+          where: '$__filter(ServiceName, $service)',
           whereLanguage: 'lucene',
         }),
       ],
@@ -733,7 +733,7 @@ describe('getTileVariableWarnings', () => {
       [
         makeSeriesTile({
           name: 'Requests',
-          where: '$__filter(ServiceName, service)',
+          where: '$__filter(ServiceName, $service)',
           whereLanguage: 'lucene',
         }),
       ],

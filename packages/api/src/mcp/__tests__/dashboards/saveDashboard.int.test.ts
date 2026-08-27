@@ -2360,7 +2360,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
                   connectionId: ctx.connection._id.toString(),
                   sourceId,
                   sqlTemplate:
-                    'SELECT count() FROM $__sourceTable WHERE $__timeFilter(Timestamp) AND $__filters AND $__filter(ServiceName, tenant) LIMIT 10',
+                    'SELECT count() FROM $__sourceTable WHERE $__timeFilter(Timestamp) AND $__filters AND $__filter(ServiceName, $tenant) LIMIT 10',
                 },
               },
             ],

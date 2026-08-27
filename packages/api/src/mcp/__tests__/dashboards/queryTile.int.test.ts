@@ -779,7 +779,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
         sqlTemplate:
           'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
           'WHERE $__timeFilter(Timestamp) AND $__filters ' +
-          'AND $__filter(ServiceName, service) ' +
+          'AND $__filter(ServiceName, $service) ' +
           'GROUP BY ServiceName ORDER BY ServiceName LIMIT 10',
       },
     });
@@ -794,7 +794,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
           {
             aggFn: 'count',
             alias: 'Count',
-            where: '$__filter(ServiceName, service)',
+            where: '$__filter(ServiceName, $service)',
             whereLanguage: 'sql',
           },
         ],
@@ -802,7 +802,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     });
 
     const eventPatternsTile = (
-      where = '$__filter(ServiceName, service)',
+      where = '$__filter(ServiceName, $service)',
       whereLanguage: 'sql' | 'lucene' = 'sql',
     ) => ({
       name: 'Log patterns',
@@ -892,7 +892,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
 
     it('reports an event_patterns macro naming a variable the dashboard does not declare', async () => {
       const dashboard = await saveDashboard([
-        eventPatternsTile('$__filter(ServiceName, tenant)'),
+        eventPatternsTile('$__filter(ServiceName, $tenant)'),
       ]);
 
       const result = await callTool(ctx.client!, 'clickstack_query_tile', {
@@ -988,7 +988,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
             sourceId: logSourceId,
             sqlTemplate:
               'SELECT count() AS c FROM $__sourceTable ' +
-              'WHERE $__timeFilter(Timestamp) AND $__filter(ServiceName, tenant) LIMIT 1',
+              'WHERE $__timeFilter(Timestamp) AND $__filter(ServiceName, $tenant) LIMIT 1',
           },
         },
       ]);

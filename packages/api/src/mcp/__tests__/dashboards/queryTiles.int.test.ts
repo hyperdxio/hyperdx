@@ -418,7 +418,7 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
                 sqlTemplate:
                   'SELECT count() AS c FROM $__sourceTable ' +
                   'WHERE $__timeFilter(Timestamp) AND $__filters ' +
-                  'AND $__filter(ServiceName, service) LIMIT 1',
+                  'AND $__filter(ServiceName, $service) LIMIT 1',
               },
             },
           ],
@@ -493,7 +493,7 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
                 displayType: 'event_patterns',
                 sourceId,
                 select: 'Body',
-                where: '$__filter(ServiceName, service)',
+                where: '$__filter(ServiceName, $service)',
                 whereLanguage: 'sql',
               },
             },

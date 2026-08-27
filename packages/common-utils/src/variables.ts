@@ -1148,19 +1148,11 @@ export function validateVariableReferencesInTemplate(
   {
     subject = 'SQL',
     language = 'sql',
-    reportUnknownMacroVariables = false,
   }: {
     /** The sentence subject of each message, e.g. `SQL references ...`. */
     subject?: string;
     /** The language the renderer parses this template as. */
     language?: SearchConditionLanguage;
-    /**
-     * Also report a macro naming a variable that does not exist. Off by
-     * default because the editor gets that message from expansion, which
-     * would then say it twice. Callers that validate a template without ever
-     * expanding it (a save-time API check) have no other way to catch it.
-     */
-    reportUnknownMacroVariables?: boolean;
   } = {},
 ): VariableReferenceIssues {
   const errors: string[] = [];
@@ -1225,18 +1217,6 @@ export function validateVariableReferencesInTemplate(
     }
     // The two checks below are specific to the `sqlstring` default format.
     return { errors, warnings };
-  }
-
-  if (reportUnknownMacroVariables) {
-    const unknownMacros = macroReferences.filter(
-      r => !knownVariableNames.has(r.name),
-    );
-    if (unknownMacros.length > 0) {
-      const [{ name }] = unknownMacros;
-      errors.push(
-        `${subject} uses ${formatReferenceList(unknownMacros)} on unknown variable '${name}'. Available variables: ${available}.`,
-      );
-    }
   }
 
   // An unrecognized format throws during expansion, so it is already reported.

@@ -58,9 +58,9 @@ beforeEach(() => {
 
 describe('clickstack_sql variable macro guard', () => {
   it.each([
-    ['$__filter with an expression', '$__filter(ServiceName, service)'],
-    ['$__filter with one argument', '$__filter(service)'],
-    ['$__conditionalAll', "$__conditionalAll(ServiceName != 'api', service)"],
+    ['$__filter with an expression', '$__filter(ServiceName, $service)'],
+    ['$__filter with one argument', '$__filter($service)'],
+    ['$__conditionalAll', "$__conditionalAll(ServiceName != 'api', $service)"],
   ])('rejects %s before issuing a query', async (_label, macro) => {
     const handler = buildHandler();
     const result = await handler({
@@ -92,7 +92,7 @@ describe('clickstack_sql variable macro guard', () => {
   it.each([
     ['$__timeFilter', 'SELECT 1 WHERE $__timeFilter(Timestamp)'],
     ['a bare $ reference', "SELECT 1 WHERE Body LIKE '%$service%'"],
-    ['a commented-out macro', 'SELECT 1 -- $__filter(a, b)'],
+    ['a commented-out macro', 'SELECT 1 -- $__filter(a, $b)'],
   ])('does not reject %s', async (_label, sql) => {
     const handler = buildHandler();
     const result = await handler({ connectionId, sql });
@@ -107,7 +107,7 @@ describe('clickstack_sql variable macro guard', () => {
     const handler = buildHandler();
     const result = await handler({
       connectionId,
-      sql: 'SELECT 1 WHERE $__filter(ServiceName, service)',
+      sql: 'SELECT 1 WHERE $__filter(ServiceName, $service)',
       startTime: 'not-a-date',
     });
 

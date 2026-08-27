@@ -725,7 +725,10 @@ describe('MCP Query Tools', () => {
       expect(getFirstText(result)).toContain('Invalid');
     });
 
-    it.each(['$__filter(ServiceName, service)', '$__conditionalAll(1=1, svc)'])(
+    it.each([
+      '$__filter(ServiceName, $service)',
+      '$__conditionalAll(1=1, $svc)',
+    ])(
       'rejects %s, which needs a dashboard to resolve against',
       async macro => {
         // Rejected up front rather than sent on: an unrecognized macro passes
