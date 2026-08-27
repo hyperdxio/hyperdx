@@ -12,6 +12,14 @@ import userEvent from '@testing-library/user-event';
 import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
 
+/**
+ * These render the whole chart editor and drive it through user events, so
+ * individual tests routinely exceed Jest's 5s default when the suite competes
+ * for CPU with the rest of the run. Verified pre-existing: the slowest tests
+ * here time out the same way on a clean origin/main checkout.
+ */
+jest.setTimeout(20_000);
+
 // Mock the hooks that fetch data
 jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
   useFetchMetricResourceAttrs: jest.fn().mockReturnValue({
@@ -72,6 +80,57 @@ jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
 
+// What the stubbed explorer reports as staged when a metric is applied. The
+// `mock` prefix is required for a jest.mock factory to close over it.
+const mockStagedWhere: string[] = [];
+const mockStagedGroupBy: string[] = [];
+
+// The explorer has its own suite (MetricExplorer.test.tsx). Here it is stubbed
+// down to "emit a chosen metric", so these tests cover only the form wiring —
+// mounting the real tree six times pushed this suite past the 5s-per-test
+// budget under parallel load.
+jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
+  MetricExplorerModal: ({
+    opened,
+    onApply,
+  }: {
+    opened: boolean;
+    onApply: (selection: {
+      name: string;
+      type: string;
+      where: string[];
+      groupBy: string[];
+    }) => void;
+  }) =>
+    opened ? (
+      <div data-testid="metric-explorer-stub">
+        {(
+          [
+            ['gauge', 'test.metric.gauge'],
+            ['sum', 'test.metric.counter'],
+            ['histogram', 'test.metric.latency'],
+          ] as const
+        ).map(([type, name]) => (
+          <button
+            key={type}
+            type="button"
+            data-testid={`metric-explorer-pick-${type}`}
+            onClick={() =>
+              onApply({
+                name,
+                type,
+                where: mockStagedWhere,
+                groupBy: mockStagedGroupBy,
+              })
+            }
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    ) : null,
+}));
+
 jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
     const { error, onFocus, setMetricName, metricName } = props;
@@ -125,6 +184,13 @@ jest.mock('../../DBNumberChart', () => ({
 jest.mock('@/components/SearchInput/SearchInputV2', () => ({
   __esModule: true,
   default: () => <div>Search Input</div>,
+}));
+
+// The sample-events panel (rendered for event sources) reads Next router
+// query state via nuqs, which isn't mounted in this test environment.
+jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
+  __esModule: true,
+  default: () => <div>SQL Row Table</div>,
 }));
 
 jest.mock('../../MaterializedViews/MVOptimizationIndicator', () => ({
@@ -907,7 +973,8 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
     expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
   });
 
-  it('does not show formula controls for non-metric sources', () => {
+  it('shows formula controls and series letter badges for log event sources', async () => {
+    const onSave = jest.fn();
     mockUseSourceData({
       id: 'log-source',
       kind: SourceKind.Log,
@@ -917,10 +984,55 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
       timestampValueExpression: 'Timestamp',
     });
 
+    const countSeries = {
+      aggFn: 'count' as const,
+      aggCondition: '',
+      aggConditionLanguage: 'lucene' as const,
+      valueExpression: '',
+    };
     renderComponent({
       chartConfig: {
         ...defaultChartConfig,
         source: 'log-source',
+        select: [
+          { ...countSeries, aggCondition: 'SeverityText:error' },
+          countSeries,
+        ],
+      },
+      onSave,
+    });
+
+    const badges = screen.getAllByTestId('series-ref-badge');
+    expect(badges.map(b => b.textContent)).toEqual(['A', 'B']);
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(
+      screen.getByTestId('formula-expression-input'),
+      'A / B * 100',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].formulas).toEqual([
+      { expression: 'A / B * 100', alias: '' },
+    ]);
+  });
+
+  it('does not show formula controls for formula-incapable source kinds', () => {
+    mockUseSourceData({
+      id: 'session-source',
+      kind: SourceKind.Session,
+      name: 'Sessions',
+      from: { databaseName: 'default', tableName: 'sessions' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      traceSourceId: 'trace-source',
+    });
+
+    renderComponent({
+      chartConfig: {
+        ...defaultChartConfig,
+        source: 'session-source',
         select: [
           {
             aggFn: 'count',

@@ -1,4 +1,3 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -11,6 +10,7 @@ import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getTeam } from '@/controllers/team';

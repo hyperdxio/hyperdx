@@ -6,6 +6,8 @@ import {
   ColorConditionSchema,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DashboardFilterSchema,
+  DashboardFilterValueSchema,
+  DashboardSchema,
   DerivedColumnSchema,
   MetricFormulaSchema,
   SavedChartConfigSchema,
@@ -551,6 +553,80 @@ describe('DashboardFilterSchema variable fields', () => {
     const result = DashboardFilterSchema.safeParse({
       ...baseFilter,
       variableName: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH),
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('DashboardFilterValueSchema', () => {
+  it('accepts the legacy condition-carrying entries', () => {
+    for (const entry of [
+      { type: 'sql', condition: "ServiceName IN ('api')" },
+      { type: 'lucene', condition: 'ServiceName:"api"' },
+      { type: 'sql_ast', operator: '=', left: 'ServiceName', right: 'api' },
+    ]) {
+      expect(DashboardFilterValueSchema.safeParse(entry).success).toBe(true);
+    }
+  });
+
+  it('accepts a variable-keyed entry, including with no values selected', () => {
+    expect(
+      DashboardFilterValueSchema.safeParse({
+        type: 'variable',
+        name: 'svc',
+        values: ['accounting'],
+      }).success,
+    ).toBe(true);
+    expect(
+      DashboardFilterValueSchema.safeParse({
+        type: 'variable',
+        name: 'svc',
+        values: [],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('requires a non-empty name and a values array', () => {
+    for (const entry of [
+      { type: 'variable', values: ['a'] },
+      { type: 'variable', name: '', values: ['a'] },
+      { type: 'variable', name: 'svc' },
+      { type: 'variable', name: 'svc', values: 'a' },
+      { type: 'variable', name: 'svc', values: [1] },
+      { type: 'variable', name: 'a'.repeat(1025), values: ['a'] },
+    ]) {
+      expect(DashboardFilterValueSchema.safeParse(entry).success).toBe(false);
+    }
+  });
+
+  it.each([
+    ['one the variable-name grammar would reject', 'not a token'],
+    ['far longer than the variable-name limit', 'a'.repeat(65)],
+    ['at the entry limit', 'a'.repeat(1024)],
+  ])('accepts a name that is %s', (_label, name) => {
+    // Both the grammar and the 64-character limit are enforced on the filter
+    // *definition*. Enforcing either here would make a selection written by a
+    // looser client unparseable, and an unmatched selection is meant to survive
+    // as an orphan rather than be dropped. The entry's own cap only bounds input.
+    expect(
+      DashboardFilterValueSchema.safeParse({
+        type: 'variable',
+        name,
+        values: ['a'],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('is accepted by DashboardSchema.savedFilterValues alongside sql entries', () => {
+    const result = DashboardSchema.safeParse({
+      id: 'd1',
+      name: 'Dashboard',
+      tiles: [],
+      tags: [],
+      savedFilterValues: [
+        { type: 'sql', condition: "Env IN ('prod')" },
+        { type: 'variable', name: 'svc', values: ['accounting'] },
+      ],
     });
     expect(result.success).toBe(true);
   });

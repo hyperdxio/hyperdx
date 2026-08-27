@@ -56,6 +56,13 @@ const chartConfigByMetricType = ({
   };
 };
 
+/**
+ * Metric names available on a metric source, one list per queryable kind.
+ *
+ * Names only, and deliberately so: it backs the always-mounted select, where a
+ * grouped scan for unit/description would be too heavy. The explorer pays for
+ * that richer catalog itself via `useMetricCatalog`, only while it is open.
+ */
 function useMetricNames(
   metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
@@ -90,25 +97,29 @@ function useMetricNames(
     };
   }, [metricSource, dateRange]);
 
-  const { data: gaugeMetrics } = useGetKeyValues({
+  const { data: gaugeMetrics, isLoading: isGaugeLoading } = useGetKeyValues({
     chartConfig: gaugeConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
-  const { data: histogramMetrics } = useGetKeyValues({
-    chartConfig: histogramConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
-  const { data: sumMetrics } = useGetKeyValues({
+  const { data: histogramMetrics, isLoading: isHistogramLoading } =
+    useGetKeyValues({
+      chartConfig: histogramConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    });
+  const { data: sumMetrics, isLoading: isSumLoading } = useGetKeyValues({
     chartConfig: sumConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
-  const { data: exponentialHistogramMetrics } = useGetKeyValues(
+  const {
+    data: exponentialHistogramMetrics,
+    isLoading: isExponentialHistogramLoading,
+  } = useGetKeyValues(
     {
       chartConfig: exponentialHistogramConfig,
       keys: ['MetricName'],
@@ -126,6 +137,11 @@ function useMetricNames(
     histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
     exponentialHistogramMetrics: exponentialHistogramMetrics?.[0].value,
+    isLoading:
+      isGaugeLoading ||
+      isHistogramLoading ||
+      isSumLoading ||
+      isExponentialHistogramLoading,
   };
 }
 

@@ -1,4 +1,3 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -12,6 +11,7 @@ import {
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 

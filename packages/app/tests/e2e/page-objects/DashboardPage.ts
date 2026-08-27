@@ -844,6 +844,24 @@ export class DashboardPage {
     await this.addFiltersButton.click();
   }
 
+  /** The filter edit form's display-name input. */
+  getFilterNameInput(): Locator {
+    return this.page.getByTestId('filter-name-input');
+  }
+
+  /**
+   * Fill only the filter's display name in the open edit form. Enough to mark
+   * the react-hook-form dirty without completing the whole form.
+   */
+  async fillFilterName(name: string) {
+    await this.getFilterNameInput().fill(name);
+  }
+
+  /** Open the edit form for an already-saved filter, without saving. */
+  async openEditFilterForm(filterName: string) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+  }
+
   /** Pick the data source in the filter edit form. */
   async selectFilterSource(sourceName: string) {
     await this.filtersSourceSelector.click();
@@ -1199,7 +1217,12 @@ export class DashboardPage {
    * or backticks. Assumes the Edit Filters modal is already open; leaves it open
    * (on the filters list) so multiple filters can be added in sequence.
    */
-  async addCustomFilter(name: string, sourceName: string, expression: string) {
+  async addCustomFilter(
+    name: string,
+    sourceName: string,
+    expression: string,
+    variableOptions?: { variableName: string },
+  ) {
     await this.addFiltersButton.click();
     const nameInput = this.page.getByTestId('filter-name-input');
     await nameInput.waitFor({ state: 'visible', timeout: 10000 });
@@ -1219,6 +1242,10 @@ export class DashboardPage {
     // closes — left open it overlaps the save button and makes the click flake
     // on "element is not stable".
     await nameInput.click();
+    if (variableOptions) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
     const saveButton = this.page.getByTestId('save-filter-button');
     await expect(saveButton).toBeEnabled();
     await saveButton.click();

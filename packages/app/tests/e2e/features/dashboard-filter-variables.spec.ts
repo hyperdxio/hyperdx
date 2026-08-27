@@ -13,8 +13,13 @@
  * `api-server` (index 0) only info and error.
  */
 import { DashboardPage } from '../page-objects/DashboardPage';
+import { SERVICES } from '../seed-clickhouse';
 import { expect, test } from '../utils/base-test';
-import { DEFAULT_LOGS_SOURCE_NAME } from '../utils/constants';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  E2E_PROMQL_METRIC_NAME,
+  PROMQL_SOURCE_NAME,
+} from '../utils/constants';
 
 /** Severities `accounting` logs carry, and the two it does not. */
 const ACCOUNTING_SEVERITIES = ['warn', 'debug'];
@@ -97,7 +102,7 @@ test.describe(
 
       await test.step('Create a Severity filter that depends on $svc', async () => {
         await createDependentFilters({
-          value: '$__filter(ServiceName, svc)',
+          value: '$__filter(ServiceName, $svc)',
           language: 'sql',
         });
       });
@@ -244,7 +249,7 @@ test.describe(
 
       await test.step('A macro in a Lucene clause is flagged', async () => {
         await dashboardPage.fillFilterDropdownValuesWhere({
-          value: '$__filter(ServiceName, svc)',
+          value: '$__filter(ServiceName, $svc)',
           language: 'lucene',
         });
         const indicator = dashboardPage.getFilterWhereVariableWarning();
@@ -253,6 +258,112 @@ test.describe(
           'aria-label',
           /no meaning in a Lucene expression/,
         );
+      });
+    });
+  },
+);
+
+/**
+ * A PromQL tile interpolates the dashboard's variables into its expression.
+ *
+ * The seed gives `e2e_service_up` one series per `SERVICES` entry, labelled
+ * `service` with the same values the logs carry in `ServiceName`, so the
+ * dashboard filter's selections line up with the metric's labels.
+ */
+test.describe(
+  'Dashboard variables in a PromQL tile',
+  { tag: ['@dashboard', '@full-stack'] },
+  () => {
+    test('narrows the queried series to the selected values', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      const dashboardPage = new DashboardPage(page);
+
+      // The time chart is a recharts AreaChart, so each returned series is one
+      // `<g class="recharts-area">`.
+      const seriesAreas = page
+        .locator('.recharts-responsive-container')
+        .first()
+        .locator('.recharts-area');
+
+      /**
+       * Retried rather than snapshotted: the tile refetches on its own
+       * schedule, so a single read can land before the selection change has
+       * been queried.
+       */
+      const expectSeriesCount = async (count: number) => {
+        await expect(seriesAreas).toHaveCount(count, { timeout: 30000 });
+      };
+
+      await test.step('Create a dashboard with a Service filter exposed as $svc', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+          undefined,
+          undefined,
+          { variableName: 'svc' },
+        );
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Add a PromQL tile referencing $svc', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName('PromQL tile');
+        await dashboardPage.chartEditor.switchToPromqlMode();
+        await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.chartEditor.replacePromqlExpression(
+          `${E2E_PROMQL_METRIC_NAME}{service=~"$svc"}`,
+        );
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('With nothing selected, every series comes back', async () => {
+        // The empty selection renders as `.*`, so the tile is a valid query
+        // that constrains nothing before anything is picked.
+        await expectSeriesCount(SERVICES.length);
+      });
+
+      await test.step('Selecting one service narrows it to that series', async () => {
+        await dashboardPage.toggleFilterValue('Service', 'accounting');
+        await expectSeriesCount(1);
+      });
+
+      await test.step('Selecting a second widens it to an alternation', async () => {
+        await dashboardPage.toggleFilterValue('Service', 'api-server');
+        await expectSeriesCount(2);
+
+        // Assert *which* two, so this can't pass on an unrelated pair: with
+        // more than one series the legend qualifies each by its label.
+        //
+        // Matched on the tail rather than the whole name: the legend truncates
+        // the middle past 35 characters, and `e2e_service_up{service="…"}` is
+        // over that for both. The `"}` keeps this from matching the filter
+        // dropdown's own bare `accounting` entry.
+        const legend = page.locator('.recharts-legend-wrapper').first();
+        for (const service of ['accounting', 'api-server']) {
+          await expect(legend.getByText(`${service}"}`)).toBeVisible();
+        }
+      });
+
+      await test.step('Clearing the selection restores every series', async () => {
+        await dashboardPage.toggleFilterValue('Service', 'accounting');
+        await dashboardPage.toggleFilterValue('Service', 'api-server');
+        await expectSeriesCount(SERVICES.length);
       });
     });
   },

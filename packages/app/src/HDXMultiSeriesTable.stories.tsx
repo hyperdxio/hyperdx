@@ -18,7 +18,7 @@ const data = Array.from({ length: 18 }, (_, i) => ({
 // Fixed-size frame so the virtual list renders rows and the sticky header
 // has content to scroll over, surfacing the header separator.
 const meta: Meta<typeof Table> = {
-  title: 'HDXMultiSeriesTableChart',
+  title: 'Components/HDXMultiSeriesTableChart',
   component: Table,
   parameters: { layout: 'padded' },
   decorators: [

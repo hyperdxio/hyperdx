@@ -607,18 +607,16 @@ interface ResolvedNumberFormats {
 }
 
 /**
- * The formula projection settings of a builder metric config, or undefined
- * when formulas don't apply (non-builder configs, non-metric sources, or no
- * formulas configured).
+ * The formula projection settings of a builder config, or undefined when
+ * formulas don't apply (non-builder configs or no formulas configured).
+ * Source-kind agnostic: metric formulas render through the composed
+ * multi-series query and event (log/trace) formulas compile inline, but both
+ * project the same column shape (operands unless hidden, then formulas).
  */
 function getFormulaConfig(
   config: ChartConfig | ChartConfigWithOptDateRange,
 ): { formulas: MetricFormula[]; operandsHidden: boolean } | undefined {
-  if (
-    !isBuilderChartConfig(config) ||
-    config.metricTables == null ||
-    !config.formulas?.length
-  ) {
+  if (!isBuilderChartConfig(config) || !config.formulas?.length) {
     return undefined;
   }
   return {

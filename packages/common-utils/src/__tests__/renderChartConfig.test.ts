@@ -1489,6 +1489,139 @@ describe('renderChartConfig', () => {
       );
       expect(sql).toContain("SeverityText = 'error'");
     });
+
+    const buildWhereConfig = (where: string): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where,
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      granularity: '1 minute',
+    });
+
+    it('rewrites `Map[key] = value` in a SQL `where` (search box path)', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['service.name'] = 'api'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
+    });
+
+    it('rewrites `Map[key] IN (many)` in a SQL `where` to hasAny() on ClickHouse >= 26.5', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] IN ('a', 'b')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b')))",
+      );
+    });
+
+    it('leaves a SQL `where` unchanged when no KV items column exists', async () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+    });
+
+    it('leaves a SQL `where` unchanged when the server predates direct_read support (ALIAS items column)', async () => {
+      stubKvItemsMetadata();
+      // The stub's items column is MATERIALIZED (always eligible); switch it
+      // to ALIAS so the supportsDirectReadMap version gate applies.
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'ALIAS',
+          default_expression:
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+        },
+      ]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 1, 0, 0]);
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+    });
+
+    it('rewrites a SQL aggCondition in the WHERE clause but not in the aggregate', async () => {
+      stubKvItemsMetadata();
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: "LogAttributes['service.name'] = 'api'",
+            aggConditionLanguage: 'sql',
+            valueExpression: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        granularity: '1 minute',
+      };
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      // WHERE-clause copy is rewritten so the text index can prune granules...
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      // ...while the countIf(...) copy keeps the plain Map subscript, which is
+      // cheaper to evaluate per-row than has() over an ALIAS items column.
+      expect(sql).toContain("countIf(LogAttributes['service.name'] = 'api')");
+    });
   });
 
   describe('k8s semantic convention migrations', () => {
@@ -3414,7 +3547,7 @@ describe('renderChartConfig', () => {
         },
       ],
       groupBy: [{ valueExpression: 'ServiceName' }],
-      where: '$__filter(ServiceName, service)',
+      where: '$__filter(ServiceName, $service)',
       whereLanguage: 'sql',
       having: 'count() > 0',
       timestampValueExpression: 'timestamp',
@@ -3493,7 +3626,7 @@ describe('renderChartConfig', () => {
       from: { databaseName: 'default', tableName: '' },
       select: [gaugeSeriesWithVariable],
       groupBy: [{ valueExpression: 'ServiceName' }],
-      where: '$__filter(ServiceName, service)',
+      where: '$__filter(ServiceName, $service)',
       whereLanguage: 'sql',
       timestampValueExpression: 'TimeUnix',
       dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
@@ -4296,6 +4429,199 @@ describe('renderChartConfig', () => {
           'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
         );
       });
+    });
+  });
+
+  // Formulas on event (log/trace) sources compile inline in the single-scan
+  // SELECT (renderSelectListWithFormulas) — no UNION ALL / pivot involved.
+  describe('event (log/trace) formula charts (inline single-query)', () => {
+    const baseEventFormulaConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [
+        {
+          aggFn: 'count' as const,
+          valueExpression: '',
+          aggCondition: "SeverityText = 'error'",
+          aggConditionLanguage: 'sql' as const,
+          alias: 'errors',
+        },
+        {
+          aggFn: 'count' as const,
+          valueExpression: '',
+          aggCondition: '',
+          alias: 'total',
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+    };
+
+    it('appends the compiled formula column after the operand columns in one scan', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toMatchSnapshot();
+
+      // Single scan — no composed UNION ALL / pivot machinery.
+      expect(sql).not.toContain('UNION ALL');
+      expect(sql).not.toContain('__hdx_series_idx');
+      // Operand columns first (select order), then the formula column.
+      expect(sql).toContain('AS "errors"');
+      expect(sql).toContain('AS "total"');
+      expect(sql).toContain('AS "Error rate"');
+      expect(sql.indexOf('AS "errors"')).toBeLessThan(
+        sql.indexOf('AS "total"'),
+      );
+      expect(sql.indexOf('AS "total"')).toBeLessThan(
+        sql.indexOf('AS "Error rate"'),
+      );
+      // Ratio-consistent missing-data semantics: refs coalesce to 0 and
+      // division denominators nullif to a gap.
+      expect(sql).toContain('coalesce(');
+      expect(sql).toContain('nullif(');
+    });
+
+    it('emits only the formula column when showOperandSeries is false', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B', alias: 'ratio' }],
+          showOperandSeries: false,
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).not.toContain('AS "errors"');
+      expect(sql).not.toContain('AS "total"');
+      expect(sql).toContain('AS "ratio"');
+      // The operand aggregates still evaluate inside the formula.
+      expect(sql).toContain('countIf(');
+    });
+
+    it('names an alias-less formula column by its expression text', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A + B' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "A + B"');
+    });
+
+    it('takes precedence over seriesReturnType ratio', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          seriesReturnType: 'ratio',
+          formulas: [{ expression: 'B / A', alias: 'inverse' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "inverse"');
+      expect(sql).not.toContain('divide(');
+    });
+
+    it('suffixes a formula name colliding with an operand alias', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A + B', alias: 'errors' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "errors"');
+      // Formula column index continues after the select entries (2).
+      expect(sql).toContain('AS "errors__2"');
+    });
+
+    it('escapes double quotes in the formula column name', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B', alias: 'bad"name' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "bad""name"');
+      expect(sql).not.toContain('AS "bad"name"');
+    });
+
+    it('lets HAVING reference a formula output column on a table shape', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          groupBy: 'ServiceName',
+          formulas: [{ expression: 'A / B', alias: 'err rate' }],
+          having: '"err rate" > 0.5',
+          havingLanguage: 'sql',
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql.match(/HAVING/g)).toHaveLength(1);
+      expect(sql.indexOf('HAVING')).toBeGreaterThan(sql.indexOf('GROUP BY'));
+    });
+
+    it('renders a single-series chart with a formula in one scan', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          select: [
+            {
+              aggFn: 'count' as const,
+              valueExpression: '',
+              aggCondition: '',
+              alias: 'total',
+            },
+          ],
+          formulas: [{ expression: 'A * 100', alias: 'pct' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).not.toContain('UNION ALL');
+      expect(sql).toContain('AS "total"');
+      expect(sql).toContain('(coalesce(count(), 0) * 100) AS "pct"');
+    });
+
+    it('throws a structured error for an invalid persisted formula', async () => {
+      await expect(
+        renderChartConfig(
+          {
+            ...baseEventFormulaConfig,
+            formulas: [{ expression: 'A / C' }],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      ).rejects.toThrow(
+        'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
+      );
     });
   });
 });

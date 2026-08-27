@@ -17,17 +17,21 @@ const VARIABLE_FORMAT_DESCRIPTIONS: Record<VariableFormat, string> = {
   sqlstring: "Quoted and comma-separated, escaped for SQL. e.g. 'a', 'b', 'c'",
   csv: 'Comma-separated and unquoted. Not SQL-escaped. e.g. a,b,c',
   regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
-  lucene: 'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c")',
+  lucene:
+    'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c"). Quote the reference (field:"$var") for exact-match behavior. Leave unquoted (field:$var) for substring matching.',
 };
 
-/** What `snippet` expands to against the variable's current selection. */
-function describeVariableExpansion(
+/** What `snippet` expands to in SQL against the variable's current selection. */
+function describeSqlVariableExpansion(
   snippet: string,
   variable: ChartVariable,
 ): string | undefined {
   let expansion: string;
   try {
-    expansion = substituteVariables(snippet, [variable]);
+    expansion = substituteVariables(snippet, {
+      variables: [variable],
+      inputLanguage: 'sql',
+    });
   } catch {
     return undefined;
   }
@@ -77,7 +81,7 @@ function referenceCompletions(variable: ChartVariable): SQLCompletion[] {
 
   /** A static description and an expansion preview given the current selection */
   const help = (snippet: string, description: string) => {
-    const expansion = describeVariableExpansion(snippet, variable);
+    const expansion = describeSqlVariableExpansion(snippet, variable);
     return expansion ? completionInfo(description, expansion) : description;
   };
 
@@ -85,11 +89,11 @@ function referenceCompletions(variable: ChartVariable): SQLCompletion[] {
     ...(variable.expression
       ? [
           {
-            label: `$__filter(${name})`,
-            apply: `$__filter(${name})`,
+            label: `$__filter($${name})`,
+            apply: `$__filter($${name})`,
             detail: 'variable filter',
             info: help(
-              `$__filter(${name})`,
+              `$__filter($${name})`,
               `Filters by the ${name} variable using its defined expression. Matches every row when no values are selected for the variable.`,
             ),
             type: 'function',
@@ -102,7 +106,7 @@ function referenceCompletions(variable: ChartVariable): SQLCompletion[] {
       detail: 'variable',
       info: help(
         `$${name}`,
-        `The selected values of ${name}, in the default sqlstring format. Has no valid empty state — prefer $__filter(<expression>, ${name}).`,
+        `The selected values of ${name}, in the default sqlstring format. Has no valid empty state — prefer $__filter(<expression>, $${name}).`,
       ),
       type: 'variable',
     },
@@ -153,10 +157,7 @@ export type LuceneVariableSuggestion = {
 
 /** Expand references the way a Lucene expression is expanded at query time. */
 const substituteLucene = (text: string, variables: ChartVariable[]) =>
-  substituteVariables(text, variables, {
-    defaultFormat: 'lucene',
-    disableMacros: true,
-  });
+  substituteVariables(text, { variables, inputLanguage: 'lucene' });
 
 /**
  * Suggestions for a Lucene expression: the bare `$name` reference of each
@@ -174,7 +175,7 @@ export function buildLuceneVariableSuggestions(
     return {
       value: reference,
       label: reference,
-      description: `The selected values of ${variable.name}. Expands to: ${expansion}`,
+      description: `The selected values of ${variable.name}. Expands to: ${expansion} by default, or (Field:"value1" OR Field:"value2") when quoted like Field:"$${variable.name}".`,
     };
   });
 }
@@ -188,6 +189,10 @@ export function buildLuceneVariableSuggestions(
  * `("")`, which the English serializer reads as `'field' is <blank>` even
  * though that form filters nothing; leaving the reference as written is the
  * honest rendering of "no value chosen yet".
+ *
+ * Expansion can throw on a reference that is well-formed but not yet valid —
+ * `${name:l}` is a keystroke on the way to `${name:lucene}` — and this runs on
+ * every keystroke, so a failure falls back to the text as written.
  */
 export function expandLuceneVariablesForEnglishDisplay(
   text: string,
@@ -196,7 +201,12 @@ export function expandLuceneVariablesForEnglishDisplay(
   const selected = (variables ?? []).filter(
     variable => variable.values.length > 0,
   );
-  return selected.length > 0 ? substituteLucene(text, selected) : text;
+  if (selected.length === 0) return text;
+  try {
+    return substituteLucene(text, selected);
+  } catch {
+    return text;
+  }
 }
 
 /** Context providing in-scope dashboard variables for descendant inputs. */

@@ -1,7 +1,11 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
-import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isFormulaDisplayType,
+  isFormulaSourceKind,
+  validateRawSqlForAlert,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
@@ -34,6 +38,7 @@ import {
   buildVariableCompletions,
   toMacroCompletion,
 } from '@/components/SQLEditor/variableCompletions';
+import { toAlertChannels } from '@/utils/alerts';
 
 import { ChartEditorFormState } from './types';
 
@@ -82,13 +87,13 @@ function normalizeChartConfig<
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
-  // Formulas (HDX-5080) only render on metric sources, and only through the
-  // composed multi-series metric query shapes (time series / table / number).
-  // Strip them elsewhere so a source or display-type switch can't persist a
-  // config the renderer would reject. The form state keeps them, so switching
-  // back restores the formula rows.
+  // Formulas (HDX-5080) render on metric and event (log/trace) sources, and
+  // only on the display types the formula query paths support (time series /
+  // table / number). Strip them elsewhere so a source or display-type switch
+  // can't persist a config the renderer would reject. The form state keeps
+  // them, so switching back restores the formula rows.
   const keepFormulas =
-    isMetricSource &&
+    isFormulaSourceKind(source.kind) &&
     (config.formulas?.length ?? 0) > 0 &&
     isFormulaDisplayType(config.displayType);
   return {
@@ -172,22 +177,10 @@ const isCustomOrderByDisplayType = (
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Pie;
 
-/**
- * Display types that can carry metric formulas (HDX-5080) — the shapes the
- * composed multi-series metric query renders. Mirrors the "Add Formula"
- * gating in ChartEditorControls.
- */
-export const isFormulaDisplayType = (
-  displayType: DisplayType | undefined,
-): displayType is
-  | DisplayType.Line
-  | DisplayType.StackedBar
-  | DisplayType.Table
-  | DisplayType.Number =>
-  displayType === DisplayType.Line ||
-  displayType === DisplayType.StackedBar ||
-  displayType === DisplayType.Table ||
-  displayType === DisplayType.Number;
+// Re-exported from common-utils (single source of truth shared with the
+// external API / MCP tile validation) so the "Add Formula" gating in
+// ChartEditorControls and the server-side surfaces cannot drift.
+export { isFormulaDisplayType, isFormulaSourceKind };
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
@@ -391,6 +384,16 @@ export function convertSavedChartConfigToFormState(
 ): ChartEditorFormState {
   return {
     ...config,
+    // Normalise the alert's channels up front: tile alerts saved before
+    // multi-channel support only carry the singular `channel`. Clearing it
+    // here keeps a stale value from being submitted alongside an edited list.
+    ...(config.alert != null && {
+      alert: {
+        ...config.alert,
+        channel: undefined,
+        channels: toAlertChannels(config.alert),
+      },
+    }),
     configType: isPromqlSavedChartConfig(config)
       ? 'promql'
       : isRawSqlSavedChartConfig(config)
@@ -474,13 +477,13 @@ export const validateChartForm = (
     });
   }
 
-  // Validate metric formulas (HDX-5080) with the structured validator the
-  // query renderer uses, so a bad expression is caught here rather than at
-  // render time. Only applies where formulas survive normalization (metric
-  // source + formula-capable display type).
+  // Validate formulas (HDX-5080) with the structured validator the query
+  // renderer uses, so a bad expression is caught here rather than at render
+  // time. Only applies where formulas survive normalization (formula-capable
+  // source kind + display type).
   if (
     !isRawSqlChart &&
-    source?.kind === SourceKind.Metric &&
+    isFormulaSourceKind(source?.kind) &&
     isFormulaDisplayType(form.displayType) &&
     Array.isArray(form.formulas)
   ) {
@@ -567,7 +570,7 @@ export const validateChartForm = (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     form.displayType === DisplayType.Number &&
-    !(form.formulas?.length && source?.kind === SourceKind.Metric) &&
+    !(form.formulas?.length && isFormulaSourceKind(source?.kind)) &&
     form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
   ) {
     errors.push({

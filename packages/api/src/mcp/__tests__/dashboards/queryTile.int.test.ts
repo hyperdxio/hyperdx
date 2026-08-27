@@ -3,6 +3,7 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   bucketExponentialHistogramObservations,
   bulkInsertLogs,
+  bulkInsertMetricsGauge,
   bulkInsertMetricsHistogram,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
@@ -119,6 +120,257 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     // Should succeed (may have empty results since no data inserted)
     expect(result.isError).toBeFalsy();
     expect(result.content).toHaveLength(1);
+  });
+
+  it('should save and query a metric formula tile', async () => {
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+      metricTables: {
+        [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: ctx.connection._id,
+      name: 'Gauge Metrics',
+    });
+    const now = new Date();
+    await bulkInsertMetricsGauge([
+      {
+        MetricName: 'formula.errors',
+        ResourceAttributes: {},
+        ServiceName: 'api',
+        TimeUnix: now,
+        Value: 10,
+      },
+      {
+        MetricName: 'formula.requests',
+        ResourceAttributes: {},
+        ServiceName: 'api',
+        TimeUnix: now,
+        Value: 200,
+      },
+    ]);
+
+    const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Formula Dashboard',
+        tiles: [
+          {
+            name: 'Error rate',
+            config: {
+              displayType: 'line',
+              sourceId: metricSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'max',
+                  metricType: 'gauge',
+                  metricName: 'formula.errors',
+                  alias: 'Errors',
+                },
+                {
+                  aggFn: 'max',
+                  metricType: 'gauge',
+                  metricName: 'formula.requests',
+                  alias: 'Requests',
+                },
+              ],
+              formulas,
+              showOperandSeries: false,
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+    // The formula config round-trips through the save response.
+    expect(dashboard.tiles[0].config.formulas).toEqual(formulas);
+    expect(dashboard.tiles[0].config.showOperandSeries).toBe(false);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 60_000).toISOString(),
+      endTime: new Date(now.getTime() + 60_000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed: {
+      result: { data: Array<Record<string, unknown>> };
+    } = JSON.parse(getFirstText(result));
+    const rows = parsed.result.data;
+    expect(rows.length).toBeGreaterThan(0);
+    // The formula column is computed in ClickHouse (10 / 200 * 100 = 5) and,
+    // with showOperandSeries: false, the raw operand columns are hidden.
+    expect(Number(rows[0]['Error rate %'])).toBe(5);
+    expect(rows[0]).not.toHaveProperty('Errors');
+    expect(rows[0]).not.toHaveProperty('Requests');
+  });
+
+  it('should save and query a log-source formula tile', async () => {
+    // Event (log/trace) formulas render through a different path than
+    // metric formulas (inline single-scan SELECT vs the composed query),
+    // so cover them end-to-end: save → round-trip → query_tile.
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: ctx.team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: ctx.connection._id,
+      name: 'Formula Logs',
+      bodyExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    });
+    const now = new Date();
+    await bulkInsertLogs([
+      ...Array.from({ length: 3 }, (_, i) => ({
+        Body: `formula error log ${i}`,
+        ServiceName: 'api',
+        SeverityText: 'error',
+        Timestamp: now,
+      })),
+      ...Array.from({ length: 9 }, (_, i) => ({
+        Body: `formula info log ${i}`,
+        ServiceName: 'api',
+        SeverityText: 'info',
+        Timestamp: now,
+      })),
+    ]);
+
+    const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Log Formula Dashboard',
+        tiles: [
+          {
+            name: 'Log error rate',
+            config: {
+              displayType: 'number',
+              sourceId: logSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  where: 'SeverityText:error',
+                  alias: 'Errors',
+                },
+                { aggFn: 'count', alias: 'Total' },
+              ],
+              formulas,
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+    expect(dashboard.tiles[0].config.formulas).toEqual(formulas);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 60_000).toISOString(),
+      endTime: new Date(now.getTime() + 60_000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed: {
+      result: { data: Array<Record<string, unknown>> };
+    } = JSON.parse(getFirstText(result));
+    const rows = parsed.result.data;
+    expect(rows.length).toBeGreaterThan(0);
+    // 3 errors / 12 total * 100 = 25; number tiles always hide operands.
+    expect(Number(rows[0]['Error rate %'])).toBe(25);
+    expect(rows[0]).not.toHaveProperty('Errors');
+    expect(rows[0]).not.toHaveProperty('Total');
+  });
+
+  it('should reject a formula tile on a formula-incapable source kind', async () => {
+    const sessionSource = await Source.create({
+      kind: SourceKind.Session,
+      team: ctx.team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'rrweb_events',
+      },
+      timestampValueExpression: 'Timestamp',
+      traceSourceId: ctx.traceSource._id.toString(),
+      connection: ctx.connection._id,
+      name: 'Sessions',
+    });
+
+    const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+      name: 'Bad Formula Dashboard',
+      tiles: [
+        {
+          name: 'Formula on sessions',
+          config: {
+            displayType: 'line',
+            sourceId: sessionSource._id.toString(),
+            select: [
+              { aggFn: 'count', alias: 'A' },
+              { aggFn: 'count', alias: 'B' },
+            ],
+            formulas: [{ expression: 'A / B' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain(
+      'require a Metric, Log, or Trace source',
+    );
+  });
+
+  it('should reject a formula referencing an unknown series', async () => {
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+      metricTables: {
+        [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: ctx.connection._id,
+      name: 'Gauge Metrics Invalid Formula',
+    });
+
+    const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+      name: 'Invalid Formula Dashboard',
+      tiles: [
+        {
+          name: 'Unknown ref',
+          config: {
+            displayType: 'line',
+            sourceId: metricSource._id.toString(),
+            select: [
+              {
+                aggFn: 'max',
+                metricType: 'gauge',
+                metricName: 'formula.errors',
+              },
+            ],
+            formulas: [{ expression: 'A / B' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('Unknown series');
   });
 
   it('should save and query an exponential histogram tile', async () => {

@@ -26,6 +26,7 @@ import {
 import {
   applyMetricSelectDefaults,
   getMetricSelectIssues,
+  mcpQuantileLevelSchema,
   validateMetricSelectItems,
 } from '@/mcp/tools/query/schemas';
 import { resolveOrderBy } from '@/mcp/tools/query/table';
@@ -1303,5 +1304,42 @@ describe('assertSourceKindMatchesSelect', () => {
       assertSourceKindMatchesSelect({ kind: 'trace' }, undefined),
     ).toBeNull();
     expect(assertSourceKindMatchesSelect({ kind: 'trace' }, null)).toBeNull();
+  });
+});
+
+describe('mcpQuantileLevelSchema', () => {
+  // Advertised to MCP callers as a string enum because Gemini's function
+  // declarations reject `enum` on any non-string type, which takes down the
+  // whole tool list. Everything downstream still wants a number, so parsing
+  // has to coerce — and callers working from a cached schema still send the
+  // number. See #2967.
+  it.each([
+    ['0.5', 0.5],
+    ['0.9', 0.9],
+    ['0.95', 0.95],
+    ['0.99', 0.99],
+  ])('parses the string %p to the number %p', (input, expected) => {
+    expect(mcpQuantileLevelSchema.parse(input)).toBe(expected);
+  });
+
+  it.each([0.5, 0.9, 0.95, 0.99])(
+    'still accepts the numeric form %p',
+    input => {
+      expect(mcpQuantileLevelSchema.parse(input)).toBe(input);
+    },
+  );
+
+  it.each([0.97, '0.97', 1, '1', 0, 'p95', '', null, true, {}])(
+    'rejects %p',
+    input => {
+      expect(mcpQuantileLevelSchema.safeParse(input).success).toBe(false);
+    },
+  );
+
+  it('is optional at the call site without swallowing bad values', () => {
+    const optional = mcpQuantileLevelSchema.optional();
+
+    expect(optional.parse(undefined)).toBeUndefined();
+    expect(optional.safeParse('0.97').success).toBe(false);
   });
 });

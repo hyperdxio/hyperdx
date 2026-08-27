@@ -30,7 +30,10 @@ import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
-import { isFormulaDisplayType } from '@/components/ChartEditor/utils';
+import {
+  isFormulaDisplayType,
+  isFormulaSourceKind,
+} from '@/components/ChartEditor/utils';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview, {
@@ -110,10 +113,10 @@ export function ChartEditorControls({
   openDisplaySettings,
   openHeatmapSettings,
 }: ChartEditorControlsProps) {
-  // Metric formulas (HDX-5080): derived series computed from the chart's
-  // series via letter-ref arithmetic expressions. Metric sources only, and
-  // only on display types the composed multi-series metric query renders
-  // (time series / table / number).
+  // Formulas (HDX-5080): derived series computed from the chart's series via
+  // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
+  // and only on display types the formula query paths render (time series /
+  // table / number).
   const {
     fields: formulaFields,
     append: appendFormula,
@@ -122,8 +125,7 @@ export function ChartEditorControls({
   const hasFormulas = formulaFields.length > 0;
   const showOperandSeries = useWatch({ control, name: 'showOperandSeries' });
   const sourceSupportsFormulas =
-    tableSource?.kind === SourceKind.Metric &&
-    isFormulaDisplayType(displayType);
+    isFormulaSourceKind(tableSource?.kind) && isFormulaDisplayType(displayType);
   // Formulas and the ratio toggle are mutually exclusive (formulas supersede
   // ratio in the renderer, so the editor never lets both be set). Number
   // tiles display a single value, so they take exactly one formula.

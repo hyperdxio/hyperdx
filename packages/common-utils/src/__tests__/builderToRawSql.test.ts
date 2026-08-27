@@ -208,6 +208,42 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
     expect(sql).toMatchSnapshot();
   });
 
+  it('compiles event formulas into the single-scan template projection', async () => {
+    const sql = await renderBuilderConfigAsSqlTemplate(
+      {
+        ...baseLineConfig,
+        groupBy: undefined,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+            valueExpression: '',
+            alias: 'api',
+          },
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            valueExpression: '',
+            alias: 'total',
+          },
+        ],
+        formulas: [{ expression: 'A / B * 100', alias: 'pct' }],
+      },
+      mockMetadata,
+    );
+    expect(sql).not.toBeNull();
+    expect(sql).toContain('$__sourceTable');
+    expect(sql).toContain('"pct"');
+    // The compiled formula projects over the operand aggregates in the same
+    // single-scan statement — no composed UNION ALL machinery.
+    expect(sql).toContain('coalesce(');
+    expect(sql).toContain('nullif(');
+    expect(sql).not.toContain('UNION ALL');
+    expect(sql).not.toContain('HYPERDX_PARAM_');
+    expect(sql).toMatchSnapshot();
+  });
+
   describe('metric charts', () => {
     const metricTables = {
       gauge: 'otel_metrics_gauge',

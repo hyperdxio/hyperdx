@@ -4,6 +4,7 @@ import {
   filterStateToPredicate,
   filtersToQuery,
   getDashboardVariableDeclarations,
+  getDashboardVariableFilters,
   getFilterVariableName,
   getPendingFilterValuesVariables,
   hasFilterEffect,
@@ -586,6 +587,23 @@ describe('filters', () => {
         { index: 3, language: 'sql', condition: 'broken = = =' },
       ]);
     });
+
+    it('ignores variable-keyed values, which carry no condition to validate', () => {
+      expect(
+        validateSavedFilterValues([
+          { type: 'variable', name: 'svc', values: ['a', 'b'] },
+        ]),
+      ).toEqual([]);
+    });
+
+    it('still reports the index of an invalid value after a variable one', () => {
+      expect(
+        validateSavedFilterValues([
+          { type: 'variable', name: 'svc', values: ['a'] },
+          { type: 'sql', condition: 'broken = = =' },
+        ]),
+      ).toEqual([{ index: 1, language: 'sql', condition: 'broken = = =' }]);
+    });
   });
 
   describe('validateSavedQuery', () => {
@@ -747,9 +765,12 @@ describe('filters', () => {
       });
 
       it.each([
-        ['a macro on an explicit expression', '$__filter(ServiceName, svc)'],
-        ['a macro on the variable expression', '$__filter(svc)'],
-        ['a conditionalAll macro', "$__conditionalAll(ServiceName = 'x', svc)"],
+        ['a macro on an explicit expression', '$__filter(ServiceName, $svc)'],
+        ['a macro on the variable expression', '$__filter($svc)'],
+        [
+          'a conditionalAll macro',
+          "$__conditionalAll(ServiceName = 'x', $svc)",
+        ],
         ['a braced reference', 'ServiceName IN (${svc})'],
         ['a bare reference', 'ServiceName IN ($svc)'],
       ])('accepts a sql where clause using %s', (_label, where) => {
@@ -786,7 +807,7 @@ describe('filters', () => {
           filter({
             id: 'sev',
             name: 'Severity',
-            where: '$__filter(ServiceName, nope)',
+            where: '$__filter(ServiceName, $nope)',
             whereLanguage: 'sql',
           }),
         ]);
@@ -796,7 +817,7 @@ describe('filters', () => {
           filterName: 'Severity',
           language: 'sql',
           // The raw template is reported, not its expansion.
-          where: '$__filter(ServiceName, nope)',
+          where: '$__filter(ServiceName, $nope)',
         });
         expect(issues[0].detail).toMatch(/unknown variable 'nope'/);
       });
@@ -806,7 +827,7 @@ describe('filters', () => {
           filter({
             id: 'sev',
             name: 'Severity',
-            where: '$__filter(ServiceName, svc)',
+            where: '$__filter(ServiceName, $svc)',
             whereLanguage: 'sql',
           }),
         ]);
@@ -862,7 +883,7 @@ describe('filters', () => {
     it('expands a macro against the selected values', () => {
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
           [svc(['accounting'])],
         ),
       ).toEqual({
@@ -873,7 +894,7 @@ describe('filters', () => {
 
     it('expands a macro to a no-op when nothing is selected', () => {
       const { where } = resolveFilterValuesWhere(
-        { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+        { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
         [svc([])],
       );
       expect(where).toContain('1=1');
@@ -881,7 +902,7 @@ describe('filters', () => {
 
     it('expands the one-argument macro form using the declared expression', () => {
       expect(
-        resolveFilterValuesWhere({ where: '$__filter(svc)' }, [
+        resolveFilterValuesWhere({ where: '$__filter($svc)' }, [
           svc(['accounting']),
         ]).where,
       ).toBe("(toString(ServiceName) IN ('accounting'))");
@@ -917,10 +938,10 @@ describe('filters', () => {
     it('leaves a macro as written in a lucene clause', () => {
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'lucene' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'lucene' },
           [svc(['accounting'])],
         ).where,
-      ).toBe('$__filter(ServiceName, svc)');
+      ).toBe('$__filter(ServiceName, $svc)');
     });
 
     it("narrows by a filter's own variable when it references itself", () => {
@@ -928,7 +949,7 @@ describe('filters', () => {
       // filter's own selection, which is what the author asked for.
       expect(
         resolveFilterValuesWhere(
-          { where: '$__filter(ServiceName, svc)', whereLanguage: 'sql' },
+          { where: '$__filter(ServiceName, $svc)', whereLanguage: 'sql' },
           [svc(['accounting'])],
         ).where,
       ).toBe("(ServiceName IN ('accounting'))");
@@ -936,10 +957,10 @@ describe('filters', () => {
 
     it('reports a macro naming an unknown variable without throwing', () => {
       const resolved = resolveFilterValuesWhere(
-        { where: '$__filter(ServiceName, nope)', whereLanguage: 'sql' },
+        { where: '$__filter(ServiceName, $nope)', whereLanguage: 'sql' },
         [svc(['accounting'])],
       );
-      expect(resolved.where).toBe('$__filter(ServiceName, nope)');
+      expect(resolved.where).toBe('$__filter(ServiceName, $nope)');
       expect(resolved.error).toMatch(/unknown variable 'nope'/);
     });
 
@@ -1004,15 +1025,15 @@ describe('filters', () => {
     });
 
     it.each([
-      ['a macro', '$__filter(ServiceName, svc)', 'sql'],
+      ['a macro', '$__filter(ServiceName, $svc)', 'sql'],
       [
         'a conditionalAll macro',
-        "$__conditionalAll(ServiceName = 'x', svc)",
+        "$__conditionalAll(ServiceName = 'x', $svc)",
         'sql',
       ],
       [
         'a reference guarded by its own macro',
-        '$__filter(ServiceName IN ($svc), svc)',
+        '$__filter(ServiceName IN ($svc), $svc)',
         'sql',
       ],
       [
@@ -1486,6 +1507,74 @@ describe('filters', () => {
 
     it('returns undefined when nothing usable can be derived', () => {
       expect(getFilterVariableName({ name: '环境' })).toBeUndefined();
+    });
+  });
+
+  describe('getDashboardVariableFilters', () => {
+    const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('returns nothing for a dashboard with no filters', () => {
+      expect(getDashboardVariableFilters(undefined)).toEqual([]);
+      expect(getDashboardVariableFilters([])).toEqual([]);
+    });
+
+    it('skips filters that do not expose a variable', () => {
+      expect(
+        getDashboardVariableFilters([
+          filter({ id: 'broadcast-only', isVariableEnabled: false }),
+          filter({ id: 'unset', name: 'Env', expression: 'Env' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('skips a filter whose display name derives nothing usable', () => {
+      expect(
+        getDashboardVariableFilters([
+          filter({ name: '环境', isVariableEnabled: true }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('pairs each variable-enabled filter with the name it answers to', () => {
+      const explicit = filter({ isVariableEnabled: true, variableName: 'svc' });
+      const derived = filter({
+        id: 'f2',
+        name: 'Total Requests',
+        expression: 'Env',
+        isVariableEnabled: true,
+      });
+
+      expect(getDashboardVariableFilters([explicit, derived])).toEqual([
+        { filter: explicit, name: 'svc' },
+        { filter: derived, name: 'Total_Requests' },
+      ]);
+    });
+
+    it('keeps the first of two filters claiming the same name', () => {
+      const first = filter({
+        id: 'a',
+        isVariableEnabled: true,
+        variableName: 'svc',
+      });
+
+      expect(
+        getDashboardVariableFilters([
+          first,
+          filter({
+            id: 'b',
+            expression: 'Other',
+            isVariableEnabled: true,
+            variableName: 'svc',
+          }),
+        ]),
+      ).toEqual([{ filter: first, name: 'svc' }]);
     });
   });
 

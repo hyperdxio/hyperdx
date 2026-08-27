@@ -5,7 +5,7 @@ import {
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { FilterState } from '@hyperdx/common-utils/dist/filters';
+import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -1119,18 +1119,25 @@ describe('useDashboardFilterValues', () => {
       },
     };
 
+    /** The same selection as the hook receives it: keyed by filter ID. */
+    const envProductionSelection: ReadonlyMap<string, FilterSelection> =
+      new Map([
+        [
+          'filter1',
+          {
+            included: new Set<string | boolean>(['production']),
+            excluded: new Set<string | boolean>(),
+          },
+        ],
+      ]);
+
     it('resolves every key in one faceted scan, constraining each by the others (exclude-self)', async () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
-            filterValues: {
-              environment: {
-                included: new Set<string>(['production']),
-                excluded: new Set<string>(),
-              },
-            },
+            selectionByFilterId: envProductionSelection,
           }),
         { wrapper },
       );
@@ -1153,7 +1160,7 @@ describe('useDashboardFilterValues', () => {
           useDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
-            filterValues: {},
+            selectionByFilterId: new Map(),
           }),
         { wrapper },
       );
@@ -1184,12 +1191,7 @@ describe('useDashboardFilterValues', () => {
           useDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
-            filterValues: {
-              environment: {
-                included: new Set<string>(['production']),
-                excluded: new Set<string>(),
-              },
-            },
+            selectionByFilterId: envProductionSelection,
           }),
         { wrapper },
       );
@@ -1201,6 +1203,60 @@ describe('useDashboardFilterValues', () => {
       expect(
         callForKeys(['environment', 'status', 'log_level'])?.keyConditions,
       ).toEqual([undefined, envProductionConstraint, envProductionConstraint]);
+    });
+
+    it('intersects two siblings that share an expression but hold different selections', async () => {
+      // Both definitions constrain the same column independently, so a third
+      // dropdown's lookup is narrowed by both — not by whichever was written
+      // into the constraint state last.
+      const filters: DashboardFilter[] = [
+        { ...envAndStatus[0], id: 'env-a' },
+        { ...envAndStatus[0], id: 'env-b' },
+        envAndStatus[1],
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            selectionByFilterId: new Map([
+              [
+                'env-a',
+                {
+                  included: new Set<string | boolean>([
+                    'production',
+                    'staging',
+                  ]),
+                  excluded: new Set<string | boolean>(),
+                },
+              ],
+              [
+                'env-b',
+                {
+                  included: new Set<string | boolean>(['staging', 'dev']),
+                  excluded: new Set<string | boolean>(),
+                },
+              ],
+            ]),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      const call = callForKeys(['environment', 'environment', 'status']);
+      // Neither `environment` key is constrained by its own column...
+      expect(call?.keyConditions?.[0]).toBeUndefined();
+      expect(call?.keyConditions?.[1]).toBeUndefined();
+      // ...and `status` sees the intersection of the two.
+      expect(call?.keyConditions?.[2]).toEqual({
+        environment: {
+          included: new Set(['staging']),
+          excluded: new Set(),
+          range: undefined,
+        },
+      });
     });
 
     it('does not apply a selection from one source to filters on another source', async () => {
@@ -1220,12 +1276,7 @@ describe('useDashboardFilterValues', () => {
           useDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
-            filterValues: {
-              environment: {
-                included: new Set<string>(['production']),
-                excluded: new Set<string>(),
-              },
-            },
+            selectionByFilterId: envProductionSelection,
           }),
         { wrapper },
       );
@@ -1268,12 +1319,15 @@ describe('useDashboardFilterValues', () => {
           useDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
-            filterValues: {
-              MetricName: {
-                included: new Set<string>(['CPU_Usage']),
-                excluded: new Set<string>(),
-              },
-            },
+            selectionByFilterId: new Map([
+              [
+                'gauge-filter',
+                {
+                  included: new Set<string | boolean>(['CPU_Usage']),
+                  excluded: new Set<string | boolean>(),
+                },
+              ],
+            ]),
           }),
         { wrapper },
       );
@@ -1286,15 +1340,20 @@ describe('useDashboardFilterValues', () => {
 
     it('refetches with updated conditions when a selection changes', async () => {
       const { result, rerender } = renderHook(
-        ({ filterValues }) =>
+        ({ selectionByFilterId }) =>
           useDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
-            filterValues,
+            selectionByFilterId,
           }),
         {
           wrapper,
-          initialProps: { filterValues: {} as FilterState },
+          initialProps: {
+            selectionByFilterId: new Map() as ReadonlyMap<
+              string,
+              FilterSelection
+            >,
+          },
         },
       );
 
@@ -1303,14 +1362,7 @@ describe('useDashboardFilterValues', () => {
         callForKeys(['environment', 'status'])?.keyConditions,
       ).toBeUndefined();
 
-      rerender({
-        filterValues: {
-          environment: {
-            included: new Set<string>(['production']),
-            excluded: new Set<string>(),
-          },
-        },
-      });
+      rerender({ selectionByFilterId: envProductionSelection });
 
       await waitFor(() => expect(result.current.isFetching).toBe(false));
 
@@ -1335,12 +1387,7 @@ describe('useDashboardFilterValues', () => {
           useDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
-            filterValues: {
-              environment: {
-                included: new Set<string>(['production']),
-                excluded: new Set<string>(),
-              },
-            },
+            selectionByFilterId: envProductionSelection,
           }),
         { wrapper },
       );
@@ -1365,17 +1412,12 @@ describe('useDashboardFilterValues', () => {
               envAndStatus[0],
               {
                 ...envAndStatus[1],
-                where: '$__filter(service_name, svc)',
+                where: '$__filter(service_name, $svc)',
                 whereLanguage: 'sql',
               },
             ],
             dateRange: mockDateRange,
-            filterValues: {
-              environment: {
-                included: new Set<string>(['production']),
-                excluded: new Set<string>(),
-              },
-            },
+            selectionByFilterId: envProductionSelection,
             variables: [
               { name: 'svc', expression: 'service_name', values: ['api'] },
             ],
@@ -1434,7 +1476,7 @@ describe('useDashboardFilterValues', () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, svc)')],
+            filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
           }),
@@ -1458,7 +1500,7 @@ describe('useDashboardFilterValues', () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, svc)')],
+            filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable([]),
           }),
@@ -1499,7 +1541,7 @@ describe('useDashboardFilterValues', () => {
       const { result, rerender } = renderHook(
         ({ values }: { values: string[] }) =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, svc)')],
+            filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable(values),
           }),
@@ -1548,7 +1590,7 @@ describe('useDashboardFilterValues', () => {
               // Written out exactly as the macro below expands.
               statusFilter("(service_name IN ('api'))"),
               {
-                ...statusFilter('$__filter(service_name, svc)'),
+                ...statusFilter('$__filter(service_name, $svc)'),
                 id: 'log_level',
                 name: 'Log Level',
                 expression: 'log_level',
@@ -1572,7 +1614,7 @@ describe('useDashboardFilterValues', () => {
       const { result } = renderHook(
         () =>
           useDashboardFilterValues({
-            filters: [statusFilter('$__filter(service_name, nope)')],
+            filters: [statusFilter('$__filter(service_name, $nope)')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
           }),
@@ -1582,7 +1624,7 @@ describe('useDashboardFilterValues', () => {
       await waitFor(() => expect(result.current.isFetching).toBe(false));
 
       // Left as written — ClickHouse will reject it, but the control reports why.
-      expect(lastWhereFor(['status'])).toBe('$__filter(service_name, nope)');
+      expect(lastWhereFor(['status'])).toBe('$__filter(service_name, $nope)');
       expect(result.current.erroredFilterIds.has('status')).toBe(true);
       expect(result.current.filterErrorMessages.get('status')).toMatch(
         /unknown variable 'nope'/,

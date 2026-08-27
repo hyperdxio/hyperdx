@@ -122,6 +122,11 @@ export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
       background: 'transparent !important',
     },
     '& .cm-tooltip-autocomplete': {
+      // Set z-index to ensure that autocompletes which are portaled to the
+      // document body are above modals and drawers. The `!important` is
+      // necessary because CodeMirror's own `.cm-tooltip { z-index: 100 }`
+      // would otherwise override this rule.
+      zIndex: 'var(--mantine-z-index-max) !important',
       whiteSpace: 'nowrap',
       wordWrap: 'break-word',
       maxWidth: '100%',
