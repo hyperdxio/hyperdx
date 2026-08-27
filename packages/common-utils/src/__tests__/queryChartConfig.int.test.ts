@@ -2144,10 +2144,9 @@ describe('queryChartConfig Integration Tests', () => {
 
       it('resolves an expression group-by in ORDER BY via its derived output name', async () => {
         // The passthrough column for an expression group-by keeps its
-        // ClickHouse-derived name. The contract for referencing it from
-        // ORDER BY/HAVING is the (quoted) output name — the raw map-access
-        // expression is not resolvable in the outer scope, where the source
-        // columns no longer exist.
+        // ClickHouse-derived name, and referencing that (quoted) output name
+        // from ORDER BY/HAVING resolves directly. (The raw map-access
+        // expression also works — see the companion sort column tests below.)
         const result = await runConfig(
           grpRatioTable({
             groupBy: [
@@ -2172,6 +2171,133 @@ describe('queryChartConfig Integration Tests', () => {
           'svc-b',
           'svc-a',
         ]);
+      });
+
+      // HDX-5202: convertToTableChartConfig defaults a table's orderBy to
+      // the raw groupBy text, so a multi-series metric table grouped by an
+      // expression used to fail with "Unknown identifier ResourceAttributes"
+      // — the outer scope has no source columns. Such items now sort via
+      // internal `__hdx_sort_<n>` companion columns.
+      it('orders by a raw expression group-by (table default orderBy = groupBy text)', async () => {
+        const GROUP_BY = "ResourceAttributes['service.name']";
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: GROUP_BY,
+            orderBy: `${GROUP_BY} DESC`,
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+        // The companion column is internal: the group column keeps its
+        // derived name (the consumer lookup contract) and no `__hdx_sort_*`
+        // column leaks into the output.
+        const metaNames = result.meta?.map(m => m.name) ?? [];
+        expect(metaNames).toContain(DERIVED_NAME);
+        expect(metaNames.some(name => name.startsWith('__hdx_sort_'))).toBe(
+          false,
+        );
+      });
+
+      it('orders by a raw expression group-by from a structured sort item', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: "ResourceAttributes['service.name']",
+                ordering: 'ASC',
+              },
+            ],
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-a',
+          'svc-b',
+          'svc-c',
+          'svc-d',
+        ]);
+        // The joined rows stay intact under the companion-column sort.
+        const svcD = (result.data as Row[])[3];
+        expect(Number(col(svcD, 'avg(grpratio.err)'))).toBe(5);
+        expectGap(col(svcD, 'avg(grpratio.total)'));
+      });
+
+      it('orders time-series rows by bucket first, then a raw expression group-by', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: "ResourceAttributes['service.name']",
+                ordering: 'DESC',
+              },
+            ],
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        // All rows share bucket 0; the rewritten sort breaks the tie in
+        // reverse service order.
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+      });
+
+      it('sorts mixed gauge + histogram branches on a raw expression group-by (NULL-padded)', async () => {
+        // A histogram branch can't evaluate the companion sort expression
+        // (its groups are packed into the Array "group" column), so its rows
+        // carry a NULL sort key and sort last — consistent with their NULL
+        // scalar-group pads.
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('grpmix.gauge'),
+              histQuantileSelect('grpmix.latency', 0.5),
+            ],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: "ResourceAttributes['service.name']",
+                ordering: 'ASC',
+              },
+            ],
+          }),
+        );
+
+        const data = result.data as Row[];
+        expect(data).toHaveLength(2);
+        // Non-NULL sort key (the gauge row) first, NULL (histogram) last.
+        expect(col(data[0], 'avg(grpmix.gauge)')).toBe(42);
+        expect(Number(col(data[1], 'quantile(grpmix.latency)'))).toBeCloseTo(
+          5,
+          5,
+        );
       });
 
       it('orders by an aliased expression group-by through the alias', async () => {

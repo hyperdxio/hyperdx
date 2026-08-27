@@ -4219,6 +4219,186 @@ describe('renderChartConfig', () => {
         ).toBeGreaterThan(sql.lastIndexOf('GROUP BY ALL'));
       });
 
+      // HDX-5202: convertToTableChartConfig defaults a table's orderBy to
+      // the raw groupBy text. For expression group-bys those expressions
+      // don't resolve in the composed outer scope (the source columns are
+      // gone and the passthrough column carries ClickHouse's derived name),
+      // so they sort via internal `__hdx_sort_<n>` companion columns.
+      describe('expression group-by ORDER BY (companion sort columns)', () => {
+        // Mirrors the broken "Top Pods by Event Loop Pressure" tile: a
+        // multi-series gauge table grouped by a map access plus a
+        // concat/if expression, ordered by the same raw text.
+        const EXPR_GROUP_BY =
+          "ResourceAttributes['service.name'], concat(ResourceAttributes['host.name'], if(ResourceAttributes['hyperdx.alerts.shard.index'] != '', concat('-s', ResourceAttributes['hyperdx.alerts.shard.index']), ''))";
+
+        it('sorts a table default orderBy (= groupBy text) through companion columns', async () => {
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              groupBy: EXPR_GROUP_BY,
+              orderBy: EXPR_GROUP_BY,
+              limit: { limit: 200 },
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toMatchSnapshot();
+
+          // Each branch projects (and groups by) the companion columns in
+          // addition to the un-renamed group columns.
+          expect(sql).toContain(
+            'ResourceAttributes[\'service.name\'] AS "__hdx_sort_0"',
+          );
+          expect(sql).toContain('AS "__hdx_sort_1"');
+          // The companions never reach the output columns...
+          expect(sql).toContain(
+            '* EXCEPT (`__hdx_value`, `__hdx_series_idx`, `__hdx_sort_0`, `__hdx_sort_1`)',
+          );
+          // ...and the outer ORDER BY reaches them through any() instead of
+          // re-evaluating the raw expressions in a scope without the source
+          // columns.
+          expect(sql).toContain(
+            'ORDER BY any(`__hdx_sort_0`),any(`__hdx_sort_1`)',
+          );
+          const orderByIdx = sql.indexOf('ORDER BY any(`__hdx_sort_0`)');
+          expect(orderByIdx).toBeGreaterThan(sql.lastIndexOf('GROUP BY ALL'));
+          // The raw map access must not leak past the outer GROUP BY ALL.
+          expect(
+            sql
+              .slice(orderByIdx)
+              .startsWith(
+                'ORDER BY any(`__hdx_sort_0`),any(`__hdx_sort_1`) LIMIT 200',
+              ),
+          ).toBe(true);
+        });
+
+        it('rewrites a structured orderBy item matching an expression group-by, keeping its direction', async () => {
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              groupBy: [
+                {
+                  aggCondition: '',
+                  valueExpression: "ResourceAttributes['service.name']",
+                },
+              ],
+              orderBy: [
+                {
+                  valueExpression: "ResourceAttributes['service.name']",
+                  ordering: 'DESC',
+                },
+              ],
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY any(`__hdx_sort_0`) DESC');
+          // The group column itself still passes through un-renamed.
+          expect(sql).toContain(
+            '* EXCEPT (`__hdx_value`, `__hdx_series_idx`, `__hdx_sort_0`)',
+          );
+        });
+
+        it('sorts through the user alias when the matched group-by entry has one', async () => {
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              groupBy: [
+                {
+                  aggCondition: '',
+                  valueExpression: "ResourceAttributes['service.name']",
+                  alias: 'service',
+                },
+              ],
+              orderBy: [
+                {
+                  valueExpression: "ResourceAttributes['service.name']",
+                  ordering: 'DESC',
+                },
+              ],
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          // The aliased output column is already resolvable — no companion.
+          expect(sql).toContain('ORDER BY "service" DESC');
+          expect(sql).not.toContain('__hdx_sort_');
+        });
+
+        it('pads companion sort slots with NULL in histogram branches', async () => {
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              select: [
+                gaugeSelect('metric.alpha'),
+                {
+                  aggFn: 'quantile',
+                  level: 0.5,
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: 'Value',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+              ],
+              groupBy: [
+                {
+                  aggCondition: '',
+                  valueExpression: "ResourceAttributes['service.name']",
+                },
+              ],
+              orderBy: [
+                {
+                  valueExpression: "ResourceAttributes['service.name']",
+                  ordering: 'ASC',
+                },
+              ],
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          // A histogram branch can't evaluate the companion (its groups are
+          // packed into the `group` array), so its wrapper pads the slot to
+          // keep the UNION ALL column lists positionally aligned.
+          expect(sql).toContain('NULL AS `__hdx_sort_pad_0`');
+          expect(sql).toContain(
+            'ResourceAttributes[\'service.name\'] AS "__hdx_sort_0"',
+          );
+          expect(sql).toContain(
+            'ORDER BY `__hdx_time_bucket`,any(`__hdx_sort_0`) ASC',
+          );
+        });
+
+        it('leaves a plain-column orderBy matching a group-by untouched', async () => {
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+              orderBy: 'ServiceName',
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          // A bare column passes through under its own name, so the outer
+          // ORDER BY resolves without any rewriting.
+          expect(sql).toContain('ORDER BY ServiceName');
+          expect(sql).not.toContain('__hdx_sort_');
+        });
+      });
+
       it('renders HAVING on the number shape without a GROUP BY ALL', async () => {
         // With no passthrough columns the outer query is one implicit global
         // aggregation — HAVING is valid there without any GROUP BY.
