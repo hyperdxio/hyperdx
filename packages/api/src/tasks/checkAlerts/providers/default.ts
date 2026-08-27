@@ -1,7 +1,11 @@
 import PQueue from '@esm2cjs/p-queue';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { AlertChartConfig, Tile } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertChartConfig,
+  RawSqlSavedChartConfig,
+  Tile,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import { URLSearchParams } from 'url';
@@ -91,6 +95,52 @@ async function getSavedSearchDetails(
   ];
 }
 
+/**
+ * Load the optional source a raw-SQL config references for macro metadata
+ * ($__sourceTable, metricTables). Write-path validation guarantees the source
+ * belongs to the config's connection at save time, but a source can be moved
+ * to a different connection afterwards. The query always executes through the
+ * config's pinned connection, so metadata from a moved source would silently
+ * target the wrong database (when the same table exists there) or fail
+ * confusingly. Drop it instead, with a warning: templates that don't use
+ * source macros keep evaluating correctly, and templates that do fail with a
+ * visible query error recorded on the alert.
+ */
+async function getRawSqlSourceMetadata(
+  alert: IAlert,
+  chartConfig: RawSqlSavedChartConfig,
+): Promise<ISource | undefined> {
+  if (!chartConfig.source) {
+    return undefined;
+  }
+  const sourceDoc = await Source.findOne({
+    _id: chartConfig.source,
+    team: alert.team,
+  });
+  if (!sourceDoc) {
+    return undefined;
+  }
+  // Compare as ObjectIds: stored configs may hold non-canonical but valid
+  // representations (e.g. uppercase hex), which a lexical compare would
+  // misjudge as a mismatch.
+  if (
+    !new mongoose.Types.ObjectId(String(sourceDoc.connection)).equals(
+      chartConfig.connection,
+    )
+  ) {
+    logger.warn({
+      message:
+        'raw sql alert source has moved to a different connection; ignoring its metadata',
+      alertId: alert.id,
+      sourceId: chartConfig.source,
+      sourceConnectionId: String(sourceDoc.connection),
+      configConnectionId: chartConfig.connection,
+    });
+    return undefined;
+  }
+  return sourceDoc.toObject();
+}
+
 async function getTileDetails(
   alert: IAlert,
 ): Promise<[IConnection, PartialAlertDetails] | []> {
@@ -151,16 +201,7 @@ async function getTileDetails(
     }
 
     // Optionally look up source for filter/macro metadata
-    let source: ISource | undefined;
-    if (tile.config.source) {
-      const sourceDoc = await Source.findOne({
-        _id: tile.config.source,
-        team: alert.team,
-      });
-      if (sourceDoc) {
-        source = sourceDoc.toObject();
-      }
-    }
+    const source = await getRawSqlSourceMetadata(alert, tile.config);
 
     return [
       connection,
@@ -256,16 +297,7 @@ async function getChartDetails(
     }
 
     // Optionally look up source for filter/macro metadata
-    let source: ISource | undefined;
-    if (chartConfig.source) {
-      const sourceDoc = await Source.findOne({
-        _id: chartConfig.source,
-        team: alert.team,
-      });
-      if (sourceDoc) {
-        source = sourceDoc.toObject();
-      }
-    }
+    const source = await getRawSqlSourceMetadata(alert, chartConfig);
 
     return [
       connection,

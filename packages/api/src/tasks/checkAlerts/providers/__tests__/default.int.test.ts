@@ -1,8 +1,14 @@
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
-import { getServer, makeTile } from '@/fixtures';
+import {
+  getServer,
+  makeChartAlertConfig,
+  makeTile,
+  RAW_SQL_ALERT_TEMPLATE,
+} from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
@@ -727,6 +733,210 @@ describe('DefaultAlertProvider', () => {
       expect(result[0].conn.password).toBe('tile-secret-password-456');
       expect(result[0].conn.username).toBe('tile-user');
       expect(result[0].conn.host).toBe('http://localhost:8124');
+    });
+
+    it('should process a single chart alert', async () => {
+      const team = await createTeam({ name: 'Test Team' });
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Test Connection',
+        host: 'http://localhost:8123',
+        username: 'test',
+        password: 'test',
+      });
+
+      const source = await Source.create({
+        team: team._id,
+        name: 'Test Source',
+        kind: 'log',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        timestampValueExpression: 'timestamp',
+        connection: connection._id,
+      });
+
+      const chartConfig = makeChartAlertConfig({
+        sourceId: source._id.toString(),
+      });
+
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.CHART,
+          chartConfig,
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          interval: '5m',
+          channel: {
+            type: 'webhook',
+            webhookId: new mongoose.Types.ObjectId().toString(),
+          },
+        },
+        new mongoose.Types.ObjectId(),
+      );
+
+      const result = await provider.getAlertTasks();
+
+      expect(result).toHaveLength(1);
+      // Builder chart alerts derive their connection from the source
+      expect(result[0].conn.id).toBe(connection.id);
+      expect(result[0].alerts).toHaveLength(1);
+      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.CHART);
+      expect(result[0].alerts[0].alert.id).toBe(alert.id);
+
+      if (result[0].alerts[0].taskType === AlertTaskType.CHART) {
+        expect(result[0].alerts[0].chartConfig).toMatchObject({
+          source: source._id.toString(),
+        });
+        expect(result[0].alerts[0].source?.name).toBe('Test Source');
+      }
+    });
+
+    // The stale-pairing scenario: write-path validation ties a raw-SQL
+    // config's source to its connection, but the source can be moved to a
+    // different connection afterwards. The worker must not expand
+    // $__sourceTable/metricTables from the moved source while executing
+    // through the pinned connection.
+    const setupRawSqlSourceMove = async () => {
+      const team = await createTeam({ name: 'Test Team' });
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Original Connection',
+        host: 'http://localhost:8123',
+        username: 'test',
+        password: 'test',
+      });
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other Connection',
+        host: 'http://localhost:8124',
+        username: 'test',
+        password: 'test',
+      });
+      const source = await Source.create({
+        team: team._id,
+        name: 'Test Source',
+        kind: 'log',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        timestampValueExpression: 'timestamp',
+        connection: connection._id,
+      });
+      return { team, connection, otherConnection, source };
+    };
+
+    it('drops raw-SQL chart alert source metadata when the source moved to a different connection', async () => {
+      const { team, connection, otherConnection, source } =
+        await setupRawSqlSourceMove();
+
+      await createAlert(
+        team._id,
+        {
+          source: AlertSource.CHART,
+          chartConfig: {
+            configType: 'sql',
+            displayType: DisplayType.Line,
+            sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+            connection: connection._id.toString(),
+            source: source._id.toString(),
+          },
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          interval: '5m',
+          channel: {
+            type: 'webhook',
+            webhookId: new mongoose.Types.ObjectId().toString(),
+          },
+        },
+        new mongoose.Types.ObjectId(),
+      );
+
+      let result = await provider.getAlertTasks();
+      expect(result).toHaveLength(1);
+      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.CHART);
+      if (result[0].alerts[0].taskType === AlertTaskType.CHART) {
+        expect(result[0].alerts[0].source?.name).toBe('Test Source');
+      }
+
+      await Source.updateOne(
+        { _id: source._id },
+        { $set: { connection: otherConnection._id } },
+      );
+
+      result = await provider.getAlertTasks();
+      expect(result).toHaveLength(1);
+      // Still executes through the alert's pinned connection...
+      expect(result[0].conn.id).toBe(connection.id);
+      // ...but without the moved source's metadata.
+      if (result[0].alerts[0].taskType === AlertTaskType.CHART) {
+        expect(result[0].alerts[0].source).toBeUndefined();
+      }
+    });
+
+    it('drops raw-SQL tile alert source metadata when the source moved to a different connection', async () => {
+      const { team, connection, otherConnection, source } =
+        await setupRawSqlSourceMove();
+
+      const tile = {
+        id: 'raw-sql-tile-123',
+        x: 1,
+        y: 1,
+        w: 1,
+        h: 1,
+        config: {
+          configType: 'sql' as const,
+          displayType: DisplayType.Line,
+          sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+          connection: connection._id.toString(),
+          source: source._id.toString(),
+        },
+      };
+      const dashboard = await Dashboard.create({
+        team: team._id,
+        name: 'Test Dashboard',
+        tiles: [tile],
+      });
+
+      await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          dashboardId: dashboard._id.toString(),
+          tileId: tile.id,
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          interval: '5m',
+          channel: {
+            type: 'webhook',
+            webhookId: new mongoose.Types.ObjectId().toString(),
+          },
+        },
+        new mongoose.Types.ObjectId(),
+      );
+
+      let result = await provider.getAlertTasks();
+      expect(result).toHaveLength(1);
+      expect(result[0].alerts[0].taskType).toBe(AlertTaskType.TILE);
+      if (result[0].alerts[0].taskType === AlertTaskType.TILE) {
+        expect(result[0].alerts[0].source?.name).toBe('Test Source');
+      }
+
+      await Source.updateOne(
+        { _id: source._id },
+        { $set: { connection: otherConnection._id } },
+      );
+
+      result = await provider.getAlertTasks();
+      expect(result).toHaveLength(1);
+      expect(result[0].conn.id).toBe(connection.id);
+      if (result[0].alerts[0].taskType === AlertTaskType.TILE) {
+        expect(result[0].alerts[0].source).toBeUndefined();
+      }
     });
   });
 
