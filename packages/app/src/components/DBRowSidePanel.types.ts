@@ -38,6 +38,12 @@ const SourceFrameSchema = z.object({
    * trace) leave it unset.
    */
   focusTimestamp: z.string().optional(),
+  /**
+   * Row id of the row displayed when this frame was pushed, in the same
+   * canonical form a navigation back to that row would use. Rows one hop
+   * apart somtimes reference each other (e.g. span links).
+   */
+  originRowId: z.string().optional(),
 });
 
 export type SourceFrame = z.infer<typeof SourceFrameSchema>;
