@@ -274,6 +274,35 @@ test.describe(
   'Dashboard variables in a PromQL tile',
   { tag: ['@dashboard', '@full-stack'] },
   () => {
+    /** A fresh dashboard with a Service filter exposed as `$svc`. */
+    const createDashboardWithServiceVariable = async (
+      dashboardPage: DashboardPage,
+    ) => {
+      await dashboardPage.goto();
+      await dashboardPage.createNewDashboard();
+
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+        undefined,
+        undefined,
+        { variableName: 'svc' },
+      );
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+      await dashboardPage.closeFiltersModal();
+    };
+
+    /** Open a new tile's editor in PromQL mode, on the PromQL source. */
+    const openPromqlTileEditor = async (dashboardPage: DashboardPage) => {
+      await dashboardPage.addTile();
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.waitForDataToLoad();
+      await dashboardPage.chartEditor.switchToPromqlMode();
+      await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
+    };
+
     test('narrows the queried series to the selected values', async ({
       page,
     }) => {
@@ -297,32 +326,12 @@ test.describe(
         await expect(seriesAreas).toHaveCount(count, { timeout: 30000 });
       };
 
-      await test.step('Create a dashboard with a Service filter exposed as $svc', async () => {
-        await dashboardPage.goto();
-        await dashboardPage.createNewDashboard();
-
-        await dashboardPage.openEditFiltersModal();
-        await dashboardPage.addFilterToDashboard(
-          'Service',
-          DEFAULT_LOGS_SOURCE_NAME,
-          'ServiceName',
-          undefined,
-          undefined,
-          { variableName: 'svc' },
-        );
-        await expect(
-          dashboardPage.getFilterItemByName('Service'),
-        ).toBeVisible();
-        await dashboardPage.closeFiltersModal();
-      });
+      await test.step('Create a dashboard with a Service filter exposed as $svc', () =>
+        createDashboardWithServiceVariable(dashboardPage));
 
       await test.step('Add a PromQL tile referencing $svc', async () => {
-        await dashboardPage.addTile();
-        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
-        await dashboardPage.chartEditor.waitForDataToLoad();
+        await openPromqlTileEditor(dashboardPage);
         await dashboardPage.chartEditor.setChartName('PromQL tile');
-        await dashboardPage.chartEditor.switchToPromqlMode();
-        await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
         await dashboardPage.chartEditor.replacePromqlExpression(
           `${E2E_PROMQL_METRIC_NAME}{service=~"$svc"}`,
         );
@@ -364,6 +373,98 @@ test.describe(
         await dashboardPage.toggleFilterValue('Service', 'accounting');
         await dashboardPage.toggleFilterValue('Service', 'api-server');
         await expectSeriesCount(SERVICES.length);
+      });
+    });
+
+    /**
+     * The expression above is only writable if the editor tells you the
+     * variable exists. Three completion sources share the PromQL input —
+     * dashboard variables, metric names and PromQL's own functions and
+     * keywords — and CodeMirror's `override` replaces language-registered
+     * sources outright, so a mistake here silently costs one of the three.
+     */
+    test('offers the dashboard variables alongside metrics and functions', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      const dashboardPage = new DashboardPage(page);
+      const editor = dashboardPage.chartEditor;
+
+      await test.step('Open a PromQL tile on a dashboard with a variable', async () => {
+        await createDashboardWithServiceVariable(dashboardPage);
+        await openPromqlTileEditor(dashboardPage);
+      });
+
+      await test.step('A $ reference offers every PromQL-valid form', async () => {
+        const labels = await editor.readPromqlCompletions('$sv', '${svc:csv}');
+        expect(labels).toEqual(
+          expect.arrayContaining(['$svc', '${svc}', '${svc:regex}']),
+        );
+
+        // Withheld on purpose: `'api', 'web'` and `("api" OR "web")` are SQL
+        // and Lucene syntax that no PromQL expression can parse, and the
+        // macros expand to SQL predicates that promql leaves as written.
+        expect(labels).not.toContain('${svc:sqlstring}');
+        expect(labels).not.toContain('${svc:lucene}');
+        expect(labels).not.toContain('$__filter');
+        expect(labels).not.toContain('$__conditionalAll');
+
+        await editor.dismissCompletion();
+      });
+
+      await test.step("The reference's expansion is previewed in its help", async () => {
+        await editor.replacePromqlExpression('$svc');
+        const info = page.locator('.cm-completionInfo');
+        await info.waitFor({ state: 'visible', timeout: 10000 });
+
+        // Nothing is selected on this dashboard, and regex is promql's default
+        // format — so the bare reference previews the match-everything state
+        // that makes the tile above valid before anything is picked.
+        await expect(info.locator('.cm-completionInfo-footnote')).toHaveText(
+          'Expands to: .*',
+        );
+
+        await editor.dismissCompletion();
+      });
+
+      await test.step('Metric names and PromQL built-ins still complete', async () => {
+        // The regression this feature could cause. Every source in the input
+        // has to be listed in the one `override` array, including the
+        // function/keyword source `PromQLExtension.asExtension()` registers
+        // through language data — which `override` replaces outright.
+        const metrics = await editor.readPromqlCompletions(
+          E2E_PROMQL_METRIC_NAME.slice(0, 5),
+          E2E_PROMQL_METRIC_NAME,
+        );
+        expect(metrics).toContain(E2E_PROMQL_METRIC_NAME);
+        await editor.dismissCompletion();
+
+        const functions = await editor.readPromqlCompletions('rat', 'rate');
+        expect(functions).toContain('rate');
+        await editor.dismissCompletion();
+      });
+
+      await test.step('Accepting a completion inserts well-formed text', async () => {
+        // The replace range reaches forward over the rest of the reference,
+        // which includes the `}` the editor auto-inserts after `${` — so
+        // `apply` has to carry its own closing brace rather than rely on it.
+        for (const [prefix, label, expected] of [
+          ['${', '${svc}', '${svc}'],
+          ['${', '${svc:regex}', '${svc:regex}'],
+          ['$sv', '$svc', '$svc'],
+          // The canonical form, typed the way a user would: the auto-closed
+          // `"` and `}` sit after the cursor and must survive the insert.
+          [
+            `${E2E_PROMQL_METRIC_NAME}{service=~"$sv`,
+            '$svc',
+            `${E2E_PROMQL_METRIC_NAME}{service=~"$svc"}`,
+          ],
+        ]) {
+          expect(await editor.acceptPromqlCompletion(prefix, label)).toBe(
+            expected,
+          );
+        }
       });
     });
   },

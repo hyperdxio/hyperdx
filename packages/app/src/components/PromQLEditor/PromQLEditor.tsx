@@ -21,6 +21,9 @@ import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from '@/components/SQLEditor/utils';
+import { usePromqlVariableCompletions } from '@/components/SQLEditor/variableCompletions';
+
+import { createVariableCompletionSource } from './variableCompletionSource';
 
 import styles from '@/components/SQLEditor/SQLInlineEditor.module.scss';
 
@@ -102,20 +105,33 @@ export default function PromQLEditor({
   const ref = useRef<ReactCodeMirrorRef>(null);
   const compartmentRef = useRef<Compartment>(new Compartment());
   const [isFocused, setIsFocused] = useState(false);
+  const variableCompletions = usePromqlVariableCompletions();
 
   const updateAutocomplete = useCallback(
     (viewRef: EditorView) => {
-      if (!metricNames || metricNames.length === 0) return;
+      const override: CompletionSource[] = [];
+
+      if (variableCompletions.length > 0) {
+        override.push(createVariableCompletionSource(variableCompletions));
+      }
+
+      if (metricNames?.length) {
+        override.push(debounceAndPruneAutocompleteResults(metricNames));
+      }
+
+      // PromQL's own function/keyword completion, re-registered explicitly.
+      // `PromQLExtension.asExtension()` registers it through
+      // `language.data.of({ autocomplete })`, which an `override` array
+      // replaces outright — so without this it is silently lost.
+      override.push(context => promqlExtension.getComplete().promQL(context));
 
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
-          autocompletion({
-            override: [debounceAndPruneAutocompleteResults(metricNames)],
-          }),
+          autocompletion({ override }),
         ),
       });
     },
-    [metricNames],
+    [metricNames, variableCompletions],
   );
 
   useEffect(() => {
@@ -132,7 +148,7 @@ export default function PromQLEditor({
       // PromQL syntax highlighting
       promqlExtension.asExtension(),
 
-      // Metric name autocomplete (via compartment for hot-swapping)
+      // Autocomplete sources (via compartment for hot-swapping)
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of([]),
 

@@ -442,6 +442,75 @@ export class ChartEditorComponent {
     await this.page.keyboard.type(expression);
   }
 
+  /** Read the current text of the PromQL expression editor. */
+  async getPromqlEditorText(): Promise<string> {
+    return this.page.locator('.cm-editor .cm-content').first().innerText();
+  }
+
+  /**
+   * Type `prefix` into the PromQL editor and return the labels its
+   * autocomplete popup offers, once `settleOn` is among them.
+   *
+   * Waiting on a known label rather than on the popup is what makes this
+   * safe to read as a whole: three sources feed the popup — dashboard
+   * variables, metric names and PromQL's own functions and keywords — and the
+   * metric-name one debounces, so the list repaints after first appearing.
+   *
+   * The prefix is re-typed until the label shows up, rather than waited on in
+   * place: the metric names arrive from a query, and the source that reads
+   * them only joins the `override` array once they do. A popup opened before
+   * that lists the other two sources and never repaints on its own, so only a
+   * fresh input event can pick the metric names up.
+   *
+   * Assert the result with `toContain` rather than comparing it whole: which
+   * of PromQL's built-ins fuzzy-match a short prefix is not worth pinning.
+   */
+  async readPromqlCompletions(
+    prefix: string,
+    settleOn: string,
+  ): Promise<string[]> {
+    const options = this.completionOptions();
+    await expect(async () => {
+      // Only on a retry, and only if the last attempt left the popup up: it
+      // covers the editor, so `replacePromqlExpression`'s click would land on
+      // an option instead. Unconditional dismissal would send keystrokes
+      // before the editor has been focused at all.
+      if (await this.page.locator('.cm-tooltip-autocomplete').isVisible()) {
+        await this.dismissCompletion();
+      }
+      await this.replacePromqlExpression(prefix);
+      await expect(options.filter({ hasText: settleOn })).not.toHaveCount(0, {
+        timeout: 5000,
+      });
+    }).toPass({ timeout: 30000 });
+    return options.allInnerTexts();
+  }
+
+  /**
+   * Type `prefix` into the PromQL editor, accept the suggestion labelled
+   * `label`, and return the resulting expression.
+   *
+   * Verifies that what a completion inserts is well-formed: the replace range
+   * reaches forward over the rest of the reference, so the `}` the editor
+   * auto-inserts after `${` is inside it and `apply` has to supply its own.
+   */
+  async acceptPromqlCompletion(prefix: string, label: string): Promise<string> {
+    await this.replacePromqlExpression(prefix);
+
+    const option = this.page
+      .locator('.cm-tooltip-autocomplete > ul > li')
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+
+    const text = await this.getPromqlEditorText();
+    // Accepting can immediately re-open the popup on the inserted text, which
+    // would intercept the next caller's click.
+    await this.dismissCompletion();
+    return text;
+  }
+
   /**
    * Switch the chart editor from SQL back to Builder mode.
    */
@@ -568,7 +637,7 @@ export class ChartEditorComponent {
    * Escape also closes it, but it bubbles to the tile modal and pops the
    * discard-changes dialog.
    */
-  async dismissSqlCompletion() {
+  async dismissCompletion() {
     await this.page.keyboard.press(
       process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
     );
@@ -578,11 +647,26 @@ export class ChartEditorComponent {
       .waitFor({ state: 'hidden', timeout: 10000 });
   }
 
-  /** Labels currently offered by the SQL autocomplete popup. */
-  sqlCompletionOptions(): Locator {
+  /** `dismissCompletion` under its original, SQL-specific name. */
+  async dismissSqlCompletion() {
+    await this.dismissCompletion();
+  }
+
+  /**
+   * Labels currently offered by the autocomplete popup.
+   *
+   * Not scoped to a particular editor: CodeMirror portals the tooltip out of
+   * the editor it belongs to, and only one is ever open at a time.
+   */
+  completionOptions(): Locator {
     return this.page.locator(
       '.cm-tooltip-autocomplete > ul > li .cm-completionLabel',
     );
+  }
+
+  /** `completionOptions` under its original, SQL-specific name. */
+  sqlCompletionOptions(): Locator {
+    return this.completionOptions();
   }
 
   /**
